@@ -9,6 +9,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import EVM
+import EVM.ABI
 import EVM.Concrete
 import EVM.Exec
 import EVM.Solidity
@@ -18,12 +19,12 @@ import Echidna.Exec
 myContract :: Text
 myContract = T.unlines [
   "contract Test {",
-  "  uint private counter=2**50;",
+  "  uint private counter=2**250;",
   "",
   "  function inc(uint val) returns (uint){",
   "    uint tmp = counter;",
   "    counter += val;",
-  "    if (tmp > counter) {return(counter);}",
+  "    if (tmp > counter) {selfdestruct(0);}",
   "    else {return (counter - tmp);}",
   "  }",
   "  function boom() returns (bool){",
@@ -46,9 +47,9 @@ loadSolidity name contents = do
 example :: IO ()
 example = loadSolidity "Test" myContract >>=
   \case Nothing  -> putStrLn "Compilation Failed"
-        (Just c) -> (fuzz 1 10000 [("boom", [])] c worked) >>=
-          \case False -> putStrLn "Tests passed!"
-                True  -> putStrLn "Tests failed"
+        (Just c) -> (fuzz 1 10000 [("inc", [AbiUIntType 256])] c worked) >>=
+          \case Nothing  -> putStrLn "Tests passed!"
+                (Just x) -> putStrLn $ "Tests failed! Counterexample: " ++ show x
   where
     worked v = case v ^. result of (Just (VMSuccess _)) -> return True
-                                   x                    -> print x >> return False
+                                   _                    -> return False

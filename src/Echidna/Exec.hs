@@ -21,7 +21,7 @@ import EVM.Solidity (solidity)
 import Echidna.ABI (genInteractions)
 
 execCall :: ByteString -> State VM VMResult
-execCall = liftM2 const exec . assign (state . calldata) . B
+execCall s = assign (state . calldata) (B s) >> exec
 
 fuzz :: Int -- Call sequence length
      -> Int -- Number of iterations
