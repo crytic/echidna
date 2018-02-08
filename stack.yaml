@@ -6,18 +6,19 @@ packages:
 extra-deps:
 - git: https://github.com/dapphub/hevm.git
   commit: 40b4ce9d38ed711ffd6065e697807100b3f0a3c3
-- ghci-pretty-0.0.2
-- hedgehog-0.5.1
-- restless-git-0.5.0
-- rosezipper-0.2
-- tree-view-0.5
-- HSH-2.1.3
 - brick-0.18
-- ipprint-0.6
-- megaparsec-6.4.0
 - config-ini-0.2.1.1
 - data-clist-0.1.2.0
+- ghci-pretty-0.0.2
+- hedgehog-0.5.1
+- HSH-2.1.3
+- ipprint-0.6
+- megaparsec-6.4.0
 - parser-combinators-0.4.0
+- restless-git-0.5.0
+- rosezipper-0.2
 - sr-extra-1.46.3.2
+- temporary-1.2.1.1
+- tree-view-0.5
 - vty-5.16
 - word-wrap-0.4.1
