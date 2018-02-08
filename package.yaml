@@ -26,3 +26,9 @@ default-extensions:
 
 library:
   source-dirs: src/
+
+executables:
+  simple-example-exe:
+    main: Simple.hs
+    source-dirs: examples/
+    dependencies: echidna
