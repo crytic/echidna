@@ -15,7 +15,7 @@ import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import Data.Vector (fromList)
 import Hedgehog
-import Hedgehog.Gen (parallel, sample, sequential)
+import Hedgehog.Gen (sample, sequential)
 import Hedgehog.Range (linear)
 
 import EVM (VM, VMResult(..), calldata, contract, loadContract, result, state)
@@ -37,7 +37,7 @@ fuzz :: Int -- Call sequence length
      -> IO (Maybe [ByteString]) -- Counterexample, if possible
 fuzz l n ts v p = do
   calls <- replicateM n (replicateM l . sample $ genInteractions ts)
-  results <- fmap (zip calls) $ mapM (p . (`execState` v) . mapM_ execCall) calls
+  results <- zip calls <$> mapM (p . (`execState` v) . mapM_ execCall) calls
   return $ listToMaybe [input | (input, worked) <- results, not worked]
 
 -- Given a contract and a function call (assumed from that contract) return
@@ -51,17 +51,17 @@ solPredicate name contents func args = do
                         execCall . abiCalldata func $ fromList args)
     _ -> return Nothing
 
-data VMState (v :: * -> *) =
+newtype VMState (v :: * -> *) =
   Current VM
 
 instance Show (VMState v) where
-  show (Current v) = "EVM state, current result: " ++ (show $ v ^. result)
+  show (Current v) = "EVM state, current result: " ++ show (v ^. result)
 
-data VMAction (v :: * -> *) = 
+newtype VMAction (v :: * -> *) = 
   Call ByteString
 
 instance Show (VMAction v) where
-  show (Call b) = "EVM call with data: " ++ (show b)
+  show (Call b) = "EVM call with data: " ++ show b
 
 instance HTraversable VMAction where
   htraverse _ (Call b) = pure $ Call b
