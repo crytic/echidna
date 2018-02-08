@@ -23,7 +23,7 @@ This can be quite useful for playing around with the library.
 
 echidna is actively being developed with more or less no regard for stability.
 As a result of this, there is a lack of extensive documentation at the present time.
-There is a small working example [provided](src/Echidna/Example.hs) that should be relatively instructional.
+There is a small working example [provided](src/examples/Simple.hs) that should be relatively instructional.
 
 ### [Echidna.ABI](src/Echidna/ABI.hs)
 
@@ -41,6 +41,11 @@ Its arguments are annotated in the source.
 Notably, the predicates are specified to be compatible with hevm's `Case` type (just use `checkExpectation`).
 Should neither that nor writing a predicate by hand suffice for checking some invariant, `solPredicate` is also provided for hotloading solidity contracts with more sophisticated predicates.
 `solPredicate` is currently not practical for real usage though, as it runs `solc` once per invocation.
+
+### [Echidna.Solidity](src/Echidna/Solidity.hs)
+
+This module provides `loadSolidity`, which takes a solidity source file and provides a VM with the first contract therein loaded as well as a `fuzz`-compatible ABI definition.
+At the moment, it is only compatible with single-contract solidity files, though if given a multi-contract file it will load the first and print a warning.
 
 ## Questions/complaints/etc.
 
