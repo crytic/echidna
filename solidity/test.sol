@@ -1,7 +1,7 @@
 pragma solidity ^0.4.16;
 
 contract Test {
-  uint private counter=2**250;
+  uint private counter=2**200;
 
   function inc(uint val) returns (uint){
     uint tmp = counter;

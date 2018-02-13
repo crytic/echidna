@@ -25,9 +25,13 @@ default-extensions:
   - OverloadedStrings
 
 library:
-  source-dirs: src/
+  source-dirs: lib/
 
 executables:
+  echidna-test:
+    main: Main.hs
+    source-dirs: src/
+    dependencies: echidna
   simple-example-exe:
     main: Simple.hs
     source-dirs: examples/
