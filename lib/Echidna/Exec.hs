@@ -1,7 +1,8 @@
 {-# LANGUAGE KindSignatures #-}
 
 module Echidna.Exec (
-    eCommand
+    checkETest
+  , eCommand
   , ePropertySeq
   , fuzz
   , solPredicate
@@ -17,6 +18,8 @@ import Data.Vector (fromList)
 import Hedgehog
 import Hedgehog.Gen (sample, sequential)
 import Hedgehog.Range (linear)
+
+import qualified Data.ByteString.Char8 as BS
 
 import EVM (VM, VMResult(..), calldata, contract, loadContract, result, state)
 import EVM.ABI (AbiType, AbiValue, abiCalldata)
@@ -39,6 +42,11 @@ fuzz l n ts v p = do
   calls <- replicateM n (replicateM l . sample $ genInteractions ts)
   results <- zip calls <$> mapM (p . (`execState` v) . mapM_ execCall) calls
   return $ listToMaybe [input | (input, worked) <- results, not worked]
+
+checkETest :: VM -> Text -> Bool
+checkETest v t = case evalState (execCall $ abiCalldata t mempty) v of
+  VMSuccess (B s) -> s /= BS.replicate 32 '\0'
+  _               -> False
 
 -- Given a contract and a function call (assumed from that contract) return
 -- an action loading that contract and calling that function if possible
