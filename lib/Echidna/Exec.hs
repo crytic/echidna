@@ -19,10 +19,8 @@ import Hedgehog
 import Hedgehog.Gen (sample, sequential)
 import Hedgehog.Range (linear)
 
-import qualified Data.ByteString.Char8 as BS
-
 import EVM (VM, VMResult(..), calldata, contract, loadContract, result, state)
-import EVM.ABI (AbiType, AbiValue, abiCalldata)
+import EVM.ABI (AbiType, AbiValue(..), abiCalldata, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Solidity (solidity)
@@ -45,7 +43,7 @@ fuzz l n ts v p = do
 
 checkETest :: VM -> Text -> Bool
 checkETest v t = case evalState (execCall $ abiCalldata t mempty) v of
-  VMSuccess (B s) -> s /= BS.replicate 32 '\0'
+  VMSuccess (B s) -> s /= encodeAbiValue (AbiBool True)
   _               -> False
 
 -- Given a contract and a function call (assumed from that contract) return
