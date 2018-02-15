@@ -45,17 +45,6 @@ checkETest v t = case evalState (execCall (t, [])) v of
   VMSuccess (B s) -> return (s == encodeAbiValue (AbiBool True))
   _               -> return False
 
--- Given a contract and a function call (assumed from that contract) return
--- an action loading that contract and calling that function if possible
-solPredicate :: Text -> Text -> Text -> [AbiValue] -> IO (Maybe (State VM VMResult))
-solPredicate name contents func args = do
-  compiled <- solidity name contents
-  case runState exec . vmForEthrunCreation <$> compiled of
-    Just (VMSuccess _, vm) ->
-      return (Just $ do loadContract (vm ^. state . contract)
-                        execCall (func, args))
-    _ -> return Nothing
-
 newtype VMState (v :: * -> *) =
   Current VM
 
