@@ -26,7 +26,7 @@ import EVM.Solidity (solidity)
 
 import Echidna.ABI (displayAbiCall, genInteractions)
 
-execCall :: (Text, [AbiValue]) -> State VM VMResult
+execCall :: MonadState VM m => (Text, [AbiValue]) -> m VMResult
 execCall (t,vs) = assign (state . calldata) (B . abiCalldata t $ fromList vs) >> exec
 
 fuzz :: Int -- Call sequence length
@@ -40,10 +40,10 @@ fuzz l n ts v p = do
   results <- zip calls <$> mapM (p . (`execState` v) . mapM_ execCall) calls
   return $ listToMaybe [map displayAbiCall input | (input, worked) <- results, not worked]
 
-checkETest :: VM -> Text -> IO Bool
+checkETest :: VM -> Text -> Bool
 checkETest v t = case evalState (execCall (t, [])) v of
-  VMSuccess (B s) -> return (s == encodeAbiValue (AbiBool True))
-  _               -> return False
+  VMSuccess (B s) -> (s == encodeAbiValue (AbiBool True))
+  _               -> False
 
 newtype VMState (v :: * -> *) =
   Current VM
