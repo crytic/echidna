@@ -2,9 +2,10 @@
 
 module Main where
 
+import Data.List (intercalate)
 import Data.Monoid ((<>))
-import Data.Text (Text)
-import System.Environment
+import Data.Text (Text, unpack)
+import System.Environment (getArgs)
 
 import EVM.ABI
 import EVM
@@ -19,7 +20,7 @@ main = getArgs >>= \case
             mapM_ (test v a) t
 
 test :: VM -> [(Text, [AbiType])] -> Text -> IO ()
-test v a t = do print ("Checking test " <> t <> "...")
+test v a t = do putStrLn $ unpack ("[*] Checking test " <> t <> "...")
                 res <- fuzz 10 10000 a v (\x -> return $ checkETest x t) 
-                putStrLn $ maybe "Test passed!"
-                                 (("Test failed! Counterexample: " ++) . show) res
+                putStrLn $ maybe "[+] Test passed!"
+                  (("[!] Test failed! Calls used: " ++) . intercalate "; ") res
