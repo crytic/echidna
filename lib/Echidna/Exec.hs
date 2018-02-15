@@ -7,20 +7,21 @@ module Echidna.Exec (
   , fuzz
   ) where
 
-import Control.Lens ((^.), assign)
-import Control.Monad (replicateM)
+import Control.Lens               ((^.), assign)
+import Control.Monad              (replicateM)
 import Control.Monad.State.Strict (MonadState, evalState, execState)
-import Data.Maybe (listToMaybe)
-import Data.Text (Text)
-import Data.Vector (fromList)
+import Data.Maybe                 (listToMaybe)
+import Data.Text                  (Text)
+import Data.Vector                (fromList)
+
 import Hedgehog
-import Hedgehog.Gen (sample, sequential)
+import Hedgehog.Gen   (sample, sequential)
 import Hedgehog.Range (linear)
 
-import EVM (VM, VMResult(..), calldata, pc, result, state)
-import EVM.ABI (AbiType, AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
+import EVM          (VM, VMResult(..), calldata, pc, result, state)
+import EVM.ABI      (AbiType, AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
-import EVM.Exec (exec)
+import EVM.Exec     (exec)
 
 import Echidna.ABI (displayAbiCall, encodeSig, genInteractions)
 

@@ -2,25 +2,26 @@
 
 module Echidna.Solidity where
 
-import Control.Lens
-import Control.Exception (Exception)
-import Control.Monad (liftM2)
-import Control.Monad.Catch (MonadThrow(..))
-import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.State.Strict hiding (state)
-import Data.Foldable (toList)
-import Data.List (find, partition)
-import Data.Map ()
-import Data.Monoid ((<>))
-import Data.Text (Text, isPrefixOf)
-import System.Process (readProcess)
-import System.IO.Temp (writeSystemTempFile)
+import Control.Lens               ((^.), assign, view)
+import Control.Exception          (Exception)
+import Control.Monad              (liftM2)
+import Control.Monad.Catch        (MonadThrow(..))
+import Control.Monad.IO.Class     (MonadIO(..))
+import Control.Monad.State.Strict (execState, runState)
+import Data.Foldable              (toList)
+import Data.List                  (find, partition)
+import Data.Map                   ()
+import Data.Monoid                ((<>))
+import Data.Text                  (Text, isPrefixOf)
+import System.Process             (readProcess)
+import System.IO.Temp             (writeSystemTempFile)
 
-import EVM hiding (Error)
-import EVM.ABI
-import EVM.Concrete
-import EVM.Exec
-import EVM.Solidity
+import EVM
+  (VM, VMResult(..), contract, gas, loadContract, replaceCodeOfSelf, resetState, state)
+import EVM.ABI      (AbiType)
+import EVM.Concrete (Blob(..))
+import EVM.Exec     (exec, vmForEthrunCreation)
+import EVM.Solidity (abiMap, contractName, creationCode, methodInputs, methodName, readSolc)
 
 data EchidnaException = CompileFailure
                       | NoContracts
@@ -46,7 +47,7 @@ loadSolidity f = liftIO solc >>= \case
                     assign (state . gas) 0xffffffffffffffff
                     loadContract (vm ^. state . contract)
           loaded = execState load $ execState (replaceCodeOfSelf bc) vm
-          abi = map (liftM2 (,) _methodName (map snd . _methodInputs)) . toList $ c ^. abiMap
+          abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
           (tests, funs) = partition (isPrefixOf "echidna_" . fst) abi
       case find (not . null . snd) tests of
         Nothing      -> return (loaded, funs, map fst tests)
