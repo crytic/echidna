@@ -1,5 +1,9 @@
+{-# LANGUAGE TupleSections #-}
+
 module Echidna.ABI (
-    encodeSig
+    encodeAbiCall
+  , encodeSig
+  , displayAbiCall
   , genAbiAddress
   , genAbiArray
   , genAbiArrayDynamic
@@ -14,23 +18,24 @@ module Echidna.ABI (
   , genAbiValue
 ) where
 
-import Control.Arrow         (second)
 import Control.Monad         (join, liftM2)
 import Data.DoubleWord       (Word128(..), Word160(..), Word256(..), signedWord)
-import Data.ByteString       (ByteString)
 import Data.Monoid           ((<>))
-import Data.Text             (Text, intercalate)
-import Data.Vector           (Vector, fromList, toList)
+import Data.ByteString       (ByteString)
+import Data.Text             (Text, unpack)
+import Data.Vector           (Vector, fromList)
 import Hedgehog.Internal.Gen (MonadGen)
 import Hedgehog.Range        (constant, singleton, Range)
 
+import qualified Data.List    as L
+import qualified Data.Text    as T
 import qualified Hedgehog.Gen as Gen
 
 import EVM.ABI
 import EVM.Types ()
 
-encodeSig :: Text -> Vector AbiType -> Text
-encodeSig n ts = n <> "(" <> intercalate "," (map abiTypeSolidity $ toList ts) <> ")"
+encodeSig :: Text -> [AbiType] -> Text
+encodeSig n ts = n <> "(" <> T.intercalate "," (map abiTypeSolidity ts) <> ")"
 
 genSize :: MonadGen m => m Int
 genSize = (8 *) <$> Gen.enum 1 32
@@ -119,10 +124,16 @@ genAbiValueOfType t = case t of
   AbiArrayDynamicType t' -> genAbiArrayDynamic t'
   AbiArrayType n t'      -> genAbiArray n t'
 
-genAbiCall :: MonadGen m => Text -> Vector AbiType -> m ByteString
-genAbiCall s ts = abiCalldata (encodeSig s ts) <$> mapM genAbiValueOfType ts
+genAbiCall :: MonadGen m => Text -> [AbiType] -> m (Text, [AbiValue])
+genAbiCall s ts = (s,) <$> mapM genAbiValueOfType ts
+
+encodeAbiCall :: (Text, [AbiValue]) -> ByteString
+encodeAbiCall (t, vs) = abiCalldata t $ fromList vs
+
+displayAbiCall :: (Text, [AbiValue]) -> String
+displayAbiCall (t, vs) = "EVM call: " ++ unpack t ++ "(" ++ L.intercalate "," (map show vs) ++ ")"
 
 -- genInteractions generates a function call from a list of type signatures of
 -- the form (Function name, [arg0 type, arg1 type...])
-genInteractions :: MonadGen m => [(Text, [AbiType])] -> m ByteString
-genInteractions ls = uncurry genAbiCall . second fromList =<< Gen.element ls
+genInteractions :: MonadGen m => [(Text, [AbiType])] -> m (Text, [AbiValue])
+genInteractions ls = uncurry genAbiCall =<< Gen.element ls

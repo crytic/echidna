@@ -10,8 +10,7 @@ module Echidna.Exec (
 
 import Control.Lens ((^.), assign)
 import Control.Monad (replicateM)
-import Control.Monad.State.Strict (evalState, execState, runState, State)
-import Data.ByteString (ByteString)
+import Control.Monad.State.Strict (State, evalState, execState, runState)
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import Data.Vector (fromList)
@@ -25,26 +24,26 @@ import EVM.Concrete (Blob(..))
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Solidity (solidity)
 
-import Echidna.ABI (genInteractions)
+import Echidna.ABI (displayAbiCall, genInteractions)
 
-execCall :: ByteString -> State VM VMResult
-execCall s = assign (state . calldata) (B s) >> exec
+execCall :: (Text, [AbiValue]) -> State VM VMResult
+execCall (t,vs) = assign (state . calldata) (B . abiCalldata t $ fromList vs) >> exec
 
 fuzz :: Int -- Call sequence length
      -> Int -- Number of iterations
      -> [(Text, [AbiType])] -- Type signatures to call
      -> VM -- Initial state
      -> (VM -> IO Bool) -- Predicate to fuzz for violations of
-     -> IO (Maybe [ByteString]) -- Counterexample, if possible
+     -> IO (Maybe [String]) -- Counterexample, if possible
 fuzz l n ts v p = do
   calls <- replicateM n (replicateM l . sample $ genInteractions ts)
   results <- zip calls <$> mapM (p . (`execState` v) . mapM_ execCall) calls
-  return $ listToMaybe [input | (input, worked) <- results, not worked]
+  return $ listToMaybe [map displayAbiCall input | (input, worked) <- results, not worked]
 
-checkETest :: VM -> Text -> Bool
-checkETest v t = case evalState (execCall $ abiCalldata t mempty) v of
-  VMSuccess (B s) -> s /= encodeAbiValue (AbiBool True)
-  _               -> False
+checkETest :: VM -> Text -> IO Bool
+checkETest v t = case evalState (execCall (t, [])) v of
+  VMSuccess (B s) -> return (s == encodeAbiValue (AbiBool True))
+  _               -> return False
 
 -- Given a contract and a function call (assumed from that contract) return
 -- an action loading that contract and calling that function if possible
@@ -54,7 +53,7 @@ solPredicate name contents func args = do
   case runState exec . vmForEthrunCreation <$> compiled of
     Just (VMSuccess _, vm) ->
       return (Just $ do loadContract (vm ^. state . contract)
-                        execCall . abiCalldata func $ fromList args)
+                        execCall (func, args))
     _ -> return Nothing
 
 newtype VMState (v :: * -> *) =
@@ -64,10 +63,10 @@ instance Show (VMState v) where
   show (Current v) = "EVM state, current result: " ++ show (v ^. result)
 
 newtype VMAction (v :: * -> *) = 
-  Call ByteString
+  Call (Text, [AbiValue])
 
 instance Show (VMAction v) where
-  show (Call b) = "EVM call with data: " ++ show b
+  show (Call c) = displayAbiCall c
 
 instance HTraversable VMAction where
   htraverse _ (Call b) = pure $ Call b
