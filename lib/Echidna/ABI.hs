@@ -16,16 +16,19 @@ module Echidna.ABI (
   , genAbiType
   , genAbiUInt
   , genAbiValue
+  , prettyPrint
 ) where
 
 import Control.Monad         (join, liftM2)
+import Data.Bool             (bool)
 import Data.DoubleWord       (Word128(..), Word160(..), Word256(..), signedWord)
 import Data.Monoid           ((<>))
 import Data.ByteString       (ByteString)
 import Data.Text             (Text, unpack)
-import Data.Vector           (Vector, fromList)
+import Data.Vector           (Vector, fromList, toList)
 import Hedgehog.Internal.Gen (MonadGen)
 import Hedgehog.Range        (constant, singleton, Range)
+import Numeric               (showHex)
 
 import qualified Data.List    as L
 import qualified Data.Text    as T
@@ -33,6 +36,19 @@ import qualified Hedgehog.Gen as Gen
 
 import EVM.ABI
 import EVM.Types ()
+
+prettyPrint :: AbiValue -> String
+prettyPrint (AbiUInt _ n)         = show n
+prettyPrint (AbiInt  _ n)         = show n
+prettyPrint (AbiAddress n)        = showHex n ""
+prettyPrint (AbiBool b)           = bool "true" "false" b
+prettyPrint (AbiBytes      _ b)   = show b
+prettyPrint (AbiBytesDynamic b)   = show b
+prettyPrint (AbiString       s)   = show s
+prettyPrint (AbiArrayDynamic _ v) =
+  "[" ++ L.intercalate ", " (map prettyPrint $ toList v) ++ "]"
+prettyPrint (AbiArray      _ _ v) =
+  "[" ++ L.intercalate ", " (map prettyPrint $ toList v) ++ "]"
 
 encodeSig :: Text -> [AbiType] -> Text
 encodeSig n ts = n <> "(" <> T.intercalate "," (map abiTypeSolidity ts) <> ")"
@@ -86,12 +102,12 @@ genAbiType = Gen.choice [ pure AbiBytesDynamicType
 
 genVecOfType :: MonadGen m => AbiType -> Range Int -> m (Vector AbiValue)
 genVecOfType t r = fmap fromList . Gen.list r $ case t of
-  AbiUIntType         n    -> genAbiUInt n
-  AbiIntType          n    -> genAbiInt n
-  AbiAddressType           -> genAbiAddress
-  AbiBoolType              -> genAbiBool
-  AbiBytesType        n    -> genAbiBytes n
-  AbiArrayType        n t' -> genAbiArray n t'
+  AbiUIntType    n    -> genAbiUInt n
+  AbiIntType     n    -> genAbiInt n
+  AbiAddressType      -> genAbiAddress
+  AbiBoolType         -> genAbiBool
+  AbiBytesType   n    -> genAbiBytes n
+  AbiArrayType   n t' -> genAbiArray n t'
   _ -> error "Arrays must only contain statically sized types"
 
 genAbiArrayDynamic :: MonadGen m => AbiType -> m AbiValue
@@ -131,7 +147,7 @@ encodeAbiCall :: (Text, [AbiValue]) -> ByteString
 encodeAbiCall (t, vs) = abiCalldata t $ fromList vs
 
 displayAbiCall :: (Text, [AbiValue]) -> String
-displayAbiCall (t, vs) = unpack t ++ "(" ++ L.intercalate "," (map show vs) ++ ")"
+displayAbiCall (t, vs) = unpack t ++ "(" ++ L.intercalate "," (map prettyPrint vs) ++ ")"
 
 -- genInteractions generates a function call from a list of type signatures of
 -- the form (Function name, [arg0 type, arg1 type...])
