@@ -1,16 +1,15 @@
-{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE FlexibleContexts, KindSignatures #-}
 
 module Echidna.Exec (
     checkETest
   , eCommand
   , ePropertySeq
   , fuzz
-  , solPredicate
 ) where
 
 import Control.Lens ((^.), assign)
 import Control.Monad (replicateM)
-import Control.Monad.State.Strict (State, evalState, execState, runState)
+import Control.Monad.State.Strict (MonadState, evalState, execState)
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import Data.Vector (fromList)
@@ -18,11 +17,10 @@ import Hedgehog
 import Hedgehog.Gen (sample, sequential)
 import Hedgehog.Range (linear)
 
-import EVM (VM, VMResult(..), calldata, contract, loadContract, result, state)
+import EVM (VM, VMResult(..), calldata, result, state)
 import EVM.ABI (AbiType, AbiValue(..), abiCalldata, encodeAbiValue)
 import EVM.Concrete (Blob(..))
-import EVM.Exec (exec, vmForEthrunCreation)
-import EVM.Solidity (solidity)
+import EVM.Exec (exec)
 
 import Echidna.ABI (displayAbiCall, genInteractions)
 
