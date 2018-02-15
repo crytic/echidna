@@ -131,7 +131,7 @@ encodeAbiCall :: (Text, [AbiValue]) -> ByteString
 encodeAbiCall (t, vs) = abiCalldata t $ fromList vs
 
 displayAbiCall :: (Text, [AbiValue]) -> String
-displayAbiCall (t, vs) = "EVM call: " ++ unpack t ++ "(" ++ L.intercalate "," (map show vs) ++ ")"
+displayAbiCall (t, vs) = unpack t ++ "(" ++ L.intercalate "," (map show vs) ++ ")"
 
 -- genInteractions generates a function call from a list of type signatures of
 -- the form (Function name, [arg0 type, arg1 type...])

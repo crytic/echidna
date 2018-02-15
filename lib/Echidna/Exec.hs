@@ -5,7 +5,7 @@ module Echidna.Exec (
   , eCommand
   , ePropertySeq
   , fuzz
-) where
+  ) where
 
 import Control.Lens ((^.), assign)
 import Control.Monad (replicateM)
@@ -17,15 +17,16 @@ import Hedgehog
 import Hedgehog.Gen (sample, sequential)
 import Hedgehog.Range (linear)
 
-import EVM (VM, VMResult(..), calldata, result, state)
-import EVM.ABI (AbiType, AbiValue(..), abiCalldata, encodeAbiValue)
+import EVM (VM, VMResult(..), calldata, pc, result, state)
+import EVM.ABI (AbiType, AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec (exec)
 
-import Echidna.ABI (displayAbiCall, genInteractions)
+import Echidna.ABI (displayAbiCall, encodeSig, genInteractions)
 
 execCall :: MonadState VM m => (Text, [AbiValue]) -> m VMResult
-execCall (t,vs) = assign (state . calldata) (B . abiCalldata t $ fromList vs) >> exec
+execCall (t,vs) = assign (state . calldata) cd >> exec where
+  cd = B . abiCalldata (encodeSig t $ map abiValueType vs) $ fromList vs
 
 fuzz :: Int -- Call sequence length
      -> Int -- Number of iterations
@@ -34,13 +35,15 @@ fuzz :: Int -- Call sequence length
      -> (VM -> IO Bool) -- Predicate to fuzz for violations of
      -> IO (Maybe [String]) -- Counterexample, if possible
 fuzz l n ts v p = do
-  calls <- replicateM n (replicateM l . sample $ genInteractions ts)
-  results <- zip calls <$> mapM (p . (`execState` v) . mapM_ execCall) calls
-  return $ listToMaybe [map displayAbiCall input | (input, worked) <- results, not worked]
+  callseqs <- replicateM n (replicateM l . sample $ genInteractions ts)
+  results <- zip callseqs <$> mapM run callseqs
+  return $ listToMaybe [map displayAbiCall cs | (cs, passed) <- results, not passed]
+    where run cs = p $ execState (mapM_ (\c -> execCall c >> cleanUp) cs) v
+          cleanUp = assign result Nothing >> assign (state . pc) 0
 
 checkETest :: VM -> Text -> Bool
 checkETest v t = case evalState (execCall (t, [])) v of
-  VMSuccess (B s) -> (s == encodeAbiValue (AbiBool True))
+  VMSuccess (B s) -> s == encodeAbiValue (AbiBool True)
   _               -> False
 
 newtype VMState (v :: * -> *) =
