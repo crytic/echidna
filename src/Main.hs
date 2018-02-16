@@ -2,9 +2,9 @@
 
 module Main where
 
-import Control.Monad (forM_)
-import Hedgehog (check)
-import System.Environment (getArgs)
+import Hedgehog
+import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
+import System.Environment         (getArgs)
 
 import Echidna.Exec
 import Echidna.Solidity
@@ -12,6 +12,8 @@ import Echidna.Solidity
 main :: IO ()
 main = getArgs >>= \case
   []  -> putStrLn "Please provide a solidity file to analyze"
-  f:_ -> loadSolidity f >>= \(v,a,ts) -> forM_ ts $ \t -> do
-    putStrLn ("[*] Checking test " ++ show t)
-    check $ ePropertySeq v a (`checkETest` t) 10
+  f:_ -> do
+    (v,a,ts) <- loadSolidity f
+    let prop t = (PropertyName $ show t, ePropertySeq v a (`checkETest` t) 10)
+    _ <- checkParallel . Group (GroupName f) $ map prop ts
+    return ()
