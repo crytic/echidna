@@ -10,13 +10,15 @@ module Echidna.Exec (
 import Control.Lens               ((^.), assign)
 import Control.Monad              (replicateM)
 import Control.Monad.State.Strict (MonadState, evalState, execState)
+import Data.List                  (intercalate)
 import Data.Maybe                 (listToMaybe)
 import Data.Text                  (Text)
 import Data.Vector                (fromList)
 
 import Hedgehog
-import Hedgehog.Gen   (sample, sequential)
-import Hedgehog.Range (linear)
+import Hedgehog.Gen            (sample, sequential)
+import Hedgehog.Internal.State (Action(..))
+import Hedgehog.Range          (linear)
 
 import EVM          (VM, VMResult(..), calldata, pc, result, state)
 import EVM.ABI      (AbiType, AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
@@ -78,7 +80,9 @@ ePropertySeq :: VM                  -- Initial state
              -> Int                 -- Max actions to execute
              -> Property
 ePropertySeq v ts p n = property $ executeSequential (VMState v) =<<
-  forAll (sequential (linear 1 n) (VMState v) [eCommand ts p])
+  forAllWith printCallSeq (sequential (linear 1 n) (VMState v) [eCommand ts p]) where
+    printCallSeq = ("Call sequence: " ++) . intercalate "; " . map showCall . sequentialActions
+    showCall (Action i _ _ _ _ _) = show i
 
 -- Should work, but missing instance MonadBaseControl b m => MonadBaseControl b (PropertyT m)
 -- ePropertyPar :: VM                  -- Initial state
