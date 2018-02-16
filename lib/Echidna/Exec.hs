@@ -40,7 +40,9 @@ fuzz l n ts v p = do
   results <- zip callseqs <$> mapM run callseqs
   return $ listToMaybe [map displayAbiCall cs | (cs, passed) <- results, not passed]
     where run cs = p $ execState (mapM_ (\c -> execCall c >> cleanUp) cs) v
-          cleanUp = assign result Nothing >> assign (state . pc) 0
+
+cleanUp :: MonadState VM m => m ()
+cleanUp = assign result Nothing >> assign (state . pc) 0
 
 checkETest :: VM -> Text -> Bool
 checkETest v t = case evalState (execCall (t, [])) v of
@@ -48,10 +50,10 @@ checkETest v t = case evalState (execCall (t, [])) v of
   _               -> False
 
 newtype VMState (v :: * -> *) =
-  Current VM
+  VMState VM
 
 instance Show (VMState v) where
-  show (Current v) = "EVM state, current result: " ++ show (v ^. result)
+  show (VMState v) = "EVM state, current result: " ++ show (v ^. result)
 
 newtype VMAction (v :: * -> *) = 
   Call (Text, [AbiValue])
@@ -62,18 +64,21 @@ instance Show (VMAction v) where
 instance HTraversable VMAction where
   htraverse _ (Call b) = pure $ Call b
 
-eCommand :: (MonadGen n, MonadTest m) => VM -> [(Text, [AbiType])] -> (VM -> Bool) -> Command n m VMState
-eCommand v ts p = Command (const . Just . fmap Call $ genInteractions ts)
-                          (\(Call b) -> pure $ evalState (execCall b) v)
-                          [Ensure $ \_ (Current s) _ _ -> assert $ p s]
+eCommand :: (MonadGen n, MonadTest m) => [(Text, [AbiType])] -> (VM -> Bool) -> Command n m VMState
+eCommand ts p = Command (\_ -> pure $ Call <$> genInteractions ts)
+                        (\_ -> pure ())
+                        [ Ensure $ \_ (VMState v) _ _ -> assert $ p v
+                        , Update $ \(VMState v) (Call c) _ ->
+                          VMState $ execState (execCall c >> cleanUp) v
+                        ]
 
 ePropertySeq :: VM                  -- Initial state
              -> [(Text, [AbiType])] -- Type signatures to fuzz
              -> (VM -> Bool)        -- Predicate to fuzz for violations of
              -> Int                 -- Max actions to execute
              -> Property
-ePropertySeq v ts p n = property $ executeSequential (Current v) =<<
-  forAll (sequential (linear 1 n) (Current v) [eCommand v ts p])
+ePropertySeq v ts p n = property $ executeSequential (VMState v) =<<
+  forAll (sequential (linear 1 n) (VMState v) [eCommand ts p])
 
 -- Should work, but missing instance MonadBaseControl b m => MonadBaseControl b (PropertyT m)
 -- ePropertyPar :: VM                  -- Initial state
