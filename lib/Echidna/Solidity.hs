@@ -16,9 +16,10 @@ import Data.Text                  (Text, isPrefixOf)
 import System.Process             (readProcess)
 import System.IO.Temp             (writeSystemTempFile)
 
+import Echidna.ABI (SolSignature)
+
 import EVM
   (VM, VMResult(..), contract, gas, loadContract, replaceCodeOfSelf, resetState, state)
-import EVM.ABI      (AbiType)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec, vmForEthrunCreation)
 import EVM.Solidity (abiMap, contractName, creationCode, methodInputs, methodName, readSolc)
@@ -34,7 +35,7 @@ instance Show EchidnaException where
 
 instance Exception EchidnaException
 
-loadSolidity :: (MonadIO m, MonadThrow m) => FilePath -> m (VM, [(Text, [AbiType])], [Text])
+loadSolidity :: (MonadIO m, MonadThrow m) => FilePath -> m (VM, [SolSignature], [Text])
 loadSolidity f = liftIO solc >>= \case
   Nothing -> throwM CompileFailure
   Just m  -> case toList $ fst m of

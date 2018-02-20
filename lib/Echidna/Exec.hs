@@ -22,23 +22,23 @@ import Hedgehog.Internal.State (Action(..))
 import Hedgehog.Range          (linear)
 
 import EVM          (VM, VMResult(..), calldata, pc, result, state)
-import EVM.ABI      (AbiType, AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
+import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
 
-import Echidna.ABI (displayAbiCall, encodeSig, genInteractions)
+import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions)
 
-execCall :: MonadState VM m => (Text, [AbiValue]) -> m VMResult
+execCall :: MonadState VM m => SolCall -> m VMResult
 execCall (t,vs) = state . calldata .= cd >> exec where
   cd = B . abiCalldata (encodeSig t $ map abiValueType vs) $ fromList vs
 
 fuzz :: MonadIO m
-     => Int                            -- Call sequence length
-     -> Int                            -- Number of iterations
-     -> [(Text, [AbiType])]            -- Type signatures to call
-     -> VM                             -- Initial state
-     -> (VM -> m Bool)                 -- Predicate to fuzz for violations of
-     -> m (Maybe [(Text, [AbiValue])]) -- Call sequence to violate predicate (if found)
+     => Int                 -- Call sequence length
+     -> Int                 -- Number of iterations
+     -> [SolSignature]      -- Type signatures to call
+     -> VM                  -- Initial state
+     -> (VM -> m Bool)      -- Predicate to fuzz for violations of
+     -> m (Maybe [SolCall]) -- Call sequence to violate predicate (if found)
 fuzz l n ts v p = do
   callseqs <- replicateM n (replicateM l . sample $ genInteractions ts)
   results <- zip callseqs <$> mapM run callseqs
@@ -62,7 +62,7 @@ instance Show (VMState v) where
   show (VMState v) = "EVM state, current result: " ++ show (v ^. result)
 
 newtype VMAction (v :: * -> *) = 
-  Call (Text, [AbiValue])
+  Call SolCall
 
 instance Show (VMAction v) where
   show (Call c) = displayAbiCall c
@@ -70,7 +70,7 @@ instance Show (VMAction v) where
 instance HTraversable VMAction where
   htraverse _ (Call b) = pure $ Call b
 
-eCommand :: (MonadGen n, MonadTest m) => [(Text, [AbiType])] -> (VM -> Bool) -> Command n m VMState
+eCommand :: (MonadGen n, MonadTest m) => [SolSignature] -> (VM -> Bool) -> Command n m VMState
 eCommand ts p = Command (\_ -> pure $ Call <$> genInteractions ts)
                         (\_ -> pure ())
                         [ Ensure $ \_ (VMState v) _ _ -> assert $ p v
@@ -78,10 +78,10 @@ eCommand ts p = Command (\_ -> pure $ Call <$> genInteractions ts)
                                        VMState $ execState (execCall c >> cleanUp) v
                         ]
 
-ePropertySeq :: VM                  -- Initial state
-             -> [(Text, [AbiType])] -- Type signatures to fuzz
-             -> (VM -> Bool)        -- Predicate to fuzz for violations of
-             -> Int                 -- Max actions to execute
+ePropertySeq :: VM             -- Initial state
+             -> [SolSignature] -- Type signatures to fuzz
+             -> (VM -> Bool)   -- Predicate to fuzz for violations of
+             -> Int            -- Max actions to execute
              -> Property
 ePropertySeq v ts p n = property $ executeSequential (VMState v) =<<
   forAllWith printCallSeq (sequential (linear 1 n) (VMState v) [eCommand ts p]) where
