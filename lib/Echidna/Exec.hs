@@ -33,16 +33,16 @@ execCall (t,vs) = state . calldata .= cd >> exec where
   cd = B . abiCalldata (encodeSig t $ map abiValueType vs) $ fromList vs
 
 fuzz :: MonadIO m
-     => Int                 -- Call sequence length
-     -> Int                 -- Number of iterations
-     -> [(Text, [AbiType])] -- Type signatures to call
-     -> VM                  -- Initial state
-     -> (VM -> m Bool)      -- Predicate to fuzz for violations of
-     -> m (Maybe [String])  -- Counterexample, if possible
+     => Int                            -- Call sequence length
+     -> Int                            -- Number of iterations
+     -> [(Text, [AbiType])]            -- Type signatures to call
+     -> VM                             -- Initial state
+     -> (VM -> m Bool)                 -- Predicate to fuzz for violations of
+     -> m (Maybe [(Text, [AbiValue])]) -- Call sequence to violate predicate (if found)
 fuzz l n ts v p = do
   callseqs <- replicateM n (replicateM l . sample $ genInteractions ts)
   results <- zip callseqs <$> mapM run callseqs
-  return $ listToMaybe [map displayAbiCall cs | (cs, passed) <- results, not passed]
+  return $ listToMaybe [cs | (cs, passed) <- results, not passed]
     where run cs = p $ execState (forM_ cs $ \c -> execCall c >> cleanUp) v
 
 cleanUp :: MonadState VM m => m ()
