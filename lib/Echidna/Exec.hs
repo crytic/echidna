@@ -8,7 +8,7 @@ module Echidna.Exec (
   ) where
 
 import Control.Lens               ((^.), (.=))
-import Control.Monad              (replicateM)
+import Control.Monad              (forM_, replicateM)
 import Control.Monad.IO.Class     (MonadIO)
 import Control.Monad.State.Strict (MonadState, evalState, execState)
 import Data.List                  (intercalate)
@@ -43,12 +43,12 @@ fuzz l n ts v p = do
   callseqs <- replicateM n (replicateM l . sample $ genInteractions ts)
   results <- zip callseqs <$> mapM run callseqs
   return $ listToMaybe [map displayAbiCall cs | (cs, passed) <- results, not passed]
-    where run cs = p $ execState (mapM_ (\c -> execCall c >> cleanUp) cs) v
+    where run cs = p $ execState (forM_ cs $ \c -> execCall c >> cleanUp) v
 
 cleanUp :: MonadState VM m => m ()
-cleanUp = sequence [ result     .= Nothing
-                   , state . pc .= 0
-                   ]
+cleanUp = sequence_ [ result     .= Nothing
+                    , state . pc .= 0
+                    ]
 
 checkETest :: VM -> Text -> Bool
 checkETest v t = case evalState (execCall (t, [])) v of
