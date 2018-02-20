@@ -1,7 +1,9 @@
 {-# LANGUAGE TupleSections #-}
 
 module Echidna.ABI (
-    encodeAbiCall
+    SolCall
+  , SolSignature
+  , encodeAbiCall
   , encodeSig
   , displayAbiCall
   , genAbiAddress
@@ -36,6 +38,10 @@ import qualified Hedgehog.Gen as Gen
 
 import EVM.ABI
 import EVM.Types ()
+
+type SolCall = (Text, [AbiValue])
+
+type SolSignature = (Text, [AbiType])
 
 prettyPrint :: AbiValue -> String
 prettyPrint (AbiUInt _ n)         = show n
@@ -140,16 +146,16 @@ genAbiValueOfType t = case t of
   AbiArrayDynamicType t' -> genAbiArrayDynamic t'
   AbiArrayType n t'      -> genAbiArray n t'
 
-genAbiCall :: MonadGen m => Text -> [AbiType] -> m (Text, [AbiValue])
-genAbiCall s ts = (s,) <$> mapM genAbiValueOfType ts
+genAbiCall :: MonadGen m => SolSignature -> m SolCall
+genAbiCall (s,ts) = (s,) <$> mapM genAbiValueOfType ts
 
-encodeAbiCall :: (Text, [AbiValue]) -> ByteString
+encodeAbiCall :: SolCall -> ByteString
 encodeAbiCall (t, vs) = abiCalldata t $ fromList vs
 
-displayAbiCall :: (Text, [AbiValue]) -> String
+displayAbiCall :: SolCall -> String
 displayAbiCall (t, vs) = unpack t ++ "(" ++ L.intercalate "," (map prettyPrint vs) ++ ")"
 
 -- genInteractions generates a function call from a list of type signatures of
 -- the form (Function name, [arg0 type, arg1 type...])
-genInteractions :: MonadGen m => [(Text, [AbiType])] -> m (Text, [AbiValue])
-genInteractions ls = uncurry genAbiCall =<< Gen.element ls
+genInteractions :: MonadGen m => [SolSignature] -> m SolCall
+genInteractions ls = genAbiCall =<< Gen.element ls
