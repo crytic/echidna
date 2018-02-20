@@ -7,8 +7,9 @@ module Echidna.Exec (
   , fuzz
   ) where
 
-import Control.Lens               ((^.), assign)
+import Control.Lens               ((^.), (.=))
 import Control.Monad              (replicateM)
+import Control.Monad.IO.Class     (MonadIO)
 import Control.Monad.State.Strict (MonadState, evalState, execState)
 import Data.List                  (intercalate)
 import Data.Maybe                 (listToMaybe)
@@ -28,15 +29,16 @@ import EVM.Exec     (exec)
 import Echidna.ABI (displayAbiCall, encodeSig, genInteractions)
 
 execCall :: MonadState VM m => (Text, [AbiValue]) -> m VMResult
-execCall (t,vs) = assign (state . calldata) cd >> exec where
+execCall (t,vs) = state . calldata .= cd >> exec where
   cd = B . abiCalldata (encodeSig t $ map abiValueType vs) $ fromList vs
 
-fuzz :: Int -- Call sequence length
-     -> Int -- Number of iterations
+fuzz :: MonadIO m
+     => Int                 -- Call sequence length
+     -> Int                 -- Number of iterations
      -> [(Text, [AbiType])] -- Type signatures to call
-     -> VM -- Initial state
-     -> (VM -> IO Bool) -- Predicate to fuzz for violations of
-     -> IO (Maybe [String]) -- Counterexample, if possible
+     -> VM                  -- Initial state
+     -> (VM -> m Bool)      -- Predicate to fuzz for violations of
+     -> m (Maybe [String])  -- Counterexample, if possible
 fuzz l n ts v p = do
   callseqs <- replicateM n (replicateM l . sample $ genInteractions ts)
   results <- zip callseqs <$> mapM run callseqs
@@ -44,7 +46,9 @@ fuzz l n ts v p = do
     where run cs = p $ execState (mapM_ (\c -> execCall c >> cleanUp) cs) v
 
 cleanUp :: MonadState VM m => m ()
-cleanUp = assign result Nothing >> assign (state . pc) 0
+cleanUp = sequence [ result     .= Nothing
+                   , state . pc .= 0
+                   ]
 
 checkETest :: VM -> Text -> Bool
 checkETest v t = case evalState (execCall (t, [])) v of
@@ -71,7 +75,7 @@ eCommand ts p = Command (\_ -> pure $ Call <$> genInteractions ts)
                         (\_ -> pure ())
                         [ Ensure $ \_ (VMState v) _ _ -> assert $ p v
                         , Update $ \(VMState v) (Call c) _ ->
-                          VMState $ execState (execCall c >> cleanUp) v
+                                       VMState $ execState (execCall c >> cleanUp) v
                         ]
 
 ePropertySeq :: VM                  -- Initial state
