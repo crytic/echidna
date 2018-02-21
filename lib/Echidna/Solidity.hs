@@ -51,7 +51,7 @@ loadSolidity f = liftIO solc >>= \case
           abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
           (tests, funs) = partition (isPrefixOf "echidna_" . fst) abi
       case find (not . null . snd) tests of
-        Nothing      -> return (loaded, funs, map fst tests)
+        Nothing      -> return (loaded, funs, fst <$> tests)
         (Just (t,_)) -> throwM $ TestArgsFound t
   where solc = readSolc =<< writeSystemTempFile "" =<< readProcess
           "solc" ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", f] ""

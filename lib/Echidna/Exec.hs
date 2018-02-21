@@ -30,7 +30,7 @@ import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInterac
 
 execCall :: MonadState VM m => SolCall -> m VMResult
 execCall (t,vs) = state . calldata .= cd >> exec where
-  cd = B . abiCalldata (encodeSig t $ map abiValueType vs) $ fromList vs
+  cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
 
 fuzz :: MonadIO m
      => Int                 -- Call sequence length
@@ -85,8 +85,8 @@ ePropertySeq :: VM             -- Initial state
              -> Property
 ePropertySeq v ts p n = property $ executeSequential (VMState v) =<<
   forAllWith printCallSeq (sequential (linear 1 n) (VMState v) [eCommand ts p]) where
-    printCallSeq = ("Call sequence: " ++) . intercalate "; " . map showCall . sequentialActions
-    showCall (Action i _ _ _ _ _) = show i
+    printCallSeq = ("Call sequence: " ++) . intercalate "\n               " . map showCall . sequentialActions
+    showCall (Action i _ _ _ _ _) = show i ++ ";"
 
 -- Should work, but missing instance MonadBaseControl b m => MonadBaseControl b (PropertyT m)
 -- ePropertyPar :: VM                  -- Initial state
