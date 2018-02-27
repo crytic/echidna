@@ -29,7 +29,10 @@ matrix:
 install:
  - unset CC
  - export PATH=$HOME/.local/bin:/opt/ghc/$GHCVER/bin:$PATH
- - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update && brew install readline && brew link readline; fi
+ - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; cabal install readline --extra-include-dirs=/opt/local/include \
+     --extra-lib-dirs=/opt/local/lib \
+     --configure-option=--with-readline-includes=/opt/local/include \
+     --configure-option=--with-readline-libraries=/opt/local/lib; fi
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
 
