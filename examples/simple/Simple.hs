@@ -1,4 +1,4 @@
-module Simple where
+module Main where
 
 import Control.Lens
 

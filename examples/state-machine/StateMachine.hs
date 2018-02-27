@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts, KindSignatures #-}
 
-module StateMachine where
+module Main where
 
 import Control.Monad.IO.Class
 
