@@ -22,6 +22,7 @@ matrix:
       addons: {apt: {packages: [ghc-8.2.1], sources: [hvr-ghc]}}
 
     - env: GHCVER=8.2.1 CACHE_NAME=8.2.1-osx BUILD_BINARY=1
+           LDFLAGS=-L/usr/local/opt/readline/lib CFLAGS=-I/usr/local/opt/readline/include
       os: osx
       compiler: ": #stack 8.2.1"
       addons: {apt: {packages: [ghc-8.2.1], sources: [hvr-ghc]}}
@@ -29,10 +30,10 @@ matrix:
 install:
  - unset CC
  - export PATH=$HOME/.local/bin:/opt/ghc/$GHCVER/bin:$PATH
- - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; cabal install readline --extra-include-dirs=/opt/local/include
-     --extra-lib-dirs=/opt/local/lib
-     --configure-option=--with-readline-includes=/opt/local/include
-     --configure-option=--with-readline-libraries=/opt/local/lib; fi
+ - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then 
+   stack install readline --extra-include-dirs=/usr/local/opt/readline/include
+                          --extra-lib-dirs=/usr/local/opt/readline/lib;
+   fi
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
 
