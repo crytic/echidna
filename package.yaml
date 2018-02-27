@@ -39,5 +39,9 @@ executables:
     dependencies: echidna
   simple-example-exe:
     main: Simple.hs
-    source-dirs: examples/
+    source-dirs: examples/simple
+    dependencies: echidna
+  state-example-exe:
+    main: StateMachine.hs
+    source-dirs: examples/state-machine
     dependencies: echidna
