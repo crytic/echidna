@@ -19,7 +19,7 @@ import           Control.Monad.Catch
 import           Control.Monad.IO.Class (MonadIO(..))
 import           Control.Monad.Trans.Maybe (MaybeT(..))
 
-import           Data.Bifunctor (bimap, first, second)
+import           Data.Bifunctor (first, second)
 import qualified Data.Char as Char
 import           Data.Either (partitionEithers)
 import qualified Data.List as List
@@ -56,7 +56,6 @@ import           System.Directory (makeRelativeToCurrentDirectory)
 
 import           Text.PrettyPrint.Annotated.WL (Doc, (<+>))
 import qualified Text.PrettyPrint.Annotated.WL as WL
-import           Text.Printf (printf)
 
 checkParallel :: MonadIO m => Group -> m Bool
 checkParallel =
@@ -374,11 +373,8 @@ summaryTotal (Summary x1 x2 x3 x4 x5) =
 -- Pretty Printing Helpers
 
 data Line a =
-  Line {
-      _lineAnnotation :: !a
-    , lineNumber :: !LineNo
-    , _lineSource :: !String
-    } deriving (Eq, Ord, Show, Functor)
+  Line a LineNo String
+    deriving (Eq, Ord, Show, Functor)
 
 data Declaration a =
   Declaration {
@@ -486,10 +482,6 @@ ppShow = -- unfortunate naming clash
 markup :: Markup -> Doc Markup -> Doc Markup
 markup =
   WL.annotate
-
-gutter :: Markup -> Doc Markup -> Doc Markup
-gutter m x =
-  markup m ">" <+> x
 
 icon :: Markup -> Char -> Doc Markup -> Doc Markup
 icon m i x =
@@ -689,47 +681,13 @@ ppDeclaration decl =
   case Map.maxView $ declarationSource decl of
     Nothing ->
       mempty
-    Just (lastLine, _) ->
+    Just _ ->
       let
-        ppLocation =
-          WL.indent (digits + 1) $
-            markup (StyledBorder StyleDefault) "┏━━" <+>
-            markup DeclarationLocation (WL.text (declarationFile decl)) <+>
-            markup (StyledBorder StyleDefault) "━━━"
-
-        digits =
-          length . show . unLineNo $ lineNumber lastLine
-
-        ppLineNo =
-          WL.text . printf ("%" <> show digits <> "d") . unLineNo
-
-        ppEmptyNo =
-          WL.text $ replicate digits ' '
-
-        ppSource style n src =
-          markup (StyledLineNo style) (ppLineNo n) <+>
-          markup (StyledBorder style) "┃" <+>
-          markup (StyledSource style) (WL.text src)
-
-        ppAnnot (style, doc) = doc
-
         ppLines = do
-          Line (style, xs) n src <- Map.elems $ declarationSource decl
-          fmap ppAnnot xs
+          Line (_, xs) _ _ <- Map.elems $ declarationSource decl
+          fmap snd xs
       in
         WL.vsep (ppLines)
-
-ppReproduce :: Maybe PropertyName -> Size -> Seed -> Doc Markup
-ppReproduce name size seed =
-  WL.vsep [
-      markup ReproduceHeader
-        "This failure can be reproduced by running:"
-    , gutter ReproduceGutter . markup ReproduceSource $
-        "recheck" <+>
-        WL.text (showsPrec 11 size "") <+>
-        WL.text (showsPrec 11 seed "") <+>
-        maybe "<property>" (WL.text . unPropertyName) name
-    ]
 
 mergeLine :: Semigroup a => Line a -> Line a -> Line a
 mergeLine (Line x no src) (Line y _ _) =
@@ -751,8 +709,8 @@ ppTextLines =
   fmap WL.text . List.lines
 
 ppFailureReport :: MonadIO m => Maybe PropertyName -> FailureReport -> m (Doc Markup)
-ppFailureReport name (FailureReport size seed _ inputs0 mlocation0 msg mdiff msgs0) = do
-  (msgs, mlocation) <- let
+ppFailureReport _ (FailureReport _ _ _ inputs0 _ msg mdiff msgs0) = do
+  _ <- let
           msgs1 =
             msgs0 ++
             (if null msg then [] else [msg])
@@ -763,7 +721,7 @@ ppFailureReport name (FailureReport size seed _ inputs0 mlocation0 msg mdiff msg
         in
           pure (docs, Nothing)
 
-  (args, idecls) <- partitionEithers <$> zipWithM ppFailedInput [0..] inputs0
+  (_, idecls) <- partitionEithers <$> zipWithM ppFailedInput [0..] inputs0
 
   let
     decls =
