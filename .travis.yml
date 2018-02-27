@@ -26,12 +26,10 @@ matrix:
       compiler: ": #stack 8.2.1"
       addons: {apt: {packages: [ghc-8.2.1], sources: [hvr-ghc]}}
 
-before_install:
- - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update && brew install readline && brew link readline; fi
-
 install:
  - unset CC
  - export PATH=$HOME/.local/bin:/opt/ghc/$GHCVER/bin:$PATH
+ - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update && brew install readline && brew link readline; fi
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
 
