@@ -30,16 +30,16 @@ matrix:
 install:
  - unset CC
  - export PATH=$HOME/.local/bin:/opt/ghc/$GHCVER/bin:$PATH
- - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then 
-   stack install readline --extra-include-dirs=/usr/local/opt/readline/include
-                          --extra-lib-dirs=/usr/local/opt/readline/lib;
-   fi
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
 
 script:
  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
+ - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then 
+   stack install readline --extra-include-dirs=/usr/local/opt/readline/include
+                          --extra-lib-dirs=/usr/local/opt/readline/lib;
+   fi
  - |
    set -ex
    # Run tests
