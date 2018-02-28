@@ -50,3 +50,6 @@ after_success:
  - |
    # Build and ship binary
    ./.travis/attach-binary.sh
+
+notifications:
+  email: false
