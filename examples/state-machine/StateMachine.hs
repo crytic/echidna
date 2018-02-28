@@ -2,14 +2,14 @@
 
 module Main where
 
-import Control.Monad.State.Strict
+import Control.Monad.State.Strict (MonadState, evalStateT)
 
-import Echidna.Exec
-import Echidna.Solidity
+import Echidna.Exec (execCall, cleanUp)
+import Echidna.Solidity (loadSolidity)
 
-import EVM
-import EVM.ABI
-import EVM.Concrete
+import EVM (VM, VMResult(..))
+import EVM.ABI (AbiValue(..), encodeAbiValue)
+import EVM.Concrete (Blob(..))
 
 import Hedgehog
 import qualified Hedgehog.Gen as Gen
@@ -64,12 +64,13 @@ s_push_unlocked = Command (\s -> if s == TUnlocked then Just $ pure Push else No
                                         after === TLocked
   ]
 
-prop_turnstile :: Property
-prop_turnstile = property $ do
-  (v,_,_) <- loadSolidity "solidity/turnstile.sol"
+prop_turnstile :: VM -> Property
+prop_turnstile v = property $ do
   actions <- forAll $ Gen.sequential (Range.linear 1 100) initialState
     [s_coin, s_push_locked, s_push_unlocked]
   evalStateT (executeSequential initialState actions) v
 
 main :: IO ()
-main = check prop_turnstile >> pure ()
+main = do
+  (v,_,_) <- loadSolidity "solidity/turnstile.sol"
+  check (prop_turnstile v) >> pure ()
