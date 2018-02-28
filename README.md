@@ -9,9 +9,15 @@ It supports relatively sophisticated grammar-based fuzzing campaigns to falsify 
 ## Installation
 
 [stack](https://www.haskellstack.org/) is highly recommended to install echidna.
-If you are a particularly opinionated experienced Haskell user, cabal or hpack should work, but they are neither officially supported nor tested.
+If you are a particularly opinionated experienced Haskell user, cabal or hpack should work, but they are neither officially supported nor tested. 
 
-[solc](https://www.npmjs.com/package/solc) is the only echidna dependency not handled via stack.
+Before starting with it, make sure you have libgmp-dev installed otherwise ghc will fail to compile. Also, libbz2 and libreadline are required by some packages. For instance, in Ubuntu/Debian you can execute:
+
+```
+# apt-get install libgmp-dev libbz2-dev libreadline-dev
+```
+
+[solc](https://www.npmjs.com/package/solc) is another echidna dependency not handled via stack.
 It is technically optional, but working with solidity source will fail without it.
 
 Once solc is installed, installing stack and running `stack upgrade; stack setup; stack install` should be all that's needed.
