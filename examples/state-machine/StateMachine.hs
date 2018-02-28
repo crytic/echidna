@@ -45,7 +45,7 @@ match (VMSuccess (B s)) b = s == encodeAbiValue (AbiBool b)
 match _ _ = False
 
 s_push_locked :: (Monad n, MonadTest m, MonadState VM m) => Command n m ModelState
-s_push_locked = Command (\s -> if s == TUnlocked then Just $ pure Push else Nothing)
+s_push_locked = Command (\s -> if s == TLocked then Just $ pure Push else Nothing)
   (\Push -> cleanUp >> execCall ("push", []))
   [ Require $ \s Push -> s == TLocked
   , Update $ \_ Push _ -> TLocked 
@@ -55,7 +55,7 @@ s_push_locked = Command (\s -> if s == TUnlocked then Just $ pure Push else Noth
   ]
 
 s_push_unlocked :: (Monad n, MonadTest m, MonadState VM m) => Command n m ModelState
-s_push_unlocked = Command (\s -> if s == TLocked then Just $ pure Push else Nothing)
+s_push_unlocked = Command (\s -> if s == TUnlocked then Just $ pure Push else Nothing)
   (\Push -> cleanUp >> execCall ("push", []))
   [ Require $ \s Push -> s == TUnlocked
   , Update $ \_ Push _ -> TLocked 
