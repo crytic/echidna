@@ -2,8 +2,10 @@
 
 module Echidna.Exec (
     checkETest
+  , cleanUp
   , eCommand
   , ePropertySeq
+  , execCall
   , fuzz
   ) where
 

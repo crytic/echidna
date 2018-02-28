@@ -12,7 +12,7 @@ contract Turnstile {
       return(false);
     } else {
       locked = true;
-      return(true)
+      return(true);
     }
   }
 }
