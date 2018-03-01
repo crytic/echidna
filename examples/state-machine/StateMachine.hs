@@ -3,6 +3,8 @@
 module Main where
 
 import Control.Monad.State.Strict (MonadState, evalStateT)
+import Data.List (isSuffixOf)
+import System.Directory (getDirectoryContents)
 
 import Echidna.Exec (execCall, cleanUp)
 import Echidna.Solidity (loadSolidity)
@@ -70,7 +72,11 @@ prop_turnstile v = property $ do
     [s_coin, s_push_locked, s_push_unlocked]
   evalStateT (executeSequential initialState actions) v
 
+check_turnstile :: FilePath -> FilePath -> IO Bool
+check_turnstile dir fp = do putStrLn ("Checking " ++ fp ++ "...")
+                            (v,_,_) <- loadSolidity (dir ++ "/" ++ fp)
+                            check (prop_turnstile v)
+
 main :: IO ()
-main = do
-  (v,_,_) <- loadSolidity "solidity/turnstile.sol"
-  check (prop_turnstile v) >> pure ()
+main = let dir = "solidity/turnstile" in mapM_ (check_turnstile dir)
+  =<< filter (isSuffixOf ".sol") <$> getDirectoryContents dir
