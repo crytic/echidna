@@ -7,6 +7,7 @@ module Echidna.Exec (
   , ePropertySeq
   , execCall
   , fuzz
+  , module Echidna.Internal.Runner
   ) where
 
 import Control.Lens               ((^.), (.=))
@@ -29,6 +30,7 @@ import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
 
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions)
+import Echidna.Internal.Runner
 
 execCall :: MonadState VM m => SolCall -> m VMResult
 execCall (t,vs) = state . calldata .= cd >> exec where
