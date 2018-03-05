@@ -45,10 +45,10 @@ fuzz l n ts v p = do
   callseqs <- replicateM n (replicateM l . sample $ genInteractions ts)
   results <- zip callseqs <$> mapM run callseqs
   return $ listToMaybe [cs | (cs, passed) <- results, not passed]
-    where run cs = p $ execState (forM_ cs $ \c -> execCall c >> cleanUp) v
+    where run cs = p $ execState (forM_ cs $ \c -> (cleanUp >> (execCall c))) v
 
 cleanUp :: MonadState VM m => m ()
-cleanUp = sequence_ [ result     .= Nothing
+cleanUp = sequence_ [ result .= Nothing
                     , state . pc .= 0
                     ]
 
