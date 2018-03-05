@@ -75,7 +75,7 @@ genAbiUInt n = AbiUInt n . scale <$> genWord256 where
   scale = if n == 256 then id else flip mod (2^n)
 
 genAbiInt :: MonadGen m => Int -> m AbiValue
-genAbiInt n = AbiInt n . signedWord . scale <$> genWord256 where
+genAbiInt n = AbiInt n . (+(maxBound `div` 2)) . signedWord . scale <$> genWord256 where
   scale = if n == 256 then id else flip mod (2^n)
 
 genAbiBool :: MonadGen m => m AbiValue
