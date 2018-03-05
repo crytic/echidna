@@ -41,6 +41,10 @@ executables:
     main: Simple.hs
     source-dirs: examples/simple
     dependencies: echidna
+  revert-example-exe:
+    main: Revert.hs
+    source-dirs: examples/revert
+    dependencies: echidna
   state-example-exe:
     main: StateMachine.hs
     source-dirs: examples/state-machine
