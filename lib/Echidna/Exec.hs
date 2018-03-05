@@ -2,6 +2,7 @@
 
 module Echidna.Exec (
     checkETest
+  , checkRTest
   , cleanUp
   , eCommand
   , ePropertySeq
@@ -23,7 +24,7 @@ import Hedgehog.Gen            (sample, sequential)
 import Hedgehog.Internal.State (Action(..))
 import Hedgehog.Range          (linear)
 
-import EVM          (VM, VMResult(..), calldata, pc, result, state)
+import EVM          (VM, VMResult(..), Error( Revert ) , calldata, pc, result, state)
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
@@ -56,6 +57,13 @@ checkETest :: VM -> Text -> Bool
 checkETest v t = case evalState (execCall (t, [])) v of
   VMSuccess (B s) -> s == encodeAbiValue (AbiBool True)
   _               -> False
+
+checkRTest :: VM -> Text -> Bool
+checkRTest v t = case evalState (execCall (t, [])) v of
+  (VMFailure Revert) -> False
+  _                  -> True
+
+
 
 newtype VMState (v :: * -> *) =
   VMState VM

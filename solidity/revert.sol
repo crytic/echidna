@@ -7,10 +7,8 @@ contract C {
     state = x;
   }
 
-  function g() public returns (bool) {
-
+  function echidna_revert() public returns (bool) {
     if (state < 0)
-      require(false);
-
+      revert();
   }
 }
