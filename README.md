@@ -29,7 +29,44 @@ This can be quite useful for playing around with the library.
 
 echidna is actively being developed with more or less no regard for stability.
 As a result of this, there is a lack of extensive documentation at the present time.
-There is a small working example [provided](src/examples/Simple.hs) that should be relatively instructional.
+Nevertheless, we provide a short working example that should be relatively instructional:
+
+```haskell
+module Main where
+
+import Control.Lens
+import EVM
+import Echidna.Exec
+import Echidna.Solidity
+
+main :: IO ()
+main = do (v,a,_) <- loadSolidity "solidity/test.sol"
+          res     <- fuzz 1 10000 a v worked
+          putStrLn $ maybe "Tests passed!"
+                           (("Tests failed! Counterexample: " ++) . show) res
+  where worked c = case c ^. result of (Just (VMSuccess _)) -> return True
+                                       _                    -> return False
+```
+
+This example can be used to test this small solidity contract:
+
+```solidity
+pragma solidity ^0.4.16;
+
+contract Test {
+  uint private counter=2**200;
+
+  function inc(uint val) returns (uint){
+    uint tmp = counter;
+    counter += val;
+    if (tmp > counter) {selfdestruct(0);}
+    else {return (counter - tmp);}
+  }
+  function boom() returns (bool){
+    return(true);
+  }
+}
+```
 
 ### [Echidna.ABI](src/Echidna/ABI.hs)
 
