@@ -31,15 +31,15 @@ default-extensions:
 
 library:
   source-dirs: lib/
+  exposed-modules:
+    - Echidna.ABI
+    - Echidna.Exec
+    - Echidna.Solidity
 
 executables:
   echidna-test:
     main: Main.hs
     source-dirs: src/
-    dependencies: echidna
-  simple-example-exe:
-    main: Simple.hs
-    source-dirs: examples/simple
     dependencies: echidna
   revert-example-exe:
     main: Revert.hs
