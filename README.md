@@ -34,18 +34,17 @@ Nevertheless, we provide a short working example that should be relatively instr
 ```haskell
 module Main where
 
-import Control.Lens
-import EVM
+import Hedgehog hiding            (checkParallel)
+import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
+
 import Echidna.Exec
 import Echidna.Solidity
 
 main :: IO ()
-main = do (v,a,_) <- loadSolidity "solidity/test.sol"
-          res     <- fuzz 1 10000 a v worked
-          putStrLn $ maybe "Tests passed!"
-                           (("Tests failed! Counterexample: " ++) . show) res
-  where worked c = case c ^. result of (Just (VMSuccess _)) -> return True
-                                       _                    -> return False
+main = do (v,a,ts) <- loadSolidity "test.sol"
+          let prop t = (PropertyName $ show t, ePropertySeq v a (`checkETest` t) 100)
+          _ <- checkParallel . Group (GroupName "test.sol") $ map prop ts
+          return ()
 ```
 
 This example can be used to test this small solidity contract:
@@ -55,17 +54,36 @@ pragma solidity ^0.4.16;
 
 contract Test {
   uint private counter=2**200;
+  uint private last_counter=counter;
 
-  function inc(uint val) returns (uint){
-    uint tmp = counter;
+  function inc(uint val){
+    last_counter = counter;
     counter += val;
-    if (tmp > counter) {selfdestruct(0);}
-    else {return (counter - tmp);}
   }
-  function boom() returns (bool){
-    return(true);
+
+  function skip() {
+    return;
+  }
+
+  function echidna_check_counter() returns (bool) {
+    if (last_counter > counter) {
+      selfdestruct(0);
+    }
+    return true;
   }
 }
+```
+
+Then, we can use echidna to find a counterexample:
+
+```
+━━━ test.sol ━━━
+  ✗ "echidna_check_counter" failed after 7 tests and 127 shrinks.
+  
+      │ Call sequence: inc(102179695760624079239381274351643261346173239270980264592551833602568283084636);
+      │                inc(13612393476692116184189710657044646507096745394660299446905750405344846555296);
+  
+  ✗ 1 failed
 ```
 
 ### [Echidna.ABI](src/Echidna/ABI.hs)
