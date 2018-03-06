@@ -4,7 +4,6 @@ import Hedgehog hiding (checkParallel)
 import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
 
 import Echidna.Exec
-import Echidna.Internal.Runner (checkParallel)
 import Echidna.Solidity
 
 main :: IO ()
