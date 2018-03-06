@@ -49,7 +49,7 @@ fuzz l n ts v p = do
     where run cs = p $ execState (forM_ cs $ \c -> (cleanUp >> (execCall c))) v
 
 cleanUp :: MonadState VM m => m ()
-cleanUp = sequence_ [ result .= Nothing
+cleanUp = sequence_ [ result     .= Nothing
                     , state . pc .= 0
                     ]
 
