@@ -89,12 +89,12 @@ Then, we can use echidna to find a counterexample:
 
 ```
 ━━━ test.sol ━━━
-  ✗ "echidna_check_counter" failed after 7 tests and 127 shrinks.
+  ✗ "echidna_check_counter" failed after 14 tests and 132 shrinks.
   
-      │ Call sequence: inc(102179695760624079239381274351643261346173239270980264592551833602568283084636);
-      │                inc(13612393476692116184189710657044646507096745394660299446905750405344846555296);
+      │ Call sequence: inc(111022932527598298683654135258804814522795708541881158271458983003743791605633);
+      │                inc(4769156709717896739916849749883093330474276123759405767998601004169338034302);
   
-  ✗ 1 failed
+  ✗ 1 failed.
 ```
 
 ### [Echidna.ABI](lib/Echidna/ABI.hs)
