@@ -1,5 +1,7 @@
 # echidna
 
+[![Build Status](https://travis-ci.com/trailofbits/echidna.svg?token=w5BkqNU7JosgsQpjr4a2&branch=master)](https://travis-ci.com/trailofbits/echidna)
+
 Echidna is a weird creature that eats bugs and is highly electrosensitive (with apologies to Jacob Stanley)
 
 More seriously, it's a Haskell library designed for fuzzing/property based testing of EVM code.
@@ -25,9 +27,18 @@ Once solc is installed, installing stack and running `stack upgrade; stack setup
 Notably, if you are using stack, `stack ghci` will set up a REPL with all functions in scope.
 This can be quite useful for playing around with the library.
 
-## Usage
+## Usage (as an executable)
 
-echidna is actively being developed with more or less no regard for stability.
+Echidna builds an executable, `echidna-test` that can be used from the command line to fuzz solidity code.
+It expects unit tests in the form of functions with names starting with `echidna_` that take no arguments and return a `bool` indicating success or failure.
+For each unit test it finds, it will execute a fuzzing campaign to try and find a set of calls such that executing that call sequence, then the test either returns `false` or results in a VM failure.
+
+An example contract with tests can be found [solidity/cli.sol](solidity/cli.sol)
+`echidna-test solidity/cli.sol` should find a call sequence such that `echidna_sometimesfalse` fails, but be unable to do so for `echidna_alwaystrue`.
+
+## Usage (as a library)
+
+Echidna is actively being developed with relatively little regard for stability.
 As a result of this, there is a lack of extensive documentation at the present time.
 Nevertheless, we provide a short working example that should be relatively instructional:
 
@@ -42,7 +53,7 @@ import Echidna.Solidity
 
 main :: IO ()
 main = do (v,a,ts) <- loadSolidity "test.sol"
-          let prop t = (PropertyName $ show t, ePropertySeq v a (`checkETest` t) 100)
+          let prop t = (PropertyName $ show t, ePropertySeq v a (`checkETest` t) 10)
           _ <- checkParallel . Group (GroupName "test.sol") $ map prop ts
           return ()
 ```
@@ -53,7 +64,7 @@ This example can be used to test this small solidity contract:
 pragma solidity ^0.4.16;
 
 contract Test {
-  uint private counter=2**200;
+  uint private counter=1;
   uint private last_counter=counter;
 
   function inc(uint val){
@@ -86,24 +97,24 @@ Then, we can use echidna to find a counterexample:
   ✗ 1 failed
 ```
 
-### [Echidna.ABI](src/Echidna/ABI.hs)
+### [Echidna.ABI](lib/Echidna/ABI.hs)
 
 This module provides Hedgehog generators for most of the EVM ABI.
 It can be used without any other module to provide random "ASTs" (e.g. a random dynamic array of static arrays of 16 248-bit unsigned ints) or calldata (EVM-encoded function calls with these arguments).
 
 Whenever possible, it tries to copy the convention of hevm.
 
-### [Echidna.Exec](src/Echidna/Exec.hs)
+### [Echidna.Exec](lib/Echidna/Exec.hs)
 
 This module provides functionality for executing fuzzing campaigns.
-`fuzz` executes a fuzzing campaign to check for a given predicate.
-Its arguments are annotated in the source.
+It's highly recommended to use `ePropertySeq` and `checkParallel` to do this.
+[The standalone executable](src/Main.hs) is a pretty good example of recommended usage.
+`fuzz` can also be used, but if the predicate doesn't need IO, it's not recommended.
 
-Notably, the predicates are specified to be compatible with hevm's `Case` type (just use `checkExpectation`).
-Should neither that nor writing a predicate by hand suffice for checking some invariant, `solPredicate` is also provided for hotloading solidity contracts with more sophisticated predicates.
-`solPredicate` is currently not practical for real usage though, as it runs `solc` once per invocation.
+It also provides some convenience functions for writing custom campaigns (`checkETest`, `cleanUp`, `eCommand`, `execCall`.)
+The [state machine example](examples/state-machine/StateMachine.hs) is a pretty good example of how to use these.
 
-### [Echidna.Solidity](src/Echidna/Solidity.hs)
+### [Echidna.Solidity](lib/Echidna/Solidity.hs)
 
 This module provides `loadSolidity`, which takes a solidity source file and provides a VM with the first contract therein loaded as well as a `fuzz`-compatible ABI definition.
 At the moment, it is only compatible with single-contract solidity files, though if given a multi-contract file it will load the first and print a warning.
