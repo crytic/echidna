@@ -33,7 +33,7 @@ import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInterac
 import Echidna.Internal.Runner
 
 execCall :: MonadState VM m => SolCall -> m VMResult
-execCall (t,vs) = state . calldata .= cd >> exec where
+execCall (t,vs) = cleanUp >> (state . calldata .= cd >> exec) where
   cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
 
 fuzz :: MonadIO m
@@ -47,7 +47,7 @@ fuzz l n ts v p = do
   callseqs <- replicateM n (replicateM l . sample $ genInteractions ts)
   results <- zip callseqs <$> mapM run callseqs
   return $ listToMaybe [cs | (cs, passed) <- results, not passed]
-    where run cs = p $ execState (forM_ cs $ \c -> execCall c >> cleanUp) v
+    where run cs = p $ execState (forM_ cs execCall) v
 
 cleanUp :: MonadState VM m => m ()
 cleanUp = sequence_ [ result     .= Nothing
@@ -79,7 +79,7 @@ eCommand ts p = Command (\_ -> pure $ Call <$> genInteractions ts)
                         (\_ -> pure ())
                         [ Ensure $ \_ (VMState v) _ _ -> assert $ p v
                         , Update $ \(VMState v) (Call c) _ ->
-                                       VMState $ execState (execCall c >> cleanUp) v
+                                       VMState $ execState (execCall c) v
                         ]
 
 ePropertySeq :: VM             -- Initial state
