@@ -1,4 +1,4 @@
-# Adapted from https://github.com/commercialhaskell/stack
+# Adapted from https://github.com/ChrisPenner/haskell-stack-travis-ci
 language: nix
 sudo: true
 
