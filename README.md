@@ -22,7 +22,9 @@ Before starting with it, make sure you have libgmp-dev installed otherwise ghc w
 [solc](https://www.npmjs.com/package/solc) is another echidna dependency not handled via stack.
 It is technically optional, but working with solidity source will fail without it.
 
-Once solc is installed, installing stack and running `stack upgrade; stack setup; stack install` should be all that's needed.
+Once solc is installed, installing stack and running `stack upgrade; stack setup; stack install` from inside the directory should be all that's needed.
+
+If you have weird problems involving `readline` on MacOS, try `brew install readline; brew link readline; stack install readline --extra-include-dirs=/usr/local/opt/readline/include --extra-lib-dirs=/usr/local/opt/readline/lib; stack install`.
 
 Notably, if you are using stack, `stack ghci` will set up a REPL with all functions in scope.
 This can be quite useful for playing around with the library.
