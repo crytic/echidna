@@ -21,4 +21,11 @@ contract Canal {
       }
     }
   }
+  function raise(bool first_gate) {
+    if(first_gate) {
+      first_gate_up = true;
+    } else {
+      second_gate_up = true;
+    }
+  }
 }
