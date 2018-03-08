@@ -20,9 +20,10 @@ import Data.Text                  (Text)
 import Data.Vector                (fromList)
 
 import Hedgehog
-import Hedgehog.Gen            (sample, sequential)
-import Hedgehog.Internal.State (Action(..))
-import Hedgehog.Range          (linear)
+import Hedgehog.Gen               (sample, sequential)
+import Hedgehog.Internal.State    (Action(..))
+import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
+import Hedgehog.Range             (linear)
 
 import EVM          (VM, VMResult(..), calldata, pc, result, state)
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
@@ -87,8 +88,9 @@ ePropertySeq :: VM             -- Initial state
              -> (VM -> Bool)   -- Predicate to fuzz for violations of
              -> Int            -- Max actions to execute
              -> Property
-ePropertySeq v ts p n = property $ executeSequential (VMState v) =<<
-  forAllWith printCallSeq (sequential (linear 1 n) (VMState v) [eCommand ts p]) where
+ePropertySeq v ts p n = mapConfig (\x -> x {propertyTestLimit = 10000}) . property $
+  executeSequential (VMState v) =<< forAllWith printCallSeq
+  (sequential (linear 1 n) (VMState v) [eCommand ts p]) where
     printCallSeq = ("Call sequence: " ++) . intercalate "\n               " .
       map showCall . reverse . sequentialActions
     showCall (Action i _ _ _ _ _) = show i ++ ";"
