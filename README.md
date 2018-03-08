@@ -2,6 +2,8 @@
 
 [![Build Status](https://travis-ci.com/trailofbits/echidna.svg?token=w5BkqNU7JosgsQpjr4a2&branch=master)](https://travis-ci.com/trailofbits/echidna)
 
+![echidna logo](echidna.png)
+
 Echidna is a weird creature that eats bugs and is highly electrosensitive (with apologies to Jacob Stanley)
 
 More seriously, it's a Haskell library designed for fuzzing/property based testing of EVM code.
