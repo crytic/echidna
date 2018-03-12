@@ -70,4 +70,4 @@ At the moment, it is only compatible with single-contract solidity files, though
 
 ## Questions/complaints/etc.
 
-Leave an issue or shoot me a line at jp@trailofbits.com
+Join us in #ethereum on the [Empire Hacking Slack](https://empireslacking.herokuapp.com), or email [JP Smith](mailto:jp@trailofbits.com) (the lead author) directly.
