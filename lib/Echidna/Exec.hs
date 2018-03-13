@@ -25,7 +25,7 @@ import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
 import Hedgehog.Range             (linear)
 
-import EVM          (VM, VMResult(..), calldata, pc, result, state)
+import EVM          (VM, VMResult(..), calldata, pc, result, stack, state)
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
@@ -51,8 +51,9 @@ fuzz l n ts v p = do
     where run cs = p $ execState (forM_ cs execCall) v
 
 cleanUp :: MonadState VM m => m ()
-cleanUp = sequence_ [ result     .= Nothing
-                    , state . pc .= 0
+cleanUp = sequence_ [ result        .= Nothing
+                    , state . pc    .= 0
+                    , state . stack .= mempty
                     ]
 
 checkETest :: VM -> Text -> Bool
