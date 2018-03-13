@@ -44,7 +44,62 @@ An example contract with tests can be found [solidity/cli.sol](solidity/cli.sol)
 
 Echidna is actively being developed with relatively little regard for stability.
 As a result of this, there is a lack of extensive documentation at the present time.
-There is a small working example [provided](examples/simple/Simple.hs) that should be relatively instructional.
+Nevertheless, we provide a short working example that should be relatively instructional:
+
+```haskell
+module Main where
+
+import Hedgehog hiding            (checkParallel)
+import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
+
+import Echidna.Exec
+import Echidna.Solidity
+
+main :: IO ()
+main = do (v,a,ts) <- loadSolidity "test.sol"
+          let prop t = (PropertyName $ show t, ePropertySeq v a (`checkETest` t) 10)
+          _ <- checkParallel . Group (GroupName "test.sol") $ map prop ts
+          return ()
+```
+
+This example can be used to test this small solidity contract:
+
+```solidity
+pragma solidity ^0.4.16;
+
+contract Test {
+  uint private counter=1;
+  uint private last_counter=counter;
+
+  function inc(uint val){
+    last_counter = counter;
+    counter += val;
+  }
+
+  function skip() {
+    return;
+  }
+
+  function echidna_check_counter() returns (bool) {
+    if (last_counter > counter) {
+      selfdestruct(0);
+    }
+    return true;
+  }
+}
+```
+
+Then, we can use echidna to find a counterexample:
+
+```
+━━━ test.sol ━━━
+  ✗ "echidna_check_counter" failed after 14 tests and 132 shrinks.
+  
+      │ Call sequence: inc(111022932527598298683654135258804814522795708541881158271458983003743791605633);
+      │                inc(4769156709717896739916849749883093330474276123759405767998601004169338034302);
+  
+  ✗ 1 failed.
+```
 
 ### [Echidna.ABI](lib/Echidna/ABI.hs)
 
