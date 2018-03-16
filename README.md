@@ -74,7 +74,7 @@ import Echidna.Exec
 import Echidna.Solidity
 
 main :: IO ()
-main = do (v,a,ts) <- loadSolidity "test.sol"
+main = do (v,a,ts) <- loadSolidity "test.sol" Nothing
           let prop t = (PropertyName $ show t, ePropertySeq v a (`checkETest` t) 10)
           _ <- checkParallel . Group (GroupName "test.sol") $ map prop ts
           return ()
