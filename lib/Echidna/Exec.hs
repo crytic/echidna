@@ -93,7 +93,7 @@ ePropertySeq v ts p n = mapConfig (\x -> x {propertyTestLimit = 10000}) . proper
   executeSequential (VMState v) =<< forAllWith printCallSeq
   (sequential (linear 1 n) (VMState v) [eCommand ts p]) where
     printCallSeq = ("Call sequence: " ++) . intercalate "\n               " .
-      map showCall . reverse . sequentialActions
+      map showCall . sequentialActions
     showCall (Action i _ _ _ _ _) = show i ++ ";"
 
 -- Should work, but missing instance MonadBaseControl b m => MonadBaseControl b (PropertyT m)
