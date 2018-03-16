@@ -38,21 +38,33 @@ instance Show EchidnaException where
 
 instance Exception EchidnaException
 
-selectContract :: (MonadThrow m) => [SolcContract] -> Maybe Text -> m SolcContract
-selectContract [] _ = throwM NoContracts
-selectContract (c:_) Nothing = return c
-selectContract cs (Just name) = case find (\x -> name == x ^. contractName) cs of
-  Nothing -> throwM $ ContractNotFound name
-  Just c  -> return c
-
-loadSolidity :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
-loadSolidity f selectedContractName = liftIO solc >>= \case
+-- | reads all contracts within the solidity file at `filepath`
+readContracts :: (MonadIO m, MonadThrow m) => FilePath -> m [SolcContract]
+readContracts filepath = liftIO solc >>= \case
   Nothing -> throwM CompileFailure
-  Just m  -> do
-    let cs = toList $ fst m
-    c <- selectContract cs selectedContractName
+  Just m  -> return $ toList $ fst m
+  where solc = readSolc =<< writeSystemTempFile "" =<< readProcess
+          "solc" ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", filepath] ""
+
+-- | reads either the first contract found or the contract named `selectedContractName` within the solidity file at `filepath`
+readContract :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> m SolcContract
+readContract filepath selectedContractName = do
+    cs <- readContracts filepath
+    c <- chooseContract cs selectedContractName
     warn (isNothing selectedContractName && 1 < length cs) $
       "Multiple contracts found in file, only analyzing the first (" <> c ^. contractName <> ")"
+    return c
+  where chooseContract :: (MonadThrow m) => [SolcContract] -> Maybe Text -> m SolcContract
+        chooseContract [] _ = throwM NoContracts
+        chooseContract (c:_) Nothing = return c
+        chooseContract cs (Just name) = case find (\x -> name == x ^. contractName) cs of
+          Nothing -> throwM $ ContractNotFound name
+          Just c  -> return c
+        warn p s = if p then liftIO $ print s else pure ()
+
+loadSolidity :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
+loadSolidity filepath selectedContractName = do
+    c <- readContract filepath selectedContractName
     let (VMSuccess (B bc), vm) = runState exec . vmForEthrunCreation $ c ^. creationCode
         load = do resetState
                   assign (state . gas) 0xffffffffffffffff
@@ -63,6 +75,3 @@ loadSolidity f selectedContractName = liftIO solc >>= \case
     case find (not . null . snd) tests of
       Nothing      -> return (loaded, funs, fst <$> tests)
       (Just (t,_)) -> throwM $ TestArgsFound t
-  where solc = readSolc =<< writeSystemTempFile "" =<< readProcess
-          "solc" ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", f] ""
-        warn p s = if p then liftIO $ print s else pure ()
