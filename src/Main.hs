@@ -15,7 +15,7 @@ main :: IO ()
 main = getArgs >>= \case
   []  -> putStrLn "Please provide a solidity file to analyze"
   filepath:args -> do
-    (v,a,ts) <- loadSolidity filepath $ fmap pack $ listToMaybe args
+    (v,a,ts) <- loadSolidity filepath $ pack <$> listToMaybe args
     let prop t = (PropertyName $ show t, ePropertySeq v a (`checkETest` t) 10)
     _ <- checkParallel . Group (GroupName filepath) $ map prop ts
     return ()
