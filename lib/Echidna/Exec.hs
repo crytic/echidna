@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, KindSignatures #-}
+{-# LANGUAGE FlexibleContexts, KindSignatures, LambdaCase #-}
 
 module Echidna.Exec (
     checkETest
@@ -10,14 +10,18 @@ module Echidna.Exec (
   , module Echidna.Internal.Runner
   ) where
 
-import Control.Lens               ((^.), (.=))
+import Control.Lens               ((^.), (.=), use)
 import Control.Monad              (forM_, replicateM)
 import Control.Monad.IO.Class     (MonadIO)
-import Control.Monad.State.Strict (MonadState, evalState, execState)
+import Control.Monad.Writer.Class (MonadWriter, tell)
+import Control.Monad.State.Strict (MonadState, evalState, execState, get, runState)
 import Data.List                  (intercalate)
 import Data.Maybe                 (listToMaybe)
+import Data.Set                   (Set, singleton)
 import Data.Text                  (Text)
 import Data.Vector                (fromList)
+
+import qualified Control.Monad.State.Strict as S
 
 import Hedgehog
 import Hedgehog.Gen               (sample, sequential)
@@ -25,16 +29,29 @@ import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
 import Hedgehog.Range             (linear)
 
-import EVM          (VM, VMResult(..), calldata, pc, result, stack, state)
+import EVM          (VM, VMResult(..), calldata, exec1, pc, result, stack, state)
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
+import EVM.UnitTest (OpLocation, currentOpLocation)
 
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions)
 import Echidna.Internal.Runner
 
 execCall :: MonadState VM m => SolCall -> m VMResult
 execCall (t,vs) = cleanUp >> (state . calldata .= cd >> exec) where
+  cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
+
+execWithCoverage :: (MonadState VM m, MonadWriter (Set OpLocation) m) => m VMResult
+execWithCoverage = use result >>= \case
+  Just x -> return x
+  _      -> do tell . singleton . currentOpLocation =<< get
+               S.state (runState exec1)
+               exec
+
+-- FIXME(jp): this + execCall should be special cases of /something/
+execCallWithCoverage :: (MonadState VM m, MonadWriter (Set OpLocation) m) => SolCall -> m VMResult
+execCallWithCoverage (t,vs) = cleanUp >> (state . calldata .= cd >> execWithCoverage) where
   cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
 
 fuzz :: MonadIO m
