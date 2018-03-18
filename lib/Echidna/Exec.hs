@@ -2,10 +2,11 @@
 
 module Echidna.Exec (
     checkETest
-  , cleanUp
   , eCommand
+  , eCommandCoverage
   , ePropertySeq
   , execCall
+  , execCallWithCoverage
   , fuzz
   , module Echidna.Internal.Runner
   ) where
@@ -13,11 +14,11 @@ module Echidna.Exec (
 import Control.Lens               ((^.), (.=), use)
 import Control.Monad              (forM_, replicateM)
 import Control.Monad.IO.Class     (MonadIO)
-import Control.Monad.Writer.Class (MonadWriter, tell)
+import Control.Monad.Writer.Class (MonadWriter, listen, tell)
 import Control.Monad.State.Strict (MonadState, evalState, execState, get, runState)
 import Data.List                  (intercalate)
 import Data.Maybe                 (listToMaybe)
-import Data.Set                   (Set, singleton)
+import Data.MultiSet              (MultiSet, singleton)
 import Data.Text                  (Text)
 import Data.Vector                (fromList)
 
@@ -38,21 +39,21 @@ import EVM.UnitTest (OpLocation, currentOpLocation)
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions)
 import Echidna.Internal.Runner
 
+execCallUsing :: MonadState VM m => m VMResult -> SolCall -> m VMResult
+execCallUsing m (t,vs) = cleanUp >> (state . calldata .= cd >> m) where
+  cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
+  cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
+
 execCall :: MonadState VM m => SolCall -> m VMResult
-execCall (t,vs) = cleanUp >> (state . calldata .= cd >> exec) where
-  cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
+execCall = execCallUsing exec
 
-execWithCoverage :: (MonadState VM m, MonadWriter (Set OpLocation) m) => m VMResult
-execWithCoverage = use result >>= \case
-  Just x -> return x
-  _      -> do tell . singleton . currentOpLocation =<< get
-               S.state (runState exec1)
-               exec
-
--- FIXME(jp): this + execCall should be special cases of /something/
-execCallWithCoverage :: (MonadState VM m, MonadWriter (Set OpLocation) m) => SolCall -> m VMResult
-execCallWithCoverage (t,vs) = cleanUp >> (state . calldata .= cd >> execWithCoverage) where
-  cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
+execCallWithCoverage :: (MonadState VM m, MonadWriter (MultiSet OpLocation) m) => SolCall -> m VMResult
+execCallWithCoverage = execCallUsing go where
+  go = use result >>= \case
+    Just x -> return x
+    _      -> do tell . singleton . currentOpLocation =<< get
+                 S.state (runState exec1)
+                 go
 
 fuzz :: MonadIO m
      => Int                 -- Call sequence length
@@ -66,12 +67,6 @@ fuzz l n ts v p = do
   results <- zip callseqs <$> mapM run callseqs
   return $ listToMaybe [cs | (cs, passed) <- results, not passed]
     where run cs = p $ execState (forM_ cs execCall) v
-
-cleanUp :: MonadState VM m => m ()
-cleanUp = sequence_ [ result        .= Nothing
-                    , state . pc    .= 0
-                    , state . stack .= mempty
-                    ]
 
 checkETest :: VM -> Text -> Bool
 checkETest v t = case evalState (execCall (t, [])) v of
@@ -97,6 +92,15 @@ eCommand :: (MonadGen n, MonadTest m) => [SolSignature] -> (VM -> Bool) -> Comma
 eCommand ts p = Command (\_ -> pure $ Call <$> genInteractions ts)
                         (\_ -> pure ())
                         [ Ensure $ \_ (VMState v) _ _ -> assert $ p v
+                        , Update $ \(VMState v) (Call c) _ ->
+                                       VMState $ execState (execCall c) v
+                        ]
+
+eCommandCoverage :: (MonadGen n, MonadTest m, MonadState VM m, MonadWriter (MultiSet OpLocation) m)
+                 => [SolSignature] -> (MultiSet OpLocation -> VM -> Bool) -> Command n m VMState
+eCommandCoverage ts p = Command (\_ -> pure $ Call <$> genInteractions ts)
+                        (\(Call c) -> execCallWithCoverage c >> snd <$> listen (pure ()))
+                        [ Ensure $ \_ (VMState v) _ c -> assert $ p c v
                         , Update $ \(VMState v) (Call c) _ ->
                                        VMState $ execState (execCall c) v
                         ]

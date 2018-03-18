@@ -18,6 +18,7 @@ dependencies:
   - hevm
   - lens       >= 4.15.1 && < 4.16
   - mtl        >= 2.2.1  && < 2.3
+  - multiset   >= 0.3    && < 0.4
   - process    >= 1.4.3  && < 1.5
   - stm
   - temporary  >= 1.2.1  && < 1.3
