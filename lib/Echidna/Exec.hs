@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, KindSignatures, LambdaCase #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
 
 module Echidna.Exec (
     Coverage
@@ -13,7 +13,7 @@ module Echidna.Exec (
   , module Echidna.Internal.Runner
   ) where
 
-import Control.Lens                ((^.), (.=), use)
+import Control.Lens                ((^.), (.=), use, view)
 import Control.Monad               (forM_, replicateM)
 import Control.Monad.Catch         (MonadCatch)
 import Control.Monad.IO.Class      (MonadIO, liftIO)
@@ -40,7 +40,6 @@ import EVM          (VM, VMResult(..), calldata, exec1, pc, result, stack, state
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
-import EVM.UnitTest (OpLocation, currentOpLocation)
 
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions)
 import Echidna.Internal.Runner
@@ -53,13 +52,13 @@ execCallUsing m (t,vs) = cleanUp >> (state . calldata .= cd >> m) where
 execCall :: MonadState VM m => SolCall -> m VMResult
 execCall = execCallUsing exec
 
-type Coverage = MultiSet OpLocation
+type Coverage = MultiSet Int
 
 execCallCoverage :: (MonadState VM m, MonadWriter Coverage m) => SolCall -> m VMResult
 execCallCoverage = execCallUsing go where
   go = use result >>= \case
     Just x -> return x
-    _      -> do tell . singleton . currentOpLocation =<< get
+    _      -> do tell . singleton . view (state . pc) =<< get
                  S.state (runState exec1)
                  go
 
@@ -110,7 +109,7 @@ eCommand :: (MonadGen n, MonadTest m) => (VM -> Bool) -> [SolSignature] -> Comma
 eCommand = eCommandUsing (\_ -> pure ()) . const
 
 eCommandCoverage :: (MonadGen n, MonadTest m, MonadState VM m, MonadWriter Coverage m)
-                 => (MultiSet OpLocation -> VM -> Bool) -> [SolSignature] -> Command n m VMState
+                 => (Coverage -> VM -> Bool) -> [SolSignature] -> Command n m VMState
 eCommandCoverage = eCommandUsing $ \(Call c) -> execCallCoverage c >> snd <$> listen (pure ())
 
 ePropertyUsing :: (MonadCatch m, MonadTest m)
