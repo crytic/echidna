@@ -4,7 +4,7 @@ module Main where
 
 import Data.IORef         (newIORef, readIORef)
 import Data.Maybe         (listToMaybe)
-import Data.MultiSet      (size)
+import Data.MultiSet      (distinctSize)
 import Data.Text          (pack)
 import System.Environment (getArgs)
 
@@ -24,6 +24,6 @@ main = getArgs >>= \case
                  , ePropertySeqCoverage r (const $ flip checkETest t) a v 10
                  )
     _ <- checkParallel . Group (GroupName filepath) $ map prop ts
-    l <- size <$> readIORef r
+    l <- distinctSize <$> readIORef r
     putStrLn $ "Coverage: " ++ show l ++ " unique PCs"
     return ()

@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
+{-# LANGUAGE FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
 
 module Echidna.Exec (
     Coverage
@@ -13,17 +13,17 @@ module Echidna.Exec (
   , module Echidna.Internal.Runner
   ) where
 
-import Control.Lens                ((^.), (.=), use, view)
+import Control.Lens                ((^.), (.=), use)
 import Control.Monad               (forM_, replicateM)
 import Control.Monad.Catch         (MonadCatch)
 import Control.Monad.IO.Class      (MonadIO, liftIO)
-import Control.Monad.State.Strict  (MonadState, StateT, evalState, evalStateT, execState, get, runState)
+import Control.Monad.State.Strict  (MonadState, StateT, evalState, evalStateT, execState, runState)
 import Control.Monad.Writer.Class  (MonadWriter, listen, tell)
-import Control.Monad.Writer.Strict (WriterT, (<>), runWriterT)
+import Control.Monad.Writer        (WriterT, (<>), runWriterT)
 import Data.IORef                  (IORef, modifyIORef)
 import Data.List                   (intercalate)
 import Data.Maybe                  (listToMaybe)
-import Data.MultiSet               (MultiSet, singleton)
+import Data.MultiSet               (MultiSet, insert)
 import Data.Text                   (Text)
 import Data.Typeable               (Typeable)
 import Data.Vector                 (fromList)
@@ -55,12 +55,12 @@ execCall = execCallUsing exec
 type Coverage = MultiSet Int
 
 execCallCoverage :: (MonadState VM m, MonadWriter Coverage m) => SolCall -> m VMResult
-execCallCoverage = execCallUsing go where
-  go = use result >>= \case
-    Just x -> return x
-    _      -> do tell . singleton . view (state . pc) =<< get
+execCallCoverage = execCallUsing (go mempty) where
+  go c = use result >>= \case
+    Just x -> tell c >> return x
+    _      -> do current <- use $ state . pc
                  S.state (runState exec1)
-                 go
+                 go $ insert current c
 
 fuzz :: MonadIO m
      => Int                 -- Call sequence length
