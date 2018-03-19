@@ -6,7 +6,7 @@ module Echidna.Exec (
   , eCommandCoverage
   , ePropertySeq
   , execCall
-  , execCallWithCoverage
+  , execCallCoverage
   , fuzz
   , module Echidna.Internal.Runner
   ) where
@@ -20,6 +20,7 @@ import Data.List                  (intercalate)
 import Data.Maybe                 (listToMaybe)
 import Data.MultiSet              (MultiSet, singleton)
 import Data.Text                  (Text)
+import Data.Typeable              (Typeable)
 import Data.Vector                (fromList)
 
 import qualified Control.Monad.State.Strict as S
@@ -47,8 +48,8 @@ execCallUsing m (t,vs) = cleanUp >> (state . calldata .= cd >> m) where
 execCall :: MonadState VM m => SolCall -> m VMResult
 execCall = execCallUsing exec
 
-execCallWithCoverage :: (MonadState VM m, MonadWriter (MultiSet OpLocation) m) => SolCall -> m VMResult
-execCallWithCoverage = execCallUsing go where
+execCallCoverage :: (MonadState VM m, MonadWriter (MultiSet OpLocation) m) => SolCall -> m VMResult
+execCallCoverage = execCallUsing go where
   go = use result >>= \case
     Just x -> return x
     _      -> do tell . singleton . currentOpLocation =<< get
@@ -88,22 +89,22 @@ instance Show (VMAction v) where
 instance HTraversable VMAction where
   htraverse _ (Call b) = pure $ Call b
 
-eCommand :: (MonadGen n, MonadTest m) => [SolSignature] -> (VM -> Bool) -> Command n m VMState
-eCommand ts p = Command (\_ -> pure $ Call <$> genInteractions ts)
-                        (\_ -> pure ())
-                        [ Ensure $ \_ (VMState v) _ _ -> assert $ p v
-                        , Update $ \(VMState v) (Call c) _ ->
-                                       VMState $ execState (execCall c) v
-                        ]
+eCommandUsing :: (MonadGen n, MonadTest m, Typeable a)
+              => (VMAction Concrete -> m a)
+              -> (a -> VM -> Bool)
+              -> [SolSignature]
+              -> Command n m VMState
+eCommandUsing o p ts = Command (\_ -> pure $ Call <$> genInteractions ts) o 
+  [ Ensure $ \_ (VMState v) _ x -> assert $ p x v
+  , Update $ \(VMState v) (Call c) _ -> VMState $ execState (execCall c) v
+  ]
+
+eCommand :: (MonadGen n, MonadTest m) => (VM -> Bool) -> [SolSignature] -> Command n m VMState
+eCommand = eCommandUsing (\_ -> pure ()) . const
 
 eCommandCoverage :: (MonadGen n, MonadTest m, MonadState VM m, MonadWriter (MultiSet OpLocation) m)
-                 => [SolSignature] -> (MultiSet OpLocation -> VM -> Bool) -> Command n m VMState
-eCommandCoverage ts p = Command (\_ -> pure $ Call <$> genInteractions ts)
-                        (\(Call c) -> execCallWithCoverage c >> snd <$> listen (pure ()))
-                        [ Ensure $ \_ (VMState v) _ c -> assert $ p c v
-                        , Update $ \(VMState v) (Call c) _ ->
-                                       VMState $ execState (execCall c) v
-                        ]
+                 => (MultiSet OpLocation -> VM -> Bool) -> [SolSignature] -> Command n m VMState
+eCommandCoverage = eCommandUsing $ \(Call c) -> execCallCoverage c >> snd <$> listen (pure ())
 
 ePropertySeq :: VM             -- Initial state
              -> [SolSignature] -- Type signatures to fuzz
@@ -112,7 +113,7 @@ ePropertySeq :: VM             -- Initial state
              -> Property
 ePropertySeq v ts p n = mapConfig (\x -> x {propertyTestLimit = 10000}) . property $
   executeSequential (VMState v) =<< forAllWith printCallSeq
-  (sequential (linear 1 n) (VMState v) [eCommand ts p]) where
+  (sequential (linear 1 n) (VMState v) [eCommand p ts]) where
     printCallSeq = ("Call sequence: " ++) . intercalate "\n               " .
       map showCall . reverse . sequentialActions
     showCall (Action i _ _ _ _ _) = show i ++ ";"
