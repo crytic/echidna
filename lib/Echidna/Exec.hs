@@ -140,10 +140,10 @@ ePropertySeqCoverage :: IORef Coverage
                      -> Int
                      -> Property
 ePropertySeqCoverage r p ts v = ePropertyUsing (eCommandCoverage p ts) writeCoverage v where
-  writeCoverage :: MonadIO m => WriterT Coverage (StateT VM m) a -> m a
-  writeCoverage m = flip evalStateT v $ do (a, w) <- runWriterT m
-                                           liftIO $ modifyIORef r (<> w)
-                                           return a
+  writeCoverage :: MonadIO m => StateT VM (WriterT Coverage m) a -> m a
+  writeCoverage m = let s = evalStateT m v in do (a, w) <- runWriterT s
+                                                 liftIO (modifyIORef r (<> w))
+                                                 return a
 
 -- Should work, but missing instance MonadBaseControl b m => MonadBaseControl b (PropertyT m)
 -- ePropertyPar :: VM                  -- Initial state

@@ -3,9 +3,10 @@
 module Main where
 
 import Data.IORef         (newIORef, readIORef)
-import System.Environment (getArgs)
 import Data.Maybe         (listToMaybe)
+import Data.MultiSet      (size)
 import Data.Text          (pack)
+import System.Environment (getArgs)
 
 import Echidna.Exec
 import Echidna.Solidity
@@ -23,6 +24,6 @@ main = getArgs >>= \case
                  , ePropertySeqCoverage r (const $ flip checkETest t) a v 10
                  )
     _ <- checkParallel . Group (GroupName filepath) $ map prop ts
-    l <- length <$> readIORef r
+    l <- size <$> readIORef r
     putStrLn $ "Coverage: " ++ show l ++ " unique PCs"
     return ()
