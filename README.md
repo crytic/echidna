@@ -25,7 +25,7 @@ Before starting with it, make sure you have libgmp-dev installed otherwise ghc w
 It is technically optional, but working with solidity source will fail without it.
 Run `npm install -g solc` to install it.
 
-Once solc is installed, installing stack (`brew install stack`) and running
+Once solc is installed, installing stack (`brew install haskell-stack`) and running
 
 ```
 stack upgrade
