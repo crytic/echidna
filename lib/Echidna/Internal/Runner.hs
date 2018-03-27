@@ -21,7 +21,7 @@ import           Control.Monad.Trans.Maybe (MaybeT(..))
 
 import           Data.Bifunctor (first, second)
 import qualified Data.Char as Char
-import           Data.Either (partitionEithers)
+import           Data.Either (partitionEithers, isRight)
 import qualified Data.List as List
 import           Data.Map (Map)
 import qualified Data.Map as Map
@@ -567,11 +567,7 @@ takeLines sloc =
 
 
 checkFilePath :: FilePath -> IO Bool
-checkFilePath path = do
-   strOrExc <- try $ readFile path
-   case (strOrExc :: Either IOError String) of
-     Left  _        -> return False
-     Right _        -> return True
+checkFilePath path = isRight <$> (try $ readFile path :: IO (Either IOError String))
 
 readDeclaration :: MonadIO m => Span -> m (Maybe (Declaration ()))
 readDeclaration sloc =
@@ -583,15 +579,15 @@ readDeclaration sloc =
     let
       line =
         fromIntegral line0
-    if (not exists)
-      then ( mzero )
-      else (
+    if not exists
+      then mzero
+      else
        pure . Declaration path line name .
          Map.fromList .
          zip [line..] .
          zipWith (Line ()) [line..] $
          lines src
-      )
+
 
 defaultStyle :: Declaration a -> Declaration (Style, [(Style, Doc Markup)])
 defaultStyle =
