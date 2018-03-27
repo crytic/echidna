@@ -66,9 +66,11 @@ genAbiAddress :: MonadGen m => m AbiValue
 genAbiAddress = let w64 = Gen.word64 $ constant minBound maxBound in
   fmap AbiAddress . liftM2 Word160 Gen.enumBounded $ liftM2 Word128 w64 w64
 
-genUInt :: MonadGen m => m Integer
-genUInt = Gen.integral $ exponential 0 (2^256)
+maxInteger :: Integer
+maxInteger = 2^(256 :: Integer)
 
+genUInt :: MonadGen m => m Integer
+genUInt = Gen.integral $ exponential 0 maxInteger
 genInt :: MonadGen m => m Integer
 genInt = liftM2 (*) genUInt $ Gen.element [1, -1]
 
