@@ -14,7 +14,7 @@ module Echidna.Internal.Runner (
 
 import           Control.Concurrent.STM (TVar, atomically)
 import qualified Control.Concurrent.STM.TVar as TVar
-import           Control.Monad (zipWithM)
+import           Control.Monad (zipWithM, mzero)
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class (MonadIO(..))
 import           Control.Monad.Trans.Maybe (MaybeT(..))
@@ -565,24 +565,33 @@ takeLines sloc =
   snd . Map.split (spanStartLine sloc - 1) .
   declarationSource
 
+
+checkFilePath :: FilePath -> IO Bool
+checkFilePath path = do
+   strOrExc <- try $ readFile path
+   case (strOrExc :: Either IOError String) of
+     Left  _        -> return False
+     Right _        -> return True
+
 readDeclaration :: MonadIO m => Span -> m (Maybe (Declaration ()))
 readDeclaration sloc =
   runMaybeT $ do
     path <- liftIO . makeRelativeToCurrentDirectory $ spanFile sloc
-
-    (name, Pos (Position _ line0 _) src) <- MaybeT $
-      Discovery.readDeclaration path (spanEndLine sloc)
+    exists <- liftIO $ checkFilePath path
+    (name, Pos (Position _ line0 _) src) <- MaybeT $ Discovery.readDeclaration path (spanEndLine sloc)
 
     let
       line =
         fromIntegral line0
-
-    pure . Declaration path line name .
-      Map.fromList .
-      zip [line..] .
-      zipWith (Line ()) [line..] $
-      lines src
-
+    if (not exists)
+      then ( mzero )
+      else (
+       pure . Declaration path line name .
+         Map.fromList .
+         zip [line..] .
+         zipWith (Line ()) [line..] $
+         lines src
+      )
 
 defaultStyle :: Declaration a -> Declaration (Style, [(Style, Doc Markup)])
 defaultStyle =
