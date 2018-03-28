@@ -14,14 +14,14 @@ module Echidna.Internal.Runner (
 
 import           Control.Concurrent.STM (TVar, atomically)
 import qualified Control.Concurrent.STM.TVar as TVar
-import           Control.Monad (zipWithM)
+import           Control.Monad (zipWithM, mzero)
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class (MonadIO(..))
 import           Control.Monad.Trans.Maybe (MaybeT(..))
 
 import           Data.Bifunctor (first, second)
 import qualified Data.Char as Char
-import           Data.Either (partitionEithers)
+import           Data.Either (partitionEithers, isRight)
 import qualified Data.List as List
 import           Data.Map (Map)
 import qualified Data.Map as Map
@@ -565,23 +565,28 @@ takeLines sloc =
   snd . Map.split (spanStartLine sloc - 1) .
   declarationSource
 
+
+checkFilePath :: FilePath -> IO Bool
+checkFilePath path = isRight <$> (try $ readFile path :: IO (Either IOError String))
+
 readDeclaration :: MonadIO m => Span -> m (Maybe (Declaration ()))
 readDeclaration sloc =
   runMaybeT $ do
     path <- liftIO . makeRelativeToCurrentDirectory $ spanFile sloc
-
-    (name, Pos (Position _ line0 _) src) <- MaybeT $
-      Discovery.readDeclaration path (spanEndLine sloc)
+    exists <- liftIO $ checkFilePath path
+    (name, Pos (Position _ line0 _) src) <- MaybeT $ Discovery.readDeclaration path (spanEndLine sloc)
 
     let
       line =
         fromIntegral line0
-
-    pure . Declaration path line name .
-      Map.fromList .
-      zip [line..] .
-      zipWith (Line ()) [line..] $
-      lines src
+    if not exists
+      then mzero
+      else
+       pure . Declaration path line name .
+         Map.fromList .
+         zip [line..] .
+         zipWith (Line ()) [line..] $
+         lines src
 
 
 defaultStyle :: Declaration a -> Declaration (Style, [(Style, Doc Markup)])
