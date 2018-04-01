@@ -29,7 +29,7 @@ import Data.ByteString       (ByteString)
 import Data.Text             (Text, unpack)
 import Data.Vector           (Vector, fromList, toList)
 import Hedgehog.Internal.Gen (MonadGen)
-import Hedgehog.Range        (exponential, constant, singleton, Range)
+import Hedgehog.Range        (exponential, exponentialFrom, constant, singleton, Range)
 import Numeric               (showHex)
 
 import qualified Data.List    as L
@@ -72,9 +72,7 @@ genAbiUInt n = AbiUInt n . fromInteger <$> genUInt
 
 genAbiInt :: MonadGen m => Int -> m AbiValue
 genAbiInt n = AbiInt n . fromInteger <$> genInt
-              where genInt = liftM2 (*)
-                              (Gen.integral $ exponential 0 $ 2^(toInteger n) - 1)
-                              (Gen.element [1, -1])
+              where genInt = Gen.integral $ exponentialFrom 0 (-1 * 2 ^ (toInteger n)) (2 ^ (toInteger n - 1)
 
 genAbiBool :: MonadGen m => m AbiValue
 genAbiBool = AbiBool <$> Gen.bool
