@@ -72,7 +72,7 @@ genAbiUInt n = AbiUInt n . fromInteger <$> genUInt
 
 genAbiInt :: MonadGen m => Int -> m AbiValue
 genAbiInt n = AbiInt n . fromInteger <$> genInt
-              where genInt = Gen.integral $ exponentialFrom 0 (-1 * 2 ^ (toInteger n)) (2 ^ (toInteger n - 1)
+              where genInt = Gen.integral $ exponentialFrom 0 (-1 * 2 ^ (toInteger n)) (2 ^ (toInteger n - 1))
 
 genAbiBool :: MonadGen m => m AbiValue
 genAbiBool = AbiBool <$> Gen.bool
