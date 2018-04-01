@@ -23,13 +23,13 @@ module Echidna.ABI (
 
 import Control.Monad         (join, liftM2)
 import Data.Bool             (bool)
-import Data.DoubleWord       (Word128(..), Word160(..), Word256(..), signedWord)
+import Data.DoubleWord       (Word128(..), Word160(..))
 import Data.Monoid           ((<>))
 import Data.ByteString       (ByteString)
 import Data.Text             (Text, unpack)
 import Data.Vector           (Vector, fromList, toList)
 import Hedgehog.Internal.Gen (MonadGen)
-import Hedgehog.Range        (constant, singleton, Range)
+import Hedgehog.Range        (exponential, exponentialFrom, constant, singleton, Range)
 import Numeric               (showHex)
 
 import qualified Data.List    as L
@@ -62,21 +62,17 @@ encodeSig n ts = n <> "(" <> T.intercalate "," (map abiTypeSolidity ts) <> ")"
 genSize :: MonadGen m => m Int
 genSize = (8 *) <$> Gen.enum 1 32
 
-genWord256 :: MonadGen m => m Word256
-genWord256 = let w64 = Gen.word64 $ constant minBound maxBound in
-  liftM2 Word256 (liftM2 Word128 w64 w64) (liftM2 Word128 w64 w64)
-
 genAbiAddress :: MonadGen m => m AbiValue
 genAbiAddress = let w64 = Gen.word64 $ constant minBound maxBound in
   fmap AbiAddress . liftM2 Word160 Gen.enumBounded $ liftM2 Word128 w64 w64
 
 genAbiUInt :: MonadGen m => Int -> m AbiValue
-genAbiUInt n = AbiUInt n . scale <$> genWord256 where
-  scale = if n == 256 then id else flip mod (2^n)
+genAbiUInt n = AbiUInt n . fromInteger <$> genUInt
+               where genUInt = Gen.integral $ exponential 0 $ 2^(toInteger n) - 1
 
 genAbiInt :: MonadGen m => Int -> m AbiValue
-genAbiInt n = AbiInt n . signedWord . scale <$> genWord256 where
-  scale = if n == 256 then id else flip mod (2^n)
+genAbiInt n = AbiInt n . fromInteger <$> genInt
+              where genInt = Gen.integral $ exponentialFrom 0 (-1 * 2 ^ (toInteger n)) (2 ^ (toInteger n - 1))
 
 genAbiBool :: MonadGen m => m AbiValue
 genAbiBool = AbiBool <$> Gen.bool
