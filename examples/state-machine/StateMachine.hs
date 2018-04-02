@@ -37,7 +37,7 @@ instance HTraversable Push where
 -- commands representing state transitions that are passed to hedgehog
 s_coin :: (Monad n, MonadTest m, MonadState VM m) => Command n m ModelState
 s_coin = Command (\_ -> Just $ pure Coin)
-  (\Coin -> execCall ("coin", []))
+  (\Coin -> execCall ("coin", [], 0, 0))
   [ Update $ \_ Coin _ -> TUnlocked
   , Ensure $ \_ s Coin _ -> s === TUnlocked
   ]
@@ -48,7 +48,7 @@ match _ _ = False
 
 s_push_locked :: (Monad n, MonadTest m, MonadState VM m) => Command n m ModelState
 s_push_locked = Command (\s -> if s == TLocked then Just $ pure Push else Nothing)
-  (\Push -> execCall ("push", []))
+  (\Push -> execCall ("push", [], 0, 0))
   [ Require $ \s Push -> s == TLocked
   , Update $ \_ Push _ -> TLocked 
   , Ensure $ \before after Push b -> do before === TLocked
@@ -58,7 +58,7 @@ s_push_locked = Command (\s -> if s == TLocked then Just $ pure Push else Nothin
 
 s_push_unlocked :: (Monad n, MonadTest m, MonadState VM m) => Command n m ModelState
 s_push_unlocked = Command (\s -> if s == TUnlocked then Just $ pure Push else Nothing)
-  (\Push -> execCall ("push", []))
+  (\Push -> execCall ("push", [], 0, 0))
   [ Require $ \s Push -> s == TUnlocked
   , Update $ \_ Push _ -> TLocked 
   , Ensure $ \before after Push b -> do before === TUnlocked

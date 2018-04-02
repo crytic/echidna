@@ -17,6 +17,6 @@ main = do (v,a,ts) <- loadSolidity "solidity/revert.sol" Nothing
           return ()
 
 checkRTest :: VM -> Text -> Bool
-checkRTest v t = case evalState (execCall (t, [])) v of
+checkRTest v t = case evalState (execCall (t, [], 0, 0)) v of
   (VMFailure Revert) -> False
   _                  -> True

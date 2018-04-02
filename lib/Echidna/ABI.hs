@@ -2,6 +2,8 @@
 
 module Echidna.ABI (
     SolCall
+  , MsgValue
+  , MsgSender
   , SolSignature
   , encodeAbiCall
   , encodeSig
@@ -23,7 +25,7 @@ module Echidna.ABI (
 
 import Control.Monad         (join, liftM2)
 import Data.Bool             (bool)
-import Data.DoubleWord       (Word128(..), Word160(..))
+import Data.DoubleWord       (Word256(..), Word128(..), Word160(..))
 import Data.Monoid           ((<>))
 import Data.ByteString       (ByteString)
 import Data.Text             (Text, unpack)
@@ -39,7 +41,10 @@ import qualified Hedgehog.Gen as Gen
 import EVM.ABI
 import EVM.Types ()
 
-type SolCall = (Text, [AbiValue])
+type MsgValue = Word256
+type MsgSender = Word160
+
+type SolCall = (Text, [AbiValue], MsgValue, MsgSender)
 
 type SolSignature = (Text, [AbiType])
 
@@ -143,13 +148,16 @@ genAbiValueOfType t = case t of
   AbiArrayType n t'      -> genAbiArray n t'
 
 genAbiCall :: MonadGen m => SolSignature -> m SolCall
-genAbiCall (s,ts) = (s,) <$> mapM genAbiValueOfType ts
+genAbiCall (s,ts) = do 
+                     as <- mapM genAbiValueOfType ts
+                     v <- Gen.integral $ exponential 0 $ 2^256 - 1
+                     return (s, as, v, 0)
 
 encodeAbiCall :: SolCall -> ByteString
-encodeAbiCall (t, vs) = abiCalldata t $ fromList vs
+encodeAbiCall (t, vs, _, _) = abiCalldata t $ fromList vs
 
 displayAbiCall :: SolCall -> String
-displayAbiCall (t, vs) = unpack t ++ "(" ++ L.intercalate "," (map prettyPrint vs) ++ ")"
+displayAbiCall (t, vs, v, _) = unpack t ++ "(" ++ L.intercalate "," (map prettyPrint vs) ++ ") paying " ++ show v
 
 -- genInteractions generates a function call from a list of type signatures of
 -- the form (Function name, [arg0 type, arg1 type...])
