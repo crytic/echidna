@@ -25,16 +25,16 @@ import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
 import Hedgehog.Range             (linear)
 
-import EVM          (VM, VMResult(..), calldata, pc, result, stack, state)
+import EVM          (VM, VMResult(..), calldata, pc, result, stack, state, callvalue, caller)
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
 
-import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions)
+import Echidna.ABI (MsgValue(..), MsgSender(..), SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions)
 import Echidna.Internal.Runner
 
 execCall :: MonadState VM m => SolCall -> m VMResult
-execCall (t,vs) = cleanUp >> (state . calldata .= cd >> exec) where
+execCall (t,vs,v,s) = (cleanUp v s) >> (state . calldata .= cd >> exec) where
   cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
 
 fuzz :: MonadIO m
@@ -50,14 +50,15 @@ fuzz l n ts v p = do
   return $ listToMaybe [cs | (cs, passed) <- results, not passed]
     where run cs = p $ execState (forM_ cs execCall) v
 
-cleanUp :: MonadState VM m => m ()
-cleanUp = sequence_ [ result        .= Nothing
-                    , state . pc    .= 0
-                    , state . stack .= mempty
-                    ]
+cleanUp :: MonadState VM m => MsgValue -> MsgSender -> m ()
+cleanUp v s = sequence_ [ result            .= Nothing
+                        , state . callvalue .= fromIntegral (fromEnum v)
+                        , state . pc        .= 0
+                        , state . stack     .= mempty
+                        ]
 
 checkETest :: VM -> Text -> Bool
-checkETest v t = case evalState (execCall (t, [])) v of
+checkETest v t = case evalState (execCall (t, [], 0, 0)) v of
   VMSuccess (B s) -> s == encodeAbiValue (AbiBool True)
   _               -> False
 
