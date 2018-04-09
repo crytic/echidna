@@ -7,7 +7,7 @@ import Control.Exception          (Exception)
 import Control.Monad              (liftM2)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
-import Control.Monad.State.Strict (MonadState, execState, get, put, runState)
+import Control.Monad.State.Strict (MonadState, execState, modify, runState)
 import Data.Foldable              (toList)
 import Data.List                  (find, partition)
 import Data.Map                   (insert)
@@ -84,14 +84,14 @@ loadSolidity filepath selectedContractName = do
       (Just (t,_)) -> throwM $ TestArgsFound t
 
 
-newContract :: MonadState VM m => Contract -> m ()
-newContract c = do a <- (`newContractAddress` 1) <$> use (state . contract)
+insertContract :: MonadState VM m => Contract -> m ()
+insertContract c = do a <- (`newContractAddress` 1) <$> use (state . contract)
                    env . contracts %= insert a c
-                   put . execState (loadContract a) =<< get
+                   modify . execState $ loadContract a
 
 currentContract :: MonadThrow m => VM -> m Contract
 currentContract v = let a = v ^. state . contract in
-  maybe (throwM $ BadAddr a) pure $ Map.lookup a (v ^. env . contracts)
+  maybe (throwM $ BadAddr a) pure . Map.lookup a $ v ^. env . contracts
 
 addSolidity :: (MonadIO m, MonadThrow m, MonadState VM m) => FilePath -> Maybe Text -> m ()
-addSolidity f m = newContract =<< currentContract =<< view _1 <$> loadSolidity f m
+addSolidity f m = insertContract =<< currentContract =<< view _1 <$> loadSolidity f m
