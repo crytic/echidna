@@ -86,8 +86,8 @@ loadSolidity filepath selectedContractName = do
 
 insertContract :: MonadState VM m => Contract -> m ()
 insertContract c = do a <- (`newContractAddress` 1) <$> use (state . contract)
-                   env . contracts %= insert a c
-                   modify . execState $ loadContract a
+                      env . contracts %= insert a c
+                      modify . execState $ loadContract a
 
 currentContract :: MonadThrow m => VM -> m Contract
 currentContract v = let a = v ^. state . contract in
