@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TupleSections, TypeFamilies #-}
 
 module Echidna.ABI (
     SolCall
@@ -18,6 +18,7 @@ module Echidna.ABI (
   , genAbiType
   , genAbiUInt
   , genAbiValue
+  , mutateValue
   , prettyPrint
 ) where
 
@@ -29,12 +30,16 @@ import Data.ByteString       (ByteString)
 import Data.Text             (Text, unpack)
 import Data.Vector           (Vector, fromList, toList)
 import Hedgehog.Internal.Gen (MonadGen)
+import GHC.Exts              (IsList, Item)
 import Hedgehog.Range        (exponential, exponentialFrom, constant, singleton, Range)
 import Numeric               (showHex)
 
-import qualified Data.List    as L
-import qualified Data.Text    as T
-import qualified Hedgehog.Gen as Gen
+import qualified Data.ByteString as BS
+import qualified Data.List       as L
+import qualified Data.Text       as T
+import qualified Data.Vector     as V
+import qualified GHC.Exts        as L (IsList(..))
+import qualified Hedgehog.Gen    as Gen
 
 import EVM.ABI
 import EVM.Types ()
@@ -155,3 +160,34 @@ displayAbiCall (t, vs) = unpack t ++ "(" ++ L.intercalate "," (map prettyPrint v
 -- the form (Function name, [arg0 type, arg1 type...])
 genInteractions :: MonadGen m => [SolSignature] -> m SolCall
 genInteractions ls = genAbiCall =<< Gen.element ls
+
+switchElem :: (Item (t a) ~ a, IsList (t a), MonadGen m) => m a -> t a -> m (t a)
+switchElem g t = let l = L.toList t; n = length l in do
+  i <- Gen.element [0..n]
+  x <- g
+  return . L.fromList $ take i l <> [x] <> drop (i+1) l
+
+changeChar :: MonadGen m => ByteString -> m ByteString
+changeChar = fmap BS.pack . switchElem Gen.enumBounded . BS.unpack
+
+changeNumber :: (Enum a, Num a, MonadGen m) => a -> m a
+changeNumber n = (+ n) <$> Gen.element [-10..10]
+
+newOrMod :: MonadGen m => m AbiValue -> (a -> AbiValue) -> m a -> m AbiValue
+newOrMod m f n = Gen.choice [m, f <$> n]
+
+mutateValue :: MonadGen m => AbiValue -> m AbiValue
+mutateValue (AbiUInt s n)         = newOrMod (genAbiUInt s)         (AbiUInt s)         (changeNumber n)
+mutateValue (AbiInt s n)          = newOrMod (genAbiInt s)          (AbiInt s)          (changeNumber n)
+mutateValue (AbiAddress a)        = newOrMod genAbiAddress          AbiAddress          (changeNumber a)
+mutateValue (AbiBool _)           = genAbiBool
+mutateValue (AbiBytes s b)        = newOrMod (genAbiBytes s)        (AbiBytes s)        (changeChar b)
+mutateValue (AbiBytesDynamic b)   = newOrMod genAbiBytesDynamic     AbiBytesDynamic     (changeChar b)
+mutateValue (AbiString b)         = newOrMod genAbiString           AbiString           (changeChar b)
+mutateValue (AbiArrayDynamic t a) = Gen.choice
+                                  [ newOrMod (genAbiArrayDynamic t) (AbiArrayDynamic t) (switchElem (genAbiValueOfType t) a)
+                                  , fmap (AbiArrayDynamic t) $ Gen.element [(<> a), (a <>)] <*> genVecOfType t (constant 0 (256 - length a))
+                                  , fmap (AbiArrayDynamic t) $ V.drop <$> Gen.element [1..length a]   <*> pure a
+                                  , fmap (AbiArrayDynamic t) $ V.take <$> Gen.element [0..length a-1] <*> pure a
+                                  ]
+mutateValue (AbiArray s t a)      = newOrMod (genAbiArray s t)      (AbiArray s t)      (switchElem (genAbiValueOfType t) a)
