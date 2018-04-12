@@ -31,17 +31,15 @@ import Data.DoubleWord       (Word128(..), Word160(..))
 import Data.Monoid           ((<>))
 import Data.ByteString       (ByteString)
 import Data.Text             (Text, unpack)
-import Data.Vector           (Vector, fromList, toList)
+import Data.Vector           (Vector)
 import Hedgehog.Internal.Gen (MonadGen)
-import GHC.Exts              (IsList, Item)
+import GHC.Exts              (IsList(..), Item)
 import Hedgehog.Range        (exponential, exponentialFrom, constant, singleton, Range)
 import Numeric               (showHex)
 
 import qualified Data.ByteString as BS
 import qualified Data.List       as L
 import qualified Data.Text       as T
-import qualified Data.Vector     as V
-import qualified GHC.Exts        as L (IsList(..))
 import qualified Hedgehog.Gen    as Gen
 
 import EVM.ABI
@@ -167,10 +165,10 @@ genInteractions ls = genAbiCall =<< Gen.element ls
 type Listy t a = (IsList (t a), Item (t a) ~ a)
 
 switchElem :: (Listy t a, MonadGen m) => m a -> t a -> m (t a)
-switchElem g t = let l = L.toList t; n = length l in do
+switchElem g t = let l = toList t; n = length l in do
   i <- Gen.element [0..n]
   x <- g
-  return . L.fromList $ take i l <> [x] <> drop (i+1) l
+  return . fromList $ take i l <> [x] <> drop (i+1) l
 
 changeChar :: MonadGen m => ByteString -> m ByteString
 changeChar = fmap BS.pack . switchElem Gen.enumBounded . BS.unpack
@@ -189,20 +187,13 @@ changeBS b = Gen.choice $ [changeChar, addBS, dropBS] <&> ($ b)
 changeNumber :: (Enum a, Num a, MonadGen m) => a -> m a
 changeNumber n = (+ n) <$> Gen.element [-10..10]
 
-changeVec :: MonadGen m => (Range Int -> m (Vector a)) -> m a -> Vector a -> m (Vector a)
-changeVec g0 g1 v = Gen.choice [ Gen.element [(<> v), (v <>)] <*> g0 (constant 0 (256 - length v))
-                               , V.drop <$> Gen.element [1..length v]   <*> pure v
-                               , V.take <$> Gen.element [0..length v-1] <*> pure v
-                               , switchElem g1 v
-                               ]
-
 changeList :: (Listy t a, MonadGen m) => m (t a) -> m a -> t a -> m (t a)
-changeList g0 g1 x = let l = L.toList x in
-  Gen.choice [ Gen.element [(<> l), (l <>)] <*> fmap L.toList g0
+changeList g0 g1 x = let l = toList x in
+  Gen.choice [ Gen.element [(<> l), (l <>)] <*> fmap toList g0
              , drop <$> Gen.element [1..length l]   <*> pure l
              , take <$> Gen.element [0..length l-1] <*> pure l
              , switchElem g1 l
-             ] <&> L.fromList
+             ] <&> fromList
 
 newOrMod :: MonadGen m => m AbiValue -> (a -> AbiValue) -> m a -> m AbiValue
 newOrMod m f n = Gen.choice [m, f <$> n]
