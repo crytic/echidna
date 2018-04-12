@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections, TypeFamilies #-}
+{-# LANGUAGE ConstraintKinds, RankNTypes, TupleSections, TypeFamilies #-}
 
 module Echidna.ABI (
     SolCall
@@ -25,7 +25,7 @@ module Echidna.ABI (
 ) where
 
 import Control.Lens          ((<&>), (&))
-import Control.Monad         (join, liftM2)
+import Control.Monad         (join, liftM2, replicateM)
 import Data.Bool             (bool)
 import Data.DoubleWord       (Word128(..), Word160(..))
 import Data.Monoid           ((<>))
@@ -164,7 +164,9 @@ displayAbiCall (t, vs) = unpack t ++ "(" ++ L.intercalate "," (map prettyPrint v
 genInteractions :: MonadGen m => [SolSignature] -> m SolCall
 genInteractions ls = genAbiCall =<< Gen.element ls
 
-switchElem :: (Item (t a) ~ a, IsList (t a), MonadGen m) => m a -> t a -> m (t a)
+type Listy t a = (IsList (t a), Item (t a) ~ a)
+
+switchElem :: (Listy t a, MonadGen m) => m a -> t a -> m (t a)
 switchElem g t = let l = L.toList t; n = length l in do
   i <- Gen.element [0..n]
   x <- g
@@ -194,6 +196,14 @@ changeVec g0 g1 v = Gen.choice [ Gen.element [(<> v), (v <>)] <*> g0 (constant 0
                                , switchElem g1 v
                                ]
 
+changeList :: (Listy t a, MonadGen m) => m (t a) -> m a -> t a -> m (t a)
+changeList g0 g1 x = let l = L.toList x in
+  Gen.choice [ Gen.element [(<> l), (l <>)] <*> fmap L.toList g0
+             , drop <$> Gen.element [1..length l]   <*> pure l
+             , take <$> Gen.element [0..length l-1] <*> pure l
+             , switchElem g1 l
+             ] <&> L.fromList
+
 newOrMod :: MonadGen m => m AbiValue -> (a -> AbiValue) -> m a -> m AbiValue
 newOrMod m f n = Gen.choice [m, f <$> n]
 
@@ -211,8 +221,8 @@ mutateValue (AbiBytesDynamic b) =
   newOrMod genAbiBytesDynamic     AbiBytesDynamic     (changeBS b)
 mutateValue (AbiString b) =
   newOrMod genAbiString           AbiString           (changeBS b)
-mutateValue (AbiArrayDynamic t a) =
-  newOrMod (genAbiArrayDynamic t) (AbiArrayDynamic t) (changeVec (genVecOfType t) (genAbiValueOfType t) a)
+mutateValue (AbiArrayDynamic t a) = let g0 = genVecOfType t (constant 0 (256 - length a)); g1 = genAbiValueOfType t in
+  newOrMod (genAbiArrayDynamic t) (AbiArrayDynamic t) (changeList g0 g1 a)
 mutateValue (AbiArray s t a) =
   newOrMod (genAbiArray s t)      (AbiArray s t)      (switchElem (genAbiValueOfType t) a)
 
@@ -222,5 +232,6 @@ changeOrId f = mapM $ (Gen.element [f, pure] >>=) . (&)
 mutateCall :: MonadGen m => SolCall -> m SolCall
 mutateCall (t, vs) = (t,) <$> changeOrId mutateValue vs
 
-mutateCallSeq :: (MonadGen m, Traversable t) => t SolCall -> m (t SolCall)
-mutateCallSeq = changeOrId mutateCall
+mutateCallSeq :: MonadGen m => [SolSignature] -> [SolCall] -> m [SolCall]
+mutateCallSeq s cs = let g = genInteractions s in
+  changeOrId mutateCall cs >>= changeList (Gen.element [1..10] >>= flip replicateM g) g
