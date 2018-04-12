@@ -1,0 +1,139 @@
+-- This file has been generated from package.yaml by hpack version 0.20.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 0f82089d2ac78f82af365536a287f03d651c51dd908eab02c3f8e3b1d251ab15
+
+name:           echidna
+version:        0.0.0.1
+author:         JP Smith
+license-file:   LICENSE
+build-type:     Simple
+cabal-version:  >= 1.10
+
+library
+  hs-source-dirs:
+      lib/
+  default-extensions: OverloadedStrings
+  ghc-options: -Wall
+  build-depends:
+      ansi-terminal
+    , base
+    , bytestring >=0.10.8 && <0.11
+    , containers >=0.5.7 && <0.6
+    , data-dword >=0.3.1 && <0.4
+    , directory
+    , exceptions >=0.8.1 && <0.9
+    , hedgehog
+    , hevm
+    , lens >=4.15.1 && <4.16
+    , mtl >=2.2.1 && <2.3
+    , multiset >=0.3 && <0.4
+    , process >=1.4.3 && <1.5
+    , stm
+    , temporary >=1.2.1 && <1.3
+    , text >=1.2.2 && <1.3
+    , transformers
+    , vector >=0.11.0 && <0.13
+    , wl-pprint-annotated
+  exposed-modules:
+      Echidna.ABI
+      Echidna.Exec
+      Echidna.Solidity
+  other-modules:
+      Echidna.Internal.Runner
+      Paths_echidna
+  default-language: Haskell2010
+
+executable echidna-test
+  main-is: Main.hs
+  hs-source-dirs:
+      src/
+  default-extensions: OverloadedStrings
+  ghc-options: -Wall
+  build-depends:
+      ansi-terminal
+    , base
+    , bytestring >=0.10.8 && <0.11
+    , containers >=0.5.7 && <0.6
+    , data-dword >=0.3.1 && <0.4
+    , directory
+    , echidna
+    , exceptions >=0.8.1 && <0.9
+    , hedgehog
+    , hevm
+    , lens >=4.15.1 && <4.16
+    , mtl >=2.2.1 && <2.3
+    , multiset >=0.3 && <0.4
+    , process >=1.4.3 && <1.5
+    , stm
+    , temporary >=1.2.1 && <1.3
+    , text >=1.2.2 && <1.3
+    , transformers
+    , vector >=0.11.0 && <0.13
+    , wl-pprint-annotated
+  other-modules:
+      Paths_echidna
+  default-language: Haskell2010
+
+executable revert-example-exe
+  main-is: Revert.hs
+  hs-source-dirs:
+      examples/revert
+  default-extensions: OverloadedStrings
+  ghc-options: -Wall
+  build-depends:
+      ansi-terminal
+    , base
+    , bytestring >=0.10.8 && <0.11
+    , containers >=0.5.7 && <0.6
+    , data-dword >=0.3.1 && <0.4
+    , directory
+    , echidna
+    , exceptions >=0.8.1 && <0.9
+    , hedgehog
+    , hevm
+    , lens >=4.15.1 && <4.16
+    , mtl >=2.2.1 && <2.3
+    , multiset >=0.3 && <0.4
+    , process >=1.4.3 && <1.5
+    , stm
+    , temporary >=1.2.1 && <1.3
+    , text >=1.2.2 && <1.3
+    , transformers
+    , vector >=0.11.0 && <0.13
+    , wl-pprint-annotated
+  other-modules:
+      Paths_echidna
+  default-language: Haskell2010
+
+executable state-example-exe
+  main-is: StateMachine.hs
+  hs-source-dirs:
+      examples/state-machine
+  default-extensions: OverloadedStrings
+  ghc-options: -Wall
+  build-depends:
+      ansi-terminal
+    , base
+    , bytestring >=0.10.8 && <0.11
+    , containers >=0.5.7 && <0.6
+    , data-dword >=0.3.1 && <0.4
+    , directory
+    , echidna
+    , exceptions >=0.8.1 && <0.9
+    , hedgehog
+    , hevm
+    , lens >=4.15.1 && <4.16
+    , mtl >=2.2.1 && <2.3
+    , multiset >=0.3 && <0.4
+    , process >=1.4.3 && <1.5
+    , stm
+    , temporary >=1.2.1 && <1.3
+    , text >=1.2.2 && <1.3
+    , transformers
+    , vector >=0.11.0 && <0.13
+    , wl-pprint-annotated
+  other-modules:
+      Paths_echidna
+  default-language: Haskell2010
