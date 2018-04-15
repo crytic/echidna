@@ -184,8 +184,8 @@ dropBS b = Gen.choice [ BS.drop <$> Gen.element [1..BS.length b]   <*> pure b
 changeBS :: MonadGen m => ByteString -> m ByteString
 changeBS b = Gen.choice $ [changeChar, addBS, dropBS] <&> ($ b)
 
-changeNumber :: (Enum a, Num a, MonadGen m) => a -> m a
-changeNumber n = (+ n) <$> Gen.element [-10..10]
+changeNumber :: (Enum a, Integral a, MonadGen m) => a -> m a
+changeNumber n = let x = fromIntegral n :: Integer in fromIntegral . (+ x) <$> Gen.element [-10..10]
 
 changeList :: (Listy t a, MonadGen m) => m (t a) -> m a -> t a -> m (t a)
 changeList g0 g1 x = let l = toList x in
