@@ -50,6 +50,7 @@ type CoverageRef = IORef Coverage
 execCallUsing :: MonadState VM m => m VMResult -> SolCall -> m VMResult
 execCallUsing m (t,vs) = cleanUp >> (state . calldata .= cd >> m) where
   cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
+
   cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
 
 
@@ -89,16 +90,16 @@ checkETest v t = case evalState (execCall (t, [])) v of
 
 
 newtype VMState (v :: * -> *) =
-   VMState VM
+  VMState VM
  
 instance Show (VMState v) where
-   show (VMState v) = "EVM state, current result: " ++ show (v ^. result)
+  show (VMState v) = "EVM state, current result: " ++ show (v ^. result)
  
 newtype VMAction (v :: * -> *) = 
-   Call SolCall
+  Call SolCall
  
 instance Show (VMAction v) where
-   show (Call c) = displayAbiCall c
+  show (Call c) = displayAbiCall c
 
 instance HTraversable VMAction where
   htraverse _ (Call b) = pure $ Call b
@@ -133,7 +134,7 @@ ePropertyUsing c f v n = mapConfig (\x -> x {propertyTestLimit = 10000}) . prope
   f . executeSequential (VMState v) =<< forAllWith printCallSeq
   (sequential (linear 1 n) (VMState v) [c]) where
     printCallSeq = ("Call sequence: " ++) . intercalate "\n               " .
-      map showCall . reverse . sequentialActions
+      map showCall . sequentialActions
     showCall (Action i _ _ _ _ _) = show i ++ ";"
 
 

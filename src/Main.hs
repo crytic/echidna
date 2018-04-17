@@ -2,7 +2,7 @@
 
 module Main where
 
-import Control.Concurrent.MVar (MVar, takeMVar, newMVar)
+import Control.Concurrent.MVar (takeMVar, newMVar)
 import Data.Maybe              (listToMaybe)
 import Data.MultiSet           (distinctSize)
 import Data.Text               (pack)
