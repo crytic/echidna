@@ -12,7 +12,7 @@ import Echidna.Solidity
 
 main :: IO ()
 main = do (v,a,ts) <- loadSolidity "solidity/revert.sol" Nothing
-          let prop t = (PropertyName $ show t, ePropertySeq v a (`checkRTest` t) 10)
+          let prop t = (PropertyName $ show t, ePropertySeq (`checkRTest` t) a v 10)
           _ <- checkParallel . Group (GroupName "revert.sol") $ map prop ts
           return ()
 
