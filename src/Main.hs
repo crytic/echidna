@@ -2,20 +2,28 @@
 
 module Main where
 
-import Hedgehog hiding (checkParallel)
-import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
-import System.Environment         (getArgs)
-import Data.Maybe (listToMaybe)
-import Data.Text (pack)
+import Control.Concurrent.MVar (takeMVar, newMVar)
+import Data.Maybe              (listToMaybe)
+import Data.MultiSet           (distinctSize)
+import Data.Text               (pack)
+import System.Environment      (getArgs)
 
 import Echidna.Exec
 import Echidna.Solidity
+
+import Hedgehog hiding (checkParallel)
+import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
 
 main :: IO ()
 main = getArgs >>= \case
   []  -> putStrLn "Please provide a solidity file to analyze"
   filepath:args -> do
     (v,a,ts) <- loadSolidity filepath $ pack <$> listToMaybe args
-    let prop t = (PropertyName $ show t, ePropertySeq v a (`checkETest` t) 10)
+    r        <- newMVar (mempty :: Coverage)
+    let prop t = (PropertyName $ show t
+                 , ePropertySeqCoverage r (flip checkETest t) a v 10
+                 )
     _ <- checkParallel . Group (GroupName filepath) $ map prop ts
+    l <- distinctSize <$> takeMVar r
+    putStrLn $ "Coverage: " ++ show l ++ " unique PCs"
     return ()
