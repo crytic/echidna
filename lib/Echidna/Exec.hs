@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
 
 module Echidna.Exec (
-    Coverage
+    ExecEnv(..)
   , checkETest
   , eCommand
   , eCommandCoverage
@@ -10,12 +10,14 @@ module Echidna.Exec (
   , execCall
   , execCallCoverage
   , fuzz
+  , mutateGoodInputs
   , module Echidna.Internal.Runner
   ) where
 
 import Control.Concurrent.MVar    (MVar, takeMVar, putMVar)
+import Control.Concurrent.Chan    (Chan, writeChan, readChan)
 import Control.Lens               ((^.), (.=), use)
-import Control.Monad              (forM_, replicateM)
+import Control.Monad              (forM_, replicateM, forever)
 import Control.Monad.Catch        (MonadCatch)
 import Control.Monad.IO.Class     (MonadIO, liftIO)
 import Control.Monad.State.Strict (MonadState, StateT, evalState, evalStateT, execState, runState)
@@ -23,7 +25,7 @@ import Control.Monad.Reader       (MonadReader, ReaderT, runReaderT, ask)
 import Data.IORef                 (IORef, modifyIORef', newIORef, readIORef)
 import Data.List                  (intercalate)
 import Data.Maybe                 (listToMaybe)
-import Data.MultiSet              (MultiSet, insert, union)
+import Data.Set                   (Set, insert, union, size, difference)
 import Data.Text                  (Text)
 import Data.Typeable              (Typeable)
 import Data.Vector                (fromList)
@@ -44,8 +46,34 @@ import EVM.Exec     (exec)
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions)
 import Echidna.Internal.Runner
 
-type Coverage = MultiSet Int
+  
+data ExecEnv = ExecEnv
+  { coverage :: Coverage --Cumulative coverage accross all tests
+  , recent   :: [Int] -- Coverage for previous 10 tests
+  , avg      :: Float -- Moving average of coverage for prior tests
+  }  
+
+type Coverage    = Set Int      
 type CoverageRef = IORef Coverage
+
+--This doesn't do anything right now... but it will be a thread that processes inputs
+--deemed interesting from a channel
+mutateGoodInputs :: Chan [SolSignature] -> IO ()
+mutateGoodInputs c = forever $ do
+  input <- readChan c
+  return ()
+
+updateExecEnv :: ExecEnv -> Coverage -> ExecEnv
+updateExecEnv ExecEnv{coverage = c, recent = r, avg = a} cov = ExecEnv { coverage = c', recent = r', avg = a'}
+  where c' = union c cov
+        r' = (size cov) : (take 5 r)
+        a' = fromIntegral $ (sum r) `div` (length r)
+
+-- Use to determine if input is worth handing off to the "good input" pool for mutation
+-- Currently just sees if current input has higher than avg new pc's
+isInteresting :: ExecEnv -> Coverage -> Bool
+isInteresting e c = if fromIntegral (size new) > avg e then True else False
+  where new = coverage e `difference` c
 
 execCallUsing :: MonadState VM m => m VMResult -> SolCall -> m VMResult
 execCallUsing m (t,vs) = cleanUp >> (state . calldata .= cd >> m) where
@@ -146,21 +174,23 @@ ePropertySeq :: (VM -> Bool)   -- Predicate to fuzz for violations of
 ePropertySeq p ts = ePropertyUsing (eCommand p ts) id             
 
 
-ePropertySeqCoverage :: MVar Coverage
+ePropertySeqCoverage :: MVar ExecEnv
+                     -> Chan [SolSignature]
                      -> (VM -> Bool)
                      -> [SolSignature]
                      -> VM
                      -> Int
                      -> Property
-ePropertySeqCoverage globalCovRef p ts v = ePropertyUsing (eCommandCoverage p ts) writeCoverage v where
+ePropertySeqCoverage execEnvRef goodInputs p ts v = ePropertyUsing (eCommandCoverage p ts) writeCoverage v where
   writeCoverage :: MonadIO m => ReaderT CoverageRef (StateT VM m) a -> m a
   writeCoverage m = do
     threadCovRef <- liftIO $ newIORef mempty
     let s = runReaderT m threadCovRef
-    a            <- evalStateT s v
-    threadCov    <- liftIO $ readIORef threadCovRef
-    globalCov    <- liftIO $ takeMVar globalCovRef
-    liftIO $ putMVar globalCovRef (union threadCov globalCov)
+    a          <- evalStateT s v
+    threadCov  <- liftIO $ readIORef threadCovRef
+    execEnv    <- liftIO $ takeMVar execEnvRef
+    liftIO $ if isInteresting execEnv threadCov then writeChan goodInputs ts else return ()
+    liftIO $ putMVar execEnvRef (updateExecEnv execEnv threadCov)
     return a
   
 
