@@ -2,9 +2,12 @@
 
 module Main where
 
+import Control.Concurrent      (forkIO)
 import Control.Concurrent.MVar (takeMVar, newMVar)
+import Control.Concurrent.Chan (newChan)
 import Data.Maybe              (listToMaybe)
-import Data.MultiSet           (distinctSize)
+import Data.Set                (size)
+--import Data.MultiSet           (distinctSize)
 import Data.Text               (pack)
 import System.Environment      (getArgs)
 
@@ -18,12 +21,14 @@ main :: IO ()
 main = getArgs >>= \case
   []  -> putStrLn "Please provide a solidity file to analyze"
   filepath:args -> do
-    (v,a,ts) <- loadSolidity filepath $ pack <$> listToMaybe args
-    r        <- newMVar (mempty :: Coverage)
+    (v,a,ts)   <- loadSolidity filepath $ pack <$> listToMaybe args
+    execEnvRef <- newMVar $ ExecEnv {coverage = mempty, recent = [0,0,0,0,0,0], avg = 0}
+    goodInputs <- newChan
+    _          <- forkIO $ mutateGoodInputs goodInputs
     let prop t = (PropertyName $ show t
-                 , ePropertySeqCoverage r (flip checkETest t) a v 10
+                 , ePropertySeqCoverage execEnvRef goodInputs (flip checkETest t) a v 10
                  )
     _ <- checkParallel . Group (GroupName filepath) $ map prop ts
-    l <- distinctSize <$> takeMVar r
+    l <- size . coverage <$> takeMVar execEnvRef
     putStrLn $ "Coverage: " ++ show l ++ " unique PCs"
     return ()
