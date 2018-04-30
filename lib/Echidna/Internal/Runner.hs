@@ -25,7 +25,7 @@ import           Data.Either (partitionEithers, isRight)
 import qualified Data.List as List
 import           Data.Map (Map)
 import qualified Data.Map as Map
-import           Data.Maybe (mapMaybe, catMaybes)
+import           Data.Maybe (mapMaybe, catMaybes, isJust)
 import           Data.Semigroup (Semigroup(..))
 
 import           Hedgehog.Internal.Config
@@ -574,14 +574,11 @@ readDeclaration sloc =
   runMaybeT $ do
     path <- liftIO . makeRelativeToCurrentDirectory $ spanFile sloc
     exists <- liftIO $ checkFilePath path
-    (name, Pos (Position _ line0 _) src) <- MaybeT $ Discovery.readDeclaration path (spanEndLine sloc)
-
-    let
-      line =
-        fromIntegral line0
     if not exists
       then mzero
-      else
+      else do
+       (name, Pos (Position _ line0 _) src) <- MaybeT $ Discovery.readDeclaration path (spanEndLine sloc)
+       let line = fromIntegral line0
        pure . Declaration path line name .
          Map.fromList .
          zip [line..] .
