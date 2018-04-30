@@ -49,6 +49,18 @@ stack install
 Notably, if you are using stack, `stack ghci` will set up a REPL with all functions in scope.
 This can be quite useful for playing around with the library.
 
+## Docker Installation
+
+Set your Docker service to allow 4GB of RAM. Build the Dockerfile with the following command
+
+`docker build -t echidna .`
+
+This will take a long time and will consume ~ 4GB of RAM on a 2017 Macbook Pro.
+
+When it's finished run the example contract with a simple
+
+`docker run echidna`
+
 ## Usage (as an executable)
 
 Echidna builds an executable, `echidna-test` that can be used from the command line to fuzz solidity code.
