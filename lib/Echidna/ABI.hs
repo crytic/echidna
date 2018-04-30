@@ -91,8 +91,8 @@ genAbiBytesDynamic = AbiBytesDynamic <$> Gen.bytes (constant 1 256)
 
 genAbiString :: MonadGen m => m AbiValue
 genAbiString = let fromRange = Gen.utf8 $ constant 1 256 in
-  AbiString <$> (Gen.choice $ fmap fromRange [Gen.ascii, Gen.digit, Gen.alpha,
-                                              Gen.element ['a','b','c'], Gen.unicode])
+  fmap AbiString $ Gen.choice $ fmap fromRange [Gen.ascii, Gen.digit, Gen.alpha,
+                                              Gen.element ['a','b','c'], Gen.unicode]
 
 genStaticAbiType :: MonadGen m => m AbiType
 genStaticAbiType = go (16 :: Int) where
