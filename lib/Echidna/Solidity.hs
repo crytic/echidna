@@ -70,6 +70,7 @@ readContract filePath selectedContractName solcArgs = do
         chooseContract cs (Just name) = case find (\x -> name == x ^. contractName) cs of
           Nothing -> throwM $ ContractNotFound name
           Just c  -> return c
+        warn :: (MonadIO m) => Bool -> Text -> m ()
         warn p s = if p then liftIO $ print s else pure ()
 
 -- | loads the solidity file at `filePath` and selects either the default or specified contract to analyze
