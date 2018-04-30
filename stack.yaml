@@ -22,3 +22,4 @@ extra-deps:
 - tree-view-0.5
 - vty-5.16
 - word-wrap-0.4.1
+- optparse-applicative-0.13.2.0
