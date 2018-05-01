@@ -51,5 +51,5 @@ main = getArgs >>= \case
                  , ePropertySeq (flip checkETest t) a v 10
                  )
 
-    checkParallel . Group (GroupName filepath) $ map prop ts
+    _ <- checkParallel . Group (GroupName filepath) $ map prop ts
     return ()
