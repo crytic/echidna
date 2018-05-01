@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
+{-# LANGUAGE BangPatterns, DeriveGeneric, FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
 
 module Echidna.Exec (
     checkETest
@@ -9,7 +9,7 @@ module Echidna.Exec (
   , execCall
   , execCallCoverage
   , fuzz
-  , setCoverage
+  , getCover
   , module Echidna.Internal.Runner
   ) where
 
@@ -21,14 +21,16 @@ import Control.Monad.IO.Class     (MonadIO, liftIO)
 import Control.Monad.State.Strict (MonadState, StateT, evalState, evalStateT, execState, runState)
 import Control.Monad.Reader       (MonadReader, ReaderT, runReaderT, ask)
 import Data.IORef                 (IORef, modifyIORef', newIORef, readIORef)
-import Data.List                  (intercalate, foldl', delete, sortOn)
+import Data.List                  (intercalate, foldl')
 import Data.Maybe                 (listToMaybe)
-import Data.Set                   (Set, insert, union, size, intersection)
+import Data.Set                   (Set, empty, insert, size, union)
 import Data.Text                  (Text)
 import Data.Typeable              (Typeable)
-import Data.Vector                (fromList)
+import Data.Vector.Generic        (maxIndexBy)
 
 import qualified Control.Monad.State.Strict as S
+import qualified Data.Vector.Mutable as M
+import qualified Data.Vector as V
 
 import Hedgehog
 import Hedgehog.Gen               (sample, sequential)
@@ -51,17 +53,35 @@ import Echidna.Internal.Runner
 type CoverageInfo = (SolCall, Set Int)
 type CoverageRef  = IORef CoverageInfo
 
+emptyCovInfo :: CoverageInfo
+emptyCovInfo = (("",[]),empty)
 
--- At the beginning of each epoch, we take the
--- top 100 calls from the last w/r/t coverage
-setCoverage :: [CoverageInfo] -> [SolCall]
-setCoverage [] = []
-setCoverage xs = take 100 $ map fst (sortOn (size . snd) xs)
 
+getCover :: [CoverageInfo] -> IO [SolCall]
+getCover [] = return []
+getCover xs = setCover vs empty totalCoverage []
+  where vs = V.fromList xs
+        totalCoverage = size $ foldl' (\acc (_,c) -> union acc c) empty xs
+
+setCover :: V.Vector CoverageInfo -> Set Int -> Int -> [SolCall] -> IO [SolCall]
+setCover vs cov tot calls = do
+    let i = maxIndexBy (\a b -> if size (union cov (snd a)) < size (union cov (snd b)) then LT else GT) vs
+        s = vs V.! i
+        c = union cov $ snd s
+        newCalls = (fst s):calls
+
+    if size c == tot
+      then return newCalls
+      else do
+      vs' <- V.unsafeThaw vs
+      M.write vs' i emptyCovInfo
+      res <- V.unsafeFreeze vs'
+      setCover res c tot newCalls
+  
 
 execCallUsing :: MonadState VM m => m VMResult -> SolCall -> m VMResult
 execCallUsing m (t,vs) = cleanUp >> (state . calldata .= cd >> m) where
-  cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
+  cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ V.fromList vs
 
   cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
 
@@ -71,8 +91,8 @@ execCall = execCallUsing exec
 
 
 execCallCoverage :: (MonadState VM m, MonadReader CoverageRef m, MonadIO m) => SolCall -> m VMResult
-execCallCoverage sol = execCallUsing (go mempty) sol where
-  go c = use result >>= \case
+execCallCoverage sol = execCallUsing (go empty) sol where
+  go !c = use result >>= \case
     Just x -> do ref <- ask
                  liftIO $ modifyIORef' ref (\_ -> (sol, c))
                  return x
@@ -173,11 +193,11 @@ ePropertySeqCoverage calls cov p ts v = ePropertyUsing (eCommandCoverage calls p
   where
     writeCoverage :: MonadIO m => ReaderT CoverageRef (StateT VM m) a -> m a
     writeCoverage m = do
-      threadCovRef <- liftIO $ newIORef mempty
+      threadCovRef <- liftIO $ newIORef (("",[]),empty)
       let s = runReaderT m threadCovRef
       a            <- evalStateT s v
       threadCov    <- liftIO $ readIORef threadCovRef
-      liftIO $ modifyMVar_ cov (pure . (:) threadCov)
+      liftIO $ modifyMVar_ cov (\xs -> pure $ threadCov:xs)
       return a
   
 
