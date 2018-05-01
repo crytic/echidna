@@ -12,9 +12,9 @@ import Control.Monad.State.Strict (execState, runState)
 import Data.Foldable              (toList)
 import Data.List                  (find, partition)
 import Data.Map                   ()
-import Data.Maybe                 (isNothing)
+import Data.Maybe                 (isNothing, fromMaybe)
 import Data.Monoid                ((<>))
-import Data.Text                  (Text, isPrefixOf, split, pack, unpack)
+import Data.Text                  (Text, isPrefixOf, unpack)
 import System.Process             (readProcess)
 import System.IO.Temp             (writeSystemTempFile)
 
@@ -41,11 +41,9 @@ instance Exception EchidnaException
 
 -- | parses additional solc arguments
 solcArguments :: FilePath -> Maybe Text -> [String]
-solcArguments filePath argStr = map unpack (args <> additional)
-  where args = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", pack filePath]
-        additional = case argStr of
-          Nothing  -> []
-          (Just a) -> split (==' ') a
+solcArguments filePath argStr = args <> fromMaybe [] additional
+  where args = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", filePath]
+        additional = words . unpack <$> argStr
 
 -- | reads all contracts within the solidity file at `filepath` and passes optional solc params to compiler
 readContracts :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> m [SolcContract]

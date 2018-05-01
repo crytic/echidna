@@ -5,7 +5,7 @@ module Main where
 
 import Control.Concurrent.MVar (takeMVar, newMVar)
 import Data.MultiSet           (distinctSize)
-import Data.Text               (Text, pack)
+import Data.Text               (pack)
 import Data.Semigroup          ((<>))
 
 import Echidna.Exec
@@ -33,10 +33,6 @@ options = Options
           ( long "solc-args"
          <> help "Optional solidity compiler arguments" ))
 
-maybePack :: Maybe String -> Maybe Text
-maybePack (Just s) = Just (pack s)
-maybePack Nothing = Nothing
-
 opts :: ParserInfo Options
 opts = info (options <**> helper)
   ( fullDesc
@@ -46,7 +42,7 @@ opts = info (options <**> helper)
 main :: IO ()
 main = do
   (Options f c s) <- execParser opts
-  (v,a,ts) <- loadSolidity f (maybePack c) (maybePack s)
+  (v,a,ts) <- loadSolidity f (pack <$> c) (pack <$> s)
   r        <- newMVar (mempty :: Coverage)
   let prop t = (PropertyName $ show t
                , ePropertySeqCoverage r (flip checkETest t) a v 10
