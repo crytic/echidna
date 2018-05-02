@@ -81,4 +81,3 @@ main = do
       let l = size $ foldl' (\acc xs -> unions (acc:(map snd xs))) mempty ls
       putStrLn $ "Coverage: " ++ show l ++ " unique PCs"
       return ()
-
