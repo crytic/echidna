@@ -103,5 +103,5 @@ currentContract :: MonadThrow m => VM -> m Contract
 currentContract v = let a = v ^. state . contract in
   maybe (throwM $ BadAddr a) pure . Map.lookup a $ v ^. env . contracts
 
-addSolidity :: (MonadIO m, MonadThrow m, MonadState VM m) => FilePath -> Maybe Text -> m ()
-addSolidity f m = insertContract =<< currentContract =<< view _1 <$> loadSolidity f m
+addSolidity :: (MonadIO m, MonadThrow m, MonadState VM m) => FilePath -> Maybe Text -> Maybe Text -> m ()
+addSolidity f mc ma = insertContract =<< currentContract =<< view _1 <$> loadSolidity f mc ma
