@@ -23,6 +23,7 @@ import Control.Monad.Reader       (MonadReader, ReaderT, runReaderT, ask)
 import Data.IORef                 (IORef, modifyIORef', newIORef, readIORef)
 import Data.List                  (intercalate, foldl')
 import Data.Maybe                 (listToMaybe)
+import Data.Ord                   (comparing)
 import Data.Set                   (Set, empty, insert, size, union)
 import Data.Text                  (Text)
 import Data.Typeable              (Typeable)
@@ -33,7 +34,7 @@ import qualified Data.Vector.Mutable as M
 import qualified Data.Vector as V
 
 import Hedgehog
-import Hedgehog.Gen               (sample, sequential)
+import Hedgehog.Gen               (choice, sample, sequential)
 import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
 import Hedgehog.Range             (linear)
@@ -53,9 +54,6 @@ import Echidna.Internal.Runner
 type CoverageInfo = (SolCall, Set Int)
 type CoverageRef  = IORef CoverageInfo
 
-emptyCovInfo :: CoverageInfo
-emptyCovInfo = (("",[]),empty)
-
 
 getCover :: [CoverageInfo] -> IO [SolCall]
 getCover [] = return []
@@ -65,7 +63,7 @@ getCover xs = setCover vs empty totalCoverage []
 
 setCover :: V.Vector CoverageInfo -> Set Int -> Int -> [SolCall] -> IO [SolCall]
 setCover vs cov tot calls = do
-    let i = maxIndexBy (\a b -> if size (union cov (snd a)) < size (union cov (snd b)) then LT else GT) vs
+    let i = maxIndexBy (\a b -> comparing (size . (union cov)) (snd a) (snd b)) vs
         s = vs V.! i
         c = union cov $ snd s
         newCalls = (fst s):calls
@@ -74,7 +72,7 @@ setCover vs cov tot calls = do
       then return newCalls
       else do
       vs' <- V.unsafeThaw vs
-      M.write vs' i emptyCovInfo
+      M.write vs' i mempty
       res <- V.unsafeFreeze vs'
       setCover res c tot newCalls
   
@@ -151,14 +149,14 @@ eCommandUsing gen ex p = Command (\_ -> pure $ Call <$> gen) ex
   
 
 eCommand :: (MonadGen n, MonadTest m) => n SolCall -> (VM -> Bool) -> Command n m VMState
-eCommand x y = eCommandUsing x (\_ -> pure ()) y
+eCommand = flip eCommandUsing $ (\_ -> pure ())
 
 
 eCommandCoverage :: (MonadGen n, MonadTest m, MonadState VM m, MonadReader CoverageRef m, MonadIO m)
                  => [SolCall] -> (VM -> Bool) -> [SolSignature] -> [Command n m VMState]
 eCommandCoverage cov p ts = case cov of
   [] -> [eCommandUsing (genInteractions ts) (\(Call c) -> execCallCoverage c) p]
-  xs -> map (\x -> eCommandUsing (mutateCall x) (\(Call c) -> execCallCoverage c) p) xs
+  xs -> map (\x -> eCommandUsing (choice [mutateCall x, genInteractions ts]) (\(Call c) -> execCallCoverage c) p) xs
 
 ePropertyUsing :: (MonadCatch m, MonadTest m)
              => [Command Gen m VMState]
@@ -193,7 +191,7 @@ ePropertySeqCoverage calls cov p ts v = ePropertyUsing (eCommandCoverage calls p
   where
     writeCoverage :: MonadIO m => ReaderT CoverageRef (StateT VM m) a -> m a
     writeCoverage m = do
-      threadCovRef <- liftIO $ newIORef (("",[]),empty)
+      threadCovRef <- liftIO $ newIORef mempty
       let s = runReaderT m threadCovRef
       a            <- evalStateT s v
       threadCov    <- liftIO $ readIORef threadCovRef
