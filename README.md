@@ -49,6 +49,18 @@ stack install
 Notably, if you are using stack, `stack ghci` will set up a REPL with all functions in scope.
 This can be quite useful for playing around with the library.
 
+## Docker Installation
+
+Set your Docker service to allow 4GB of RAM. Build the Dockerfile with the following command
+
+`docker build -t echidna .`
+
+This will take a long time and will consume ~ 4GB of RAM on a 2017 Macbook Pro.
+
+When it's finished run the example contract with a simple
+
+`docker run echidna`
+
 ## Usage (as an executable)
 
 Echidna builds an executable, `echidna-test` that can be used from the command line to fuzz solidity code.
@@ -57,6 +69,11 @@ For each unit test it finds, it will execute a fuzzing campaign to try and find 
 
 An example contract with tests can be found [solidity/cli.sol](solidity/cli.sol)
 `echidna-test solidity/cli.sol` should find a call sequence such that `echidna_sometimesfalse` fails, but be unable to do so for `echidna_alwaystrue`.
+
+Support for multiple contracts in a single file along with importing files from an unsupported directory has bee added by using the following optional command line arguments:
+```
+echidna-test solidity/cli.sol Test2 --solc-args="--allow-paths=/echidna/solidity"
+```
 
 ## Usage (as a library)
 
@@ -74,8 +91,8 @@ import Echidna.Exec
 import Echidna.Solidity
 
 main :: IO ()
-main = do (v,a,ts) <- loadSolidity "test.sol" Nothing
-          let prop t = (PropertyName $ show t, ePropertySeq v a (`checkETest` t) 10)
+main = do (v,a,ts) <- loadSolidity "test.sol" Nothing Nothing
+          let prop t = (PropertyName $ show t, ePropertySeq (`checkETest` t) a v 10)
           _ <- checkParallel . Group (GroupName "test.sol") $ map prop ts
           return ()
 ```
@@ -139,7 +156,6 @@ The [state machine example](examples/state-machine/StateMachine.hs) is a pretty 
 ### [Echidna.Solidity](lib/Echidna/Solidity.hs)
 
 This module provides `loadSolidity`, which takes a solidity source file and provides a VM with the first contract therein loaded as well as a `fuzz`-compatible ABI definition.
-At the moment, it is only compatible with single-contract solidity files, though if given a multi-contract file it will load the first and print a warning.
 
 ## Questions/complaints/etc.
 

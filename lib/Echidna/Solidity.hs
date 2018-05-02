@@ -1,4 +1,5 @@
-{-# LANGUAGE FlexibleContexts, LambdaCase, TupleSections #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, LambdaCase, TupleSections #-}
+
 
 module Echidna.Solidity where
 
@@ -11,9 +12,9 @@ import Control.Monad.State.Strict (MonadState, execState, modify, runState)
 import Data.Foldable              (toList)
 import Data.List                  (find, partition)
 import Data.Map                   (insert)
-import Data.Maybe                 (isNothing)
+import Data.Maybe                 (isNothing, fromMaybe)
 import Data.Monoid                ((<>))
-import Data.Text                  (Text, isPrefixOf)
+import Data.Text                  (Text, isPrefixOf, unpack)
 import System.Process             (readProcess)
 import System.IO.Temp             (writeSystemTempFile)
 
@@ -45,21 +46,28 @@ instance Show EchidnaException where
 
 instance Exception EchidnaException
 
--- | reads all contracts within the solidity file at `filepath`
-readContracts :: (MonadIO m, MonadThrow m) => FilePath -> m [SolcContract]
-readContracts filepath = liftIO solc >>= \case
+-- | parses additional solc arguments
+solcArguments :: FilePath -> Maybe Text -> [String]
+solcArguments filePath argStr = args <> fromMaybe [] additional
+  where args = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", filePath]
+        additional = words . unpack <$> argStr
+
+-- | reads all contracts within the solidity file at `filepath` and passes optional solc params to compiler
+readContracts :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> m [SolcContract]
+readContracts filePath solcArgs = liftIO solc >>= \case
   Nothing -> throwM CompileFailure
   Just m  -> return $ toList $ fst m
   where solc = readSolc =<< writeSystemTempFile "" =<< readProcess
-          "solc" ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", filepath] ""
+          "solc" (solcArguments filePath solcArgs) ""
 
 -- | reads either the first contract found or the contract named `selectedContractName` within the solidity file at `filepath`
-readContract :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> m SolcContract
-readContract filepath selectedContractName = do
-    cs <- readContracts filepath
+readContract :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> Maybe Text -> m SolcContract
+readContract filePath selectedContractName solcArgs = do
+    cs <- readContracts filePath solcArgs
     c <- chooseContract cs selectedContractName
     warn (isNothing selectedContractName && 1 < length cs) $
-      "Multiple contracts found in file, only analyzing the first (" <> c ^. contractName <> ")"
+      "Multiple contracts found in file, only analyzing the first"
+    liftIO $ print $ "Analyzing contract: " <> c ^. contractName
     return c
   where chooseContract :: (MonadThrow m) => [SolcContract] -> Maybe Text -> m SolcContract
         chooseContract [] _ = throwM NoContracts
@@ -67,11 +75,13 @@ readContract filepath selectedContractName = do
         chooseContract cs (Just name) = case find (\x -> name == x ^. contractName) cs of
           Nothing -> throwM $ ContractNotFound name
           Just c  -> return c
+        warn :: (MonadIO m) => Bool -> Text -> m ()
         warn p s = if p then liftIO $ print s else pure ()
 
-loadSolidity :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
-loadSolidity filepath selectedContractName = do
-    c <- readContract filepath selectedContractName
+-- | loads the solidity file at `filePath` and selects either the default or specified contract to analyze
+loadSolidity :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> Maybe Text -> m (VM, [SolSignature], [Text])
+loadSolidity filePath selectedContract solcArgs = do
+    c <- readContract filePath selectedContract solcArgs
     let (VMSuccess (B bc), vm) = runState exec . vmForEthrunCreation $ c ^. creationCode
         load = do resetState
                   assign (state . gas) 0xffffffffffffffff
