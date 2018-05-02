@@ -44,7 +44,7 @@ import qualified Hedgehog.Gen    as Gen
 import EVM.ABI
 import EVM.Types ()
 
-import Echidna.Constants (ethRunAddress, ethOtherAddress, ethZeroAddress)
+import Echidna.Constants (ethRunAddress, ethOtherAddress, ethZeroAddress, ethOwnerAddress)
 
 type SolCall = (Text, [AbiValue])
 
@@ -74,7 +74,8 @@ genAbiAddress =  fmap AbiAddress $
                    Gen.choice [ fromInteger <$> genAddr,
                                 pure ethRunAddress,
                                 pure ethOtherAddress,
-                                pure ethZeroAddress ]
+                                pure ethZeroAddress,
+                                pure ethOwnerAddress ]
                  where genAddr = Gen.integral $ constant 0 $ 2^(160 :: Integer) - 1
 
 genAbiUInt :: MonadGen m => Int -> m AbiValue
