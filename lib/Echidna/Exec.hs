@@ -1,4 +1,5 @@
-{-# LANGUAGE BangPatterns, DeriveGeneric, FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts, KindSignatures,
+    LambdaCase, StrictData #-}
 
 module Echidna.Exec (
     checkETest
@@ -63,10 +64,10 @@ getCover xs = setCover vs empty totalCoverage []
 
 setCover :: V.Vector CoverageInfo -> Set Int -> Int -> [SolCall] -> IO [SolCall]
 setCover vs cov tot calls = do
-    let i = maxIndexBy (\a b -> comparing (size . (union cov)) (snd a) (snd b)) vs
+    let i = maxIndexBy (\a b -> comparing (size . union cov) (snd a) (snd b)) vs
         s = vs V.! i
         c = union cov $ snd s
-        newCalls = (fst s):calls
+        newCalls = fst s : calls
 
     if size c == tot
       then return newCalls
@@ -92,7 +93,7 @@ execCallCoverage :: (MonadState VM m, MonadReader CoverageRef m, MonadIO m) => S
 execCallCoverage sol = execCallUsing (go empty) sol where
   go !c = use result >>= \case
     Just x -> do ref <- ask
-                 liftIO $ modifyIORef' ref (\_ -> (sol, c))
+                 liftIO $ modifyIORef' ref (const (sol, c))
                  return x
     _      -> do current <- use $ state . pc
                  S.state (runState exec1)
@@ -149,14 +150,15 @@ eCommandUsing gen ex p = Command (\_ -> pure $ Call <$> gen) ex
   
 
 eCommand :: (MonadGen n, MonadTest m) => n SolCall -> (VM -> Bool) -> Command n m VMState
-eCommand = flip eCommandUsing $ (\_ -> pure ())
+eCommand = flip eCommandUsing (\ _ -> pure ())
 
 
 eCommandCoverage :: (MonadGen n, MonadTest m, MonadState VM m, MonadReader CoverageRef m, MonadIO m)
                  => [SolCall] -> (VM -> Bool) -> [SolSignature] -> [Command n m VMState]
 eCommandCoverage cov p ts = case cov of
   [] -> [eCommandUsing (genInteractions ts) (\(Call c) -> execCallCoverage c) p]
-  xs -> map (\x -> eCommandUsing (choice [mutateCall x, genInteractions ts]) (\(Call c) -> execCallCoverage c) p) xs
+  xs -> map (\x -> eCommandUsing (choice [mutateCall x, genInteractions ts])
+              (\(Call c) -> execCallCoverage c) p) xs
 
 ePropertyUsing :: (MonadCatch m, MonadTest m)
              => [Command Gen m VMState]
