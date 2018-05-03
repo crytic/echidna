@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, OverloadedStrings, TupleSections #-}
+{-# LANGUAGE OverloadedStrings, TupleSections #-}
 
 module Main where
 
@@ -63,12 +63,12 @@ main = do
 
     -- RUN WITH COVERAGE
     Just epochs -> do
-      tests <- mapM (\t -> return . (t,) =<< newMVar []) ts
+      tests <- mapM (\t -> fmap (t,) (newMVar [])) ts
       let prop (cov,t,mvar) = (PropertyName $ show t
                               , ePropertySeqCoverage cov mvar (flip checkETest t) a v 10
                               )
 
-      forM_ [1..epochs] $ \_ -> do
+      replicateM_ (epochs-1) $ do
         xs <- forM tests $ \(x,y) -> do
           cov <- readMVar y
           lastGen <- getCover cov
@@ -78,6 +78,5 @@ main = do
         checkParallel . Group (GroupName f) $ map prop xs
         
       ls <- mapM (readMVar . snd) tests
-      let l = size $ foldl' (\acc xs -> unions (acc:(map snd xs))) mempty ls
+      let l = size $ foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
       putStrLn $ "Coverage: " ++ show l ++ " unique PCs"
-      return ()
