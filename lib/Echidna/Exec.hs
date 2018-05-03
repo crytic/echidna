@@ -19,7 +19,7 @@ import Control.Lens               ((^.), (.=), use)
 import Control.Monad              (forM_, replicateM)
 import Control.Monad.Catch        (MonadCatch)
 import Control.Monad.IO.Class     (MonadIO, liftIO)
-import Control.Monad.State.Strict (MonadState, StateT, evalState, evalStateT, execState, runState)
+import Control.Monad.State.Strict (MonadState, StateT, evalState, evalStateT, execState, get, put, runState)
 import Control.Monad.Reader       (MonadReader, ReaderT, runReaderT, ask)
 import Data.IORef                 (IORef, modifyIORef', newIORef, readIORef)
 import Data.List                  (intercalate, foldl')
@@ -79,10 +79,13 @@ setCover vs cov tot calls = do
   
 
 execCallUsing :: MonadState VM m => m VMResult -> SolCall -> m VMResult
-execCallUsing m (t,vs) = cleanUp >> (state . calldata .= cd >> m) where
-  cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ V.fromList vs
-
-  cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
+execCallUsing m (t,vs) = do og <- get
+                            cleanUp 
+                            state . calldata .= cd
+                            m >>= \case x@VMFailure{} -> put og >> return x
+                                        x@VMSuccess{} -> return x
+  where cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
+        cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
 
 
 execCall :: MonadState VM m => SolCall -> m VMResult
