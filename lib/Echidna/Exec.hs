@@ -84,7 +84,7 @@ execCallUsing m (t,vs) = do og <- get
                             state . calldata .= cd
                             m >>= \case x@VMFailure{} -> put og >> return x
                                         x@VMSuccess{} -> return x
-  where cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
+  where cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ V.fromList vs
         cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
 
 
