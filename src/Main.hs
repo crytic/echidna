@@ -3,7 +3,7 @@
 module Main where
 
 import Control.Concurrent.MVar (newMVar, readMVar, swapMVar)
-import Control.Monad           (forM_, forM)
+import Control.Monad           (forM, replicateM_)
 import Data.List               (foldl')
 import Data.Set                (size, unions)
 import Data.Text               (pack)
