@@ -168,8 +168,9 @@ ePropertyUsing :: (MonadCatch m, MonadTest m)
              -> (m () -> PropertyT IO ())
              -> VM          
              -> Int        
+             -> Int
              -> Property
-ePropertyUsing cs f v n = mapConfig (\x -> x {propertyTestLimit = 10000}) . property $
+ePropertyUsing cs f v n l = mapConfig (\x -> x {propertyTestLimit = fromIntegral l}) . property $
   f . executeSequential (VMState v) =<< forAllWith printCallSeq
   (sequential (linear 1 n) (VMState v) cs)
   where printCallSeq = ("Call sequence: " ++) . intercalate "\n               " .
@@ -181,6 +182,7 @@ ePropertySeq :: (VM -> Bool)   -- Predicate to fuzz for violations of
              -> [SolSignature] -- Type signatures to fuzz
              -> VM             -- Initial state
              -> Int            -- Max actions to execute
+             -> Int            -- Max number of test to execute
              -> Property
 ePropertySeq p ts = ePropertyUsing [eCommand (genInteractions ts) p] id             
 
@@ -190,6 +192,7 @@ ePropertySeqCoverage :: [SolCall]
                      -> (VM -> Bool)
                      -> [SolSignature]
                      -> VM
+                     -> Int
                      -> Int
                      -> Property
 ePropertySeqCoverage calls cov p ts v = ePropertyUsing (eCommandCoverage calls p ts) writeCoverage v

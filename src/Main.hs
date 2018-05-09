@@ -22,7 +22,9 @@ data Options = Options
   { filePath         :: FilePath
   , selectedContract :: Maybe String
   , solcArgs         :: Maybe String
-  , covEpochs        :: Maybe Int }
+  , covEpochs        :: Maybe Int
+  , itersEpoch       :: Maybe Int }
+
 
 options :: Parser Options
 options = Options
@@ -38,6 +40,10 @@ options = Options
       <*> optional ( option auto
           ( long "epochs"
          <> help "Optional number of epochs to run coverage guidance" ))
+      <*> optional ( option auto
+          ( long "iters"
+         <> help "Optional number of tests to run per epoch" ))
+
 
 opts :: ParserInfo Options
 opts = info (options <**> helper)
@@ -45,17 +51,20 @@ opts = info (options <**> helper)
   <> progDesc "Fuzzing/property based testing of EVM code"
   <> header "Echidna - Ethereum fuzz testing framework" )
 
+selectIters :: Maybe Int -> Int
+selectIters (Just iters)  = iters
+selectIters _             = 1000
 
 main :: IO ()
 main = do
-  (Options f c s n) <- execParser opts
+  (Options f c s n i) <- execParser opts
   (v,a,ts) <- loadSolidity f (pack <$> c) (pack <$> s)
 
   case n of
     -- RUN WITHOUT COVERAGE
     Nothing -> do
       let prop t = (PropertyName $ show t
-                   , ePropertySeq (flip checkETest t) a v 10
+                   , ePropertySeq (flip checkETest t) a v 10 (selectIters i)
                    )
 
       _ <- checkParallel . Group (GroupName f) $ map prop ts
@@ -65,7 +74,7 @@ main = do
     Just epochs -> do
       tests <- mapM (\t -> fmap (t,) (newMVar [])) ts
       let prop (cov,t,mvar) = (PropertyName $ show t
-                              , ePropertySeqCoverage cov mvar (flip checkETest t) a v 10
+                              , ePropertySeqCoverage cov mvar (flip checkETest t) a v 10 (selectIters i)
                               )
 
       replicateM_ (epochs-1) $ do
