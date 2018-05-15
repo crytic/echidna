@@ -546,16 +546,15 @@ fixedDecl = Declaration {
              declarationFile = "",
              declarationLine = LineNo 1,
              _declarationName = "",
-             declarationSource = Map.fromList [ (LineNo 174, Line (StyleDefault,[]) (LineNo 174) "") ]
+             declarationSource = Map.fromList [ (LineNo 1, Line (StyleDefault,[]) (LineNo 1) "") ]
             } 
 
 ppFailedInputDeclaration ::
      MonadIO m
   => FailedAnnotation
   -> m (Maybe (Declaration (Style, [(Style, Doc Markup)])))
-ppFailedInputDeclaration (FailedAnnotation msloc val) =
+ppFailedInputDeclaration (FailedAnnotation _ val) =
   runMaybeT $ do
-    sloc <- MaybeT $ pure msloc
     let
       ppValLine =
         WL.indent 0 .
@@ -567,18 +566,12 @@ ppFailedInputDeclaration (FailedAnnotation msloc val) =
         fmap ((StyleAnnotation, ) . ppValLine) $
         List.lines val
 
-      startLine =
-        fromIntegral $ spanStartLine sloc
-
-      endLine =
-        fromIntegral $ spanEndLine sloc
-
       styleInput kvs =
-        foldr (Map.adjust . fmap . first $ const StyleAnnotation) kvs [startLine..endLine]
+        foldr (Map.adjust . fmap . first $ const StyleAnnotation) kvs [0,1]
 
       insertDoc =
-        Map.adjust (fmap . second $ const valDocs) endLine
-    
+        Map.adjust (fmap . second $ const valDocs) 1
+
     pure $
       mapSource (styleInput . insertDoc) fixedDecl
 
