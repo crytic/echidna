@@ -14,23 +14,20 @@ module Echidna.Internal.Runner (
 
 import           Control.Concurrent.STM (TVar, atomically)
 import qualified Control.Concurrent.STM.TVar as TVar
-import           Control.Monad (zipWithM, mzero)
+import           Control.Monad (zipWithM)
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class (MonadIO(..))
 import           Control.Monad.Trans.Maybe (MaybeT(..))
 
 import           Data.Bifunctor (first, second)
-import qualified Data.Char as Char
-import           Data.Either (partitionEithers, isRight)
+import           Data.Either (partitionEithers)
 import qualified Data.List as List
 import           Data.Map (Map)
 import qualified Data.Map as Map
-import           Data.Maybe (mapMaybe, catMaybes, isJust)
+import           Data.Maybe (mapMaybe, catMaybes)
 import           Data.Semigroup (Semigroup(..))
 
 import           Hedgehog.Internal.Config
-import           Hedgehog.Internal.Discovery (Pos(..), Position(..))
-import qualified Hedgehog.Internal.Discovery as Discovery
 import           Hedgehog.Internal.Gen (runDiscardEffect, runGenT)
 import           Hedgehog.Internal.Property
   (Failure(..), Group(..), GroupName(..), Property(..), PropertyT(..),
@@ -52,7 +49,6 @@ import           Hedgehog.Range (Size)
 import           System.Console.ANSI (ColorIntensity(..), Color(..))
 import           System.Console.ANSI (ConsoleLayer(..), ConsoleIntensity(..))
 import           System.Console.ANSI (SGR(..), setSGRCode)
-import           System.Directory (makeRelativeToCurrentDirectory)
 
 import           Text.PrettyPrint.Annotated.WL (Doc, (<+>))
 import qualified Text.PrettyPrint.Annotated.WL as WL
@@ -538,73 +534,20 @@ mapSource f decl =
         f (declarationSource decl)
     }
 
--- | The span of non-whitespace characters for the line.
---
---   The result is @[inclusive, exclusive)@.
---
-lineSpan :: Line a -> (ColumnNo, ColumnNo)
-lineSpan (Line _ _ x0) =
-  let
-    (pre, x1) =
-      span Char.isSpace x0
-
-    (_, x2) =
-      span Char.isSpace (reverse x1)
-
-    start =
-      length pre
-
-    end =
-      start + length x2
-  in
-    (fromIntegral start, fromIntegral end)
-
-takeLines :: Span -> Declaration a -> Map LineNo (Line a)
-takeLines sloc =
-  fst . Map.split (spanEndLine sloc + 1) .
-  snd . Map.split (spanStartLine sloc - 1) .
-  declarationSource
-
-
-checkFilePath :: FilePath -> IO Bool
-checkFilePath path = isRight <$> (try $ readFile path :: IO (Either IOError String))
-
-readDeclaration :: MonadIO m => Span -> m (Maybe (Declaration ()))
-readDeclaration sloc =
-  runMaybeT $ do
-    path <- liftIO . makeRelativeToCurrentDirectory $ spanFile sloc
-    exists <- liftIO $ checkFilePath path
-    if not exists
-      then mzero
-      else do
-       (name, Pos (Position _ line0 _) src) <- MaybeT $ Discovery.readDeclaration path (spanEndLine sloc)
-       let line = fromIntegral line0
-       pure . Declaration path line name .
-         Map.fromList .
-         zip [line..] .
-         zipWith (Line ()) [line..] $
-         lines src
-
-
-defaultStyle :: Declaration a -> Declaration (Style, [(Style, Doc Markup)])
-defaultStyle =
-  fmap $ const (StyleDefault, [])
-
-lastLineSpan :: Monad m => Span -> Declaration a -> MaybeT m (ColumnNo, ColumnNo)
-lastLineSpan sloc decl =
-  case reverse . Map.elems $ takeLines sloc decl of
-    [] ->
-      MaybeT $ pure Nothing
-    x : _ ->
-      pure $
-        lineSpan x
-
 ppFailedInputTypedArgument :: Int -> FailedAnnotation -> Doc Markup
 ppFailedInputTypedArgument ix (FailedAnnotation _ val) =
   WL.vsep [
       WL.text "forAll" <> ppShow ix <+> "="
     , WL.indent 2 . WL.vsep . fmap (markup AnnotationValue . WL.text) $ lines val
     ]
+
+fixedDecl :: Declaration (Style, [t])
+fixedDecl = Declaration {
+             declarationFile = "",
+             declarationLine = LineNo 1,
+             _declarationName = "",
+             declarationSource = Map.fromList [ (LineNo 174, Line (StyleDefault,[]) (LineNo 174) "") ]
+            } 
 
 ppFailedInputDeclaration ::
      MonadIO m
@@ -613,12 +556,9 @@ ppFailedInputDeclaration ::
 ppFailedInputDeclaration (FailedAnnotation msloc val) =
   runMaybeT $ do
     sloc <- MaybeT $ pure msloc
-    decl <- fmap defaultStyle . MaybeT $ readDeclaration sloc
-    startCol <- fromIntegral . fst <$> lastLineSpan sloc decl
-
     let
       ppValLine =
-        WL.indent startCol .
+        WL.indent 0 .
           (markup AnnotationGutter (WL.text "│ ") <>) .
           markup AnnotationValue .
           WL.text
@@ -638,9 +578,9 @@ ppFailedInputDeclaration (FailedAnnotation msloc val) =
 
       insertDoc =
         Map.adjust (fmap . second $ const valDocs) endLine
-
+    
     pure $
-      mapSource (styleInput . insertDoc) decl
+      mapSource (styleInput . insertDoc) fixedDecl
 
 ppFailedInput ::
      MonadIO m
