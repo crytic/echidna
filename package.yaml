@@ -9,22 +9,23 @@ ghc-options: -Wall
 dependencies:
   - base
   - ansi-terminal
-  - bytestring >= 0.10.8 && < 0.11
-  - containers >= 0.5.7  && < 0.6
-  - data-dword >= 0.3.1  && < 0.4
+  - bytestring           >= 0.10.8 && < 0.11
+  - containers           >= 0.5.7  && < 0.6
+  - data-dword           >= 0.3.1  && < 0.4
   - directory
-  - exceptions >= 0.8.1  && < 0.9
+  - exceptions           >= 0.8.1  && < 0.9
   - hedgehog
   - hevm
-  - lens       >= 4.15.1 && < 4.16
-  - mtl        >= 2.2.1  && < 2.3
-  - multiset   >= 0.3    && < 0.4
-  - process    >= 1.4.3  && < 1.5
+  - lens                 >= 4.15.1 && < 4.16
+  - mtl                  >= 2.2.1  && < 2.3
+  - multiset             >= 0.3    && < 0.4
+  - optparse-applicative >= 0.12.0 && < 0.14
+  - process              >= 1.4.3  && < 1.5
   - stm
-  - temporary  >= 1.2.1  && < 1.3
-  - text       >= 1.2.2  && < 1.3
+  - temporary            >= 1.2.1  && < 1.3
+  - text                 >= 1.2.2  && < 1.3
   - transformers
-  - vector     >= 0.11.0 && < 0.13
+  - vector               >= 0.11.0 && < 0.13
   - wl-pprint-annotated
 
 default-extensions:
