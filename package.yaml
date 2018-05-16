@@ -14,7 +14,7 @@ dependencies:
   - data-dword           >= 0.3.1  && < 0.4
   - directory
   - exceptions           >= 0.8.1  && < 0.9
-  - hedgehog
+  - hedgehog             >= 0.6
   - hevm
   - lens                 >= 4.15.1 && < 4.16
   - mtl                  >= 2.2.1  && < 2.3

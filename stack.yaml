@@ -10,7 +10,7 @@ extra-deps:
 - config-ini-0.2.1.1
 - data-clist-0.1.2.0
 - ghci-pretty-0.0.2
-- hedgehog-0.5.1
+- hedgehog-0.6
 - HSH-2.1.3
 - ipprint-0.6
 - megaparsec-6.4.0
