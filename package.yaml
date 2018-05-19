@@ -51,3 +51,12 @@ executables:
     main: StateMachine.hs
     source-dirs: examples/state-machine
     dependencies: echidna
+
+tests:
+  echidna-testing:
+    main: Test.hs
+    source-dirs: tests
+    dependencies:
+      - echidna
+      - hedgehog
+      - hevm

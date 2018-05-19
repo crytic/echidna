@@ -133,8 +133,8 @@ genAbiValue = Gen.choice [ genAbiUInt =<< genSize
                          , genAbiBytes =<< Gen.enum 1 32
                          , genAbiBytesDynamic
                          , genAbiString
-                         , genAbiArrayDynamic =<< genAbiType
-                         , join $ liftM2 genAbiArray (Gen.enum 0 256) genAbiType
+                         , genAbiArrayDynamic =<< genStaticAbiType
+                         , join $ liftM2 genAbiArray (Gen.enum 0 256) genStaticAbiType
                          ]
 
 genAbiValueOfType :: MonadGen m => AbiType -> m AbiValue
