@@ -79,12 +79,12 @@ readContract filePath selectedContractName solcArgs = do
         warn p s = if p then liftIO $ print s else pure ()
 
 -- | loads the solidity file at `filePath` and selects either the default or specified contract to analyze
-loadSolidity :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> Maybe Text -> m (VM, [SolSignature], [Text])
-loadSolidity filePath selectedContract solcArgs = do
+loadSolidity :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> Maybe Text -> Maybe Int ->  m (VM, [SolSignature], [Text])
+loadSolidity filePath selectedContract solcArgs gasAmt = do
     c <- readContract filePath selectedContract solcArgs
     let (VMSuccess (B bc), vm) = runState exec . vmForEthrunCreation $ c ^. creationCode
         load = do resetState
-                  assign (state . gas) 0xffffffffffffffff
+                  assign (state . gas) (maybe 0xffffffffffffffff fromIntegral gasAmt)
                   loadContract (vm ^. state . contract)
         loaded = execState load $ execState (replaceCodeOfSelf bc) vm
         abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
@@ -104,4 +104,4 @@ currentContract v = let a = v ^. state . contract in
   maybe (throwM $ BadAddr a) pure . Map.lookup a $ v ^. env . contracts
 
 addSolidity :: (MonadIO m, MonadThrow m, MonadState VM m) => FilePath -> Maybe Text -> Maybe Text -> m ()
-addSolidity f mc ma = insertContract =<< currentContract =<< view _1 <$> loadSolidity f mc ma
+addSolidity f mc ma = insertContract =<< currentContract =<< view _1 <$> loadSolidity f mc ma Nothing
