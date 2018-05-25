@@ -182,8 +182,8 @@ dropBS b = Gen.choice [ BS.drop <$> Gen.element [1..BS.length b]   <*> pure b
                       , BS.take <$> Gen.element [0..BS.length b-1] <*> pure b
                       ]
 
-changeBS :: MonadGen m => ByteString -> m ByteString
-changeBS b = Gen.choice $ [changeChar, addBS, dropBS] <&> ($ b)
+changeDynamicBS :: MonadGen m => ByteString -> m ByteString
+changeDynamicBS b = Gen.choice $ [changeChar, addBS, dropBS] <&> ($ b)
 
 changeNumber :: (Enum a, Integral a, MonadGen m) => a -> m a
 changeNumber n = let x = fromIntegral n :: Integer in fromIntegral . (+ x) <$> Gen.element [-10..10]
@@ -208,11 +208,11 @@ mutateValue (AbiAddress a) =
   newOrMod genAbiAddress          AbiAddress          (changeNumber a)
 mutateValue (AbiBool _) = genAbiBool
 mutateValue (AbiBytes s b) =
-  newOrMod (genAbiBytes s)        (AbiBytes s)        (changeBS b)
+  newOrMod (genAbiBytes s)        (AbiBytes s)        (changeChar b)
 mutateValue (AbiBytesDynamic b) =
-  newOrMod genAbiBytesDynamic     AbiBytesDynamic     (changeBS b)
+  newOrMod genAbiBytesDynamic     AbiBytesDynamic     (changeDynamicBS b)
 mutateValue (AbiString b) =
-  newOrMod genAbiString           AbiString           (changeBS b)
+  newOrMod genAbiString           AbiString           (changeDynamicBS b)
 mutateValue (AbiArrayDynamic t a) = let g0 = genVecOfType t (constant 0 (256 - length a)); g1 = genAbiValueOfType t in
   newOrMod (genAbiArrayDynamic t) (AbiArrayDynamic t) (changeList g0 g1 a)
 mutateValue (AbiArray s t a) =

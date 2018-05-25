@@ -68,7 +68,7 @@ main = do
                               , ePropertySeqCoverage cov mvar (flip checkETest t) a v 10
                               )
 
-      replicateM_ (epochs-1) $ do
+      replicateM_ epochs $ do
         xs <- forM tests $ \(x,y) -> do
           cov <- readMVar y
           lastGen <- getCover cov
