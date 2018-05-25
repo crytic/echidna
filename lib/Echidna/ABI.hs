@@ -185,9 +185,6 @@ dropBS b = Gen.choice [ BS.drop <$> Gen.element [1..BS.length b]   <*> pure b
 changeDynamicBS :: MonadGen m => ByteString -> m ByteString
 changeDynamicBS b = Gen.choice $ [changeChar, addBS, dropBS] <&> ($ b)
 
-changeStaticBS :: MonadGen m => ByteString -> m ByteString
-changeStaticBS b = changeChar b
-
 changeNumber :: (Enum a, Integral a, MonadGen m) => a -> m a
 changeNumber n = let x = fromIntegral n :: Integer in fromIntegral . (+ x) <$> Gen.element [-10..10]
 
@@ -211,7 +208,7 @@ mutateValue (AbiAddress a) =
   newOrMod genAbiAddress          AbiAddress          (changeNumber a)
 mutateValue (AbiBool _) = genAbiBool
 mutateValue (AbiBytes s b) =
-  newOrMod (genAbiBytes s)        (AbiBytes s)        (changeStaticBS b)
+  newOrMod (genAbiBytes s)        (AbiBytes s)        (changeChar b)
 mutateValue (AbiBytesDynamic b) =
   newOrMod genAbiBytesDynamic     AbiBytesDynamic     (changeDynamicBS b)
 mutateValue (AbiString b) =
