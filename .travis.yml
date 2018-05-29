@@ -30,16 +30,17 @@ install:
  - ./.travis/install-stack.sh
 
 script:
- - sudo apt-get install libsecp256k1-dev
- - cd libethjet
- - make
- - cd ..
  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
- - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then 
+ - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+   brew tap cuber/homebrew-libsecp256k1
+   brew install libsecp256k1
    stack install readline --extra-include-dirs=/usr/local/opt/readline/include
                           --extra-lib-dirs=/usr/local/opt/readline/lib;
    fi
+ - cd libethjet
+ - make
+ - cd ..
  - |
    set -ex
    # Run tests
