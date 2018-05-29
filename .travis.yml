@@ -30,9 +30,10 @@ install:
  - ./.travis/install-stack.sh
 
 script:
+ - sudo apt-get install libsecp256k1-dev
  - cd libethjet
  - make
- - cd ".."
+ - cd ..
  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then 
