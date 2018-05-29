@@ -28,6 +28,9 @@ install:
  - export PATH=$HOME/.local/bin:/opt/ghc/$GHCVER/bin:$PATH
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
+ - wget "http://launchpadlibrarian.net/333773607/libsecp256k1-0_0.1~20170810-1_amd64.deb"
+ - sudo dpkg -i libsecp256k1-0_0.1~20170810-1_amd64.deb 
+ - apt-get install -f
 
 script:
  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
