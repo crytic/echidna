@@ -30,6 +30,9 @@ install:
  - ./.travis/install-stack.sh
 
 script:
+ - cd libethjet
+ - make
+ - cd ".."
  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then 

@@ -15,10 +15,23 @@ It supports relatively sophisticated grammar-based fuzzing campaigns to falsify 
 [stack](https://www.haskellstack.org/) is highly recommended to install echidna.
 If you are a particularly opinionated experienced Haskell user, cabal or hpack should work, but they are neither officially supported nor tested. 
 
-Before starting with it, make sure you have libgmp-dev installed otherwise ghc will fail to compile. Also, libbz2 and libreadline are required by some packages. For instance, in Ubuntu/Debian you can execute:
+Before starting with it, make sure you clone this repository with submodules:
+
+```
+$ git clone --recurse-submodules https://github.com/trailofbits/echidna
+```
+
+Also, check if libgmp-dev, libbz2 and libreadline installed. For instance, in Ubuntu/Debian you can execute:
 
 ```
 # apt-get install libgmp-dev libbz2-dev libreadline-dev
+```
+
+Compiling libethjet will require libsecp256k1. For instance, in Ubuntu/Debian, you can execute:
+
+
+```
+# apt-get install libsecp256k1-dev
 ```
 
 [solc](https://www.npmjs.com/package/solc) is another echidna dependency not handled via stack.
@@ -28,6 +41,9 @@ Run `npm install -g solc` to install it.
 Once solc is installed, installing stack (`brew install haskell-stack`) and running
 
 ```
+cd libethjet
+make
+cd ..
 stack upgrade
 stack setup
 stack install
