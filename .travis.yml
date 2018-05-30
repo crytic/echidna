@@ -43,7 +43,7 @@ script:
                           --extra-lib-dirs=/usr/local/opt/readline/lib;
    fi
  - cd libethjet
- - make
+ - CC="gcc -std=c99" make
  - cd ..
  - |
    set -ex
