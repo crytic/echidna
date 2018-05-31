@@ -8,6 +8,7 @@ import Data.List               (foldl')
 import Data.Set                (size, unions)
 import Data.Text               (pack)
 import Data.Semigroup          ((<>))
+import Data.Maybe              (fromJust)
 
 import Echidna.Exec
 import Echidna.Solidity
@@ -23,8 +24,14 @@ data Options = Options
   , selectedContract :: Maybe String
   , solcArgs         :: Maybe String
   , covEpochs        :: Maybe Int
-  , itersEpoch       :: Maybe Int }
+  , itersEpoch       :: Maybe Int
+  , maxTransactions  :: Maybe Int }
 
+diters :: Int
+diters = 1000
+
+dmaxtxs :: Int
+dmaxtxs = 10
 
 options :: Parser Options
 options = Options
@@ -41,9 +48,13 @@ options = Options
           ( long "epochs"
          <> help "Optional number of epochs to run coverage guidance" ))
       <*> optional ( option auto
-          ( long "iters"
+          ( (long "iters")
+         <> (value diters)
          <> help "Optional number of tests to run per epoch" ))
-
+      <*> optional ( option auto
+          ( (long "max-txs")
+         <> (value dmaxtxs)
+         <> help "Optional max number of transactions to generate" ))
 
 opts :: ParserInfo Options
 opts = info (options <**> helper)
@@ -51,20 +62,18 @@ opts = info (options <**> helper)
   <> progDesc "Fuzzing/property based testing of EVM code"
   <> header "Echidna - Ethereum fuzz testing framework" )
 
-selectIters :: Maybe Int -> Int
-selectIters (Just iters)  = iters
-selectIters _             = 1000
-
 main :: IO ()
 main = do
-  (Options f c s n i) <- execParser opts
+  (Options f c s n i' m') <- execParser opts
   (v,a,ts) <- loadSolidity f (pack <$> c) (pack <$> s)
+  i <- return $ fromJust i'
+  m <- return $ fromJust m'
 
   case n of
     -- RUN WITHOUT COVERAGE
     Nothing -> do
       let prop t = (PropertyName $ show t
-                   , ePropertySeq (flip checkETest t) a v 10 (selectIters i)
+                   , ePropertySeq (flip checkETest t) a v m i
                    )
 
       _ <- checkParallel . Group (GroupName f) $ map prop ts
@@ -74,7 +83,7 @@ main = do
     Just epochs -> do
       tests <- mapM (\t -> fmap (t,) (newMVar [])) ts
       let prop (cov,t,mvar) = (PropertyName $ show t
-                              , ePropertySeqCoverage cov mvar (flip checkETest t) a v 10 (selectIters i)
+                              , ePropertySeqCoverage cov mvar (flip checkETest t) a v m i
                               )
 
       replicateM_ (epochs-1) $ do
