@@ -35,6 +35,7 @@ data EchidnaException = BadAddr Addr
                       | NoContracts
                       | TestArgsFound Text
                       | ContractNotFound Text
+                      | NoBytecode Text
 
 instance Show EchidnaException where
   show = \case
@@ -43,6 +44,7 @@ instance Show EchidnaException where
     NoContracts          -> "No contracts found in given file"
     (ContractNotFound c) -> "Given contract " ++ show c ++ " not found in given file"
     (TestArgsFound t)    -> "Test " ++ show t ++ " has arguments, aborting"
+    (NoBytecode t)       -> "No bytecode found for contract " ++ show t
 
 instance Exception EchidnaException
 
@@ -82,6 +84,7 @@ readContract filePath selectedContractName solcArgs = do
 loadSolidity :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> Maybe Text -> m (VM, [SolSignature], [Text])
 loadSolidity filePath selectedContract solcArgs = do
     c <- readContract filePath selectedContract solcArgs
+    if c ^. creationCode == "" then throwM . NoBytecode $ c ^. contractName else pure ()
     let (VMSuccess (B bc), vm) = runState exec . vmForEthrunCreation $ c ^. creationCode
         load = do resetState
                   assign (state . gas) 0xffffffffffffffff
