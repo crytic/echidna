@@ -5,7 +5,7 @@ module Main where
 import Control.Lens hiding (argument)
 import Control.Concurrent.MVar (newMVar, readMVar, swapMVar)
 import Control.Monad           (forM, replicateM_)
-import Control.Monad.Reader    (runReader)
+import Control.Monad.Reader    (runReaderT, runReader)
 import Data.List               (foldl')
 import Data.Set                (size, unions)
 import Data.Text               (pack)
@@ -52,7 +52,7 @@ main = do
   config <- maybe (pure defaultConfig) parseConfig configFile
 
   -- Load solidity contract and get VM
-  (v,a,ts) <- loadSolidity file (pack <$> contract) (pack <$> (config ^. solcArgs))
+  (v,a,ts) <- runReaderT (loadSolidity file (pack <$> contract)) config
 
   if (config ^. epochs) <= 0
     -- Run without coverage
