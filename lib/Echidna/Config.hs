@@ -12,7 +12,6 @@ import Data.Aeson
 data Config = Config
   { _solcArgs :: Maybe String
   , _epochs :: Int
-  , _gasLimit :: Int
   , _testLimit :: Int
   , _range :: Int }
   deriving (Show, Generic)
@@ -25,7 +24,6 @@ defaultConfig :: Config
 defaultConfig = Config
   { _solcArgs = Nothing
   , _epochs = 0
-  , _gasLimit = 0xffffffffffffffff
   , _testLimit = 10000
   , _range = 10 }
 
