@@ -27,7 +27,6 @@ module Echidna.ABI (
 import Control.Lens          ((<&>), (&))
 import Control.Monad         (join, liftM2, replicateM)
 import Data.Bool             (bool)
-import Data.DoubleWord       (Word128(..), Word160(..))
 import Data.Monoid           ((<>))
 import Data.ByteString       (ByteString)
 import Data.Text             (Text, unpack)
@@ -44,6 +43,8 @@ import qualified Hedgehog.Gen    as Gen
 
 import EVM.ABI
 import EVM.Types ()
+
+import Echidna.Constants (ethRunAddress, ethOtherAddress, ethZeroAddress, ethOwnerAddress)
 
 type SolCall = (Text, [AbiValue])
 
@@ -69,8 +70,13 @@ genSize :: MonadGen m => m Int
 genSize = (8 *) <$> Gen.enum 1 32
 
 genAbiAddress :: MonadGen m => m AbiValue
-genAbiAddress = let w64 = Gen.word64 $ constant minBound maxBound in
-  fmap AbiAddress . liftM2 Word160 Gen.enumBounded $ liftM2 Word128 w64 w64
+genAbiAddress =  fmap AbiAddress $
+                   Gen.choice [ fromInteger <$> genAddr,
+                                pure ethRunAddress,
+                                pure ethOtherAddress,
+                                pure ethZeroAddress,
+                                pure ethOwnerAddress ]
+                 where genAddr = Gen.integral $ constant 0 $ 2^(160 :: Integer) - 1
 
 genAbiUInt :: MonadGen m => Int -> m AbiValue
 genAbiUInt n = AbiUInt n . fromInteger <$> genUInt

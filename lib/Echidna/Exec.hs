@@ -40,12 +40,14 @@ import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
 import Hedgehog.Range             (linear)
 
-import EVM          (VM, VMResult(..), calldata, exec1, pc, result, stack, state)
+import EVM          (VM, VMResult(..), calldata, exec1, pc, result, stack, state, caller)
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
+import EVM.Types    (Addr(..))
 
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions, mutateCall)
+import Echidna.Constants (ethRunAddress)
 import Echidna.Internal.Runner 
 
 
@@ -85,7 +87,8 @@ execCallUsing m (t,vs) = do og <- get
                             m >>= \case x@VMFailure{} -> put og >> return x
                                         x@VMSuccess{} -> return x
   where cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ V.fromList vs
-        cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
+        cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty, state . caller .= Addr ethRunAddress]
+        
 
 
 execCall :: MonadState VM m => SolCall -> m VMResult
