@@ -1,11 +1,12 @@
-{-# LANGUAGE OverloadedStrings, TupleSections  #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, TupleSections  #-}
 
 module Main where
 
 import Control.Lens hiding (argument)
 import Control.Concurrent.MVar (newMVar, readMVar, swapMVar)
 import Control.Monad           (forM, replicateM_)
-import Control.Monad.Reader    (runReaderT, runReader)
+import Control.Monad.IO.Class  (liftIO)
+import Control.Monad.Reader    (runReaderT)
 import Data.List               (foldl')
 import Data.Set                (size, unions)
 import Data.Text               (pack)
@@ -51,35 +52,32 @@ main = do
   (Options file contract configFile) <- execParser opts
   config <- maybe (pure defaultConfig) parseConfig configFile
 
-  -- Load solidity contract and get VM
-  (v,a,ts) <- runReaderT (loadSolidity file (pack <$> contract)) config
+  (flip runReaderT) config $ do
+    -- Load solidity contract and get VM
+    (v,a,ts) <- loadSolidity file (pack <$> contract)
 
-  if (config ^. epochs) <= 0
-    -- Run without coverage
-    then do
-    let prop t = (PropertyName $ show t
-                 , runReader (ePropertySeq (flip checkETest t) a v) config
-                 )
+    if (config ^. epochs) <= 0
+      -- Run without coverage
+      then do
+      let prop t = ePropertySeq (flip checkETest t) a v >>= \x -> return (PropertyName $ show t, x)
+      _ <- checkParallel . Group (GroupName file) =<< mapM prop ts
+      return ()
 
-    _ <- checkParallel . Group (GroupName file) $ map prop ts
-    return ()
+      -- Run with coverage
+      else do
+      tests <- liftIO $ mapM (\t -> fmap (t,) (newMVar [])) ts
+      let prop (cov,t,mvar) =
+            ePropertySeqCoverage cov mvar (flip checkETest t) a v >>= \x -> return (PropertyName $ show t, x)
 
-    -- Run with coverage
-    else do
-    tests <- mapM (\t -> fmap (t,) (newMVar [])) ts
-    let prop (cov,t,mvar) = (PropertyName $ show t
-                          , runReader (ePropertySeqCoverage cov mvar (flip checkETest t) a v) config
-                          )
+      replicateM_ (config ^. epochs) $ do
+        xs <- liftIO $ forM tests $ \(x,y) -> do
+          cov <- readMVar y
+          lastGen <- getCover cov
+          _ <- swapMVar y []
+          return (lastGen,x,y)
 
-    replicateM_ (config ^. epochs) $ do
-      xs <- forM tests $ \(x,y) -> do
-        cov <- readMVar y
-        lastGen <- getCover cov
-        _ <- swapMVar y []
-        return (lastGen,x,y)
-
-      checkParallel . Group (GroupName file) $ map prop xs
+        checkParallel . Group (GroupName file) =<< mapM prop xs
         
-    ls <- mapM (readMVar . snd) tests
-    let l = size $ foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
-    putStrLn $ "Coverage: " ++ show l ++ " unique PCs"
+      ls <- liftIO $ mapM (readMVar . snd) tests
+      let l = size $ foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
+      liftIO $ putStrLn $ "Coverage: " ++ show l ++ " unique PCs"

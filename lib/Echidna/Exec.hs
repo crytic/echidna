@@ -172,7 +172,9 @@ ePropertyUsing :: (MonadCatch m, MonadTest m, MonadReader Config n)
              -> n Property
 ePropertyUsing cs f v = do
   config <- ask
-  return $ mapConfig (\x -> x {propertyTestLimit = fromIntegral $ config ^. testLimit}) . property $ f . executeSequential (VMState v) =<< forAllWith printCallSeq (sequential (linear 1 (config ^. range)) (VMState v) cs)
+  return $ mapConfig (\x -> x {propertyTestLimit = fromIntegral $ config ^. testLimit}) .
+    property $ f . executeSequential (VMState v) =<<
+    forAllWith printCallSeq (sequential (linear 1 (config ^. range)) (VMState v) cs)
   where printCallSeq = ("Call sequence: " ++) . intercalate "\n               " .
           map showCall . sequentialActions
         showCall (Action i _ _ _ _ _) = show i ++ ";"
