@@ -37,6 +37,7 @@ data EchidnaException = BadAddr Addr
                       | NoContracts
                       | TestArgsFound Text
                       | ContractNotFound Text
+                      | NoBytecode Text
 
 instance Show EchidnaException where
   show = \case
@@ -45,6 +46,7 @@ instance Show EchidnaException where
     NoContracts          -> "No contracts found in given file"
     (ContractNotFound c) -> "Given contract " ++ show c ++ " not found in given file"
     (TestArgsFound t)    -> "Test " ++ show t ++ " has arguments, aborting"
+    (NoBytecode t)       -> "No bytecode found for contract " ++ show t
 
 instance Exception EchidnaException
 
@@ -83,6 +85,7 @@ readContract filePath selectedContractName = do
         warn p s = if p then liftIO $ print s else pure ()
 
 -- | loads the solidity file at `filePath` and selects either the default or specified contract to analyze
+
 loadSolidity :: (MonadIO m, MonadThrow m, MonadReader Config m)
              => FilePath
              -> Maybe Text
