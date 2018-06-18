@@ -25,6 +25,7 @@ import Options.Applicative
 data Options = Options
   { filePath         :: FilePath
   , selectedContract :: Maybe String
+  , coverageSelector :: Bool
   , configFilepath   :: Maybe FilePath
   }
 
@@ -36,6 +37,9 @@ options = Options
       <*> optional ( argument str
           ( metavar "CONTRACT"
          <> help "Contract inside of file to analyze" ))
+      <*> switch
+          ( long "coverage"
+         <> help "Turn on coverage")
       <*> optional ( option str
           ( long "config"
          <> help "Echidna config file" ))
@@ -49,14 +53,14 @@ opts = info (options <**> helper)
 main :: IO ()
 main = do
   -- Read cmd line options and load config
-  (Options file contract configFile) <- execParser opts
+  (Options file contract coverage configFile) <- execParser opts
   config <- maybe (pure defaultConfig) parseConfig configFile
 
   (flip runReaderT) config $ do
     -- Load solidity contract and get VM
     (v,a,ts) <- loadSolidity file (pack <$> contract)
 
-    if (config ^. epochs) <= 0
+    if not coverage
       -- Run without coverage
       then do
       let prop t = ePropertySeq (flip checkETest t) a v >>= \x -> return (PropertyName $ show t, x)

@@ -28,7 +28,7 @@ instance FromJSON Config
 defaultConfig :: Config
 defaultConfig = Config
   { _solcArgs = Nothing
-  , _epochs = 0
+  , _epochs = 2
   , _testLimit = 10000
   , _range = 10
   , _gasLimit = 0xffffffffffffffff }
