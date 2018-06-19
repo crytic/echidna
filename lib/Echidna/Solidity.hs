@@ -8,23 +8,25 @@ import Control.Exception          (Exception)
 import Control.Monad              (liftM2)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
+import Control.Monad.Reader       (MonadReader, ask, runReaderT)
 import Control.Monad.State.Strict (MonadState, execState, modify, runState)
 import Data.Foldable              (toList)
 import Data.List                  (find, partition)
 import Data.Map                   (insert)
 import Data.Maybe                 (isNothing, fromMaybe)
 import Data.Monoid                ((<>))
-import Data.Text                  (Text, isPrefixOf, unpack)
+import Data.Text                  (Text, isPrefixOf, pack, unpack)
 import System.Process             (readProcess)
 import System.IO.Temp             (writeSystemTempFile)
 
 import qualified Data.Map as Map (lookup)
 
-import Echidna.ABI (SolSignature)
+import Echidna.ABI    (SolSignature)
+import Echidna.Config (Config(..), gasLimit, solcArgs, defaultConfig)
 
 import EVM
   (Contract, VM, VMResult(..), contract, contracts, env, gas, loadContract, replaceCodeOfSelf, resetState, state)
-import EVM.Concrete (Blob(..))
+import EVM.Concrete (Blob(..), w256)
 import EVM.Exec     (exec, vmForEthrunCreation)
 import EVM.Keccak   (newContractAddress)
 import EVM.Solidity (abiMap, contractName, creationCode, methodInputs, methodName, readSolc, SolcContract)
@@ -55,17 +57,19 @@ solcArguments filePath argStr = args <> fromMaybe [] additional
         additional = words . unpack <$> argStr
 
 -- | reads all contracts within the solidity file at `filepath` and passes optional solc params to compiler
-readContracts :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> m [SolcContract]
-readContracts filePath solcArgs = liftIO solc >>= \case
-  Nothing -> throwM CompileFailure
-  Just m  -> return $ toList $ fst m
-  where solc = readSolc =<< writeSystemTempFile "" =<< readProcess
-          "solc" (solcArguments filePath solcArgs) ""
+readContracts :: (MonadIO m, MonadThrow m, MonadReader Config m) => FilePath -> m [SolcContract]
+readContracts filePath = do
+  conf <- ask
+  liftIO (solc conf) >>= \case
+    Nothing -> throwM CompileFailure
+    Just m  -> return $ toList $ fst m
+  where solc c = readSolc =<< writeSystemTempFile "" =<< readProcess
+          "solc" (solcArguments filePath (pack <$> (c ^. solcArgs))) ""
 
 -- | reads either the first contract found or the contract named `selectedContractName` within the solidity file at `filepath`
-readContract :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> Maybe Text -> m SolcContract
-readContract filePath selectedContractName solcArgs = do
-    cs <- readContracts filePath solcArgs
+readContract :: (MonadIO m, MonadThrow m, MonadReader Config m) => FilePath -> Maybe Text -> m SolcContract
+readContract filePath selectedContractName = do
+    cs <- readContracts filePath
     c <- chooseContract cs selectedContractName
     warn (isNothing selectedContractName && 1 < length cs) $
       "Multiple contracts found in file, only analyzing the first"
@@ -81,13 +85,17 @@ readContract filePath selectedContractName solcArgs = do
         warn p s = if p then liftIO $ print s else pure ()
 
 -- | loads the solidity file at `filePath` and selects either the default or specified contract to analyze
-loadSolidity :: (MonadIO m, MonadThrow m) => FilePath -> Maybe Text -> Maybe Text -> m (VM, [SolSignature], [Text])
-loadSolidity filePath selectedContract solcArgs = do
-    c <- readContract filePath selectedContract solcArgs
-    if c ^. creationCode == "" then throwM . NoBytecode $ c ^. contractName else pure ()
+
+loadSolidity :: (MonadIO m, MonadThrow m, MonadReader Config m)
+             => FilePath
+             -> Maybe Text
+             -> m (VM, [SolSignature], [Text])
+loadSolidity filePath selectedContract = do
+    conf <- ask
+    c    <- readContract filePath selectedContract
     let (VMSuccess (B bc), vm) = runState exec . vmForEthrunCreation $ c ^. creationCode
         load = do resetState
-                  assign (state . gas) 0xffffffffffffffff
+                  assign (state . gas) (w256 $ conf ^. gasLimit)
                   loadContract (vm ^. state . contract)
         loaded = execState load $ execState (replaceCodeOfSelf bc) vm
         abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
@@ -106,5 +114,6 @@ currentContract :: MonadThrow m => VM -> m Contract
 currentContract v = let a = v ^. state . contract in
   maybe (throwM $ BadAddr a) pure . Map.lookup a $ v ^. env . contracts
 
-addSolidity :: (MonadIO m, MonadThrow m, MonadState VM m) => FilePath -> Maybe Text -> Maybe Text -> m ()
-addSolidity f mc ma = insertContract =<< currentContract =<< view _1 <$> loadSolidity f mc ma
+
+addSolidity :: (MonadIO m, MonadThrow m, MonadState VM m) => FilePath -> Maybe Text -> m ()
+addSolidity f mc = insertContract =<< currentContract =<< view _1 <$> runReaderT (loadSolidity f mc) defaultConfig
