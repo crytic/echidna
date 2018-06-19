@@ -1,10 +1,13 @@
-{-# LANGUAGE DeriveGeneric, TemplateHaskell #-}
+{-# LANGUAGE DeriveGeneric, FlexibleContexts, TemplateHaskell #-}
 
 module Echidna.Config where
 
+import Control.Monad.Catch    (MonadThrow(..))
+import Control.Monad.IO.Class (MonadIO(..))
 import Control.Lens
+import Control.Exception      (Exception)
+import Control.Monad.Reader   (ReaderT, runReaderT, MonadReader)
 import Data.Aeson
---import Data.DoubleWord (Word256)
 import GHC.Generics
 
 import qualified Data.ByteString.Char8 as BS
@@ -33,10 +36,20 @@ defaultConfig = Config
   , _range = 10
   , _gasLimit = 0xffffffffffffffff }
 
-parseConfig :: FilePath -> IO Config
+withDefaultConfig :: ReaderT Config m a -> m a
+withDefaultConfig = (flip runReaderT) defaultConfig
+
+data ParseException = ParseException FilePath
+
+instance Show ParseException where
+  show (ParseException f) = "Could not parse config file " ++ (show f)
+
+instance Exception ParseException
+
+parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> m Config
 parseConfig file = do
-    content <- BS.readFile file
+    content <- liftIO $ BS.readFile file
     let parsedContent = Y.decode content :: Maybe Config
     case parsedContent of
-        Nothing -> error "Could not parse config file."
+        Nothing -> throwM (ParseException file)
         (Just c) -> return c  
