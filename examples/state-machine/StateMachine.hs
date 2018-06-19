@@ -74,7 +74,7 @@ prop_turnstile v = property $ do
 
 check_turnstile :: FilePath -> FilePath -> IO Bool
 check_turnstile dir fp = do putStrLn ("Checking " ++ fp ++ "...")
-                            (v,_,_) <- loadSolidity (dir ++ "/" ++ fp) Nothing Nothing
+                            (v,_,_) <- loadSolidity (dir ++ "/" ++ fp) Nothing Nothing Nothing
                             check (prop_turnstile v)
 
 main :: IO ()

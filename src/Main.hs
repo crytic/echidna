@@ -22,6 +22,7 @@ data Options = Options
   { filePath         :: FilePath
   , selectedContract :: Maybe String
   , solcArgs         :: Maybe String
+  , gasAmt           :: Maybe Int
   , covEpochs        :: Maybe Int }
 
 options :: Parser Options
@@ -36,6 +37,9 @@ options = Options
           ( long "solc-args"
          <> help "Optional solidity compiler arguments" ))
       <*> optional ( option auto
+          ( long "gas"
+         <> help "Optional amount of gas" ))
+      <*> optional ( option auto
           ( long "epochs"
          <> help "Optional number of epochs to run coverage guidance" ))
 
@@ -48,8 +52,8 @@ opts = info (options <**> helper)
 
 main :: IO ()
 main = do
-  (Options f c s n) <- execParser opts
-  (v,a,ts) <- loadSolidity f (pack <$> c) (pack <$> s)
+  (Options f c s g n) <- execParser opts
+  (v,a,ts) <- loadSolidity f (pack <$> c) (pack <$> s) g
 
   case n of
     -- RUN WITHOUT COVERAGE
