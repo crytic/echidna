@@ -6,7 +6,7 @@ import Control.Monad.Catch    (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Lens
 import Control.Exception      (Exception)
-import Control.Monad.Reader   (ReaderT, runReaderT, MonadReader)
+import Control.Monad.Reader   (ReaderT, runReaderT)
 import Data.Aeson
 import GHC.Generics
 
