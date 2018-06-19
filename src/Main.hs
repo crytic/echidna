@@ -73,6 +73,7 @@ main = do
       let prop (cov,t,mvar) =
             ePropertySeqCoverage cov mvar (flip checkETest t) a v >>= \x -> return (PropertyName $ show t, x)
 
+
       replicateM_ (config ^. epochs) $ do
         xs <- liftIO $ forM tests $ \(x,y) -> do
           cov <- readMVar y
