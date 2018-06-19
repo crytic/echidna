@@ -1,8 +1,10 @@
 {-# LANGUAGE BangPatterns, FlexibleContexts, KindSignatures,
-    LambdaCase, StrictData #-}
+    LambdaCase, StrictData, TemplateHaskell #-}
 
 module Echidna.Exec (
     checkETest
+  , CoverageInfo
+  , CoverageRef
   , eCommand
   , eCommandCoverage
   , ePropertySeq
@@ -46,7 +48,8 @@ import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
 
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions, mutateCall)
-import Echidna.Internal.Runner 
+import Echidna.Config (Config(..),testLimit,range)
+import Echidna.Internal.Runner
 
 
 --------------------------------------------------------------------
@@ -54,7 +57,6 @@ import Echidna.Internal.Runner
 
 type CoverageInfo = (SolCall, Set Int)
 type CoverageRef  = IORef CoverageInfo
-
 
 getCover :: [CoverageInfo] -> IO [SolCall]
 getCover [] = return []
@@ -163,45 +165,45 @@ eCommandCoverage cov p ts = case cov of
   xs -> map (\x -> eCommandUsing (choice [mutateCall x, genInteractions ts])
               (\(Call c) -> execCallCoverage c) p) xs
 
-ePropertyUsing :: (MonadCatch m, MonadTest m)
+ePropertyUsing :: (MonadCatch m, MonadTest m, MonadReader Config n)
              => [Command Gen m VMState]
              -> (m () -> PropertyT IO ())
-             -> VM          
-             -> Int        
-             -> Property
-ePropertyUsing cs f v n = mapConfig (\x -> x {propertyTestLimit = 10000}) . property $
-  f . executeSequential (VMState v) =<< forAllWith printCallSeq
-  (sequential (linear 1 n) (VMState v) cs)
+             -> VM             
+             -> n Property
+ePropertyUsing cs f v = do
+  config <- ask
+  return $ mapConfig (\x -> x {propertyTestLimit = fromIntegral $ config ^. testLimit}) . property $
+    f . executeSequential (VMState v) =<< forAllWith printCallSeq
+    (sequential (linear 1 (config ^. range)) (VMState v) cs)
   where printCallSeq = ("Call sequence: " ++) . intercalate "\n               " .
           map showCall . sequentialActions
         showCall (Action i _ _ _ _ _) = show i ++ ";"
 
 
-ePropertySeq :: (VM -> Bool)   -- Predicate to fuzz for violations of
+ePropertySeq :: (MonadReader Config m)
+             => (VM -> Bool)   -- Predicate to fuzz for violations of
              -> [SolSignature] -- Type signatures to fuzz
              -> VM             -- Initial state
-             -> Int            -- Max actions to execute
-             -> Property
+             -> m Property
 ePropertySeq p ts = ePropertyUsing [eCommand (genInteractions ts) p] id             
 
 
-ePropertySeqCoverage :: [SolCall]
+ePropertySeqCoverage :: (MonadReader Config m)
+                     => [SolCall]
                      -> MVar [CoverageInfo]
                      -> (VM -> Bool)
                      -> [SolSignature]
                      -> VM
-                     -> Int
-                     -> Property
-ePropertySeqCoverage calls cov p ts v = ePropertyUsing (eCommandCoverage calls p ts) writeCoverage v
-  where
-    writeCoverage :: MonadIO m => ReaderT CoverageRef (StateT VM m) a -> m a
-    writeCoverage m = do
-      threadCovRef <- liftIO $ newIORef mempty
-      let s = runReaderT m threadCovRef
-      a            <- evalStateT s v
-      threadCov    <- liftIO $ readIORef threadCovRef
-      liftIO $ modifyMVar_ cov (\xs -> pure $ threadCov:xs)
-      return a
+                     -> m Property
+ePropertySeqCoverage calls cov p ts v = ePropertyUsing (eCommandCoverage calls p ts) writeCoverage v 
+  where writeCoverage :: MonadIO m => ReaderT CoverageRef (StateT VM m) a -> m a
+        writeCoverage m = do
+          threadCovRef <- liftIO $ newIORef mempty
+          let s = runReaderT m threadCovRef
+          a         <- evalStateT s v
+          threadCov <- liftIO $ readIORef threadCovRef
+          liftIO $ modifyMVar_ cov (\xs -> pure $ threadCov:xs)
+          return a
   
 
 -- Should work, but missing instance MonadBaseControl b m => MonadBaseControl b (PropertyT m)
