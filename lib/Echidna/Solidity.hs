@@ -22,10 +22,10 @@ import System.IO.Temp             (writeSystemTempFile)
 import qualified Data.Map as Map (lookup)
 
 import Echidna.ABI    (SolSignature)
-import Echidna.Config (Config(..), gasLimit, solcArgs, defaultConfig)
+import Echidna.Config (Config(..), sender, contractAddr, gasLimit, solcArgs, defaultConfig)
 
 import EVM
-  (Contract, VM, VMResult(..), contract, contracts, env, gas, loadContract, replaceCodeOfSelf, resetState, state)
+  (Contract, VM, VMResult(..), caller, contract, codeContract, contracts, env, gas, loadContract, replaceCodeOfSelf, resetState, state)
 import EVM.Concrete (Blob(..), w256)
 import EVM.Exec     (exec, vmForEthrunCreation)
 import EVM.Keccak   (newContractAddress)
@@ -96,6 +96,9 @@ loadSolidity filePath selectedContract = do
     let (VMSuccess (B bc), vm) = runState exec . vmForEthrunCreation $ c ^. creationCode
         load = do resetState
                   assign (state . gas) (w256 $ conf ^. gasLimit)
+                  assign (state . contract) (conf ^. contractAddr)
+                  assign (state . codeContract) (conf ^. contractAddr)
+                  assign (state . caller) (conf ^. sender)
                   loadContract (vm ^. state . contract)
         loaded = execState load $ execState (replaceCodeOfSelf bc) vm
         abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap

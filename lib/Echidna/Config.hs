@@ -13,28 +13,38 @@ import GHC.Generics
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Yaml as Y
 
-import EVM.Types (W256)
+import EVM.Types (Addr, W256)
 
 
 data Config = Config
-  { _solcArgs :: Maybe String
-  , _epochs :: Int
-  , _testLimit :: Int
-  , _range :: Int
-  , _gasLimit :: W256 }
+  { _solcArgs     :: Maybe String
+  , _epochs       :: Int
+  , _testLimit    :: Int
+  , _range        :: Int
+  , _gasLimit     :: W256
+  , _contractAddr :: Addr
+  , _sender       :: Addr }
   deriving (Show, Generic)
 
 makeLenses ''Config
 
 instance FromJSON Config
 
+defaultContractAddr :: Addr
+defaultContractAddr = 0x00a329c0648769a73afac7f9381e08fb43dbea72
+
+defaultSender :: Addr
+defaultSender = 0x00a329c0648769a73afac7f9381e08fb43dbea70
+
 defaultConfig :: Config
 defaultConfig = Config
-  { _solcArgs = Nothing
-  , _epochs = 2
-  , _testLimit = 10000
-  , _range = 10
-  , _gasLimit = 0xffffffffffffffff }
+  { _solcArgs     = Nothing
+  , _epochs       = 2
+  , _testLimit    = 10000
+  , _range        = 10
+  , _gasLimit     = 0xffffffffffffffff
+  , _contractAddr = defaultContractAddr
+  , _sender       = defaultSender }
 
 withDefaultConfig :: ReaderT Config m a -> m a
 withDefaultConfig = (flip runReaderT) defaultConfig
