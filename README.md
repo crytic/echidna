@@ -70,9 +70,9 @@ For each unit test it finds, it will execute a fuzzing campaign to try and find 
 An example contract with tests can be found [solidity/cli.sol](solidity/cli.sol)
 `echidna-test solidity/cli.sol` should find a call sequence such that `echidna_sometimesfalse` fails, but be unable to do so for `echidna_alwaystrue`.
 
-Echidna can be customized with a variety of command line arguments. Users can pass options command line arguments to choose the contract to test, turn on coverage guided testing, and load a configuration file
+Echidna can be customized with a variety of command line arguments. Users can pass optional command line arguments to choose the contract to test, turn on coverage guided testing, and load a configuration file. For example:
 ```
-echidna-test FILE CONTRACT --coverage --config=CONFIG
+echidna-test solidity/cli.sol solidity/cli.sol:Test --coverage --config="solidity/config.yaml"
 ```
 The configuration file allows users to choose various EVM and test generation parameters within Echidna and is in yaml format. An example config file, along with documentation, can be found at [solidity/config.yaml](solidity/config.yaml)
 
