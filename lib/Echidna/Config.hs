@@ -23,12 +23,16 @@ data Config = Config
   , _range        :: Int
   , _gasLimit     :: W256
   , _contractAddr :: Addr
-  , _sender       :: Addr }
+  , _sender       :: Addr
+  , _addrList     :: Maybe [Addr] }
   deriving (Show, Generic)
 
 makeLenses ''Config
 
 instance FromJSON Config
+
+------------------------------------
+-- Defaults
 
 defaultContractAddr :: Addr
 defaultContractAddr = 0x00a329c0648769a73afac7f9381e08fb43dbea72
@@ -44,10 +48,15 @@ defaultConfig = Config
   , _range        = 10
   , _gasLimit     = 0xffffffffffffffff
   , _contractAddr = defaultContractAddr
-  , _sender       = defaultSender }
+  , _sender       = defaultSender
+  , _addrList     = Nothing }
 
 withDefaultConfig :: ReaderT Config m a -> m a
 withDefaultConfig = (flip runReaderT) defaultConfig
+
+
+------------------------------------
+-- Parser
 
 data ParseException = ParseException FilePath
 
