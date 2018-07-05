@@ -99,7 +99,7 @@ loadSolidity filePath selectedContract = do
                   loadContract (vm ^. state . contract)
         loaded = execState load $ execState (replaceCodeOfSelf bc) vm
         abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
-        (tests, funs) = partition (isPrefixOf "echidna_" . fst) abi
+        (tests, funs) = partition (isPrefixOf "deepstate_" . fst) abi
     case find (not . null . snd) tests of
       Nothing      -> return (loaded, funs, fst <$> tests)
       (Just (t,_)) -> throwM $ TestArgsFound t
