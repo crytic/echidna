@@ -15,6 +15,7 @@ import Data.Semigroup          ((<>))
 import Echidna.Config
 import Echidna.Exec
 import Echidna.Solidity
+import Echidna.Property
 
 import Hedgehog hiding (checkParallel)
 import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
@@ -55,15 +56,15 @@ main = do
   -- Read cmd line options and load config
   (Options file contract coverage configFile) <- execParser opts
   config <- maybe (pure defaultConfig) parseConfig configFile
+  let f = checkTest (config ^. propertyType)
 
   (flip runReaderT) config $ do
     -- Load solidity contract and get VM
     (v,a,ts) <- loadSolidity file (pack <$> contract)
-
     if not coverage
       -- Run without coverage
       then do
-      let prop t = ePropertySeq (flip checkETest t) a v >>= \x -> return (PropertyName $ show t, x)
+      let prop t = ePropertySeq (flip f t) a v >>= \x -> return (PropertyName $ show t, x)
       _ <- checkParallel . Group (GroupName file) =<< mapM prop ts
       return ()
 
@@ -71,7 +72,7 @@ main = do
       else do
       tests <- liftIO $ mapM (\t -> fmap (t,) (newMVar [])) ts
       let prop (cov,t,mvar) =
-            ePropertySeqCoverage cov mvar (flip checkETest t) a v >>= \x -> return (PropertyName $ show t, x)
+            ePropertySeqCoverage cov mvar (flip f t) a v >>= \x -> return (PropertyName $ show t, x)
 
 
       replicateM_ (config ^. epochs) $ do
@@ -86,3 +87,8 @@ main = do
       ls <- liftIO $ mapM (readMVar . snd) tests
       let l = size $ foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
       liftIO $ putStrLn $ "Coverage: " ++ show l ++ " unique PCs"
+
+checkTest :: PropertyType -> TestFunction
+checkTest ShouldReturnTrue  = checkETest True
+checkTest ShouldReturnFalse = checkETest False
+checkTest ShouldRevert      = checkRTest

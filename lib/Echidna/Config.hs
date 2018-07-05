@@ -15,11 +15,13 @@ import qualified Data.Yaml as Y
 
 import EVM.Types (W256)
 
+import Echidna.Property
 
 data Config = Config
   { _solcArgs :: Maybe String
   , _epochs :: Int
   , _testLimit :: Int
+  , _propertyType :: PropertyType
   , _range :: Int
   , _gasLimit :: W256 }
   deriving (Show, Generic)
@@ -32,6 +34,7 @@ defaultConfig :: Config
 defaultConfig = Config
   { _solcArgs = Nothing
   , _epochs = 2
+  , _propertyType = ShouldReturnTrue
   , _testLimit = 10000
   , _range = 10
   , _gasLimit = 0xffffffffffffffff }

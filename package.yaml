@@ -40,6 +40,7 @@ library:
     - Echidna.Config
     - Echidna.Exec
     - Echidna.Solidity
+    - Echidna.Property
 
 executables:
   echidna-test:

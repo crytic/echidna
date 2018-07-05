@@ -2,7 +2,9 @@
     LambdaCase, StrictData, TemplateHaskell #-}
 
 module Echidna.Exec (
-    checkETest
+    TestFunction
+  , checkETest
+  , checkRTest
   , CoverageInfo
   , CoverageRef
   , eCommand
@@ -42,7 +44,7 @@ import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
 import Hedgehog.Range             (linear)
 
-import EVM          (VM, VMResult(..), calldata, exec1, pc, result, stack, state)
+import EVM          (VM, VMResult(..), Error(Revert), calldata, exec1, pc, result, stack, state)
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
@@ -121,10 +123,17 @@ fuzz l n ts v p = do
     where run cs = p $ execState (forM_ cs execCall) v
 
 
-checkETest :: VM -> Text -> Bool
-checkETest v t = case evalState (execCall (t, [])) v of
-  VMSuccess (B s) -> s == encodeAbiValue (AbiBool True)
+type TestFunction = VM -> Text -> Bool
+
+checkETest :: Bool -> TestFunction
+checkETest b v t = case evalState (execCall (t, [])) v of
+  VMSuccess (B s) -> s == encodeAbiValue (AbiBool b)
   _               -> False
+
+checkRTest :: TestFunction
+checkRTest v t = case evalState (execCall (t, [])) v of
+  (VMFailure Revert) -> False
+  _                  -> True
 
 
 newtype VMState (v :: * -> *) =
