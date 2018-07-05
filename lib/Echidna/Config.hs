@@ -21,7 +21,9 @@ data Config = Config
   , _epochs :: Int
   , _testLimit :: Int
   , _range :: Int
-  , _gasLimit :: W256 }
+  , _gasLimit :: W256 
+  , _shrinkLimit :: W256 
+  }
   deriving (Show, Generic)
 
 makeLenses ''Config
@@ -34,7 +36,8 @@ defaultConfig = Config
   , _epochs = 2
   , _testLimit = 10000
   , _range = 10
-  , _gasLimit = 0xffffffffffffffff }
+  , _gasLimit = 0xffffffffffffffff
+  , _shrinkLimit = 1000 }
 
 withDefaultConfig :: ReaderT Config m a -> m a
 withDefaultConfig = (flip runReaderT) defaultConfig

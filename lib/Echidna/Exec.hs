@@ -48,7 +48,7 @@ import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
 
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions, mutateCall)
-import Echidna.Config (Config(..),testLimit,range)
+import Echidna.Config (Config(..), testLimit, shrinkLimit, range)
 import Echidna.Internal.Runner
 
 
@@ -165,6 +165,11 @@ eCommandCoverage cov p ts = case cov of
   xs -> map (\x -> eCommandUsing (choice [mutateCall x, genInteractions ts])
               (\(Call c) -> execCallCoverage c) p) xs
 
+configProperty :: Config -> PropertyConfig -> PropertyConfig
+configProperty config = \x -> x { propertyTestLimit = fromIntegral $ config ^. testLimit
+                                , propertyShrinkLimit = fromIntegral $ config ^. shrinkLimit
+                                }
+
 ePropertyUsing :: (MonadCatch m, MonadTest m, MonadReader Config n)
              => [Command Gen m VMState]
              -> (m () -> PropertyT IO ())
@@ -172,7 +177,7 @@ ePropertyUsing :: (MonadCatch m, MonadTest m, MonadReader Config n)
              -> n Property
 ePropertyUsing cs f v = do
   config <- ask
-  return $ mapConfig (\x -> x {propertyTestLimit = fromIntegral $ config ^. testLimit}) . property $
+  return $ mapConfig (configProperty config) . property $
     f . executeSequential (VMState v) =<< forAllWith printCallSeq
     (sequential (linear 1 (config ^. range)) (VMState v) cs)
   where printCallSeq = ("Call sequence: " ++) . intercalate "\n               " .
