@@ -5,6 +5,7 @@ module Echidna.Exec (
     TestFunction
   , checkETest
   , checkRTest
+  , checkERTest
   , CoverageInfo
   , CoverageRef
   , eCommand
@@ -132,8 +133,15 @@ checkETest b v t = case evalState (execCall (t, [])) v of
 
 checkRTest :: TestFunction
 checkRTest v t = case evalState (execCall (t, [])) v of
-  (VMFailure Revert) -> False
-  _                  -> True
+  (VMFailure Revert) -> True
+  _                  -> False
+
+checkERTest :: TestFunction
+checkERTest v t = case evalState (execCall (t, [])) v of
+  (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool False)
+  (VMFailure Revert) -> True
+  _                  -> False
+
 
 
 newtype VMState (v :: * -> *) =

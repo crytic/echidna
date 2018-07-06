@@ -21,7 +21,7 @@ data Config = Config
   { _solcArgs :: Maybe String
   , _epochs :: Int
   , _testLimit :: Int
-  , _propertyType :: PropertyType
+  , _returnType :: PropertyType
   , _range :: Int
   , _gasLimit :: W256 }
   deriving (Show, Generic)
@@ -34,7 +34,7 @@ defaultConfig :: Config
 defaultConfig = Config
   { _solcArgs = Nothing
   , _epochs = 2
-  , _propertyType = ShouldReturnTrue
+  , _returnType = ShouldReturnTrue
   , _testLimit = 10000
   , _range = 10
   , _gasLimit = 0xffffffffffffffff }

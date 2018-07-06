@@ -29,6 +29,7 @@ dependencies:
   - vector               >= 0.11.0 && < 0.13
   - wl-pprint-annotated
   - yaml
+  - unordered-containers
 
 default-extensions:
   - OverloadedStrings

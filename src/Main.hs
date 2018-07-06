@@ -56,7 +56,7 @@ main = do
   -- Read cmd line options and load config
   (Options file contract coverage configFile) <- execParser opts
   config <- maybe (pure defaultConfig) parseConfig configFile
-  let f = checkTest (config ^. propertyType)
+  let f = checkTest (config ^. returnType)
 
   (flip runReaderT) config $ do
     -- Load solidity contract and get VM
@@ -89,6 +89,7 @@ main = do
       liftIO $ putStrLn $ "Coverage: " ++ show l ++ " unique PCs"
 
 checkTest :: PropertyType -> TestFunction
-checkTest ShouldReturnTrue  = checkETest True
-checkTest ShouldReturnFalse = checkETest False
-checkTest ShouldRevert      = checkRTest
+checkTest ShouldReturnTrue             = checkETest True
+checkTest ShouldReturnFalse            = checkETest False
+checkTest ShouldRevert                 = checkRTest
+checkTest ShouldReturnFalseRevert      = checkERTest
