@@ -32,13 +32,13 @@ instance FromJSON Config where
                                 <*> v .:? "gasLimit"  .!= 0xffffffffffffffff 
   parseJSON _          = parseJSON (Object mempty)
 
-data ParseException = ParseException FilePath
+newtype ParseException = ParseException FilePath
 
 defaultConfig :: Config
 defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEither ""
 
 instance Show ParseException where
-  show (ParseException f) = "Could not parse config file " ++ (show f)
+  show (ParseException f) = "Could not parse config file " ++ show f
 
 instance Exception ParseException
 
