@@ -1,5 +1,5 @@
 {-# LANGUAGE BangPatterns, FlexibleContexts, KindSignatures,
-    LambdaCase, StrictData, TemplateHaskell #-}
+    LambdaCase, StrictData #-}
 
 module Echidna.Exec (
     checkETest

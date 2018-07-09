@@ -71,7 +71,7 @@ readContract :: (MonadIO m, MonadThrow m, MonadReader Config m) => FilePath -> M
 readContract filePath selectedContractName = do
     cs <- readContracts filePath
     c <- chooseContract cs selectedContractName
-    warn (isNothing selectedContractName && 1 < length cs) $
+    warn (isNothing selectedContractName && 1 < length cs)
       "Multiple contracts found in file, only analyzing the first"
     liftIO $ print $ "Analyzing contract: " <> c ^. contractName
     return c

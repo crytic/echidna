@@ -74,11 +74,11 @@ genAbiAddress = let w64 = Gen.word64 $ constant minBound maxBound in
 
 genAbiUInt :: MonadGen m => Int -> m AbiValue
 genAbiUInt n = AbiUInt n . fromInteger <$> genUInt
-               where genUInt = Gen.integral $ exponential 0 $ 2^(toInteger n) - 1
+               where genUInt = Gen.integral $ exponential 0 $ 2 ^ toInteger n - 1
 
 genAbiInt :: MonadGen m => Int -> m AbiValue
 genAbiInt n = AbiInt n . fromInteger <$> genInt
-              where genInt = Gen.integral $ exponentialFrom 0 (-1 * 2 ^ (toInteger n)) (2 ^ (toInteger n - 1))
+              where genInt = Gen.integral $ exponentialFrom 0 (-1 * 2 ^ toInteger n) (2 ^ (toInteger n - 1))
 
 genAbiBool :: MonadGen m => m AbiValue
 genAbiBool = AbiBool <$> Gen.bool
