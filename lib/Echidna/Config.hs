@@ -14,6 +14,8 @@ import qualified Data.Yaml as Y
 
 import EVM.Types (Addr, W256)
 
+import Echidna.Property
+
 data Config = Config
   { _solcArgs     :: Maybe String
   , _epochs       :: Int
@@ -23,6 +25,9 @@ data Config = Config
   , _contractAddr :: Addr
   , _sender       :: Addr
   , _addrList     :: Maybe [Addr] }
+  , _gasLimit     :: W256 
+  , _shrinkLimit  :: W256 
+  }
   deriving Show
 
 makeLenses ''Config
@@ -36,6 +41,8 @@ instance FromJSON Config where
                                 <*> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                                 <*> v .:? "sender"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                                 <*> v .:? "addrList"     .!= Nothing
+                                <*> v .:? "gasLimit"     .!= 0xffffffffffffffff
+                                <*> v .:? "shrinkLimit"  .!= 1000 
   parseJSON _          = parseJSON (Object mempty)
 
 newtype ParseException = ParseException FilePath

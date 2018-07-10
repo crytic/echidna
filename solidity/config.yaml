@@ -1,4 +1,3 @@
-
 #Arguments to solc
 #solcArgs:
 #Choose the number of epochs to use in coverage-guided testing
@@ -15,3 +14,7 @@ contractAddr: 0x00a329c0648769a73afac7f9381e08fb43dbea72
 sender: 0x00a329c0648769a73afac7f9381e08fb43dbea70
 #List of addresses that will be used in all tests
 #addrList:
+#Gas limit
+#gasLimit
+#Shrink Limit
+shrinkLimit: 1000
