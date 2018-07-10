@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveGeneric, FlexibleContexts, TemplateHaskell #-}
-
 module Echidna.Property where
 
 import qualified Data.HashMap.Lazy as HML  ( lookup )
