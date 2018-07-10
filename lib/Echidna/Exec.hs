@@ -2,7 +2,11 @@
     LambdaCase, StrictData #-}
 
 module Echidna.Exec (
-    checkETest
+    checkTest
+  , checkBoolExpTest
+  , checkRevertTest
+  , checkTrueOrRevertTest
+  , checkFalseOrRevertTest
   , CoverageInfo
   , CoverageRef
   , eCommand
@@ -39,7 +43,7 @@ import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
 import Hedgehog.Range             (linear)
 
-import EVM          (VM, VMResult(..), calldata, exec1, pc, result, stack, state)
+import EVM          (VM, VMResult(..), Error(Revert), calldata, exec1, pc, result, stack, state)
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
@@ -47,7 +51,7 @@ import EVM.Exec     (exec)
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions, mutateCall)
 import Echidna.Config (Config(..),testLimit,range)
 import Echidna.Internal.Runner
-
+import Echidna.Property (PropertyType(..))
 
 --------------------------------------------------------------------
 -- COVERAGE HANDLING
@@ -104,10 +108,33 @@ execCallCoverage sol = execCallUsing (go empty) sol where
 -------------------------------------------------------------------
 -- Fuzzing and Hedgehog Init
 
-checkETest :: VM -> Text -> Bool
-checkETest v t = case evalState (execCall (t, [])) v of
-  VMSuccess (B s) -> s == encodeAbiValue (AbiBool True)
+checkTest :: PropertyType -> VM -> Text -> Bool
+checkTest ShouldReturnTrue             = checkBoolExpTest True
+checkTest ShouldReturnFalse            = checkBoolExpTest False
+checkTest ShouldRevert                 = checkRevertTest
+checkTest ShouldReturnFalseRevert      = checkFalseOrRevertTest
+
+checkBoolExpTest :: Bool -> VM -> Text -> Bool
+checkBoolExpTest b v t = case evalState (execCall (t, [])) v of
+  VMSuccess (B s) -> s == encodeAbiValue (AbiBool b)
   _               -> False
+
+checkRevertTest :: VM -> Text -> Bool
+checkRevertTest v t = case evalState (execCall (t, [])) v of
+  (VMFailure Revert) -> True
+  _                  -> False
+
+checkTrueOrRevertTest :: VM -> Text -> Bool
+checkTrueOrRevertTest v t = case evalState (execCall (t, [])) v of
+  (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool True)
+  (VMFailure Revert) -> True
+  _                  -> False
+
+checkFalseOrRevertTest :: VM -> Text -> Bool
+checkFalseOrRevertTest v t = case evalState (execCall (t, [])) v of
+  (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool False)
+  (VMFailure Revert) -> True
+  _                  -> False
 
 
 newtype VMState (v :: * -> *) =
