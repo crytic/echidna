@@ -2,12 +2,11 @@
 
 module Echidna.Property where
 
-import GHC.Generics
-import qualified Data.HashMap.Lazy as HML        ( lookup )
-import Data.Yaml
+import qualified Data.HashMap.Lazy as HML  ( lookup )
+import Data.Yaml                           ( Value(..), FromJSON, parseJSON )
 
 data PropertyType = ShouldReturnTrue | ShouldReturnFalse | ShouldRevert | ShouldReturnFalseRevert
-  deriving (Show, Generic)
+  deriving (Show)
 
 instance FromJSON PropertyType where
   parseJSON (Object o) = case HML.lookup "value" o of
