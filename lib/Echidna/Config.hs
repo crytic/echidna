@@ -12,31 +12,37 @@ import Data.Aeson
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Yaml as Y
 
-import EVM.Types (W256)
+import Echidna.Property (PropertyType(..))
 
-import Echidna.Property
+import EVM.Types (Addr, W256)
 
 data Config = Config
-  { _solcArgs :: Maybe String
-  , _epochs :: Int
-  , _testLimit :: Int
-  , _returnType :: PropertyType
-  , _range :: Int
-  , _gasLimit :: W256 
-  , _shrinkLimit :: W256 
+  { _solcArgs     :: Maybe String
+  , _epochs       :: Int
+  , _testLimit    :: Int
+  , _range        :: Int
+  , _contractAddr :: Addr
+  , _sender       :: Addr
+  , _addrList     :: Maybe [Addr]
+  , _gasLimit     :: W256 
+  , _shrinkLimit  :: W256 
+  , _returnType   :: PropertyType
   }
   deriving Show
 
 makeLenses ''Config
 
 instance FromJSON Config where
-  parseJSON (Object v) = Config <$> v .:? "solcArgs"    .!= Nothing
-                                <*> v .:? "epochs"      .!= 2
-                                <*> v .:? "testLimit"   .!= 10000
-                                <*> v .:? "return"      .!= ShouldReturnTrue
-                                <*> v .:? "range"       .!= 10
-                                <*> v .:? "gasLimit"    .!= 0xffffffffffffffff
-                                <*> v .:? "shrinkLimit" .!= 1000 
+  parseJSON (Object v) = Config <$> v .:? "solcArgs"     .!= Nothing
+                                <*> v .:? "epochs"       .!= 2
+                                <*> v .:? "testLimit"    .!= 10000
+                                <*> v .:? "range"        .!= 10
+                                <*> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
+                                <*> v .:? "sender"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                                <*> v .:? "addrList"     .!= Nothing
+                                <*> v .:? "gasLimit"     .!= 0xffffffffffffffff
+                                <*> v .:? "shrinkLimit"  .!= 1000 
+                                <*> v .:? "return"       .!= ShouldReturnTrue
   parseJSON _          = parseJSON (Object mempty)
 
 newtype ParseException = ParseException FilePath

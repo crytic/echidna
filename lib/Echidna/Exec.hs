@@ -169,10 +169,10 @@ eCommand = flip eCommandUsing (\ _ -> pure ())
 
 
 eCommandCoverage :: (MonadGen n, MonadTest m, MonadState VM m, MonadReader CoverageRef m, MonadIO m)
-                 => [SolCall] -> (VM -> Bool) -> [SolSignature] -> [Command n m VMState]
-eCommandCoverage cov p ts = case cov of
-  [] -> [eCommandUsing (genInteractions ts) (\(Call c) -> execCallCoverage c) p]
-  xs -> map (\x -> eCommandUsing (choice [mutateCall x, genInteractions ts])
+                 => [SolCall] -> (VM -> Bool) -> [SolSignature] -> Config -> [Command n m VMState]
+eCommandCoverage cov p ts conf = let useConf = flip runReaderT conf in case cov of
+  [] -> [eCommandUsing (useConf $ genInteractions ts) (\(Call c) -> execCallCoverage c) p]
+  xs -> map (\x -> eCommandUsing (choice $ useConf <$> [mutateCall x, genInteractions ts])
               (\(Call c) -> execCallCoverage c) p) xs
 
 configProperty :: Config -> PropertyConfig -> PropertyConfig
@@ -200,7 +200,7 @@ ePropertySeq :: (MonadReader Config m)
              -> [SolSignature] -- Type signatures to fuzz
              -> VM             -- Initial state
              -> m Property
-ePropertySeq p ts = ePropertyUsing [eCommand (genInteractions ts) p] id             
+ePropertySeq p ts vm = ask >>= \c -> ePropertyUsing [eCommand (runReaderT (genInteractions ts) c) p] id vm
 
 
 ePropertySeqCoverage :: (MonadReader Config m)
@@ -210,7 +210,7 @@ ePropertySeqCoverage :: (MonadReader Config m)
                      -> [SolSignature]
                      -> VM
                      -> m Property
-ePropertySeqCoverage calls cov p ts v = ePropertyUsing (eCommandCoverage calls p ts) writeCoverage v 
+ePropertySeqCoverage calls cov p ts v = ask >>= \c -> ePropertyUsing (eCommandCoverage calls p ts c) writeCoverage v 
   where writeCoverage :: MonadIO m => ReaderT CoverageRef (StateT VM m) a -> m a
         writeCoverage m = do
           threadCovRef <- liftIO $ newIORef mempty
