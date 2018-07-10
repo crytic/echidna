@@ -55,15 +55,15 @@ main = do
   -- Read cmd line options and load config
   (Options file contract coverage configFile) <- execParser opts
   config <- maybe (pure defaultConfig) parseConfig configFile
+  let f = checkTest (config ^. returnType)
 
   flip runReaderT config $ do
     -- Load solidity contract and get VM
     (v,a,ts) <- loadSolidity file (pack <$> contract)
-
     if not coverage
       -- Run without coverage
       then do
-      let prop t = ePropertySeq (`checkETest` t) a v >>= \x -> return (PropertyName $ show t, x)
+      let prop t = ePropertySeq (`f` t) a v >>= \x -> return (PropertyName $ show t, x)
       _ <- checkParallel . Group (GroupName file) =<< mapM prop ts
       return ()
 
@@ -71,8 +71,7 @@ main = do
       else do
       tests <- liftIO $ mapM (\t -> fmap (t,) (newMVar [])) ts
       let prop (cov,t,mvar) =
-            ePropertySeqCoverage cov mvar (`checkETest` t) a v >>= \x -> return (PropertyName $ show t, x)
-
+            ePropertySeqCoverage cov mvar (`f` t) a v >>= \x -> return (PropertyName $ show t, x)
 
       replicateM_ (config ^. epochs) $ do
         xs <- liftIO $ forM tests $ \(x,y) -> do
