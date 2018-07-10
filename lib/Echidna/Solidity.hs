@@ -8,7 +8,7 @@ import Control.Exception          (Exception)
 import Control.Monad              (liftM2)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
-import Control.Monad.Reader       (MonadReader, ask, runReaderT)
+import Control.Monad.Reader       (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, execState, modify, runState)
 import Data.Foldable              (toList)
 import Data.List                  (find, partition)
@@ -23,6 +23,7 @@ import qualified Data.Map as Map (lookup)
 
 import Echidna.ABI    (SolSignature)
 import Echidna.Config (Config(..), sender, contractAddr, gasLimit, solcArgs, defaultConfig)
+
 
 import EVM
   (Contract, VM, VMResult(..), caller, contract, codeContract, contracts, env, gas, loadContract, replaceCodeOfSelf, resetState, state)
@@ -71,7 +72,7 @@ readContract :: (MonadIO m, MonadThrow m, MonadReader Config m) => FilePath -> M
 readContract filePath selectedContractName = do
     cs <- readContracts filePath
     c <- chooseContract cs selectedContractName
-    warn (isNothing selectedContractName && 1 < length cs) $
+    warn (isNothing selectedContractName && 1 < length cs)
       "Multiple contracts found in file, only analyzing the first"
     liftIO $ print $ "Analyzing contract: " <> c ^. contractName
     return c
@@ -117,6 +118,5 @@ currentContract :: MonadThrow m => VM -> m Contract
 currentContract v = let a = v ^. state . contract in
   maybe (throwM $ BadAddr a) pure . Map.lookup a $ v ^. env . contracts
 
-
-addSolidity :: (MonadIO m, MonadThrow m, MonadState VM m) => FilePath -> Maybe Text -> m ()
-addSolidity f mc = insertContract =<< currentContract =<< view _1 <$> runReaderT (loadSolidity f mc) defaultConfig
+addSolidity :: (MonadIO m, MonadReader Config m, MonadState VM m, MonadThrow m) => FilePath -> Maybe Text -> m ()
+addSolidity f mc = insertContract =<< currentContract =<< view _1 <$> loadSolidity f mc

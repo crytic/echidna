@@ -1,5 +1,5 @@
 {-# LANGUAGE BangPatterns, FlexibleContexts, KindSignatures,
-    LambdaCase, StrictData, TemplateHaskell #-}
+    LambdaCase, StrictData #-}
 
 module Echidna.Exec (
     checkETest
@@ -34,7 +34,7 @@ import qualified Data.Vector.Mutable as M
 import qualified Data.Vector as V
 
 import Hedgehog
-import Hedgehog.Gen               (sequential)
+import Hedgehog.Gen               (choice, sequential)
 import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
 import Hedgehog.Range             (linear)
@@ -145,8 +145,9 @@ eCommandCoverage :: (MonadGen n, MonadTest m, MonadState VM m, MonadReader Cover
                  => [SolCall] -> (VM -> Bool) -> [SolSignature] -> Config -> [Command n m VMState]
 eCommandCoverage cov p ts conf = let useConf = flip runReaderT conf in case cov of
   [] -> [eCommandUsing (useConf $ genInteractions ts) (\(Call c) -> execCallCoverage c) p]
-  xs -> map (\x -> eCommandUsing (useConf $ mutateCall x)
+  xs -> map (\x -> eCommandUsing (choice [mutateCall x, genInteractions ts])
               (\(Call c) -> execCallCoverage c) p) xs
+
 
 ePropertyUsing :: (MonadCatch m, MonadTest m, MonadReader Config n)
              => [Command Gen m VMState]
@@ -187,14 +188,3 @@ ePropertySeqCoverage calls cov p ts v = ask >>= \c -> ePropertyUsing (eCommandCo
           threadCov <- liftIO $ readIORef threadCovRef
           liftIO $ modifyMVar_ cov (\xs -> pure $ threadCov:xs)
           return a
-  
-
--- Should work, but missing instance MonadBaseControl b m => MonadBaseControl b (PropertyT m)
--- ePropertyPar :: VM                  -- Initial state
-             -- -> [(Text, [AbiType])] -- Type signatures to fuzz
-             -- -> (VM -> Bool)        -- Predicate to fuzz for violations of
-             -- -> Int                 -- Max size
-             -- -> Int                 -- Max post-prefix size
-             -- -> Property
--- ePropertyPar v ts p n m = withRetries 10 . property $ executeParallel (Current v) =<<
---   forAll (parallel (linear 1 n) (linear 1 m) (Current v) [eCommand v ts p])
