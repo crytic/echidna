@@ -22,18 +22,21 @@ data Config = Config
   , _testLimit :: Int
   , _returnType :: PropertyType
   , _range :: Int
-  , _gasLimit :: W256 }
+  , _gasLimit :: W256 
+  , _shrinkLimit :: W256 
+  }
   deriving Show
 
 makeLenses ''Config
 
 instance FromJSON Config where
-  parseJSON (Object v) = Config <$> v .:? "solcArgs"  .!= Nothing
-                                <*> v .:? "epochs"    .!= 2
-                                <*> v .:? "testLimit" .!= 10000
-                                <*> v .:? "return"    .!= ShouldReturnTrue
-                                <*> v .:? "range"     .!= 10
-                                <*> v .:? "gasLimit"  .!= 0xffffffffffffffff 
+  parseJSON (Object v) = Config <$> v .:? "solcArgs"    .!= Nothing
+                                <*> v .:? "epochs"      .!= 2
+                                <*> v .:? "testLimit"   .!= 10000
+                                <*> v .:? "return"      .!= ShouldReturnTrue
+                                <*> v .:? "range"       .!= 10
+                                <*> v .:? "gasLimit"    .!= 0xffffffffffffffff
+                                <*> v .:? "shrinkLimit" .!= 1000 
   parseJSON _          = parseJSON (Object mempty)
 
 newtype ParseException = ParseException FilePath
