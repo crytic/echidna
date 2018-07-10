@@ -5,6 +5,7 @@ module Echidna.Exec (
     checkTest
   , checkBoolExpTest
   , checkRevertTest
+  , checkTrueOrRevertTest
   , checkFalseOrRevertTest
   , CoverageInfo
   , CoverageRef
@@ -136,6 +137,12 @@ checkBoolExpTest b v t = case evalState (execCall (t, [])) v of
 
 checkRevertTest :: VM -> Text -> Bool
 checkRevertTest v t = case evalState (execCall (t, [])) v of
+  (VMFailure Revert) -> True
+  _                  -> False
+
+checkTrueOrRevertTest :: VM -> Text -> Bool
+checkTrueOrRevertTest v t = case evalState (execCall (t, [])) v of
+  (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool True)
   (VMFailure Revert) -> True
   _                  -> False
 
