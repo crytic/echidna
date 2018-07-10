@@ -1,4 +1,4 @@
-{-# LANGUAGE ConstraintKinds, FlexibleContexts, RankNTypes, TupleSections, TypeFamilies #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts, LambdaCase, RankNTypes, TupleSections, TypeFamilies #-}
 
 module Echidna.ABI (
     SolCall
@@ -26,7 +26,7 @@ module Echidna.ABI (
 
 import Control.Lens          ((<&>), (&), view)
 import Control.Monad         (join, liftM2, replicateM)
-import Control.Monad.Reader  (MonadReader, asks, runReaderT)
+import Control.Monad.Reader  (MonadReader)
 import Data.Bool             (bool)
 import Data.DoubleWord       (Word128(..), Word160(..))
 import Data.Monoid           ((<>))
@@ -71,10 +71,11 @@ encodeSig n ts = n <> "(" <> T.intercalate "," (map abiTypeSolidity ts) <> ")"
 genSize :: MonadGen m => m Int
 genSize = (8 *) <$> Gen.enum 1 32
 
-genAbiAddress :: MonadGen m => Maybe [Addr] -> m AbiValue
-genAbiAddress (Just xs) = fmap (AbiAddress . addressWord160) (Gen.element xs)
-genAbiAddress _ = let w64 = Gen.word64 $ constant minBound maxBound in
-  fmap AbiAddress . liftM2 Word160 Gen.enumBounded $ liftM2 Word128 w64 w64
+genAbiAddress :: (MonadGen m, MonadReader Config m) => m AbiValue
+genAbiAddress = view addrList >>= \case (Just xs) -> fmap (AbiAddress . addressWord160) (Gen.element xs)
+                                        Nothing   -> let w64 = Gen.word64 $ constant minBound maxBound in
+                                                       fmap AbiAddress . liftM2 Word160 Gen.enumBounded
+                                                                           $ liftM2 Word128 w64 w64
 
 genAbiUInt :: MonadGen m => Int -> m AbiValue
 genAbiUInt n = AbiUInt n . fromInteger <$> genUInt
@@ -117,7 +118,7 @@ genVecOfType :: (MonadReader Config m, MonadGen m) => AbiType -> Range Int -> m 
 genVecOfType t r = fmap fromList . Gen.list r $ case t of
   AbiUIntType    n    -> genAbiUInt n
   AbiIntType     n    -> genAbiInt n
-  AbiAddressType      -> genAbiAddress =<< asks (view addrList)
+  AbiAddressType      -> genAbiAddress
   AbiBoolType         -> genAbiBool
   AbiBytesType   n    -> genAbiBytes n
   AbiArrayType   n t' -> genAbiArray n t'
@@ -132,7 +133,7 @@ genAbiArray n t = AbiArray n t <$> genVecOfType t (singleton n)
 genAbiValue :: (MonadReader Config m, MonadGen m) => m AbiValue
 genAbiValue = Gen.choice [ genAbiUInt =<< genSize
                          , genAbiInt =<< genSize
-                         , genAbiAddress =<< asks (view addrList)
+                         , genAbiAddress
                          , genAbiBool
                          , genAbiBytes =<< Gen.enum 1 32
                          , genAbiBytesDynamic
@@ -145,7 +146,7 @@ genAbiValueOfType :: (MonadReader Config m, MonadGen m) => AbiType -> m AbiValue
 genAbiValueOfType t = case t of
   AbiUIntType n          -> genAbiUInt n
   AbiIntType  n          -> genAbiInt n
-  AbiAddressType         -> genAbiAddress =<< asks (view addrList)
+  AbiAddressType         -> genAbiAddress
   AbiBoolType            -> genAbiBool
   AbiBytesType n         -> genAbiBytes n
   AbiBytesDynamicType    -> genAbiBytesDynamic
@@ -164,8 +165,8 @@ displayAbiCall (t, vs) = unpack t ++ "(" ++ L.intercalate "," (map prettyPrint v
 
 -- genInteractions generates a function call from a list of type signatures of
 -- the form (Function name, [arg0 type, arg1 type...])
-genInteractions :: MonadGen m => [SolSignature] -> Config -> m SolCall
-genInteractions ls c = runReaderT (genAbiCall =<< Gen.element ls) c
+genInteractions :: (MonadReader Config m, MonadGen m) => [SolSignature] -> m SolCall
+genInteractions ls = genAbiCall =<< Gen.element ls
 
 type Listy t a = (IsList (t a), Item (t a) ~ a)
 
@@ -209,8 +210,7 @@ mutateValue (AbiUInt s n) =
 mutateValue (AbiInt s n) =
   newOrMod (genAbiInt s)          (AbiInt s)          (changeNumber n)
 mutateValue (AbiAddress a) = do
-  addr <- asks (view addrList)
-  newOrMod (genAbiAddress addr)   AbiAddress          (changeNumber a)
+  newOrMod genAbiAddress          AbiAddress          (changeNumber a)
 mutateValue (AbiBool _) = genAbiBool
 mutateValue (AbiBytes s b) =
   newOrMod (genAbiBytes s)        (AbiBytes s)        (changeChar b)
@@ -226,9 +226,9 @@ mutateValue (AbiArray s t a) =
 changeOrId :: (Traversable t, MonadGen m) => (a -> m a) -> t a -> m (t a)
 changeOrId f = mapM $ (Gen.element [f, pure] >>=) . (&)
 
-mutateCall :: MonadGen m => Config -> SolCall -> m SolCall
-mutateCall c (t, vs) = runReaderT ((t,) <$> changeOrId mutateValue vs) c
+mutateCall :: (MonadReader Config m, MonadGen m) => SolCall -> m SolCall
+mutateCall (t, vs) = (t,) <$> changeOrId mutateValue vs
 
-mutateCallSeq :: MonadGen m => [SolSignature] -> [SolCall] -> Config -> m [SolCall]
-mutateCallSeq s cs c = let g = genInteractions s c in
-  changeOrId (mutateCall c) cs >>= changeList (Gen.element [1..10] >>= flip replicateM g) g
+mutateCallSeq :: (MonadReader Config m, MonadGen m) => [SolSignature] -> [SolCall] -> m [SolCall]
+mutateCallSeq s cs = let g = genInteractions s in
+  changeOrId mutateCall cs >>= changeList (Gen.element [1..10] >>= flip replicateM g) g
