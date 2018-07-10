@@ -145,7 +145,7 @@ eCommandCoverage :: (MonadGen n, MonadTest m, MonadState VM m, MonadReader Cover
                  => [SolCall] -> (VM -> Bool) -> [SolSignature] -> Config -> [Command n m VMState]
 eCommandCoverage cov p ts conf = let useConf = flip runReaderT conf in case cov of
   [] -> [eCommandUsing (useConf $ genInteractions ts) (\(Call c) -> execCallCoverage c) p]
-  xs -> map (\x -> eCommandUsing (choice [mutateCall x, genInteractions ts])
+  xs -> map (\x -> eCommandUsing (choice $ useConf <$> [mutateCall x, genInteractions ts])
               (\(Call c) -> execCallCoverage c) p) xs
 
 

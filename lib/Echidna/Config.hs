@@ -35,7 +35,7 @@ instance FromJSON Config where
                                 <*> v .:? "gasLimit"     .!= 0xffffffffffffffff 
                                 <*> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                                 <*> v .:? "sender"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                                <*> v .:? "addrList" .   .!= Nothing
+                                <*> v .:? "addrList"     .!= Nothing
   parseJSON _          = parseJSON (Object mempty)
 
 newtype ParseException = ParseException FilePath

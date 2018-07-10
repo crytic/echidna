@@ -22,7 +22,7 @@ import System.IO.Temp             (writeSystemTempFile)
 import qualified Data.Map as Map (lookup)
 
 import Echidna.ABI    (SolSignature)
-import Echidna.Config (Config(..), sender, contractAddr, gasLimit, solcArgs, defaultConfig)
+import Echidna.Config (Config(..), sender, contractAddr, gasLimit, solcArgs)
 
 
 import EVM
