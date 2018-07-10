@@ -10,10 +10,10 @@ contract Test {
   function set1(int val) returns (bool){
     if (val % 10 == 0 && flag0) {flag1 = false;}
   }
-  function deepstate_alwaystrue() returns (bool){
+  function echidna_alwaystrue() returns (bool){
     return(true);
   }
-  function deepstate_sometimesfalse() returns (bool){
+  function echidna_sometimesfalse() returns (bool){
     return(flag0 || flag1);
   }
 }

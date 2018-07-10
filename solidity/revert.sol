@@ -7,7 +7,7 @@ contract C {
     state = x;
   }
 
-  function solidity_revert() public returns (bool) {
+  function echidna_revert() public returns (bool) {
     if (state < 0)
       revert();
   }
