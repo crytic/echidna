@@ -2,10 +2,10 @@
     LambdaCase, StrictData, TemplateHaskell #-}
 
 module Echidna.Exec (
-    TestFunction
-  , checkETest
-  , checkRTest
-  , checkERTest
+    checkTest
+  , checkBoolExpTest
+  , checkRevertTest
+  , checkFalseOrRevertTest
   , CoverageInfo
   , CoverageRef
   , eCommand
@@ -53,7 +53,7 @@ import EVM.Exec     (exec)
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions, mutateCall)
 import Echidna.Config (Config(..),testLimit,range)
 import Echidna.Internal.Runner
-
+import Echidna.Property (PropertyType(..))
 
 --------------------------------------------------------------------
 -- COVERAGE HANDLING
@@ -123,25 +123,27 @@ fuzz l n ts v p = do
   return $ listToMaybe [cs | (cs, passed) <- results, not passed]
     where run cs = p $ execState (forM_ cs execCall) v
 
+checkTest :: PropertyType -> VM -> Text -> Bool
+checkTest ShouldReturnTrue             = checkBoolExpTest True
+checkTest ShouldReturnFalse            = checkBoolExpTest False
+checkTest ShouldRevert                 = checkRevertTest
+checkTest ShouldReturnFalseRevert      = checkFalseOrRevertTest
 
-type TestFunction = VM -> Text -> Bool
-
-checkETest :: Bool -> TestFunction
-checkETest b v t = case evalState (execCall (t, [])) v of
+checkBoolExpTest :: Bool -> VM -> Text -> Bool
+checkBoolExpTest b v t = case evalState (execCall (t, [])) v of
   VMSuccess (B s) -> s == encodeAbiValue (AbiBool b)
   _               -> False
 
-checkRTest :: TestFunction
-checkRTest v t = case evalState (execCall (t, [])) v of
+checkRevertTest :: VM -> Text -> Bool
+checkRevertTest v t = case evalState (execCall (t, [])) v of
   (VMFailure Revert) -> True
   _                  -> False
 
-checkERTest :: TestFunction
-checkERTest v t = case evalState (execCall (t, [])) v of
+checkFalseOrRevertTest :: VM -> Text -> Bool
+checkFalseOrRevertTest v t = case evalState (execCall (t, [])) v of
   (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool False)
   (VMFailure Revert) -> True
   _                  -> False
-
 
 
 newtype VMState (v :: * -> *) =

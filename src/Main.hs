@@ -15,7 +15,6 @@ import Data.Semigroup          ((<>))
 import Echidna.Config
 import Echidna.Exec
 import Echidna.Solidity
-import Echidna.Property
 
 import Hedgehog hiding (checkParallel)
 import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
@@ -87,9 +86,3 @@ main = do
       ls <- liftIO $ mapM (readMVar . snd) tests
       let l = size $ foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
       liftIO $ putStrLn $ "Coverage: " ++ show l ++ " unique PCs"
-
-checkTest :: PropertyType -> TestFunction
-checkTest ShouldReturnTrue             = checkETest True
-checkTest ShouldReturnFalse            = checkETest False
-checkTest ShouldRevert                 = checkRTest
-checkTest ShouldReturnFalseRevert      = checkERTest
