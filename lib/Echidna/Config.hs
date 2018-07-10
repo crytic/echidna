@@ -14,10 +14,13 @@ import qualified Data.Yaml as Y
 
 import EVM.Types (W256)
 
+import Echidna.Property
+
 data Config = Config
   { _solcArgs :: Maybe String
   , _epochs :: Int
   , _testLimit :: Int
+  , _returnType :: PropertyType
   , _range :: Int
   , _gasLimit :: W256 
   , _shrinkLimit :: W256 
@@ -30,6 +33,7 @@ instance FromJSON Config where
   parseJSON (Object v) = Config <$> v .:? "solcArgs"    .!= Nothing
                                 <*> v .:? "epochs"      .!= 2
                                 <*> v .:? "testLimit"   .!= 10000
+                                <*> v .:? "return"      .!= ShouldReturnTrue
                                 <*> v .:? "range"       .!= 10
                                 <*> v .:? "gasLimit"    .!= 0xffffffffffffffff
                                 <*> v .:? "shrinkLimit" .!= 1000 
