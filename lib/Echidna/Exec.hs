@@ -11,21 +11,18 @@ module Echidna.Exec (
   , ePropertySeqCoverage
   , execCall
   , execCallCoverage
-  , fuzz
   , getCover
   , module Echidna.Internal.Runner
   ) where
 
 import Control.Concurrent.MVar    (MVar, modifyMVar_)
 import Control.Lens               ((^.), (.=), use)
-import Control.Monad              (forM_, replicateM)
 import Control.Monad.Catch        (MonadCatch)
 import Control.Monad.IO.Class     (MonadIO, liftIO)
 import Control.Monad.State.Strict (MonadState, StateT, evalState, evalStateT, execState, get, put, runState)
 import Control.Monad.Reader       (MonadReader, ReaderT, runReaderT, ask)
 import Data.IORef                 (IORef, modifyIORef', newIORef, readIORef)
 import Data.List                  (intercalate, foldl')
-import Data.Maybe                 (listToMaybe)
 import Data.Ord                   (comparing)
 import Data.Set                   (Set, empty, insert, size, union)
 import Data.Text                  (Text)
@@ -37,7 +34,7 @@ import qualified Data.Vector.Mutable as M
 import qualified Data.Vector as V
 
 import Hedgehog
-import Hedgehog.Gen               (choice, sample, sequential)
+import Hedgehog.Gen               (choice, sequential)
 import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
 import Hedgehog.Range             (linear)
@@ -107,20 +104,6 @@ execCallCoverage sol = execCallUsing (go empty) sol where
 -------------------------------------------------------------------
 -- Fuzzing and Hedgehog Init
 
-fuzz :: MonadIO m
-     => Int                 -- Call sequence length
-     -> Int                 -- Number of iterations
-     -> [SolSignature]      -- Type signatures to call
-     -> VM                  -- Initial state
-     -> (VM -> m Bool)      -- Predicate to fuzz for violations of
-     -> m (Maybe [SolCall]) -- Call sequence to violate predicate (if found)
-fuzz l n ts v p = do
-  callseqs <- replicateM n (replicateM l . sample $ genInteractions ts)
-  results <- zip callseqs <$> mapM run callseqs
-  return $ listToMaybe [cs | (cs, passed) <- results, not passed]
-    where run cs = p $ execState (forM_ cs execCall) v
-
-
 checkETest :: VM -> Text -> Bool
 checkETest v t = case evalState (execCall (t, [])) v of
   VMSuccess (B s) -> s == encodeAbiValue (AbiBool True)
@@ -165,6 +148,7 @@ eCommandCoverage cov p ts = case cov of
   xs -> map (\x -> eCommandUsing (choice [mutateCall x, genInteractions ts])
               (\(Call c) -> execCallCoverage c) p) xs
 
+
 ePropertyUsing :: (MonadCatch m, MonadTest m, MonadReader Config n)
              => [Command Gen m VMState]
              -> (m () -> PropertyT IO ())
@@ -204,14 +188,3 @@ ePropertySeqCoverage calls cov p ts v = ePropertyUsing (eCommandCoverage calls p
           threadCov <- liftIO $ readIORef threadCovRef
           liftIO $ modifyMVar_ cov (\xs -> pure $ threadCov:xs)
           return a
-  
-
--- Should work, but missing instance MonadBaseControl b m => MonadBaseControl b (PropertyT m)
--- ePropertyPar :: VM                  -- Initial state
-             -- -> [(Text, [AbiType])] -- Type signatures to fuzz
-             -- -> (VM -> Bool)        -- Predicate to fuzz for violations of
-             -- -> Int                 -- Max size
-             -- -> Int                 -- Max post-prefix size
-             -- -> Property
--- ePropertyPar v ts p n m = withRetries 10 . property $ executeParallel (Current v) =<<
---   forAll (parallel (linear 1 n) (linear 1 m) (Current v) [eCommand v ts p])
