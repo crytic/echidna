@@ -1,14 +1,13 @@
-{-# LANGUAGE DeriveGeneric, FlexibleContexts, TemplateHaskell #-}
+{-# LANGUAGE FlexibleContexts, TemplateHaskell #-}
 
 module Echidna.Config where
 
 import Control.Monad.Catch    (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Reader   (ReaderT, runReaderT)
 import Control.Lens
 import Control.Exception      (Exception)
-import Control.Monad.Reader   (ReaderT, runReaderT)
 import Data.Aeson
-import GHC.Generics
 
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Yaml as Y
@@ -24,35 +23,36 @@ data Config = Config
   , _returnType :: PropertyType
   , _range :: Int
   , _gasLimit :: W256 }
-  deriving (Show, Generic)
+  deriving Show
 
 makeLenses ''Config
 
-instance FromJSON Config
+instance FromJSON Config where
+  parseJSON (Object v) = Config <$> v .:? "solcArgs"  .!= Nothing
+                                <*> v .:? "epochs"    .!= 2
+                                <*> v .:? "testLimit" .!= 10000
+                                <*> v .:? "return"    .!= ShouldReturnTrue
+                                <*> v .:? "range"     .!= 10
+                                <*> v .:? "gasLimit"  .!= 0xffffffffffffffff 
+  parseJSON _          = parseJSON (Object mempty)
+
+newtype ParseException = ParseException FilePath
 
 defaultConfig :: Config
-defaultConfig = Config
-  { _solcArgs = Nothing
-  , _epochs = 2
-  , _returnType = ShouldReturnTrue
-  , _testLimit = 10000
-  , _range = 10
-  , _gasLimit = 0xffffffffffffffff }
-
-withDefaultConfig :: ReaderT Config m a -> m a
-withDefaultConfig = (flip runReaderT) defaultConfig
-
-data ParseException = ParseException FilePath
+defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEither ""
 
 instance Show ParseException where
-  show (ParseException f) = "Could not parse config file " ++ (show f)
+  show (ParseException f) = "Could not parse config file " ++ show f
 
 instance Exception ParseException
 
 parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> m Config
 parseConfig file = do
-    content <- liftIO $ BS.readFile file
-    let parsedContent = Y.decode content :: Maybe Config
-    case parsedContent of
-        Nothing -> throwM (ParseException file)
-        (Just c) -> return c  
+  content <- liftIO $ BS.readFile file
+  let parsedContent = Y.decode content :: Maybe Config
+  case parsedContent of
+    Nothing  -> throwM (ParseException file)
+    (Just c) -> return c
+
+withDefaultConfig :: ReaderT Config m a -> m a
+withDefaultConfig = (`runReaderT` defaultConfig)
