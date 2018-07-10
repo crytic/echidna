@@ -209,7 +209,7 @@ mutateValue (AbiUInt s n) =
   newOrMod (genAbiUInt s)         (AbiUInt s)         (changeNumber n)
 mutateValue (AbiInt s n) =
   newOrMod (genAbiInt s)          (AbiInt s)          (changeNumber n)
-mutateValue (AbiAddress a) = do
+mutateValue (AbiAddress a) =
   newOrMod genAbiAddress          AbiAddress          (changeNumber a)
 mutateValue (AbiBool _) = genAbiBool
 mutateValue (AbiBytes s b) =
