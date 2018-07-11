@@ -1,7 +1,7 @@
 #Arguments to solc
 #solcArgs:
 #Choose the number of epochs to use in coverage-guided testing
-epochs: 4
+epochs: 2
 #Set the gas limit for each test
 gasLimit: 0xfffff
 #Number of tests that will run for each property
