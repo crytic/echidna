@@ -8,6 +8,8 @@ import Control.Monad.Reader   (ReaderT, runReaderT)
 import Control.Lens
 import Control.Exception      (Exception)
 import Data.Aeson
+import Data.Text              (Text)
+import Hedgehog               (ShrinkLimit, TestLimit)
 
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Yaml as Y
@@ -19,30 +21,34 @@ import EVM.Types (Addr, W256)
 data Config = Config
   { _solcArgs     :: Maybe String
   , _epochs       :: Int
-  , _testLimit    :: Int
   , _range        :: Int
   , _contractAddr :: Addr
   , _sender       :: Addr
   , _addrList     :: Maybe [Addr]
   , _gasLimit     :: W256 
-  , _shrinkLimit  :: W256 
+  , _testLimit    :: TestLimit
+  , _shrinkLimit  :: ShrinkLimit
   , _returnType   :: PropertyType
+  , _prefix       :: Text
   }
   deriving Show
 
 makeLenses ''Config
 
 instance FromJSON Config where
-  parseJSON (Object v) = Config <$> v .:? "solcArgs"     .!= Nothing
-                                <*> v .:? "epochs"       .!= 2
-                                <*> v .:? "testLimit"    .!= 10000
-                                <*> v .:? "range"        .!= 10
-                                <*> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
-                                <*> v .:? "sender"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                                <*> v .:? "addrList"     .!= Nothing
-                                <*> v .:? "gasLimit"     .!= 0xffffffffffffffff
-                                <*> v .:? "shrinkLimit"  .!= 1000 
-                                <*> v .:? "return"       .!= ShouldReturnTrue
+  parseJSON (Object v) =
+    let fromInt s n = ((v .:? s :: Y.Parser (Maybe Int)) <&> fmap fromIntegral) .!= n in
+    Config <$> v .:? "solcArgs"     .!= Nothing
+           <*> v .:? "epochs"       .!= 2
+           <*> v .:? "range"        .!= 10
+           <*> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
+           <*> v .:? "sender"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+           <*> v .:? "addrList"     .!= Nothing
+           <*> v .:? "gasLimit"     .!= 0xffffffffffffffff
+           <*> fromInt "testLimit"   10000
+           <*> fromInt "shrinkLimit" 1000
+           <*> v .:? "return"       .!= ShouldReturnTrue
+           <*> v .:? "prefix"       .!= "echidna_"
   parseJSON _          = parseJSON (Object mempty)
 
 newtype ParseException = ParseException FilePath
