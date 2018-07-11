@@ -22,7 +22,7 @@ import System.IO.Temp             (writeSystemTempFile)
 import qualified Data.Map as Map (lookup)
 
 import Echidna.ABI    (SolSignature)
-import Echidna.Config (Config(..), sender, contractAddr, gasLimit, solcArgs)
+import Echidna.Config (Config(..), sender, contractAddr, gasLimit, prefix, solcArgs)
 
 
 import EVM
@@ -103,7 +103,7 @@ loadSolidity filePath selectedContract = do
                   loadContract (vm ^. state . contract)
         loaded = execState load $ execState (replaceCodeOfSelf bc) vm
         abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
-        (tests, funs) = partition (isPrefixOf "echidna_" . fst) abi
+        (tests, funs) = partition (isPrefixOf (conf ^. prefix) . fst) abi
     case find (not . null . snd) tests of
       Nothing      -> return (loaded, funs, fst <$> tests)
       (Just (t,_)) -> throwM $ TestArgsFound t

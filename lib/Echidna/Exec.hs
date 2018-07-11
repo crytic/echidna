@@ -176,8 +176,8 @@ eCommandCoverage cov p ts conf = let useConf = flip runReaderT conf in case cov 
               (\(Call c) -> execCallCoverage c) p) xs
 
 configProperty :: Config -> PropertyConfig -> PropertyConfig
-configProperty config = \x -> x { propertyTestLimit = fromIntegral $ config ^. testLimit
-                                , propertyShrinkLimit = fromIntegral $ config ^. shrinkLimit
+configProperty config = \x -> x { propertyTestLimit   = config ^. testLimit
+                                , propertyShrinkLimit = config ^. shrinkLimit
                                 }
 
 ePropertyUsing :: (MonadCatch m, MonadTest m, MonadReader Config n)
