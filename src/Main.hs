@@ -7,7 +7,9 @@ import Control.Concurrent.MVar (newMVar, readMVar, swapMVar)
 import Control.Monad           (forM, replicateM_)
 import Control.Monad.IO.Class  (liftIO)
 import Control.Monad.Reader    (runReaderT)
+import Data.Foldable           (toList)
 import Data.List               (foldl')
+import Data.Map                (toAscList)
 import Data.Set                (size, unions)
 import Data.Text               (pack)
 import Data.Semigroup          ((<>))
@@ -83,5 +85,6 @@ main = do
         checkParallel . Group (GroupName file) =<< mapM prop xs
         
       ls <- liftIO $ mapM (readMVar . snd) tests
-      let l = size $ foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
-      liftIO $ putStrLn $ "Coverage: " ++ show l ++ " unique PCs"
+      let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
+      liftIO $ putStrLn $ "Coverage: " ++ show (size ci) ++ " unique PCs"
+      liftIO $ print $ toAscList $ toList <$> byHashes ci
