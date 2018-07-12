@@ -45,6 +45,8 @@ script:
 after_success:
  - |
    # Build and ship binary
+   export BUILD_BINARY=true
+   export TRAVIS_TAG=$(git rev-parse HEAD)
    ./.travis/attach-binary.sh
 
 notifications:
