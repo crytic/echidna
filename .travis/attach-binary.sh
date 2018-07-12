@@ -14,7 +14,7 @@ else
   echo "Attaching binary for $TRAVIS_OS_NAME to $TRAVIS_TAG..."
   OWNER="$(echo "$TRAVIS_REPO_SLUG" | cut -f1 -d/)"
   REPO="$(echo "$TRAVIS_REPO_SLUG" | cut -f2 -d/)"
-  BIN="$(stack path --local-install-root)/bin/$REPO"
+  BIN="$(stack path --local-install-root)/bin/echidna-test"
   BUNDLE_NAME="$REPO-$TRAVIS_TAG-$TRAVIS_OS_NAME.tar.gz"
   cp "$BIN" "./$REPO"
   chmod +x "./$REPO"
