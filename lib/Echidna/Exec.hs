@@ -2,7 +2,8 @@
     LambdaCase, StrictData #-}
 
 module Echidna.Exec (
-    checkTest
+    byHashes
+  , checkTest
   , checkBoolExpTest
   , checkRevertTest
   , checkTrueOrRevertTest
@@ -20,13 +21,14 @@ module Echidna.Exec (
   ) where
 
 import Control.Concurrent.MVar    (MVar, modifyMVar_)
-import Control.Lens               ((^.), (.=), use)
+import Control.Lens               ((^.), (.=), use, view)
 import Control.Monad.Catch        (MonadCatch)
 import Control.Monad.IO.Class     (MonadIO, liftIO)
 import Control.Monad.State.Strict (MonadState, StateT, evalState, evalStateT, execState, get, put, runState)
 import Control.Monad.Reader       (MonadReader, ReaderT, runReaderT, ask)
 import Data.IORef                 (IORef, modifyIORef', newIORef, readIORef)
 import Data.List                  (intercalate, foldl')
+import Data.Maybe                 (fromMaybe)
 import Data.Ord                   (comparing)
 import Data.Set                   (Set, empty, insert, size, union)
 import Data.Text                  (Text)
@@ -34,6 +36,8 @@ import Data.Typeable              (Typeable)
 import Data.Vector.Generic        (maxIndexBy)
 
 import qualified Control.Monad.State.Strict as S
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import qualified Data.Vector.Mutable as M
 import qualified Data.Vector as V
 
@@ -43,10 +47,11 @@ import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
 import Hedgehog.Range             (linear)
 
-import EVM          (VM, VMResult(..), Error(Revert), calldata, exec1, pc, result, stack, state)
+import EVM
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
+import EVM.Types    (W256)
 
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions, mutateCall)
 import Echidna.Config (Config(..), testLimit, shrinkLimit, range)
@@ -56,8 +61,11 @@ import Echidna.Property (PropertyType(..))
 --------------------------------------------------------------------
 -- COVERAGE HANDLING
 
-type CoverageInfo = (SolCall, Set Int)
+type CoverageInfo = (SolCall, Set (Int, W256))
 type CoverageRef  = IORef CoverageInfo
+
+byHashes :: Set (Int, W256) -> M.Map W256 (Set Int)
+byHashes = foldr (\(i, w) -> M.insertWith S.union w (S.singleton i)) mempty . S.toList
 
 getCover :: [CoverageInfo] -> IO [SolCall]
 getCover [] = return []
@@ -67,9 +75,9 @@ getCover xs = setCover vs empty totalCoverage []
 
 setCover :: V.Vector CoverageInfo -> Set Int -> Int -> [SolCall] -> IO [SolCall]
 setCover vs cov tot calls = do
-    let i = maxIndexBy (\a b -> comparing (size . union cov) (snd a) (snd b)) vs
+    let i = maxIndexBy (\(_,a) (_,b) -> comparing (size . union cov) (S.map fst a) (S.map fst b)) vs
         s = vs V.! i
-        c = union cov $ snd s
+        c = union cov . S.map fst $ snd s
         newCalls = fst s : calls
 
     if size c == tot
@@ -102,8 +110,9 @@ execCallCoverage sol = execCallUsing (go empty) sol where
                  liftIO $ modifyIORef' ref (const (sol, c))
                  return x
     _      -> do current <- use $ state . pc
+                 hash    <- view codehash . fromMaybe (error "no current contract??") . currentContract <$> get 
                  S.state (runState exec1)
-                 go $ insert current c
+                 go $ insert (current, hash) c
 
 -------------------------------------------------------------------
 -- Fuzzing and Hedgehog Init
