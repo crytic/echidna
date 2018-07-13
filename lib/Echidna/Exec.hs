@@ -2,7 +2,8 @@
     LambdaCase, StrictData #-}
 
 module Echidna.Exec (
-    byHashes
+    CoveragePoint(..)
+  , byHashes
   , checkTest
   , checkBoolExpTest
   , checkRevertTest
@@ -61,11 +62,17 @@ import Echidna.Property (PropertyType(..))
 --------------------------------------------------------------------
 -- COVERAGE HANDLING
 
-type CoverageInfo = (SolCall, Set (Int, W256))
+data CoveragePoint = C {ip :: Int, ch :: W256} deriving Eq
+
+instance Ord CoveragePoint where
+  compare (C i0 w0) (C i1 w1) = case compare w0 w1 of EQ -> compare i0 i1
+                                                      x  -> x
+
+type CoverageInfo = (SolCall, Set CoveragePoint)
 type CoverageRef  = IORef CoverageInfo
 
-byHashes :: Set (Int, W256) -> M.Map W256 (Set Int)
-byHashes = foldr (\(i, w) -> M.insertWith S.union w (S.singleton i)) mempty . S.toList
+byHashes :: Set CoveragePoint -> M.Map W256 (Set Int)
+byHashes = foldr (\(C i w) -> M.insertWith S.union w (S.singleton i)) mempty . S.toList
 
 getCover :: [CoverageInfo] -> IO [SolCall]
 getCover [] = return []
@@ -75,9 +82,9 @@ getCover xs = setCover vs empty totalCoverage []
 
 setCover :: V.Vector CoverageInfo -> Set Int -> Int -> [SolCall] -> IO [SolCall]
 setCover vs cov tot calls = do
-    let i = maxIndexBy (\(_,a) (_,b) -> comparing (size . union cov) (S.map fst a) (S.map fst b)) vs
+    let i = maxIndexBy (\a b -> comparing (size . union cov) a b) $ (S.map ip . snd) <$> vs
         s = vs V.! i
-        c = union cov . S.map fst $ snd s
+        c = union cov . S.map ip $ snd s
         newCalls = fst s : calls
 
     if size c == tot
@@ -112,7 +119,7 @@ execCallCoverage sol = execCallUsing (go empty) sol where
     _      -> do current <- use $ state . pc
                  hash    <- view codehash . fromMaybe (error "no current contract??") . currentContract <$> get 
                  S.state (runState exec1)
-                 go $ insert (current, hash) c
+                 go $ insert (C current hash) c
 
 -------------------------------------------------------------------
 -- Fuzzing and Hedgehog Init
