@@ -22,25 +22,24 @@ module Echidna.Exec (
   ) where
 
 import Control.Concurrent.MVar    (MVar, modifyMVar_)
-import Control.Lens               ((^.), (.=), use, view)
+import Control.Lens               ((&), (^.), (.=), use, view)
 import Control.Monad.Catch        (MonadCatch)
 import Control.Monad.IO.Class     (MonadIO, liftIO)
 import Control.Monad.State.Strict (MonadState, StateT, evalState, evalStateT, execState, get, put, runState)
 import Control.Monad.Reader       (MonadReader, ReaderT, runReaderT, ask)
+import Data.Foldable              (Foldable(..))
 import Data.IORef                 (IORef, modifyIORef', newIORef, readIORef)
 import Data.List                  (intercalate, foldl')
+import Data.Map.Strict            (Map, insertWith)
 import Data.Maybe                 (fromMaybe)
 import Data.Ord                   (comparing)
-import Data.Set                   (Set, empty, insert, size, union)
+import Data.Set                   (Set, insert, singleton)
 import Data.Text                  (Text)
 import Data.Typeable              (Typeable)
-import Data.Vector.Generic        (maxIndexBy)
+import Data.Vector                (Vector, fromList)
+import Data.Vector.Generic        (maximumBy)
 
 import qualified Control.Monad.State.Strict as S
-import qualified Data.Map.Strict as M
-import qualified Data.Set as S
-import qualified Data.Vector.Mutable as M
-import qualified Data.Vector as V
 
 import Hedgehog
 import Hedgehog.Gen               (choice, sequential)
@@ -62,7 +61,7 @@ import Echidna.Property (PropertyType(..))
 --------------------------------------------------------------------
 -- COVERAGE HANDLING
 
-data CoveragePoint = C {ip :: Int, ch :: W256} deriving Eq
+data CoveragePoint = C Int W256 deriving Eq
 
 instance Ord CoveragePoint where
   compare (C i0 w0) (C i1 w1) = case compare w0 w1 of EQ -> compare i0 i1
@@ -71,29 +70,18 @@ instance Ord CoveragePoint where
 type CoverageInfo = (SolCall, Set CoveragePoint)
 type CoverageRef  = IORef CoverageInfo
 
-byHashes :: Set CoveragePoint -> M.Map W256 (Set Int)
-byHashes = foldr (\(C i w) -> M.insertWith S.union w (S.singleton i)) mempty . S.toList
+byHashes :: (Foldable t, Monoid (t CoveragePoint)) => t CoveragePoint -> Map W256 (Set Int)
+byHashes = foldr (\(C i w) -> insertWith mappend w $ singleton i) mempty . toList
 
-getCover :: [CoverageInfo] -> IO [SolCall]
+getCover :: (Foldable t, Monoid (t b)) => [(a, t b)] -> IO [a]
 getCover [] = return []
-getCover xs = setCover vs empty totalCoverage []
-  where vs = V.fromList xs
-        totalCoverage = size $ foldl' (\acc (_,c) -> union acc c) empty xs
+getCover xs = setCover (fromList xs) mempty totalCoverage []
+  where totalCoverage = length $ foldl' (\acc -> mappend acc . snd) mempty xs
 
-setCover :: V.Vector CoverageInfo -> Set Int -> Int -> [SolCall] -> IO [SolCall]
-setCover vs cov tot calls = do
-    let i = maxIndexBy (\a b -> comparing (size . union cov) a b) $ (S.map ip . snd) <$> vs
-        s = vs V.! i
-        c = union cov . S.map ip $ snd s
-        newCalls = fst s : calls
-
-    if size c == tot
-      then return newCalls
-      else do
-      vs' <- V.unsafeThaw vs
-      M.write vs' i mempty
-      res <- V.unsafeFreeze vs'
-      setCover res c tot newCalls
+setCover :: (Foldable t, Monoid (t b)) => Vector (a, t b) -> t b -> Int -> [a] -> IO [a]
+setCover vs cov tot calls = best : calls & if length new == tot then return
+                                                                else setCover vs new tot where
+  (best, new) = mappend cov <$> maximumBy (comparing $ length . mappend cov . snd) vs
   
 
 execCallUsing :: MonadState VM m => m VMResult -> SolCall -> m VMResult
@@ -102,7 +90,7 @@ execCallUsing m (t,vs) = do og <- get
                             state . calldata .= cd
                             m >>= \case x@VMFailure{} -> put og >> return x
                                         x@VMSuccess{} -> return x
-  where cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ V.fromList vs
+  where cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
         cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
 
 
@@ -111,7 +99,7 @@ execCall = execCallUsing exec
 
 
 execCallCoverage :: (MonadState VM m, MonadReader CoverageRef m, MonadIO m) => SolCall -> m VMResult
-execCallCoverage sol = execCallUsing (go empty) sol where
+execCallCoverage sol = execCallUsing (go mempty) sol where
   go !c = use result >>= \case
     Just x -> do ref <- ask
                  liftIO $ modifyIORef' ref (const (sol, c))
@@ -192,9 +180,9 @@ eCommandCoverage cov p ts conf = let useConf = flip runReaderT conf in case cov 
               (\(Call c) -> execCallCoverage c) p) xs
 
 configProperty :: Config -> PropertyConfig -> PropertyConfig
-configProperty config = \x -> x { propertyTestLimit   = config ^. testLimit
-                                , propertyShrinkLimit = config ^. shrinkLimit
-                                }
+configProperty config x = x { propertyTestLimit   = config ^. testLimit
+                            , propertyShrinkLimit = config ^. shrinkLimit
+                            }
 
 ePropertyUsing :: (MonadCatch m, MonadTest m, MonadReader Config n)
              => [Command Gen m VMState]
