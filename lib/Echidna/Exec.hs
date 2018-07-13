@@ -1,8 +1,9 @@
-{-# LANGUAGE BangPatterns, FlexibleContexts, KindSignatures,
-    LambdaCase, StrictData #-}
+{-# LANGUAGE BangPatterns, DeriveGeneric, FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
 
 module Echidna.Exec (
-    CoveragePoint(..)
+    ContractCov(..)
+  , CoveragePoint(..)
+  , CoverageReport(..)
   , byHashes
   , checkTest
   , checkBoolExpTest
@@ -18,6 +19,7 @@ module Echidna.Exec (
   , execCall
   , execCallCoverage
   , getCover
+  , ppHashes
   , module Echidna.Internal.Runner
   ) where
 
@@ -27,10 +29,12 @@ import Control.Monad.Catch        (MonadCatch)
 import Control.Monad.IO.Class     (MonadIO, liftIO)
 import Control.Monad.State.Strict (MonadState, StateT, evalState, evalStateT, execState, get, put, runState)
 import Control.Monad.Reader       (MonadReader, ReaderT, runReaderT, ask)
+import Data.Aeson                 (ToJSON(..), encode)
+import Data.ByteString.Lazy.Char8 (unpack)
 import Data.Foldable              (Foldable(..))
 import Data.IORef                 (IORef, modifyIORef', newIORef, readIORef)
 import Data.List                  (intercalate, foldl')
-import Data.Map.Strict            (Map, insertWith)
+import Data.Map.Strict            (Map, insertWith, toAscList)
 import Data.Maybe                 (fromMaybe)
 import Data.Ord                   (comparing)
 import Data.Set                   (Set, insert, singleton)
@@ -38,6 +42,7 @@ import Data.Text                  (Text)
 import Data.Typeable              (Typeable)
 import Data.Vector                (Vector, fromList)
 import Data.Vector.Generic        (maximumBy)
+import GHC.Generics
 
 import qualified Control.Monad.State.Strict as S
 
@@ -61,17 +66,27 @@ import Echidna.Property (PropertyType(..))
 --------------------------------------------------------------------
 -- COVERAGE HANDLING
 
-data CoveragePoint = C Int W256 deriving Eq
+data CoveragePoint = C (Int, Int) W256 deriving Eq
 
 instance Ord CoveragePoint where
-  compare (C i0 w0) (C i1 w1) = case compare w0 w1 of EQ -> compare i0 i1
-                                                      x  -> x
+  compare (C (_,i0) w0) (C (_,i1) w1) = case compare w0 w1 of EQ -> compare i0 i1
+                                                              x  -> x
 
 type CoverageInfo = (SolCall, Set CoveragePoint)
 type CoverageRef  = IORef CoverageInfo
 
-byHashes :: (Foldable t, Monoid (t CoveragePoint)) => t CoveragePoint -> Map W256 (Set Int)
+byHashes :: (Foldable t, Monoid (t CoveragePoint)) => t CoveragePoint -> Map W256 (Set (Int, Int))
 byHashes = foldr (\(C i w) -> insertWith mappend w $ singleton i) mempty . toList
+
+data ContractCov = ContractCov { hash :: String, arcs :: [(Int, Int)] } deriving (Show, Generic)
+newtype CoverageReport = CoverageReport { coverage :: [ContractCov] } deriving (Show, Generic)
+
+instance ToJSON ContractCov
+instance ToJSON CoverageReport
+
+ppHashes :: Map W256 (Set (Int, Int)) -> String
+ppHashes = unpack . encode . toJSON . CoverageReport
+  . map (\(h, is) -> ContractCov (show h) (toList is)) . toAscList
 
 getCover :: (Foldable t, Monoid (t b)) => [(a, t b)] -> IO [a]
 getCover [] = return []
@@ -105,9 +120,10 @@ execCallCoverage sol = execCallUsing (go mempty) sol where
                  liftIO $ modifyIORef' ref (const (sol, c))
                  return x
     _      -> do current <- use $ state . pc
-                 hash    <- view codehash . fromMaybe (error "no current contract??") . currentContract <$> get 
+                 ch      <- view codehash . fromMaybe (error "no current contract??") . currentContract <$> get 
                  S.state (runState exec1)
-                 go $ insert (C current hash) c
+                 new     <- use $ state . pc
+                 go $ insert (C (current, new) ch) c
 
 -------------------------------------------------------------------
 -- Fuzzing and Hedgehog Init

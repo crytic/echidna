@@ -7,9 +7,7 @@ import Control.Concurrent.MVar (newMVar, readMVar, swapMVar)
 import Control.Monad           (forM, replicateM_)
 import Control.Monad.IO.Class  (liftIO)
 import Control.Monad.Reader    (runReaderT)
-import Data.Foldable           (toList)
 import Data.List               (foldl')
-import Data.Map                (toAscList)
 import Data.Set                (size, unions)
 import Data.Text               (pack)
 import Data.Semigroup          ((<>))
@@ -55,14 +53,14 @@ opts = info (options <**> helper)
 main :: IO ()
 main = do
   -- Read cmd line options and load config
-  (Options file contract coverage configFile) <- execParser opts
+  (Options file contract usecov configFile) <- execParser opts
   config <- maybe (pure defaultConfig) parseConfig configFile
   let f = checkTest (config ^. returnType)
 
   flip runReaderT config $ do
     -- Load solidity contract and get VM
     (v,a,ts) <- loadSolidity file (pack <$> contract)
-    if not coverage
+    if not usecov
       -- Run without coverage
       then do
       let prop t = ePropertySeq (`f` t) a v >>= \x -> return (PropertyName $ show t, x)
@@ -87,4 +85,4 @@ main = do
       ls <- liftIO $ mapM (readMVar . snd) tests
       let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
       liftIO $ putStrLn $ "Coverage: " ++ show (size ci) ++ " unique PCs"
-      liftIO $ print $ toAscList $ toList <$> byHashes ci
+      liftIO $ print $ ppHashes $ byHashes ci
