@@ -48,7 +48,7 @@ instance FromJSON Config where
            <*> v .:? "gasLimit"      .!= 0xffffffffffffffff
            <*> fromInt "testLimit"   10000
            <*> fromInt "shrinkLimit" 1000
-           <*> v .:? "return"        .!= ShouldReturnTrue
+           <*> v .:? "return"        .!= ShouldReturnTrueRevert
            <*> v .:? "prefix"        .!= "echidna_"
            <*> v .:? "printCoverage" .!= False
   parseJSON _          = parseJSON (Object mempty)
