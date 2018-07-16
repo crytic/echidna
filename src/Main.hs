@@ -8,7 +8,7 @@ import Control.Monad           (forM, replicateM_)
 import Control.Monad.IO.Class  (liftIO)
 import Control.Monad.Reader    (runReaderT)
 import Data.List               (foldl')
-import Data.Set                (size, unions)
+import Data.Set                (unions)
 import Data.Text               (pack)
 import Data.Semigroup          ((<>))
 
@@ -84,5 +84,4 @@ main = do
         
       ls <- liftIO $ mapM (readMVar . snd) tests
       let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
-      liftIO $ putStrLn $ "Coverage: " ++ show (size ci) ++ " unique arcs"
-      if config ^. printCoverage then liftIO $ print $ ppHashes $ byHashes ci else pure ()
+      printResults ci
