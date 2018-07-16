@@ -60,7 +60,7 @@ main = do
   flip runReaderT config $ do
     -- Load solidity contract and get VM
     (v,a,ts) <- loadSolidity file (pack <$> contract)
-    if not usecov
+    if not $ usecov || config ^. printCoverage
       -- Run without coverage
       then do
       let prop t = ePropertySeq (`f` t) a v >>= \x -> return (PropertyName $ show t, x)
@@ -84,5 +84,5 @@ main = do
         
       ls <- liftIO $ mapM (readMVar . snd) tests
       let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
-      liftIO $ putStrLn $ "Coverage: " ++ show (size ci) ++ " unique PCs"
-      liftIO $ print $ ppHashes $ byHashes ci
+      liftIO $ putStrLn $ "Coverage: " ++ show (size ci) ++ " unique arcs"
+      if config ^. printCoverage then liftIO $ print $ ppHashes $ byHashes ci else pure ()
