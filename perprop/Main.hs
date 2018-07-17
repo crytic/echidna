@@ -8,7 +8,7 @@ import Control.Monad           (forM, replicateM_)
 import Control.Monad.Identity  (Identity(..))
 import Control.Monad.Reader    (runReaderT)
 import Data.List               (foldl')
-import Data.Set                (size, unions)
+import Data.Set                (unions)
 import Data.Text               (Text)
 import Data.Yaml
 import EVM                     (VM)
@@ -74,7 +74,7 @@ readConf :: FilePath -> IO (Maybe (Config, [Property]))
 readConf f = decodeEither <$> BS.readFile f >>= \case
   Left e -> putStrLn ("couldn't parse config, " ++ e) >> pure Nothing
   Right (PerPropConf t s p) -> pure . Just . (,p) $
-    defaultConfig & addrList .~ Just (view address <$> s) & testLimit .~ t
+    defaultConfig & addrList .~ Just (view address <$> s) & testLimit .~ t & epochs .~ 1
 
 group :: String
       -> Config
@@ -104,13 +104,13 @@ main = getArgs >>= \case
           cov     <- readMVar mvar
           lastGen <- getCover cov
           _       <- swapMVar mvar []
-          Prelude.return (p,lastGen,mvar)
+          pure (p,lastGen,mvar)
 
         checkParallel $ group sf c a v xs
 
       ls <- mapM (readMVar . snd) tests
       let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
-      putStrLn $ "Coverage: " ++ show (size ci) ++ " unique arcs"
+      putStrLn $ ppHashes (byHashes ci)
 
   _ -> putStrLn "USAGE: ./perprop-exe config.yaml contract.sol"
   
