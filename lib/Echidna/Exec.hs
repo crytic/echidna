@@ -20,6 +20,7 @@ module Echidna.Exec (
   , execCallCoverage
   , getCover
   , ppHashes
+  , printResults
   , module Echidna.Internal.Runner
   ) where
 
@@ -37,7 +38,7 @@ import Data.List                  (intercalate, foldl')
 import Data.Map.Strict            (Map, insertWith, toAscList)
 import Data.Maybe                 (fromMaybe)
 import Data.Ord                   (comparing)
-import Data.Set                   (Set, insert, singleton)
+import Data.Set                   (Set, insert, singleton, size)
 import Data.Text                  (Text)
 import Data.Typeable              (Typeable)
 import Data.Vector                (Vector, fromList)
@@ -59,7 +60,7 @@ import EVM.Exec     (exec)
 import EVM.Types    (W256)
 
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions, mutateCall)
-import Echidna.Config (Config(..), testLimit, shrinkLimit, range)
+import Echidna.Config (Config(..), testLimit, printCoverage, range, shrinkLimit)
 import Echidna.Internal.Runner
 import Echidna.Property (PropertyType(..))
 
@@ -77,6 +78,11 @@ type CoverageRef  = IORef CoverageInfo
 
 byHashes :: (Foldable t, Monoid (t CoveragePoint)) => t CoveragePoint -> Map W256 (Set (Int, Int))
 byHashes = foldr (\(C i w) -> insertWith mappend w $ singleton i) mempty . toList
+
+printResults :: (MonadIO m, MonadReader Config m) => Set CoveragePoint -> m ()
+printResults ci = do liftIO (putStrLn $ "Coverage: " ++ show (size ci) ++ " unique arcs")
+                     view printCoverage >>= \case True  -> liftIO . print . ppHashes $ byHashes ci
+                                                  False -> pure ()
 
 data ContractCov = ContractCov { hash :: String, arcs :: [(Int, Int)] } deriving (Show, Generic)
 newtype CoverageReport = CoverageReport { coverage :: [ContractCov] } deriving (Show, Generic)
