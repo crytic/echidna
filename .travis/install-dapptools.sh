@@ -5,4 +5,6 @@ set -eux
 git clone https://github.com/dapphub/dapptools/
 cd dapptools
 make install
-cd ..
+cd hevm
+stack install
+cd ../..
