@@ -3,6 +3,6 @@
 set -eux
 
 git clone https://github.com/dapphub/dapptools/
-pushd dapptools
+cd dapptools
 make install
-popd
+cd ..
