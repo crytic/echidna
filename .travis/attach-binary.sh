@@ -1,7 +1,7 @@
 #!/bin/sh
 set -o errexit -o verbose
 
-if test ! "$BUILD_BINARY" || test ! "$TRAVIS_TAG"
+if test ! "$BUILD_BINARY" || test ! "$TRAVIS_TAG" || ! "$TRAVIS_BRANCH" = "master"
 then
   echo 'This is not a release build.'
 elif test ! "$GITHUB_TOKEN"
