@@ -5,6 +5,6 @@ set -eux
 git clone https://github.com/dapphub/dapptools/
 cd dapptools
 make install
-cd hevm
+cd src/hevm
 stack install
-cd ../..
+cd ../../..
