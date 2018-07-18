@@ -60,3 +60,7 @@ executables:
     main: Main.hs
     source-dirs: perprop
     dependencies: echidna
+  gastest-exe:
+    main: Main.hs
+    source-dirs: gastest
+    dependencies: echidna
