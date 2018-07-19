@@ -13,7 +13,7 @@ module Echidna.Internal.JsonRunner (
     checkParallelJson
   ) where
 
-import           Control.Monad (forM_)
+--import           Control.Monad (forM_)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Data.Aeson    (ToJSON, encode)
 import           Data.ByteString.Lazy.Char8 (unpack)
@@ -65,10 +65,13 @@ checkGroup config (Group _ props) =
     updateNumCapabilities (n + 2)
 
     --verbosity <- resolveVerbosity (runnerVerbosity config)
-    rs <- runTasks n props st noop noop $ \(name, prop) -> checkProp 0 prop >>= pure . (format name)
+    _ <- runTasks n props st noop noop $ \(name, prop) -> do
+      result <- checkProp 0 prop
+      putStrLn $ unpack $ encode (format name result)
+      pure ()
     
     --output JSON here
-    forM_ rs $ (putStrLn . unpack . encode)
+    --forM_ rs $ (putStrLn . unpack . encode)
 
     pure True
 
