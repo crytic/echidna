@@ -55,7 +55,9 @@ main = do
   -- Read cmd line options and load config
   (Options file contract usecov configFile) <- execParser opts
   config <- maybe (pure defaultConfig) parseConfig configFile
+
   let f = checkTest (config ^. returnType)
+      checkGroup = if config ^. outputJson then checkParallelJson else checkParallel
 
   flip runReaderT config $ do
     -- Load solidity contract and get VM
@@ -64,7 +66,7 @@ main = do
       -- Run without coverage
       then do
       let prop t = ePropertySeq (`f` t) a v >>= \x -> return (PropertyName $ show t, x)
-      _ <- checkParallel . Group (GroupName file) =<< mapM prop ts
+      _ <- checkGroup . Group (GroupName file) =<< mapM prop ts
       return ()
 
       -- Run with coverage
@@ -80,7 +82,7 @@ main = do
           _ <- swapMVar y []
           return (lastGen,x,y)
 
-        checkParallel . Group (GroupName file) =<< mapM prop xs
+        checkGroup . Group (GroupName file) =<< mapM prop xs
         
       ls <- liftIO $ mapM (readMVar . snd) tests
       let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls

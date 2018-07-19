@@ -31,6 +31,7 @@ data Config = Config
   , _returnType    :: PropertyType
   , _prefix        :: Text
   , _printCoverage :: Bool
+  , _outputJson    :: Bool
   }
   deriving Show
 
@@ -51,6 +52,7 @@ instance FromJSON Config where
            <*> v .:? "return"        .!= ShouldReturnTrue
            <*> v .:? "prefix"        .!= "echidna_"
            <*> v .:? "printCoverage" .!= False
+           <*> v .:? "outputJson"    .!= False
   parseJSON _          = parseJSON (Object mempty)
 
 newtype ParseException = ParseException FilePath
