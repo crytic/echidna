@@ -138,6 +138,7 @@ checkTest :: PropertyType -> VM -> Text -> Bool
 checkTest ShouldReturnTrue             = checkBoolExpTest True
 checkTest ShouldReturnFalse            = checkBoolExpTest False
 checkTest ShouldRevert                 = checkRevertTest
+checkTest ShouldReturnTrueRevert       = checkTrueOrRevertTest
 checkTest ShouldReturnFalseRevert      = checkFalseOrRevertTest
 
 checkBoolExpTest :: Bool -> VM -> Text -> Bool
