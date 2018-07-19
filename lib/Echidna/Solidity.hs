@@ -22,7 +22,7 @@ import System.IO.Temp             (writeSystemTempFile)
 import qualified Data.Map as Map (lookup)
 
 import Echidna.ABI    (SolSignature)
-import Echidna.Config (Config(..), sender, contractAddr, gasLimit, prefix, solcArgs)
+import Echidna.Config (Config(..), sender, contractAddr, gasLimit, prefix, solcArgs, outputJson)
 
 
 import EVM
@@ -70,11 +70,14 @@ readContracts filePath = do
 -- | reads either the first contract found or the contract named `selectedContractName` within the solidity file at `filepath`
 readContract :: (MonadIO m, MonadThrow m, MonadReader Config m) => FilePath -> Maybe Text -> m SolcContract
 readContract filePath selectedContractName = do
+    config <- ask
     cs <- readContracts filePath
     c <- chooseContract cs selectedContractName
-    warn (isNothing selectedContractName && 1 < length cs)
-      "Multiple contracts found in file, only analyzing the first"
-    liftIO $ print $ "Analyzing contract: " <> c ^. contractName
+    if config ^. outputJson then pure ()
+      else do
+      warn (isNothing selectedContractName && 1 < length cs)
+        "Multiple contracts found in file, only analyzing the first"
+      liftIO $ print $ "Analyzing contract: " <> c ^. contractName
     return c
   where chooseContract :: (MonadThrow m) => [SolcContract] -> Maybe Text -> m SolcContract
         chooseContract [] _ = throwM NoContracts

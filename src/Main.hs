@@ -15,6 +15,7 @@ import Data.Semigroup          ((<>))
 import Echidna.Config
 import Echidna.Exec
 import Echidna.Solidity
+--import Echidna.Internal.ZooRunner as Z
 
 import Hedgehog hiding (checkParallel)
 import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
