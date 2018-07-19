@@ -28,8 +28,8 @@ install:
  - unset CC
  - export PATH=$HOME/.local/bin:/opt/ghc/$GHCVER/bin:$PATH
  - ./.travis/install-ghr.sh
- - ./.travis/install-dapptools.sh
  - ./.travis/install-stack.sh
+ - ./.travis/install-dapptools.sh
 
 script:
  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
