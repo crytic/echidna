@@ -15,7 +15,9 @@ It supports relatively sophisticated grammar-based fuzzing campaigns to falsify 
 [stack](https://www.haskellstack.org/) is highly recommended to install echidna.
 If you are a particularly opinionated experienced Haskell user, cabal or hpack should work, but they are neither officially supported nor tested. 
 
-Before starting with it, make sure you have libgmp-dev installed otherwise ghc will fail to compile. Also, libbz2 and libreadline are required by some packages. For instance, in Ubuntu/Debian you can execute:
+Before starting with it, make sure you have libgmp-dev installed otherwise ghc will fail to compile. 
+hevm from [dapptools](https://github.com/dapphub/dapptools) is also a required dependency and must be installed as in the README of that repo.
+Also, libbz2 and libreadline are required by some packages. For instance, in Ubuntu/Debian you can execute:
 
 ```
 # apt-get install libgmp-dev libbz2-dev libreadline-dev
