@@ -21,3 +21,6 @@ extra-deps:
 - tree-view-0.5
 - vty-5.16
 - word-wrap-0.4.1
+
+nix:
+  enable: true
