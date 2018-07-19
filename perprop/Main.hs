@@ -74,7 +74,7 @@ readConf :: FilePath -> IO (Maybe (Config, [Property]))
 readConf f = decodeEither <$> BS.readFile f >>= \case
   Left e -> putStrLn ("couldn't parse config, " ++ e) >> pure Nothing
   Right (PerPropConf t s p) -> pure . Just . (,p) $
-    defaultConfig & addrList .~ Just (view address <$> s) & testLimit .~ t & epochs .~ 1
+    defaultConfig & addrList .~ Just (view address <$> s) & testLimit .~ t & epochs .~ 1 & outputJson .~ True
 
 group :: String
       -> Config
@@ -106,7 +106,7 @@ main = getArgs >>= \case
           _       <- swapMVar mvar []
           pure (p,lastGen,mvar)
 
-        checkParallel $ group sf c a v xs
+        checkParallelJson $ group sf c a v xs
 
       ls <- mapM (readMVar . snd) tests
       let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls

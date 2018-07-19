@@ -22,6 +22,7 @@ module Echidna.Exec (
   , ppHashes
   , printResults
   , module Echidna.Internal.Runner
+  , module Echidna.Internal.JsonRunner
   ) where
 
 import Control.Concurrent.MVar    (MVar, modifyMVar_)
@@ -62,6 +63,7 @@ import EVM.Types    (W256)
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions, mutateCall)
 import Echidna.Config (Config(..), testLimit, printCoverage, range, shrinkLimit)
 import Echidna.Internal.Runner
+import Echidna.Internal.JsonRunner
 import Echidna.Property (PropertyType(..))
 
 --------------------------------------------------------------------
