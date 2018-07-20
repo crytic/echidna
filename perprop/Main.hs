@@ -14,7 +14,6 @@ import Data.Text               (Text, pack)
 import Data.Yaml
 import EVM                     (VM)
 import EVM.Types               (Addr)
-import System.Environment     (getArgs)
 
 import qualified Data.ByteString as BS
 
@@ -39,6 +38,7 @@ data Options = Options
   , configFilepath   :: FilePath
   , selectedContract :: Maybe String
   }
+  
 
 options :: O.Parser Options
 options = Options
@@ -144,7 +144,6 @@ main = do
       ls <- mapM (readMVar . snd) tests
       let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
       putStrLn $ ppHashes (byHashes ci)
-
-    _ -> putStrLn "USAGE: ./perprop-exe solidity/cli.sol solidity/cli.sol:Test --config='solidity/config.yaml'
+      
 -- }}}
 
