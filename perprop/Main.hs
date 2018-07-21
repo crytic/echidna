@@ -42,7 +42,7 @@ data Property = Property {
   } deriving Show
 
 data PerPropConf = PerPropConf {
-    _testLimit' :: TestLimit
+    _testLimit' :: Int
   , _sender     :: [Sender]
   , _properties :: [Property]
   } deriving Show
@@ -61,7 +61,7 @@ instance FromJSON Property where
 
 instance FromJSON PerPropConf where
   parseJSON (Object v) = PerPropConf
-    <$> ((v .: "testLimit" :: Data.Yaml.Parser Int) <&> fromIntegral)
+    <$> v .: "testLimit"
     <*> v .: "sender"
     <*> v .: "properties"
   parseJSON _ = mempty
