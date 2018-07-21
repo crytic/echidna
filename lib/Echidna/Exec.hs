@@ -96,13 +96,13 @@ ppHashes :: Map W256 (Set (Int, Int)) -> String
 ppHashes = unpack . encode . toJSON . CoverageReport
   . map (\(h, is) -> ContractCov (show h) (toList is)) . toAscList
 
-getCover :: (Foldable t, Monoid (t b)) => [(a, t b)] -> IO [a]
-getCover [] = return []
+getCover :: (Foldable t, Monoid (t b)) => [(a, t b)] -> [a]
+getCover [] = []
 getCover xs = setCover (fromList xs) mempty totalCoverage []
   where totalCoverage = length $ foldl' (\acc -> mappend acc . snd) mempty xs
 
-setCover :: (Foldable t, Monoid (t b)) => Vector (a, t b) -> t b -> Int -> [a] -> IO [a]
-setCover vs cov tot calls = best : calls & if length new == tot then return
+setCover :: (Foldable t, Monoid (t b)) => Vector (a, t b) -> t b -> Int -> [a] -> [a]
+setCover vs cov tot calls = best : calls & if length new == tot then id
                                                                 else setCover vs new tot where
   (best, new) = mappend cov <$> maximumBy (comparing $ length . mappend cov . snd) vs
   
