@@ -106,7 +106,7 @@ loadSolidity filePath selectedContract = do
         loaded = execState load $ execState (replaceCodeOfSelf bc) vm
         abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
         (tests, funs) = partition (isPrefixOf (conf ^. prefix) . fst) abi
-    if abi == [] then throwM NoFuncs else pure ()
+    if null abi then throwM NoFuncs else pure ()
     case find (not . null . snd) tests of
       Nothing      -> return (loaded, funs, fst <$> tests)
       (Just (t,_)) -> throwM $ TestArgsFound t
