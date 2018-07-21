@@ -4,16 +4,16 @@ module Main where
 
 import Control.Concurrent.MVar (MVar, newMVar, readMVar, swapMVar)
 import Control.Lens
-import Control.Monad           (forM, replicateM_)
+import Control.Monad           (forM, forM_ , replicateM_)
 import Control.Monad.Identity  (Identity(..))
 import Control.Monad.Reader    (runReaderT)
 import Data.List               (foldl')
 import Data.Set                (unions)
-import Data.Text               (Text)
+import Data.Text               (Text, unpack)
 import Data.Yaml
 import EVM                     (VM)
 import EVM.Types               (Addr)
-import System.Environment     (getArgs)
+import System.Environment      (getArgs)
 
 import qualified Data.ByteString as BS
 
@@ -83,7 +83,7 @@ group :: String
       -> [(Property, [SolCall], MVar [CoverageInfo])]
       -> Group
 group n c a v ps = Group (GroupName n) $ map prop ps where
-  prop ((Property f r),cov,mvar) = ( PropertyName $ show f
+  prop (Property f r, cov, mvar) = ( PropertyName $ show f
                                    , useConfig (ePropertySeqCoverage cov mvar (flip (checkTest r) f) a v))
 
   useConfig = runIdentity . (`runReaderT` c)
@@ -97,7 +97,10 @@ main = getArgs >>= \case
   [cf,sf] -> readConf cf >>= \case
     Nothing       -> pure ()
     (Just (c, ps)) -> do
-      (v,a,_) <- runReaderT (loadSolidity sf Nothing) c
+      (v,a,t) <- runReaderT (loadSolidity sf Nothing) c
+      forM_ (map (view function) ps) $ \p -> if p `elem` (t ++ map fst a)
+        then pure ()
+        else error $ "Property " ++ unpack p ++ " not found in ABI"
       tests <- mapM (\p -> fmap (p,) (newMVar [])) ps
       replicateM_ (c ^. epochs) $ do
         xs <- forM tests $ \(p,mvar) -> do
