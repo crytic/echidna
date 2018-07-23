@@ -42,7 +42,7 @@ data Property = Property {
   } deriving Show
 
 data PerPropConf = PerPropConf {
-    _testLimit' :: TestLimit
+    _testLimit' :: Int
   , _sender     :: [Sender]
   , _properties :: [Property]
   } deriving Show
@@ -61,7 +61,7 @@ instance FromJSON Property where
 
 instance FromJSON PerPropConf where
   parseJSON (Object v) = PerPropConf
-    <$> ((v .: "testLimit" :: Data.Yaml.Parser Int) <&> fromIntegral)
+    <$> v .: "testLimit"
     <*> v .: "sender"
     <*> v .: "properties"
   parseJSON _ = mempty
@@ -74,7 +74,7 @@ readConf :: FilePath -> IO (Maybe (Config, [Property]))
 readConf f = decodeEither <$> BS.readFile f >>= \case
   Left e -> putStrLn ("couldn't parse config, " ++ e) >> pure Nothing
   Right (PerPropConf t s p) -> pure . Just . (,p) $
-    defaultConfig & addrList .~ Just (view address <$> s) & testLimit .~ t & epochs .~ 1 & outputJson .~ True
+    defaultConfig & addrList .~ Just (view address <$> s) & range .~ t & epochs .~ 1 & outputJson .~ True
 
 group :: String
       -> Config
