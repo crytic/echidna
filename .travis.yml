@@ -40,7 +40,8 @@ script:
  - |
    set -ex
    # Run tests
-   stack --no-terminal test --ghc-options="$GHC_OPTIONS"
+   ln -s ~/.nix-profile/ nix
+   LD_LIBRARY_PATH=nix/lib stack --no-terminal test --ghc-options="$GHC_OPTIONS"
    set +ex
 
 after_success:
