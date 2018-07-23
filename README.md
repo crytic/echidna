@@ -23,7 +23,8 @@ Before starting with it, make sure you have libgmp-dev installed otherwise ghc w
 
 [solc](https://www.npmjs.com/package/solc) is another echidna dependency not handled via stack.
 It is technically optional, but working with solidity source will fail without it.
-Run `npm install -g solc` to install it.
+Install `solc` following the [official document](https://solidity.readthedocs.io/en/v0.4.24/installing-solidity.html).
+Note that `solc` must be installed by any method other than `npm / Node.js`.
 
 Once solc is installed, installing stack (`brew install haskell-stack`) and running
 
