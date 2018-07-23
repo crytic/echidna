@@ -12,7 +12,6 @@ nix-env -i ./result
 cd ../../src/hevm
 nix-env -i secp256k1
 ln -s ~/.nix-profile/ nix
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:nix/lib
 ls nix -R
-stack install
+LD_LIBRARY_PATH=nix/lib stack install
 cd ../../..
