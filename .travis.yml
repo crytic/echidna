@@ -41,7 +41,8 @@ script:
    set -ex
    # Run tests
    ln -s ~/.nix-profile/ nix
-   LD_LIBRARY_PATH=nix/lib stack --no-terminal test --ghc-options="$GHC_OPTIONS"
+   LD_LIBRARY_PATH=nix/lib
+   stack --no-terminal test --ghc-options="$GHC_OPTIONS"
    set +ex
 
 after_success:
