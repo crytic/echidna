@@ -8,7 +8,6 @@ cache:
         - $HOME/.cabal
         - $HOME/.stack
         - .stack-work
-        - /nix
 
 matrix:
   fast_finish: true
