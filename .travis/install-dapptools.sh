@@ -12,5 +12,6 @@ nix-env -i ./result
 cd ../../src/hevm
 nix-env -i secp256k1
 ln -s ~/.nix-profile/ nix
+ls nix -R
 stack install
 cd ../../..
