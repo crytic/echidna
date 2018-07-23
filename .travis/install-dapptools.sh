@@ -4,14 +4,12 @@ set -eux
 
 git clone https://github.com/ggrieco-tob/dapptools/
 cd dapptools
-#nix-env -f . -iA hevm
 cd src/libethjet
 sed -i "1s/.*/with import <nixpkgs> {};/" default.nix
 nix-build
 nix-env -i ./result
 cd ../../src/hevm
 nix-env -i secp256k1
-ln -s ~/.nix-profile/ nix
-ls nix -R
-LD_LIBRARY_PATH=nix/lib stack install
+#ln -s ~/.nix-profile/ nix
+#LD_LIBRARY_PATH=nix/lib stack install
 cd ../../..
