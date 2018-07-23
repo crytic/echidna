@@ -4,6 +4,8 @@ packages:
 - '.'
 
 extra-deps:
+- dapptools/src/libethjet-haskell
+- dapptools/src/hevm
 - brick-0.18
 - config-ini-0.2.1.1
 - data-clist-0.1.2.0
@@ -21,6 +23,10 @@ extra-deps:
 - tree-view-0.5
 - vty-5.16
 - word-wrap-0.4.1
+- s-cargot-0.1.4.0
 
-nix:
-  enable: true
+extra-include-dirs:
+- nix/include
+
+extra-lib-dirs:
+- nix/lib
