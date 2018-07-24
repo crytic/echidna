@@ -24,9 +24,3 @@ extra-deps:
 - vty-5.16
 - word-wrap-0.4.1
 - s-cargot-0.1.4.0
-
-extra-include-dirs:
-- nix/include
-
-extra-lib-dirs:
-- nix/lib
