@@ -12,12 +12,24 @@ It supports relatively sophisticated grammar-based fuzzing campaigns to falsify 
 
 ## Installation
 
-[stack](https://www.haskellstack.org/) is highly recommended to install echidna.
-If you are a particularly opinionated experienced Haskell user, cabal or hpack should work, but they are neither officially supported nor tested. 
+To properly compile echidna, we use a combination of [nix](https://nixos.org/nix/) and [stack](https://www.haskellstack.org/). Both need to be properly installed in order to follow the rest of the instructions. If you are a particularly opinionated experienced Haskell user, cabal or hpack could work, but they are neither officially supported nor tested. 
 
-Before starting with it, make sure you have libgmp-dev installed otherwise ghc will fail to compile. 
-hevm from [dapptools](https://github.com/dapphub/dapptools) is also a required dependency and must be installed as in the README of that repo.
-Also, libbz2 and libreadline are required by some packages. For instance, in Ubuntu/Debian you can execute:
+First, we need to install the dependencies of hevm using nix:
+
+```
+git clone https://github.com/trailofbits/echidna/
+cd echidna
+git clone https://github.com/dapphub/dapptools/
+cd dapptools
+cd src/libethjet
+sed -i "s/{ stdenv, secp256k1 }:/with import <nixpkgs> {};/" default.nix
+nix-env -i secp256k1
+nix-env -f . -i libethjet
+cd ../../
+ln -s ~/.nix-profile/ nix
+```
+
+Before starting to compile echidna, make sure you have libgmp-dev installed otherwise ghc will fail to compile. Also, libbz2 and libreadline are required by some packages. For instance, in Ubuntu/Debian you can execute:
 
 ```
 # apt-get install libgmp-dev libbz2-dev libreadline-dev
@@ -30,6 +42,7 @@ Run `npm install -g solc` to install it.
 Once solc is installed, installing stack (`brew install haskell-stack`) and running
 
 ```
+export LD_LIBRARY_PATH=$(pwd)/nix/lib
 stack upgrade
 stack setup
 stack install
