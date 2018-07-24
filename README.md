@@ -22,11 +22,10 @@ cd echidna
 git clone https://github.com/dapphub/dapptools/
 cd dapptools
 cd src/libethjet
-sed -i "s/{ stdenv, secp256k1 }:/with import <nixpkgs> {};/" default.nix
+sed -i.bak "s/{ stdenv, secp256k1 }:/with import <nixpkgs> {};/" default.nix
 nix-env -i secp256k1
 nix-env -f . -i libethjet
 cd ../../
-ln -s ~/.nix-profile/ nix
 ```
 
 Before starting to compile echidna, make sure you have libgmp-dev installed otherwise ghc will fail to compile. Also, libbz2 and libreadline are required by some packages. For instance, in Ubuntu/Debian you can execute:
@@ -42,7 +41,8 @@ Run `npm install -g solc` to install it.
 Once solc is installed, installing stack (`brew install haskell-stack`) and running
 
 ```
-export LD_LIBRARY_PATH=$(pwd)/nix/lib
+ln -s ~/.nix-profile/ nix
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(pwd)/nix/lib
 stack upgrade
 stack setup
 stack install
