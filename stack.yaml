@@ -5,7 +5,9 @@ packages:
 
 extra-deps:
 - git: https://github.com/dapphub/hevm.git
-  commit: 40b4ce9d38ed711ffd6065e697807100b3f0a3c3
+  commit: a2bda354fde1a8c1d990b95e468d60794106fa0d
+- git: https://github.com/dapphub/libethjet-haskell
+  commit: a1f13e95ec7619ebac60497c15b7f86449bf1d2a
 - brick-0.18
 - config-ini-0.2.1.1
 - data-clist-0.1.2.0
@@ -23,3 +25,9 @@ extra-deps:
 - tree-view-0.5
 - vty-5.16
 - word-wrap-0.4.1
+- s-cargot-0.1.4.0
+
+extra-include-dirs:
+- libethjet
+extra-lib-dirs:
+- libethjet

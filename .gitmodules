@@ -1,0 +1,3 @@
+[submodule "libethjet"]
+	path = libethjet
+	url = https://github.com/dapphub/libethjet

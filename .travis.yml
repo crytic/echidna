@@ -28,14 +28,23 @@ install:
  - export PATH=$HOME/.local/bin:/opt/ghc/$GHCVER/bin:$PATH
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
+ - wget "http://launchpadlibrarian.net/333773607/libsecp256k1-0_0.1~20170810-1_amd64.deb"
+ - wget "http://launchpadlibrarian.net/333773606/libsecp256k1-dev_0.1~20170810-1_amd64.deb"
+ - sudo dpkg -i libsecp256k1-0_0.1~20170810-1_amd64.deb 
+ - sudo dpkg -i libsecp256k1-dev_0.1~20170810-1_amd64.deb 
 
 script:
  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
- - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then 
+ - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+   brew tap cuber/homebrew-libsecp256k1
+   brew install libsecp256k1
    stack install readline --extra-include-dirs=/usr/local/opt/readline/include
                           --extra-lib-dirs=/usr/local/opt/readline/lib;
    fi
+ - cd libethjet
+ - CC="gcc -std=c99" make
+ - cd ..
  - |
    set -ex
    # Run tests
