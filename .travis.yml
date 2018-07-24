@@ -2,12 +2,6 @@
 language: nix
 sudo: true
 
-cache:
-    directories:
-        - $HOME/.ghc
-        - $HOME/.cabal
-        - $HOME/.stack
-
 matrix:
   fast_finish: true
   include:
