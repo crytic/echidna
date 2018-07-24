@@ -40,6 +40,7 @@ script:
  - |
    set -ex
    # Run tests
+   ls -R "$HOME/.nix-profile/"
    stack --no-terminal test --ghc-options="$GHC_OPTIONS" --extra-lib-dirs="$HOME/.nix-profile/lib/" --extra-include-dirs="$HOME/.nix-profile/include/"
    set +ex
 
