@@ -34,7 +34,7 @@ script:
    set -ex
    # Run tests
    ln -s ~/.nix-profile/ nix
-   env LD_LIBRARY_PATH=nix/lib stack --no-terminal test --ghc-options="$GHC_OPTIONS"
+   env LD_LIBRARY_PATH=$(pwd)/nix/lib stack --no-terminal test --ghc-options="$GHC_OPTIONS"
    set +ex
 
 after_success:
