@@ -40,8 +40,9 @@ script:
  - |
    set -ex
    # Run tests
-   ln -s ~/.nix-profile/ nix
-   env LD_LIBRARY_PATH=$(pwd)/nix/lib stack --no-terminal test --ghc-options="$GHC_OPTIONS"
+   stack --no-terminal test --ghc-options="$GHC_OPTIONS" 
+         --extra-lib-dirs="$HOME/.nix-profile/lib/" 
+         --extra-include-dirs="$HOME/.nix-profile/include/"
    set +ex
 
 after_success:
