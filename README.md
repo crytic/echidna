@@ -14,39 +14,27 @@ It supports relatively sophisticated grammar-based fuzzing campaigns to falsify 
 
 To properly compile echidna, we use a combination of [nix](https://nixos.org/nix/) and [stack](https://www.haskellstack.org/). Both need to be properly installed in order to follow the rest of the instructions. If you are a particularly opinionated experienced Haskell user, cabal or hpack could work, but they are neither officially supported nor tested. 
 
-First, we need to install the dependencies of hevm using nix:
+First, we need to install the hevm dependencies using the `install-dapptool-deps.sh` script.
+
+If you are using Linux, make sue you have gmp, bz2, readline and secp256k1 installed. For instance, in Ubuntu/Debian you can execute:
 
 ```
-git clone https://github.com/trailofbits/echidna/
-cd echidna
-git clone https://github.com/dapphub/dapptools/
-cd dapptools
-cd src/libethjet
-sed -i.bak "s/{ stdenv, secp256k1 }:/with import <nixpkgs> {};/" default.nix
-nix-env -i secp256k1
-nix-env -f . -i libethjet
-cd ../../../
+# apt-get install libgmp-dev libbz2-dev libreadline-dev libsecp256k1-dev
 ```
 
-Before starting to compile echidna, make sure you have libgmp-dev installed otherwise ghc will fail to compile. Also, libbz2 and libreadline are required by some packages. For instance, in Ubuntu/Debian you can execute:
-
-```
-# apt-get install libgmp-dev libbz2-dev libreadline-dev
-```
-
-[solc](https://www.npmjs.com/package/solc) is another echidna dependency not handled via stack.
+The [solidity compiler](https://github.com/ethereum/solidity) is another dependency that should be manually installed.
 It is technically optional, but working with solidity source will fail without it.
-Run `npm install -g solc` to install it.
+Install `solc` following the [official document](https://solidity.readthedocs.io/en/v0.4.24/installing-solidity.html).
+Note that `solc` must be installed by any method other than `npm / Node.js`.
 
-Once solc is installed, installing stack (`brew install haskell-stack`) and running
+Once all the dependencies are installed, execute:  
 
 ```
-stack upgrade
 stack setup
 stack install --extra-lib-dirs=$HOME/.nix-profile/lib/ --extra-include-dirs=$HOME/.nix-profile/include/
 ```
 
-from inside the echidna directory should be all that's needed.
+from inside the echidna directory.
 
 If you have weird problems involving `readline` on MacOS, try:
 
@@ -59,7 +47,7 @@ stack install readline --extra-include-dirs=/usr/local/opt/readline/include --ex
 stack install
 ```
 
-Notably, if you are using stack, `stack ghci` will set up a REPL with all functions in scope.
+Additionally, `stack ghci` will set up a REPL with all functions in scope.
 This can be quite useful for playing around with the library.
 
 ## Docker Installation
