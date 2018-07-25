@@ -12,11 +12,11 @@ It supports relatively sophisticated grammar-based fuzzing campaigns to falsify 
 
 ## Installation
 
-To properly compile echidna, we use a combination of [nix](https://nixos.org/nix/) and [stack](https://www.haskellstack.org/). Both need to be properly installed in order to follow the rest of the instructions. If you are a particularly opinionated experienced Haskell user, cabal or hpack could work, but they are neither officially supported nor tested. 
+To properly compile echidna, we require a combination of [nix](https://nixos.org/nix/) and [stack](https://www.haskellstack.org/). Both need to be properly installed in order to follow the rest of the instructions. If you are a particularly opinionated experienced Haskell user, cabal or hpack could work, but they are neither officially supported nor tested. 
 
 First, we need to install the hevm dependencies using the `install-dapptool-deps.sh` script.
 
-If you are using Linux, make sue you have gmp, bz2, readline and secp256k1 installed. For instance, in Ubuntu/Debian you can execute:
+If you are using Linux, make sure you have gmp, bz2, readline and secp256k1 installed. For instance, in Ubuntu/Debian you can execute:
 
 ```
 # apt-get install libgmp-dev libbz2-dev libreadline-dev libsecp256k1-dev
