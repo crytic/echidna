@@ -7,6 +7,7 @@ version: 0.0.0.1
 ghc-options: -Wall
 
 dependencies:
+  - aeson
   - base
   - ansi-terminal
   - bytestring           >= 0.10.8 && < 0.11
@@ -27,6 +28,8 @@ dependencies:
   - transformers
   - vector               >= 0.11.0 && < 0.13
   - wl-pprint-annotated
+  - yaml
+  - unordered-containers
 
 default-extensions:
   - OverloadedStrings
@@ -35,8 +38,10 @@ library:
   source-dirs: lib/
   exposed-modules:
     - Echidna.ABI
+    - Echidna.Config
     - Echidna.Exec
     - Echidna.Solidity
+    - Echidna.Property
 
 executables:
   echidna-test:
@@ -50,6 +55,10 @@ executables:
   state-example-exe:
     main: StateMachine.hs
     source-dirs: examples/state-machine
+    dependencies: echidna
+  perprop-exe:
+    main: Main.hs
+    source-dirs: perprop
     dependencies: echidna
 
 tests:

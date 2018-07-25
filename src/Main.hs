@@ -1,14 +1,18 @@
-{-# LANGUAGE OverloadedStrings, TupleSections #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, TupleSections  #-}
 
 module Main where
 
+import Control.Lens hiding (argument)
 import Control.Concurrent.MVar (newMVar, readMVar, swapMVar)
 import Control.Monad           (forM, replicateM_)
+import Control.Monad.IO.Class  (liftIO)
+import Control.Monad.Reader    (runReaderT)
 import Data.List               (foldl')
-import Data.Set                (size, unions)
+import Data.Set                (unions)
 import Data.Text               (pack)
 import Data.Semigroup          ((<>))
 
+import Echidna.Config
 import Echidna.Exec
 import Echidna.Solidity
 
@@ -21,8 +25,9 @@ import Options.Applicative
 data Options = Options
   { filePath         :: FilePath
   , selectedContract :: Maybe String
-  , solcArgs         :: Maybe String
-  , covEpochs        :: Maybe Int }
+  , coverageSelector :: Bool
+  , configFilepath   :: Maybe FilePath
+  }
 
 options :: Parser Options
 options = Options
@@ -32,12 +37,12 @@ options = Options
       <*> optional ( argument str
           ( metavar "CONTRACT"
          <> help "Contract inside of file to analyze" ))
-      <*> optional ( strOption
-          ( long "solc-args"
-         <> help "Optional solidity compiler arguments" ))
-      <*> optional ( option auto
-          ( long "epochs"
-         <> help "Optional number of epochs to run coverage guidance" ))
+      <*> switch
+          ( long "coverage"
+         <> help "Turn on coverage")
+      <*> optional ( option str
+          ( long "config"
+         <> help "Echidna config file" ))
 
 opts :: ParserInfo Options
 opts = info (options <**> helper)
@@ -45,38 +50,40 @@ opts = info (options <**> helper)
   <> progDesc "Fuzzing/property based testing of EVM code"
   <> header "Echidna - Ethereum fuzz testing framework" )
 
-
 main :: IO ()
 main = do
-  (Options f c s n) <- execParser opts
-  (v,a,ts) <- loadSolidity f (pack <$> c) (pack <$> s)
+  -- Read cmd line options and load config
+  (Options file contract usecov configFile) <- execParser opts
+  config <- maybe (pure defaultConfig) parseConfig configFile
 
-  case n of
-    -- RUN WITHOUT COVERAGE
-    Nothing -> do
-      let prop t = (PropertyName $ show t
-                   , ePropertySeq (flip checkETest t) a v 10
-                   )
+  let f = checkTest (config ^. returnType)
+      checkGroup = if config ^. outputJson then checkParallelJson else checkParallel
 
-      _ <- checkParallel . Group (GroupName f) $ map prop ts
+  flip runReaderT config $ do
+    -- Load solidity contract and get VM
+    (v,a,ts) <- loadSolidity file (pack <$> contract)
+    if not $ usecov || config ^. printCoverage
+      -- Run without coverage
+      then do
+      let prop t = ePropertySeq (`f` t) a v >>= \x -> return (PropertyName $ show t, x)
+      _ <- checkGroup . Group (GroupName file) =<< mapM prop ts
       return ()
 
-    -- RUN WITH COVERAGE
-    Just epochs -> do
-      tests <- mapM (\t -> fmap (t,) (newMVar [])) ts
-      let prop (cov,t,mvar) = (PropertyName $ show t
-                              , ePropertySeqCoverage cov mvar (flip checkETest t) a v 10
-                              )
+      -- Run with coverage
+      else do
+      tests <- liftIO $ mapM (\t -> fmap (t,) (newMVar [])) ts
+      let prop (cov,t,mvar) =
+            ePropertySeqCoverage cov mvar (`f` t) a v >>= \x -> return (PropertyName $ show t, x)
 
-      replicateM_ (epochs-1) $ do
-        xs <- forM tests $ \(x,y) -> do
+      replicateM_ (config ^. epochs) $ do
+        xs <- liftIO $ forM tests $ \(x,y) -> do
           cov <- readMVar y
           lastGen <- getCover cov
           _ <- swapMVar y []
           return (lastGen,x,y)
 
-        checkParallel . Group (GroupName f) $ map prop xs
+        checkGroup . Group (GroupName file) =<< mapM prop xs
         
-      ls <- mapM (readMVar . snd) tests
-      let l = size $ foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
-      putStrLn $ "Coverage: " ++ show l ++ " unique PCs"
+      ls <- liftIO $ mapM (readMVar . snd) tests
+      let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
+      printResults ci

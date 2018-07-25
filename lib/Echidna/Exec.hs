@@ -1,81 +1,110 @@
-{-# LANGUAGE BangPatterns, FlexibleContexts, KindSignatures,
-    LambdaCase, StrictData #-}
+{-# LANGUAGE BangPatterns, DeriveGeneric, FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
 
 module Echidna.Exec (
-    checkETest
+    ContractCov(..)
+  , CoveragePoint(..)
+  , CoverageReport(..)
+  , byHashes
+  , checkTest
+  , checkBoolExpTest
+  , checkRevertTest
+  , checkTrueOrRevertTest
+  , checkFalseOrRevertTest
+  , CoverageInfo
+  , CoverageRef
   , eCommand
   , eCommandCoverage
   , ePropertySeq
   , ePropertySeqCoverage
   , execCall
   , execCallCoverage
-  , fuzz
   , getCover
+  , ppHashes
+  , printResults
   , module Echidna.Internal.Runner
+  , module Echidna.Internal.JsonRunner
   ) where
 
 import Control.Concurrent.MVar    (MVar, modifyMVar_)
-import Control.Lens               ((^.), (.=), use)
-import Control.Monad              (forM_, replicateM)
+import Control.Lens               ((&), (^.), (.=), use, view)
 import Control.Monad.Catch        (MonadCatch)
 import Control.Monad.IO.Class     (MonadIO, liftIO)
 import Control.Monad.State.Strict (MonadState, StateT, evalState, evalStateT, execState, get, put, runState)
 import Control.Monad.Reader       (MonadReader, ReaderT, runReaderT, ask)
+import Data.Aeson                 (ToJSON(..), encode)
+import Data.ByteString.Lazy.Char8 (unpack)
+import Data.Foldable              (Foldable(..))
 import Data.IORef                 (IORef, modifyIORef', newIORef, readIORef)
 import Data.List                  (intercalate, foldl')
-import Data.Maybe                 (listToMaybe)
+import Data.Map.Strict            (Map, insertWith, toAscList)
+import Data.Maybe                 (fromMaybe)
 import Data.Ord                   (comparing)
-import Data.Set                   (Set, empty, insert, size, union)
+import Data.Set                   (Set, insert, singleton, size)
 import Data.Text                  (Text)
 import Data.Typeable              (Typeable)
-import Data.Vector.Generic        (maxIndexBy)
+import Data.Vector                (Vector, fromList)
+import Data.Vector.Generic        (maximumBy)
+import GHC.Generics
 
 import qualified Control.Monad.State.Strict as S
-import qualified Data.Vector.Mutable as M
-import qualified Data.Vector as V
 
 import Hedgehog
-import Hedgehog.Gen               (choice, sample, sequential)
+import Hedgehog.Gen               (choice, sequential)
 import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
 import Hedgehog.Range             (linear)
 
-import EVM          (VM, VMResult(..), calldata, exec1, pc, result, stack, state)
+import EVM
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
+import EVM.Types    (W256)
 
 import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions, mutateCall)
-import Echidna.Internal.Runner 
-
+import Echidna.Config (Config(..), testLimit, printCoverage, range, shrinkLimit)
+import Echidna.Internal.Runner
+import Echidna.Internal.JsonRunner
+import Echidna.Property (PropertyType(..))
 
 --------------------------------------------------------------------
 -- COVERAGE HANDLING
 
-type CoverageInfo = (SolCall, Set Int)
+data CoveragePoint = C (Int, Int) W256 deriving Eq
+
+instance Ord CoveragePoint where
+  compare (C (_,i0) w0) (C (_,i1) w1) = case compare w0 w1 of EQ -> compare i0 i1
+                                                              x  -> x
+
+type CoverageInfo = (SolCall, Set CoveragePoint)
 type CoverageRef  = IORef CoverageInfo
 
+byHashes :: (Foldable t, Monoid (t CoveragePoint)) => t CoveragePoint -> Map W256 (Set (Int, Int))
+byHashes = foldr (\(C i w) -> insertWith mappend w $ singleton i) mempty . toList
 
-getCover :: [CoverageInfo] -> IO [SolCall]
+printResults :: (MonadIO m, MonadReader Config m) => Set CoveragePoint -> m ()
+printResults ci = do liftIO (putStrLn $ "Coverage: " ++ show (size ci) ++ " unique arcs")
+                     view printCoverage >>= \case True  -> liftIO . print . ppHashes $ byHashes ci
+                                                  False -> pure ()
+
+data ContractCov = ContractCov { hash :: String, arcs :: [(Int, Int)] } deriving (Show, Generic)
+newtype CoverageReport = CoverageReport { coverage :: [ContractCov] } deriving (Show, Generic)
+
+instance ToJSON ContractCov
+instance ToJSON CoverageReport
+
+ppHashes :: Map W256 (Set (Int, Int)) -> String
+ppHashes = unpack . encode . toJSON . CoverageReport
+  . map (\(h, is) -> ContractCov (show h) (toList is)) . toAscList
+
+getCover :: (Foldable t, Monoid (t b)) => [(a, t b)] -> IO [a]
 getCover [] = return []
-getCover xs = setCover vs empty totalCoverage []
-  where vs = V.fromList xs
-        totalCoverage = size $ foldl' (\acc (_,c) -> union acc c) empty xs
+getCover xs = setCover (fromList xs) mempty totalCoverage []
+  where totalCoverage = length $ foldl' (\acc -> mappend acc . snd) mempty xs
 
-setCover :: V.Vector CoverageInfo -> Set Int -> Int -> [SolCall] -> IO [SolCall]
-setCover vs cov tot calls = do
-    let i = maxIndexBy (\a b -> comparing (size . union cov) (snd a) (snd b)) vs
-        s = vs V.! i
-        c = union cov $ snd s
-        newCalls = fst s : calls
-
-    if size c == tot
-      then return newCalls
-      else do
-      vs' <- V.unsafeThaw vs
-      M.write vs' i mempty
-      res <- V.unsafeFreeze vs'
-      setCover res c tot newCalls
+setCover :: (Foldable t, Monoid (t b)) => Vector (a, t b) -> t b -> Int -> [a] -> IO [a]
+setCover vs cov tot calls = best : calls & if length new == tot then return
+                                                                else setCover vs new tot where
+  (best, new) = mappend cov <$> maximumBy (comparing $ length . mappend cov . snd) vs
   
 
 execCallUsing :: MonadState VM m => m VMResult -> SolCall -> m VMResult
@@ -84,7 +113,7 @@ execCallUsing m (t,vs) = do og <- get
                             state . calldata .= cd
                             m >>= \case x@VMFailure{} -> put og >> return x
                                         x@VMSuccess{} -> return x
-  where cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ V.fromList vs
+  where cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
         cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
 
 
@@ -93,36 +122,47 @@ execCall = execCallUsing exec
 
 
 execCallCoverage :: (MonadState VM m, MonadReader CoverageRef m, MonadIO m) => SolCall -> m VMResult
-execCallCoverage sol = execCallUsing (go empty) sol where
+execCallCoverage sol = execCallUsing (go mempty) sol where
   go !c = use result >>= \case
     Just x -> do ref <- ask
                  liftIO $ modifyIORef' ref (const (sol, c))
                  return x
     _      -> do current <- use $ state . pc
+                 ch      <- view codehash . fromMaybe (error "no current contract??") . currentContract <$> get 
                  S.state (runState exec1)
-                 go $ insert current c
+                 new     <- use $ state . pc
+                 go $ insert (C (current, new) ch) c
 
 -------------------------------------------------------------------
 -- Fuzzing and Hedgehog Init
 
-fuzz :: MonadIO m
-     => Int                 -- Call sequence length
-     -> Int                 -- Number of iterations
-     -> [SolSignature]      -- Type signatures to call
-     -> VM                  -- Initial state
-     -> (VM -> m Bool)      -- Predicate to fuzz for violations of
-     -> m (Maybe [SolCall]) -- Call sequence to violate predicate (if found)
-fuzz l n ts v p = do
-  callseqs <- replicateM n (replicateM l . sample $ genInteractions ts)
-  results <- zip callseqs <$> mapM run callseqs
-  return $ listToMaybe [cs | (cs, passed) <- results, not passed]
-    where run cs = p $ execState (forM_ cs execCall) v
+checkTest :: PropertyType -> VM -> Text -> Bool
+checkTest ShouldReturnTrue             = checkBoolExpTest True
+checkTest ShouldReturnFalse            = checkBoolExpTest False
+checkTest ShouldRevert                 = checkRevertTest
+checkTest ShouldReturnFalseRevert      = checkFalseOrRevertTest
 
-
-checkETest :: VM -> Text -> Bool
-checkETest v t = case evalState (execCall (t, [])) v of
-  VMSuccess (B s) -> s == encodeAbiValue (AbiBool True)
+checkBoolExpTest :: Bool -> VM -> Text -> Bool
+checkBoolExpTest b v t = case evalState (execCall (t, [])) v of
+  VMSuccess (B s) -> s == encodeAbiValue (AbiBool b)
   _               -> False
+
+checkRevertTest :: VM -> Text -> Bool
+checkRevertTest v t = case evalState (execCall (t, [])) v of
+  (VMFailure Revert) -> True
+  _                  -> False
+
+checkTrueOrRevertTest :: VM -> Text -> Bool
+checkTrueOrRevertTest v t = case evalState (execCall (t, [])) v of
+  (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool True)
+  (VMFailure Revert) -> True
+  _                  -> False
+
+checkFalseOrRevertTest :: VM -> Text -> Bool
+checkFalseOrRevertTest v t = case evalState (execCall (t, [])) v of
+  (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool False)
+  (VMFailure Revert) -> True
+  _                  -> False
 
 
 newtype VMState (v :: * -> *) =
@@ -157,59 +197,53 @@ eCommand = flip eCommandUsing (\ _ -> pure ())
 
 
 eCommandCoverage :: (MonadGen n, MonadTest m, MonadState VM m, MonadReader CoverageRef m, MonadIO m)
-                 => [SolCall] -> (VM -> Bool) -> [SolSignature] -> [Command n m VMState]
-eCommandCoverage cov p ts = case cov of
-  [] -> [eCommandUsing (genInteractions ts) (\(Call c) -> execCallCoverage c) p]
-  xs -> map (\x -> eCommandUsing (choice [mutateCall x, genInteractions ts])
+                 => [SolCall] -> (VM -> Bool) -> [SolSignature] -> Config -> [Command n m VMState]
+eCommandCoverage cov p ts conf = let useConf = flip runReaderT conf in case cov of
+  [] -> [eCommandUsing (useConf $ genInteractions ts) (\(Call c) -> execCallCoverage c) p]
+  xs -> map (\x -> eCommandUsing (choice $ useConf <$> [mutateCall x, genInteractions ts])
               (\(Call c) -> execCallCoverage c) p) xs
 
-ePropertyUsing :: (MonadCatch m, MonadTest m)
+configProperty :: Config -> PropertyConfig -> PropertyConfig
+configProperty config x = x { propertyTestLimit   = config ^. testLimit
+                            , propertyShrinkLimit = config ^. shrinkLimit
+                            }
+
+ePropertyUsing :: (MonadCatch m, MonadTest m, MonadReader Config n)
              => [Command Gen m VMState]
              -> (m () -> PropertyT IO ())
-             -> VM          
-             -> Int        
-             -> Property
-ePropertyUsing cs f v n = mapConfig (\x -> x {propertyTestLimit = 10000}) . property $
-  f . executeSequential (VMState v) =<< forAllWith printCallSeq
-  (sequential (linear 1 n) (VMState v) cs)
+             -> VM             
+             -> n Property
+ePropertyUsing cs f v = do
+  config <- ask
+  return $ mapConfig (configProperty config) . property $
+    f . executeSequential (VMState v) =<< forAllWith printCallSeq
+    (sequential (linear 1 (config ^. range)) (VMState v) cs)
   where printCallSeq = ("Call sequence: " ++) . intercalate "\n               " .
           map showCall . sequentialActions
         showCall (Action i _ _ _ _ _) = show i ++ ";"
 
 
-ePropertySeq :: (VM -> Bool)   -- Predicate to fuzz for violations of
+ePropertySeq :: (MonadReader Config m)
+             => (VM -> Bool)   -- Predicate to fuzz for violations of
              -> [SolSignature] -- Type signatures to fuzz
              -> VM             -- Initial state
-             -> Int            -- Max actions to execute
-             -> Property
-ePropertySeq p ts = ePropertyUsing [eCommand (genInteractions ts) p] id             
+             -> m Property
+ePropertySeq p ts vm = ask >>= \c -> ePropertyUsing [eCommand (runReaderT (genInteractions ts) c) p] id vm
 
 
-ePropertySeqCoverage :: [SolCall]
+ePropertySeqCoverage :: (MonadReader Config m)
+                     => [SolCall]
                      -> MVar [CoverageInfo]
                      -> (VM -> Bool)
                      -> [SolSignature]
                      -> VM
-                     -> Int
-                     -> Property
-ePropertySeqCoverage calls cov p ts v = ePropertyUsing (eCommandCoverage calls p ts) writeCoverage v
-  where
-    writeCoverage :: MonadIO m => ReaderT CoverageRef (StateT VM m) a -> m a
-    writeCoverage m = do
-      threadCovRef <- liftIO $ newIORef mempty
-      let s = runReaderT m threadCovRef
-      a            <- evalStateT s v
-      threadCov    <- liftIO $ readIORef threadCovRef
-      liftIO $ modifyMVar_ cov (\xs -> pure $ threadCov:xs)
-      return a
-  
-
--- Should work, but missing instance MonadBaseControl b m => MonadBaseControl b (PropertyT m)
--- ePropertyPar :: VM                  -- Initial state
-             -- -> [(Text, [AbiType])] -- Type signatures to fuzz
-             -- -> (VM -> Bool)        -- Predicate to fuzz for violations of
-             -- -> Int                 -- Max size
-             -- -> Int                 -- Max post-prefix size
-             -- -> Property
--- ePropertyPar v ts p n m = withRetries 10 . property $ executeParallel (Current v) =<<
---   forAll (parallel (linear 1 n) (linear 1 m) (Current v) [eCommand v ts p])
+                     -> m Property
+ePropertySeqCoverage calls cov p ts v = ask >>= \c -> ePropertyUsing (eCommandCoverage calls p ts c) writeCoverage v 
+  where writeCoverage :: MonadIO m => ReaderT CoverageRef (StateT VM m) a -> m a
+        writeCoverage m = do
+          threadCovRef <- liftIO $ newIORef mempty
+          let s = runReaderT m threadCovRef
+          a         <- evalStateT s v
+          threadCov <- liftIO $ readIORef threadCovRef
+          liftIO $ modifyMVar_ cov (\xs -> pure $ threadCov:xs)
+          return a
