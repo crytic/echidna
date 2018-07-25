@@ -36,6 +36,10 @@ script:
  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then 
    stack install readline --extra-include-dirs=/usr/local/opt/readline/include
                           --extra-lib-dirs=/usr/local/opt/readline/lib;
+   else
+   wget "http://mirrors.kernel.org/ubuntu/pool/universe/libs/libsecp256k1/libsecp256k1-0_0.1~20170810-1_amd64.deb" ;
+   wget "http://mirrors.kernel.org/ubuntu/pool/universe/libs/libsecp256k1/libsecp256k1-dev_0.1~20170810-1_amd64.deb" ;
+   sudo dpkg -i libsecp256k1-0_0.1~20170810-1_amd64.deb libsecp256k1-dev_0.1~20170810-1_amd64.deb ;
    fi
  - |
    set -ex
