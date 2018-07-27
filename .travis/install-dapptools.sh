@@ -2,7 +2,9 @@
 
 set -eux
 
-git clone https://github.com/dapphub/dapptools/
+wget https://github.com/dapphub/dapptools/archive/master.zip
+unzip master.zip
+mv dapptools-master dapptools
 cd dapptools
 cd src/libethjet
 sed -i.bak "s/{ stdenv, secp256k1 }:/with import <nixpkgs> {};/" default.nix
