@@ -8,12 +8,12 @@ import Control.Monad           (forM, forM_ , replicateM_)
 import Control.Monad.Identity  (Identity(..))
 import Control.Monad.Reader    (runReaderT)
 import Data.List               (foldl')
+import Data.Semigroup          ((<>))
 import Data.Set                (unions)
 import Data.Text               (Text, unpack)
 import Data.Yaml
 import EVM                     (VM)
 import EVM.Types               (Addr)
-import System.Environment      (getArgs)
 
 import qualified Data.ByteString as BS
 
@@ -26,6 +26,38 @@ import Echidna.Exec
 import Echidna.Property
 import Echidna.Solidity
 
+import Options.Applicative hiding (Parser, argument)
+import Options.Applicative as O
+
+
+-- Cmd line parser
+-- {{{
+
+data Options = Options
+  { filePath         :: FilePath
+  , configFilepath   :: FilePath
+  , selectedContract :: Maybe String
+  }
+  
+
+options :: O.Parser Options
+options = Options
+      <$> O.argument str
+          ( metavar "FILE"
+         <> help "Solidity file to analyze" )
+      <*> O.argument str
+          ( metavar "CONFIG"
+         <> help "Config file" )
+      <*> optional ( O.argument str
+          ( metavar "CONTRACT"
+         <> help "Contract inside of file to analyze" ))
+
+
+opts :: ParserInfo Options
+opts = info (options <**> helper)
+  ( fullDesc
+  <> progDesc "Fuzzing/property based testing of EVM code"
+  <> header "Echidna - Ethereum fuzz testing framework" )
 
 -- }}}
 -- Types & instances
@@ -42,7 +74,7 @@ data Property = Property {
   } deriving Show
 
 data PerPropConf = PerPropConf {
-    _testLimit' :: TestLimit
+    _testLimit' :: Int
   , _sender     :: [Sender]
   , _properties :: [Property]
   } deriving Show
@@ -61,7 +93,7 @@ instance FromJSON Property where
 
 instance FromJSON PerPropConf where
   parseJSON (Object v) = PerPropConf
-    <$> ((v .: "testLimit" :: Data.Yaml.Parser Int) <&> fromIntegral)
+    <$> v .: "testLimit"
     <*> v .: "sender"
     <*> v .: "properties"
   parseJSON _ = mempty
@@ -74,7 +106,7 @@ readConf :: FilePath -> IO (Maybe (Config, [Property]))
 readConf f = decodeEither <$> BS.readFile f >>= \case
   Left e -> putStrLn ("couldn't parse config, " ++ e) >> pure Nothing
   Right (PerPropConf t s p) -> pure . Just . (,p) $
-    defaultConfig & addrList .~ Just (view address <$> s) & testLimit .~ t & epochs .~ 1 & outputJson .~ True
+    defaultConfig & addrList .~ Just (view address <$> s) & range .~ t & epochs .~ 1 & outputJson .~ True
 
 group :: String
       -> Config
@@ -93,11 +125,12 @@ group n c a v ps = Group (GroupName n) $ map prop ps where
 -- {{{
 
 main :: IO ()
-main = getArgs >>= \case
-  [cf,sf] -> readConf cf >>= \case
-    Nothing       -> pure ()
+main = do
+  (Options file configFile contract) <- execParser opts
+  readConf configFile >>= \case
+    Nothing        -> pure ()
     (Just (c, ps)) -> do
-      (v,a,t) <- runReaderT (loadSolidity sf Nothing) c
+      (v,a,t) <- runReaderT (loadSolidity file Nothing) c
       forM_ (map (view function) ps) $ \p -> if p `elem` (t ++ map fst a)
         then pure ()
         else error $ "Property " ++ unpack p ++ " not found in ABI"
@@ -109,12 +142,11 @@ main = getArgs >>= \case
           _       <- swapMVar mvar []
           pure (p,lastGen,mvar)
 
-        checkParallelJson $ group sf c a v xs
+        checkParallelJson $ group file c a v xs
 
       ls <- mapM (readMVar . snd) tests
       let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
       putStrLn $ ppHashes (byHashes ci)
-
-  _ -> putStrLn "USAGE: ./perprop-exe config.yaml contract.sol"
-  
+      
 -- }}}
+
