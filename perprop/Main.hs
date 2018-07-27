@@ -10,7 +10,7 @@ import Control.Monad.Reader    (runReaderT)
 import Data.List               (foldl')
 import Data.Semigroup          ((<>))
 import Data.Set                (unions)
-import Data.Text               (Text, unpack)
+import Data.Text               (Text, unpack, pack)
 import Data.Yaml
 import EVM                     (VM)
 import EVM.Types               (Addr)
@@ -130,7 +130,7 @@ main = do
   readConf configFile >>= \case
     Nothing        -> pure ()
     (Just (c, ps)) -> do
-      (v,a,t) <- runReaderT (loadSolidity file Nothing) c
+      (v,a,t) <- runReaderT (loadSolidity file (pack <$> contract)) c
       forM_ (map (view function) ps) $ \p -> if p `elem` (t ++ map fst a)
         then pure ()
         else error $ "Property " ++ unpack p ++ " not found in ABI"
