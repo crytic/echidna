@@ -80,9 +80,8 @@ main = do
       replicateM_ (config ^. epochs) $ do
         xs <- liftIO $ forM tests $ \(x,y) -> do
           cov <- readMVar y
-          lastGen <- getCover cov
           _ <- swapMVar y []
-          return (lastGen,x,y)
+          return (getCover cov, x, y)
 
         checkGroup . Group (GroupName file) =<< mapM prop xs
         
