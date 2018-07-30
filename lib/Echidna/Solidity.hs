@@ -39,6 +39,8 @@ data EchidnaException = BadAddr Addr
                       | TestArgsFound Text
                       | ContractNotFound Text
                       | NoBytecode Text
+                      | NoFuncs
+                      | NoTests
 
 instance Show EchidnaException where
   show = \case
@@ -48,6 +50,8 @@ instance Show EchidnaException where
     (ContractNotFound c) -> "Given contract " ++ show c ++ " not found in given file"
     (TestArgsFound t)    -> "Test " ++ show t ++ " has arguments, aborting"
     (NoBytecode t)       -> "No bytecode found for contract " ++ show t
+    NoFuncs              -> "ABI is empty, are you sure your constructor is right?"
+    NoTests              -> "No tests found in ABI"
 
 instance Exception EchidnaException
 
@@ -104,6 +108,7 @@ loadSolidity filePath selectedContract = do
         loaded = execState load $ execState (replaceCodeOfSelf bc) vm
         abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
         (tests, funs) = partition (isPrefixOf (conf ^. prefix) . fst) abi
+    if null abi then throwM NoFuncs else pure ()
     case find (not . null . snd) tests of
       Nothing      -> return (loaded, funs, fst <$> tests)
       (Just (t,_)) -> throwM $ TestArgsFound t
