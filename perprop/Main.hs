@@ -5,6 +5,7 @@ module Main where
 import Control.Concurrent.MVar (MVar, newMVar, readMVar, swapMVar)
 import Control.Lens
 import Control.Monad           (forM, replicateM_)
+import Control.Monad.Catch     (MonadThrow(..))
 import Control.Monad.Identity  (Identity(..))
 import Control.Monad.Reader    (runReaderT)
 import Data.List               (foldl')
@@ -97,6 +98,7 @@ main = getArgs >>= \case
   [cf,sf] -> readConf cf >>= \case
     Nothing       -> pure ()
     (Just (c, ps)) -> do
+      if null ps then throwM NoTests else pure ()
       (v,a,_) <- runReaderT (loadSolidity sf Nothing) c
       tests <- mapM (\p -> fmap (p,) (newMVar [])) ps
       replicateM_ (c ^. epochs) $ do
