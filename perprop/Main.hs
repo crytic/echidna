@@ -132,7 +132,7 @@ main = do
     Nothing        -> pure ()
     (Just (c, ps)) -> do
       if null ps then throwM NoTests else pure ()
-      (v,a,_) <- runReaderT (loadSolidity sf Nothing) c
+      (v,a,_) <- runReaderT (loadSolidity file Nothing) c
       tests <- mapM (\p -> fmap (p,) (newMVar [])) ps
       replicateM_ (c ^. epochs) $ do
         xs <- forM tests $ \(p,mvar) -> do
