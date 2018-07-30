@@ -4,7 +4,8 @@ module Main where
 
 import Control.Concurrent.MVar (MVar, newMVar, readMVar, swapMVar)
 import Control.Lens
-import Control.Monad           (forM, forM_ , replicateM_)
+import Control.Monad           (forM, forM_, replicateM_)
+import Control.Monad.Catch     (MonadThrow(..))
 import Control.Monad.Identity  (Identity(..))
 import Control.Monad.Reader    (runReaderT)
 import Data.List               (foldl')
@@ -130,6 +131,7 @@ main = do
   readConf configFile >>= \case
     Nothing        -> pure ()
     (Just (c, ps)) -> do
+      if null ps then throwM NoTests else pure ()
       (v,a,t) <- runReaderT (loadSolidity file (pack <$> contract)) c
       forM_ (map (view function) ps) $ \p -> if p `elem` (t ++ map fst a)
         then pure ()
