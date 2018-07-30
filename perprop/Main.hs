@@ -135,9 +135,8 @@ main = do
       replicateM_ (c ^. epochs) $ do
         xs <- forM tests $ \(p,mvar) -> do
           cov     <- readMVar mvar
-          lastGen <- getCover cov
           _       <- swapMVar mvar []
-          pure (p,lastGen,mvar)
+          pure (p, getCover cov, mvar)
 
         checkParallelJson $ group file c a v xs
 
