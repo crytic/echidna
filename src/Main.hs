@@ -5,6 +5,7 @@ module Main where
 import Control.Lens hiding (argument)
 import Control.Concurrent.MVar (newMVar, readMVar, swapMVar)
 import Control.Monad           (forM, replicateM_)
+import Control.Monad.Catch     (MonadThrow(..))
 import Control.Monad.IO.Class  (liftIO)
 import Control.Monad.Reader    (runReaderT)
 import Data.List               (foldl')
@@ -62,6 +63,7 @@ main = do
   flip runReaderT config $ do
     -- Load solidity contract and get VM
     (v,a,ts) <- loadSolidity file (pack <$> contract)
+    if null ts then throwM NoTests else pure ()
     if not $ usecov || config ^. printCoverage
       -- Run without coverage
       then do

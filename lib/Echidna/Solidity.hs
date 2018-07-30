@@ -11,7 +11,7 @@ import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, execState, modify, runState)
 import Data.Foldable              (toList)
-import Data.List                  (find, intercalate, partition)
+import Data.List                  (find, partition)
 import Data.Map                   (insert)
 import Data.Maybe                 (isNothing, fromMaybe)
 import Data.Monoid                ((<>))
@@ -40,7 +40,7 @@ data EchidnaException = BadAddr Addr
                       | ContractNotFound Text
                       | NoBytecode Text
                       | NoFuncs
-                      | NoTests [Text]
+                      | NoTests
 
 instance Show EchidnaException where
   show = \case
@@ -51,7 +51,7 @@ instance Show EchidnaException where
     (TestArgsFound t)    -> "Test " ++ show t ++ " has arguments, aborting"
     (NoBytecode t)       -> "No bytecode found for contract " ++ show t
     NoFuncs              -> "ABI is empty, are you sure your constructor is right?"
-    (NoTests t)          -> "No tests found in ABI {" ++ intercalate ", " (unpack <$> t) ++ "}"
+    NoTests              -> "No tests found in ABI"
 
 instance Exception EchidnaException
 
@@ -109,7 +109,6 @@ loadSolidity filePath selectedContract = do
         abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
         (tests, funs) = partition (isPrefixOf (conf ^. prefix) . fst) abi
     if null abi then throwM NoFuncs else pure ()
-    if null tests then throwM . NoTests $ fst <$> abi else pure ()
     case find (not . null . snd) tests of
       Nothing      -> return (loaded, funs, fst <$> tests)
       (Just (t,_)) -> throwM $ TestArgsFound t
