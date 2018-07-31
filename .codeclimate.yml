@@ -1,0 +1,8 @@
+version: "2"
+plugins:
+  hlint:
+    enabled: true
+exclude_patterns:
+  - "examples/"
+  - "exercises/"
+  - "solidity/"
