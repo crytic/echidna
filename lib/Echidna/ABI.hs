@@ -12,6 +12,7 @@ module Echidna.ABI (
   , genAbiBool
   , genAbiBytes
   , genAbiBytesDynamic
+  , genAbiCall
   , genAbiInt
   , genInteractions
   , genAbiString
@@ -32,10 +33,10 @@ import Data.DoubleWord       (Word128(..), Word160(..))
 import Data.Monoid           ((<>))
 import Data.ByteString       (ByteString)
 import Data.Text             (Text, unpack)
-import Data.Vector           (Vector)
+import Data.Vector           (Vector, generateM)
 import Hedgehog.Internal.Gen (MonadGen)
 import GHC.Exts              (IsList(..), Item)
-import Hedgehog.Range        (exponential, exponentialFrom, constant, singleton, Range)
+import Hedgehog.Range        (exponential, exponentialFrom, constant, origin, singleton, Range)
 import Numeric               (showHex)
 
 import qualified Data.ByteString as BS
@@ -115,6 +116,19 @@ genAbiType = Gen.choice [ pure AbiBytesDynamicType
                         ]
 
 genVecOfType :: (MonadReader Config m, MonadGen m) => AbiType -> Range Int -> m (Vector AbiValue)
+genVecOfType t r = do
+  n <- Gen.integral r
+  generateM n $ \_ -> case t of
+    AbiUIntType    n    -> genAbiUInt n
+    AbiIntType     n    -> genAbiInt n
+    AbiAddressType      -> genAbiAddress
+    AbiBoolType         -> genAbiBool
+    AbiBytesType   n    -> genAbiBytes n
+    AbiArrayType   n t' -> genAbiArray n t'
+    _ -> error "Arrays must only contain statically sized types"
+
+{-
+genVecOfType :: (MonadReader Config m, MonadGen m) => AbiType -> Range Int -> m (Vector AbiValue)
 genVecOfType t r = fmap fromList . Gen.list r $ case t of
   AbiUIntType    n    -> genAbiUInt n
   AbiIntType     n    -> genAbiInt n
@@ -122,7 +136,7 @@ genVecOfType t r = fmap fromList . Gen.list r $ case t of
   AbiBoolType         -> genAbiBool
   AbiBytesType   n    -> genAbiBytes n
   AbiArrayType   n t' -> genAbiArray n t'
-  _ -> error "Arrays must only contain statically sized types"
+  _ -> error "Arrays must only contain statically sized types"-}
 
 genAbiArrayDynamic :: (MonadReader Config m, MonadGen m) => AbiType -> m AbiValue
 genAbiArrayDynamic t = AbiArrayDynamic t <$> genVecOfType t (constant 0 256)
