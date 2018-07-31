@@ -2,6 +2,7 @@
 
 module Main where
 
+import System.IO               (hPrint, stderr)
 import Control.Concurrent.MVar (MVar, newMVar, readMVar, swapMVar)
 import Control.Lens
 import Control.Monad           (forM, forM_, replicateM_)
@@ -30,6 +31,8 @@ import Echidna.Solidity
 import Options.Applicative hiding (Parser, argument)
 import Options.Applicative as O
 
+warn :: Show a => a -> IO ()
+warn = hPrint stderr
 
 -- Cmd line parser
 -- {{{
@@ -135,7 +138,7 @@ main = do
       (v,a,t) <- runReaderT (loadSolidity file (pack <$> contract)) c
       forM_ (map (view function) ps) $ \p -> if p `elem` (t ++ map fst a)
         then pure ()
-        else print $ "Warning: property " ++ unpack p ++ " not found in ABI"
+        else warn $ "Warning: property " ++ unpack p ++ " not found in ABI"
       tests <- mapM (\p -> fmap (p,) (newMVar [])) $ filter (\p -> (view function p) `elem` (t ++ map fst a)) ps
       replicateM_ (c ^. epochs) $ do
         xs <- forM tests $ \(p,mvar) -> do
