@@ -22,3 +22,9 @@ shrinkLimit: 1000
 prefix: echidna_
 #Print full coverage
 printCoverage: false
+#Return Type
+#  - Success: all tests should return true
+#  - Fail: all tests should return false
+#  - Throw: all tests should revert
+#  - Fail or Throw: all tests should either return false or revert
+returnType: Success
