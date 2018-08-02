@@ -2,13 +2,14 @@
 
 module Main where
 
+import System.IO               (hPrint, stderr)
 import Control.Concurrent.MVar (MVar, newMVar, readMVar, swapMVar)
 import Control.Lens
 import Control.Monad           (forM, forM_, replicateM_)
 import Control.Monad.Catch     (MonadThrow(..))
 import Control.Monad.Identity  (Identity(..))
 import Control.Monad.Reader    (runReaderT)
-import Data.List               (foldl')
+import Data.List               ((\\), foldl')
 import Data.Semigroup          ((<>))
 import Data.Set                (unions)
 import Data.Text               (Text, unpack, pack)
@@ -30,6 +31,8 @@ import Echidna.Solidity
 import Options.Applicative hiding (Parser, argument)
 import Options.Applicative as O
 
+warn :: Show a => a -> IO ()
+warn = hPrint stderr
 
 -- Cmd line parser
 -- {{{
@@ -107,7 +110,7 @@ readConf :: FilePath -> IO (Maybe (Config, [Property]))
 readConf f = decodeEither <$> BS.readFile f >>= \case
   Left e -> putStrLn ("couldn't parse config, " ++ e) >> pure Nothing
   Right (PerPropConf t s p) -> pure . Just . (,p) $
-    defaultConfig & addrList .~ Just (view address <$> s) & range .~ t & epochs .~ 1 & outputJson .~ True
+    defaultConfig & addrList ?~ (view address <$> s) & range .~ t & epochs .~ 1 & outputJson .~ True
 
 group :: String
       -> Config
@@ -133,16 +136,12 @@ main = do
     (Just (c, ps)) -> do
       if null ps then throwM NoTests else pure ()
       (v,a,t) <- runReaderT (loadSolidity file (pack <$> contract)) c
-      forM_ (map (view function) ps) $ \p -> if p `elem` (t ++ map fst a)
-        then pure ()
-        else error $ "Property " ++ unpack p ++ " not found in ABI"
-      tests <- mapM (\p -> fmap (p,) (newMVar [])) ps
+      let abi = t ++ map fst a
+      forM_ ((view function <$> ps) \\ abi) $ \p ->
+        warn $ "Warning: property " ++ unpack p ++ " not found in ABI"
+      tests <- mapM ((<$> newMVar []) . (,)) [ p | p <- ps, p ^. function `elem` abi ]
       replicateM_ (c ^. epochs) $ do
-        xs <- forM tests $ \(p,mvar) -> do
-          cov     <- readMVar mvar
-          _       <- swapMVar mvar []
-          pure (p, getCover cov, mvar)
-
+        xs <- forM tests $ \(p,mvar) -> swapMVar mvar [] <&> (p,, mvar) . getCover
         checkParallelJson $ group file c a v xs
 
       ls <- mapM (readMVar . snd) tests
