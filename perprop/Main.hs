@@ -18,6 +18,7 @@ import EVM                     (VM)
 import EVM.Types               (Addr)
 
 import qualified Data.ByteString as BS
+import qualified Data.Text as T
 
 import Hedgehog hiding (checkParallel, Property)
 import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
@@ -92,7 +93,8 @@ instance FromJSON Sender where
   parseJSON _ = mempty
 
 instance FromJSON Property where
-  parseJSON (Object v) = Property <$> v .: "name" <*> v .: "return"
+  parseJSON (Object v) = Property <$> fmap (T.takeWhile (/= '(')) (v .: "name")
+                                  <*> v .: "return"
   parseJSON _ = mempty
 
 instance FromJSON PerPropConf where
