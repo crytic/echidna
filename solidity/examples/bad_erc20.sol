@@ -18,16 +18,11 @@ contract NewCoin {
     require(_to != address(0));
     require(_value <= balances[msg.sender]);
 
-    uint256 balance = balances[msg.sender] - _value;
-    uint256 toBalance = balances[_to] + _value;
+    uint256 senderBalance = balances[msg.sender] - _value;
+    uint256 receiverBalance = balances[_to] + _value;
 
-    setBalances(msg.sender, balance, _to, toBalance);
-  }
-
-  function setBalances(address _firstAccount, uint256 _firstAmount,
-        address _secondAccount, uint256 _secondAmount) internal {
-        balances[_firstAccount] = _firstAmount;
-        balances[_secondAccount] = _secondAmount;
+    balances[msg.sender] = senderBalance;
+    balances[_to] = receiverBalance;
   }
 }
 
