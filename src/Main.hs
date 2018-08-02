@@ -78,11 +78,7 @@ main = do
             ePropertySeqCoverage cov mvar (`f` t) a v >>= \x -> return (PropertyName $ show t, x)
 
       replicateM_ (config ^. epochs) $ do
-        xs <- liftIO $ forM tests $ \(x,y) -> do
-          cov <- readMVar y
-          _ <- swapMVar y []
-          return (getCover cov, x, y)
-
+        xs <- liftIO $ forM tests $ \(x,y) -> swapMVar y [] <&> (, x, y) . getCover
         checkGroup . Group (GroupName file) =<< mapM prop xs
         
       ls <- liftIO $ mapM (readMVar . snd) tests
