@@ -9,11 +9,12 @@ import Control.Monad.Catch     (MonadThrow(..))
 import Control.Monad.IO.Class  (liftIO)
 import Control.Monad.Reader    (runReaderT)
 import Data.List               (foldl')
-import Data.Set                (unions)
+import Data.Set                (unions, size)
 import Data.Text               (pack)
 import Data.Semigroup          ((<>))
 
 import Echidna.Config
+import Echidna.Coverage (ePropertySeqCoverage, getCover, printResults)
 import Echidna.Exec
 import Echidna.Solidity
 
