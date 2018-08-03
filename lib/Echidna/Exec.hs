@@ -25,6 +25,7 @@ module Echidna.Exec (
   , module Echidna.Internal.JsonRunner
   ) where
 
+import Control.DeepSeq            (NFData, force)
 import Control.Concurrent.MVar    (MVar, modifyMVar_)
 import Control.Lens               ((&), (^.), (.=), use, view)
 import Control.Monad.Catch        (MonadCatch)
@@ -33,9 +34,9 @@ import Control.Monad.State.Strict (MonadState, StateT, evalState, evalStateT, ex
 import Control.Monad.Reader       (MonadReader, ReaderT, runReaderT, ask)
 import Data.Aeson                 (ToJSON(..), encode)
 import Data.ByteString.Lazy.Char8 (unpack)
-import Data.Foldable              (Foldable(..))
+import Data.Foldable              (Foldable(..), foldl')
 import Data.IORef                 (IORef, modifyIORef', newIORef, readIORef)
-import Data.List                  (intercalate, foldl')
+import Data.List                  (intercalate)
 import Data.Map.Strict            (Map, insertWith, toAscList)
 import Data.Maybe                 (fromMaybe)
 import Data.Ord                   (comparing)
@@ -69,7 +70,9 @@ import Echidna.Property (PropertyType(..))
 --------------------------------------------------------------------
 -- COVERAGE HANDLING
 
-data CoveragePoint = C (Int, Int) W256 deriving Eq
+data CoveragePoint = C (Int, Int) W256 deriving (Eq, Generic)
+
+instance NFData CoveragePoint
 
 instance Ord CoveragePoint where
   compare (C (_,i0) w0) (C (_,i1) w1) = case compare w0 w1 of EQ -> compare i0 i1
@@ -131,7 +134,7 @@ execCallCoverage sol = execCallUsing (go mempty) sol where
                  ch      <- view codehash . fromMaybe (error "no current contract??") . currentContract <$> get 
                  S.state (runState exec1)
                  new     <- use $ state . pc
-                 go $ insert (C (current, new) ch) c
+                 go . force $ insert (C (current, new) ch) c
 
 -------------------------------------------------------------------
 -- Fuzzing and Hedgehog Init

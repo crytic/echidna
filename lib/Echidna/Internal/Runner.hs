@@ -14,12 +14,14 @@ module Echidna.Internal.Runner (
 
 import           Control.Concurrent.STM (TVar, atomically)
 import qualified Control.Concurrent.STM.TVar as TVar
+import           Control.DeepSeq (NFData)
 import           Control.Monad (zipWithM)
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class (MonadIO(..))
 import           Control.Monad.Trans.Maybe (MaybeT(..))
 
 import           Data.Bifunctor (first, second)
+import           Data.DoubleWord(Word128,Word256)
 import           Data.Either (partitionEithers)
 import qualified Data.List as List
 import           Data.Map (Map)
@@ -52,6 +54,12 @@ import           System.Console.ANSI (SGR(..), setSGRCode)
 
 import           Text.PrettyPrint.Annotated.WL (Doc, (<+>))
 import qualified Text.PrettyPrint.Annotated.WL as WL
+
+import EVM.Types (W256)
+
+instance NFData Word128
+instance NFData Word256
+instance NFData W256
 
 checkParallel :: MonadIO m => Group -> m Bool
 checkParallel =
