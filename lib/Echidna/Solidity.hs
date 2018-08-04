@@ -53,7 +53,7 @@ instance Show EchidnaException where
     (NoBytecode t)       -> "No bytecode found for contract " ++ show t
     NoFuncs              -> "ABI is empty, are you sure your constructor is right?"
     NoTests              -> "No tests found in ABI"
-    OnlyTests            -> "Only tests found in ABI"
+    OnlyTests            -> "Only tests and no public functions found in ABI"
 
 instance Exception EchidnaException
 
