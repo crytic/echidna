@@ -197,12 +197,13 @@ changeNumber :: (Enum a, Integral a, MonadGen m) => a -> m a
 changeNumber n = let x = fromIntegral n :: Integer in fromIntegral . (+ x) <$> Gen.element [-10..10]
 
 changeList :: (Listy t a, MonadGen m) => m (t a) -> m a -> t a -> m (t a)
-changeList g0 g1 x = let l = toList x in
-  Gen.choice [ Gen.element [(<> l), (l <>)] <*> fmap toList g0
-             , drop <$> Gen.element [1..length l]   <*> pure l
-             , take <$> Gen.element [0..length l-1] <*> pure l
-             , switchElem g1 l
-             ] <&> fromList
+changeList g0 g1 x = case toList x of
+  [] -> g0
+  l -> Gen.choice [ Gen.element [(<> l), (l <>)] <*> fmap toList g0
+                  , drop <$> Gen.element [1..length l] <*> pure l
+                  , take <$> Gen.element [0..length l-1] <*> pure l
+                  , switchElem g1 l
+                  ] <&> fromList
 
 newOrMod ::  MonadGen m => m AbiValue -> (a -> AbiValue) -> m a -> m AbiValue
 newOrMod m f n = Gen.choice [m, f <$> n]
