@@ -4,7 +4,7 @@ author: JP Smith
 
 version: 0.0.0.1
 
-ghc-options: -Wall -fno-warn-orphans
+ghc-options: -Wall -fno-warn-orphans -O2 -threaded
 
 dependencies:
   - aeson
@@ -40,6 +40,7 @@ library:
   exposed-modules:
     - Echidna.ABI
     - Echidna.Config
+    - Echidna.Coverage
     - Echidna.Exec
     - Echidna.Solidity
     - Echidna.Property

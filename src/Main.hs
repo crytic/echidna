@@ -14,6 +14,7 @@ import Data.Text               (pack)
 import Data.Semigroup          ((<>))
 
 import Echidna.Config
+import Echidna.Coverage (ePropertySeqCoverage, getCover, printResults)
 import Echidna.Exec
 import Echidna.Solidity
 

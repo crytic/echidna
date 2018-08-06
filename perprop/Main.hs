@@ -25,6 +25,7 @@ import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
 
 import Echidna.ABI
 import Echidna.Config
+import Echidna.Coverage
 import Echidna.Exec
 import Echidna.Property
 import Echidna.Solidity
