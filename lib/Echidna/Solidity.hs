@@ -41,6 +41,7 @@ data EchidnaException = BadAddr Addr
                       | NoBytecode Text
                       | NoFuncs
                       | NoTests
+                      | OnlyTests
 
 instance Show EchidnaException where
   show = \case
@@ -52,6 +53,7 @@ instance Show EchidnaException where
     (NoBytecode t)       -> "No bytecode found for contract " ++ show t
     NoFuncs              -> "ABI is empty, are you sure your constructor is right?"
     NoTests              -> "No tests found in ABI"
+    OnlyTests            -> "Only tests and no public functions found in ABI"
 
 instance Exception EchidnaException
 
@@ -109,6 +111,7 @@ loadSolidity filePath selectedContract = do
         abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
         (tests, funs) = partition (isPrefixOf (conf ^. prefix) . fst) abi
     if null abi then throwM NoFuncs else pure ()
+    if null funs then throwM OnlyTests else pure ()
     case find (not . null . snd) tests of
       Nothing      -> return (loaded, funs, fst <$> tests)
       (Just (t,_)) -> throwM $ TestArgsFound t
