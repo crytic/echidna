@@ -18,32 +18,17 @@ module Echidna.Exec (
   , module Echidna.Internal.JsonRunner
   ) where
 
-import Control.DeepSeq            (NFData, force)
-import Control.Concurrent.MVar    (MVar, modifyMVar_)
-import Control.Lens               ((&), (^.), (.=), use, view)
+import Control.Lens               ((^.), (.=))
 import Control.Monad.Catch        (MonadCatch)
-import Control.Monad.IO.Class     (MonadIO, liftIO)
-import Control.Monad.State.Strict (MonadState, StateT, evalState, evalStateT, execState, get, put, runState)
-import Control.Monad.Reader       (MonadReader, ReaderT, runReaderT, ask)
-import Data.Aeson                 (ToJSON(..), encode)
-import Data.ByteString.Lazy.Char8 (unpack)
-import Data.Foldable              (Foldable(..), foldl')
-import Data.IORef                 (IORef, modifyIORef', newIORef, readIORef)
+import Control.Monad.State.Strict (MonadState, evalState, execState, get, put)
+import Control.Monad.Reader       (MonadReader, runReaderT, ask)
 import Data.List                  (intercalate)
-import Data.Map.Strict            (Map, insertWith, toAscList)
-import Data.Maybe                 (fromMaybe)
-import Data.Ord                   (comparing)
-import Data.Set                   (Set, insert, singleton, size)
 import Data.Text                  (Text)
 import Data.Typeable              (Typeable)
-import Data.Vector                (Vector, fromList)
-import Data.Vector.Generic        (maximumBy)
-import GHC.Generics
-
-import qualified Control.Monad.State.Strict as S
+import Data.Vector                (fromList)
 
 import Hedgehog
-import Hedgehog.Gen               (choice, sequential)
+import Hedgehog.Gen               (sequential)
 import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
 import Hedgehog.Range             (linear)
@@ -52,10 +37,9 @@ import EVM
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
-import EVM.Types    (W256)
 
-import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions, mutateCall)
-import Echidna.Config (Config(..), testLimit, printCoverage, range, shrinkLimit)
+import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions)
+import Echidna.Config (Config(..), testLimit, range, shrinkLimit)
 import Echidna.Internal.Runner
 import Echidna.Internal.JsonRunner
 import Echidna.Property (PropertyType(..))
