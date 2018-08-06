@@ -49,6 +49,9 @@ import Echidna.Internal.Runner
 import Echidna.Internal.JsonRunner
 import Echidna.Exec
 
+-----------------------------------------
+-- Coverage data types and printing
+
 data CoveragePoint = C (Int, Int) W256 deriving (Eq, Generic)
 
 instance NFData CoveragePoint
@@ -68,8 +71,8 @@ printResults ci = do liftIO (putStrLn $ "Coverage: " ++ show (size ci) ++ " uniq
                      view printCoverage >>= \case True  -> liftIO . print . ppHashes $ byHashes ci
                                                   False -> pure ()
 
-data ContractCov = ContractCov { hash :: String, arcs :: [(Int, Int)] } deriving (Show, Generic)
-newtype CoverageReport = CoverageReport { coverage :: [ContractCov] } deriving (Show, Generic)
+data ContractCov = ContractCov { hash :: String, arcs :: ![(Int, Int)] } deriving (Show, Generic)
+data CoverageReport = CoverageReport { coverage :: ![ContractCov] } deriving (Show, Generic)
 
 instance ToJSON ContractCov
 instance ToJSON CoverageReport
@@ -77,6 +80,9 @@ instance ToJSON CoverageReport
 ppHashes :: Map W256 (Set (Int, Int)) -> String
 ppHashes = unpack . encode . toJSON . CoverageReport
   . map (\(h, is) -> ContractCov (show h) (toList is)) . toAscList
+
+-----------------------------------------
+-- Set cover algo
 
 getCover :: (Foldable t, Monoid (t b)) => [(a, t b)] -> [a]
 getCover [] = []
@@ -87,7 +93,10 @@ setCover :: (Foldable t, Monoid (t b)) => Vector (a, t b) -> t b -> Int -> [a] -
 setCover vs cov tot calls = best : calls & if length new == tot then id
                                                                 else setCover vs new tot where
   (best, new) = mappend cov <$> maximumBy (comparing $ length . mappend cov . snd) vs
- 
+
+-----------------------------------------
+-- Echidna exec with coverage
+  
 execCallCoverage :: (MonadState VM m, MonadReader CoverageRef m, MonadIO m) => SolCall -> m VMResult
 execCallCoverage sol = execCallUsing (go mempty) sol where
   go !c = use result >>= \case
