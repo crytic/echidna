@@ -34,6 +34,7 @@ import Data.Monoid           ((<>))
 import Data.ByteString       (ByteString)
 import Data.Text             (Text, unpack)
 import Data.Vector           (Vector, generateM)
+import Data.Bits             (shift)
 import Hedgehog.Internal.Gen (MonadGen)
 import GHC.Exts              (IsList(..), Item)
 import Hedgehog.Range        (exponential, exponentialFrom, constant, singleton, Range)
@@ -78,9 +79,19 @@ genAbiAddress = view addrList >>= \case (Just xs) -> fmap (AbiAddress . addressW
                                                        fmap AbiAddress . liftM2 Word160 Gen.enumBounded
                                                                            $ liftM2 Word128 w64 w64
 
-genAbiUInt :: MonadGen m => Int -> m AbiValue
-genAbiUInt n = AbiUInt n . fromInteger <$> genUInt
+genAbiRangeUInt :: MonadGen m => Int -> m AbiValue
+genAbiRangeUInt n = AbiUInt n . fromInteger <$> genUInt
                where genUInt = Gen.integral $ exponential 0 $ 2 ^ toInteger n - 1
+
+
+genAbiMagicUInt :: MonadGen m => Int -> m AbiValue
+genAbiMagicUInt n = AbiUInt n . fromInteger <$> genUInt
+                    where genUInt = Gen.element $ map (shift 1) [ 0 .. n ]
+
+
+genAbiUInt :: MonadGen m => Int -> m AbiValue
+genAbiUInt n = Gen.frequency [(99,genAbiRangeUInt n), (1, genAbiMagicUInt n)]
+
 
 genAbiInt :: MonadGen m => Int -> m AbiValue
 genAbiInt n = AbiInt n . fromInteger <$> genInt
