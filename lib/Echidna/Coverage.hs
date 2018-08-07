@@ -3,6 +3,7 @@
 module Echidna.Coverage (
     CoverageInfo
   , CoverageRef
+  , CoverageReport(..)
   , eCommandCoverage
   , ePropertySeqCoverage
   , execCallCoverage
