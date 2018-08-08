@@ -18,7 +18,7 @@ module Echidna.Exec (
   , module Echidna.Internal.JsonRunner
   ) where
 
-import Control.Lens               ((^.), (.=))
+import Control.Lens               ((&), (^.), (.=), (?~))
 import Control.Monad.Catch        (MonadCatch)
 import Control.Monad.State.Strict (MonadState, evalState, execState, get, put)
 import Control.Monad.Reader       (MonadReader, runReaderT, ask)
@@ -54,7 +54,7 @@ execCallUsing :: MonadState VM m => m VMResult -> SolCall -> m VMResult
 execCallUsing m (t,vs) = do og <- get
                             cleanUp 
                             state . calldata .= cd
-                            m >>= \case x@VMFailure{} -> put og >> return x
+                            m >>= \case x@VMFailure{} -> put (og & result ?~ x) >> return x
                                         x@VMSuccess{} -> return x
   where cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
         cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
