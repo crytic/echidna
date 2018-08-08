@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns, DeriveGeneric, FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
 
 module Echidna.Exec (
-    VMState
+    VMState(..)
   , VMAction(..)
   , checkTest
   , checkBoolExpTest
