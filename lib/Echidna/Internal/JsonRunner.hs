@@ -18,6 +18,7 @@ import           Data.Aeson    (ToJSON, encode)
 import           Data.ByteString.Lazy.Char8 (unpack)
 import           Data.Maybe    (mapMaybe)   
 import           GHC.Generics
+import           System.IO (hFlush, stdout)
 
 import           Hedgehog.Internal.Config
 import           Hedgehog.Internal.Gen (runDiscardEffect, runGenT)
@@ -66,6 +67,7 @@ checkGroup config (Group _ props) =
     _ <- runTasks n props st noop noop $ \(name, prop) -> do
       result <- checkProp 0 prop
       putStrLn $ unpack $ encode (format name result)
+      hFlush stdout
       pure ()
 
     pure True
