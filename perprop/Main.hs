@@ -124,7 +124,7 @@ readConf :: FilePath -> IO (Maybe (Config, [Property]))
 readConf f = decodeEither <$> BS.readFile f >>= \case
   Left e -> putStrLn ("couldn't parse config, " ++ e) >> pure Nothing
   Right (PerPropConf t s p) -> pure . Just . (,p) $
-    defaultConfig & contractAddr .~ (selectSender "owner" s)
+    defaultConfig -- & contractAddr .~ (selectSender "owner" s)
                   & addrList ?~ (view address <$> s)
                   & range .~ t
                   & Echidna.Config.sender .~ (selectSender "attacker" s)
