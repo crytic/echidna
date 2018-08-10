@@ -113,7 +113,7 @@ readConf :: FilePath -> IO (Maybe (Config, [Property]))
 readConf f = decodeEither <$> BS.readFile f >>= \case
   Left e -> putStrLn ("couldn't parse config, " ++ e) >> pure Nothing
   Right (PerPropConf t s p) -> pure . Just . (,p) $
-    defaultConfig & addrList ?~ (view address <$> s) & range .~ t & epochs .~ 1 & outputJson .~ True
+    defaultConfig & addrList ?~ (view address <$> s) & range .~ t & Echidna.Config.sender .~ (head $ view address <$> s) & epochs .~ 1 & outputJson .~ True
 
 group :: String
       -> Config
