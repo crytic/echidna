@@ -29,8 +29,8 @@ import Data.Set                   (Set, insert, size)
 import Data.Vector                (Vector, fromList)
 import Data.Vector.Generic        (maximumBy)
 import GHC.Generics
-import Crypto.Hash.SHA256         (hashlazy, hash)
-import System.Directory           (doesFileExist)
+import Crypto.Hash.SHA256         (hash)
+import System.Directory           (doesFileExist, createDirectoryIfMissing)
 
 import qualified Control.Monad.State.Strict as S
 import qualified Data.ByteString.Char8 as BS (pack, unpack)
@@ -117,6 +117,8 @@ hashString = BS.unpack . B16.encode . hash . BS.pack
 saveCalls :: [CoverageInfo] -> IO ()
 saveCalls cs = mapM_ f cs
   where f (c,m) = do
-          let filename = "txs/" ++ (hashString $ show m)
+          let dirname = "txs"
+          let filename = dirname ++ "/" ++ (hashString $ show m)
+          createDirectoryIfMissing False dirname
           b <- doesFileExist filename
           if (not b) then (writeFile filename $ displayAbiCall c ++ "\n") else return ()
