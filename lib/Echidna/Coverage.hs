@@ -9,6 +9,7 @@ module Echidna.Coverage (
   , execCallCoverage
   , getCover
   , getCoverageReport
+  , saveCalls
   , module Echidna.Internal.Runner
   , module Echidna.Internal.JsonRunner
   ) where
@@ -28,15 +29,19 @@ import Data.Set                   (Set, insert, size)
 import Data.Vector                (Vector, fromList)
 import Data.Vector.Generic        (maximumBy)
 import GHC.Generics
+import Crypto.Hash.SHA256         (hashlazy, hash)
+import System.Directory           (doesFileExist)
 
 import qualified Control.Monad.State.Strict as S
+import qualified Data.ByteString.Char8 as BS (pack, unpack)
+import qualified Data.ByteString.Base16 as B16 (encode) 
 
 import Hedgehog
 import Hedgehog.Gen               (choice)
 
 import EVM
 
-import Echidna.ABI (SolCall, SolSignature, genInteractions, mutateCall)
+import Echidna.ABI (SolCall, SolSignature, genInteractions, mutateCall, displayAbiCall)
 import Echidna.Config (Config(..))
 import Echidna.Internal.Runner
 import Echidna.Internal.JsonRunner
@@ -104,3 +109,14 @@ ePropertySeqCoverage calls cov p ts v = ask >>= \c -> ePropertyUsing (eCommandCo
           threadCov <- liftIO $ readIORef threadCovRef
           liftIO $ modifyMVar_ cov (\xs -> pure $ threadCov:xs)
           return a
+
+
+hashString :: String -> String
+hashString = BS.unpack . B16.encode . hash . BS.pack 
+
+saveCalls :: [CoverageInfo] -> IO ()
+saveCalls cs = mapM_ f cs
+  where f (c,m) = do
+          let filename = "txs/" ++ (hashString $ show m)
+          b <- doesFileExist filename
+          if (not b) then (writeFile filename $ displayAbiCall c ++ "\n") else return ()

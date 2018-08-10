@@ -14,7 +14,7 @@ import Data.Text               (pack)
 import Data.Semigroup          ((<>))
 
 import Echidna.Config
-import Echidna.Coverage (ePropertySeqCoverage, getCover)
+import Echidna.Coverage (ePropertySeqCoverage, getCover, saveCalls)
 import Echidna.Exec
 import Echidna.Solidity
 
@@ -80,7 +80,9 @@ main = do
 
       replicateM_ (config ^. epochs) $ do
         xs <- liftIO $ forM tests $ \(x,y) -> swapMVar y [] <&> (, x, y) . getCover
-        checkGroup . Group (GroupName file) =<< mapM prop xs
+        _  <- checkGroup . Group (GroupName file) =<< mapM prop xs
+        ls <- liftIO $ mapM (readMVar . snd) tests
+        liftIO $ saveCalls $ concat ls
         
       ls <- liftIO $ mapM (readMVar . snd) tests
       let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
