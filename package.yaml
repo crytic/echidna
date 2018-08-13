@@ -9,6 +9,7 @@ ghc-options: -Wall -fno-warn-orphans -O2
 dependencies:
   - aeson
   - base
+  - base16-bytestring
   - ansi-terminal
   - bytestring           >= 0.10.8 && < 0.11
   - containers           >= 0.5.7  && < 0.6
@@ -18,6 +19,7 @@ dependencies:
   - exceptions           >= 0.8.1  && < 0.9
   - hedgehog             >= 0.6
   - hevm
+  - cryptohash
   - lens                 >= 4.15.1 && < 4.16
   - mtl                  >= 2.2.1  && < 2.3
   - multiset             >= 0.3    && < 0.4
