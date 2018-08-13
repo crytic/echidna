@@ -15,22 +15,19 @@ matrix:
     # Add build targets here
     - env: GHCVER=8.2.1 CACHE_NAME=8.2.1 BUILD_BINARY=1
       compiler: ": #stack 8.2.1"
-      addons: {apt: {packages: [ghc-8.2.1], sources: [hvr-ghc]}}
-
     - env: GHCVER=8.2.1 CACHE_NAME=8.2.1-osx BUILD_BINARY=1
            LDFLAGS=-L/usr/local/opt/readline/lib CFLAGS=-I/usr/local/opt/readline/include
       os: osx
       compiler: ": #stack 8.2.1"
-      addons: {apt: {packages: [ghc-8.2.1], sources: [hvr-ghc]}}
 
 install:
  - unset CC
- - export PATH=$HOME/.local/bin:/opt/ghc/$GHCVER/bin:$PATH
+ - export PATH=$HOME/.local/bin:$PATH
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
 
 script:
- - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
+ - echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then 
    stack install readline --extra-include-dirs=/usr/local/opt/readline/include
