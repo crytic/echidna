@@ -27,7 +27,6 @@ install:
  - ./.travis/install-stack.sh
 
 script:
- - git clone https://github.com/dapphub/dapptools --depth 1
  - echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
  - |

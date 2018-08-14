@@ -1,0 +1,3 @@
+[submodule "dapptools"]
+	path = dapptools
+	url = https://github.com/dapphub/dapptools
