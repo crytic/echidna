@@ -15,20 +15,21 @@ matrix:
   include:
     # Add build targets here
     - env: GHCVER=8.2.1 CACHE_NAME=8.2.1 BUILD_BINARY=1
-      compiler: ": #stack 8.2.1"
+      #compiler: ": #stack 8.2.1"
     - env: GHCVER=8.2.1 CACHE_NAME=8.2.1-osx BUILD_BINARY=1
-           LDFLAGS=-L/usr/local/opt/readline/lib CFLAGS=-I/usr/local/opt/readline/include
+           #LDFLAGS=-L/usr/local/opt/readline/lib CFLAGS=-I/usr/local/opt/readline/include
       os: osx
-      compiler: ": #stack 8.2.1"
+      #compiler: ": #stack 8.2.1"
 
 install:
  - unset CC
  - export PATH=$HOME/.local/bin:$PATH
  - ./.travis/install-ghr.sh
- - ./.travis/install-stack.sh
+ #- ./.travis/install-stack.sh
 
 script:
- - echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
+ - nix-env -i stack
+ #- echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
  - |
    set -ex
