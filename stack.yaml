@@ -4,8 +4,8 @@ packages:
 - '.'
 
 extra-deps:
-- git: https://github.com/dapphub/hevm.git
-  commit: 40b4ce9d38ed711ffd6065e697807100b3f0a3c3
+- ./dapptools/src/hevm
+- ./dapptools/src/libethjet-haskell
 - brick-0.18
 - config-ini-0.2.1.1
 - data-clist-0.1.2.0
@@ -23,6 +23,7 @@ extra-deps:
 - tree-view-0.5
 - vty-5.16
 - word-wrap-0.4.1
+- s-cargot-0.1.4.0
 
 nix:
   enable: true
