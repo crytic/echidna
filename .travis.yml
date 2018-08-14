@@ -25,14 +25,11 @@ install:
  - export PATH=$HOME/.local/bin:$PATH
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
+ - git clone https://github.com/dapphub/dapptools --depth 1
 
 script:
  - echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
- - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then 
-   stack install readline --extra-include-dirs=/usr/local/opt/readline/include
-                          --extra-lib-dirs=/usr/local/opt/readline/lib;
-   fi
  - |
    set -ex
    # Run tests
