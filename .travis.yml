@@ -25,9 +25,9 @@ install:
  - export PATH=$HOME/.local/bin:$PATH
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
- - git clone https://github.com/dapphub/dapptools --depth 1
 
 script:
+ - git clone https://github.com/dapphub/dapptools --depth 1
  - echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
  - |
