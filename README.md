@@ -12,38 +12,14 @@ It supports relatively sophisticated grammar-based fuzzing campaigns to falsify 
 
 ## Installation
 
-[stack](https://www.haskellstack.org/) is highly recommended to install echidna.
-If you are a particularly opinionated experienced Haskell user, cabal or hpack should work, but they are neither officially supported nor tested. 
 
-Before starting with it, make sure you have libgmp-dev installed otherwise ghc will fail to compile. Also, libbz2 and libreadline are required by some packages. For instance, in Ubuntu/Debian you can execute:
+To properly compile and install echidna we use [nix](https://nixos.org/nix/) to take care of every dependency. To install, just execute:
 
 ```
-# apt-get install libgmp-dev libbz2-dev libreadline-dev
-```
-
-[solc](https://www.npmjs.com/package/solc) is another echidna dependency not handled via stack.
-It is technically optional, but working with solidity source will fail without it.
-Install `solc` following the [official document](https://solidity.readthedocs.io/en/v0.4.24/installing-solidity.html).
-Note that `solc` must be installed by any method other than `npm / Node.js`.
-
-Once solc is installed, installing stack (`brew install haskell-stack`) and running
-
-```
-stack upgrade
+git clone https://github.com/trailofbits/echidna/ --recursive
+cd echidna
+nix-env -i stack
 stack setup
-stack install
-```
-
-from inside the echidna directory should be all that's needed.
-
-If you have weird problems involving `readline` on MacOS, try:
-
-```
-brew install readline
-brew link readline --force
-export LDFLAGS=-L/usr/local/opt/readline/lib
-export CPPFLAGS=-I/usr/local/opt/readline/include
-stack install readline --extra-include-dirs=/usr/local/opt/readline/include --extra-lib-dirs=/usr/local/opt/readline/lib
 stack install
 ```
 
