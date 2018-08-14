@@ -33,7 +33,8 @@ script:
  - |
    set -ex
    # Run tests
-   stack --no-terminal test --ghc-options="$GHC_OPTIONS"
+   stack setup
+   #stack --no-terminal test --ghc-options="$GHC_OPTIONS"
    set +ex
 
 after_success:
