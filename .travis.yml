@@ -1,8 +1,6 @@
 # Adapted from https://github.com/ChrisPenner/haskell-stack-travis-ci
 language: nix
 sudo: true
-git:
-  depth: 3
   
 cache:
     directories:
@@ -11,6 +9,7 @@ cache:
         - $HOME/.stack
         - .stack-work
         - /nix
+    timeout: 1800
 
 matrix:
   fast_finish: true
@@ -18,17 +17,12 @@ matrix:
     # Add build targets here
     - env: BUILD_BINARY=1
       os: linux
-    - env: BUILD_BINARY=1
-      os: osx
+    #- env: BUILD_BINARY=1
+    #  os: osx
 
 before_install:
-  # Increase the size of ramdisk on sudo enabled infrastructure
-  # https://github.com/travis-ci/travis-ci/issues/9036#issuecomment-357189213
-  - df -h || true
-  - mount || true
+  # Increase the size of /run/user ramdisk 
   - sudo mount -o remount,size=30% /run/user || true
-  - df -h || true
-  - mount || true
   - sudo mkdir -p /etc/nix
   # workaround for a macOS specific issue with trusted users
   - echo "trusted-users = root $USER" | sudo tee -a /etc/nix/nix.conf
@@ -45,9 +39,8 @@ script:
  - nix-env -i stack
  #- echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
- - stack setup || true
- - stack --no-terminal test --ghc-options="$GHC_OPTIONS" || true
- - df -h
+ - stack setup
+ - stack --no-terminal test --ghc-options="$GHC_OPTIONS"
 
 after_success:
  - |
