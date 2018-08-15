@@ -8,7 +8,7 @@ cache:
         - $HOME/.cabal
         - $HOME/.stack
         - .stack-work
-        - /nix
+        #- /nix
     timeout: 1800
 
 matrix:
