@@ -43,12 +43,9 @@ script:
  - nix-env -i stack
  #- echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
- - |
-   set -ex
-   # Run tests
-   stack setup
-   stack --no-terminal test --ghc-options="$GHC_OPTIONS"
-   set +ex
+ - stack setup || true
+ - stack --no-terminal test --ghc-options="$GHC_OPTIONS" || true
+ - df -h
 
 after_success:
  - |
