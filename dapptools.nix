@@ -16,5 +16,5 @@ in
   haskell.lib.buildStackProject {
   inherit ghc;
   name = "echdina";
-  buildInputs = [ git bzip2 ethjet secp256k1 readline zlib ];
+  buildInputs = [ git bzip2 ethjet secp256k1 readline zlib haskellPackages.happy ];
   }
