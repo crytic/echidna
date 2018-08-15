@@ -25,7 +25,7 @@ extra-deps:
 - s-cargot-0.1.4.0
 - Unixutils-1.54.1
 - optparse-applicative-0.14.2.0
-- process-1.4.3.0
+- process-1.6.4.0
 - readline-1.0.3.0
 - time-1.6.0.1
 
