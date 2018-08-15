@@ -40,7 +40,7 @@ script:
  #- echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
  - stack setup
- - stack install hedgehog
+ - stack install lens
  #- stack --no-terminal test --ghc-options="$GHC_OPTIONS"
 
 after_success:
