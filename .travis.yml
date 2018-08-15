@@ -24,7 +24,11 @@ matrix:
 before_install:
   # Increase the size of ramdisk on sudo enabled infrastructure
   # https://github.com/travis-ci/travis-ci/issues/9036#issuecomment-357189213
-  #- sudo mount -o remount,size=50% /var/ramfs
+  - df -h || true
+  - mount || true
+  - sudo mount -o remount,size=30% /run/user || true
+  - df -h || true
+  - mount || true
   - sudo mkdir -p /etc/nix
   # workaround for a macOS specific issue with trusted users
   - echo "trusted-users = root $USER" | sudo tee -a /etc/nix/nix.conf
@@ -38,7 +42,6 @@ install:
  - ./.travis/install-ghr.sh
 
 script:
- - df -h
  - nix-env -i stack
  #- echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
