@@ -1,7 +1,9 @@
 # Adapted from https://github.com/ChrisPenner/haskell-stack-travis-ci
 language: nix
 sudo: true
-
+git:
+  depth: 3
+  
 cache:
     directories:
         - $HOME/.ghc
@@ -16,8 +18,8 @@ matrix:
     # Add build targets here
     - env: BUILD_BINARY=1
       os: linux
-    #- env: BUILD_BINARY=1
-    #  os: osx
+    - env: BUILD_BINARY=1
+      os: osx
 
 # workaround for a macOS specific issue with trusted users
 before_install:
