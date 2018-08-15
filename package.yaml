@@ -21,8 +21,8 @@ dependencies:
   - lens                 >= 4.15.1 && < 4.16
   - mtl                  >= 2.2.1  && < 2.3
   - multiset             >= 0.3    && < 0.4
-  - optparse-applicative >= 0.12.0 && < 0.14
-  - process              >= 1.4.3  && < 1.5
+  - optparse-applicative
+  - process
   - stm
   - temporary            >= 1.2.1  && < 1.3
   - text                 >= 1.2.2  && < 1.3
