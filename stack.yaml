@@ -32,3 +32,4 @@ extra-deps:
 nix:
   enable: true
   shell-file: dapptools.nix
+  add-gc-roots: true
