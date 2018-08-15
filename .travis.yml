@@ -16,8 +16,8 @@ matrix:
     # Add build targets here
     - env: BUILD_BINARY=1
       os: linux
-    - env: BUILD_BINARY=1
-      os: osx
+    #- env: BUILD_BINARY=1
+    #  os: osx
 
 # workaround for a macOS specific issue with trusted users
 before_install:
@@ -40,7 +40,7 @@ script:
    set -ex
    # Run tests
    stack setup
-   #stack --no-terminal test --ghc-options="$GHC_OPTIONS"
+   stack --no-terminal test --ghc-options="$GHC_OPTIONS"
    set +ex
 
 after_success:
