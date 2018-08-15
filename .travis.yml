@@ -25,7 +25,6 @@ before_install:
   # Increase the size of ramdisk on sudo enabled infrastructure
   # https://github.com/travis-ci/travis-ci/issues/9036#issuecomment-357189213
   #- sudo mount -o remount,size=50% /var/ramfs
-  - rm -Rf $HOME/.ghc $HOME/.cabal $HOME/.stack
   - sudo mkdir -p /etc/nix
   # workaround for a macOS specific issue with trusted users
   - echo "trusted-users = root $USER" | sudo tee -a /etc/nix/nix.conf
