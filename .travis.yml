@@ -24,8 +24,6 @@ before_install:
   - sudo mkdir -p /etc/nix
   - echo "trusted-users = root $USER" | sudo tee -a /etc/nix/nix.conf
   - sudo launchctl kickstart -k system/org.nixos.nix-daemon || true
-  - nix-collect-garbage
-  - nix-collect-garbage
 
 install:
  - nix-env -if https://github.com/cachix/cachix/tarball/master --substituters https://cachix.cachix.org --trusted-public-keys cachix.cachix.org-1:eWNHQldwUO7G2VkjpnjDbWwy4KQ/HNxht7H4SSoMckM=
@@ -43,7 +41,7 @@ script:
    set -ex
    # Run tests
    stack setup
-   #stack --no-terminal test --ghc-options="$GHC_OPTIONS"
+   stack --no-terminal test --ghc-options="$GHC_OPTIONS"
    set +ex
 
 after_success:
