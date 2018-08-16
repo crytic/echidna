@@ -1,13 +1,10 @@
 FROM ubuntu:rolling
-RUN apt-get update && apt-get -y upgrade
-RUN apt-get install -y curl libgmp-dev libbz2-dev libreadline-dev software-properties-common locales-all locales
-RUN add-apt-repository -y ppa:ethereum/ethereum
-RUN apt-get update
-RUN apt-get install -y solc
-RUN curl -sSL https://get.haskellstack.org/ | sh
+RUN echo "build-users-group =" > /etc/nix/nix.conf
+RUN curl https://nixos.org/nix/install | sh
+RUN nix-env -i stack
 COPY . /echidna/
 WORKDIR /echidna
-RUN stack upgrade && stack setup && stack install
+RUN stack setup && stack install
 ENV PATH=$PATH:/root/.local/bin
 RUN update-locale LANG=en_US.UTF-8
 RUN locale-gen en_US.UTF-8  
