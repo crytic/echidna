@@ -1,4 +1,6 @@
 FROM ubuntu:rolling
+RUN apt-get update && apt-get -y upgrade
+RUN apt-get install -y curl software-properties-common locales-all locales
 RUN mkdir -p /etc/nix
 RUN echo "build-users-group =" > /etc/nix/nix.conf
 RUN curl https://nixos.org/nix/install | sh
