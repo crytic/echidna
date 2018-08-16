@@ -1,4 +1,5 @@
 FROM ubuntu:rolling
+RUN mkdir -p /etc/nix
 RUN echo "build-users-group =" > /etc/nix/nix.conf
 RUN curl https://nixos.org/nix/install | sh
 RUN nix-env -i stack
