@@ -21,7 +21,7 @@ import qualified Data.ByteString as BS
 import qualified Data.Text as T
 
 import Hedgehog hiding (checkParallel, Property)
-import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
+import Hedgehog.Internal.Property (GroupName(..), PropertyName(..), TestLimit(..))
 
 import Echidna.ABI
 import Echidna.Config
@@ -81,6 +81,7 @@ data Property = Property {
 
 data PerPropConf = PerPropConf {
     _testLimit' :: Int
+  , _range'     :: Int
   , _sender     :: [Sender]
   , _properties :: [Property]
   } deriving Show
@@ -101,6 +102,7 @@ instance FromJSON Property where
 instance FromJSON PerPropConf where
   parseJSON (Object v) = PerPropConf
     <$> v .: "testLimit"
+    <*> v .: "range"
     <*> v .: "sender"
     <*> v .: "properties"
   parseJSON _ = mempty
@@ -112,8 +114,8 @@ instance FromJSON PerPropConf where
 readConf :: FilePath -> IO (Maybe (Config, [Property]))
 readConf f = decodeEither <$> BS.readFile f >>= \case
   Left e -> putStrLn ("couldn't parse config, " ++ e) >> pure Nothing
-  Right (PerPropConf t s p) -> pure . Just . (,p) $
-    defaultConfig & addrList ?~ (view address <$> s) & range .~ t & epochs .~ 1 & outputJson .~ True
+  Right (PerPropConf t r s p) -> pure . Just . (,p) $
+    defaultConfig & addrList ?~ (view address <$> s) & range .~ r & testLimit .~ (TestLimit t) & epochs .~ 1 & outputJson .~ True
 
 group :: String
       -> Config
