@@ -83,14 +83,16 @@ genAbiRangeUInt :: MonadGen m => Int -> m AbiValue
 genAbiRangeUInt n = AbiUInt n . fromInteger <$> genUInt
                where genUInt = Gen.integral $ exponential 0 $ 2 ^ toInteger n - 1
 
+genAbiPowerOf2 :: MonadGen m => Int -> m AbiValue
+genAbiPowerOf2 n = AbiUInt n . fromInteger <$> genUInt
+                    where genUInt = Gen.element $ map (shift 1) [ 0 .. n ] ++ map ((subtract 1) . (shift 1)) [ 0 .. n ]
 
-genAbiMagicUInt :: MonadGen m => Int -> m AbiValue
-genAbiMagicUInt n = AbiUInt n . fromInteger <$> genUInt
-                    where genUInt = Gen.element $ map (shift 1) [ 0 .. n ]
-
+genAbiCommonValues :: MonadGen m => Int -> m AbiValue
+genAbiCommonValues n = AbiUInt n <$> genUInt
+                    where genUInt = Gen.element [ 0 .. (2 ^ toInteger (min n 10)) ]
 
 genAbiUInt :: MonadGen m => Int -> m AbiValue
-genAbiUInt n = Gen.frequency [(99,genAbiRangeUInt n), (1, genAbiMagicUInt n)]
+genAbiUInt n = Gen.frequency [(98,genAbiRangeUInt n), (1, genAbiPowerOf2 n), (1, genAbiCommonValues n)]
 
 
 genAbiInt :: MonadGen m => Int -> m AbiValue
