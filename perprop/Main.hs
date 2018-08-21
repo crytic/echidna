@@ -82,8 +82,9 @@ data Property = Property {
 data PerPropConf = PerPropConf {
     _testLimit' :: Int
   , _range'     :: Int
-  , _sender     :: [Sender]
-  , _properties :: [Property]
+  , _sender'    :: [Sender]
+  , _solcArgs'  :: Maybe String
+  , _properties':: [Property]
   } deriving Show
 
 makeLenses ''Sender
@@ -104,8 +105,20 @@ instance FromJSON PerPropConf where
     <$> v .: "testLimit"
     <*> v .: "range"
     <*> v .: "sender"
+    <*> v .: "solcArgs" 
     <*> v .: "properties"
   parseJSON _ = mempty
+
+-- }}}
+-- Selecting a proper sender
+-- {{{
+
+selectSender :: String -> [Sender] -> Addr
+selectSender n ss = view address (f $ filter (\s -> (view name s) == n) ss)
+                    where f []  = error ("Undefined sender " ++ n)
+                          f [x] = x
+                          f _   = error ("Multiple definitions of sender " ++ n)
+
 
 -- }}}
 -- Parsing a config
@@ -114,8 +127,15 @@ instance FromJSON PerPropConf where
 readConf :: FilePath -> IO (Maybe (Config, [Property]))
 readConf f = decodeEither <$> BS.readFile f >>= \case
   Left e -> putStrLn ("couldn't parse config, " ++ e) >> pure Nothing
-  Right (PerPropConf t r s p) -> pure . Just . (,p) $
-    defaultConfig & addrList ?~ (view address <$> s) & range .~ r & testLimit .~ (TestLimit t) & epochs .~ 1 & outputJson .~ True
+  Right (PerPropConf t r s a p) -> pure . Just . (,p) $
+    defaultConfig -- & contractAddr .~ (selectSender "owner" s)
+                  & addrList ?~ (view address <$> s)
+                  & range .~ r
+                  & testLimit .~ (TestLimit t) 
+                  & sender .~ (selectSender "attacker" s)
+                  & epochs .~ 1
+                  & solcArgs .~ a
+                  & outputJson .~ True
 
 group :: String
       -> Config
