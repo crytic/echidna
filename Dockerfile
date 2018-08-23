@@ -12,13 +12,13 @@ ENV LANG en_US.UTF-8
 ENV LC_ALL en_US.UTF-8
 
 WORKDIR /home/tester
+COPY . /home/tester/echidna/
+WORKDIR /home/tester/echidna
+RUN chown -R user .
 USER tester
 ENV USER tester
 
-RUN curl https://nixos.org/nix/install | sh
-
-COPY . /home/tester/echidna/
-WORKDIR /home/tester/echidna
+RUN curl https://nixos.org/nix/install | sh 
 
 RUN    . /home/tester/.nix-profile/etc/profile.d/nix.sh \
     && nix-env -i stack \
