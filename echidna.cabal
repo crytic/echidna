@@ -1,0 +1,235 @@
+-- This file has been generated from package.yaml by hpack version 0.28.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 9b0575622f8ada301f4012c60fc1ca1bc7a4d64134ad96e2057055cf27414b9f
+
+name:           echidna
+version:        0.0.0.1
+author:         JP Smith
+license-file:   LICENSE
+build-type:     Simple
+cabal-version:  >= 1.10
+
+library
+  exposed-modules:
+      Echidna.ABI
+      Echidna.Config
+      Echidna.Coverage
+      Echidna.Exec
+      Echidna.Solidity
+      Echidna.Property
+  other-modules:
+      Echidna.Internal.JsonRunner
+      Echidna.Internal.Runner
+      Paths_echidna
+  hs-source-dirs:
+      lib/
+  default-extensions: OverloadedStrings
+  ghc-options: -Wall -fno-warn-orphans -O2
+  build-depends:
+      aeson
+    , ansi-terminal
+    , base
+    , bytestring >=0.10.8 && <0.11
+    , containers >=0.5.7 && <0.6
+    , data-dword >=0.3.1 && <0.4
+    , deepseq
+    , directory
+    , exceptions >=0.8.1 && <0.9
+    , hedgehog >=0.6
+    , hevm
+    , lens >=4.15.1 && <4.16
+    , mtl >=2.2.1 && <2.3
+    , multiset >=0.3 && <0.4
+    , optparse-applicative >=0.12.0 && <0.14
+    , process >=1.4.3 && <1.5
+    , stm
+    , temporary >=1.2.1 && <1.3
+    , text >=1.2.2 && <1.3
+    , transformers
+    , unordered-containers
+    , vector >=0.11.0 && <0.13
+    , wl-pprint-annotated
+    , yaml
+  default-language: Haskell2010
+
+executable echidna-test
+  main-is: Main.hs
+  other-modules:
+      Paths_echidna
+  hs-source-dirs:
+      src/
+  default-extensions: OverloadedStrings
+  ghc-options: -Wall -fno-warn-orphans -O2
+  build-depends:
+      aeson
+    , ansi-terminal
+    , base
+    , bytestring >=0.10.8 && <0.11
+    , containers >=0.5.7 && <0.6
+    , data-dword >=0.3.1 && <0.4
+    , deepseq
+    , directory
+    , echidna
+    , exceptions >=0.8.1 && <0.9
+    , hedgehog >=0.6
+    , hevm
+    , lens >=4.15.1 && <4.16
+    , mtl >=2.2.1 && <2.3
+    , multiset >=0.3 && <0.4
+    , optparse-applicative >=0.12.0 && <0.14
+    , process >=1.4.3 && <1.5
+    , stm
+    , temporary >=1.2.1 && <1.3
+    , text >=1.2.2 && <1.3
+    , transformers
+    , unordered-containers
+    , vector >=0.11.0 && <0.13
+    , wl-pprint-annotated
+    , yaml
+  default-language: Haskell2010
+
+executable gastest-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_echidna
+  hs-source-dirs:
+      gastest
+  default-extensions: OverloadedStrings
+  ghc-options: -Wall -fno-warn-orphans -O2
+  build-depends:
+      aeson
+    , ansi-terminal
+    , base
+    , bytestring >=0.10.8 && <0.11
+    , containers >=0.5.7 && <0.6
+    , data-dword >=0.3.1 && <0.4
+    , deepseq
+    , directory
+    , echidna
+    , exceptions >=0.8.1 && <0.9
+    , hedgehog >=0.6
+    , hevm
+    , lens >=4.15.1 && <4.16
+    , mtl >=2.2.1 && <2.3
+    , multiset >=0.3 && <0.4
+    , optparse-applicative >=0.12.0 && <0.14
+    , process >=1.4.3 && <1.5
+    , stm
+    , temporary >=1.2.1 && <1.3
+    , text >=1.2.2 && <1.3
+    , transformers
+    , unordered-containers
+    , vector >=0.11.0 && <0.13
+    , wl-pprint-annotated
+    , yaml
+  default-language: Haskell2010
+
+executable perprop-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_echidna
+  hs-source-dirs:
+      perprop
+  default-extensions: OverloadedStrings
+  ghc-options: -Wall -fno-warn-orphans -O2
+  build-depends:
+      aeson
+    , ansi-terminal
+    , base
+    , bytestring >=0.10.8 && <0.11
+    , containers >=0.5.7 && <0.6
+    , data-dword >=0.3.1 && <0.4
+    , deepseq
+    , directory
+    , echidna
+    , exceptions >=0.8.1 && <0.9
+    , hedgehog >=0.6
+    , hevm
+    , lens >=4.15.1 && <4.16
+    , mtl >=2.2.1 && <2.3
+    , multiset >=0.3 && <0.4
+    , optparse-applicative >=0.12.0 && <0.14
+    , process >=1.4.3 && <1.5
+    , stm
+    , temporary >=1.2.1 && <1.3
+    , text >=1.2.2 && <1.3
+    , transformers
+    , unordered-containers
+    , vector >=0.11.0 && <0.13
+    , wl-pprint-annotated
+    , yaml
+  default-language: Haskell2010
+
+executable revert-example-exe
+  main-is: Revert.hs
+  other-modules:
+      Paths_echidna
+  hs-source-dirs:
+      examples/revert
+  default-extensions: OverloadedStrings
+  ghc-options: -Wall -fno-warn-orphans -O2
+  build-depends:
+      aeson
+    , ansi-terminal
+    , base
+    , bytestring >=0.10.8 && <0.11
+    , containers >=0.5.7 && <0.6
+    , data-dword >=0.3.1 && <0.4
+    , deepseq
+    , directory
+    , echidna
+    , exceptions >=0.8.1 && <0.9
+    , hedgehog >=0.6
+    , hevm
+    , lens >=4.15.1 && <4.16
+    , mtl >=2.2.1 && <2.3
+    , multiset >=0.3 && <0.4
+    , optparse-applicative >=0.12.0 && <0.14
+    , process >=1.4.3 && <1.5
+    , stm
+    , temporary >=1.2.1 && <1.3
+    , text >=1.2.2 && <1.3
+    , transformers
+    , unordered-containers
+    , vector >=0.11.0 && <0.13
+    , wl-pprint-annotated
+    , yaml
+  default-language: Haskell2010
+
+executable state-example-exe
+  main-is: StateMachine.hs
+  other-modules:
+      Paths_echidna
+  hs-source-dirs:
+      examples/state-machine
+  default-extensions: OverloadedStrings
+  ghc-options: -Wall -fno-warn-orphans -O2
+  build-depends:
+      aeson
+    , ansi-terminal
+    , base
+    , bytestring >=0.10.8 && <0.11
+    , containers >=0.5.7 && <0.6
+    , data-dword >=0.3.1 && <0.4
+    , deepseq
+    , directory
+    , echidna
+    , exceptions >=0.8.1 && <0.9
+    , hedgehog >=0.6
+    , hevm
+    , lens >=4.15.1 && <4.16
+    , mtl >=2.2.1 && <2.3
+    , multiset >=0.3 && <0.4
+    , optparse-applicative >=0.12.0 && <0.14
+    , process >=1.4.3 && <1.5
+    , stm
+    , temporary >=1.2.1 && <1.3
+    , text >=1.2.2 && <1.3
+    , transformers
+    , unordered-containers
+    , vector >=0.11.0 && <0.13
+    , wl-pprint-annotated
+    , yaml
+  default-language: Haskell2010

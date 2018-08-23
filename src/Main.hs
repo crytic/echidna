@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings, TupleSections  #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, TupleSections, DoAndIfThenElse  #-}
 
 module Main where
 
@@ -59,29 +59,35 @@ main = do
   config <- maybe (pure defaultConfig) parseConfig configFile
 
   let f = checkTest (config ^. returnType)
-      checkGroup = if config ^. outputJson then checkParallelJson else checkParallel
+      checkGroup = if config ^. outputJson 
+        then 
+            checkParallelJson 
+        else 
+            checkParallel
 
   flip runReaderT config $ do
     -- Load solidity contract and get VM
     (v,a,ts) <- loadSolidity file (pack <$> contract)
-    if null ts then throwM NoTests else pure ()
+    if null ts 
+        then throwM NoTests
+        else pure ()
     if not $ usecov || config ^. printCoverage
       -- Run without coverage
-      then do
-      let prop t = ePropertySeq (`f` t) a v >>= \x -> return (PropertyName $ show t, x)
-      _ <- checkGroup . Group (GroupName file) =<< mapM prop ts
-      return ()
+        then do
+            let prop t = ePropertySeq (`f` t) a v >>= \x -> return (PropertyName $ show t, x)
+            _ <- checkGroup . Group (GroupName file) =<< mapM prop ts
+            return ()
 
       -- Run with coverage
-      else do
-      tests <- liftIO $ mapM (\t -> fmap (t,) (newMVar [])) ts
-      let prop (cov,t,mvar) =
-            ePropertySeqCoverage cov mvar (`f` t) a v >>= \x -> return (PropertyName $ show t, x)
+        else do
+            tests <- liftIO $ mapM (\t -> fmap (t,) (newMVar [])) ts
+            let prop (cov,t,mvar) =
+                    ePropertySeqCoverage cov mvar (`f` t) a v >>= \x -> return (PropertyName $ show t, x)
 
-      replicateM_ (config ^. epochs) $ do
-        xs <- liftIO $ forM tests $ \(x,y) -> swapMVar y [] <&> (, x, y) . getCover
-        checkGroup . Group (GroupName file) =<< mapM prop xs
+            replicateM_ (config ^. epochs) $ do
+                    xs <- liftIO $ forM tests $ \(x,y) -> swapMVar y [] <&> (, x, y) . getCover
+                    checkGroup . Group (GroupName file) =<< mapM prop xs
         
-      ls <- liftIO $ mapM (readMVar . snd) tests
-      let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
-      liftIO . putStrLn $ "Coverage: " ++ show (size ci) ++ " unique PC's"
+            ls <- liftIO $ mapM (readMVar . snd) tests
+            let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
+            liftIO . putStrLn $ "Coverage: " ++ show (size ci) ++ " unique PC's"
