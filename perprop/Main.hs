@@ -106,6 +106,17 @@ instance FromJSON PerPropConf where
   parseJSON _ = mempty
 
 -- }}}
+-- Selecting a proper sender
+-- {{{
+
+selectSender :: String -> [Sender] -> Addr
+selectSender n ss = view address (f $ filter (\s -> (view name s) == n) ss)
+                    where f []  = error ("Undefined sender " ++ n)
+                          f [x] = x
+                          f _   = error ("Multiple definitions of sender " ++ n)
+
+
+-- }}}
 -- Parsing a config
 -- {{{
 
@@ -113,7 +124,12 @@ readConf :: FilePath -> IO (Maybe (Config, [Property]))
 readConf f = decodeEither <$> BS.readFile f >>= \case
   Left e -> putStrLn ("couldn't parse config, " ++ e) >> pure Nothing
   Right (PerPropConf t s p) -> pure . Just . (,p) $
-    defaultConfig & addrList ?~ (view address <$> s) & range .~ t & epochs .~ 1 & outputJson .~ True
+    defaultConfig -- & contractAddr .~ (selectSender "owner" s)
+                  & addrList ?~ (view address <$> s)
+                  & range .~ t
+                  & Echidna.Config.sender .~ (selectSender "attacker" s)
+                  & epochs .~ 1
+                  & outputJson .~ True
 
 group :: String
       -> Config
