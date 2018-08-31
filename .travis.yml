@@ -40,7 +40,7 @@ script:
  - GHC_OPTIONS="-Werror"
  - stack setup
  # workaround for stack bug: https://github.com/commercialhaskell/stack/issues/2282#issuecomment-351285376
- - rm -rf ~/.stack/setup-exe-cache
+ - nix-collect-garbage
  - stack --no-terminal test --ghc-options="$GHC_OPTIONS"
 
 after_success:
