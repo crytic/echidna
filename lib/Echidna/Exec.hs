@@ -115,7 +115,7 @@ instance Show (VMState v) where
 
 newtype VMAction (v :: * -> *) = 
   Call SolCall
- 
+
 instance Show (VMAction v) where
   show (Call c) = displayAbiCall c
 
