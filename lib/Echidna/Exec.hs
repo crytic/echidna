@@ -18,7 +18,7 @@ module Echidna.Exec (
   , module Echidna.Internal.JsonRunner
   ) where
 
-import Control.Lens               ((&), (^.), (.=), (?~))
+import Control.Lens               (view, (&), (^.), (.=), (?~))
 import Control.Monad.Catch        (MonadCatch)
 import Control.Monad.State.Strict (MonadState, evalState, execState, get, put)
 import Control.Monad.Reader       (MonadReader, runReaderT, ask)
@@ -59,11 +59,30 @@ execCallUsing m (t,vs) = do og <- get
   where cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
         cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
 
+fatalFailures :: VM -> Bool
+fatalFailures vm = case (view result vm) of
+  (Just (VMFailure (Query _)))                    -> True
+  (Just (VMFailure (UnrecognizedOpcode _)))       -> True
+  (Just (VMFailure StackUnderrun))                -> True
+  (Just (VMFailure BadJumpDestination))           -> True
+  (Just (VMFailure StackLimitExceeded))           -> True
+  (Just (VMFailure IllegalOverflow))              -> True
+  _                                               -> False
+
+selfDestructed :: VM -> Bool
+selfDestructed vm = not . null $ view selfdestructs (view tx vm)
+
 checkTest :: PropertyType -> VM -> Text -> Bool
-checkTest ShouldReturnTrue             = checkBoolExpTest True
-checkTest ShouldReturnFalse            = checkBoolExpTest False
-checkTest ShouldRevert                 = checkRevertTest
-checkTest ShouldReturnFalseRevert      = checkFalseOrRevertTest
+checkTest p v t =  not (fatalFailures v)  &&
+                   not (selfDestructed v) &&
+                   checkTest' p v t
+
+
+checkTest' :: PropertyType -> VM -> Text -> Bool
+checkTest' ShouldReturnTrue             = checkBoolExpTest True
+checkTest' ShouldReturnFalse            = checkBoolExpTest False
+checkTest' ShouldRevert                 = checkRevertTest
+checkTest' ShouldReturnFalseRevert      = checkFalseOrRevertTest
 
 checkBoolExpTest :: Bool -> VM -> Text -> Bool
 checkBoolExpTest b v t = case evalState (execCall (t, [])) v of
@@ -93,7 +112,7 @@ newtype VMState (v :: * -> *) =
  
 instance Show (VMState v) where
   show (VMState v) = "EVM state, current result: " ++ show (v ^. result)
- 
+
 newtype VMAction (v :: * -> *) = 
   Call SolCall
  
