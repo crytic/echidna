@@ -28,7 +28,11 @@ This can be quite useful for playing around with the library.
 
 ## Docker Installation
 
-Set your Docker service to allow 4GB of RAM. Build the Dockerfile with the following command
+Set your Docker service to allow at least 4GB of RAM and do not forget to clone this repository with its submodules:
+
+`git clone https://github.com/trailofbits/echidna/ --recursive`
+
+Then, go into the `echidna` directory and build the Dockerfile with the following command:
 
 `docker build -t echidna .`
 
