@@ -14,7 +14,7 @@ ENV LC_ALL en_US.UTF-8
 WORKDIR /home/tester
 COPY . /home/tester/echidna/
 WORKDIR /home/tester/echidna
-RUN chown -R user .
+RUN chown -R tester .
 USER tester
 ENV USER tester
 
