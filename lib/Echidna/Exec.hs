@@ -8,27 +8,30 @@ module Echidna.Exec (
   , checkRevertTest
   , checkTrueOrRevertTest
   , checkFalseOrRevertTest
-  , eCommand
-  , eCommandUsing
+  --, eCommand
+  --, eCommandUsing
   , ePropertySeq
-  , ePropertyUsing
-  , execCall
+  --, ePropertyCheck
+  --, ePropertyUsing
+  , execCalls
   , execCallUsing
   , module Echidna.Internal.Runner
   , module Echidna.Internal.JsonRunner
   ) where
 
 import Control.Lens               ((&), (^.), (.=), (?~))
+import Control.Monad              (foldM)
 import Control.Monad.Catch        (MonadCatch)
 import Control.Monad.State.Strict (MonadState, evalState, execState, get, put)
 import Control.Monad.Reader       (MonadReader, runReaderT, ask)
+import Control.Monad.IO.Class     (MonadIO, liftIO)
 import Data.List                  (intercalate)
 import Data.Text                  (Text)
 import Data.Typeable              (Typeable)
 import Data.Vector                (fromList)
 
 import Hedgehog
-import Hedgehog.Gen               (sequential)
+import Hedgehog.Gen               (sequential, sample, list, print)
 import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
 import Hedgehog.Range             (linear)
@@ -38,7 +41,7 @@ import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
 
-import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions)
+import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions, genTransactions)
 import Echidna.Config (Config(..), testLimit, range, shrinkLimit)
 import Echidna.Internal.Runner
 import Echidna.Internal.JsonRunner
@@ -47,10 +50,46 @@ import Echidna.Property (PropertyType(..))
 -------------------------------------------------------------------
 -- Fuzzing and Hedgehog Init
 
-execCall :: MonadState VM m => SolCall -> m VMResult
-execCall = execCallUsing exec
+execCalls :: [SolCall] -> VM -> VM
+execCalls cs ivm = foldr f (execState exec ivm) cs
+                   where f c vm = execState (execCallUsing c exec) vm 
+                                   --Just x -> execState (execCallUsing c (return x)) vm 
 
-execCallUsing :: MonadState VM m => m VMResult -> SolCall -> m VMResult
+execCall :: MonadState VM m => SolCall -> m VMResult
+execCall c = execCallUsing c exec
+
+execCallUsing :: MonadState VM m => SolCall -> m VMResult -> m VMResult
+execCallUsing (t,vs) m = do og <- get
+                            cleanUpAfterTransaction
+                            state . calldata .= encodeSolCall t vs
+                            m >>= \case x@VMFailure{} -> put (og & result ?~ x) >> return x
+                                        x@VMSuccess{} -> return x
+  
+encodeSolCall :: Text -> [AbiValue] -> Blob        
+encodeSolCall t vs =  B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
+
+cleanUpAfterTransaction :: MonadState VM m => m ()
+cleanUpAfterTransaction = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
+
+ePropertySeq :: (VM -> Bool) -> [SolSignature] -> VM -> Config -> IO ()
+ePropertySeq p ts ivm c = do cs <- sample $ runReaderT (genTransactions 10 ts) c
+                             let vm_ = execCalls cs ivm
+                             Prelude.print cs
+                             Prelude.print (vm_ ^. result)
+                             Prelude.print $ p vm_
+                             --if (p vm_) then
+                             --   Prelude.print "true!"
+                             --else
+                             --   Prelude.print "false!"
+                           --ePropertySeq p ts vm c 
+
+--ePropertyCheck :: (MonadGen m, MonadState VM m) =>
+--                        (VM -> Bool) -> [SolSignature] -> VM -> Config -> m ()
+--ePropertyCheck p ts vm c = evalState $ ePropertySeq p ts vm c
+                           --  evalState r 
+
+
+{-
 execCallUsing m (t,vs) = do og <- get
                             cleanUp 
                             state . calldata .= cd
@@ -58,6 +97,7 @@ execCallUsing m (t,vs) = do og <- get
                                         x@VMSuccess{} -> return x
   where cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
         cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
+-}
 
 checkTest :: PropertyType -> VM -> Text -> Bool
 checkTest ShouldReturnTrue             = checkBoolExpTest True
@@ -103,7 +143,7 @@ instance Show (VMAction v) where
 instance HTraversable VMAction where
   htraverse _ (Call b) = pure $ Call b
 
-
+{-
 eCommandUsing :: (MonadGen n, MonadTest m, Typeable a)
               => n SolCall
               -> (VMAction Concrete -> m a)
@@ -144,3 +184,5 @@ ePropertySeq :: (MonadReader Config m)
              -> VM             -- Initial state
              -> m Property
 ePropertySeq p ts vm = ask >>= \c -> ePropertyUsing [eCommand (runReaderT (genInteractions ts) c) p] id vm
+
+-}

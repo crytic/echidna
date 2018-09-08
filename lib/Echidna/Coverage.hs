@@ -4,9 +4,9 @@ module Echidna.Coverage (
     CoverageInfo
   , CoverageRef
   , CoverageReport(..)
-  , eCommandCoverage
-  , ePropertySeqCoverage
-  , execCallCoverage
+  --, eCommandCoverage
+  --, ePropertySeqCoverage
+  --, execCallCoverage
   , getCover
   , getCoverageReport
   , module Echidna.Internal.Runner
@@ -70,16 +70,20 @@ setCover vs cov tot calls = best : calls & if length new == tot then id
 
 -----------------------------------------
 -- Echidna exec with coverage
-  
-execCallCoverage :: (MonadState VM m, MonadReader CoverageRef m, MonadIO m) => SolCall -> m VMResult
-execCallCoverage sol = execCallUsing (go mempty) sol where
+
+{-
+execCallCoverage :: (MonadState VM m, MonadReader CoverageRef m, MonadIO m) => [SolCall] -> m VMResult
+execCallCoverage sols = execCallUsing (go mempty) sols where
   go !c = use result >>= \case
     Just x -> do ref <- ask
-                 liftIO $ modifyIORef' ref (const (sol, c))
+                 liftIO $ modifyIORef' ref (const (head sols, c))
                  return x
     _      -> do current <- use $ state . pc
                  S.state (runState exec1)
                  go . force $ insert current c
+
+-}
+{-
 
 eCommandCoverage :: (MonadGen n, MonadTest m, MonadState VM m, MonadReader CoverageRef m, MonadIO m)
                  => [SolCall] -> (VM -> Bool) -> [SolSignature] -> Config -> [Command n m VMState]
@@ -104,3 +108,5 @@ ePropertySeqCoverage calls cov p ts v = ask >>= \c -> ePropertyUsing (eCommandCo
           threadCov <- liftIO $ readIORef threadCovRef
           liftIO $ modifyMVar_ cov (\xs -> pure $ threadCov:xs)
           return a
+
+-}

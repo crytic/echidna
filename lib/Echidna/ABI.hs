@@ -15,6 +15,7 @@ module Echidna.ABI (
   , genAbiCall
   , genAbiInt
   , genInteractions
+  , genTransactions
   , genAbiString
   , genAbiType
   , genAbiUInt
@@ -36,7 +37,7 @@ import Data.Text             (Text, unpack)
 import Data.Vector           (Vector, generateM)
 import Hedgehog.Internal.Gen (MonadGen)
 import GHC.Exts              (IsList(..), Item)
-import Hedgehog.Range        (exponential, exponentialFrom, constant, singleton, Range)
+import Hedgehog.Range        (exponential, exponentialFrom, linear, constant, singleton, Range)
 import Numeric               (showHex)
 
 import qualified Data.ByteString as BS
@@ -170,6 +171,11 @@ displayAbiCall (t, vs) = unpack t ++ "(" ++ L.intercalate "," (map prettyPrint v
 -- the form (Function name, [arg0 type, arg1 type...])
 genInteractions :: (MonadReader Config m, MonadGen m) => [SolSignature] -> m SolCall
 genInteractions ls = genAbiCall =<< Gen.element ls
+
+genTransactions :: (MonadReader Config m, MonadGen m) => Int -> [SolSignature] -> m [SolCall]
+genTransactions n =  Gen.list (linear 1 n) . genInteractions
+ 
+
 
 type Listy t a = (IsList (t a), Item (t a) ~ a)
 
