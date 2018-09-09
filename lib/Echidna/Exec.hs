@@ -20,20 +20,26 @@ module Echidna.Exec (
   ) where
 
 import Control.Lens               ((&), (^.), (.=), (?~))
-import Control.Monad              (foldM)
+import Control.Monad              (foldM, replicateM)
 import Control.Monad.Catch        (MonadCatch)
 import Control.Monad.State.Strict (MonadState, evalState, execState, get, put)
 import Control.Monad.Reader       (MonadReader, runReaderT, ask)
 import Control.Monad.IO.Class     (MonadIO, liftIO)
+import Control.Monad.Trans.Maybe  (runMaybeT)
 import Data.List                  (intercalate)
 import Data.Text                  (Text)
 import Data.Typeable              (Typeable)
 import Data.Vector                (fromList)
+import Data.Functor.Identity      (runIdentity)
+import Data.Maybe                 (catMaybes)
 
 import Hedgehog
-import Hedgehog.Gen               (sequential, sample, list, print)
+import Hedgehog.Gen               (sequential, list, small, scale)
+import Hedgehog.Internal.Gen      (runDiscardEffect, runGenT, lift)
 import Hedgehog.Internal.State    (Action(..))
 import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
+import Hedgehog.Internal.Tree (Tree(..), Node(..))
+import qualified Hedgehog.Internal.Seed as Seed
 import Hedgehog.Range             (linear)
 
 import EVM
@@ -71,17 +77,54 @@ encodeSolCall t vs =  B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ from
 cleanUpAfterTransaction :: MonadState VM m => m ()
 cleanUpAfterTransaction = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
 
+ePropertyGen ts c = runReaderT (genTransactions 10 ts) c 
+
+ePropertyExec seed size ivm gen = do cs <- sample size seed gen
+                                     return $ (execCalls cs ivm, cs)
+
+
 ePropertySeq :: (VM -> Bool) -> [SolSignature] -> VM -> Config -> IO ()
-ePropertySeq p ts ivm c = do cs <- sample $ runReaderT (genTransactions 10 ts) c
-                             let vm_ = execCalls cs ivm
-                             Prelude.print cs
-                             Prelude.print (vm_ ^. result)
-                             Prelude.print $ p vm_
-                             --if (p vm_) then
-                             --   Prelude.print "true!"
-                             --else
-                             --   Prelude.print "false!"
-                           --ePropertySeq p ts vm c 
+ePropertySeq p ts ivm c = do 
+                             seed <- Seed.random
+                             size <- return 100
+                             let gen = ePropertyGen ts c
+                             (vm, cs) <- ePropertyExec seed size ivm gen
+                             print seed
+                             print cs
+                             print (vm ^. result)
+                             if (not $ p vm) then  (do xs <- sequence $ shrink p ivm size gen
+                                                       print $ catMaybes xs) 
+                                              else ePropertySeq p ts ivm c 
+
+
+--sample :: MonadIO m => Gen a -> m a
+sample size seed gen =
+  liftIO $
+    let
+      loop n =
+        if n <= 0 then
+          error "Hedgehog.Gen.sample: too many discards, could not generate a sample"
+        else do
+          --seed <- Seed.random
+          case runIdentity . runMaybeT . runTree $ runGenT size seed gen of
+            Nothing ->
+              loop (n - 1)
+            Just x ->
+              pure $ nodeValue x
+    in
+      loop (100 :: Int)
+
+
+shrink p ivm size gen = map f $ take 1000 $ iterate (scale (\x -> round (fromIntegral x * 0.99 :: Double))) gen
+  where f sgen = do seed <- Seed.random
+                    (vm, cs) <- ePropertyExec seed size ivm sgen
+                    --print $ cs
+                    if (not $ p vm) then return $ Just (cs, length cs)
+                                    else return Nothing 
+
+--fmapNodes f size seed =
+--    fmap f . runIdentity . runMaybeT . runTree . runGenT size seed . Hedgehog.Internal.Gen.lift
+
 
 --ePropertyCheck :: (MonadGen m, MonadState VM m) =>
 --                        (VM -> Bool) -> [SolSignature] -> VM -> Config -> m ()
