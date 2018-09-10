@@ -77,8 +77,10 @@ encodeSolCall t vs =  B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ from
 cleanUpAfterTransaction :: MonadState VM m => m ()
 cleanUpAfterTransaction = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
 
+ePropertyGen :: MonadGen m => [SolSignature] -> Config -> m [SolCall]
 ePropertyGen ts c = runReaderT (genTransactions 10 ts) c 
 
+ePropertyExec :: MonadIO m => Seed -> Size -> VM -> Gen [SolCall] -> m (VM, [SolCall])
 ePropertyExec seed size ivm gen = do cs <- sample size seed gen
                                      return $ (execCalls cs ivm, cs)
 
@@ -97,7 +99,7 @@ ePropertySeq p ts ivm c = do
                                               else ePropertySeq p ts ivm c 
 
 
---sample :: MonadIO m => Gen a -> m a
+sample :: MonadIO m => Size -> Seed -> Gen a -> m a
 sample size seed gen =
   liftIO $
     let
@@ -115,6 +117,7 @@ sample size seed gen =
       loop (100 :: Int)
 
 
+shrink :: MonadIO m => (VM -> Bool) -> VM -> Size -> Gen [SolCall] -> [m (Maybe ([SolCall], Int))]
 shrink p ivm size gen = map f $ take 1000 $ iterate (scale (\x -> round (fromIntegral x * 0.99 :: Double))) gen
   where f sgen = do seed <- Seed.random
                     (vm, cs) <- ePropertyExec seed size ivm sgen
