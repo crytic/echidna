@@ -10,9 +10,12 @@ contract Test {
   function set1(int val) returns (bool){
     if (val % 10 == 0 && flag0) {flag1 = false;}
   }
-  function echidna_alwaystrue() returns (bool){
-    return(true);
+  function useless(uint x, uint y) {
+	  return;
   }
+  //function echidna_alwaystrue() returns (bool){
+  //  return(true);
+  //}
   function echidna_sometimesfalse() returns (bool){
     return(flag0 || flag1);
   }

@@ -31,7 +31,7 @@ import Data.Text                  (Text)
 import Data.Typeable              (Typeable)
 import Data.Vector                (fromList)
 import Data.Functor.Identity      (runIdentity)
-import Data.Maybe                 (catMaybes)
+import Data.Maybe                 (fromJust, catMaybes)
 
 import Hedgehog
 import Hedgehog.Gen               (sequential, list, small, scale)
@@ -56,10 +56,31 @@ import Echidna.Property (PropertyType(..))
 -------------------------------------------------------------------
 -- Fuzzing and Hedgehog Init
 
+fatalFailures :: VM -> Bool
+fatalFailures vm = case (vm ^. result) of
+  (Just (VMFailure (Query _)))                    -> True
+  (Just (VMFailure (UnrecognizedOpcode _)))       -> True
+  (Just (VMFailure StackUnderrun))                -> True
+  (Just (VMFailure BadJumpDestination))           -> True
+  (Just (VMFailure StackLimitExceeded))           -> True
+  (Just (VMFailure IllegalOverflow))              -> True
+  _                                               -> False
+
+
+reverted :: VM -> Bool
+reverted vm = case (vm ^. result) of
+  (Just (VMFailure Revert))                    -> True
+  Nothing                                      -> False
+  _                                            -> False
+
+extractVMResult Nothing = exec 
+extractVMResult (Just vmr) = return $ vmr
+
 execCalls :: [SolCall] -> VM -> VM
-execCalls cs ivm = foldr f (execState exec ivm) cs
-                   where f c vm = execState (execCallUsing c exec) vm 
-                                   --Just x -> execState (execCallUsing c (return x)) vm 
+
+execCalls cs ivm = foldr f ivm cs
+                   where f c vm = if (reverted vm) then vm 
+                                  else (execState (execCallUsing c exec)) vm 
 
 execCall :: MonadState VM m => SolCall -> m VMResult
 execCall c = execCallUsing c exec
@@ -68,9 +89,11 @@ execCallUsing :: MonadState VM m => SolCall -> m VMResult -> m VMResult
 execCallUsing (t,vs) m = do og <- get
                             cleanUpAfterTransaction
                             state . calldata .= encodeSolCall t vs
-                            m >>= \case x@VMFailure{} -> put (og & result ?~ x) >> return x
-                                        x@VMSuccess{} -> return x
-  
+                            x <- m
+                            case x of
+                              VMSuccess _  -> return x
+                              _            -> (put (og & result ?~ x) >> return x) 
+ 
 encodeSolCall :: Text -> [AbiValue] -> Blob        
 encodeSolCall t vs =  B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
 
@@ -91,12 +114,13 @@ ePropertySeq p ts ivm c = do
                              size <- return 100
                              let gen = ePropertyGen ts c
                              (vm, cs) <- ePropertyExec seed size ivm gen
-                             print seed
-                             print cs
-                             print (vm ^. result)
+                             --print (ivm ^. result)
+                             --print seed
+                             --print cs
+                             --print (vm ^. result)
                              if (not $ p vm) then  (do xs <- sequence $ shrink p ivm size gen
                                                        print $ catMaybes xs) 
-                                              else ePropertySeq p ts ivm c 
+                                             else ePropertySeq p ts ivm c 
 
 
 sample :: MonadIO m => Size -> Seed -> Gen a -> m a
