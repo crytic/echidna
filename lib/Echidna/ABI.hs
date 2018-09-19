@@ -6,6 +6,7 @@ module Echidna.ABI (
   , encodeAbiCall
   , encodeSig
   , displayAbiCall
+  , displayAbiSeq
   , genAbiAddress
   , genAbiArray
   , genAbiArrayDynamic
@@ -166,6 +167,9 @@ encodeAbiCall (t, vs) = abiCalldata t $ fromList vs
 
 displayAbiCall :: SolCall -> String
 displayAbiCall (t, vs) = unpack t ++ "(" ++ L.intercalate "," (map prettyPrint vs) ++ ")"
+
+displayAbiSeq :: [SolCall] -> String
+displayAbiSeq = ("Call sequence: " ++) . L.intercalate "\n               " . (map displayAbiCall)
 
 -- genInteractions generates a function call from a list of type signatures of
 -- the form (Function name, [arg0 type, arg1 type...])

@@ -1,18 +1,17 @@
 {-# LANGUAGE BangPatterns, DeriveGeneric, FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
 
 module Echidna.Coverage (
-    CoverageInfo
-  , CoverageRef
-  , CoverageReport(..)
+  --  CoverageInfo
+  --, CoverageRef
+  --, CoverageReport(..)
   --, eCommandCoverage
   --, ePropertySeqCoverage
   --, execCallCoverage
-  , getCover
-  , getCoverageReport
-  , module Echidna.Internal.Runner
-  , module Echidna.Internal.JsonRunner
+  --, getCover
+  --, getCoverageReport
   ) where
 
+{-
 import Control.DeepSeq            (force)
 import Control.Concurrent.MVar    (MVar, modifyMVar_)
 import Control.Lens               ((&), use)
@@ -38,8 +37,6 @@ import EVM
 
 import Echidna.ABI (SolCall, SolSignature, genInteractions, mutateCall)
 import Echidna.Config (Config(..))
-import Echidna.Internal.Runner
-import Echidna.Internal.JsonRunner
 import Echidna.Exec
 
 -----------------------------------------
@@ -67,6 +64,7 @@ setCover :: (Foldable t, Monoid (t b)) => Vector (a, t b) -> t b -> Int -> [a] -
 setCover vs cov tot calls = best : calls & if length new == tot then id
                                                                 else setCover vs new tot where
   (best, new) = mappend cov <$> maximumBy (comparing $ length . mappend cov . snd) vs
+-}
 
 -----------------------------------------
 -- Echidna exec with coverage

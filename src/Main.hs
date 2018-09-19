@@ -3,23 +3,20 @@
 module Main where
 
 import Control.Lens hiding (argument)
-import Control.Concurrent.MVar (newMVar, readMVar, swapMVar)
-import Control.Monad           (forM_, replicateM_)
+--import Control.Concurrent.MVar (newMVar, readMVar, swapMVar)
+--import Control.Monad           (forM_, replicateM_)
 import Control.Monad.Catch     (MonadThrow(..))
 import Control.Monad.IO.Class  (liftIO)
 import Control.Monad.Reader    (runReaderT)
-import Data.List               (foldl')
-import Data.Set                (unions, size)
+--import Data.List               (foldl')
+--import Data.Set                (unions, size)
 import Data.Text               (pack)
 import Data.Semigroup          ((<>))
 
 import Echidna.Config
-import Echidna.Coverage ({- ePropertySeqCoverage,-} getCover)
+--import Echidna.Coverage ({- PropertySeqCoverage,-} getCover)
 import Echidna.Exec
 import Echidna.Solidity
-
-import Hedgehog hiding (checkParallel)
-import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
 
 import Options.Applicative
 
@@ -59,13 +56,12 @@ main = do
   config <- maybe (pure defaultConfig) parseConfig configFile
 
   let f = checkTest (config ^. returnType)
-      --checkGroup = if config ^. outputJson then checkParallelJson else checkParallel
-
+  
   flip runReaderT config $ do
     -- Load solidity contract and get VM
     (v,a,ts) <- loadSolidity file (pack <$> contract)
     if null ts then throwM NoTests else pure ()
     if not $ usecov || config ^. printCoverage
       -- Run without coverage
-      then forM_ ts $ \t -> liftIO $ print t >> ePropertySeq (`f` t) a v config
-      else return ()
+      then liftIO $ ePropertySeq (map (\t -> (t,flip f t)) ts) a v config
+      else return () --liftIO $ PropertySeqCoverage (map (\t -> (t,flip f t)) ts) a v config
