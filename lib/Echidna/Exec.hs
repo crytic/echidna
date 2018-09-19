@@ -141,7 +141,8 @@ processResult cs gen size ivm c (t,p) = do
                                           putStrLn $ displayAbiSeq cs
                                           putStrLn "Shrinking:"
                                           xs <- sequence $ shrink p c ivm size gen
-                                          putStrLn $ displayAbiSeq $ fst $ findSmaller $ catMaybes xs 
+                                          let shrinked = fst $ findSmaller cs $ catMaybes xs 
+                                          putStrLn $ displayAbiSeq shrinked
                                           putStrLn "Done!"
 
 shrink :: MonadIO m => (VM -> Bool) -> Config -> VM -> Size -> Gen [SolCall] -> [m (Maybe ([SolCall], Int))]
@@ -154,8 +155,9 @@ shrink' p n ivm size gen = map f $ take n $ iterate (scale (\x -> round (fromInt
                     --print $ cs
                     if (not $ p vm) then return $ Just (cs, length cs)
                                     else return Nothing 
-findSmaller :: [([SolCall],Int)] -> ([SolCall], Int)
-findSmaller = foldr (\(cs, s) (cs', s') -> if s < s' then (cs, s) else (cs', s')) ([], 0xffffffff) 
+
+findSmaller :: [SolCall] -> [([SolCall],Int)] -> ([SolCall], Int)
+findSmaller ics = foldr (\(cs, s) (cs', s') -> if s < s' then (cs, s) else (cs', s')) (ics, length ics) 
 
 --fmapNodes f size seed =
 --    fmap f . runIdentity . runMaybeT . runTree . runGenT size seed . Hedgehog.Internal.Gen.lift
