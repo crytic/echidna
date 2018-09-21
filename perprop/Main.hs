@@ -9,6 +9,7 @@ import Control.Monad           (forM, forM_, replicateM_)
 import Control.Monad.Catch     (MonadThrow(..))
 import Control.Monad.Identity  (Identity(..))
 import Control.Monad.Reader    (runReaderT)
+import Control.Monad.IO.Class  (liftIO)
 import Data.List               ((\\), foldl')
 import Data.Semigroup          ((<>))
 import Data.Set                (unions)
@@ -20,12 +21,12 @@ import EVM.Types               (Addr)
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
 
-import Hedgehog hiding (checkParallel, Property)
-import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
+--import Hedgehog hiding (checkParallel, Property)
+--import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
 
 import Echidna.ABI
 import Echidna.Config
-import Echidna.Coverage
+--import Echidna.Coverage
 import Echidna.Exec
 import Echidna.Property
 import Echidna.Solidity
@@ -115,17 +116,8 @@ readConf f = decodeEither <$> BS.readFile f >>= \case
   Right (PerPropConf t s p) -> pure . Just . (,p) $
     defaultConfig & addrList ?~ (view address <$> s) & range .~ t & epochs .~ 1 & outputJson .~ True
 
-group :: String
-      -> Config
-      -> [SolSignature]
-      -> VM
-      -> [(Property, [SolCall], MVar [CoverageInfo])]
-      -> Group
-group n c a v ps = Group (GroupName n) $ map prop ps where
-  prop (Property f r, cov, mvar) = ( PropertyName $ show f
-                                   , useConfig (ePropertySeqCoverage cov mvar (flip (checkTest r) f) a v))
-
-  useConfig = runIdentity . (`runReaderT` c)
+makeProperty :: Property -> (Text, VM -> Bool)
+makeProperty (Property f r) = (f, flip (checkTest r) f)
 
 -- }}}
 -- Main
@@ -142,16 +134,5 @@ main = do
       let abi = t ++ map fst a
       forM_ ((view function <$> ps) \\ abi) $ \p ->
         warn $ "Warning: property " ++ unpack p ++ " not found in ABI"
-      tests <- mapM ((<$> newMVar []) . (,)) [ p | p <- ps, p ^. function `elem` abi ]
-      replicateM_ (c ^. epochs) $ do
-        xs <- forM tests $ \(p,mvar) -> swapMVar mvar [] <&> (p,, mvar) . getCover
-        checkParallelJson $ group file c a v xs
-
-      ls <- mapM (readMVar . snd) tests
-      let ci = foldl' (\acc xs -> unions (acc : map snd xs)) mempty ls
-      putStrLn $ getCoverageReport ci
-      
--- }}}
-      
--- }}}
-
+      let ts =  [ p | p <- ps, p ^. function `elem` abi ]
+      liftIO $ ePropertySeq (map makeProperty ts) a v c

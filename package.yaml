@@ -50,3 +50,8 @@ executables:
     main: Main.hs
     source-dirs: src/
     dependencies: echidna
+
+  perprop-exe:
+    main: Main.hs
+    source-dirs: perprop
+    dependencies: echidna
