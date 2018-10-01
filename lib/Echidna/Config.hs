@@ -30,6 +30,7 @@ data Config = Config
   , _shrinkLimit   :: ShrinkLimit
   , _returnType    :: PropertyType
   , _prefix        :: Text
+  , _outdir        :: Maybe String
   , _printCoverage :: Bool
   , _outputJson    :: Bool
   }
@@ -51,6 +52,7 @@ instance FromJSON Config where
            <*> fromInt "shrinkLimit" 1000
            <*> v .:? "returnType"    .!= ShouldReturnTrue
            <*> v .:? "prefix"        .!= "echidna_"
+           <*> v .:? "outdir"        .!= Nothing
            <*> v .:? "printCoverage" .!= False
            <*> v .:? "outputJson"    .!= False
   parseJSON _          = parseJSON (Object mempty)

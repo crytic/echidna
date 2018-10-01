@@ -28,7 +28,7 @@ module Echidna.ABI (
 ) where
 
 import Control.Lens          ((<&>), (&), view)
-import Control.Monad         (join, liftM2, replicateM)
+import Control.Monad         (join, liftM2)
 import Control.Monad.Reader  (MonadReader)
 import Data.Bool             (bool)
 import Data.DoubleWord       (Word128(..), Word160(..))
@@ -95,10 +95,10 @@ genAbiBytes :: MonadGen m => Int -> m AbiValue
 genAbiBytes = liftM2 fmap AbiBytes $ Gen.bytes . singleton
 
 genAbiBytesDynamic :: MonadGen m => m AbiValue
-genAbiBytesDynamic = AbiBytesDynamic <$> Gen.bytes (constant 1 256)
+genAbiBytesDynamic = AbiBytesDynamic <$> Gen.bytes (constant 1 2)
 
 genAbiString :: MonadGen m => m AbiValue
-genAbiString = let fromRange = fmap AbiString . Gen.utf8 (constant 1 256) in
+genAbiString = let fromRange = fmap AbiString . Gen.utf8 (constant 1 2) in
   Gen.choice $ fromRange <$> [Gen.ascii, Gen.digit, Gen.alpha, Gen.element ['a','b','c'], Gen.unicode]
 
 genStaticAbiType :: MonadGen m => m AbiType
@@ -107,7 +107,7 @@ genStaticAbiType = go (16 :: Int) where
                       , AbiIntType <$> genSize
                       , pure AbiAddressType
                       , pure AbiBoolType
-                      , AbiBytesType <$> Gen.enum 1 32
+                      , AbiBytesType <$> Gen.enum 1 2
                       ] ++ [AbiArrayType <$> Gen.enum 0 256 <*> go (n - 1) | n > 0] 
 
 genAbiType :: MonadGen m => m AbiType
@@ -140,7 +140,7 @@ genAbiValue = Gen.choice [ genAbiUInt =<< genSize
                          , genAbiInt =<< genSize
                          , genAbiAddress
                          , genAbiBool
-                         , genAbiBytes =<< Gen.enum 1 32
+                         , genAbiBytes =<< Gen.enum 1 2
                          , genAbiBytesDynamic
                          , genAbiString
                          , genAbiArrayDynamic =<< genAbiType
@@ -206,6 +206,7 @@ changeDynamicBS b = Gen.choice $ [changeChar, addBS, dropBS] <&> ($ b)
 changeNumber :: (Enum a, Integral a, MonadGen m) => a -> m a
 changeNumber n = let x = fromIntegral n :: Integer in fromIntegral . (+ x) <$> Gen.element [-10..10]
 
+{-
 changeList :: (Listy t a, MonadGen m) => m (t a) -> m a -> t a -> m (t a)
 changeList g0 g1 x = case toList x of
   [] -> g0
@@ -214,6 +215,7 @@ changeList g0 g1 x = case toList x of
                   , take <$> Gen.element [0..length l-1] <*> pure l
                   , switchElem g1 l
                   ] <&> fromList
+-}
 
 newOrMod ::  MonadGen m => m AbiValue -> (a -> AbiValue) -> m a -> m AbiValue
 newOrMod m f n = Gen.choice [m, f <$> n]
@@ -223,8 +225,7 @@ mutateValue (AbiUInt s n) =
   newOrMod (genAbiUInt s)         (AbiUInt s)         (changeNumber n)
 mutateValue (AbiInt s n) =
   newOrMod (genAbiInt s)          (AbiInt s)          (changeNumber n)
-mutateValue (AbiAddress a) =
-  newOrMod genAbiAddress          AbiAddress          (changeNumber a)
+mutateValue (AbiAddress a) = return $ AbiAddress a
 mutateValue (AbiBool _) = genAbiBool
 mutateValue (AbiBytes s b) =
   newOrMod (genAbiBytes s)        (AbiBytes s)        (changeChar b)
@@ -232,10 +233,11 @@ mutateValue (AbiBytesDynamic b) =
   newOrMod genAbiBytesDynamic     AbiBytesDynamic     (changeDynamicBS b)
 mutateValue (AbiString b) =
   newOrMod genAbiString           AbiString           (changeDynamicBS b)
-mutateValue (AbiArrayDynamic t a) = let g0 = genVecOfType t (constant 0 (256 - length a)); g1 = genAbiValueOfType t in
-  newOrMod (genAbiArrayDynamic t) (AbiArrayDynamic t) (changeList g0 g1 a)
-mutateValue (AbiArray s t a) =
-  newOrMod (genAbiArray s t)      (AbiArray s t)      (switchElem (genAbiValueOfType t) a)
+mutateValue (AbiArrayDynamic t a) = return (AbiArrayDynamic t a) 
+  --let g0 = genVecOfType t (constant 0 (256 - length a)); g1 = genAbiValueOfType t in
+  --newOrMod (genAbiArrayDynamic t) (AbiArrayDynamic t) (changeList g0 g1 a)
+mutateValue (AbiArray s t a) =  return (AbiArray s t a)  
+  --newOrMod (genAbiArray s t)      (AbiArray s t)      (switchElem (genAbiValueOfType t) a)
 
 changeOrId :: (Traversable t, MonadGen m) => (a -> m a) -> t a -> m (t a)
 changeOrId f = mapM $ (Gen.element [f, pure] >>=) . (&)
@@ -243,6 +245,5 @@ changeOrId f = mapM $ (Gen.element [f, pure] >>=) . (&)
 mutateCall :: (MonadReader Config m, MonadGen m) => SolCall -> m SolCall
 mutateCall (t, vs) = (t,) <$> changeOrId mutateValue vs
 
-mutateCallSeq :: (MonadReader Config m, MonadGen m) => [SolSignature] -> [SolCall] -> m [SolCall]
-mutateCallSeq s cs = let g = genInteractions s in
-  changeOrId mutateCall cs >>= changeList (Gen.element [1..10] >>= flip replicateM g) g
+mutateCallSeq :: (MonadReader Config m, MonadGen m) => {- [SolSignature] ->-} [SolCall] -> m [SolCall]
+mutateCallSeq cs = changeOrId mutateCall cs

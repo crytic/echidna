@@ -8,7 +8,15 @@ module Echidna.Exec (
   , checkFalseOrRevertTest
   , ePropertySeq
   , execCalls
+  , execCall
   , execCallUsing
+  , encodeSolCall
+  , cleanUpAfterTransaction
+  , sample 
+  , reverted
+  , checkProperties
+  , filterProperties
+  , processResult
   ) where
 
 import Control.Lens               ((&), (^.), (.=), (?~))
@@ -40,21 +48,21 @@ import Echidna.Property (PropertyType(..))
 -------------------------------------------------------------------
 -- Fuzzing and Hedgehog Init
 
-sample :: MonadIO m => Size -> Seed -> Gen a -> m a
+sample :: MonadIO m => Size -> Seed -> Gen a -> m (Maybe a)
 sample size seed gen =
   liftIO $
     let
       loop n =
         if n <= 0 then
-          error "Hedgehog.Gen.sample: too many discards, could not generate a sample"
+          pure $ Nothing 
         else do
           case runIdentity . runMaybeT . runTree $ runGenT size seed gen of
             Nothing ->
               loop (n - 1)
             Just x ->
-              pure $ nodeValue x
+              pure $ Just $ nodeValue x
     in
-      loop (100 :: Int)
+      loop (1 :: Int)
 
 {-
 fatalFailures :: VM -> Bool
@@ -78,7 +86,6 @@ reverted vm = case (vm ^. result) of
 --extractVMResult (Just vmr) = return $ vmr
 
 execCalls :: [SolCall] -> VM -> VM
-
 execCalls cs ivm = foldr f ivm cs
                    where f c vm = if (reverted vm) then vm 
                                   else (execState (execCallUsing c exec)) vm 
@@ -105,8 +112,10 @@ ePropertyGen :: MonadGen m => [SolSignature] -> Int -> Config -> m [SolCall]
 ePropertyGen ts n c = runReaderT (genTransactions n ts) c 
 
 ePropertyExec :: MonadIO m => Seed -> Size -> VM -> Gen [SolCall] -> m (VM, [SolCall])
-ePropertyExec seed size ivm gen = do cs <- sample size seed gen
-                                     return $ (execCalls cs ivm, cs)
+ePropertyExec seed size ivm gen = do mcs <- sample size seed gen
+                                     case mcs of 
+                                       Nothing -> return (ivm, []) 
+                                       Just cs -> return (execCalls cs ivm, cs) 
 
 ePropertySeq :: [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
 ePropertySeq ps ts ivm c =  ePropertySeq' (toInteger $ c ^. testLimit) ps ts ivm c
@@ -124,6 +133,8 @@ ePropertySeq'   n ps ts ivm c          = do
                                          where tsize  = fromInteger $ n `mod` 100
                                                ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
                                                gen    = ePropertyGen ts ssize c
+
+--printCache vm c = if reverted vm then print c else print c
 
 checkProperties ::  [(Text, (VM -> Bool))] -> VM -> ([Text],[Text])
 checkProperties ps vm = if reverted vm then (map fst ps, [])

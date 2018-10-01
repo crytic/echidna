@@ -14,7 +14,7 @@ import Data.Text               (pack)
 import Data.Semigroup          ((<>))
 
 import Echidna.Config
---import Echidna.Coverage ({- PropertySeqCoverage,-} getCover)
+import Echidna.Coverage (ePropertySeqCover)
 import Echidna.Exec
 import Echidna.Solidity
 
@@ -64,4 +64,5 @@ main = do
     if not $ usecov || config ^. printCoverage
       -- Run without coverage
       then liftIO $ ePropertySeq (map (\t -> (t,flip f t)) ts) a v config
-      else return () --liftIO $ PropertySeqCoverage (map (\t -> (t,flip f t)) ts) a v config
+      else liftIO $ ePropertySeqCover (map (\t -> (t,flip f t)) ts) a v config
+

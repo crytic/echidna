@@ -5,106 +5,146 @@ module Echidna.Coverage (
   --, CoverageRef
   --, CoverageReport(..)
   --, eCommandCoverage
-  --, ePropertySeqCoverage
-  --, execCallCoverage
-  --, getCover
+  ePropertySeqCover
   --, getCoverageReport
   ) where
 
-{-
-import Control.DeepSeq            (force)
-import Control.Concurrent.MVar    (MVar, modifyMVar_)
-import Control.Lens               ((&), use)
-import Control.Monad.IO.Class     (MonadIO, liftIO)
-import Control.Monad.State.Strict (MonadState, StateT, evalStateT, runState)
-import Control.Monad.Reader       (MonadReader, ReaderT, runReaderT, ask)
-import Data.Aeson                 (ToJSON(..), encode)
-import Data.ByteString.Lazy.Char8 (unpack)
-import Data.Foldable              (Foldable(..), foldl')
-import Data.IORef                 (IORef, modifyIORef', newIORef, readIORef)
-import Data.Ord                   (comparing)
-import Data.Set                   (Set, insert, size)
-import Data.Vector                (Vector, fromList)
-import Data.Vector.Generic        (maximumBy)
-import GHC.Generics
+import Control.Lens               (view ,(&), (^.), (.=), (?~))
+import Control.Monad              (forM_)
+import Control.Monad.State.Strict (MonadState, execState, get, put)
+import Control.Monad.Reader       (runReaderT)
+import Control.Monad.IO.Class     (MonadIO)
+import Data.Text                  (Text)
+import Data.Set                   (Set, insert, size, member, elemAt, empty)
+import qualified Data.Set         (map, null)
 
-import qualified Control.Monad.State.Strict as S
+import Crypto.Hash.SHA256         (hash)
+import System.Directory           (doesFileExist, createDirectoryIfMissing)
+
+import qualified Data.ByteString.Char8 as BS (pack, unpack)
+import qualified Data.ByteString.Base16 as B16 (encode) 
 
 import Hedgehog
 import Hedgehog.Gen               (choice)
+import Hedgehog.Internal.Seed (seedValue)
+import qualified Hedgehog.Internal.Seed as Seed
 
 import EVM
+import EVM.Concrete (Word)
+import EVM.Exec     (exec)
 
-import Echidna.ABI (SolCall, SolSignature, genInteractions, mutateCall)
-import Echidna.Config (Config(..))
-import Echidna.Exec
+import Echidna.ABI (SolCall, SolSignature, displayAbiSeq, genTransactions, mutateCallSeq)
+import Echidna.Config (Config(..), testLimit, range, outdir)
+import Echidna.Exec (encodeSolCall, cleanUpAfterTransaction, sample, reverted, checkProperties, filterProperties, processResult)
 
------------------------------------------
--- Coverage data types and printing
+type CoverageInfo = Set (Int, [EVM.Concrete.Word])
+--type CoverageInfo = Set [(EVM.Concrete.Word, Int)]
 
-type CoverageInfo = (SolCall, Set Int)
-type CoverageRef  = IORef CoverageInfo
+addCover :: VM -> CoverageInfo -> CoverageInfo
+addCover vm cov = insert (view pc $ view state vm, view stack $ view state vm ) cov 
 
-data CoverageReport = CoverageReport {coverage :: Int} deriving (Show,Generic)
+-- coverage using storage
+--addCover vm cov   = insert (map (\(x,y) -> (x, floor $ log $ fromInteger $ toInteger y)) $ Data.Map.toList $ view storage c) cov
+--                    where c = snd $ last $ Data.Map.toList $ view contracts (view env vm)
 
-instance ToJSON CoverageReport
+type CoveragePerInput =  Set (CoverageInfo,[SolCall]) 
 
-getCoverageReport :: Set Int -> String
-getCoverageReport = unpack . encode . toJSON . CoverageReport . size
+findInCover :: CoveragePerInput -> CoverageInfo -> Bool
+findInCover cov icov = ( icov `member` Data.Set.map fst cov)
 
------------------------------------------
--- Set cover algo
+mergeSaveCover :: CoveragePerInput -> CoverageInfo -> [SolCall] -> Maybe String -> IO (Set (CoverageInfo, [SolCall]))
+mergeSaveCover cov icov cs dir = if ( findInCover cov icov) then return cov
+                                 else do
+                                       print $ size cov + 1
+                                       saveCalls cs dir
+                                       return $ insert (icov, cs) cov 
 
-getCover :: (Foldable t, Monoid (t b)) => [(a, t b)] -> [a]
-getCover [] = []
-getCover xs = setCover (fromList xs) mempty totalCoverage []
-  where totalCoverage = length $ foldl' (\acc -> mappend acc . snd) mempty xs
-
-setCover :: (Foldable t, Monoid (t b)) => Vector (a, t b) -> t b -> Int -> [a] -> [a]
-setCover vs cov tot calls = best : calls & if length new == tot then id
-                                                                else setCover vs new tot where
-  (best, new) = mappend cov <$> maximumBy (comparing $ length . mappend cov . snd) vs
--}
+saveCalls :: [SolCall] -> Maybe String-> IO ()
+saveCalls _ Nothing     = return ()
+saveCalls cs (Just dir) = do
+                            let content = displayAbiSeq cs ++ "\n"
+                            let filename = dir ++ "/" ++ (hashString $ content)
+                            createDirectoryIfMissing False dir
+                            b <- doesFileExist filename
+                            if (not b) then (writeFile filename $ content) else return ()
 
 -----------------------------------------
 -- Echidna exec with coverage
 
-{-
-execCallCoverage :: (MonadState VM m, MonadReader CoverageRef m, MonadIO m) => [SolCall] -> m VMResult
-execCallCoverage sols = execCallUsing (go mempty) sols where
-  go !c = use result >>= \case
-    Just x -> do ref <- ask
-                 liftIO $ modifyIORef' ref (const (head sols, c))
-                 return x
-    _      -> do current <- use $ state . pc
-                 S.state (runState exec1)
-                 go . force $ insert current c
 
--}
-{-
+execCalls :: [SolCall] -> VM -> (CoverageInfo, VM)
+execCalls cs ivm = foldr f (mempty, ivm) cs
+                   where f c (cov, vm) = let vm' = execState (execCallUsing c exec) vm in
+                                         if (reverted vm) then (mempty, vm)
+                                                          else (addCover vm' cov, vm') 
 
-eCommandCoverage :: (MonadGen n, MonadTest m, MonadState VM m, MonadReader CoverageRef m, MonadIO m)
-                 => [SolCall] -> (VM -> Bool) -> [SolSignature] -> Config -> [Command n m VMState]
-eCommandCoverage cov p ts conf = let useConf = flip runReaderT conf in case cov of
-  [] -> [eCommandUsing (useConf $ genInteractions ts) (\(Call c) -> execCallCoverage c) p]
-  xs -> map (\x -> eCommandUsing (choice $ useConf <$> [mutateCall x, genInteractions ts])
-              (\(Call c) -> execCallCoverage c) p) xs
+execCallUsing :: MonadState VM m => SolCall -> m VMResult -> m VMResult
+execCallUsing (t,vs) m = do og <- get
+                            cleanUpAfterTransaction
+                            state . calldata .= encodeSolCall t vs
+                            x <- m
+                            case x of
+                              VMSuccess _  -> return x
+                              _            -> (put (og & result ?~ x) >> return x) 
+ 
+ePropertyGen :: MonadGen m => [SolSignature] -> Int -> Config -> m [SolCall]
+ePropertyGen ts n c = runReaderT (genTransactions n ts) c 
 
-ePropertySeqCoverage :: (MonadReader Config m)
-                     => [SolCall]
-                     -> MVar [CoverageInfo]
-                     -> (VM -> Bool)
-                     -> [SolSignature]
-                     -> VM
-                     -> m Property
-ePropertySeqCoverage calls cov p ts v = ask >>= \c -> ePropertyUsing (eCommandCoverage calls p ts c) writeCoverage v 
-  where writeCoverage :: MonadIO m => ReaderT CoverageRef (StateT VM m) a -> m a
-        writeCoverage m = do
-          threadCovRef <- liftIO $ newIORef mempty
-          let s = runReaderT m threadCovRef
-          a         <- evalStateT s v
-          threadCov <- liftIO $ readIORef threadCovRef
-          liftIO $ modifyMVar_ cov (\xs -> pure $ threadCov:xs)
-          return a
 
--}
+ePropertyExec :: MonadIO m => Seed -> Size -> VM -> Gen [SolCall] -> m (CoverageInfo, VM, [SolCall])
+ePropertyExec seed ssize ivm gen = do mcs <- sample ssize seed gen
+                                      case mcs of 
+                                       Nothing -> return (empty, ivm, []) 
+                                       Just cs -> do
+                                                  let (cov, vm) = execCalls cs ivm 
+                                                  return $ (cov, vm, cs)
+
+ePropertySeqCover :: [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
+ePropertySeqCover ps ts ivm c =  ePropertySeqCover' (toInteger $ c ^. testLimit) empty ps ts ivm c
+
+
+chooseFromSeed :: Seed -> Set a -> a
+chooseFromSeed seed set = elemAt ( (fromEnum $ seedValue seed `mod` 9223372036854775807) `mod` ssize ) set
+                           where ssize = size set
+
+ePropertySeqCover' :: Integer -> CoveragePerInput -> [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
+ePropertySeqCover'   _ _ [] _  _   _          = return ()
+ePropertySeqCover'   n _ _  _  _   _ | n == 0 = return ()
+ePropertySeqCover'   n cov ps ts ivm c | Data.Set.null cov = do
+                                                       seed <- Seed.random
+                                                       (icov, vm, cs) <- ePropertyExec seed tsize ivm gen
+                                                       if (reverted vm) 
+                                                       then ePropertySeqCover' (n-1) cov ps ts ivm c
+                                                       else do
+                                                           cov' <- return $ insert (icov, cs) cov 
+                                                           (tp,fp) <- return $ checkProperties ps vm
+                                                           forM_ (filterProperties ps fp) (processResult cs gen tsize ivm c)
+                                                           ePropertySeqCover' (n-1) cov' (filterProperties ps tp) ts ivm c
+                                                        where tsize  = fromInteger $ n `mod` 100
+                                                              ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
+                                                              gen    = ePropertyGen ts ssize c
+
+ePropertySeqCover'   n cov ps ts ivm c = do 
+                                          seed <- Seed.random
+                                          cs' <- return $ snd $ chooseFromSeed seed cov
+                                          let gen = if (null cs') 
+                                                    then ePropertyGen ts ssize c 
+                                                    else ePropertySeqMutate ts cs' ssize c 
+                                          (icov, vm, cs) <- ePropertyExec seed tsize ivm gen
+                                          if (reverted vm) 
+                                          then ePropertySeqCover' (n-1) cov ps ts ivm c
+                                          else do
+                                                cov' <- mergeSaveCover cov icov cs  (c ^. outdir)
+                                                (tp,fp) <- return $ checkProperties ps vm
+                                                forM_ (filterProperties ps fp) (processResult cs gen tsize ivm c)
+                                                ePropertySeqCover' (n-1) cov' (filterProperties ps tp) ts ivm c
+                                         where tsize  = fromInteger $ n `mod` 100
+                                               ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
+
+
+ePropertySeqMutate :: MonadGen m => [SolSignature] -> [SolCall] -> Int -> Config -> m [SolCall]
+ePropertySeqMutate ts cs ssize c = choice [useConf $ mutateCallSeq cs, ePropertyGen ts ssize c]      
+                                   where useConf = flip runReaderT c 
+
+hashString :: String -> String
+hashString = BS.unpack . B16.encode . hash . BS.pack 

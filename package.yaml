@@ -9,9 +9,11 @@ ghc-options: -Wall -fno-warn-orphans -O2
 dependencies:
   - aeson
   - base
+  - base16-bytestring 
   - ansi-terminal
   - bytestring           >= 0.10.8 && < 0.11
   - containers           >= 0.5.7  && < 0.6
+  - cryptohash
   - data-dword           >= 0.3.1  && < 0.4
   - deepseq
   - directory
