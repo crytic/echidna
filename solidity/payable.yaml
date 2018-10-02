@@ -1,0 +1,19 @@
+#Set the gas limit for each test
+gasLimit: 0xfffff
+#Number of tests that will run for each property
+testLimit: 10000
+#Max call sequence length
+range: 3
+#Contract's address in the EVM
+contractAddr: 0x00a329c0648769a73afac7f9381e08fb43dbea72
+#Sender's address in the EVM
+sender: [0x00a329c0648769a73afac7f9381e08fb43dbea70]
+#List of addresses that will be used in all tests
+printCoverage: false
+payable: ["f"]
+#Return Type
+#  - Success: all tests should return true
+#  - Fail: all tests should return false
+#  - Throw: all tests should revert
+#  - Fail or Throw: all tests should either return false or revert
+returnType: Success

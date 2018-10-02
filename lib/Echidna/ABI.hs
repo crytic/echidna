@@ -29,6 +29,7 @@ module Echidna.ABI (
   , fname
   , fargs
   , fsender
+  , fvalue
 ) where
 
 import Control.Lens          -- (makeLenses, (<&>), (&), view)
@@ -50,7 +51,7 @@ import qualified Data.List       as L
 import qualified Data.Text       as T
 import qualified Hedgehog.Gen    as Gen
 
-import Echidna.Config (Config, addrList, range, sender)
+import Echidna.Config (Config, addrList, range, sender, payable)
 
 import EVM.ABI
 import EVM.Types (Addr(..))
@@ -61,6 +62,7 @@ data SolCall = SolCall
   { _fname  :: Text
   , _fargs  :: [AbiValue]
   , _fsender :: Addr
+  , _fvalue :: Int 
   } deriving (Eq, Ord)
 
 makeLenses ''SolCall
@@ -171,12 +173,17 @@ genAbiValueOfType t = case t of
   AbiArrayDynamicType t' -> genAbiArrayDynamic t'
   AbiArrayType n t'      -> genAbiArray n t'
 
+genMsgValue ::  (MonadReader Config m, MonadGen m) => m Int
+genMsgValue = Gen.integral $ exponential 0 $ 2^32 - 1
+
 genAbiCall :: (MonadReader Config m, MonadGen m) => SolSignature -> m SolCall
-genAbiCall (s,ts) = view sender >>= (\addrs -> do
-                                               addr <- Gen.element addrs
-                                               cs <- mapM genAbiValueOfType ts
-                                               return (SolCall s cs addr)
-                                    )
+genAbiCall (s,ts) = view sender >>= (\addrs -> 
+                    (view payable) >>= (\pays -> do
+                                                 addr <- Gen.element addrs
+                                                 cs <- mapM genAbiValueOfType ts 
+                                                 v <- if s `elem` pays then genMsgValue  else return 0
+                                                 return (SolCall s cs addr v)
+                                      ))
 
 encodeAbiCall :: SolCall -> ByteString
 encodeAbiCall sc = abiCalldata (view fname sc) $ fromList (view fargs sc)
@@ -261,7 +268,7 @@ changeOrId :: (Traversable t, MonadGen m) => (a -> m a) -> t a -> m (t a)
 changeOrId f = mapM $ (Gen.element [f, pure] >>=) . (&)
 
 mutateCall :: (MonadReader Config m, MonadGen m) => SolCall -> m SolCall
-mutateCall sc = (\args -> SolCall (view fname sc) args (view fsender sc)) <$> changeOrId mutateValue (view fargs sc)
+mutateCall sc = (\args -> SolCall (view fname sc) args (view fsender sc) (view fvalue sc)) <$> changeOrId mutateValue (view fargs sc)
 
 addCall :: (MonadReader Config m, MonadGen m) => [SolSignature] -> [SolCall] -> m [SolCall]
 addCall _ []  = undefined 

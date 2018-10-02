@@ -31,6 +31,7 @@ data Config = Config
   , _returnType    :: PropertyType
   , _prefix        :: Text
   , _ignored       :: [Text]
+  , _payable       :: [Text]
   , _outdir        :: Maybe String
   , _printCoverage :: Bool
   , _outputJson    :: Bool
@@ -54,6 +55,7 @@ instance FromJSON Config where
            <*> v .:? "returnType"    .!= ShouldReturnTrue
            <*> v .:? "prefix"        .!= "echidna_"
            <*> v .:? "ignored"       .!= []
+           <*> v .:? "payable"       .!= []
            <*> v .:? "outdir"        .!= Nothing
            <*> v .:? "printCoverage" .!= False
            <*> v .:? "outputJson"    .!= False
