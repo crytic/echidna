@@ -23,7 +23,7 @@ data Config = Config
   , _epochs        :: Int
   , _range         :: Int
   , _contractAddr  :: Addr
-  , _sender        :: Addr
+  , _sender        :: [Addr]
   , _addrList      :: Maybe [Addr]
   , _gasLimit      :: W256 
   , _testLimit     :: TestLimit
@@ -46,7 +46,7 @@ instance FromJSON Config where
            <*> v .:? "epochs"        .!= 2
            <*> v .:? "range"         .!= 10
            <*> v .:? "contractAddr"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
-           <*> v .:? "sender"        .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+           <*> v .:? "sender"        .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
            <*> v .:? "addrList"      .!= Nothing
            <*> v .:? "gasLimit"      .!= 0xffffffffffffffff
            <*> fromInt "testLimit"   10000

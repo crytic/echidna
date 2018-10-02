@@ -1,7 +1,8 @@
-{-# LANGUAGE ConstraintKinds, FlexibleContexts, LambdaCase, RankNTypes, TupleSections, TypeFamilies #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts, LambdaCase, RankNTypes, TupleSections, TypeFamilies, TemplateHaskell #-}
+
 
 module Echidna.ABI (
-    SolCall
+    SolCall(..)
   , SolSignature
   , encodeAbiCall
   , encodeSig
@@ -25,9 +26,12 @@ module Echidna.ABI (
   , mutateCallSeq
   , mutateValue
   , prettyPrint
+  , fname
+  , fargs
+  , fsender
 ) where
 
-import Control.Lens          ((<&>), (&), view)
+import Control.Lens          -- (makeLenses, (<&>), (&), view)
 import Control.Monad         (join, liftM2)
 import Control.Monad.Reader  (MonadReader)
 import Data.Bool             (bool)
@@ -46,12 +50,20 @@ import qualified Data.List       as L
 import qualified Data.Text       as T
 import qualified Hedgehog.Gen    as Gen
 
-import Echidna.Config (Config, addrList, range)
+import Echidna.Config (Config, addrList, range, sender)
 
 import EVM.ABI
 import EVM.Types (Addr(..))
 
-type SolCall = (Text, [AbiValue])
+--type SolCall = (Text, [AbiValue])
+
+data SolCall = SolCall
+  { _fname  :: Text
+  , _fargs  :: [AbiValue]
+  , _fsender :: Addr
+  } deriving (Eq, Ord)
+
+makeLenses ''SolCall
 
 type SolSignature = (Text, [AbiType])
 
@@ -160,13 +172,17 @@ genAbiValueOfType t = case t of
   AbiArrayType n t'      -> genAbiArray n t'
 
 genAbiCall :: (MonadReader Config m, MonadGen m) => SolSignature -> m SolCall
-genAbiCall (s,ts) = (s,) <$> mapM genAbiValueOfType ts
+genAbiCall (s,ts) = view sender >>= (\addrs -> do
+                                               addr <- Gen.element addrs
+                                               cs <- mapM genAbiValueOfType ts
+                                               return (SolCall s cs addr)
+                                    )
 
 encodeAbiCall :: SolCall -> ByteString
-encodeAbiCall (t, vs) = abiCalldata t $ fromList vs
+encodeAbiCall sc = abiCalldata (view fname sc) $ fromList (view fargs sc)
 
 displayAbiCall :: SolCall -> String
-displayAbiCall (t, vs) = unpack t ++ "(" ++ L.intercalate "," (map prettyPrint vs) ++ ")"
+displayAbiCall sc = unpack (view fname sc) ++ "(" ++ L.intercalate "," (map prettyPrint (view fargs sc)) ++ ")"
 
 displayAbiSeq :: [SolCall] -> String
 displayAbiSeq = {- ("Call sequence: " ++) .-} L.intercalate "\n" {-"               "-} . (map displayAbiCall)
@@ -245,7 +261,7 @@ changeOrId :: (Traversable t, MonadGen m) => (a -> m a) -> t a -> m (t a)
 changeOrId f = mapM $ (Gen.element [f, pure] >>=) . (&)
 
 mutateCall :: (MonadReader Config m, MonadGen m) => SolCall -> m SolCall
-mutateCall (t, vs) = (t,) <$> changeOrId mutateValue vs
+mutateCall sc = (\args -> SolCall (view fname sc) args (view fsender sc)) <$> changeOrId mutateValue (view fargs sc)
 
 addCall :: (MonadReader Config m, MonadGen m) => [SolSignature] -> [SolCall] -> m [SolCall]
 addCall _ []  = undefined 

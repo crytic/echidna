@@ -105,7 +105,7 @@ loadSolidity filePath selectedContract = do
                   assign (state . gas) (w256 $ conf ^. gasLimit)
                   assign (state . contract) (conf ^. contractAddr)
                   assign (state . codeContract) (conf ^. contractAddr)
-                  assign (state . caller) (conf ^. sender)
+                  --assign (state . caller) (conf ^. sender)
                   loadContract (vm ^. state . contract)
         loaded = execState load $ execState (replaceCodeOfSelf bc) vm
         abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap

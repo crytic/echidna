@@ -33,7 +33,7 @@ import EVM
 import EVM.Concrete (Word)
 import EVM.Exec     (exec)
 
-import Echidna.ABI (SolCall, SolSignature, displayAbiSeq, genTransactions, mutateCallSeq)
+import Echidna.ABI (SolCall, SolSignature, displayAbiSeq, genTransactions, mutateCallSeq, fname, fargs)
 import Echidna.Config (Config(..), testLimit, range, outdir)
 import Echidna.Exec (encodeSolCall, cleanUpAfterTransaction, sample, reverted, checkProperties, filterProperties, processResult)
 
@@ -79,9 +79,9 @@ execCalls cs ivm = foldr f (mempty, ivm) cs
                                                           else (addCover vm' cov, vm') 
 
 execCallUsing :: MonadState VM m => SolCall -> m VMResult -> m VMResult
-execCallUsing (t,vs) m = do og <- get
+execCallUsing sc m =     do og <- get
                             cleanUpAfterTransaction
-                            state . calldata .= encodeSolCall t vs
+                            state . calldata .= encodeSolCall (view fname sc) (view fargs sc)
                             x <- m
                             case x of
                               VMSuccess _  -> return x

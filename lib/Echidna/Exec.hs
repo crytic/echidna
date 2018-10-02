@@ -19,7 +19,7 @@ module Echidna.Exec (
   , processResult
   ) where
 
-import Control.Lens               ((&), (^.), (.=), (?~))
+import Control.Lens               (view, (&), (^.), (.=), (?~))
 import Control.Monad              (forM_)
 import Control.Monad.State.Strict (MonadState, evalState, execState, get, put)
 import Control.Monad.Reader       (runReaderT)
@@ -40,8 +40,9 @@ import EVM
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
+import EVM.Types    (Addr)
 
-import Echidna.ABI (SolCall, SolSignature, displayAbiSeq, encodeSig, genTransactions)
+import Echidna.ABI (SolCall(..), SolSignature, displayAbiSeq, encodeSig, genTransactions, fargs, fname, fsender)
 import Echidna.Config (Config(..), testLimit, range, shrinkLimit)
 import Echidna.Property (PropertyType(..))
 
@@ -94,9 +95,10 @@ execCall :: MonadState VM m => SolCall -> m VMResult
 execCall c = execCallUsing c exec
 
 execCallUsing :: MonadState VM m => SolCall -> m VMResult -> m VMResult
-execCallUsing (t,vs) m = do og <- get
+execCallUsing sc m =     do og <- get
                             cleanUpAfterTransaction
-                            state . calldata .= encodeSolCall t vs
+                            state . calldata .= encodeSolCall (view fname sc) (view fargs sc)
+                            state . caller .= view fsender sc
                             x <- m
                             case x of
                               VMSuccess _  -> return x
@@ -179,24 +181,26 @@ checkTest ShouldReturnFalse            = checkBoolExpTest False
 checkTest ShouldRevert                 = checkRevertTest
 checkTest ShouldReturnFalseRevert      = checkFalseOrRevertTest
 
+defaultSender = 0x00a329c0648769a73afac7f9381e08fb43dbea70
+
 checkBoolExpTest :: Bool -> VM -> Text -> Bool
-checkBoolExpTest b v t = case evalState (execCall (t, [])) v of
+checkBoolExpTest b v t = case evalState (execCall (SolCall t [] defaultSender)) v of
   VMSuccess (B s) -> s == encodeAbiValue (AbiBool b)
   _               -> False
 
 checkRevertTest :: VM -> Text -> Bool
-checkRevertTest v t = case evalState (execCall (t, [])) v of
+checkRevertTest v t = case evalState (execCall (SolCall t [] defaultSender)) v of
   (VMFailure Revert) -> True
   _                  -> False
 
 checkTrueOrRevertTest :: VM -> Text -> Bool
-checkTrueOrRevertTest v t = case evalState (execCall (t, [])) v of
+checkTrueOrRevertTest v t = case evalState (execCall (SolCall t [] defaultSender)) v of
   (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool True)
   (VMFailure Revert) -> True
   _                  -> False
 
 checkFalseOrRevertTest :: VM -> Text -> Bool
-checkFalseOrRevertTest v t = case evalState (execCall (t, [])) v of
+checkFalseOrRevertTest v t = case evalState (execCall (SolCall t [] defaultSender)) v of
   (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool False)
   (VMFailure Revert) -> True
   _                  -> False
