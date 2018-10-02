@@ -181,7 +181,7 @@ genAbiCall (s,ts) = view sender >>= (\addrs ->
                     (view payable) >>= (\pays -> do
                                                  addr <- Gen.element addrs
                                                  cs <- mapM genAbiValueOfType ts 
-                                                 v <- if s `elem` pays then genMsgValue  else return 0
+                                                 v <- if s `elem` pays then genMsgValue else return 0
                                                  return (SolCall s cs addr v)
                                       ))
 
@@ -189,7 +189,8 @@ encodeAbiCall :: SolCall -> ByteString
 encodeAbiCall sc = abiCalldata (view fname sc) $ fromList (view fargs sc)
 
 displayAbiCall :: SolCall -> String
-displayAbiCall sc = unpack (view fname sc) ++ "(" ++ L.intercalate "," (map prettyPrint (view fargs sc)) ++ ")"
+displayAbiCall sc = unpack (view fname sc) ++ "(" ++ L.intercalate "," (map prettyPrint (view fargs sc)) ++ ") by " ++ (showHex (fromEnum (view fsender sc)) "") ++
+                    if (view fvalue sc) > 0 then " with " ++ show (view fvalue sc) else "" 
 
 displayAbiSeq :: [SolCall] -> String
 displayAbiSeq = {- ("Call sequence: " ++) .-} L.intercalate "\n" {-"               "-} . (map displayAbiCall)
