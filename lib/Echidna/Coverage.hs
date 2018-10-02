@@ -143,7 +143,7 @@ ePropertySeqCover'   n cov ps ts ivm c = do
 
 
 ePropertySeqMutate :: MonadGen m => [SolSignature] -> [SolCall] -> Int -> Config -> m [SolCall]
-ePropertySeqMutate ts cs ssize c = choice [useConf $ mutateCallSeq cs, ePropertyGen ts ssize c]      
+ePropertySeqMutate ts cs ssize c = choice [useConf $ mutateCallSeq ts cs, ePropertyGen ts ssize c]      
                                    where useConf = flip runReaderT c 
 
 hashString :: String -> String

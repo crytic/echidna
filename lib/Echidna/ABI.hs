@@ -46,7 +46,7 @@ import qualified Data.List       as L
 import qualified Data.Text       as T
 import qualified Hedgehog.Gen    as Gen
 
-import Echidna.Config (Config, addrList)
+import Echidna.Config (Config, addrList, range)
 
 import EVM.ABI
 import EVM.Types (Addr(..))
@@ -247,5 +247,18 @@ changeOrId f = mapM $ (Gen.element [f, pure] >>=) . (&)
 mutateCall :: (MonadReader Config m, MonadGen m) => SolCall -> m SolCall
 mutateCall (t, vs) = (t,) <$> changeOrId mutateValue vs
 
-mutateCallSeq :: (MonadReader Config m, MonadGen m) => {- [SolSignature] ->-} [SolCall] -> m [SolCall]
-mutateCallSeq cs = changeOrId mutateCall cs
+addCall :: (MonadReader Config m, MonadGen m) => [SolSignature] -> [SolCall] -> m [SolCall]
+addCall _ []  = undefined 
+addCall ts cs = do n <- Gen.element [0 .. length cs - 1]
+                   e <- genInteractions ts
+                   return (take n cs ++ [e] ++ drop n cs)  
+
+dropCall :: (MonadReader Config m, MonadGen m) => [SolCall] -> m [SolCall]
+dropCall cs = do n <- Gen.element [0 .. length cs - 1]
+                 return (take (n-1) cs ++ drop (n+1) cs)  
+
+mutateCallSeq :: (MonadReader Config m, MonadGen m) => [SolSignature] -> [SolCall] -> m [SolCall]
+mutateCallSeq ts cs = view range >>= (\n -> 
+                                      if n < (length cs) 
+                                      then Gen.choice [changeOrId mutateCall cs, dropCall cs, addCall ts cs] 
+                                      else Gen.choice [changeOrId mutateCall cs, dropCall cs] ) 
