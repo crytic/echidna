@@ -37,11 +37,11 @@ import Echidna.ABI (SolCall, SolSignature, displayAbiSeq, genTransactions, mutat
 import Echidna.Config (Config(..), testLimit, range, outdir)
 import Echidna.Exec (encodeSolCall, cleanUpAfterTransaction, sample, reverted, checkProperties, filterProperties, processResult)
 
-type CoverageInfo = Set (Int, [EVM.Concrete.Word])
+type CoverageInfo = Set (Int, EVM.Concrete.Word, [EVM.Concrete.Word])
 --type CoverageInfo = Set [(EVM.Concrete.Word, Int)]
 
 addCover :: VM -> CoverageInfo -> CoverageInfo
-addCover vm cov = insert (view pc $ view state vm, view stack $ view state vm ) cov 
+addCover vm cov = insert (view pc $ view state vm, view gas $ view state vm , view stack $ view state vm ) cov 
 
 -- coverage using storage
 --addCover vm cov   = insert (map (\(x,y) -> (x, floor $ log $ fromInteger $ toInteger y)) $ Data.Map.toList $ view storage c) cov

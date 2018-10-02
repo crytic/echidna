@@ -169,7 +169,7 @@ displayAbiCall :: SolCall -> String
 displayAbiCall (t, vs) = unpack t ++ "(" ++ L.intercalate "," (map prettyPrint vs) ++ ")"
 
 displayAbiSeq :: [SolCall] -> String
-displayAbiSeq = ("Call sequence: " ++) . L.intercalate "\n               " . (map displayAbiCall)
+displayAbiSeq = {- ("Call sequence: " ++) .-} L.intercalate "\n" {-"               "-} . (map displayAbiCall)
 
 -- genInteractions generates a function call from a list of type signatures of
 -- the form (Function name, [arg0 type, arg1 type...])
@@ -185,9 +185,11 @@ type Listy t a = (IsList (t a), Item (t a) ~ a)
 
 switchElem :: (Listy t a, MonadGen m) => m a -> t a -> m (t a)
 switchElem g t = let l = toList t; n = length l in do
-  i <- Gen.element [0..n]
-  x <- g
-  return . fromList $ take i l <> [x] <> drop (i+1) l
+  if n == 0 then return t 
+  else do
+        i <- Gen.element [0..n]
+        x <- g
+        return . fromList $ take i l <> [x] <> drop (i+1) l
 
 changeChar :: MonadGen m => ByteString -> m ByteString
 changeChar = fmap BS.pack . switchElem Gen.enumBounded . BS.unpack
@@ -201,7 +203,7 @@ dropBS b = Gen.choice [ BS.drop <$> Gen.element [1..BS.length b]   <*> pure b
                       ]
 
 changeDynamicBS :: MonadGen m => ByteString -> m ByteString
-changeDynamicBS b = Gen.choice $ [changeChar, addBS, dropBS] <&> ($ b)
+changeDynamicBS b = Gen.choice $ [changeChar] {- addBS, dropBS]-} <&> ($ b)
 
 changeNumber :: (Enum a, Integral a, MonadGen m) => a -> m a
 changeNumber n = let x = fromIntegral n :: Integer in fromIntegral . (+ x) <$> Gen.element [-10..10]
