@@ -111,7 +111,7 @@ loadSolidity filePath selectedContract = do
         abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
         (tests, funs) = partition (isPrefixOf (conf ^. prefix) . fst) abi
     let funs' = filter ((\e -> not $ e `elem` (conf ^. ignored))  . fst) funs
-    liftIO $ putStrLn $ "abi:" ++ (show funs')
+    --liftIO $ putStrLn $ "abi:" ++ (show funs')
     
     if null abi then throwM NoFuncs else pure ()
     if null funs then throwM OnlyTests else pure ()

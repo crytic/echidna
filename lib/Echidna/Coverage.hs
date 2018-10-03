@@ -18,12 +18,6 @@ import Data.Text                  (Text)
 import Data.Set                   (Set, insert, size, member, elemAt, empty)
 import qualified Data.Set         (map, null)
 
-import Crypto.Hash.SHA256         (hash)
-import System.Directory           (doesFileExist, createDirectoryIfMissing)
-
-import qualified Data.ByteString.Char8 as BS (pack, unpack)
-import qualified Data.ByteString.Base16 as B16 (encode) 
-
 import Hedgehog
 import Hedgehog.Gen               (choice)
 import Hedgehog.Internal.Seed (seedValue)
@@ -33,9 +27,10 @@ import EVM
 import EVM.Concrete (Word)
 import EVM.Exec     (exec)
 
-import Echidna.ABI (SolCall, SolSignature, displayAbiSeq, genTransactions, mutateCallSeq, fname, fargs, fvalue, fsender)
+import Echidna.ABI (SolCall, SolSignature, genTransactions, mutateCallSeq, fname, fargs, fvalue, fsender)
 import Echidna.Config (Config(..), testLimit, range, outdir)
-import Echidna.Exec (encodeSolCall, cleanUpAfterTransaction, sample, reverted, checkProperties, filterProperties, processResult)
+import Echidna.Exec (encodeSolCall, cleanUpAfterTransaction, sample, reverted, fatal, checkProperties, filterProperties, processResult)
+import Echidna.Output (saveCalls)
 
 type CoverageInfo = Set (Int, EVM.Concrete.Word, [EVM.Concrete.Word])
 --type CoverageInfo = Set [(EVM.Concrete.Word, Int)]
@@ -59,15 +54,6 @@ mergeSaveCover cov icov cs dir = if (findInCover cov icov) then return cov
                                        saveCalls cs dir
                                        return $ insert (icov, cs) cov 
 
-saveCalls :: [SolCall] -> Maybe String-> IO ()
-saveCalls _ Nothing     = return ()
-saveCalls cs (Just dir) = do
-                            let content = displayAbiSeq cs ++ "\n"
-                            let filename = dir ++ "/" ++ (hashString $ content)
-                            createDirectoryIfMissing False dir
-                            b <- doesFileExist filename
-                            if (not b) then (writeFile filename $ content) else return ()
-
 -----------------------------------------
 -- Echidna exec with coverage
 
@@ -75,7 +61,7 @@ saveCalls cs (Just dir) = do
 execCalls :: [SolCall] -> VM -> (CoverageInfo, VM)
 execCalls cs ivm = foldr f (mempty, ivm) cs
                    where f c (cov, vm) = let vm' = execState (execCallUsing c exec) vm in
-                                         if (reverted vm) then (cov, vm)
+                                         if (reverted vm || fatal vm) then (cov, vm)
                                                           else (addCover vm' cov, vm') 
 
 execCallUsing :: MonadState VM m => SolCall -> m VMResult -> m VMResult
@@ -147,6 +133,3 @@ ePropertySeqCover'   n cov ps ts ivm c = do
 ePropertySeqMutate :: MonadGen m => [SolSignature] -> [SolCall] -> Int -> Config -> m [SolCall]
 ePropertySeqMutate ts cs ssize c = choice [useConf $ mutateCallSeq ts cs, ePropertyGen ts ssize c]      
                                    where useConf = flip runReaderT c 
-
-hashString :: String -> String
-hashString = BS.unpack . B16.encode . hash . BS.pack 

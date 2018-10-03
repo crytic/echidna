@@ -63,7 +63,7 @@ data SolCall = SolCall
   , _fargs  :: [AbiValue]
   , _fsender :: Addr
   , _fvalue :: Int 
-  } deriving (Eq, Ord)
+  } deriving (Eq, Ord, Show)
 
 makeLenses ''SolCall
 
@@ -189,9 +189,12 @@ encodeAbiCall :: SolCall -> ByteString
 encodeAbiCall sc = abiCalldata (view fname sc) $ fromList (view fargs sc)
 
 displayAbiCall :: SolCall -> String
-displayAbiCall sc = unpack (view fname sc) ++ "(" ++ L.intercalate "," (map prettyPrint (view fargs sc)) ++ ") by " ++ (showHex (fromEnum (view fsender sc)) "") ++
+displayAbiCall sc = unpack (view fname sc) ++ "(" ++ L.intercalate "," (map prettyPrint (view fargs sc)) ++ ") by " ++ (showHex ( (view fsender sc)) "") ++
                     if (view fvalue sc) > 0 then " with " ++ show (view fvalue sc) else "" 
 
+--instance Show SolCall where  
+--  show = displayAbiCall
+ 
 displayAbiSeq :: [SolCall] -> String
 displayAbiSeq = {- ("Call sequence: " ++) .-} L.intercalate "\n" {-"               "-} . (map displayAbiCall)
 

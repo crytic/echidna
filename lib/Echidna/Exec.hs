@@ -14,6 +14,7 @@ module Echidna.Exec (
   , cleanUpAfterTransaction
   , sample 
   , reverted
+  , fatal
   , checkProperties
   , filterProperties
   , processResult
@@ -43,9 +44,9 @@ import EVM.Exec     (exec)
 import EVM.Types    (Addr)
 
 import Echidna.ABI (SolCall(..), SolSignature, displayAbiSeq, encodeSig, genTransactions, fargs, fname, fsender, fvalue)
-import Echidna.Config (Config(..), testLimit, range, shrinkLimit)
+import Echidna.Config (Config(..), testLimit, range, shrinkLimit, outputJson)
 import Echidna.Property (PropertyType(..))
-
+import Echidna.Output (reportPassedTest, reportFailedTest)
 -------------------------------------------------------------------
 -- Fuzzing and Hedgehog Init
 
@@ -65,9 +66,9 @@ sample size seed gen =
     in
       loop (1 :: Int)
 
-{-
-fatalFailures :: VM -> Bool
-fatalFailures vm = case (vm ^. result) of
+
+fatal :: VM -> Bool
+fatal vm = case (vm ^. result) of
   (Just (VMFailure (Query _)))                    -> True
   (Just (VMFailure (UnrecognizedOpcode _)))       -> True
   (Just (VMFailure StackUnderrun))                -> True
@@ -75,7 +76,6 @@ fatalFailures vm = case (vm ^. result) of
   (Just (VMFailure StackLimitExceeded))           -> True
   (Just (VMFailure IllegalOverflow))              -> True
   _                                               -> False
--}
 
 reverted :: VM -> Bool
 reverted vm = case (vm ^. result) of
@@ -88,7 +88,7 @@ reverted vm = case (vm ^. result) of
 
 execCalls :: [SolCall] -> VM -> VM
 execCalls cs ivm = foldr f ivm cs
-                   where f c vm = if (reverted vm) then vm 
+                   where f c vm = if (reverted vm || fatal vm) then vm 
                                   else (execState (execCallUsing c exec)) vm 
 
 execCall :: MonadState VM m => SolCall -> m VMResult
@@ -126,21 +126,21 @@ ePropertySeq ps ts ivm c =  ePropertySeq' (toInteger $ c ^. testLimit) ps ts ivm
 
 ePropertySeq' :: Integer -> [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
 ePropertySeq'   _ [] _  _   _          = return ()
-ePropertySeq'   n _  _  _   _ | n == 0 = return () 
+ePropertySeq'   n ps _  _   c | n == 0 = forM_ (map fst ps) (reportPassedTest (c ^. outputJson))
 ePropertySeq'   n ps ts ivm c          = do 
                                           seed <- Seed.random
                                           (vm, cs) <- ePropertyExec seed tsize ivm gen
-                                          (tp,fp) <- return $ checkProperties ps vm 
-                                          forM_ (filterProperties ps fp) (processResult cs gen tsize ivm c)
-                                          ePropertySeq' (n-1) (filterProperties ps tp) ts ivm c
+                                          if (reverted vm) then ePropertySeq' (n-1) ps ts ivm c
+                                          else do 
+                                                (tp,fp) <- return $ checkProperties ps vm 
+                                                forM_ (filterProperties ps fp) (processResult cs gen tsize ivm c)
+                                                ePropertySeq' (n-1) (filterProperties ps tp) ts ivm c
                                          where tsize  = fromInteger $ n `mod` 100
                                                ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
                                                gen    = ePropertyGen ts ssize c
 
---printCache vm c = if reverted vm then print c else print c
-
 checkProperties ::  [(Text, (VM -> Bool))] -> VM -> ([Text],[Text])
-checkProperties ps vm = if reverted vm then (map fst ps, [])
+checkProperties ps vm = if fatal vm then ([], map fst ps)
                         else (map fst $ filter snd bs, map fst $ filter (not . snd) bs)
                         where bs = map (\(t,p) -> (t, p vm)) ps
 
@@ -149,15 +149,9 @@ filterProperties ps ts = filter (\(t,_) -> t `elem` ts) ps
 
 processResult :: [SolCall] -> Gen [SolCall] -> Size -> VM -> Config -> (Text, VM -> Bool) -> IO () 
 processResult cs gen size ivm c (t,p) = do
-                                          putStrLn "Failed property:"
-                                          print t
-                                          putStrLn "Original input:"
-                                          putStrLn $ displayAbiSeq cs
-                                          putStrLn "Shrinking:"
                                           xs <- sequence $ shrink p c ivm size gen
-                                          let shrinked = fst $ findSmaller cs $ catMaybes xs 
-                                          putStrLn $ displayAbiSeq shrinked
-                                          putStrLn "Done!"
+                                          let rcs = fst $ findSmaller cs $ catMaybes xs 
+                                          reportFailedTest (c ^. outputJson)  t cs rcs
 
 shrink :: MonadIO m => (VM -> Bool) -> Config -> VM -> Size -> Gen [SolCall] -> [m (Maybe ([SolCall], Int))]
 shrink p c ivm size gen = shrink' p (fromIntegral $ c ^. shrinkLimit) ivm size gen 
