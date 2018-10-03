@@ -22,11 +22,11 @@ import System.IO.Temp             (writeSystemTempFile)
 import qualified Data.Map as Map (lookup)
 
 import Echidna.ABI    (SolSignature)
-import Echidna.Config (Config(..), sender, contractAddr, gasLimit, prefix, solcArgs, ignored)
+import Echidna.Config (Config(..), contractAddr, gasLimit, prefix, solcArgs, ignored)
 
 
 import EVM
-  (Contract, VM, VMResult(..), caller, contract, codeContract, contracts, env, gas, loadContract, replaceCodeOfSelf, resetState, state)
+  (Contract, VM, VMResult(..), contract, codeContract, contracts, env, gas, loadContract, replaceCodeOfSelf, resetState, state)
 import EVM.Concrete (Blob(..), w256)
 import EVM.Exec     (exec, vmForEthrunCreation)
 import EVM.Keccak   (newContractAddress)

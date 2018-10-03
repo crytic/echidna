@@ -41,7 +41,6 @@ makeLenses ''Config
 
 instance FromJSON Config where
   parseJSON (Object v) =
-    let fromInt s n = ((v .:? s :: Y.Parser (Maybe Int)) <&> fmap fromIntegral) .!= n in
     Config <$> v .:? "solcArgs"      .!= Nothing
            <*> v .:? "epochs"        .!= 2
            <*> v .:? "range"         .!= 10

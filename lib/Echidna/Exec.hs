@@ -43,7 +43,7 @@ import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
 import EVM.Types    (Addr)
 
-import Echidna.ABI (SolCall(..), SolSignature, displayAbiSeq, encodeSig, genTransactions, fargs, fname, fsender, fvalue)
+import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, fargs, fname, fsender, fvalue)
 import Echidna.Config (Config(..), testLimit, range, shrinkLimit, outputJson)
 import Echidna.Property (PropertyType(..))
 import Echidna.Output (reportPassedTest, reportFailedTest)
@@ -176,6 +176,7 @@ checkTest ShouldReturnFalse            = checkBoolExpTest False
 checkTest ShouldRevert                 = checkRevertTest
 checkTest ShouldReturnFalseRevert      = checkFalseOrRevertTest
 
+defaultSender :: Addr
 defaultSender = 0x00a329c0648769a73afac7f9381e08fb43dbea70
 
 checkBoolExpTest :: Bool -> VM -> Text -> Bool

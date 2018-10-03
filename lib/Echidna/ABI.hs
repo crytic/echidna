@@ -174,7 +174,8 @@ genAbiValueOfType t = case t of
   AbiArrayType n t'      -> genAbiArray n t'
 
 genMsgValue ::  (MonadReader Config m, MonadGen m) => m Int
-genMsgValue = Gen.integral $ exponential 0 $ 2^32 - 1
+genMsgValue = Gen.integral $ exponential 0 $ 2 ^ (32 :: Integer) - 1
+
 
 genAbiCall :: (MonadReader Config m, MonadGen m) => SolSignature -> m SolCall
 genAbiCall (s,ts) = view sender >>= (\addrs -> 
@@ -221,13 +222,13 @@ switchElem g t = let l = toList t; n = length l in do
 changeChar :: MonadGen m => ByteString -> m ByteString
 changeChar = fmap BS.pack . switchElem Gen.enumBounded . BS.unpack
 
-addBS :: MonadGen m => ByteString -> m ByteString
-addBS b = Gen.element [(<> b), (b <>)] <*> Gen.utf8 (constant 0 (256 - BS.length b)) Gen.unicode
+--addBS :: MonadGen m => ByteString -> m ByteString
+--addBS b = Gen.element [(<> b), (b <>)] <*> Gen.utf8 (constant 0 (256 - BS.length b)) Gen.unicode
 
-dropBS :: MonadGen m => ByteString -> m ByteString
-dropBS b = Gen.choice [ BS.drop <$> Gen.element [1..BS.length b]   <*> pure b
-                      , BS.take <$> Gen.element [0..BS.length b-1] <*> pure b
-                      ]
+--dropBS :: MonadGen m => ByteString -> m ByteString
+--dropBS b = Gen.choice [ BS.drop <$> Gen.element [1..BS.length b]   <*> pure b
+--                      , BS.take <$> Gen.element [0..BS.length b-1] <*> pure b
+--                      ]
 
 changeDynamicBS :: MonadGen m => ByteString -> m ByteString
 changeDynamicBS b = Gen.choice $ [changeChar] {- addBS, dropBS]-} <&> ($ b)
