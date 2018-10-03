@@ -3,16 +3,13 @@
 module Main where
 
 import System.IO               (hPrint, stderr)
-import Control.Concurrent.MVar (MVar, newMVar, readMVar, swapMVar)
 import Control.Lens
-import Control.Monad           (forM, forM_, replicateM_)
+import Control.Monad           (forM_)
 import Control.Monad.Catch     (MonadThrow(..))
-import Control.Monad.Identity  (Identity(..))
 import Control.Monad.Reader    (runReaderT)
 import Control.Monad.IO.Class  (liftIO)
-import Data.List               ((\\), foldl')
+import Data.List               ((\\))
 import Data.Semigroup          ((<>))
-import Data.Set                (unions)
 import Data.Text               (Text, unpack, pack)
 import Data.Yaml
 import EVM                     (VM)
@@ -21,10 +18,6 @@ import EVM.Types               (Addr)
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
 
---import Hedgehog hiding (checkParallel, Property)
---import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
-
-import Echidna.ABI
 import Echidna.Config
 --import Echidna.Coverage
 import Echidna.Exec
@@ -82,8 +75,10 @@ data Property = Property {
 
 data PerPropConf = PerPropConf {
     _testLimit' :: Int
-  , _sender     :: [Sender]
-  , _properties :: [Property]
+  , _range'     :: Int
+  , _sender'    :: [Sender]
+  , _solcArgs'  :: Maybe String
+  , _properties':: [Property]
   } deriving Show
 
 makeLenses ''Sender
@@ -102,9 +97,22 @@ instance FromJSON Property where
 instance FromJSON PerPropConf where
   parseJSON (Object v) = PerPropConf
     <$> v .: "testLimit"
+    <*> v .: "range"
     <*> v .: "sender"
+    <*> v .: "solcArgs" 
     <*> v .: "properties"
   parseJSON _ = mempty
+
+-- }}}
+-- Selecting a proper sender
+-- {{{
+
+selectSender :: String -> [Sender] -> Addr
+selectSender n ss = view address (f $ filter (\s -> (view name s) == n) ss)
+                    where f []  = error ("Undefined sender " ++ n)
+                          f [x] = x
+                          f _   = error ("Multiple definitions of sender " ++ n)
+
 
 -- }}}
 -- Parsing a config
@@ -113,8 +121,15 @@ instance FromJSON PerPropConf where
 readConf :: FilePath -> IO (Maybe (Config, [Property]))
 readConf f = decodeEither <$> BS.readFile f >>= \case
   Left e -> putStrLn ("couldn't parse config, " ++ e) >> pure Nothing
-  Right (PerPropConf t s p) -> pure . Just . (,p) $
-    defaultConfig & addrList ?~ (view address <$> s) & range .~ t & epochs .~ 1 & outputJson .~ True
+  Right (PerPropConf t r s a p) -> pure . Just . (,p) $
+    defaultConfig -- & contractAddr .~ (selectSender "owner" s)
+                  & addrList ?~ (view address <$> s)
+                  & range .~ r
+                  & testLimit .~ t 
+                  & sender .~ [(selectSender "attacker" s)]
+                  & epochs .~ 1
+                  & solcArgs .~ a
+                  & outputJson .~ True
 
 makeProperty :: Property -> (Text, VM -> Bool)
 makeProperty (Property f r) = (f, flip (checkTest r) f)

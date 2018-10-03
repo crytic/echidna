@@ -9,7 +9,6 @@ import Control.Lens
 import Control.Exception      (Exception)
 import Data.Aeson
 import Data.Text              (Text)
-import Hedgehog               (ShrinkLimit, TestLimit)
 
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Yaml as Y
@@ -26,8 +25,8 @@ data Config = Config
   , _sender        :: [Addr]
   , _addrList      :: Maybe [Addr]
   , _gasLimit      :: W256 
-  , _testLimit     :: TestLimit
-  , _shrinkLimit   :: ShrinkLimit
+  , _testLimit     :: Int
+  , _shrinkLimit   :: Int
   , _returnType    :: PropertyType
   , _prefix        :: Text
   , _ignored       :: [Text]
@@ -50,8 +49,8 @@ instance FromJSON Config where
            <*> v .:? "sender"        .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
            <*> v .:? "addrList"      .!= Nothing
            <*> v .:? "gasLimit"      .!= 0xffffffffffffffff
-           <*> fromInt "testLimit"   10000
-           <*> fromInt "shrinkLimit" 1000
+           <*> v .:? "testLimit"     .!= 10000
+           <*> v .:? "shrinkLimit"   .!= 1000
            <*> v .:? "returnType"    .!= ShouldReturnTrue
            <*> v .:? "prefix"        .!= "echidna_"
            <*> v .:? "ignored"       .!= []
