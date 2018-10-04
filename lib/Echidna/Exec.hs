@@ -43,7 +43,7 @@ import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
 import EVM.Types    (Addr)
 
-import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, fargs, fname, fsender, fvalue ,displayAbiSeq)
+import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, fargs, fname, fsender, fvalue) --,displayAbiSeq)
 import Echidna.Config (Config(..), testLimit, range, shrinkLimit, outputJson)
 import Echidna.Property (PropertyType(..))
 import Echidna.Output (reportPassedTest, reportFailedTest)
@@ -130,8 +130,8 @@ ePropertySeq'   n ps _  _   c | n == 0 = forM_ (map fst ps) (reportPassedTest (c
 ePropertySeq'   n ps ts ivm c          = do 
                                           seed <- Seed.random
                                           (vm, cs) <- ePropertyExec seed tsize ivm gen
-                                          putStrLn $ displayAbiSeq cs
-                                          print "-----"
+                                          --putStrLn $ displayAbiSeq cs
+                                          --print "-----"
                                           if (reverted vm) then ePropertySeq' (n-1) ps ts ivm c
                                           else do 
                                                 (tp,fp) <- return $ checkProperties ps vm 

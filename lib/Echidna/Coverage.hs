@@ -16,7 +16,7 @@ import Control.Monad.Reader       (runReaderT)
 import Control.Monad.IO.Class     (MonadIO)
 import Data.Text                  (Text)
 import Data.Set                   (Set, insert, size, member, elemAt, empty)
-import qualified Data.Set         (map, null)
+import qualified Data.Set         (map{-, null-})
 
 import Hedgehog
 import Hedgehog.Gen               (choice)
