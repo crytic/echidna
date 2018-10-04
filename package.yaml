@@ -44,6 +44,7 @@ library:
     - Echidna.Config
     - Echidna.Coverage
     - Echidna.Exec
+    - Echidna.Output
     - Echidna.Solidity
     - Echidna.Property
 

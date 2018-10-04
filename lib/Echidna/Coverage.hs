@@ -27,7 +27,7 @@ import EVM
 import EVM.Concrete (Word)
 import EVM.Exec     (exec)
 
-import Echidna.ABI (SolCall, SolSignature, genTransactions, mutateCallSeq, fname, fargs, fvalue, fsender)
+import Echidna.ABI (SolCall, SolSignature, genTransactions, mutateCallSeq, fname, fargs, fvalue, fsender {-,displayAbiSeq-})
 import Echidna.Config (Config(..), testLimit, range, outdir)
 import Echidna.Exec (encodeSolCall, cleanUpAfterTransaction, sample, reverted, fatal, checkProperties, filterProperties, processResult)
 import Echidna.Output (saveCalls)
@@ -50,7 +50,7 @@ findInCover cov icov = ( icov `member` Data.Set.map fst cov)
 mergeSaveCover :: CoveragePerInput -> CoverageInfo -> [SolCall] -> Maybe String -> IO (Set (CoverageInfo, [SolCall]))
 mergeSaveCover cov icov cs dir = if (findInCover cov icov) then return cov
                                  else do
-                                       print $ size cov + 1
+                                       --print $ size cov + 1
                                        saveCalls cs dir
                                        return $ insert (icov, cs) cov 
 
@@ -58,11 +58,11 @@ mergeSaveCover cov icov cs dir = if (findInCover cov icov) then return cov
 -- Echidna exec with coverage
 
 
-execCalls :: [SolCall] -> VM -> (CoverageInfo, VM)
-execCalls cs ivm = foldr f (mempty, ivm) cs
-                   where f c (cov, vm) = let vm' = execState (execCallUsing c exec) vm in
-                                         if (reverted vm || fatal vm) then (cov, vm)
-                                                          else (addCover vm' cov, vm') 
+execCalls :: [SolCall] -> VM -> (CoverageInfo, Int, VM)
+execCalls cs ivm = foldr f (mempty, 0, ivm) $ cs
+                   where f c (cov, idx, vm) = let vm' = execState (execCallUsing c exec) vm in
+                                                  if (reverted vm || fatal vm) then (cov, idx, vm)
+                                                                               else (addCover vm' cov, idx+1, vm') 
 
 execCallUsing :: MonadState VM m => SolCall -> m VMResult -> m VMResult
 execCallUsing sc m =     do og <- get
@@ -84,16 +84,16 @@ ePropertyExec seed ssize ivm gen = do mcs <- sample ssize seed gen
                                       case mcs of 
                                        Nothing -> return (empty, ivm, []) 
                                        Just cs -> do
-                                                  let (cov, vm) = execCalls cs ivm 
-                                                  return $ (cov, vm, cs)
+                                                  let (cov, idx, vm) = execCalls cs ivm
+                                                  return $ (cov, vm, take idx $ reverse cs)
 
 ePropertySeqCover :: [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
 ePropertySeqCover ps ts ivm c =  ePropertySeqCover' (toInteger $ c ^. testLimit) empty ps ts ivm c
 
 
 chooseFromSeed :: Seed -> Set a -> a
-chooseFromSeed seed set = elemAt ( (fromEnum $ seedValue seed `mod` 9223372036854775807) `mod` ssize ) set
-                           where ssize = size set
+chooseFromSeed seed set = elemAt (fromEnum $ seedValue seed `mod` ssize ) set
+                           where ssize = fromIntegral $ size set
 
 ePropertySeqCover' :: Integer -> CoveragePerInput -> [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
 ePropertySeqCover'   _ _ [] _  _   _          = return ()
@@ -101,6 +101,8 @@ ePropertySeqCover'   n _ _  _  _   _ | n == 0 = return ()
 ePropertySeqCover'   n cov ps ts ivm c | Data.Set.null cov = do
                                                        seed <- Seed.random
                                                        (icov, vm, cs) <- ePropertyExec seed tsize ivm gen
+                                                       --putStrLn $ displayAbiSeq cs
+                                                       --print "-----"
                                                        if (reverted vm) 
                                                        then ePropertySeqCover' (n-1) cov ps ts ivm c
                                                        else do

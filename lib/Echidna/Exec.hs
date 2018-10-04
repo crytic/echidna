@@ -43,7 +43,7 @@ import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
 import EVM.Types    (Addr)
 
-import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, fargs, fname, fsender, fvalue)
+import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, fargs, fname, fsender, fvalue {-,displayAbiSeq-})
 import Echidna.Config (Config(..), testLimit, range, shrinkLimit, outputJson)
 import Echidna.Property (PropertyType(..))
 import Echidna.Output (reportPassedTest, reportFailedTest)
@@ -83,13 +83,10 @@ reverted vm = case (vm ^. result) of
   Nothing                                      -> False
   _                                            -> False
 
---extractVMResult Nothing = exec 
---extractVMResult (Just vmr) = return $ vmr
-
-execCalls :: [SolCall] -> VM -> VM
-execCalls cs ivm = foldr f ivm cs
-                   where f c vm = if (reverted vm || fatal vm) then vm 
-                                  else (execState (execCallUsing c exec)) vm 
+execCalls :: [SolCall] -> VM -> (Int, VM)
+execCalls cs ivm = foldr f (0, ivm) cs
+                   where f c (idx, vm) = if (reverted vm || fatal vm) then (idx, vm)
+                                         else (idx+1, execState (execCallUsing c exec) vm)
 
 execCall :: MonadState VM m => SolCall -> m VMResult
 execCall c = execCallUsing c exec
@@ -118,7 +115,9 @@ ePropertyExec :: MonadIO m => Seed -> Size -> VM -> Gen [SolCall] -> m (VM, [Sol
 ePropertyExec seed size ivm gen = do mcs <- sample size seed gen
                                      case mcs of 
                                        Nothing -> return (ivm, []) 
-                                       Just cs -> return (execCalls cs ivm, cs) 
+                                       Just cs -> do
+                                                  let (idx, vm) = execCalls cs ivm
+                                                  return $ (vm, take idx $ reverse cs)
 
 ePropertySeq :: [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
 ePropertySeq ps ts ivm c =  ePropertySeq' (toInteger $ c ^. testLimit) ps ts ivm c
