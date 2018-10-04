@@ -43,7 +43,7 @@ import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
 import EVM.Types    (Addr)
 
-import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, fargs, fname, fsender, fvalue {-,displayAbiSeq-})
+import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, fargs, fname, fsender, fvalue ,displayAbiSeq)
 import Echidna.Config (Config(..), testLimit, range, shrinkLimit, outputJson)
 import Echidna.Property (PropertyType(..))
 import Echidna.Output (reportPassedTest, reportFailedTest)
@@ -69,8 +69,8 @@ sample size seed gen =
 
 fatal :: VM -> Bool
 fatal vm = case (vm ^. result) of
-  (Just (VMFailure (Query _)))                    -> True
-  (Just (VMFailure (UnrecognizedOpcode _)))       -> True
+  --(Just (VMFailure (Query _)))                    -> True
+  --(Just (VMFailure (UnrecognizedOpcode _)))     -> True
   (Just (VMFailure StackUnderrun))                -> True
   (Just (VMFailure BadJumpDestination))           -> True
   (Just (VMFailure StackLimitExceeded))           -> True
@@ -80,6 +80,7 @@ fatal vm = case (vm ^. result) of
 reverted :: VM -> Bool
 reverted vm = case (vm ^. result) of
   (Just (VMFailure Revert))                    -> True
+  (Just (VMFailure (UnrecognizedOpcode _)))    -> True
   Nothing                                      -> False
   _                                            -> False
 
@@ -129,6 +130,8 @@ ePropertySeq'   n ps _  _   c | n == 0 = forM_ (map fst ps) (reportPassedTest (c
 ePropertySeq'   n ps ts ivm c          = do 
                                           seed <- Seed.random
                                           (vm, cs) <- ePropertyExec seed tsize ivm gen
+                                          putStrLn $ displayAbiSeq cs
+                                          print "-----"
                                           if (reverted vm) then ePropertySeq' (n-1) ps ts ivm c
                                           else do 
                                                 (tp,fp) <- return $ checkProperties ps vm 
@@ -176,7 +179,7 @@ checkTest ShouldRevert                 = checkRevertTest
 checkTest ShouldReturnFalseRevert      = checkFalseOrRevertTest
 
 defaultSender :: Addr
-defaultSender = 0x00a329c0648769a73afac7f9381e08fb43dbea70
+defaultSender = 0x1 --0x00a329c0648769a73afac7f9381e08fb43dbea70
 
 checkBoolExpTest :: Bool -> VM -> Text -> Bool
 checkBoolExpTest b v t = case evalState (execCall (SolCall t [] defaultSender 0)) v of

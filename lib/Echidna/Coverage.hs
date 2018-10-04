@@ -47,12 +47,14 @@ type CoveragePerInput =  Set (CoverageInfo,[SolCall])
 findInCover :: CoveragePerInput -> CoverageInfo -> Bool
 findInCover cov icov = ( icov `member` Data.Set.map fst cov)
 
-mergeSaveCover :: CoveragePerInput -> CoverageInfo -> [SolCall] -> Maybe String -> IO (Set (CoverageInfo, [SolCall]))
-mergeSaveCover cov icov cs dir = if (findInCover cov icov) then return cov
-                                 else do
+
+
+mergeSaveCover :: CoveragePerInput -> CoverageInfo -> [SolCall] -> VM -> Maybe String -> IO (Set (CoverageInfo, [SolCall]))
+mergeSaveCover cov icov cs vm dir = if (findInCover cov icov) then return cov
+                                    else do
                                        --print $ size cov + 1
-                                       saveCalls cs dir
-                                       return $ insert (icov, cs) cov 
+                                       saveCalls cs dir (if reverted vm then "-rev" else "")
+                                       return $ insert (icov, cs) cov
 
 -----------------------------------------
 -- Echidna exec with coverage
@@ -96,17 +98,18 @@ chooseFromSeed seed set = elemAt (fromEnum $ seedValue seed `mod` ssize ) set
                            where ssize = fromIntegral $ size set
 
 ePropertySeqCover' :: Integer -> CoveragePerInput -> [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
-ePropertySeqCover'   _ _ [] _  _   _          = return ()
-ePropertySeqCover'   n _ _  _  _   _ | n == 0 = return ()
-ePropertySeqCover'   n cov ps ts ivm c | Data.Set.null cov = do
+ePropertySeqCover'   _ _ [] _  _   _            = return ()
+ePropertySeqCover'   n _ _  _  _   _   | n == 0 = return ()
+ePropertySeqCover'   n cov ps ts ivm c | n >= (toInteger (c ^. testLimit))-1000 = do
                                                        seed <- Seed.random
                                                        (icov, vm, cs) <- ePropertyExec seed tsize ivm gen
+                                                       cov' <- mergeSaveCover cov icov cs vm (c ^. outdir)
+                                                       --cov' <- return $ insert (icov, cs) cov 
                                                        --putStrLn $ displayAbiSeq cs
                                                        --print "-----"
                                                        if (reverted vm) 
-                                                       then ePropertySeqCover' (n-1) cov ps ts ivm c
+                                                       then ePropertySeqCover' (n-1) cov' ps ts ivm c
                                                        else do
-                                                           cov' <- return $ insert (icov, cs) cov 
                                                            (tp,fp) <- return $ checkProperties ps vm
                                                            forM_ (filterProperties ps fp) (processResult cs gen tsize ivm c)
                                                            ePropertySeqCover' (n-1) cov' (filterProperties ps tp) ts ivm c
@@ -121,9 +124,9 @@ ePropertySeqCover'   n cov ps ts ivm c = do
                                                     then ePropertyGen ts ssize c 
                                                     else ePropertySeqMutate ts cs' ssize c 
                                           (icov, vm, cs) <- ePropertyExec seed tsize ivm gen
-                                          cov' <- mergeSaveCover cov icov cs (c ^. outdir)
+                                          cov' <- mergeSaveCover cov icov cs vm (c ^. outdir)
                                           if (reverted vm) 
-                                          then ePropertySeqCover' (n-1) cov ps ts ivm c
+                                          then ePropertySeqCover' (n-1) cov' ps ts ivm c
                                           else do
                                                 (tp,fp) <- return $ checkProperties ps vm
                                                 forM_ (filterProperties ps fp) (processResult cs gen tsize ivm c)

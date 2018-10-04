@@ -93,6 +93,13 @@ readContract filePath selectedContractName = do
 
 -- | loads the solidity file at `filePath` and selects either the default or specified contract to analyze
 
+checkCREATE :: SolcContract -> (VMResult, VM)
+checkCREATE c = case (runState exec . vmForEthrunCreation $ c ^. creationCode) of
+                 (VMSuccess (B bc), vm) ->  (VMSuccess (B bc), vm)
+                 _                      ->  error $ "constructor of " ++ unpack (c ^. contractName) ++ " failed to run" 
+
+
+
 loadSolidity :: (MonadIO m, MonadThrow m, MonadReader Config m)
              => FilePath
              -> Maybe Text
@@ -100,7 +107,7 @@ loadSolidity :: (MonadIO m, MonadThrow m, MonadReader Config m)
 loadSolidity filePath selectedContract = do
     conf <- ask
     c    <- readContract filePath selectedContract
-    let (VMSuccess (B bc), vm) = runState exec . vmForEthrunCreation $ c ^. creationCode
+    let (VMSuccess (B bc), vm) = checkCREATE c
         load = do resetState
                   assign (state . gas) (w256 $ conf ^. gasLimit)
                   assign (state . contract) (conf ^. contractAddr)

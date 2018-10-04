@@ -19,11 +19,11 @@ import qualified Data.ByteString.Base16 as B16 (encode)
 
 import Echidna.ABI (SolCall, displayAbiSeq, displayAbiCall) 
 
-saveCalls :: [SolCall] -> Maybe String-> IO ()
-saveCalls _ Nothing     = return ()
-saveCalls cs (Just dir) = do
+saveCalls :: [SolCall] -> Maybe String -> String -> IO ()
+saveCalls _ Nothing     _ = return ()
+saveCalls cs (Just dir) p = do
                             let content = displayAbiSeq cs ++ "\n"
-                            let filename = dir ++ "/" ++ (hashString $ content)
+                            let filename = dir ++ "/" ++ (hashString $ content) ++ p
                             createDirectoryIfMissing False dir
                             b <- doesFileExist filename
                             if (not b) then (writeFile filename $ content) else return ()
