@@ -12,61 +12,26 @@ It supports relatively sophisticated grammar-based fuzzing campaigns to falsify 
 
 ## Installation
 
-[stack](https://www.haskellstack.org/) is highly recommended to install echidna.
-If you are a particularly opinionated experienced Haskell user, cabal or hpack should work, but they are neither officially supported nor tested. 
-
-Before starting with it, make sure you have libgmp-dev installed otherwise ghc will fail to compile. Also, libbz2 and libreadline are required by some packages. For instance, in Ubuntu/Debian you can execute:
+[docker](https://www.docker.com/) is highly recommended to install echidna.
 
 ```
-# apt-get install libgmp-dev libbz2-dev libreadline-dev
+docker pull trailofbits/echidna
+docker run trailofbits/echidna
 ```
 
-[solc](https://www.npmjs.com/package/solc) is another echidna dependency not handled via stack.
-It is technically optional, but working with solidity source will fail without it.
-Install `solc` following the [official document](https://solidity.readthedocs.io/en/v0.4.24/installing-solidity.html).
-Note that `solc` must be installed by any method other than `npm / Node.js`.
+If you'd prefer to build from source it's possible to do that with [Stack](https://docs.haskellstack.org/en/stable/README/)
 
-Once solc is installed, installing stack (`brew install haskell-stack`) and running
+## Usage
 
-```
-stack upgrade
-stack setup
-stack install
-```
+The core Echidna functionality is in an executable called `echidna-test`, which is available in the Docker container referenced above.
+`echidna-test` takes as input a contract with some invariants (properties that should always remain true).
+For each invariant, it generates random sequences of calls to the contract and checks if the invariant holds.
+If it can find some way to falsify the invariant, it prints the call sequence that does so.
+If it can't, you have some assurance the contract is safe.
 
-from inside the echidna directory should be all that's needed.
-
-If you have weird problems involving `readline` on MacOS, try:
-
-```
-brew install readline
-brew link readline --force
-export LDFLAGS=-L/usr/local/opt/readline/lib
-export CPPFLAGS=-I/usr/local/opt/readline/include
-stack install readline --extra-include-dirs=/usr/local/opt/readline/include --extra-lib-dirs=/usr/local/opt/readline/lib
-stack install
-```
-
-Notably, if you are using stack, `stack ghci` will set up a REPL with all functions in scope.
-This can be quite useful for playing around with the library.
-
-## Docker Installation
-
-Set your Docker service to allow 4GB of RAM. Build the Dockerfile with the following command
-
-`docker build -t echidna .`
-
-This will take a long time and will consume ~ 4GB of RAM on a 2017 Macbook Pro.
-
-When it's finished run the example contract with a simple
-
-`docker run echidna`
-
-## Usage (as an executable)
-
-Echidna builds an executable, `echidna-test` that can be used from the command line to fuzz solidity code.
-It expects unit tests in the form of functions with names starting with `echidna_` that take no arguments and return a `bool` indicating success or failure.
-For each unit test it finds, it will execute a fuzzing campaign to try and find a set of calls such that executing that call sequence, then the test either returns `false` or results in a VM failure.
+Invariants are simple solidity functions with names beginning `echidna_`, no arguments, and a boolean return value.
+For example, if I have some `balance` variable that should never go below 20, I can write `function echidna_balance() { return(balance >= 20); }`.
+To check these invariants, I just run `echidna-test myContract.sol`.
 
 An example contract with tests can be found [solidity/cli.sol](solidity/cli.sol). Running
 `echidna-test solidity/cli.sol` should find a call sequence such that `echidna_sometimesfalse` fails, but be unable to do so for `echidna_alwaystrue`.
@@ -77,87 +42,11 @@ echidna-test solidity/cli.sol solidity/cli.sol:Test --coverage --config="solidit
 ```
 The configuration file allows users to choose various EVM and test generation parameters within Echidna and is in yaml format. An example config file, along with documentation, can be found at [solidity/config.yaml](solidity/config.yaml).
 
-## Usage (as a library)
+## Advanced Usage
 
-Echidna is actively being developed with relatively little regard for stability.
-As a result of this, there is a lack of extensive documentation at the present time.
-Nevertheless, we provide a short working example that should be relatively instructional:
-
-```haskell
-module Main where
-
-import Hedgehog hiding            (checkParallel)
-import Hedgehog.Internal.Property (GroupName(..), PropertyName(..))
-
-import Echidna.Exec
-import Echidna.Solidity
-
-main :: IO ()
-main = do (v,a,ts) <- loadSolidity "test.sol" Nothing Nothing
-          let prop t = (PropertyName $ show t, ePropertySeq (`checkETest` t) a v 10)
-          _ <- checkParallel . Group (GroupName "test.sol") $ map prop ts
-          return ()
-```
-
-This example can be used to test this small solidity contract:
-
-```solidity
-pragma solidity ^0.4.16;
-
-contract Test {
-  uint private counter=1;
-  uint private last_counter=counter;
-
-  function inc(uint val){
-    last_counter = counter;
-    counter += val;
-  }
-
-  function skip() {
-    return;
-  }
-
-  function echidna_check_counter() returns (bool) {
-    if (last_counter > counter) {
-      selfdestruct(0);
-    }
-    return true;
-  }
-}
-```
-
-Then, we can use echidna to find a counterexample:
-
-```
-━━━ test.sol ━━━
-  ✗ "echidna_check_counter" failed after 14 tests and 132 shrinks.
-  
-      │ Call sequence: inc(111022932527598298683654135258804814522795708541881158271458983003743791605633);
-      │                inc(4769156709717896739916849749883093330474276123759405767998601004169338034302);
-  
-  ✗ 1 failed.
-```
-
-### [Echidna.ABI](lib/Echidna/ABI.hs)
-
-This module provides Hedgehog generators for most of the EVM ABI.
-It can be used without any other module to provide random "ASTs" (e.g. a random dynamic array of static arrays of 16 248-bit unsigned ints) or calldata (EVM-encoded function calls with these arguments).
-
-Whenever possible, it tries to copy the convention of hevm.
-
-### [Echidna.Exec](lib/Echidna/Exec.hs)
-
-This module provides functionality for executing fuzzing campaigns.
-It's highly recommended to use `ePropertySeq` and `checkParallel` to do this.
-[The standalone executable](src/Main.hs) is a pretty good example of recommended usage.
-`fuzz` can also be used, but if the predicate doesn't need IO, it's not recommended.
-
-It also provides some convenience functions for writing custom campaigns (`checkETest`, `cleanUp`, `eCommand`, `execCall`.)
-The [state machine example](examples/state-machine/StateMachine.hs) is a pretty good example of how to use these.
-
-### [Echidna.Solidity](lib/Echidna/Solidity.hs)
-
-This module provides `loadSolidity`, which takes a solidity source file and provides a VM with the first contract therein loaded as well as a `fuzz`-compatible ABI definition.
+Echidna exports an API that can be used to build powerful fuzzing systems, and has a multitude of configuration options.
+Unfortunately, these parts of the codebase change quickly and are thus poorly documented.
+The [examples directory](examples) or [Trail of Bits blog](https://blog.trailofbits.com/2018/05/03/state-machine-testing-with-echidna/) are excellent places to reference though, or contact the Trail of Bits team using the resources below.
 
 ## Questions/complaints/etc.
 
