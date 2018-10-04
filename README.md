@@ -57,7 +57,7 @@ If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/
 
 ## Getting help
 
-Feel free to stop by our [Slack channel](https://empirehacking.slack.com/messages/C7KKY517H/) for help using or extending Slither.
+Feel free to stop by our [Slack channel](https://empirehacking.slack.com/messages/C7KKY517H/) for help using or extending Echidna.
 
 * Get started by reviewing these simple [Echidna invariants](solidity/cli.sol)
 
