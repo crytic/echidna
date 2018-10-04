@@ -10,11 +10,12 @@ More seriously, Echidna is a Haskell library designed for fuzzing/property-based
 
 ## Features
 
-* Grammar-based input generation
-* Optional coverage guidance
-* Automatic testcase minimization
-* Pretty terminal interface
-* Powerful API
+* Generates inputs tailored to your actual code
+* Optional coverage guidance to find deeper bugs
+* Automatic testcase minimization for quick triage
+* Seamless integration into the development workflow
+* Fast
+* Powerful API for advanced usage
 * Beautiful logo
 
 ## Usage
