@@ -10,16 +10,19 @@ More seriously, it's a Haskell library designed for fuzzing/property based testi
 Currently it is quite alpha, and the API isn't guaranteed to be functional, let alone stable.
 It supports relatively sophisticated grammar-based fuzzing campaigns to falsify a variety of predicates.
 
-## Installation
+## Features
 
-[docker](https://www.docker.com/) is highly recommended to install echidna.
+  * Grammar-based input generation
 
-```
-docker pull trailofbits/echidna
-docker run trailofbits/echidna
-```
+  * Optional coverage guidance
 
-If you'd prefer to build from source it's possible to do that with [Stack](https://docs.haskellstack.org/en/stable/README/)
+  * Automatic testcase minimization
+
+  * Pretty terminal interface
+
+  * Powerful API
+
+  * Beautiful logo
 
 ## Usage
 
@@ -48,6 +51,17 @@ Echidna exports an API that can be used to build powerful fuzzing systems, and h
 Unfortunately, these parts of the codebase change quickly and are thus poorly documented.
 The [examples directory](examples) or [Trail of Bits blog](https://blog.trailofbits.com/2018/05/03/state-machine-testing-with-echidna/) are excellent places to reference though, or contact the Trail of Bits team using the resources below.
 
-## Questions/complaints/etc.
+## Installation
+
+[docker](https://www.docker.com/) is highly recommended to install echidna.
+
+```
+docker pull trailofbits/echidna
+docker run trailofbits/echidna
+```
+
+If you'd prefer to build from source it's possible to do that with [Stack](https://docs.haskellstack.org/en/stable/README/)
+
+## Where To Get Help
 
 Join us in #ethereum on the [Empire Hacking Slack](https://empireslacking.herokuapp.com), or email [JP Smith](mailto:jp@trailofbits.com) (the lead author) directly.
