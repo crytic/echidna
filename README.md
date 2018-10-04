@@ -55,7 +55,7 @@ docker run trailofbits/echidna
 
 If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/README/).
 
-## Where To Get Help
+## Getting help
 
 Feel free to stop by our [Slack channel](https://empirehacking.slack.com/messages/C7KKY517H/) for help using or extending Slither.
 
