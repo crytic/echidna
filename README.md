@@ -21,11 +21,11 @@ More seriously, Echidna is a Haskell library designed for fuzzing/property-based
 
 ### Executing the test runner
 
-The core Echidna functionality is in an executable called `echidna-test`. `echidna-test` takes a contract and a list of invariants (properties that should always remain true) as input. For each invariant, it generates random sequences of calls to the contract and checks if the invariant holds. If it can find some way to falsify the invariant, it prints the call sequence that does so. If it can't, you have some assurance the contract is safe.
+The core Echidna functionality is an executable called `echidna-test`. `echidna-test` takes a contract and a list of invariants (properties that should always remain true) as input. For each invariant, it generates random sequences of calls to the contract and checks if the invariant holds. If it can find some way to falsify the invariant, it prints the call sequence that does so. If it can't, you have some assurance the contract is safe.
 
 ### Writing invariants
 
-Invariants expressed as Solidity functions with names that begin with `echidna_`, have no arguments, and return a boolean. For example, if I have some `balance` variable that should never go below 20, I can write `function echidna_balance() { return(balance >= 20); }`. To check these invariants, run `echidna-test myContract.sol`.
+Invariants are expressed as Solidity functions with names that begin with `echidna_`, have no arguments, and return a boolean. For example, if I have some `balance` variable that should never go below 20, I can write `function echidna_balance() { return(balance >= 20); }`. To check these invariants, run `echidna-test myContract.sol`.
 
 An example contract with tests can be found [solidity/cli.sol](solidity/cli.sol). Run
 `echidna-test solidity/cli.sol` to kickoff a test run. In this demonstration, Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` and should be unable to find a falsifying input for for `echidna_alwaystrue`.
