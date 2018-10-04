@@ -6,62 +6,61 @@
 
 Echidna is a weird creature that eats bugs and is highly electrosensitive (with apologies to Jacob Stanley)
 
-More seriously, it's a Haskell library designed for fuzzing/property based testing of EVM code.
-Currently it is quite alpha, and the API isn't guaranteed to be functional, let alone stable.
-It supports relatively sophisticated grammar-based fuzzing campaigns to falsify a variety of predicates.
+More seriously, Echidna is a Haskell library designed for fuzzing/property-based testing of EVM code. It supports relatively sophisticated grammar-based fuzzing campaigns to falsify a variety of predicates.
 
 ## Features
 
-  * Grammar-based input generation
-
-  * Optional coverage guidance
-
-  * Automatic testcase minimization
-
-  * Pretty terminal interface
-
-  * Powerful API
-
-  * Beautiful logo
+* Grammar-based input generation
+* Optional coverage guidance
+* Automatic testcase minimization
+* Pretty terminal interface
+* Powerful API
+* Beautiful logo
 
 ## Usage
 
-The core Echidna functionality is in an executable called `echidna-test`, which is available in the Docker container referenced above.
-`echidna-test` takes as input a contract with some invariants (properties that should always remain true).
-For each invariant, it generates random sequences of calls to the contract and checks if the invariant holds.
-If it can find some way to falsify the invariant, it prints the call sequence that does so.
-If it can't, you have some assurance the contract is safe.
+### Executing the test runner
 
-Invariants are simple solidity functions with names beginning `echidna_`, no arguments, and a boolean return value.
-For example, if I have some `balance` variable that should never go below 20, I can write `function echidna_balance() { return(balance >= 20); }`.
-To check these invariants, I just run `echidna-test myContract.sol`.
+The core Echidna functionality is in an executable called `echidna-test`. `echidna-test` a contract with a list of invariants (properties that should always remain true) as input. For each invariant, it generates random sequences of calls to the contract and checks if the invariant holds. If it can find some way to falsify the invariant, it prints the call sequence that does so. If it can't, you have some assurance the contract is safe.
 
-An example contract with tests can be found [solidity/cli.sol](solidity/cli.sol). Running
-`echidna-test solidity/cli.sol` should find a call sequence such that `echidna_sometimesfalse` fails, but be unable to do so for `echidna_alwaystrue`.
+### Writing invariants
 
-Echidna can be customized with a variety of command line arguments. Users can pass optional command line arguments to choose the contract to test, turn on coverage guided testing, and load a configuration file. For example:
+Invariants expressed as Solidity functions with names that begin with `echidna_`, have no arguments, and return a boolean. For example, if I have some `balance` variable that should never go below 20, I can write `function echidna_balance() { return(balance >= 20); }`. To check these invariants, run `echidna-test myContract.sol`.
+
+An example contract with tests can be found [solidity/cli.sol](solidity/cli.sol). Run
+`echidna-test solidity/cli.sol` to kickoff a test run. In this demonstration, Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` and should be unable to find a falsifying input for for `echidna_alwaystrue`.
+
+### Configuration options
+
+Echidna's CLI can be used to choose the contract to test, turn on coverage guided testing, or load a configuration file.
+
 ```
 echidna-test solidity/cli.sol solidity/cli.sol:Test --coverage --config="solidity/config.yaml"
 ```
-The configuration file allows users to choose various EVM and test generation parameters within Echidna and is in yaml format. An example config file, along with documentation, can be found at [solidity/config.yaml](solidity/config.yaml).
 
-## Advanced Usage
+The configuration file allows users to choose EVM and test generation parameters. An example config file, along with documentation, can be found at [solidity/config.yaml](solidity/config.yaml).
 
-Echidna exports an API that can be used to build powerful fuzzing systems, and has a multitude of configuration options.
-Unfortunately, these parts of the codebase change quickly and are thus poorly documented.
-The [examples directory](examples) or [Trail of Bits blog](https://blog.trailofbits.com/2018/05/03/state-machine-testing-with-echidna/) are excellent places to reference though, or contact the Trail of Bits team using the resources below.
+### Advanced usage
+
+Echidna exports an API to build powerful fuzzing systems, and has a multitude of configuration options. Unfortunately, these parts of the codebase change quickly and are thus poorly documented. The [examples directory](examples) or [Trail of Bits blog](https://blog.trailofbits.com/2018/05/03/state-machine-testing-with-echidna/) are excellent references, or use the references below to get in touch with us directly.
 
 ## Installation
 
-[docker](https://www.docker.com/) is highly recommended to install echidna.
+[docker](https://www.docker.com/) is recommended to install Echidna.
 
 ```
 docker pull trailofbits/echidna
 docker run trailofbits/echidna
 ```
 
-If you'd prefer to build from source it's possible to do that with [Stack](https://docs.haskellstack.org/en/stable/README/)
+If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/README/).
 
 ## Where To Get Help
 
-Join us in #ethereum on the [Empire Hacking Slack](https://empireslacking.herokuapp.com), or email [JP Smith](mailto:jp@trailofbits.com) (the lead author) directly.
+Feel free to stop by our [Slack channel](https://empirehacking.slack.com/messages/C7KKY517H/) for help using or extending Slither.
+
+* Get started by reviewing the [simplest possible Echidna invariants](solidity/cli.sol)
+
+* Review the [Solidity examples](solidity/examples) directory for more extensive Echidna use cases
+
+* Considering [emailing](mailto:jp@trailofbits.com) the Echidna development team directly for more detailed questions
