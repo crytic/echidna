@@ -27,9 +27,9 @@ import EVM
 import EVM.Concrete (Word)
 import EVM.Exec     (exec)
 
-import Echidna.ABI (SolCall, SolSignature, genTransactions, mutateCallSeq, fname, fargs, fvalue, fsender {-,displayAbiSeq-})
+import Echidna.ABI (SolCall, SolSignature, genTransactions, mutateCallSeq, fname, fargs, fvalue, fsender) --,displayAbiSeq)
 import Echidna.Config (Config(..), testLimit, range, outdir)
-import Echidna.Exec (encodeSolCall, cleanUpAfterTransaction, sample, reverted, fatal, checkProperties, filterProperties, processResult)
+import Echidna.Exec (encodeSolCall, cleanUpAfterTransaction, sample, reverted, fatal, checkProperties, filterProperties, minimizeTestcase)
 import Echidna.Output (saveCalls)
 
 type CoverageInfo = Set (Int, EVM.Concrete.Word, [EVM.Concrete.Word])
@@ -60,11 +60,11 @@ mergeSaveCover cov icov cs vm dir = if (findInCover cov icov) then return cov
 -- Echidna exec with coverage
 
 
-execCalls :: [SolCall] -> VM -> (CoverageInfo, Int, VM)
-execCalls cs ivm = foldr f (mempty, 0, ivm) $ cs
-                   where f c (cov, idx, vm) = let vm' = execState (execCallUsing c exec) vm in
-                                                  if (reverted vm || fatal vm) then (cov, idx, vm)
-                                                                               else (addCover vm' cov, idx+1, vm') 
+execCalls :: [SolCall] -> VM -> (CoverageInfo, [SolCall], VM)
+execCalls cs ivm = foldr f (mempty, [], ivm) $ cs
+                   where f c (cov, ecs, vm) = let vm' = execState (execCallUsing c exec) vm in
+                                                  if (reverted vm || fatal vm) then (cov, ecs, vm)
+                                                                               else (addCover vm' cov, c:ecs, vm') 
 
 execCallUsing :: MonadState VM m => SolCall -> m VMResult -> m VMResult
 execCallUsing sc m =     do og <- get
@@ -86,8 +86,8 @@ ePropertyExec seed ssize ivm gen = do mcs <- sample ssize seed gen
                                       case mcs of 
                                        Nothing -> return (empty, ivm, []) 
                                        Just cs -> do
-                                                  let (cov, idx, vm) = execCalls cs ivm
-                                                  return $ (cov, vm, take idx $ reverse cs)
+                                                  let (cov, ecs, vm) = execCalls cs ivm
+                                                  return $ (cov, vm, ecs)
 
 ePropertySeqCover :: [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
 ePropertySeqCover ps ts ivm c =  ePropertySeqCover' (toInteger $ c ^. testLimit) empty ps ts ivm c
@@ -111,7 +111,7 @@ ePropertySeqCover'   n cov ps ts ivm c | n >= (toInteger (c ^. testLimit))-1000 
                                                        then ePropertySeqCover' (n-1) cov' ps ts ivm c
                                                        else do
                                                            (tp,fp) <- return $ checkProperties ps vm
-                                                           forM_ (filterProperties ps fp) (processResult cs gen tsize ivm c)
+                                                           forM_ (filterProperties ps fp) (minimizeTestcase cs ivm c 1000)
                                                            ePropertySeqCover' (n-1) cov' (filterProperties ps tp) ts ivm c
                                                         where tsize  = fromInteger $ n `mod` 100
                                                               ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
@@ -124,12 +124,14 @@ ePropertySeqCover'   n cov ps ts ivm c = do
                                                     then ePropertyGen ts ssize c 
                                                     else ePropertySeqMutate ts cs' ssize c 
                                           (icov, vm, cs) <- ePropertyExec seed tsize ivm gen
+                                          --putStrLn $ displayAbiSeq cs
+                                          --print "----"
                                           cov' <- mergeSaveCover cov icov cs vm (c ^. outdir)
                                           if (reverted vm) 
                                           then ePropertySeqCover' (n-1) cov' ps ts ivm c
                                           else do
                                                 (tp,fp) <- return $ checkProperties ps vm
-                                                forM_ (filterProperties ps fp) (processResult cs gen tsize ivm c)
+                                                forM_ (filterProperties ps fp) (minimizeTestcase cs ivm c 1000)
                                                 ePropertySeqCover' (n-1) cov' (filterProperties ps tp) ts ivm c
                                          where tsize  = fromInteger $ n `mod` 100
                                                ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))

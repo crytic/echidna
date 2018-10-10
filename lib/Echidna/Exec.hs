@@ -17,7 +17,7 @@ module Echidna.Exec (
   , fatal
   , checkProperties
   , filterProperties
-  , processResult
+  , minimizeTestcase
   ) where
 
 import Control.Lens               (view, (&), (^.), (.=), (?~))
@@ -32,7 +32,7 @@ import Data.Functor.Identity      (runIdentity)
 import Data.Maybe                 (catMaybes)
 
 import Hedgehog
-import Hedgehog.Gen               (scale) --, list, small)
+--import Hedgehog.Gen               (scale) --, list, small)
 import Hedgehog.Internal.Gen      (runGenT)
 import Hedgehog.Internal.Tree (Tree(..), Node(..))
 import qualified Hedgehog.Internal.Seed as Seed
@@ -43,7 +43,7 @@ import EVM.Concrete (Blob(..))
 import EVM.Exec     (exec)
 import EVM.Types    (Addr)
 
-import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, fargs, fname, fsender, fvalue) --,displayAbiSeq)
+import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, fargs, fname, fsender, fvalue, reduceCallSeq) --, displayAbiSeq)
 import Echidna.Config (Config(..), testLimit, range, shrinkLimit, outputJson)
 import Echidna.Property (PropertyType(..))
 import Echidna.Output (reportPassedTest, reportFailedTest)
@@ -84,10 +84,10 @@ reverted vm = case (vm ^. result) of
   Nothing                                      -> False
   _                                            -> False
 
-execCalls :: [SolCall] -> VM -> (Int, VM)
-execCalls cs ivm = foldr f (0, ivm) cs
-                   where f c (idx, vm) = if (reverted vm || fatal vm) then (idx, vm)
-                                         else (idx+1, execState (execCallUsing c exec) vm)
+execCalls :: [SolCall] -> VM -> ([SolCall], VM)
+execCalls cs ivm = foldr f ([], ivm) cs
+                   where f c (ecs, vm) = if (reverted vm || fatal vm) then (ecs, vm)
+                                         else (c:ecs, execState (execCallUsing c exec) vm)
 
 execCall :: MonadState VM m => SolCall -> m VMResult
 execCall c = execCallUsing c exec
@@ -117,8 +117,8 @@ ePropertyExec seed size ivm gen = do mcs <- sample size seed gen
                                      case mcs of 
                                        Nothing -> return (ivm, []) 
                                        Just cs -> do
-                                                  let (idx, vm) = execCalls cs ivm
-                                                  return $ (vm, take idx $ reverse cs)
+                                                  let (ecs, vm) = execCalls cs ivm
+                                                  return $ (vm, ecs) --take idx $ reverse cs)
 
 ePropertySeq :: [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
 ePropertySeq ps ts ivm c =  ePropertySeq' (toInteger $ c ^. testLimit) ps ts ivm c
@@ -135,7 +135,7 @@ ePropertySeq'   n ps ts ivm c          = do
                                           if (reverted vm) then ePropertySeq' (n-1) ps ts ivm c
                                           else do 
                                                 (tp,fp) <- return $ checkProperties ps vm 
-                                                forM_ (filterProperties ps fp) (processResult cs gen tsize ivm c)
+                                                forM_ (filterProperties ps fp) (minimizeTestcase cs ivm c (c ^. shrinkLimit))
                                                 ePropertySeq' (n-1) (filterProperties ps tp) ts ivm c
                                          where tsize  = fromInteger $ n `mod` 100
                                                ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
@@ -149,22 +149,22 @@ checkProperties ps vm = if fatal vm then ([], map fst ps)
 filterProperties :: [(Text, (VM -> Bool))] -> [Text] -> [(Text, (VM -> Bool))] 
 filterProperties ps ts = filter (\(t,_) -> t `elem` ts) ps 
 
-processResult :: [SolCall] -> Gen [SolCall] -> Size -> VM -> Config -> (Text, VM -> Bool) -> IO () 
-processResult cs gen size ivm c (t,p) = do
-                                          xs <- sequence $ shrink p c ivm size gen
-                                          let rcs = fst $ findSmaller cs $ catMaybes xs 
-                                          reportFailedTest (c ^. outputJson)  t cs rcs
+minimizeTestcase :: [SolCall] -> VM -> Config -> Int -> (Text, VM -> Bool) -> IO () 
+minimizeTestcase cs ivm c 0 (t,_) = reportFailedTest (c ^. outputJson) t cs cs
+minimizeTestcase cs ivm c n (t,p) = do
+                                       --if () (True)
+                                       xs <- sequence $ shrink p ivm cs
+                                       --print $ catMaybes xs
+                                       let rcs = fst $ findSmaller cs $ catMaybes xs
+                                       minimizeTestcase rcs ivm c (n-1) (t,p) 
+                                          
 
-shrink :: MonadIO m => (VM -> Bool) -> Config -> VM -> Size -> Gen [SolCall] -> [m (Maybe ([SolCall], Int))]
-shrink p c ivm size gen = shrink' p (fromIntegral $ c ^. shrinkLimit) ivm size gen 
-
-shrink' :: MonadIO m => (VM -> Bool) -> Int -> VM -> Size -> Gen [SolCall] -> [m (Maybe ([SolCall], Int))]
-shrink' p n ivm size gen = map f $ take n $ iterate (scale (\x -> round (fromIntegral x * 0.99 :: Double))) gen
-  where f sgen = do seed <- Seed.random
-                    (vm, cs) <- ePropertyExec seed size ivm sgen
-                    --print $ cs
-                    if (not $ p vm) then return $ Just (cs, length cs)
-                                    else return Nothing 
+shrink :: MonadIO m => (VM -> Bool) -> VM -> [SolCall] -> [m (Maybe ([SolCall], Int))]
+shrink p ivm cs = map f $ zip (repeat $ reduceCallSeq cs) [0 .. 10]
+  where f (sgen,size) = do seed <- Seed.random
+                           (vm, cs') <- ePropertyExec seed size ivm sgen
+                           if (not $ p vm) then return $ Just (cs', length cs')
+                                           else return Nothing 
 
 findSmaller :: [SolCall] -> [([SolCall],Int)] -> ([SolCall], Int)
 findSmaller ics = foldr (\(cs, s) (cs', s') -> if s < s' then (cs, s) else (cs', s')) (ics, length ics) 

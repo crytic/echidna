@@ -8,8 +8,8 @@ module Echidna.Output (
 
 import Crypto.Hash.SHA256         (hash)
 import System.Directory           (doesFileExist, createDirectoryIfMissing)
-import Data.Aeson (ToJSON, encode)
-import Data.Text              (Text)
+import Data.Aeson                 (ToJSON, encode)
+import Data.Text                  (Text)
 import GHC.Generics
 
 import qualified Data.ByteString.Char8 as BS (pack, unpack)

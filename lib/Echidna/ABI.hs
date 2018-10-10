@@ -25,6 +25,7 @@ module Echidna.ABI (
   , mutateCall
   , mutateCallSeq
   , mutateValue
+  , reduceCallSeq
   , prettyPrint
   , fname
   , fargs
@@ -281,12 +282,36 @@ addCall ts cs = do n <- Gen.element [0 .. length cs - 1]
                    e <- genInteractions ts
                    return (take n cs ++ [e] ++ drop n cs)  
 
-dropCall :: (MonadReader Config m, MonadGen m) => [SolCall] -> m [SolCall]
+dropCall :: (MonadGen m) => [SolCall] -> m [SolCall]
 dropCall cs = do n <- Gen.element [0 .. length cs - 1]
-                 return (take (n-1) cs ++ drop (n+1) cs)  
+                 Gen.element [ take n cs,  drop (n+1) cs, (take n cs) ++ drop (n+1) cs]
 
 mutateCallSeq :: (MonadReader Config m, MonadGen m) => [SolSignature] -> [SolCall] -> m [SolCall]
 mutateCallSeq ts cs = view range >>= (\n -> 
-                                      if n < (length cs) 
-                                      then Gen.choice [changeOrId mutateCall cs, dropCall cs, addCall ts cs] 
-                                      else Gen.choice [changeOrId mutateCall cs, dropCall cs] ) 
+                                      if n > (length cs) 
+                                      then Gen.choice [changeOrId mutateCall cs, addCall ts cs] 
+                                      else Gen.choice [changeOrId mutateCall cs, dropCall cs] )
+
+
+-- Only for reduction
+reduceCall :: (MonadGen m) => SolCall -> m SolCall
+reduceCall sc = (\args -> SolCall (view fname sc) args (view fsender sc) (view fvalue sc)) <$> mapM reduceValue (view fargs sc)
+
+reduceCallSeq :: (MonadGen m) => [SolCall] -> m [SolCall]
+reduceCallSeq cs = if (length cs) <= 1 then Gen.choice [changeOrId reduceCall cs] 
+                                       else Gen.frequency [(1,changeOrId reduceCall cs), (1,dropCall cs)] 
+
+reduceValue :: (MonadGen m) => AbiValue -> m AbiValue
+reduceValue (AbiUInt s n) = (AbiUInt s) <$> reduceNumber n
+reduceValue (AbiInt s n) = (AbiInt s) <$> reduceNumber n
+reduceValue (AbiAddress a) = return $ AbiAddress a
+reduceValue (AbiBool _) = return $ AbiBool False
+reduceValue (AbiBytes s b) = return $ AbiBytes s b
+reduceValue (AbiBytesDynamic b) = return $ AbiBytesDynamic b
+reduceValue (AbiString b) = return $ AbiString b
+reduceValue (AbiArrayDynamic t a) = return (AbiArrayDynamic t a) 
+reduceValue (AbiArray s t a) =  return (AbiArray s t a)  
+
+reduceNumber :: (Enum a, Integral a, MonadGen m) => a -> m a
+reduceNumber 0 = return 0
+reduceNumber n = if (n>0) then Gen.integral $ exponential 0 (n `div` 2) else Gen.integral $ exponentialFrom 0 (n `div` 2) 0
