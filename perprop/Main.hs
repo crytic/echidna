@@ -103,6 +103,17 @@ instance FromJSON PerPropConf where
     <*> v .:  "properties"
   parseJSON _ = mempty
 
+
+-- }}}
+-- Selecting a sender
+-- {{{
+
+selectSender :: String -> [Sender] -> Addr
+selectSender n ss = view address (f $ filter (\s -> (view name s) == n) ss)
+                    where f []  = error ("Undefined sender " ++ n)
+                          f [x] = x
+                          f _   = error ("Multiple definitions of sender " ++ n)
+
 -- }}}
 -- Parsing a config
 -- {{{
@@ -116,13 +127,14 @@ readConf f = decodeEither <$> BS.readFile f >>= \case
                   & range .~ r
                   & testLimit .~ t 
                   & sender .~ (view address <$> s)
+                  & psender .~ (selectSender "attacker" s)
                   & epochs .~ 1
                   & solcArgs .~ a
                   & outputJson .~ True
                   & prefix .~ "deepstate_"
 
-makeProperty :: Property -> (Text, VM -> Bool)
-makeProperty (Property f r) = (f, flip (checkTest r) f)
+makeProperty :: Addr -> Property -> (Text, VM -> Bool)
+makeProperty a (Property f r) = (f, flip (checkTest r a) f)
 
 -- }}}
 -- Main
@@ -141,4 +153,4 @@ main = do
       forM_ ((view function <$> ps) \\ abi) $ \p ->
         warn $ "Warning: property " ++ unpack p ++ " not found in ABI"
       let ts' =  [ p | p <- ps, p ^. function `elem` abi ]
-      liftIO $ ePropertySeq (map makeProperty ts') tcontract
+      liftIO $ ePropertySeq (map (makeProperty (c ^. psender)) ts') tcontract

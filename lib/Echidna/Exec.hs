@@ -157,7 +157,7 @@ filterProperties ps ts = filter (\(t,_) -> t `elem` ts) ps
 --fmapNodes f size seed =
 --    fmap f . runIdentity . runMaybeT . runTree . runGenT size seed . Hedgehog.Internal.Gen.lift
 
-checkTest :: PropertyType -> VM -> Text -> Bool
+checkTest :: PropertyType -> Addr -> VM -> Text -> Bool
 checkTest ShouldReturnTrue             = checkBoolExpTest True
 checkTest ShouldReturnFalse            = checkBoolExpTest False
 checkTest ShouldRevert                 = checkRevertTest
@@ -166,24 +166,24 @@ checkTest ShouldReturnFalseRevert      = checkFalseOrRevertTest
 defaultSender :: Addr
 defaultSender = 0x1 --0x00a329c0648769a73afac7f9381e08fb43dbea70
 
-checkBoolExpTest :: Bool -> VM -> Text -> Bool
-checkBoolExpTest b v t = case evalState (execCall (SolCall t [] defaultSender 0)) v of
+checkBoolExpTest ::  Bool -> Addr -> VM -> Text -> Bool
+checkBoolExpTest b addr v t = case evalState (execCall (SolCall t [] addr 0)) v of
   VMSuccess (B s) -> s == encodeAbiValue (AbiBool b)
   _               -> False
 
-checkRevertTest :: VM -> Text -> Bool
-checkRevertTest v t = case evalState (execCall (SolCall t [] defaultSender 0)) v of
+checkRevertTest :: Addr -> VM -> Text -> Bool
+checkRevertTest addr v t = case evalState (execCall (SolCall t [] addr 0)) v of
   (VMFailure Revert) -> True
   _                  -> False
 
-checkTrueOrRevertTest :: VM -> Text -> Bool
-checkTrueOrRevertTest v t = case evalState (execCall (SolCall t [] defaultSender 0)) v of
+checkTrueOrRevertTest :: Addr -> VM -> Text -> Bool
+checkTrueOrRevertTest addr v t = case evalState (execCall (SolCall t [] addr 0)) v of
   (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool True)
   (VMFailure Revert) -> True
   _                  -> False
 
-checkFalseOrRevertTest :: VM -> Text -> Bool
-checkFalseOrRevertTest v t = case evalState (execCall (SolCall t [] defaultSender 0)) v of
+checkFalseOrRevertTest :: Addr -> VM -> Text -> Bool
+checkFalseOrRevertTest addr v t = case evalState (execCall (SolCall t [] addr 0)) v of
   (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool False)
   (VMFailure Revert) -> True
   _                  -> False

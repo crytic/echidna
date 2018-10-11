@@ -51,8 +51,8 @@ main = do
   (Options file contract usecov configFile) <- execParser opts
   config <- maybe (pure defaultConfig) parseConfig configFile
 
-  let f = checkTest (config ^. returnType)
-  
+  let f = checkTest (config ^. returnType) (config ^. psender)
+
   flip runReaderT config $ do
     -- Load solidity contract and get VM
     tcontract <- loadSolidity file (pack <$> contract)
