@@ -163,9 +163,6 @@ checkTest ShouldReturnFalse            = checkBoolExpTest False
 checkTest ShouldRevert                 = checkRevertTest
 checkTest ShouldReturnFalseRevert      = checkFalseOrRevertTest
 
-defaultSender :: Addr
-defaultSender = 0x1 --0x00a329c0648769a73afac7f9381e08fb43dbea70
-
 checkBoolExpTest ::  Bool -> Addr -> VM -> Text -> Bool
 checkBoolExpTest b addr v t = case evalState (execCall (SolCall t [] addr 0)) v of
   VMSuccess (B s) -> s == encodeAbiValue (AbiBool b)
