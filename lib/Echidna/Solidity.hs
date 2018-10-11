@@ -10,6 +10,7 @@ import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, execState, modify, runState)
+import Data.ByteString            (ByteString)
 import Data.Foldable              (toList)
 import Data.List                  (find, partition)
 import Data.Map                   (Map, insert)
@@ -51,6 +52,7 @@ makeLenses ''TestableContract
 
 data EchidnaException = BadAddr Addr
                       | CompileFailure
+                      | ConstructorFailure Text
                       | NoContracts
                       | TestArgsFound Text
                       | ContractNotFound Text
@@ -61,15 +63,16 @@ data EchidnaException = BadAddr Addr
 
 instance Show EchidnaException where
   show = \case
-    BadAddr a            -> "No contract at " ++ show a ++ " exists"
-    CompileFailure       -> "Couldn't compile given file"
-    NoContracts          -> "No contracts found in given file"
-    (ContractNotFound c) -> "Given contract " ++ show c ++ " not found in given file"
-    (TestArgsFound t)    -> "Test " ++ show t ++ " has arguments, aborting"
-    (NoBytecode t)       -> "No bytecode found for contract " ++ show t
-    NoFuncs              -> "ABI is empty, are you sure your constructor is right?"
-    NoTests              -> "No tests found in ABI"
-    OnlyTests            -> "Only tests and no public functions found in ABI"
+    BadAddr a             -> "No contract at " ++ show a ++ " exists"
+    CompileFailure        -> "Couldn't compile given file"
+    (ConstructorFailure c)-> "Constructor of " ++ show c ++ " reverted during its execution"
+    NoContracts           -> "No contracts found in given file"
+    (ContractNotFound c)  -> "Given contract " ++ show c ++ " not found in given file"
+    (TestArgsFound t)     -> "Test " ++ show t ++ " has arguments, aborting"
+    (NoBytecode t)        -> "No bytecode found for contract " ++ show t
+    NoFuncs               -> "ABI is empty, are you sure your constructor is right?"
+    NoTests               -> "No tests found in ABI"
+    OnlyTests             -> "Only tests and no public functions found in ABI"
 
 instance Exception EchidnaException
 
@@ -109,10 +112,10 @@ readContract filePath selectedContractName = do
 
 -- | loads the solidity file at `filePath` and selects either the default or specified contract to analyze
 
-checkCREATE :: SolcContract -> (VMResult, VM)
+checkCREATE :: (MonadIO m, MonadThrow m, MonadReader Config m) => SolcContract -> m (ByteString, VM)
 checkCREATE c = case (runState exec . vmForEthrunCreation $ c ^. creationCode) of
-                 (VMSuccess (B bc), vm) ->  (VMSuccess (B bc), vm)
-                 _                      ->  error $ "constructor of " ++ unpack (c ^. contractName) ++ " failed to run" 
+                 (VMSuccess (B bc), vm) ->  return (bc, vm)
+                 _                      ->  throwM $ ConstructorFailure (c ^. contractName) --error $ "constructor of " ++ unpack (c ^. contractName) ++ " failed to run" 
 
 
 
@@ -123,8 +126,8 @@ loadSolidity :: (MonadIO m, MonadThrow m, MonadReader Config m)
 loadSolidity filePath selectedContract = do
     conf <- ask
     c    <- readContract filePath selectedContract
-    let (VMSuccess (B bc), vm) = checkCREATE c
-        load = do resetState
+    (bc, vm) <- checkCREATE c
+    let load = do resetState
                   assign (state . gas) (w256 $ conf ^. gasLimit)
                   assign (state . contract) (conf ^. contractAddr)
                   assign (state . codeContract) (conf ^. contractAddr)
