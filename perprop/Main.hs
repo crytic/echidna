@@ -96,11 +96,11 @@ instance FromJSON Property where
 
 instance FromJSON PerPropConf where
   parseJSON (Object v) = PerPropConf
-    <$> v .: "testLimit"
-    <*> v .: "range"
-    <*> v .: "sender"
-    <*> v .: "solcArgs" 
-    <*> v .: "properties"
+    <$> v .:  "testLimit"
+    <*> v .:  "range"
+    <*> v .:  "sender"
+    <*> v .:? "solcArgs"    .!= Nothing
+    <*> v .:  "properties"
   parseJSON _ = mempty
 
 -- }}}
