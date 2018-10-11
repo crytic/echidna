@@ -3,20 +3,16 @@
 module Main where
 
 import Control.Lens hiding (argument)
---import Control.Concurrent.MVar (newMVar, readMVar, swapMVar)
---import Control.Monad           (forM_, replicateM_)
 import Control.Monad.Catch     (MonadThrow(..))
 import Control.Monad.IO.Class  (liftIO)
 import Control.Monad.Reader    (runReaderT)
---import Data.List               (foldl')
---import Data.Set                (unions, size)
 import Data.Text               (pack)
 import Data.Semigroup          ((<>))
 
 import Echidna.Config
 import Echidna.Coverage (ePropertySeqCover)
 import Echidna.Exec
-import Echidna.Solidity
+import Echidna.Solidity (loadSolidity, tests, EchidnaException(..) ) 
 
 import Options.Applicative
 
@@ -59,10 +55,11 @@ main = do
   
   flip runReaderT config $ do
     -- Load solidity contract and get VM
-    (v,a,ts) <- loadSolidity file (pack <$> contract)
+    tcontract <- loadSolidity file (pack <$> contract)
+    let ts = view tests tcontract 
     if null ts then throwM NoTests else pure ()
     if not $ usecov || config ^. printCoverage
       -- Run without coverage
-      then liftIO $ ePropertySeq (map (\t -> (t,flip f t)) ts) a v config
-      else liftIO $ ePropertySeqCover (map (\t -> (t,flip f t)) ts) a v config
+      then liftIO $ ePropertySeq (map (\t -> (t,flip f t)) ts) tcontract
+      else liftIO $ ePropertySeqCover (map (\t -> (t,flip f t)) ts) tcontract
 

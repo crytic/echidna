@@ -30,9 +30,7 @@ import Data.Text                  (Text)
 import Data.Vector                (fromList)
 import Data.Functor.Identity      (runIdentity)
 import Data.Maybe                 (catMaybes)
-
 import Hedgehog
---import Hedgehog.Gen               (scale) --, list, small)
 import Hedgehog.Internal.Gen      (runGenT)
 import Hedgehog.Internal.Tree (Tree(..), Node(..))
 import qualified Hedgehog.Internal.Seed as Seed
@@ -47,6 +45,9 @@ import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, fargs
 import Echidna.Config (Config(..), testLimit, range, shrinkLimit, outputJson)
 import Echidna.Property (PropertyType(..))
 import Echidna.Output (reportPassedTest, reportFailedTest)
+import Echidna.Solidity (TestableContract, initialVM, functions, events, config)
+import Echidna.Event (extractSeqLog, Events)
+--import Echidna.Shrinking (minimizeTestcase)
 -------------------------------------------------------------------
 -- Fuzzing and Hedgehog Init
 
@@ -120,26 +121,30 @@ ePropertyExec seed size ivm gen = do mcs <- sample size seed gen
                                                   let (ecs, vm) = execCalls cs ivm
                                                   return $ (vm, ecs) --take idx $ reverse cs)
 
-ePropertySeq :: [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
-ePropertySeq ps ts ivm c =  ePropertySeq' (toInteger $ c ^. testLimit) ps ts ivm c
+ePropertySeq :: [(Text, (VM -> Bool))] -> TestableContract -> IO ()
+ePropertySeq ps tcon =  ePropertySeq' (toInteger $ tcon ^. config ^. testLimit) ps tcon
 
-
-ePropertySeq' :: Integer -> [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
-ePropertySeq'   _ [] _  _   _          = return ()
-ePropertySeq'   n ps _  _   c | n == 0 = forM_ (map fst ps) (reportPassedTest (c ^. outputJson))
-ePropertySeq'   n ps ts ivm c          = do 
+ePropertySeq' :: Integer -> [(Text, (VM -> Bool))] -> TestableContract -> IO ()
+ePropertySeq'   _ []   _           = return ()
+ePropertySeq'   n ps tcon | n == 0 = forM_ (map fst ps) (reportPassedTest (tcon ^. config ^. outputJson))
+ePropertySeq'   n ps tcon          = do 
                                           seed <- Seed.random
                                           (vm, cs) <- ePropertyExec seed tsize ivm gen
+                                          --putStrLn ( show $ view traces vm) 
                                           --putStrLn $ displayAbiSeq cs
                                           --print "-----"
-                                          if (reverted vm) then ePropertySeq' (n-1) ps ts ivm c
+                                          --let es = extractSeqLog (view events tcon) (view logs vm) 
+                                          if (reverted vm) then ePropertySeq' (n-1) ps tcon
                                           else do 
                                                 (tp,fp) <- return $ checkProperties ps vm 
-                                                forM_ (filterProperties ps fp) (minimizeTestcase cs ivm c (c ^. shrinkLimit))
-                                                ePropertySeq' (n-1) (filterProperties ps tp) ts ivm c
-                                         where tsize  = fromInteger $ n `mod` 100
+                                                forM_ (filterProperties ps fp) (minimizeTestcase cs tcon)
+                                                ePropertySeq' (n-1) (filterProperties ps tp) tcon
+                                         where c =  tcon ^. config 
+                                               tsize  = fromInteger $ n `mod` 100
                                                ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
                                                gen    = ePropertyGen ts ssize c
+                                               ivm    = view initialVM tcon
+                                               ts     = view functions tcon
 
 checkProperties ::  [(Text, (VM -> Bool))] -> VM -> ([Text],[Text])
 checkProperties ps vm = if fatal vm then ([], map fst ps)
@@ -148,26 +153,6 @@ checkProperties ps vm = if fatal vm then ([], map fst ps)
 
 filterProperties :: [(Text, (VM -> Bool))] -> [Text] -> [(Text, (VM -> Bool))] 
 filterProperties ps ts = filter (\(t,_) -> t `elem` ts) ps 
-
-minimizeTestcase :: [SolCall] -> VM -> Config -> Int -> (Text, VM -> Bool) -> IO () 
-minimizeTestcase cs ivm c 0 (t,_) = reportFailedTest (c ^. outputJson) t cs cs
-minimizeTestcase cs ivm c n (t,p) = do
-                                       --if () (True)
-                                       xs <- sequence $ shrink p ivm cs
-                                       --print $ catMaybes xs
-                                       let rcs = fst $ findSmaller cs $ catMaybes xs
-                                       minimizeTestcase rcs ivm c (n-1) (t,p) 
-                                          
-
-shrink :: MonadIO m => (VM -> Bool) -> VM -> [SolCall] -> [m (Maybe ([SolCall], Int))]
-shrink p ivm cs = map f $ zip (repeat $ reduceCallSeq cs) [0 .. 10]
-  where f (sgen,size) = do seed <- Seed.random
-                           (vm, cs') <- ePropertyExec seed size ivm sgen
-                           if (not $ p vm) then return $ Just (cs', length cs')
-                                           else return Nothing 
-
-findSmaller :: [SolCall] -> [([SolCall],Int)] -> ([SolCall], Int)
-findSmaller ics = foldr (\(cs, s) (cs', s') -> if s < s' then (cs, s) else (cs', s')) (ics, length ics) 
 
 --fmapNodes f size seed =
 --    fmap f . runIdentity . runMaybeT . runTree . runGenT size seed . Hedgehog.Internal.Gen.lift
@@ -202,3 +187,39 @@ checkFalseOrRevertTest v t = case evalState (execCall (SolCall t [] defaultSende
   (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool False)
   (VMFailure Revert) -> True
   _                  -> False
+
+
+-- Shrinking functions. TODO: move to another module (e.g. Echidna.Shrinking)
+
+
+minimizeTestcase :: [SolCall] -> TestableContract -> (Text, VM -> Bool) -> IO () 
+minimizeTestcase cs tcon (t,p) = do  
+                                     rcs <- minimizeTestcase' cs (tcon ^. initialVM) (conf ^. shrinkLimit) (t,p)
+                                     rev <- extractEvents rcs tcon
+                                     ev <- extractEvents cs tcon
+                                     reportFailedTest (conf ^. outputJson) t cs ev rcs rev
+                                    where conf = (tcon ^. config)
+
+
+
+extractEvents :: [SolCall] -> TestableContract -> IO Events
+extractEvents cs tcon = do let (_, vm) = execCalls cs (tcon ^. initialVM)
+                           return $ extractSeqLog (tcon ^. events) (vm ^. logs) 
+
+minimizeTestcase' :: [SolCall] -> VM -> Int -> (Text, VM -> Bool) -> IO [SolCall]
+minimizeTestcase' cs  _  0   _   = return cs
+minimizeTestcase' cs ivm n (t,p) = do
+                                     xs <- sequence $ shrink p ivm cs
+                                     let rcs = fst $ findSmaller cs $ catMaybes xs
+                                     minimizeTestcase' rcs ivm (n-1) (t,p) 
+                                          
+
+shrink :: MonadIO m => (VM -> Bool) -> VM -> [SolCall] -> [m (Maybe ([SolCall], Int))]
+shrink p ivm cs = map f $ zip (repeat $ reduceCallSeq cs) [0 .. 10]
+  where f (sgen,size) = do seed <- Seed.random
+                           (vm, cs') <- ePropertyExec seed size ivm sgen
+                           if (not $ p vm) then return $ Just (cs', length cs')
+                                           else return Nothing 
+
+findSmaller :: [SolCall] -> [([SolCall],Int)] -> ([SolCall], Int)
+findSmaller ics = foldr (\(cs, s) (cs', s') -> if s < s' then (cs, s) else (cs', s')) (ics, length ics) 

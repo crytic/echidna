@@ -18,6 +18,7 @@ import qualified Data.ByteString.Lazy.Char8 as LBS (unpack)
 import qualified Data.ByteString.Base16 as B16 (encode) 
 
 import Echidna.ABI (SolCall, displayAbiSeq, displayAbiCall) 
+import Echidna.Event (Events, displayEvents)  
 
 saveCalls :: [SolCall] -> Maybe String -> String -> IO ()
 saveCalls _ Nothing     _ = return ()
@@ -34,20 +35,33 @@ data JsonOutput = JsonOutput {
     propName :: !Text
   , propTrue :: !Bool
   , propCall :: !(Maybe [String])
+  , propEvents :: !Events
   , propReducedCall :: !(Maybe [String])
+  , propReducedEvents :: !Events
 } deriving (Generic, Show)
 
 instance ToJSON JsonOutput
 
 reportPassedTest :: Bool -> Text -> IO () 
-reportPassedTest True name = putStrLn $ LBS.unpack $ encode $ JsonOutput { propName = name, propTrue = True, propCall = Nothing, propReducedCall = Nothing }
+reportPassedTest True name = putStrLn $ LBS.unpack $ encode $ JsonOutput { propName = name, propTrue = True, propCall = Nothing, propReducedCall = Nothing, propEvents = [], propReducedEvents = []} 
 reportPassedTest False _   = return () 
 
-reportFailedTest :: Bool -> Text -> [SolCall] -> [SolCall] -> IO () 
-reportFailedTest True name cs rcs  = putStrLn $ LBS.unpack $ encode $ JsonOutput { propName = name, propTrue = False, propCall = Just (map displayAbiCall cs), propReducedCall = Just (map displayAbiCall rcs) }
-reportFailedTest False name cs rcs = do putStr "Failed property "
-                                        print name
-                                        putStrLn "Original input:"
-                                        putStrLn $ displayAbiSeq cs
-                                        putStrLn "Reduced input:"
-                                        putStrLn $ displayAbiSeq rcs
+reportFailedTest :: Bool -> Text -> [SolCall] -> Events -> [SolCall] -> Events -> IO () 
+reportFailedTest True name cs es rcs res  = putStrLn $ LBS.unpack $ encode $ JsonOutput { propName = name, 
+                                                                                          propTrue = False, 
+                                                                                          propCall = Just (map (displayAbiCall) $ reverse cs),
+                                                                                          propEvents = es, 
+                                                                                          propReducedCall = Just (map (displayAbiCall) $ reverse rcs),
+                                                                                          propReducedEvents = res 
+                                                                                        }
+reportFailedTest False name cs es rcs res = do putStr "Failed property "
+                                               print name
+                                               putStrLn "Original input:"
+                                               putStrLn $ displayAbiSeq cs
+                                               putStrLn "Original events:"
+                                               putStrLn $ displayEvents es
+                                               putStrLn "Reduced input:"
+                                               putStrLn $ displayAbiSeq rcs
+                                               putStrLn "Reduced events:"
+                                               putStrLn $ displayEvents res
+ 

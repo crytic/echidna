@@ -43,6 +43,7 @@ library:
     - Echidna.ABI
     - Echidna.Config
     - Echidna.Coverage
+    - Echidna.Event
     - Echidna.Exec
     - Echidna.Output
     - Echidna.Solidity

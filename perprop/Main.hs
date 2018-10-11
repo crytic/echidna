@@ -104,17 +104,6 @@ instance FromJSON PerPropConf where
   parseJSON _ = mempty
 
 -- }}}
--- Selecting a proper sender
--- {{{
-
-selectSender :: String -> [Sender] -> Addr
-selectSender n ss = view address (f $ filter (\s -> (view name s) == n) ss)
-                    where f []  = error ("Undefined sender " ++ n)
-                          f [x] = x
-                          f _   = error ("Multiple definitions of sender " ++ n)
-
-
--- }}}
 -- Parsing a config
 -- {{{
 
@@ -126,10 +115,11 @@ readConf f = decodeEither <$> BS.readFile f >>= \case
                   & addrList ?~ (view address <$> s)
                   & range .~ r
                   & testLimit .~ t 
-                  & sender .~ [(selectSender "attacker" s)]
+                  & sender .~ (view address <$> s)
                   & epochs .~ 1
                   & solcArgs .~ a
                   & outputJson .~ True
+                  & prefix .~ "deepstate_"
 
 makeProperty :: Property -> (Text, VM -> Bool)
 makeProperty (Property f r) = (f, flip (checkTest r) f)
@@ -145,9 +135,10 @@ main = do
     Nothing        -> pure ()
     (Just (c, ps)) -> do
       if null ps then throwM NoTests else pure ()
-      (v,a,t) <- runReaderT (loadSolidity file (pack <$> contract)) c
-      let abi = t ++ map fst a
+      tcontract <- runReaderT (loadSolidity file (pack <$> contract)) c
+      let (funcs,ts) = (view functions tcontract, view tests tcontract)
+      let abi = ts ++ map fst funcs
       forM_ ((view function <$> ps) \\ abi) $ \p ->
         warn $ "Warning: property " ++ unpack p ++ " not found in ABI"
-      let ts =  [ p | p <- ps, p ^. function `elem` abi ]
-      liftIO $ ePropertySeq (map makeProperty ts) a v c
+      let ts' =  [ p | p <- ps, p ^. function `elem` abi ]
+      liftIO $ ePropertySeq (map makeProperty ts') tcontract

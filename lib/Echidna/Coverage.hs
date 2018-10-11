@@ -31,6 +31,7 @@ import Echidna.ABI (SolCall, SolSignature, genTransactions, mutateCallSeq, fname
 import Echidna.Config (Config(..), testLimit, range, outdir)
 import Echidna.Exec (encodeSolCall, cleanUpAfterTransaction, sample, reverted, fatal, checkProperties, filterProperties, minimizeTestcase)
 import Echidna.Output (saveCalls)
+import Echidna.Solidity (TestableContract, initialVM, functions, config)
 
 type CoverageInfo = Set (Int, EVM.Concrete.Word, [EVM.Concrete.Word])
 --type CoverageInfo = Set [(EVM.Concrete.Word, Int)]
@@ -89,18 +90,18 @@ ePropertyExec seed ssize ivm gen = do mcs <- sample ssize seed gen
                                                   let (cov, ecs, vm) = execCalls cs ivm
                                                   return $ (cov, vm, ecs)
 
-ePropertySeqCover :: [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
-ePropertySeqCover ps ts ivm c =  ePropertySeqCover' (toInteger $ c ^. testLimit) empty ps ts ivm c
+ePropertySeqCover :: [(Text, (VM -> Bool))] -> TestableContract -> IO ()
+ePropertySeqCover ps tcon =  ePropertySeqCover' (toInteger $ tcon ^. config ^. testLimit) empty ps tcon
 
 
 chooseFromSeed :: Seed -> Set a -> a
 chooseFromSeed seed set = elemAt (fromEnum $ seedValue seed `mod` ssize ) set
                            where ssize = fromIntegral $ size set
 
-ePropertySeqCover' :: Integer -> CoveragePerInput -> [(Text, (VM -> Bool))] -> [SolSignature] -> VM -> Config -> IO ()
-ePropertySeqCover'   _ _ [] _  _   _            = return ()
-ePropertySeqCover'   n _ _  _  _   _   | n == 0 = return ()
-ePropertySeqCover'   n cov ps ts ivm c | n >= (toInteger (c ^. testLimit))-1000 = do
+ePropertySeqCover' :: Integer -> CoveragePerInput -> [(Text, (VM -> Bool))] -> TestableContract -> IO ()
+ePropertySeqCover'   _ _ [] _              = return ()
+ePropertySeqCover'   n _ _  _      | n == 0 = return ()
+ePropertySeqCover'   n cov ps tcon | n >= (toInteger (c ^. testLimit))-1000 = do
                                                        seed <- Seed.random
                                                        (icov, vm, cs) <- ePropertyExec seed tsize ivm gen
                                                        cov' <- mergeSaveCover cov icov cs vm (c ^. outdir)
@@ -108,16 +109,20 @@ ePropertySeqCover'   n cov ps ts ivm c | n >= (toInteger (c ^. testLimit))-1000 
                                                        --putStrLn $ displayAbiSeq cs
                                                        --print "-----"
                                                        if (reverted vm) 
-                                                       then ePropertySeqCover' (n-1) cov' ps ts ivm c
+                                                       then ePropertySeqCover' (n-1) cov' ps tcon
                                                        else do
                                                            (tp,fp) <- return $ checkProperties ps vm
-                                                           forM_ (filterProperties ps fp) (minimizeTestcase cs ivm c 1000)
-                                                           ePropertySeqCover' (n-1) cov' (filterProperties ps tp) ts ivm c
+                                                           forM_ (filterProperties ps fp) (minimizeTestcase cs tcon)
+                                                           ePropertySeqCover' (n-1) cov' (filterProperties ps tp) tcon
                                                         where tsize  = fromInteger $ n `mod` 100
                                                               ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
                                                               gen    = ePropertyGen ts ssize c
+                                                              ivm    = view initialVM tcon
+                                                              ts     = view functions tcon
+                                                              c      = view config tcon
 
-ePropertySeqCover'   n cov ps ts ivm c = do 
+
+ePropertySeqCover'   n cov ps tcon = do 
                                           seed <- Seed.random
                                           cs' <- return $ snd $ chooseFromSeed seed cov
                                           let gen = if (null cs') 
@@ -128,13 +133,17 @@ ePropertySeqCover'   n cov ps ts ivm c = do
                                           --print "----"
                                           cov' <- mergeSaveCover cov icov cs vm (c ^. outdir)
                                           if (reverted vm) 
-                                          then ePropertySeqCover' (n-1) cov' ps ts ivm c
+                                          then ePropertySeqCover' (n-1) cov' ps tcon
                                           else do
                                                 (tp,fp) <- return $ checkProperties ps vm
-                                                forM_ (filterProperties ps fp) (minimizeTestcase cs ivm c 1000)
-                                                ePropertySeqCover' (n-1) cov' (filterProperties ps tp) ts ivm c
+                                                forM_ (filterProperties ps fp) (minimizeTestcase cs tcon)
+                                                ePropertySeqCover' (n-1) cov' (filterProperties ps tp) tcon
                                          where tsize  = fromInteger $ n `mod` 100
                                                ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
+                                               ivm    = view initialVM tcon
+                                               ts     = view functions tcon
+                                               c      = view config tcon
+
 
 
 ePropertySeqMutate :: MonadGen m => [SolSignature] -> [SolCall] -> Int -> Config -> m [SolCall]
