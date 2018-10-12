@@ -25,6 +25,7 @@ data Config = Config
   , _sender        :: [Addr]
   , _psender       :: Addr 
   , _addrList      :: Maybe [Addr]
+  , _initialValue  :: Int
   , _gasLimit      :: W256 
   , _testLimit     :: Int
   , _shrinkLimit   :: Int
@@ -49,6 +50,7 @@ instance FromJSON Config where
            <*> v .:? "sender"        .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
            <*> v .:? "psender"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
            <*> v .:? "addrList"      .!= Nothing
+           <*> v .:? "initialValue"  .!= 0
            <*> v .:? "gasLimit"      .!= 0xffffffffffffffff
            <*> v .:? "testLimit"     .!= 10000
            <*> v .:? "shrinkLimit"   .!= 1000

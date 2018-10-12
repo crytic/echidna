@@ -3,7 +3,7 @@
 
 module Echidna.Solidity where
 
-import Control.Lens               ((^.), (%=), assign, use, view, makeLenses)
+import Control.Lens               ((^.), (%=), assign, use, set, view, makeLenses)
 import Control.Exception          (Exception)
 import Control.Monad              (liftM2)
 import Control.Monad.Catch        (MonadThrow(..))
@@ -23,11 +23,11 @@ import System.IO.Temp             (writeSystemTempFile)
 import qualified Data.Map as Map (lookup)
 
 import Echidna.ABI    (SolSignature)
-import Echidna.Config (Config(..), contractAddr, gasLimit, prefix, solcArgs, ignored)
+import Echidna.Config (Config(..), contractAddr, gasLimit, prefix, solcArgs, ignored, initialValue)
 
 
 import EVM
-  (Contract, VM, VMResult(..), contract, codeContract, contracts, env, gas, loadContract, replaceCodeOfSelf, resetState, state)
+  (Contract, VM, VMResult(..), contract, codeContract, contracts, env, gas, callvalue, loadContract, replaceCodeOfSelf, resetState, state)
 import EVM.Concrete (Blob(..), w256)
 import EVM.Exec     (exec, vmForEthrunCreation)
 import EVM.Keccak   (newContractAddress)
@@ -112,10 +112,12 @@ readContract filePath selectedContractName = do
 
 -- | loads the solidity file at `filePath` and selects either the default or specified contract to analyze
 
-checkCREATE :: (MonadIO m, MonadThrow m, MonadReader Config m) => SolcContract -> m (ByteString, VM)
-checkCREATE c = case (runState exec . vmForEthrunCreation $ c ^. creationCode) of
+checkCREATE :: (MonadIO m, MonadThrow m, MonadReader Config m) => Int -> SolcContract -> m (ByteString, VM)
+checkCREATE v c = 
+                 let setInitialValue = set (state . callvalue) (fromIntegral v) in 
+                 case (runState exec . setInitialValue . vmForEthrunCreation  $ c ^. creationCode) of
                  (VMSuccess (B bc), vm) ->  return (bc, vm)
-                 _                      ->  throwM $ ConstructorFailure (c ^. contractName) --error $ "constructor of " ++ unpack (c ^. contractName) ++ " failed to run" 
+                 _                      ->  throwM $ ConstructorFailure (c ^. contractName) 
 
 
 
@@ -126,12 +128,11 @@ loadSolidity :: (MonadIO m, MonadThrow m, MonadReader Config m)
 loadSolidity filePath selectedContract = do
     conf <- ask
     c    <- readContract filePath selectedContract
-    (bc, vm) <- checkCREATE c
+    (bc, vm) <- checkCREATE (conf ^. initialValue) c
     let load = do resetState
                   assign (state . gas) (w256 $ conf ^. gasLimit)
                   assign (state . contract) (conf ^. contractAddr)
                   assign (state . codeContract) (conf ^. contractAddr)
-                  --assign (state . caller) (conf ^. sender)
                   loadContract (vm ^. state . contract)
         loaded = execState load $ execState (replaceCodeOfSelf bc) vm
         abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
