@@ -131,6 +131,7 @@ readConf f = decodeEither <$> BS.readFile f >>= \case
                   & epochs .~ 1
                   & solcArgs .~ a
                   & outputJson .~ True
+                  & printCoverage .~ True
                   & prefix .~ "deepstate_"
 
 makeProperty :: Addr -> Property -> (Text, VM -> Bool)
