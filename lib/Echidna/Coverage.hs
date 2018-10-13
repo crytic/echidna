@@ -20,7 +20,7 @@ import qualified Hedgehog.Internal.Seed as Seed
 
 import EVM
 
-import Echidna.ABI (SolCall, SolSignature, genTransactions, mutateCallSeq, fname, fargs, fvalue, fsender) --, displayAbiSeq)
+import Echidna.ABI (SolCall, SolSignature, genTransactions, mutateCallSeq, fname, fargs, fvalue, fsender, displayAbiSeq)
 import Echidna.Config (Config(..), testLimit, range, outdir)
 import Echidna.Exec (encodeSolCall, sample, reverted, fatal, checkProperties, filterProperties, minimizeTestcase)
 import Echidna.Output (saveCalls)
@@ -57,12 +57,12 @@ mergeSaveCover cov icov cs vm dir = if (findInCover cov icov) then return cov
 -- Echidna exec with coverage
 
 mexec :: MonadState (VM, CoverageInfo) m => m VMResult
-mexec = use (_1 . result) >>= \case
-    Just x -> return x
-    _      -> do current <- use $ _1 . state . pc
-                 cov <- use $ _2 
-                 S.state (updateState (insert current cov))
-                 mexec
+mexec = do current <- use $ _1 . state . pc
+           cov <- use _2 
+           S.state (updateState (insert current cov))
+           use (_1 . result) >>= \case
+                                  Just x -> return x
+                                  _      -> mexec
 
 
 updateState :: CoverageInfo -> (VM, CoverageInfo) -> ((), (VM, CoverageInfo))
@@ -80,12 +80,13 @@ cleanUpAfterTransaction = sequence_ [(_1 . result .= Nothing), (_1 . state . pc 
 
 
 execCallUsing :: MonadState (VM, CoverageInfo) m => SolCall -> m VMResult -> m VMResult
-execCallUsing sc m =     do (og,cov) <- get
+execCallUsing sc m =     do (og,_) <- get
                             cleanUpAfterTransaction
                             _1 . state . calldata .= encodeSolCall (view fname sc) (view fargs sc)
                             _1 . state . caller .= view fsender sc
                             _1 . state . callvalue .= (fromIntegral $ view fvalue sc) 
                             x <- m
+                            (_,cov) <- get
                             case x of
                               VMSuccess _  -> return x
                               _            -> (put (og & result ?~ x, cov) >> return x) 
@@ -98,8 +99,10 @@ ePropertyExec :: MonadIO m => Seed -> Size -> VM -> Gen [SolCall] -> m (Coverage
 ePropertyExec seed ssize ivm gen = do mcs <- sample ssize seed gen
                                       case mcs of 
                                        Nothing -> return (empty, ivm, []) 
+                                       Just [] -> return (empty, ivm, []) 
                                        Just cs -> do
                                                   let (cov, ecs, vm) = execCalls cs ivm
+                                                  --if null cov then error ("invalid coverage information using " ++ show ecs) else return ()
                                                   return $ (cov, vm, ecs)
 
 ePropertySeqCover :: [(Text, (VM -> Bool))] -> TestableContract -> IO ()
@@ -113,6 +116,7 @@ chooseFromSeed seed set = elemAt (fromEnum $ seedValue seed `mod` ssize ) set
 ePropertySeqCover' :: Integer -> CoveragePerInput -> [(Text, (VM -> Bool))] -> TestableContract -> IO ()
 ePropertySeqCover'   _ _ [] _              = return ()
 ePropertySeqCover'   n _ _  _      | n == 0 = return ()
+{-
 ePropertySeqCover'   n cov ps tcon | n >= (toInteger (c ^. testLimit))-1000 = do
                                                        seed <- Seed.random
                                                        (icov, vm, cs) <- ePropertyExec seed tsize ivm gen
@@ -134,13 +138,12 @@ ePropertySeqCover'   n cov ps tcon | n >= (toInteger (c ^. testLimit))-1000 = do
                                                               ts     = view functions tcon
                                                               c      = view config tcon
 
+-}
 
 ePropertySeqCover'   n cov ps tcon = do 
                                           seed <- Seed.random
-                                          cs' <- return $ snd $ chooseFromSeed seed cov
-                                          let gen = if (null cs') 
-                                                    then ePropertyGen ts ssize c 
-                                                    else ePropertySeqMutate ts cs' ssize c 
+                                          cs' <- return $ if (null cov) then [] else snd $ chooseFromSeed seed cov
+                                          let gen = ePropertySeqMutate ts cs' ssize c 
                                           (icov, vm, cs) <- ePropertyExec seed tsize ivm gen
                                           cov' <- mergeSaveCover cov icov cs vm (c ^. outdir)
                                           --putStrLn $ displayAbiSeq cs
@@ -161,5 +164,7 @@ ePropertySeqCover'   n cov ps tcon = do
 
 
 ePropertySeqMutate :: MonadGen m => [SolSignature] -> [SolCall] -> Int -> Config -> m [SolCall]
-ePropertySeqMutate ts cs ssize c = choice [useConf $ mutateCallSeq ts cs, ePropertyGen ts ssize c]      
+ePropertySeqMutate ts cs ssize c = if (null cs) 
+                                   then ePropertyGen ts ssize c 
+                                   else choice [useConf $ mutateCallSeq ts cs, ePropertyGen ts ssize c]      
                                    where useConf = flip runReaderT c 
