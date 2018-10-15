@@ -36,6 +36,7 @@ data Config = Config
   , _outdir        :: Maybe String
   , _printCoverage :: Bool
   , _outputJson    :: Bool
+  , _outputRawTxs  :: Bool
   }
   deriving Show
 
@@ -61,6 +62,7 @@ instance FromJSON Config where
            <*> v .:? "outdir"        .!= Nothing
            <*> v .:? "printCoverage" .!= False
            <*> v .:? "outputJson"    .!= False
+           <*> v .:? "outputRawTxs"  .!= False 
   parseJSON _          = parseJSON (Object mempty)
 
 newtype ParseException = ParseException FilePath

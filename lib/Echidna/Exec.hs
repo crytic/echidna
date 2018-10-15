@@ -37,12 +37,12 @@ import qualified Hedgehog.Internal.Seed as Seed
 
 import EVM
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
-import EVM.Concrete (Blob(..))
+import EVM.Concrete (Blob(..), forceConcreteBlob)
 import EVM.Exec     (exec)
 import EVM.Types    (Addr)
 
 import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, fargs, fname, fsender, fvalue, reduceCallSeq) --, displayAbiSeq)
-import Echidna.Config (Config(..), testLimit, range, shrinkLimit, outputJson)
+import Echidna.Config (Config(..), testLimit, range, shrinkLimit, outputJson, outputRawTxs)
 import Echidna.Property (PropertyType(..))
 import Echidna.Output (reportPassedTest, reportFailedTest)
 import Echidna.Solidity (TestableContract, initialVM, functions, events, config)
@@ -130,9 +130,11 @@ ePropertySeq'   n ps tcon | n == 0 = forM_ (map fst ps) (reportPassedTest (tcon 
 ePropertySeq'   n ps tcon          = do 
                                           seed <- Seed.random
                                           (vm, cs) <- ePropertyExec seed tsize ivm gen
-                                          --putStrLn ( show $ view traces vm) 
-                                          --putStrLn $ displayAbiSeq cs
-                                          --print "-----"
+                                          --putStrLn ( show $ view traces vm)
+                                          if  (tcon ^. config ^. outputRawTxs) then ( 
+                                               print $ map (\c -> forceConcreteBlob $ encodeSolCall (view fname c) (view fargs c)) cs
+                                               ) 
+                                          else return () 
                                           --let es = extractSeqLog (view events tcon) (view logs vm) 
                                           if (reverted vm) then ePropertySeq' (n-1) ps tcon
                                           else do 
