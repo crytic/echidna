@@ -132,7 +132,7 @@ ePropertySeq'   n ps tcon          = do
                                           (vm, cs) <- ePropertyExec seed tsize ivm gen
                                           --putStrLn ( show $ view traces vm)
                                           if  (tcon ^. config ^. outputRawTxs) then ( 
-                                               print $ map (\c -> forceConcreteBlob $ encodeSolCall (view fname c) (view fargs c)) cs
+                                               print $ map (\x -> forceConcreteBlob $ encodeSolCall (view fname x) (view fargs x)) cs
                                                ) 
                                           else return () 
                                           --let es = extractSeqLog (view events tcon) (view logs vm) 

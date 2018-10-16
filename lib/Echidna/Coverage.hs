@@ -20,7 +20,7 @@ import qualified Hedgehog.Internal.Seed as Seed
 
 import EVM
 
-import Echidna.ABI (SolCall, SolSignature, genTransactions, mutateCallSeq, fname, fargs, fvalue, fsender, displayAbiSeq)
+import Echidna.ABI (SolCall, SolSignature, genTransactions, mutateCallSeq, fname, fargs, fvalue, fsender)--, displayAbiSeq)
 import Echidna.Config (Config(..), testLimit, range, outdir)
 import Echidna.Exec (encodeSolCall, sample, reverted, fatal, checkProperties, filterProperties, minimizeTestcase)
 import Echidna.Output (saveCalls)
@@ -114,32 +114,8 @@ chooseFromSeed seed set = elemAt (fromEnum $ seedValue seed `mod` ssize ) set
                            where ssize = fromIntegral $ size set
 
 ePropertySeqCover' :: Integer -> CoveragePerInput -> [(Text, (VM -> Bool))] -> TestableContract -> IO ()
-ePropertySeqCover'   _ _ [] _              = return ()
+ePropertySeqCover'   _ _ [] _               = return ()
 ePropertySeqCover'   n _ _  _      | n == 0 = return ()
-{-
-ePropertySeqCover'   n cov ps tcon | n >= (toInteger (c ^. testLimit))-1000 = do
-                                                       seed <- Seed.random
-                                                       (icov, vm, cs) <- ePropertyExec seed tsize ivm gen
-                                                       cov' <- mergeSaveCover cov icov cs vm (c ^. outdir)
-                                                       --cov' <- return $ insert (icov, cs) cov 
-                                                       --putStrLn $ displayAbiSeq cs
-                                                       --print cov'
-                                                       --print "-----"
-                                                       if (reverted vm) 
-                                                       then ePropertySeqCover' (n-1) cov' ps tcon
-                                                       else do
-                                                           (tp,fp) <- return $ checkProperties ps vm
-                                                           forM_ (filterProperties ps fp) (minimizeTestcase cs tcon)
-                                                           ePropertySeqCover' (n-1) cov' (filterProperties ps tp) tcon
-                                                        where tsize  = fromInteger $ n `mod` 100
-                                                              ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
-                                                              gen    = ePropertyGen ts ssize c
-                                                              ivm    = view initialVM tcon
-                                                              ts     = view functions tcon
-                                                              c      = view config tcon
-
--}
-
 ePropertySeqCover'   n cov ps tcon = do 
                                           seed <- Seed.random
                                           cs' <- return $ if (null cov) then [] else snd $ chooseFromSeed seed cov

@@ -289,9 +289,9 @@ dropCall cs = do n <- Gen.element [0 .. length cs - 1]
 mutateCallSeq :: (MonadReader Config m, MonadGen m) => [SolSignature] -> [SolCall] -> m [SolCall]
 mutateCallSeq ts cs = view range >>= (\n ->
                                       case (length cs) of 
-                                        1 -> Gen.choice [changeOrId mutateCall cs, addCall ts cs]
-                                        n -> Gen.choice [changeOrId mutateCall cs, dropCall cs]
-                                        _ -> Gen.choice [changeOrId mutateCall cs, dropCall cs, addCall ts cs] 
+                                        1          -> Gen.choice [changeOrId mutateCall cs, addCall ts cs]
+                                        l | l == n -> Gen.choice [changeOrId mutateCall cs, dropCall cs]
+                                        _          -> Gen.choice [changeOrId mutateCall cs, dropCall cs, addCall ts cs] 
                                      )
 
 -- Only for reduction
