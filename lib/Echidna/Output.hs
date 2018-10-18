@@ -50,7 +50,7 @@ readOutdir d = do
                 js <- return $ map fromJust $ filter isJust mjs
                 covs <- return $ map readCallCoverage js 
                 covs' <- evaluate covs
-                return $ fromListCover covs
+                return $ fromListCover covs'
 
 updateOutdir :: CoveragePerInput -> (CoverageInfo,[SolCall]) -> Maybe String -> IO ()
 updateOutdir     _      _     Nothing  = return ()
