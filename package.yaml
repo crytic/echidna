@@ -20,6 +20,7 @@ dependencies:
   - exceptions           >= 0.8.1  && < 0.9
   - hedgehog             >= 0.6
   - hevm
+  - hashable
   - lens                 >= 4.15.1 && < 4.16
   - mtl                  >= 2.2.1  && < 2.3
   - multiset             >= 0.3    && < 0.4

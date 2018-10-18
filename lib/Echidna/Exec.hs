@@ -39,7 +39,7 @@ import EVM
 import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..), forceConcreteBlob)
 import EVM.Exec     (exec)
-import EVM.Types    (Addr)
+import EVM.Types    (Addr(..))
 
 import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, fargs, fname, fsender, fvalue, reduceCallSeq) --, displayAbiSeq)
 import Echidna.Config (Config(..), testLimit, range, shrinkLimit, outputJson, outputRawTxs)
@@ -97,7 +97,7 @@ execCallUsing :: MonadState VM m => SolCall -> m VMResult -> m VMResult
 execCallUsing sc m =     do og <- get
                             cleanUpAfterTransaction
                             state . calldata .= encodeSolCall (view fname sc) (view fargs sc)
-                            state . caller .= view fsender sc
+                            state . caller .= (Addr (view fsender sc))
                             state . callvalue .= (fromIntegral $ view fvalue sc)
                             x <- m
                             case x of
@@ -166,23 +166,23 @@ checkTest ShouldRevert                 = checkRevertTest
 checkTest ShouldReturnFalseRevert      = checkFalseOrRevertTest
 
 checkBoolExpTest ::  Bool -> Addr -> VM -> Text -> Bool
-checkBoolExpTest b addr v t = case evalState (execCall (SolCall t [] addr 0)) v of
+checkBoolExpTest b addr v t = case evalState (execCall (SolCall t [] (addressWord160 addr) 0)) v of
   VMSuccess (B s) -> s == encodeAbiValue (AbiBool b)
   _               -> False
 
 checkRevertTest :: Addr -> VM -> Text -> Bool
-checkRevertTest addr v t = case evalState (execCall (SolCall t [] addr 0)) v of
+checkRevertTest addr v t = case evalState (execCall (SolCall t [] (addressWord160 addr) 0)) v of
   (VMFailure Revert) -> True
   _                  -> False
 
 checkTrueOrRevertTest :: Addr -> VM -> Text -> Bool
-checkTrueOrRevertTest addr v t = case evalState (execCall (SolCall t [] addr 0)) v of
+checkTrueOrRevertTest addr v t = case evalState (execCall (SolCall t [] (addressWord160 addr) 0)) v of
   (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool True)
   (VMFailure Revert) -> True
   _                  -> False
 
 checkFalseOrRevertTest :: Addr -> VM -> Text -> Bool
-checkFalseOrRevertTest addr v t = case evalState (execCall (SolCall t [] addr 0)) v of
+checkFalseOrRevertTest addr v t = case evalState (execCall (SolCall t [] (addressWord160 addr) 0)) v of
   (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool False)
   (VMFailure Revert) -> True
   _                  -> False

@@ -1,4 +1,4 @@
-{-# LANGUAGE ConstraintKinds, FlexibleContexts, LambdaCase, RankNTypes, TupleSections, TypeFamilies, TemplateHaskell #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts, LambdaCase, RankNTypes, TupleSections, TypeFamilies, TemplateHaskell, DeriveGeneric #-}
 
 
 module Echidna.ABI (
@@ -33,7 +33,7 @@ module Echidna.ABI (
   , fvalue
 ) where
 
-import Control.Lens          -- (makeLenses, (<&>), (&), view)
+import Control.Lens
 import Control.Monad         (join, liftM2)
 import Control.Monad.Reader  (MonadReader)
 import Data.Bool             (bool)
@@ -42,6 +42,7 @@ import Data.Monoid           ((<>))
 import Data.ByteString       (ByteString)
 import Data.Text             (Text, unpack)
 import Data.Vector           (Vector, generateM)
+
 import Hedgehog.Internal.Gen (MonadGen)
 import GHC.Exts              (IsList(..), Item)
 import Hedgehog.Range        (exponential, exponentialFrom, linear, constant, singleton, Range)
@@ -57,14 +58,12 @@ import Echidna.Config (Config, addrList, range, sender, payable)
 import EVM.ABI
 import EVM.Types (Addr(..))
 
---type SolCall = (Text, [AbiValue])
-
 data SolCall = SolCall
   { _fname  :: Text
   , _fargs  :: [AbiValue]
-  , _fsender :: Addr
+  , _fsender :: Word160
   , _fvalue :: Int 
-  } deriving (Eq, Ord, Show)
+  } deriving (Eq, Ord, Show, Read)
 
 makeLenses ''SolCall
 
@@ -184,7 +183,7 @@ genAbiCall (s,ts) = view sender >>= (\addrs ->
                                                  addr <- Gen.element addrs
                                                  cs <- mapM genAbiValueOfType ts 
                                                  v <- if s `elem` pays then genMsgValue else return 0
-                                                 return (SolCall s cs addr v)
+                                                 return (SolCall s cs (addressWord160 addr) v)
                                       ))
 
 encodeAbiCall :: SolCall -> ByteString

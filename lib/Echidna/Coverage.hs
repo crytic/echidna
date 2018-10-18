@@ -10,8 +10,7 @@ import Control.Monad.State.Strict (MonadState, execState, get, put)
 import Control.Monad.Reader       (runReaderT)
 import Control.Monad.IO.Class     (MonadIO)
 import Data.Text                  (Text)
-import Data.Set                   (Set, insert, size, member, elemAt, empty)
-import qualified Data.Set         (map{-, null-})
+import Data.Set                   (Set, insert, size, elemAt, empty)
 
 import Hedgehog
 import Hedgehog.Gen               (choice)
@@ -19,39 +18,16 @@ import Hedgehog.Internal.Seed (seedValue)
 import qualified Hedgehog.Internal.Seed as Seed
 
 import EVM
+import EVM.Types (Addr(..))
 
 import Echidna.ABI (SolCall, SolSignature, genTransactions, mutateCallSeq, fname, fargs, fvalue, fsender)--, displayAbiSeq)
 import Echidna.Config (Config(..), testLimit, range, outdir)
 import Echidna.Exec (encodeSolCall, sample, reverted, fatal, checkProperties, filterProperties, minimizeTestcase)
-import Echidna.Output (saveCalls)
+import Echidna.Output (syncOutdir, updateOutdir)
 import Echidna.Solidity (TestableContract, initialVM, functions, config)
+import Echidna.CoverageInfo (CoverageInfo, CoveragePerInput, mergeSaveCover)
 
 import qualified Control.Monad.State.Strict as S
-
-type CoverageInfo = Set Int
---type CoverageInfo = Set (Int, EVM.Concrete.Word, [EVM.Concrete.Word])
---type CoverageInfo = Set [(EVM.Concrete.Word, Int)]
-
---addCover :: VM -> CoverageInfo -> CoverageInfo
---addCover vm cov = insert (view pc $ view state vm, view gas $ view state vm , view stack $ view state vm ) cov 
-
--- coverage using storage
---addCover vm cov   = insert (map (\(x,y) -> (x, floor $ log $ fromInteger $ toInteger y)) $ Data.Map.toList $ view storage c) cov
---                    where c = snd $ last $ Data.Map.toList $ view contracts (view env vm)
-
-type CoveragePerInput =  Set (CoverageInfo,[SolCall]) 
-
-findInCover :: CoveragePerInput -> CoverageInfo -> Bool
-findInCover cov icov = ( icov `member` Data.Set.map fst cov)
-
-
-
-mergeSaveCover :: CoveragePerInput -> CoverageInfo -> [SolCall] -> VM -> Maybe String -> IO (Set (CoverageInfo, [SolCall]))
-mergeSaveCover cov icov cs vm dir = if (findInCover cov icov) then return cov
-                                    else do
-                                       --print $ size cov + 1
-                                       saveCalls cs dir (if reverted vm then "-rev" else "")
-                                       return $ insert (icov, cs) cov
 
 -----------------------------------------
 -- Echidna exec with coverage
@@ -83,7 +59,7 @@ execCallUsing :: MonadState (VM, CoverageInfo) m => SolCall -> m VMResult -> m V
 execCallUsing sc m =     do (og,_) <- get
                             cleanUpAfterTransaction
                             _1 . state . calldata .= encodeSolCall (view fname sc) (view fargs sc)
-                            _1 . state . caller .= view fsender sc
+                            _1 . state . caller .= Addr (view fsender sc)
                             _1 . state . callvalue .= (fromIntegral $ view fvalue sc) 
                             x <- m
                             (_,cov) <- get
@@ -106,22 +82,34 @@ ePropertyExec seed ssize ivm gen = do mcs <- sample ssize seed gen
                                                   return $ (cov, vm, ecs)
 
 ePropertySeqCover :: [(Text, (VM -> Bool))] -> TestableContract -> IO ()
-ePropertySeqCover ps tcon =  ePropertySeqCover' (toInteger $ tcon ^. config ^. testLimit) empty ps tcon
-
+ePropertySeqCover ps tcon = do 
+                              cov <- syncOutdir (c ^. outdir) mempty
+                              ePropertySeqCover' (toInteger $ c ^. testLimit) cov ps tcon
+                             where c = tcon ^. config 
 
 chooseFromSeed :: Seed -> Set a -> a
 chooseFromSeed seed set = elemAt (fromEnum $ seedValue seed `mod` ssize ) set
                            where ssize = fromIntegral $ size set
+lastIter :: Integer -> Bool
+lastIter i    = i == 0
+
+everyXIter :: Integer -> Integer -> Bool
+everyXIter x n = (n `mod` x) == 0
 
 ePropertySeqCover' :: Integer -> CoveragePerInput -> [(Text, (VM -> Bool))] -> TestableContract -> IO ()
-ePropertySeqCover'   _ _ [] _               = return ()
-ePropertySeqCover'   n _ _  _      | n == 0 = return ()
+ePropertySeqCover'   _ _ [] _                            = return ()
+ePropertySeqCover'   n _ _  _      | lastIter n          = return ()
+ePropertySeqCover'   n cov ps tcon | everyXIter 12345 n  = do
+                                                            cov' <- syncOutdir (tcon ^. config ^. outdir) cov
+                                                            ePropertySeqCover' (n-1) cov' ps tcon
+
 ePropertySeqCover'   n cov ps tcon = do 
                                           seed <- Seed.random
                                           cs' <- return $ if (null cov) then [] else snd $ chooseFromSeed seed cov
                                           let gen = ePropertySeqMutate ts cs' ssize c 
                                           (icov, vm, cs) <- ePropertyExec seed tsize ivm gen
-                                          cov' <- mergeSaveCover cov icov cs vm (c ^. outdir)
+                                          updateOutdir cov (icov, cs) (c ^. outdir)
+                                          cov' <- mergeSaveCover cov icov cs --(c ^. outdir)
                                           --putStrLn $ displayAbiSeq cs
                                           --print cov'
                                           --print "----"
