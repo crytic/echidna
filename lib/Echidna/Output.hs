@@ -10,6 +10,7 @@ module Echidna.Output (
   ) where
 
 --import Crypto.Hash.SHA256         (hash)
+import Control.Exception          (evaluate)
 import System.Directory           (doesFileExist, createDirectoryIfMissing, listDirectory, withCurrentDirectory, makeRelativeToCurrentDirectory)
 import System.IO                  (hFlush, stdout)
 import Data.Aeson                 (ToJSON, FromJSON, encode, decode)
@@ -48,6 +49,7 @@ readOutdir d = do
                 mjs <- return $ map decode bs
                 js <- return $ map fromJust $ filter isJust mjs
                 covs <- return $ map readCallCoverage js 
+                covs' <- evaluate covs
                 return $ fromListCover covs
 
 updateOutdir :: CoveragePerInput -> (CoverageInfo,[SolCall]) -> Maybe String -> IO ()
