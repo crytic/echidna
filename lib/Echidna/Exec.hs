@@ -12,7 +12,8 @@ module Echidna.Exec (
   , execCallUsing
   , encodeSolCall
   , cleanUpAfterTransaction
-  , sample 
+  , sample
+  , sampleDiff 
   , reverted
   , fatal
   , checkProperties
@@ -66,6 +67,24 @@ sample size seed gen =
               pure $ Just $ nodeValue x
     in
       loop (1 :: Int)
+
+sampleDiff :: (Eq a, MonadIO m) => Size -> Seed -> Gen a -> a -> m (Maybe a)
+sampleDiff size seed gen a =
+  liftIO $
+    let
+      loop n =
+        if n <= 0 then
+          pure $ Nothing 
+        else do
+          case runIdentity . runMaybeT . runTree $ runGenT size seed gen of
+            Nothing ->
+              loop (n - 1)
+            Just x | (nodeValue x) == a ->
+              loop (n - 1) 
+            Just x ->
+              pure $ Just $ nodeValue x
+    in
+      loop (20 :: Int)
 
 
 fatal :: VM -> Bool
