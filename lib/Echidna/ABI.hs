@@ -32,16 +32,21 @@ module Echidna.ABI (
   , fargs
   , fsender
   , fvalue
+  , parseAsType
 ) where
 
 import Control.Lens
 import Control.Monad         (join, liftM2)
 import Control.Monad.Reader  (MonadReader)
+import Data.Aeson
+import Data.Aeson.Types
+import Data.Scientific
 import Data.Bool             (bool)
 import Data.DoubleWord       (Word128(..), Word160(..))
 import Data.Monoid           ((<>))
 import Data.ByteString       (ByteString)
 import Data.Text             (Text, unpack)
+import Data.Text.Encoding    (encodeUtf8)
 import Data.Vector           (Vector, generateM)
 
 import Hedgehog.Internal.Gen (MonadGen)
@@ -316,3 +321,42 @@ reduceValue (AbiArray s t a) =  return (AbiArray s t a)
 reduceNumber :: (Enum a, Integral a, MonadGen m) => a -> m a
 reduceNumber 0 = return 0
 reduceNumber n = if (n>0) then Gen.integral $ exponential 0 (n `div` 2) else Gen.integral $ exponentialFrom 0 (n `div` 2) 0
+
+parseAsType :: AbiType -> Value -> Parser AbiValue
+parseAsType t v = case (t, v) of
+  (AbiUIntType n, Number x) ->
+      case toBoundedInteger x of
+          Nothing -> fail $ "cannot parse " ++ show x ++ " as " ++ show t
+          Just i  -> pure (AbiUInt n i)
+--          Just i  -> if 0 <= i && i < 2^n
+--                     then pure (AbiUInt n i)
+--                     else fail $ show i ++ " too wide for " ++ show t
+  (AbiIntType n, Number x) ->
+      case toBoundedInteger x of
+          Nothing -> fail $ "cannot parse " ++ show x ++ " as " ++ show t
+          Just i  -> pure (AbiInt n i)
+--          Just i  -> if -2^(n-1) <= i && i < 2^(n-1)
+--                     then pure (AbiInt n i)
+--                     else fail $ show i ++ " too wide for " ++ show t
+  (AbiAddressType, Number x) ->
+      case toBoundedInteger x of
+         Nothing   -> fail "cannot parse float as address"
+         Just addr -> pure (AbiAddress addr)
+  (AbiBytesType n, String s) -> let bs = encodeUtf8 s in
+                                if BS.length bs == n
+                                then pure (AbiBytes n bs)
+                                else fail $ show bs ++ " wrong size for " ++ show t
+  (AbiBytesDynamicType, String s) ->
+      let bs = encodeUtf8 s in pure (AbiBytes (BS.length bs) bs)
+
+  (AbiStringType, String s) -> pure (AbiString $ encodeUtf8 s)
+
+  (AbiArrayType n elemType, Array a) ->
+      if length a == n
+      then AbiArray n elemType <$> traverse (parseAsType elemType) a
+      else fail $ show a ++ " wrong size for " ++ show t
+
+  (AbiArrayDynamicType elemType, Array a) ->
+      AbiArrayDynamic elemType <$> traverse (parseAsType elemType) a
+
+  _ -> typeMismatch (show t) v

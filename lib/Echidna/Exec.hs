@@ -22,7 +22,7 @@ module Echidna.Exec (
   ) where
 
 import Control.Lens               (view, use, (&), (^.), (.=), (?~))
-import Control.Monad              (forM_)
+import Control.Monad              (forM, forM_)
 import Control.Monad.State.Strict (MonadState, evalState, execState, runState, execStateT, get, put)
 import qualified Control.Monad.State.Strict as S
 import Control.Monad.Reader       (runReaderT)
@@ -32,6 +32,7 @@ import Data.ByteString as BS      (concat)
 import Data.Text                  (Text)
 import Data.Vector                (fromList)
 import Data.Functor.Identity      (runIdentity)
+import Data.Map as Map            (lookup)
 import Data.Maybe                 (catMaybes)
 import Data.Monoid                ((<>))
 import Hedgehog
@@ -40,7 +41,7 @@ import Hedgehog.Internal.Tree (Tree(..), Node(..))
 import qualified Hedgehog.Internal.Seed as Seed
 
 import EVM
-import EVM.ABI      (AbiValue(..), AbiType, abiCalldata, abiValueType, encodeAbiValue)
+import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..), w256, forceConcreteBlob)
 import EVM.Exec     (exec, vmForEthrunCreation)
 import EVM.Types    (Addr(..))
@@ -49,7 +50,7 @@ import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, genAb
 import Echidna.Config (Config(..), testLimit, range, shrinkLimit, outputJson, outputRawTxs, initialValue, gasLimit, contractAddr)
 import Echidna.Property (PropertyType(..))
 import Echidna.Output (reportPassedTest, reportFailedTest)
-import Echidna.Solidity (TestableContract, ctorCode, functions, events, config, constructor)
+import Echidna.Solidity (TestableContract, ctorCode, functions, events, config, constructor, givenConstructorArgs)
 import Echidna.Event (extractSeqLog, Events)
 --import Echidna.Shrinking (minimizeTestcase)
 -------------------------------------------------------------------
@@ -132,8 +133,11 @@ encodeSolCall t vs =  B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ from
 cleanUpAfterTransaction :: MonadState VM m => m ()
 cleanUpAfterTransaction = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
 
-eConstructorGen :: MonadGen m => [AbiType] -> Config -> m [AbiValue]
-eConstructorGen ts = runReaderT (mapM genAbiValueOfType ts)
+eConstructorGen :: MonadGen m => TestableContract -> m [AbiValue]
+eConstructorGen tcon = flip runReaderT (tcon ^. config) $ forM (tcon ^. constructor) $ \(argName, argType) ->
+    case Map.lookup argName (tcon ^. givenConstructorArgs) of
+        Nothing -> genAbiValueOfType argType
+        Just abiValue -> pure abiValue
 
 eConstructorExec :: (MonadIO m) => Seed -> Size -> TestableContract -> Gen [AbiValue] -> m VM
 eConstructorExec seed size tcon gen = do
@@ -198,7 +202,7 @@ ePropertySeq'   n ps tcon          = do
                                                tsize   = fromInteger $ n `mod` 100
                                                ssize   = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
                                                funcGen = ePropertyGen ts ssize c
-                                               ctorGen = eConstructorGen (map snd $ tcon ^. constructor) c
+                                               ctorGen = eConstructorGen tcon
                                                ts      = view functions tcon
 
 checkProperties ::  [(Text, (VM -> Bool))] -> VM -> ([Text],[Text])

@@ -11,9 +11,10 @@ import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, execState, modify)
 import Data.ByteString            (ByteString)
+import Data.Aeson.Types           (parseEither)
 import Data.Foldable              (toList)
 import Data.List                  (find, partition)
-import Data.Map                   (Map, insert)
+import Data.Map                   (Map, insert, fromList, intersectionWith)
 import Data.Maybe                 (isNothing, fromMaybe)
 import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, pack, unpack)
@@ -22,24 +23,25 @@ import System.IO.Temp             (writeSystemTempFile)
 
 import qualified Data.Map as Map (lookup)
 
-import Echidna.ABI    (SolSignature)
-import Echidna.Config (Config(..), prefix, solcArgs, ignored)
+import Echidna.ABI    (SolSignature, parseAsType)
+import Echidna.Config (Config(..), prefix, solcArgs, ignored, constructorArgs)
 
 
 import EVM
-  (Contract, VM, contract, contracts, env, state, Error, loadContract)
+  (Contract, VM, contract, contracts, env, loadContract, state, Error)
 import EVM.Keccak   (newContractAddress)
 import EVM.Solidity (abiMap, contractName, creationCode, constructorInputs, methodInputs, methodName, readSolc, SolcContract, eventMap)
 import EVM.Types    (Addr, W256)
-import EVM.ABI      (Event, AbiType)
+import EVM.ABI      (Event, AbiType, AbiValue)
 
 data TestableContract = TestableContract
-  { _ctorCode      :: ByteString
-  , _constructor   :: [(Text, AbiType)]
-  , _functions     :: [SolSignature]
-  , _tests         :: [Text]
-  , _events        :: Map W256 Event 
-  , _config        :: Config 
+  { _ctorCode             :: ByteString
+  , _constructor          :: [(Text, AbiType)]
+  , _givenConstructorArgs :: Map Text AbiValue
+  , _functions            :: [SolSignature]
+  , _tests                :: [Text]
+  , _events               :: Map W256 Event
+  , _config               :: Config
   }
   deriving Show
 
@@ -52,6 +54,7 @@ makeLenses ''TestableContract
 data EchidnaException = BadAddr Addr
                       | CompileFailure
                       | ConstructorFailure EVM.Error
+                      | CtorArgsParseFailure String
                       | NoContracts
                       | TestArgsFound Text
                       | ContractNotFound Text
@@ -64,7 +67,9 @@ instance Show EchidnaException where
   show = \case
     BadAddr a             -> "No contract at " ++ show a ++ " exists"
     CompileFailure        -> "Couldn't compile given file"
-    (ConstructorFailure e)-> "Constructor encoutered an error during its execution: " ++ show e
+    ConstructorFailure e  -> "Constructor encoutered an error during its execution: " ++ show e
+    CtorArgsParseFailure e
+                          -> "Failed to parse provided constructor arguments: " ++ e
     NoContracts           -> "No contracts found in given file"
     (ContractNotFound c)  -> "Given contract " ++ show c ++ " not found in given file"
     (TestArgsFound t)     -> "Test " ++ show t ++ " has arguments, aborting"
@@ -116,6 +121,12 @@ loadSolidity :: (MonadIO m, MonadThrow m, MonadReader Config m)
 loadSolidity filePath selectedContract = do
     conf <- ask
     c    <- readContract filePath selectedContract
+    let ctorTypes = Data.Map.fromList $ c ^. constructorInputs
+        ctorParams = conf ^. constructorArgs
+        ctorValues = intersectionWith (,) ctorTypes ctorParams
+    ctorAbiParams <- case traverse (parseEither $ uncurry parseAsType) ctorValues of
+            Left e -> throwM $ CtorArgsParseFailure e
+            Right params -> pure params
     let abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
         (ts, funs) = partition (isPrefixOf (conf ^. prefix) . fst) abi
         funs' = filter ((\e -> not $ e `elem` (conf ^. ignored))  . fst) funs
@@ -126,6 +137,7 @@ loadSolidity filePath selectedContract = do
           TestableContract
           (c ^. creationCode)
           (c ^. constructorInputs)
+          ctorAbiParams
           funs'
           (fst <$> ts)
           (view eventMap c)

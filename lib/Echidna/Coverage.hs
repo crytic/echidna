@@ -5,12 +5,12 @@ module Echidna.Coverage (
   ) where
 
 import Control.Lens               (view, use, _1, _2, (&), (^.), (.=), (?~))
-import Control.Monad              (forM_)
+import Control.Monad              (forM, forM_)
 import Control.Monad.State.Strict (MonadState, execState, execStateT, runState, get, put)
 import Control.Monad.Reader       (runReaderT)
 import Control.Monad.IO.Class     (MonadIO)
-import Data.ByteString            (ByteString)
 import Data.ByteString as BS      (concat)
+import Data.Map as Map            (lookup)
 import Data.Text                  (Text)
 import Data.Set                   (Set, insert, size, elemAt, empty)
 
@@ -20,7 +20,7 @@ import Hedgehog.Internal.Seed (seedValue)
 import qualified Hedgehog.Internal.Seed as Seed
 
 import EVM
-import EVM.ABI (AbiType, encodeAbiValue)
+import EVM.ABI (AbiValue, encodeAbiValue)
 import EVM.Concrete (Blob(..), w256)
 import EVM.Exec     (exec, vmForEthrunCreation)
 import EVM.Types (Addr(..))
@@ -29,7 +29,7 @@ import Echidna.ABI (SolCall, SolSignature, genTransactions, genAbiValueOfType, m
 import Echidna.Config (Config(..), testLimit, range, outdir, initialValue, gasLimit, contractAddr)
 import Echidna.Exec (encodeSolCall, sample, sampleDiff, reverted, fatal, checkProperties, filterProperties, minimizeTestcase)
 import Echidna.Output (syncOutdir, updateOutdir)
-import Echidna.Solidity (TestableContract, functions, config, ctorCode, constructor)
+import Echidna.Solidity (TestableContract, functions, config, ctorCode, constructor, givenConstructorArgs)
 import Echidna.CoverageInfo (CoverageInfo, CoveragePerInput, mergeSaveCover)
 
 import qualified Control.Monad.State.Strict as S
@@ -72,18 +72,22 @@ execCallUsing sc m =     do (og,_) <- get
                               VMSuccess _  -> return x
                               _            -> (put (og & result ?~ x, cov) >> return x) 
 
-eConstructorGen :: MonadGen m => [AbiType] -> Config -> m ByteString
-eConstructorGen ts = runReaderT (fmap BS.concat $ mapM (fmap encodeAbiValue . genAbiValueOfType) ts)
+eConstructorGen :: MonadGen m => TestableContract -> m [AbiValue]
+eConstructorGen tcon = flip runReaderT (tcon ^. config) $ forM (tcon ^. constructor) $ \(argName, argType) ->
+    case Map.lookup argName (tcon ^. givenConstructorArgs) of
+        Nothing -> genAbiValueOfType argType
+        Just abiValue -> pure abiValue
 
-eConstructorExec :: (MonadIO m) => Seed -> Size -> TestableContract -> Gen ByteString -> m VM
+eConstructorExec :: (MonadIO m) => Seed -> Size -> TestableContract -> Gen [AbiValue] -> m VM
 eConstructorExec seed ssize tcon gen = do
     let conf = tcon ^. config
     ctorArgs <- sample ssize seed gen >>= \case
         Nothing -> error "failed to generate constructor args"
         Just args -> return args
+    let encodedArgs = BS.concat $ map encodeAbiValue ctorArgs
     execStateT
         (initializeVM conf)
-        (vmForEthrunCreation $ (tcon ^. ctorCode) <> ctorArgs)
+        (vmForEthrunCreation $ (tcon ^. ctorCode) <> encodedArgs)
 
 initializeVM :: (MonadState VM m) => Config -> m VM
 initializeVM conf = do
@@ -141,7 +145,7 @@ ePropertySeqCover'   n cov ps tcon = do
                                           seed <- Seed.random
                                           cs <- return $ if (null cov) then [] else snd $ chooseFromSeed seed cov
                                           let funcGen = ePropertySeqMutate ts cs ssize c
-                                          let ctorGen = eConstructorGen (map snd $ tcon ^. constructor) c
+                                          let ctorGen = eConstructorGen tcon
                                           ivm <- eConstructorExec seed tsize tcon ctorGen
                                           --print (tsize, ssize) 
                                           (icov, vm, cs') <- ePropertyExec seed tsize ivm funcGen cs

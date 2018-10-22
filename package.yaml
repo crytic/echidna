@@ -4,7 +4,7 @@ author: JP Smith
 
 version: 0.0.0.1
 
-ghc-options: -Wall -fno-warn-orphans -O2
+ghc-options: -Wall -fno-warn-orphans -O2 -Werror
 
 dependencies:
   - aeson
@@ -34,7 +34,7 @@ dependencies:
   - wl-pprint-annotated
   - yaml
   - unordered-containers
-  - pretty-show
+  - scientific
 
 default-extensions:
   - OverloadedStrings
