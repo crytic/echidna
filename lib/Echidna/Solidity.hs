@@ -3,13 +3,13 @@
 
 module Echidna.Solidity where
 
-import Control.Lens               ((^.), (%=), assign, use, set, view, makeLenses)
+import Control.Lens               ((^.), (%=), use, view, makeLenses)
 import Control.Exception          (Exception)
 import Control.Monad              (liftM2)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader, ask)
-import Control.Monad.State.Strict (MonadState, execState, modify, runState)
+import Control.Monad.State.Strict (MonadState, execState, modify)
 import Data.ByteString            (ByteString)
 import Data.Foldable              (toList)
 import Data.List                  (find, partition)
@@ -23,20 +23,19 @@ import System.IO.Temp             (writeSystemTempFile)
 import qualified Data.Map as Map (lookup)
 
 import Echidna.ABI    (SolSignature)
-import Echidna.Config (Config(..), contractAddr, gasLimit, prefix, solcArgs, ignored, initialValue)
+import Echidna.Config (Config(..), prefix, solcArgs, ignored)
 
 
 import EVM
-  (Contract, VM, VMResult(..), contract, codeContract, contracts, env, gas, callvalue, loadContract, replaceCodeOfSelf, resetState, state)
-import EVM.Concrete (Blob(..), w256)
-import EVM.Exec     (exec, vmForEthrunCreation)
+  (Contract, VM, contract, contracts, env, state, Error, loadContract)
 import EVM.Keccak   (newContractAddress)
-import EVM.Solidity (abiMap, contractName, creationCode, methodInputs, methodName, readSolc, SolcContract, eventMap)
+import EVM.Solidity (abiMap, contractName, creationCode, constructorInputs, methodInputs, methodName, readSolc, SolcContract, eventMap)
 import EVM.Types    (Addr, W256)
-import EVM.ABI      (Event)
+import EVM.ABI      (Event, AbiType)
 
 data TestableContract = TestableContract
-  { _initialVM     :: VM
+  { _ctorCode      :: ByteString
+  , _constructor   :: [(Text, AbiType)]
   , _functions     :: [SolSignature]
   , _tests         :: [Text]
   , _events        :: Map W256 Event 
@@ -52,7 +51,7 @@ makeLenses ''TestableContract
 
 data EchidnaException = BadAddr Addr
                       | CompileFailure
-                      | ConstructorFailure Text
+                      | ConstructorFailure EVM.Error
                       | NoContracts
                       | TestArgsFound Text
                       | ContractNotFound Text
@@ -65,7 +64,7 @@ instance Show EchidnaException where
   show = \case
     BadAddr a             -> "No contract at " ++ show a ++ " exists"
     CompileFailure        -> "Couldn't compile given file"
-    (ConstructorFailure c)-> "Constructor of " ++ show c ++ " reverted during its execution"
+    (ConstructorFailure e)-> "Constructor encoutered an error during its execution: " ++ show e
     NoContracts           -> "No contracts found in given file"
     (ContractNotFound c)  -> "Given contract " ++ show c ++ " not found in given file"
     (TestArgsFound t)     -> "Test " ++ show t ++ " has arguments, aborting"
@@ -110,17 +109,6 @@ readContract filePath selectedContractName = do
         warn :: (MonadIO m) => Bool -> Text -> m ()
         warn p s = if p then liftIO $ print s else pure ()
 
--- | loads the solidity file at `filePath` and selects either the default or specified contract to analyze
-
-checkCREATE :: (MonadIO m, MonadThrow m, MonadReader Config m) => Int -> SolcContract -> m (ByteString, VM)
-checkCREATE v c = 
-                 let setInitialValue = set (state . callvalue) (fromIntegral v) in 
-                 case (runState exec . setInitialValue . vmForEthrunCreation  $ c ^. creationCode) of
-                 (VMSuccess (B bc), vm) ->  return (bc, vm)
-                 _                      ->  throwM $ ConstructorFailure (c ^. contractName) 
-
-
-
 loadSolidity :: (MonadIO m, MonadThrow m, MonadReader Config m)
              => FilePath
              -> Maybe Text
@@ -128,20 +116,20 @@ loadSolidity :: (MonadIO m, MonadThrow m, MonadReader Config m)
 loadSolidity filePath selectedContract = do
     conf <- ask
     c    <- readContract filePath selectedContract
-    (bc, vm) <- checkCREATE (conf ^. initialValue) c
-    let load = do resetState
-                  assign (state . gas) (w256 $ conf ^. gasLimit)
-                  assign (state . contract) (conf ^. contractAddr)
-                  assign (state . codeContract) (conf ^. contractAddr)
-                  loadContract (vm ^. state . contract)
-        loaded = execState load $ execState (replaceCodeOfSelf bc) vm
-        abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
+    let abi = map (liftM2 (,) (view methodName) (map snd . view methodInputs)) . toList $ c ^. abiMap
         (ts, funs) = partition (isPrefixOf (conf ^. prefix) . fst) abi
-    let funs' = filter ((\e -> not $ e `elem` (conf ^. ignored))  . fst) funs
+        funs' = filter ((\e -> not $ e `elem` (conf ^. ignored))  . fst) funs
     if null abi then throwM NoFuncs else pure ()
     if null funs then throwM OnlyTests else pure ()
     case find (not . null . snd) ts of
-      Nothing      -> return $ TestableContract loaded funs' (fst <$> ts) (view eventMap c) conf
+      Nothing      -> return $
+          TestableContract
+          (c ^. creationCode)
+          (c ^. constructorInputs)
+          funs'
+          (fst <$> ts)
+          (view eventMap c)
+          conf
       (Just (t,_)) -> throwM $ TestArgsFound t
 
 
@@ -153,6 +141,3 @@ insertContract c = do a <- (`newContractAddress` 1) <$> use (state . contract)
 currentContract :: MonadThrow m => VM -> m Contract
 currentContract v = let a = v ^. state . contract in
   maybe (throwM $ BadAddr a) pure . Map.lookup a $ v ^. env . contracts
-
-addSolidity :: (MonadIO m, MonadReader Config m, MonadThrow m, MonadState VM n) => FilePath -> Maybe Text -> m (n ())
-addSolidity f mc = pure . insertContract =<< currentContract =<< view initialVM <$> loadSolidity f mc

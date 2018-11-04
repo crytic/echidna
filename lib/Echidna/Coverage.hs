@@ -6,9 +6,11 @@ module Echidna.Coverage (
 
 import Control.Lens               (view, use, _1, _2, (&), (^.), (.=), (?~))
 import Control.Monad              (forM_)
-import Control.Monad.State.Strict (MonadState, execState, get, put)
+import Control.Monad.State.Strict (MonadState, execState, execStateT, runState, get, put)
 import Control.Monad.Reader       (runReaderT)
 import Control.Monad.IO.Class     (MonadIO)
+import Data.ByteString            (ByteString)
+import Data.ByteString as BS      (concat)
 import Data.Text                  (Text)
 import Data.Set                   (Set, insert, size, elemAt, empty)
 
@@ -18,13 +20,16 @@ import Hedgehog.Internal.Seed (seedValue)
 import qualified Hedgehog.Internal.Seed as Seed
 
 import EVM
+import EVM.ABI (AbiType, encodeAbiValue)
+import EVM.Concrete (Blob(..), w256)
+import EVM.Exec     (exec, vmForEthrunCreation)
 import EVM.Types (Addr(..))
 
-import Echidna.ABI (SolCall, SolSignature, genTransactions, mutateCallSeq, fname, fargs, fvalue, fsender, reduceCallSeq)--, displayAbiSeq)
-import Echidna.Config (Config(..), testLimit, range, outdir)
-import Echidna.Exec (encodeSolCall, sampleDiff, reverted, fatal, checkProperties, filterProperties, minimizeTestcase)
+import Echidna.ABI (SolCall, SolSignature, genTransactions, genAbiValueOfType, mutateCallSeq, fname, fargs, fvalue, fsender, reduceCallSeq)--, displayAbiSeq)
+import Echidna.Config (Config(..), testLimit, range, outdir, initialValue, gasLimit, contractAddr)
+import Echidna.Exec (encodeSolCall, sample, sampleDiff, reverted, fatal, checkProperties, filterProperties, minimizeTestcase)
 import Echidna.Output (syncOutdir, updateOutdir)
-import Echidna.Solidity (TestableContract, initialVM, functions, config)
+import Echidna.Solidity (TestableContract, functions, config, ctorCode, constructor)
 import Echidna.CoverageInfo (CoverageInfo, CoveragePerInput, mergeSaveCover)
 
 import qualified Control.Monad.State.Strict as S
@@ -66,6 +71,35 @@ execCallUsing sc m =     do (og,_) <- get
                             case x of
                               VMSuccess _  -> return x
                               _            -> (put (og & result ?~ x, cov) >> return x) 
+
+eConstructorGen :: MonadGen m => [AbiType] -> Config -> m ByteString
+eConstructorGen ts = runReaderT (fmap BS.concat $ mapM (fmap encodeAbiValue . genAbiValueOfType) ts)
+
+eConstructorExec :: (MonadIO m) => Seed -> Size -> TestableContract -> Gen ByteString -> m VM
+eConstructorExec seed ssize tcon gen = do
+    let conf = tcon ^. config
+    ctorArgs <- sample ssize seed gen >>= \case
+        Nothing -> error "failed to generate constructor args"
+        Just args -> return args
+    execStateT
+        (initializeVM conf)
+        (vmForEthrunCreation $ (tcon ^. ctorCode) <> ctorArgs)
+
+initializeVM :: (MonadState VM m) => Config -> m VM
+initializeVM conf = do
+        state . callvalue .= (fromIntegral $ conf ^. initialValue)
+        exec >>= \case
+            VMFailure _      -> get
+            VMSuccess (B bc) -> do
+                let l = S.state . runState
+                l $ replaceCodeOfSelf bc
+                c <- use $ state . contract
+                l $ resetState
+                state . gas .= (w256 $ conf ^. gasLimit)
+                state . contract .= (conf ^. contractAddr)
+                state . codeContract .= (conf ^. contractAddr)
+                l $ loadContract c
+                get
  
 ePropertyGen :: MonadGen m => [SolSignature] -> Int -> Config -> m [SolCall]
 ePropertyGen ts n c = runReaderT (genTransactions n ts) c 
@@ -106,9 +140,11 @@ ePropertySeqCover'   n cov ps tcon | everyXIter 123456 n  = do
 ePropertySeqCover'   n cov ps tcon = do 
                                           seed <- Seed.random
                                           cs <- return $ if (null cov) then [] else snd $ chooseFromSeed seed cov
-                                          let gen = ePropertySeqMutate ts cs ssize c
+                                          let funcGen = ePropertySeqMutate ts cs ssize c
+                                          let ctorGen = eConstructorGen (map snd $ tcon ^. constructor) c
+                                          ivm <- eConstructorExec seed tsize tcon ctorGen
                                           --print (tsize, ssize) 
-                                          (icov, vm, cs') <- ePropertyExec seed tsize ivm gen cs
+                                          (icov, vm, cs') <- ePropertyExec seed tsize ivm funcGen cs
                                           updateOutdir cov (icov, cs') (c ^. outdir)
                                           cov' <- mergeSaveCover cov icov cs' --(c ^. outdir)
                                           --putStrLn $ displayAbiSeq cs
@@ -120,11 +156,10 @@ ePropertySeqCover'   n cov ps tcon = do
                                           then ePropertySeqCover' (n-1) cov' ps tcon
                                           else do
                                                 (tp,fp) <- return $ checkProperties ps vm
-                                                forM_ (filterProperties ps fp) (minimizeTestcase cs' tcon)
+                                                forM_ (filterProperties ps fp) (minimizeTestcase cs ivm tcon)
                                                 ePropertySeqCover' (n-1) cov' (filterProperties ps tp) tcon
                                          where tsize  = fromInteger $ n `mod` 100
                                                ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
-                                               ivm    = view initialVM tcon
                                                ts     = view functions tcon
                                                c      = view config tcon
 
