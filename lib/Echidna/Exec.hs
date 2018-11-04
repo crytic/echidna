@@ -21,32 +21,35 @@ module Echidna.Exec (
   , minimizeTestcase
   ) where
 
-import Control.Lens               (view, (&), (^.), (.=), (?~))
+import Control.Lens               (view, use, (&), (^.), (.=), (?~))
 import Control.Monad              (forM_)
-import Control.Monad.State.Strict (MonadState, evalState, execState, get, put)
+import Control.Monad.State.Strict (MonadState, evalState, execState, runState, execStateT, get, put)
+import qualified Control.Monad.State.Strict as S
 import Control.Monad.Reader       (runReaderT)
 import Control.Monad.IO.Class     (MonadIO, liftIO)
 import Control.Monad.Trans.Maybe  (runMaybeT)
+import Data.ByteString as BS      (concat)
 import Data.Text                  (Text)
 import Data.Vector                (fromList)
 import Data.Functor.Identity      (runIdentity)
 import Data.Maybe                 (catMaybes)
+import Data.Monoid                ((<>))
 import Hedgehog
 import Hedgehog.Internal.Gen      (runGenT)
 import Hedgehog.Internal.Tree (Tree(..), Node(..))
 import qualified Hedgehog.Internal.Seed as Seed
 
 import EVM
-import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
-import EVM.Concrete (Blob(..), forceConcreteBlob)
-import EVM.Exec     (exec)
+import EVM.ABI      (AbiValue(..), AbiType, abiCalldata, abiValueType, encodeAbiValue)
+import EVM.Concrete (Blob(..), w256, forceConcreteBlob)
+import EVM.Exec     (exec, vmForEthrunCreation)
 import EVM.Types    (Addr(..))
 
-import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, fargs, fname, fsender, fvalue, reduceCallSeq) --, displayAbiSeq)
-import Echidna.Config (Config(..), testLimit, range, shrinkLimit, outputJson, outputRawTxs)
+import Echidna.ABI (SolCall(..), SolSignature, encodeSig, genTransactions, genAbiValueOfType, fargs, fname, fsender, fvalue, reduceCallSeq) --, displayAbiSeq)
+import Echidna.Config (Config(..), testLimit, range, shrinkLimit, outputJson, outputRawTxs, initialValue, gasLimit, contractAddr)
 import Echidna.Property (PropertyType(..))
 import Echidna.Output (reportPassedTest, reportFailedTest)
-import Echidna.Solidity (TestableContract, initialVM, functions, events, config)
+import Echidna.Solidity (TestableContract, ctorCode, functions, events, config, constructor)
 import Echidna.Event (extractSeqLog, Events)
 --import Echidna.Shrinking (minimizeTestcase)
 -------------------------------------------------------------------
@@ -129,6 +132,36 @@ encodeSolCall t vs =  B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ from
 cleanUpAfterTransaction :: MonadState VM m => m ()
 cleanUpAfterTransaction = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
 
+eConstructorGen :: MonadGen m => [AbiType] -> Config -> m [AbiValue]
+eConstructorGen ts = runReaderT (mapM genAbiValueOfType ts)
+
+eConstructorExec :: (MonadIO m) => Seed -> Size -> TestableContract -> Gen [AbiValue] -> m VM
+eConstructorExec seed size tcon gen = do
+    let conf = tcon ^. config
+    ctorArgs <- sample size seed gen >>= \case
+        Nothing -> error "failed to generate constructor args"
+        Just args -> return args
+    let encodedArgs = BS.concat $ map encodeAbiValue ctorArgs
+    execStateT
+        (initializeVM conf)
+        (vmForEthrunCreation $ (tcon ^. ctorCode) <> encodedArgs)
+
+initializeVM :: (MonadState VM m) => Config -> m VM
+initializeVM conf = do
+        state . callvalue .= (fromIntegral $ conf ^. initialValue)
+        exec >>= \case
+            VMFailure _      -> get
+            VMSuccess (B bc) -> do
+                let l = S.state . runState
+                l $ replaceCodeOfSelf bc
+                c <- use $ state . contract
+                l $ resetState
+                state . gas .= (w256 $ conf ^. gasLimit)
+                state . contract .= (conf ^. contractAddr)
+                state . codeContract .= (conf ^. contractAddr)
+                l $ loadContract c
+                get
+
 ePropertyGen :: MonadGen m => [SolSignature] -> Int -> Config -> m [SolCall]
 ePropertyGen ts n c = runReaderT (genTransactions n ts) c 
 
@@ -148,7 +181,8 @@ ePropertySeq'   _ []   _           = return ()
 ePropertySeq'   n ps tcon | n == 0 = forM_ (map fst ps) (reportPassedTest (tcon ^. config ^. outputJson))
 ePropertySeq'   n ps tcon          = do 
                                           seed <- Seed.random
-                                          (vm, cs) <- ePropertyExec seed tsize ivm gen
+                                          ivm <- eConstructorExec seed tsize tcon ctorGen
+                                          (vm, cs) <- ePropertyExec seed tsize ivm funcGen
                                           --putStrLn ( show $ view traces vm)
                                           if  (tcon ^. config ^. outputRawTxs) then ( 
                                                print $ map (\x -> forceConcreteBlob $ encodeSolCall (view fname x) (view fargs x)) cs
@@ -158,14 +192,14 @@ ePropertySeq'   n ps tcon          = do
                                           if (reverted vm) then ePropertySeq' (n-1) ps tcon
                                           else do 
                                                 (tp,fp) <- return $ checkProperties ps vm 
-                                                forM_ (filterProperties ps fp) (minimizeTestcase cs tcon)
+                                                forM_ (filterProperties ps fp) (minimizeTestcase cs ivm tcon)
                                                 ePropertySeq' (n-1) (filterProperties ps tp) tcon
                                          where c =  tcon ^. config 
-                                               tsize  = fromInteger $ n `mod` 100
-                                               ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
-                                               gen    = ePropertyGen ts ssize c
-                                               ivm    = view initialVM tcon
-                                               ts     = view functions tcon
+                                               tsize   = fromInteger $ n `mod` 100
+                                               ssize   = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
+                                               funcGen = ePropertyGen ts ssize c
+                                               ctorGen = eConstructorGen (map snd $ tcon ^. constructor) c
+                                               ts      = view functions tcon
 
 checkProperties ::  [(Text, (VM -> Bool))] -> VM -> ([Text],[Text])
 checkProperties ps vm = if fatal vm then ([], map fst ps)
@@ -210,19 +244,20 @@ checkFalseOrRevertTest addr v t = case evalState (execCall (SolCall t [] (addres
 -- Shrinking functions. TODO: move to another module (e.g. Echidna.Shrinking)
 
 
-minimizeTestcase :: [SolCall] -> TestableContract -> (Text, VM -> Bool) -> IO () 
-minimizeTestcase cs tcon (t,p) = do  
-                                     rcs <- minimizeTestcase' cs (tcon ^. initialVM) (conf ^. shrinkLimit) (t,p)
-                                     rev <- extractEvents rcs tcon
-                                     ev <- extractEvents cs tcon
+minimizeTestcase :: [SolCall] -> VM -> TestableContract -> (Text, VM -> Bool) -> IO ()
+minimizeTestcase cs ivm tcon (t,p) = do
+                                     rcs <- minimizeTestcase' cs ivm (conf ^. shrinkLimit) (t,p)
+                                     rev <- extractEvents rcs ivm tcon
+                                     ev <- extractEvents cs ivm tcon
                                      reportFailedTest (conf ^. outputJson) t cs ev rcs rev
                                     where conf = (tcon ^. config)
 
 
 
-extractEvents :: [SolCall] -> TestableContract -> IO Events
-extractEvents cs tcon = do let (_, vm) = execCalls cs (tcon ^. initialVM)
-                           return $ extractSeqLog (tcon ^. events) (vm ^. logs) 
+extractEvents :: [SolCall] -> VM -> TestableContract -> IO Events
+extractEvents cs ivm tcon = do
+    let (_, vm) = execCalls cs ivm
+    return $ extractSeqLog (tcon ^. events) (vm ^. logs)
 
 minimizeTestcase' :: [SolCall] -> VM -> Int -> (Text, VM -> Bool) -> IO [SolCall]
 minimizeTestcase' cs  _  0   _   = return cs

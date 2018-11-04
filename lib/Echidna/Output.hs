@@ -14,6 +14,8 @@ import Control.Exception          (evaluate)
 import System.Directory           (doesFileExist, createDirectoryIfMissing, listDirectory, withCurrentDirectory, makeRelativeToCurrentDirectory)
 import System.IO                  (hFlush, stdout)
 import Data.Aeson                 (ToJSON, FromJSON, encode, decode)
+import Data.Aeson.Types           (Value)
+import Data.Map                   (Map)
 import Data.Text                  (Text)
 import Data.Maybe                 (isJust, fromJust)
 import GHC.Generics
@@ -33,13 +35,14 @@ data JsonCoverageOutput = JsonCoverageOutput {
     covCall :: !(String)
   , covPrettyCall :: !([String])
   , covInfo :: !(CoverageInfo)
+  , constructorArgs :: !(Map Text Value)
 } deriving (Generic, Show)
 
 instance ToJSON JsonCoverageOutput
 instance FromJSON JsonCoverageOutput
 
-readCallCoverage :: JsonCoverageOutput -> (CoverageInfo, [SolCall])
-readCallCoverage js = (covInfo js, (read (covCall js)) :: ([SolCall]))
+readCallCoverage :: JsonCoverageOutput -> (CoverageInfo, [SolCall], Map Text Value)
+readCallCoverage js = (covInfo js, (read (covCall js) :: ([SolCall])), constructorArgs js)
 
 readOutdir :: String -> IO CoveragePerInput 
 readOutdir d = do
@@ -52,10 +55,10 @@ readOutdir d = do
                 covs' <- evaluate covs
                 return $ fromListCover covs'
 
-updateOutdir :: CoveragePerInput -> (CoverageInfo,[SolCall]) -> Maybe String -> IO ()
+updateOutdir :: CoveragePerInput -> (CoverageInfo,[SolCall],Map Text Value) -> Maybe String -> IO ()
 updateOutdir     _      _     Nothing  = return ()
-updateOutdir    cov (icov,cs) (Just d) = if (findInCover cov icov) then return ()
-                                           else saveCalls (icov, cs) d
+updateOutdir    cov (icov,cs,cvs) (Just d) = if (findInCover cov icov) then return ()
+                                           else saveCalls (icov, cs, cvs) d
 
 
 syncOutdir :: Maybe String -> CoveragePerInput -> IO CoveragePerInput
@@ -66,9 +69,9 @@ syncOutdir (Just d) cov = do cov' <- readOutdir d
                              hFlush stdout
                              return cov'
 
-saveCalls :: (CoverageInfo, [SolCall]) -> String -> IO ()
-saveCalls (cov,cs) dir = do
-                            let content = encodeCallCoverage (cov, cs) --displayAbiSeq cs ++ "\n"
+saveCalls :: (CoverageInfo, [SolCall], Map Text Value) -> String -> IO ()
+saveCalls (cov,cs,cvs) dir = do
+                            let content = encodeCallCoverage (cov, cs, cvs) --displayAbiSeq cs ++ "\n"
                             let filename = dir ++ "/" ++ (getCoverId cov)
                             createDirectoryIfMissing False dir
                             b <- doesFileExist filename
@@ -76,8 +79,8 @@ saveCalls (cov,cs) dir = do
                           --where hashCov = show . hash . show
 
 
-encodeCallCoverage :: (CoverageInfo, [SolCall]) -> [Char]
-encodeCallCoverage (cov, cs) = encodeJson $ JsonCoverageOutput { covCall = show cs, covPrettyCall = (map (displayAbiCall) $ reverse cs), covInfo = cov } 
+encodeCallCoverage :: (CoverageInfo, [SolCall],Map Text Value) -> [Char]
+encodeCallCoverage (cov, cs, cvs) = encodeJson $ JsonCoverageOutput { covCall = show cs, covPrettyCall = (map (displayAbiCall) $ reverse cs), covInfo = cov, constructorArgs = cvs }
                             where encodeJson = LBS.unpack . encode 
 
 

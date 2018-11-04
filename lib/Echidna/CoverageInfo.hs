@@ -1,3 +1,5 @@
+{-# LANGUAGE StandaloneDeriving #-}
+
 module Echidna.CoverageInfo (
     CoverageInfo
   , CoveragePerInput
@@ -8,7 +10,10 @@ module Echidna.CoverageInfo (
   , sizeCover
   ) where
 
-import Data.Set    (Set, insert, size, member, map, fromList)
+import Data.Aeson.Types (Value(..))
+import Data.Map (Map)
+import Data.Set (Set, insert, size, member, map, fromList)
+import Data.Text   (Text)
 import Data.Hashable (hash)
 import Echidna.ABI (SolCall)
 
@@ -27,19 +32,21 @@ getCoverId = show . hash . show
 --addCover vm cov   = insert (map (\(x,y) -> (x, floor $ log $ fromInteger $ toInteger y)) $ Data.Map.toList $ view storage c) cov
 --                    where c = snd $ last $ Data.Map.toList $ view contracts (view env vm)
 
-type CoveragePerInput =  Set (CoverageInfo,[SolCall]) 
+type CoveragePerInput =  Set (CoverageInfo,[SolCall],Map Text Value)
 
 findInCover :: CoveragePerInput -> CoverageInfo -> Bool
-findInCover cov icov = ( icov `member` Data.Set.map fst cov)
+findInCover cov icov = ( icov `member` Data.Set.map (\(a,_,_) -> a) cov)
 
-mergeSaveCover :: CoveragePerInput -> CoverageInfo -> [SolCall] -> IO CoveragePerInput
-mergeSaveCover cov icov cs = if (findInCover cov icov) then return cov
+mergeSaveCover :: CoveragePerInput -> CoverageInfo -> [SolCall] -> Map Text Value -> IO CoveragePerInput
+mergeSaveCover cov icov cs cvs = if (findInCover cov icov) then return cov
                              else do
                                    --print $ size cov + 1
                                    --saveCalls cs dir (if reverted vm then "-rev" else "")
-                                   return $ insert (icov, cs) cov
+                                   return $ insert (icov, cs, cvs) cov
 
-fromListCover :: [(CoverageInfo,[SolCall])] -> CoveragePerInput
+deriving instance Ord Value
+
+fromListCover :: [(CoverageInfo,[SolCall],Map Text Value)] -> CoveragePerInput
 fromListCover = fromList 
 
 sizeCover :: CoveragePerInput -> Int

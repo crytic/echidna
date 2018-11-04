@@ -1,15 +1,20 @@
-{-# LANGUAGE BangPatterns, DeriveGeneric, FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
+{-# LANGUAGE BangPatterns, DeriveGeneric, FlexibleContexts, KindSignatures, LambdaCase, StrictData, TupleSections #-}
 
 module Echidna.Coverage (
   ePropertySeqCover
   ) where
 
 import Control.Lens               (view, use, _1, _2, (&), (^.), (.=), (?~))
-import Control.Monad              (forM_)
-import Control.Monad.State.Strict (MonadState, execState, get, put)
+import Control.Monad              (forM, forM_)
+import Control.Monad.State.Strict (MonadState, execState, execStateT, runState, get, put)
+import Control.Monad.Catch        (MonadThrow, throwM)
 import Control.Monad.Reader       (runReaderT)
 import Control.Monad.IO.Class     (MonadIO)
+import Data.Aeson.Types           (Value, toJSON, parseEither)
+import Data.ByteString as BS      (concat)
 import Data.Text                  (Text)
+import Data.Map                   (Map)
+import qualified Data.Map as Map
 import Data.Set                   (Set, insert, size, elemAt, empty)
 
 import Hedgehog
@@ -18,13 +23,16 @@ import Hedgehog.Internal.Seed (seedValue)
 import qualified Hedgehog.Internal.Seed as Seed
 
 import EVM
+import EVM.ABI (AbiType, AbiValue, encodeAbiValue)
+import EVM.Concrete (Blob(..), w256)
+import EVM.Exec     (exec, vmForEthrunCreation)
 import EVM.Types (Addr(..))
 
-import Echidna.ABI (SolCall, SolSignature, genTransactions, mutateCallSeq, fname, fargs, fvalue, fsender, reduceCallSeq)--, displayAbiSeq)
-import Echidna.Config (Config(..), testLimit, range, outdir)
-import Echidna.Exec (encodeSolCall, sampleDiff, reverted, fatal, checkProperties, filterProperties, minimizeTestcase)
+import Echidna.ABI (SolCall, SolSignature, genTransactions, genAbiValueOfType, mutateCallSeq, fname, fargs, fvalue, fsender, parseAsType, reduceCallSeq)--, displayAbiSeq)
+import Echidna.Config (Config(..), testLimit, range, outdir, initialValue, gasLimit, contractAddr)
+import Echidna.Exec (encodeSolCall, sample, sampleDiff, reverted, fatal, checkProperties, filterProperties, minimizeTestcase)
 import Echidna.Output (syncOutdir, updateOutdir)
-import Echidna.Solidity (TestableContract, initialVM, functions, config)
+import Echidna.Solidity (TestableContract, EchidnaException(ParseValueError), functions, config, ctorCode, constructor)
 import Echidna.CoverageInfo (CoverageInfo, CoveragePerInput, mergeSaveCover)
 
 import qualified Control.Monad.State.Strict as S
@@ -63,9 +71,47 @@ execCallUsing sc m =     do (og,_) <- get
                             _1 . state . callvalue .= (fromIntegral $ view fvalue sc) 
                             x <- m
                             (_,cov) <- get
+                            --traceM $ "cov=" ++ show (size cov)
                             case x of
                               VMSuccess _  -> return x
                               _            -> (put (og & result ?~ x, cov) >> return x) 
+
+eConstructorGen :: (MonadGen m) => TestableContract -> Map Text AbiValue -> m [AbiValue]
+eConstructorGen tcon abiParams = (flip runReaderT) (tcon ^. config) $ forM (tcon ^. constructor) $ \(name, typ) -> do
+    case Map.lookup name abiParams of
+        Nothing -> genAbiValueOfType typ
+        Just v  -> choice [pure v, genAbiValueOfType typ]
+
+parseAbiValue :: MonadThrow m => AbiType -> Value -> m AbiValue
+parseAbiValue t v = case parseEither (uncurry parseAsType) (t, v) of
+        Left err       -> throwM $ ParseValueError t v err
+        Right abiValue -> return abiValue
+
+eConstructorExec :: (MonadIO m) => Seed -> Size -> TestableContract -> Gen [AbiValue] -> m ([AbiValue], VM)
+eConstructorExec seed ssize tcon gen = do
+    let conf = tcon ^. config
+    ctorArgs <- sample ssize seed gen >>= \case
+        Nothing -> error "failed to generate constructor args"
+        Just args -> return args
+    (ctorArgs,) <$> execStateT
+        (initializeVM conf)
+        (vmForEthrunCreation $ (tcon ^. ctorCode) <> BS.concat (fmap encodeAbiValue ctorArgs))
+
+initializeVM :: (MonadState VM m) => Config -> m VM
+initializeVM conf = do
+        state . callvalue .= (fromIntegral $ conf ^. initialValue)
+        exec >>= \case
+            VMFailure _      -> get
+            VMSuccess (B bc) -> do
+                let l = S.state . runState
+                l $ replaceCodeOfSelf bc
+                c <- use $ state . contract
+                l $ resetState
+                state . gas .= (w256 $ conf ^. gasLimit)
+                state . contract .= (conf ^. contractAddr)
+                state . codeContract .= (conf ^. contractAddr)
+                l $ loadContract c
+                get
  
 ePropertyGen :: MonadGen m => [SolSignature] -> Int -> Config -> m [SolCall]
 ePropertyGen ts n c = runReaderT (genTransactions n ts) c 
@@ -104,13 +150,20 @@ ePropertySeqCover'   n cov ps tcon | everyXIter 123456 n  = do
                                                             ePropertySeqCover' (n-1) cov' ps tcon
 
 ePropertySeqCover'   n cov ps tcon = do 
+                                          --traceShowM $ "n=" ++ show n
                                           seed <- Seed.random
-                                          cs <- return $ if (null cov) then [] else snd $ chooseFromSeed seed cov
-                                          let gen = ePropertySeqMutate ts cs ssize c
+                                          (_, cs, vs) <- return $ if (null cov) then (empty, [], Map.empty) else chooseFromSeed seed cov
+                                          let ctor = tcon ^. constructor
+                                          let conMap = Map.fromList ctor
+                                          abiParams <- sequence $ Map.intersectionWith parseAbiValue conMap vs
+                                          let ctorGen = eConstructorGen tcon abiParams
+                                          let funcGen = ePropertySeqMutate ts cs ssize c
+                                          (abiVals, ivm) <- eConstructorExec seed tsize tcon ctorGen
+                                          let cvs' = Map.fromList $ zip (map fst ctor) (map toJSON abiVals)
                                           --print (tsize, ssize) 
-                                          (icov, vm, cs') <- ePropertyExec seed tsize ivm gen cs
-                                          updateOutdir cov (icov, cs') (c ^. outdir)
-                                          cov' <- mergeSaveCover cov icov cs' --(c ^. outdir)
+                                          (icov, vm, cs') <- ePropertyExec seed tsize ivm funcGen cs
+                                          updateOutdir cov (icov, cs', cvs') (c ^. outdir)
+                                          cov' <- mergeSaveCover cov icov cs' cvs' --(c ^. outdir)
                                           --putStrLn $ displayAbiSeq cs
                                           --putStrLn "+++++++"
                                           --putStrLn $ displayAbiSeq cs'
@@ -120,11 +173,10 @@ ePropertySeqCover'   n cov ps tcon = do
                                           then ePropertySeqCover' (n-1) cov' ps tcon
                                           else do
                                                 (tp,fp) <- return $ checkProperties ps vm
-                                                forM_ (filterProperties ps fp) (minimizeTestcase cs' tcon)
+                                                forM_ (filterProperties ps fp) (minimizeTestcase cs ivm tcon)
                                                 ePropertySeqCover' (n-1) cov' (filterProperties ps tp) tcon
                                          where tsize  = fromInteger $ n `mod` 100
                                                ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
-                                               ivm    = view initialVM tcon
                                                ts     = view functions tcon
                                                c      = view config tcon
 

@@ -26,6 +26,7 @@ dependencies:
   - multiset             >= 0.3    && < 0.4
   - optparse-applicative >= 0.12.0
   - process              >= 1.4.3
+  - scientific
   - stm
   - temporary            >= 1.2.1  && < 1.3
   - text                 >= 1.2.2  && < 1.3
