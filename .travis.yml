@@ -23,6 +23,7 @@ matrix:
 install:
  - unset CC
  - export PATH=$HOME/.local/bin:$PATH
+ - ./.travis/install-libsecp256k1.sh
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
 
