@@ -58,7 +58,7 @@ instance FromJSON Config where
 newtype ParseException = ParseException FilePath
 
 defaultConfig :: Config
-defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEither ""
+defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEither' ""
 
 instance Show ParseException where
   show (ParseException f) = "Could not parse config file " ++ show f
@@ -66,12 +66,7 @@ instance Show ParseException where
 instance Exception ParseException
 
 parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> m Config
-parseConfig file = do
-  content <- liftIO $ BS.readFile file
-  let parsedContent = Y.decode content :: Maybe Config
-  case parsedContent of
-    Nothing  -> throwM (ParseException file)
-    (Just c) -> return c
+parseConfig f = liftIO (BS.readFile f) >>= Y.decodeThrow
 
 withDefaultConfig :: ReaderT Config m a -> m a
 withDefaultConfig = (`runReaderT` defaultConfig)
