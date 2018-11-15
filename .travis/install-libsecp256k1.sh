@@ -14,3 +14,4 @@ cd "secp256k1-$gitRef"
 ./configure --enable-module-recovery --with-pic
 
 sudo make install
+sudo ldconfig
