@@ -16,7 +16,6 @@ matrix:
     - env: GHCVER=8.2.1 CACHE_NAME=8.2.1 BUILD_BINARY=1
       compiler: ": #stack 8.2.1"
     - env: GHCVER=8.2.1 CACHE_NAME=8.2.1-osx BUILD_BINARY=1
-           LDFLAGS=-L/usr/local/opt/readline/lib CFLAGS=-I/usr/local/opt/readline/include
            STACK_OPTS="--extra-include-dirs=/usr/local/opt/readline/include --extra-lib-dirs=/usr/local/opt/readline/lib"
       os: osx
       compiler: ": #stack 8.2.1"
@@ -32,10 +31,6 @@ script:
  - echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
  - STACK_OPTS="$STACK_OPTS --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib"
- - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then 
-   stack install readline --extra-include-dirs=/usr/local/opt/readline/include
-                          --extra-lib-dirs=/usr/local/opt/readline/lib;
-   fi
  - |
    set -ex
    # Run tests
