@@ -110,8 +110,8 @@ instance FromJSON PerPropConf where
 -- {{{
 
 readConf :: FilePath -> IO (Maybe (Config, [Property]))
-readConf f = decodeEither <$> BS.readFile f >>= \case
-  Left e -> putStrLn ("couldn't parse config, " ++ e) >> pure Nothing
+readConf f = decodeEither' <$> BS.readFile f >>= \case
+  Left e -> putStrLn ("couldn't parse config, " ++ show e) >> pure Nothing
   Right (PerPropConf t s p) -> pure . Just . (,p) $
     defaultConfig & addrList ?~ (view address <$> s) & range .~ t & epochs .~ 1 & outputJson .~ True
 
