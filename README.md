@@ -55,6 +55,9 @@ docker run trailofbits/echidna
 ```
 
 If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/README/).
+`stack install .` should build and compile `echidna-test` in `~/.local/bin`.
+You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choosing.
+If you're getting errors building related to linking, try tinkering with `--extra-include-dirs` and `--extra-lib-dirs`.
 
 ## Getting help
 
