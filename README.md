@@ -54,6 +54,13 @@ docker pull trailofbits/echidna
 docker run trailofbits/echidna
 ```
 
+for example
+
+```
+docker run -v `pwd`:/src trailofbits/echidna echidna-test /src/solidity/cli.sol
+```
+
+
 If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/README/).
 `stack install .` should build and compile `echidna-test` in `~/.local/bin`.
 You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choosing.
