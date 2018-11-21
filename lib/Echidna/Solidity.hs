@@ -3,7 +3,7 @@
 
 module Echidna.Solidity where
 
-import Control.Lens               ((^.), (%=), _1, assign, use, view)
+import Control.Lens               ((&), (^.), (%=), _1, assign, use, view)
 import Control.Exception          (Exception)
 import Control.Monad              (liftM2)
 import Control.Monad.Catch        (MonadThrow(..))
@@ -11,7 +11,7 @@ import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, execState, modify, runState)
 import Data.Foldable              (toList)
-import Data.List                  (find, partition)
+import Data.List                  (find, isSuffixOf, partition)
 import Data.Map                   (insert)
 import Data.Maybe                 (isNothing, fromMaybe)
 import Data.Monoid                ((<>))
@@ -34,6 +34,7 @@ import EVM.Solidity (abiMap, contractName, creationCode, methodInputs, methodNam
 import EVM.Types    (Addr)
 
 data EchidnaException = BadAddr Addr
+                      | BadJSON
                       | CompileFailure
                       | NoContracts
                       | TestArgsFound Text
@@ -46,6 +47,7 @@ data EchidnaException = BadAddr Addr
 instance Show EchidnaException where
   show = \case
     BadAddr a            -> "No contract at " ++ show a ++ " exists"
+    BadJSON              -> "Provided JSON not well formed"
     CompileFailure       -> "Couldn't compile given file"
     NoContracts          -> "No contracts found in given file"
     (ContractNotFound c) -> "Given contract " ++ show c ++ " not found in given file"
@@ -63,20 +65,19 @@ solcArguments filePath argStr = args <> fromMaybe [] additional
   where args = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", filePath]
         additional = words . unpack <$> argStr
 
+parseSolc :: (MonadIO m, MonadThrow m) => FilePath -> m [SolcContract]
+parseSolc f = fmap (toList . fst) . maybe (throwM BadJSON) pure =<< liftIO (readSolc f)
+
 -- | reads all contracts within the solidity file at `filepath` and passes optional solc params to compiler
 readContracts :: (MonadIO m, MonadThrow m, MonadReader Config m) => FilePath -> m [SolcContract]
-readContracts filePath = do
-  conf <- ask
-  liftIO (solc conf) >>= \case
-    Nothing -> throwM CompileFailure
-    Just m  -> return $ toList $ fst m
-  where solc c = readSolc =<< writeSystemTempFile "" =<< readProcess
-          "solc" (solcArguments filePath (pack <$> (c ^. solcArgs))) ""
+readContracts filePath = liftIO . solc =<< ask
+  where solc c = parseSolc =<< writeSystemTempFile "" =<<
+                   readProcess "solc" (solcArguments filePath (pack <$> (c ^. solcArgs))) ""
 
 -- | reads either the first contract found or the contract named `selectedContractName` within the solidity file at `filepath`
 readContract :: (MonadIO m, MonadThrow m, MonadReader Config m) => FilePath -> Maybe Text -> m SolcContract
 readContract filePath selectedContractName = do
-    cs <- readContracts filePath
+    cs <- filePath & if ".json" `isSuffixOf` filePath then parseSolc else readContracts
     c <- chooseContract cs $ ((pack filePath <> ":") <>) <$> selectedContractName
     warn (isNothing selectedContractName && 1 < length cs)
       "Multiple contracts found in file, only analyzing the first"
