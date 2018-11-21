@@ -1,4 +1,4 @@
-FROM ubuntu:rolling
+FROM ubuntu:bionic
 RUN apt-get update && apt-get -y upgrade
 RUN apt-get install -y curl libgmp-dev libbz2-dev libreadline-dev software-properties-common locales-all locales
 RUN add-apt-repository -y ppa:ethereum/ethereum
