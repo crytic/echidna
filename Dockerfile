@@ -1,6 +1,6 @@
 FROM ubuntu:bionic
 RUN apt-get update && apt-get -y upgrade
-RUN apt-get install -y curl libgmp-dev libbz2-dev libreadline-dev software-properties-common locales-all locales
+RUN apt-get install -y curl libgmp-dev libbz2-dev libreadline-dev software-properties-common locales-all locales libsecp256k1-dev
 RUN add-apt-repository -y ppa:ethereum/ethereum
 RUN apt-get update
 RUN apt-get install -y solc
