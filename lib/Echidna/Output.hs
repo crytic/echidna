@@ -10,14 +10,18 @@ module Echidna.Output (
   ) where
 
 --import Crypto.Hash.SHA256         (hash)
+import Control.Monad              (forM_)
 import Control.Exception          (evaluate)
 import System.Directory           (doesFileExist, createDirectoryIfMissing, listDirectory, withCurrentDirectory, makeRelativeToCurrentDirectory)
 import System.IO                  (hFlush, stdout)
-import Data.Aeson                 (ToJSON, FromJSON, encode, decode)
+import Data.Aeson                 (ToJSON, toJSON, FromJSON, encode, decode)
 import Data.Aeson.Types           (Value)
+import Data.ByteString.Lazy       (toStrict)
 import Data.Map                   (Map)
-import Data.Text                  (Text)
+import qualified Data.Map as Map  (fromList, empty)
+import Data.Text                  (Text, unpack)
 import Data.Maybe                 (isJust, fromJust)
+import Data.Text.Encoding         (decodeUtf8)
 import GHC.Generics
 
 import qualified Data.ByteString.Lazy.Char8 as LBS (unpack)
@@ -27,6 +31,8 @@ import qualified Data.ByteString.Lazy as LB (readFile)
 import Echidna.ABI (SolCall, displayAbiSeq, displayAbiCall) 
 import Echidna.Event (Events, displayEvents)  
 import Echidna.CoverageInfo (CoverageInfo, CoveragePerInput, findInCover, getCoverId, fromListCover, sizeCover)
+
+import EVM.ABI (AbiValue, abiValueType, abiTypeSolidity)
 
 --encodeJson :: JsonPropOutput -> IO ()
 --encodeJson = putStrLn . LBS.unpack . encode 
@@ -91,28 +97,35 @@ data JsonPropOutput = JsonPropOutput {
   , propEvents :: !Events
   , propReducedCall :: !(Maybe [String])
   , propReducedEvents :: !Events
+  , propConArgs :: !(Map Text Value)
 } deriving (Generic, Show)
 
 instance ToJSON JsonPropOutput
 
 reportPassedTest :: Bool -> Text -> IO () 
-reportPassedTest True name = encodeJson $ JsonPropOutput { propName = name, propTrue = True, propCall = Nothing, propReducedCall = Nothing, propEvents = [], propReducedEvents = []}
+reportPassedTest True name = encodeJson $ JsonPropOutput { propName = name, propTrue = True, propCall = Nothing, propReducedCall = Nothing, propEvents = [], propReducedEvents = [], propConArgs = Map.empty}
                              where encodeJson = putStrLn . LBS.unpack . encode 
  
 reportPassedTest False _   = return () 
 
-reportFailedTest :: Bool -> Text -> [SolCall] -> Events -> [SolCall] -> Events -> IO () 
-reportFailedTest True name cs es rcs res  = encodeJson $ JsonPropOutput { propName = name, 
+reportFailedTest :: Bool -> Text -> [SolCall] -> Events -> [SolCall] -> Events -> [(Text, AbiValue)] -> IO () 
+reportFailedTest True name cs es rcs res cvs = encodeJson $ JsonPropOutput { propName = name, 
                                                                           propTrue = False, 
                                                                           propCall = Just (map (displayAbiCall) $ reverse cs),
                                                                           propEvents = es, 
                                                                           propReducedCall = Just (map (displayAbiCall) $ reverse rcs),
-                                                                          propReducedEvents = res 
+                                                                          propReducedEvents = res,
+                                                                          propConArgs = fmap toJSON $ Map.fromList cvs
                                                                         }
                                             where encodeJson = putStrLn . LBS.unpack . encode 
 
-reportFailedTest False name cs es rcs res = do putStr "Failed property "
+reportFailedTest False name cs es rcs res cvs = do
+                                               putStr "Failed property "
                                                print name
+                                               putStrLn "Constructor Arguments:"
+                                               forM_ cvs $ \(n, v) -> do
+                                                   let t = abiValueType v
+                                                   putStrLn $ unpack $ n <> ": " <> abiTypeSolidity t <> " = " <> (decodeUtf8 (toStrict (encode v)))
                                                putStrLn "Original input:"
                                                putStrLn $ displayAbiSeq cs
                                                putStrLn "Original events:"
@@ -121,4 +134,3 @@ reportFailedTest False name cs es rcs res = do putStr "Failed property "
                                                putStrLn $ displayAbiSeq rcs
                                                putStrLn "Reduced events:"
                                                putStrLn $ displayEvents res
- 

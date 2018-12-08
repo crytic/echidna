@@ -6,8 +6,8 @@ module Echidna.Coverage (
 
 import Control.Lens               (view, use, _1, _2, (&), (^.), (.=), (?~))
 import Control.Monad              (forM, forM_)
-import Control.Monad.State.Strict (MonadState, execState, execStateT, runState, get, put)
 import Control.Monad.Catch        (MonadThrow, throwM)
+import Control.Monad.State.Strict (MonadState, execState, execStateT, runState, get, put)
 import Control.Monad.Reader       (runReaderT)
 import Control.Monad.IO.Class     (MonadIO)
 import Data.Aeson.Types           (Value, toJSON, parseEither)
@@ -159,7 +159,8 @@ ePropertySeqCover'   n cov ps tcon = do
                                           let ctorGen = eConstructorGen tcon abiParams
                                           let funcGen = ePropertySeqMutate ts cs ssize c
                                           (abiVals, ivm) <- eConstructorExec seed tsize tcon ctorGen
-                                          let cvs' = Map.fromList $ zip (map fst ctor) (map toJSON abiVals)
+                                          let conAbiVals = zip (map fst ctor) abiVals
+                                          let cvs' = fmap toJSON $ Map.fromList conAbiVals
                                           --print (tsize, ssize) 
                                           (icov, vm, cs') <- ePropertyExec seed tsize ivm funcGen cs
                                           updateOutdir cov (icov, cs', cvs') (c ^. outdir)
@@ -173,7 +174,7 @@ ePropertySeqCover'   n cov ps tcon = do
                                           then ePropertySeqCover' (n-1) cov' ps tcon
                                           else do
                                                 (tp,fp) <- return $ checkProperties ps vm
-                                                forM_ (filterProperties ps fp) (minimizeTestcase cs ivm tcon)
+                                                forM_ (filterProperties ps fp) (minimizeTestcase cs ivm conAbiVals tcon)
                                                 ePropertySeqCover' (n-1) cov' (filterProperties ps tp) tcon
                                          where tsize  = fromInteger $ n `mod` 100
                                                ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))

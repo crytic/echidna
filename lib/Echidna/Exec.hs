@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, DeriveGeneric, FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
+{-# LANGUAGE BangPatterns, DeriveGeneric, FlexibleContexts, KindSignatures, LambdaCase, StrictData, TupleSections #-}
 
 module Echidna.Exec (
     checkTest
@@ -135,16 +135,15 @@ cleanUpAfterTransaction = sequence_ [result .= Nothing, state . pc .= 0, state .
 eConstructorGen :: MonadGen m => [AbiType] -> Config -> m [AbiValue]
 eConstructorGen ts = runReaderT (mapM genAbiValueOfType ts)
 
-eConstructorExec :: (MonadIO m) => Seed -> Size -> TestableContract -> Gen [AbiValue] -> m VM
-eConstructorExec seed size tcon gen = do
+eConstructorExec :: (MonadIO m) => Seed -> Size -> TestableContract -> Gen [AbiValue] -> m ([AbiValue], VM)
+eConstructorExec seed ssize tcon gen = do
     let conf = tcon ^. config
-    ctorArgs <- sample size seed gen >>= \case
+    ctorArgs <- sample ssize seed gen >>= \case
         Nothing -> error "failed to generate constructor args"
         Just args -> return args
-    let encodedArgs = BS.concat $ map encodeAbiValue ctorArgs
-    execStateT
+    (ctorArgs,) <$> execStateT
         (initializeVM conf)
-        (vmForEthrunCreation $ (tcon ^. ctorCode) <> encodedArgs)
+        (vmForEthrunCreation $ (tcon ^. ctorCode) <> BS.concat (fmap encodeAbiValue ctorArgs))
 
 initializeVM :: (MonadState VM m) => Config -> m VM
 initializeVM conf = do
@@ -181,7 +180,11 @@ ePropertySeq'   _ []   _           = return ()
 ePropertySeq'   n ps tcon | n == 0 = forM_ (map fst ps) (reportPassedTest (tcon ^. config ^. outputJson))
 ePropertySeq'   n ps tcon          = do 
                                           seed <- Seed.random
-                                          ivm <- eConstructorExec seed tsize tcon ctorGen
+                                          let ctor = tcon ^. constructor
+                                          let ctorGen = eConstructorGen (map snd ctor) (tcon ^. config)
+                                          let funcGen = ePropertyGen ts ssize c
+                                          (abiVals, ivm) <- eConstructorExec seed tsize tcon ctorGen
+                                          let conAbiVals = zip (map fst ctor) abiVals
                                           (vm, cs) <- ePropertyExec seed tsize ivm funcGen
                                           --putStrLn ( show $ view traces vm)
                                           if  (tcon ^. config ^. outputRawTxs) then ( 
@@ -192,13 +195,11 @@ ePropertySeq'   n ps tcon          = do
                                           if (reverted vm) then ePropertySeq' (n-1) ps tcon
                                           else do 
                                                 (tp,fp) <- return $ checkProperties ps vm 
-                                                forM_ (filterProperties ps fp) (minimizeTestcase cs ivm tcon)
+                                                forM_ (filterProperties ps fp) (minimizeTestcase cs ivm conAbiVals tcon)
                                                 ePropertySeq' (n-1) (filterProperties ps tp) tcon
                                          where c =  tcon ^. config 
                                                tsize   = fromInteger $ n `mod` 100
                                                ssize   = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))
-                                               funcGen = ePropertyGen ts ssize c
-                                               ctorGen = eConstructorGen (map snd $ tcon ^. constructor) c
                                                ts      = view functions tcon
 
 checkProperties ::  [(Text, (VM -> Bool))] -> VM -> ([Text],[Text])
@@ -244,12 +245,12 @@ checkFalseOrRevertTest addr v t = case evalState (execCall (SolCall t [] (addres
 -- Shrinking functions. TODO: move to another module (e.g. Echidna.Shrinking)
 
 
-minimizeTestcase :: [SolCall] -> VM -> TestableContract -> (Text, VM -> Bool) -> IO ()
-minimizeTestcase cs ivm tcon (t,p) = do
+minimizeTestcase :: [SolCall] -> VM -> [(Text, AbiValue)] -> TestableContract -> (Text, VM -> Bool) -> IO ()
+minimizeTestcase cs ivm cvs tcon (t,p) = do
                                      rcs <- minimizeTestcase' cs ivm (conf ^. shrinkLimit) (t,p)
                                      rev <- extractEvents rcs ivm tcon
                                      ev <- extractEvents cs ivm tcon
-                                     reportFailedTest (conf ^. outputJson) t cs ev rcs rev
+                                     reportFailedTest (conf ^. outputJson) t cs ev rcs rev cvs
                                     where conf = (tcon ^. config)
 
 
