@@ -7,7 +7,7 @@ module Echidna.Coverage (
 import Control.Lens               (view, use, _1, _2, (&), (^.), (.=), (?~))
 import Control.Monad              (forM, forM_)
 import Control.Monad.Catch        (MonadThrow, throwM)
-import Control.Monad.State.Strict (MonadState, execState, execStateT, runState, get, put)
+import Control.Monad.State.Strict (MonadState, evalState, execState, execStateT, runState, get, put)
 import Control.Monad.Reader       (runReaderT)
 import Control.Monad.IO.Class     (MonadIO)
 import Data.Aeson.Types           (Value, toJSON, parseEither)
@@ -28,14 +28,16 @@ import EVM.Concrete (Blob(..), w256)
 import EVM.Exec     (exec, vmForEthrunCreation)
 import EVM.Types (Addr(..))
 
-import Echidna.ABI (SolCall, SolSignature, genTransactions, genAbiValueOfType, mutateCallSeq, fname, fargs, fvalue, fsender, parseAsType, reduceCallSeq)--, displayAbiSeq)
+import Echidna.ABI (SolCall(..), SolSignature, genTransactions, genAbiValueOfType, mutateCallSeq, fname, fargs, fvalue, fsender, parseAsType, reduceCallSeq)--, displayAbiSeq)
 import Echidna.Config (Config(..), testLimit, range, outdir, initialValue, gasLimit, contractAddr)
-import Echidna.Exec (encodeSolCall, sample, sampleDiff, reverted, fatal, checkProperties, filterProperties, minimizeTestcase)
+import Echidna.Exec (encodeSolCall, sample, sampleDiff, reverted, fatal, checkProperties, filterProperties, minimizeTestcase, execCall)
 import Echidna.Output (syncOutdir, updateOutdir)
 import Echidna.Solidity (TestableContract, EchidnaException(ParseValueError), functions, config, ctorCode, constructor)
 import Echidna.CoverageInfo (CoverageInfo, CoveragePerInput, mergeSaveCover)
 
 import qualified Control.Monad.State.Strict as S
+
+import Debug.Trace
 
 -----------------------------------------
 -- Echidna exec with coverage
@@ -150,7 +152,7 @@ ePropertySeqCover'   n cov ps tcon | everyXIter 123456 n  = do
                                                             ePropertySeqCover' (n-1) cov' ps tcon
 
 ePropertySeqCover'   n cov ps tcon = do 
-                                          --traceShowM $ "n=" ++ show n
+                                          --traceShowM $ "size=" ++ show (size cov)
                                           seed <- Seed.random
                                           (_, cs, vs) <- return $ if (null cov) then (empty, [], Map.empty) else chooseFromSeed seed cov
                                           let ctor = tcon ^. constructor
@@ -173,8 +175,9 @@ ePropertySeqCover'   n cov ps tcon = do
                                           if (reverted vm) 
                                           then ePropertySeqCover' (n-1) cov' ps tcon
                                           else do
+                                                --traceM $ "prop test: " ++ show (evalState (execCall (SolCall (fst $ ps !! 0) [] 42 0)) vm)
                                                 (tp,fp) <- return $ checkProperties ps vm
-                                                forM_ (filterProperties ps fp) (minimizeTestcase cs ivm conAbiVals tcon)
+                                                forM_ (filterProperties ps fp) (minimizeTestcase cs' ivm conAbiVals tcon)
                                                 ePropertySeqCover' (n-1) cov' (filterProperties ps tp) tcon
                                          where tsize  = fromInteger $ n `mod` 100
                                                ssize  = fromInteger $ max 1 $ n `mod` (toInteger (c ^. range))

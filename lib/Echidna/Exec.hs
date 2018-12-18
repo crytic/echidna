@@ -51,6 +51,7 @@ import Echidna.Property (PropertyType(..))
 import Echidna.Output (reportPassedTest, reportFailedTest)
 import Echidna.Solidity (TestableContract, ctorCode, functions, events, config, constructor)
 import Echidna.Event (extractSeqLog, Events)
+import Debug.Trace
 --import Echidna.Shrinking (minimizeTestcase)
 -------------------------------------------------------------------
 -- Fuzzing and Hedgehog Init
@@ -203,7 +204,7 @@ ePropertySeq'   n ps tcon          = do
                                                ts      = view functions tcon
 
 checkProperties ::  [(Text, (VM -> Bool))] -> VM -> ([Text],[Text])
-checkProperties ps vm = if fatal vm then ([], map fst ps)
+checkProperties ps vm = if fatal vm then trace "fatal vm" ([], map fst ps)
                         else (map fst $ filter snd bs, map fst $ filter (not . snd) bs)
                         where bs = map (\(t,p) -> (t, p vm)) ps
 
@@ -222,7 +223,8 @@ checkTest ShouldReturnFalseRevert      = checkFalseOrRevertTest
 checkBoolExpTest ::  Bool -> Addr -> VM -> Text -> Bool
 checkBoolExpTest b addr v t = case evalState (execCall (SolCall t [] (addressWord160 addr) 0)) v of
   VMSuccess (B s) -> s == encodeAbiValue (AbiBool b)
-  _               -> False
+  --_               -> False
+  r               -> traceShow r False
 
 checkRevertTest :: Addr -> VM -> Text -> Bool
 checkRevertTest addr v t = case evalState (execCall (SolCall t [] (addressWord160 addr) 0)) v of
