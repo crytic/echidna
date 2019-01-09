@@ -119,8 +119,8 @@ selectSender n ss = view address (f $ filter (\s -> (view name s) == n) ss)
 -- {{{
 
 readConf :: FilePath -> IO (Maybe (Config, [Property]))
-readConf f = decodeEither <$> BS.readFile f >>= \case
-  Left e -> putStrLn ("couldn't parse config, " ++ e) >> pure Nothing
+readConf f = decodeEither' <$> BS.readFile f >>= \case
+  Left e -> putStrLn ("couldn't parse config, " ++ show e) >> pure Nothing
   Right (PerPropConf t r s a p) -> pure . Just . (,p) $
     defaultConfig -- & contractAddr .~ (selectSender "owner" s)
                   & addrList ?~ (view address <$> s)
