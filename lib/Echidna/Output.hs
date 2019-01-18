@@ -96,7 +96,7 @@ reportPassedTest :: Bool -> Text -> IO ()
 reportPassedTest True name = encodeJson $ JsonPropOutput { propName = name, propTrue = True, propCall = Nothing, propReducedCall = Nothing, propEvents = [], propReducedEvents = []}
                              where encodeJson = putStrLn . LBS.unpack . encode 
  
-reportPassedTest False _   = return () 
+reportPassedTest False name   = putStrLn $ "Passed property " ++ (show name) ++ "."
 
 reportFailedTest :: Bool -> Text -> [SolCall] -> Events -> [SolCall] -> Events -> IO () 
 reportFailedTest True name cs es rcs res  = encodeJson $ JsonPropOutput { propName = name, 
@@ -109,7 +109,7 @@ reportFailedTest True name cs es rcs res  = encodeJson $ JsonPropOutput { propNa
                                             where encodeJson = putStrLn . LBS.unpack . encode 
 
 reportFailedTest False name cs es rcs res = do putStr "Failed property "
-                                               print name
+                                               print $ show name
                                                putStrLn "Original input:"
                                                putStrLn $ displayAbiSeq cs
                                                putStrLn "Original events:"
