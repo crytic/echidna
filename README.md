@@ -270,7 +270,7 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
       }
    
       
-   Use the [version of token.sol] ( https://github.com/trailofbits/publications/blob/master/workshops/Automated%20Smart%20Contracts%20Audit%20-%20TruffleCon%202018/echidna/exercises/bonus/token.sol#L1) containing the fixes of the previous exercices.
+   Use the [version of token.sol](https://github.com/trailofbits/publications/blob/master/workshops/Automated%20Smart%20Contracts%20Audit%20-%20TruffleCon%202018/echidna/exercises/bonus/token.sol#L1) containing the fixes of the previous exercices.
    
    Create a scenario, where `echidna_caller (0x00a329c0648769a73afac7f9381e08fb43dbea70)` becomes the owner of the contract at construction, and `totalMintable` is set to 10,000. Recall that Echidna needs a constructor without argument.
    
