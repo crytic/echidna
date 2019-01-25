@@ -48,10 +48,12 @@ Echidna exports an API to build powerful fuzzing systems, and has a multitude of
 ## Getting started
 
 Use our prebuilt Docker container to quickly install and run the toolkit:
-         ```
+      
+         
          $ docker pull trailofbits/eth-security-toolbox
          $ docker run -it trailofbits/eth-security-toolbox
-            ```
+           
+       
 
 Alternatively, build the image from scratch:
         ```$ git clone https://github.com/trailofbits/eth-security-toolbox.git
