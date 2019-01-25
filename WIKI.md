@@ -1,13 +1,15 @@
-##Getting started
+## Getting started
 
 Use our prebuilt Docker container to quickly install and run the toolkit:
-         ```$ docker pull trailofbits/eth-security-toolbox
-            $ docker run -it trailofbits/eth-security-toolbox```
+         
+         $ docker pull trailofbits/eth-security-toolbox
+         $ docker run -it trailofbits/eth-security-toolbox
 
 Alternatively, build the image from scratch:
-        ```$ git clone https://github.com/trailofbits/eth-security-toolbox.git
-           $ cd eth-security-toolbox
-           $ docker build -t eth-security-toolbox .```
+
+        $ git clone https://github.com/trailofbits/eth-security-toolbox.git
+        $ cd eth-security-toolbox
+        $ docker build -t eth-security-toolbox .
 
 All the material of this workshop is available in https://github.com/trailofbits/publications/.
 
@@ -21,22 +23,22 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
 
  We will see how to test a smart contract with Echidna. The target is the following smart contract
 
-```contract Token{
-
+```Solidity
+contract Token{
       mapping(address => uint) public balances;
       function airdrop() public{
           balances[msg.sender] = 1000;
      }
-     
      function consume() public{
           require(balances[msg.sender]>0);
           balances[msg.sender] -= 1;
      }
-     
      function backdoor() public{
           balances[msg.sender] += 1;
      }
-  }   ```
+  }   
+  
+  ```
 
  We will make the assumption that this token must have the following properties:
     -  Anyone can have at maximum 1000 tokens
