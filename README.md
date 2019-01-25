@@ -48,7 +48,6 @@ Echidna exports an API to build powerful fuzzing systems, and has a multitude of
 ## Getting started
 
 Use our prebuilt Docker container to quickly install and run the toolkit:
-      
          
          $ docker pull trailofbits/eth-security-toolbox
          $ docker run -it trailofbits/eth-security-toolbox
@@ -56,9 +55,11 @@ Use our prebuilt Docker container to quickly install and run the toolkit:
        
 
 Alternatively, build the image from scratch:
-        ```$ git clone https://github.com/trailofbits/eth-security-toolbox.git
-           $ cd eth-security-toolbox
-           $ docker build -t eth-security-toolbox .```
+
+        $ git clone https://github.com/trailofbits/eth-security-toolbox.git
+        $ cd eth-security-toolbox
+        $ docker build -t eth-security-toolbox .
+        
 
 All the material of this workshop is available in https://github.com/trailofbits/publications/.
 
@@ -108,17 +109,17 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
  
  The following property checks that the caller has no more than 1000 tokens:
  
-        ```function echidna_balance_under_1000() public view returns(bool){
+        function echidna_balance_under_1000() public view returns(bool){
                 return balances[msg.sender] <= 1000;
-            }```
+            }
             
  Use inheritance to separate your contract from your properties:
     
-       ```contract TestToken is Token{
+       contract TestToken is Token{
             function echidna_balance_under_1000() public view returns(bool){
                 return balances[msg.sender] <= 1000;
             }
-        }```
+        }
   
 ## Initiate your contract
  
@@ -126,8 +127,8 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
  If your contract needs a specific initialization, you need to do it in the constructor.
  
  There are two specific addresses in Echidna:
-      - `0x00a329c0648769a73afac7f9381e08fb43dbea72` which calls the constructor.
-      - `0x00a329c0648769a73afac7f9381e08fb43dbea70` which calls the other functions.
+   * `0x00a329c0648769a73afac7f9381e08fb43dbea72` which calls the constructor.
+   * `0x00a329c0648769a73afac7f9381e08fb43dbea70` which calls the other functions.
       
 ## Running Echidna
  
@@ -143,23 +144,21 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
  
  The following summarizes the run of echidna on our example:
  
-         ```contract TestToken is Token{
+         contract TestToken is Token{
                constructor() public {}
                
                function echidna_balance_under_1000() public view returns(bool){
                     return balances[msg.sender] <= 1000;
                }
-            }```
+            }
             
            
-         ```$ echidna-test testtoken.sol TestToken
+         $ echidna-test testtoken.sol TestToken
             ...
-               ✗ "echidna_balance_under_1000" failed after 29 tests and 1
-             shrink.
-             
+            ✗ "echidna_balance_under_1000" failed after 29 tests and 1 shrink.
                  │ Call sequence: airdrop();
                  │ backdoor();
-              ✗ 1 failed.```
+              ✗ 1 failed.
     
   Echidna found that the property is violated if `backdoor` is called.
   
@@ -172,7 +171,7 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
   
   We will test the following contract:
        
-      ```contract Ownership{
+      contract Ownership{
             address owner = msg.sender;
             function Owner(){
                owner = msg.sender;
@@ -205,7 +204,7 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
             balances[msg.sender] -= value;
             balances[to] += value;
         }
-     }```
+     }
      
      
 ## Exercise 1
@@ -215,7 +214,7 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
    
    The skeleton for this exercise is:
    
-     ```import "token.sol";
+     import "token.sol";
         
         contract TestToken is Token {
             address echidna_caller = 0x00a329c0648769a73afac7f9381e08fb43dbea70;
@@ -224,7 +223,7 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
                  balances[echidna_caller] = 10000;
                }
            // add the property
-       }```
+       }
        
    Once Echidna found the bug, fix the issue, and re-try your property with Echidna.
    
@@ -235,7 +234,7 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
    
    The skeleton for this exercise is:
    
-     ```import "token.sol";
+     import "token.sol";
         
         contract TestToken is Token {
             address echidna_caller = 0x00a329c0648769a73afac7f9381e08fb43dbea70;
@@ -244,7 +243,7 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
                 owner = 0x0; // lose ownership
             }
             // add the property
-         }```
+         }
        
    Once Echidna found the bug, fix the issue, and re-try your property with Echidna.
    
@@ -252,7 +251,7 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
 
    Consider the following extension of the token:
    
-   ```
+   
     import "token.sol";
       
       contract MintableToken is Token{
@@ -269,11 +268,11 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
              balances[msg.sender] += value;
           }
       }
-   ```
+   
       
    Use the [version of token.sol] ( https://github.com/trailofbits/publications/blob/master/workshops/Automated%20Smart%20Contracts%20Audit%20-%20TruffleCon%202018/echidna/exercises/bonus/token.sol#L1) containing the fixes of the previous exercices.
    
-   Create a scenario, where `echidna_caller (0x00a329c0648769a73afac7f9381e08fb43dbea70)`          becomes the owner of the contract at construction, and `totalMintable` is set to 10,000.        Recall that Echidna needs a constructor without argument.
+   Create a scenario, where `echidna_caller (0x00a329c0648769a73afac7f9381e08fb43dbea70)` becomes the owner of the contract at construction, and `totalMintable` is set to 10,000. Recall that Echidna needs a constructor without argument.
    
    Add a property to check if `echidna_caller` cannot mint more than 10,000 tokens.
    
