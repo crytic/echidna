@@ -117,7 +117,11 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
   
 ## Exercises
   
-  The two following exercises are meant to be solved using Echidna.
+  The two following exercises are meant to be solved using Echidna. To find these exercises, log in to the `eth-security-toolbox` docker and: 
+```
+$cd home/ethsec/workshops/Automated Smart Contracts Audit - TruffleCon 2018/echidna/example
+
+```
   
 ## Targeted contract
   
