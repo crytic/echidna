@@ -103,6 +103,7 @@ loadSolidity fp name = do
         (tests, funs) = partition (isPrefixOf pref . fst) abi
     loaded <- execStateT (execTx $ Tx (Right bc) d ca 0) $ vmForEthrunCreation bc
     if null abi  then throwM NoFuncs   else pure ()
+    if null tests  then throwM NoTests else pure ()
     if null funs then throwM OnlyTests else pure ()
     case find (not . null . snd) tests of
       (Just (t,_)) -> throwM $ TestArgsFound t
