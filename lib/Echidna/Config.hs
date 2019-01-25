@@ -10,7 +10,6 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (ReaderT(..))
 import Data.Has (Has(..))
 import Data.Aeson
-import Data.Maybe (fromMaybe)
 import EVM (result)
 
 import qualified Data.ByteString as BS
@@ -22,6 +21,7 @@ import Echidna.Solidity
 import Echidna.Test
 import Echidna.UI
 
+-- | Our big glorious global config type, just a product of each local config.
 data EConfig = EConfig { _cConf :: CampaignConf
                        , _gConf :: GenConf
                        , _nConf :: Names
@@ -50,7 +50,7 @@ instance FromJSON EConfig where
     let tc = do reverts <- v .:? "reverts" .!= True
                 sender  <- v .:? "sender"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                 let good = if reverts then (`elem` [ResTrue, ResRevert]) else (== ResTrue)
-                return $ TestConf (good . fromMaybe ResOther . fmap classifyRes . view result) (const sender) in
+                return $ TestConf (good . maybe ResOther classifyRes . view result) (const sender) in
     EConfig <$> (CampaignConf <$> v .:? "testLimit"   .!= 10000
                               <*> v .:? "seqLen"      .!= 10
                               <*> v .:? "shrinkLimit" .!= 5000
@@ -64,11 +64,14 @@ instance FromJSON EConfig where
             <*> tc
   parseJSON _ = parseJSON (Object mempty)
 
+-- | The default config used by Echidna (see the 'FromJSON' instance for values used).
 defaultConfig :: EConfig
 defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEither' ""
 
+-- | Try to parse an Echidna config file, throw an error if we can't.
 parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> m EConfig
 parseConfig f = liftIO (BS.readFile f) >>= Y.decodeThrow
 
+-- | Run some action with the default configuration, useful in the REPL.
 withDefaultConfig :: ReaderT EConfig m a -> m a
 withDefaultConfig = (`runReaderT` defaultConfig)

@@ -25,8 +25,10 @@ import qualified Data.Set as S
 
 import Echidna.Transaction
 
+-- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
 
+-- | Given an execution error, classify it. Mostly useful for nice @pattern@s ('Reversion', 'Illegal').
 classifyError :: Error -> ErrorClass
 classifyError Revert                 = RevertE
 classifyError (UnrecognizedOpcode _) = RevertE
@@ -36,12 +38,15 @@ classifyError StackLimitExceeded     = IllegalE
 classifyError IllegalOverflow        = IllegalE
 classifyError _                      = UnknownE
 
+-- | Matches execution errors that just cause a reversion.
 pattern Reversion :: VMResult
 pattern Reversion <- VMFailure (classifyError -> RevertE)
 
+-- | Matches execution errors caused by illegal behavior.
 pattern Illegal :: VMResult
 pattern Illegal <- VMFailure (classifyError -> IllegalE)
 
+-- | We throw this when our execution fails due to something other than reversion.
 data ExecException = IllegalExec Error | UnknownFailure Error
 
 instance Show ExecException where
@@ -51,9 +56,12 @@ instance Show ExecException where
 
 instance Exception ExecException
 
+-- | Given an execution error, throw the appropriate exception.
 vmExcept :: MonadThrow m => Error -> m ()
 vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e}
 
+-- | Given an error handler, an execution function, and a transaction, execute that transaction
+-- using the given execution strategy, handling errors with the given handler.
 execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m VMResult
 execTxWith h m t = do og <- get
                       setupTx t
@@ -66,27 +74,36 @@ execTxWith h m t = do og <- get
                         _                        -> pure ()
                       return res
 
+-- | Execute a transaction "as normal".
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m VMResult
 execTx = execTxWith vmExcept $ liftSH exec
 
+-- | Capture the current PC and codehash. This should identify instructions uniquely (maybe? EVM is weird).
 pointCoverage :: (MonadState x m, Has (Map W256 (Set Int)) x, Has VM x) => m ()
 pointCoverage = use hasLens >>= \v ->
   hasLens %= M.insertWith (const . S.insert $ v ^. state . pc) (h v) mempty where
     h v = fromMaybe (W256 maxBound) $ v ^? env . contracts . at (v ^. state . contract) . _Just . codehash
 
+-- | Capture just the current PC. WARNING: PCs are not unique across different contracts or contexts.
 fastCoverage :: (MonadState x m, Has (Set Int) x, Has VM x) => m ()
 fastCoverage = use hasLens >>= \v -> hasLens %= S.insert (v ^. state . pc)
 
+-- | Given a way of capturing coverage info, execute while doing so once per instruction.
 usingCoverage :: (MonadState x m, Has VM x) => m () -> m VMResult
 usingCoverage cov = maybe (cov >> liftSH exec1 >> usingCoverage cov) pure =<< use (hasLens . result)
 
+-- | Execute a transaction, capturing the PC and codehash of each instruction executed.
 execTxRecC :: (MonadState x m, Has VM x, Has (Map W256 (Set Int)) x, MonadThrow m) => Tx -> m VMResult
 execTxRecC = execTxWith vmExcept (usingCoverage pointCoverage)
 
+-- | Given good point coverage, count unique points.
 coveragePoints :: Map W256 (Set Int) -> Int
 coveragePoints = sum . M.map S.size
 
-execTxOptC :: (MonadState x m, Has VM x, Has (Map W256 (Set Int)) x, Has (Set Tx) x, MonadThrow m) => Tx -> m VMResult
+-- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
+-- transaction if it finds new coverage.
+execTxOptC :: (MonadState x m, Has VM x, Has (Map W256 (Set Int)) x, Has (Set Tx) x, MonadThrow m)
+           => Tx -> m VMResult
 execTxOptC t = let hint = id :: Map W256 (Set Int) -> Map W256 (Set Int) in do
   og  <- hasLens <<.= mempty
   res <- execTxRecC t

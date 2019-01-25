@@ -28,9 +28,11 @@ import Echidna.Transaction (Tx(..))
 
 import EVM hiding (contracts)
 import EVM.Exec     (vmForEthrunCreation)
-import EVM.Solidity (abiMap, contractName, creationCode, methodInputs, methodName, readSolc, SolcContract)
+import EVM.Solidity
 import EVM.Types    (Addr)
 
+-- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
+-- instance for more detailed explanations.
 data SolException = BadAddr Addr
                   | CompileFailure
                   | NoContracts
@@ -55,13 +57,15 @@ instance Show SolException where
 
 instance Exception SolException
 
-data SolConf = SolConf { _contractAddr :: Addr
-                       , _deployer     :: Addr
-                       , _prefix       :: Text
-                       , _solcArgs     :: String
+-- | Configuration for loading Solidity for Echidna testing.
+data SolConf = SolConf { _contractAddr :: Addr   -- ^ Contract address to use
+                       , _deployer     :: Addr   -- ^ Contract deployer address to use
+                       , _prefix       :: Text   -- ^ Function name prefix used to denote tests
+                       , _solcArgs     :: String -- ^ Args to pass to @solc@
                        }
 makeLenses ''SolConf
 
+-- | Given a file, try to compile it and get a list of its contracts, throwing exceptions if necessary.
 contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
 contracts fp = view (hasLens . solcArgs) >>= liftIO . solc >>= (\case
   Nothing -> throwM CompileFailure
@@ -69,10 +73,13 @@ contracts fp = view (hasLens . solcArgs) >>= liftIO . solc >>= (\case
     solc a = readSolc =<< writeSystemTempFile "" =<< readProcess "solc" (usual <> words a) ""
     usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", fp]
     
+-- | Given a file and a possible contract name, compile the file as solidity, then, if a name is
+-- given, try to return the specified contract, otherwise, return the first contract in the file,
+-- throwing errors if necessary.
 selected :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> Maybe Text -> m SolcContract
 selected fp name = do cs <- contracts fp
                       c <- choose cs $ ((pack fp <> ":") <>) <$> name
-                      liftIO $ if (isNothing name && length cs > 1)
+                      liftIO $ if isNothing name && length cs > 1
                         then putStrLn "Multiple contracts found in file, only analyzing the first"
                         else pure ()
                       liftIO . putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
@@ -82,6 +89,10 @@ selected fp name = do cs <- contracts fp
         choose cs    (Just n) = maybe (throwM $ ContractNotFound n) pure $
                                   find ((n ==) . view contractName) cs
 
+-- | Given a file and a possible contract name, compile the file as solidity, then, if a name is
+-- given, try to fine the specified contract, otherwise, find the first contract in the file. Take
+-- said contract and return an initial VM state with it loaded, its ABI (as 'SolSignature's), and the
+-- names of its Echidna tests.
 loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 loadSolidity fp name = do
