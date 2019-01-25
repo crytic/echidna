@@ -24,7 +24,7 @@ Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
  We will see how to test a smart contract with Echidna. The target is the following smart contract
 
 ```Solidity
-contract Token{
+   contract Token{
       mapping(address => uint) public balances;
       function airdrop() public{
           balances[msg.sender] = 1000;
@@ -36,7 +36,7 @@ contract Token{
      function backdoor() public{
           balances[msg.sender] += 1;
      }
-  }   
+   }   
   
   ```
 
@@ -63,12 +63,13 @@ contract Token{
      }
  ```
  Use inheritance to separate your contract from your properties:
-     ```Solidity
+ ```Solidity
      contract TestToken is Token{
-            function echidna_balance_under_1000() public view returns(bool){
+          function echidna_balance_under_1000() public view returns(bool){
                 return balances[msg.sender] <= 1000;
-            }
-        }```
+           }
+      }
+ ```
   
 ## Initiate your contract
  
@@ -76,39 +77,40 @@ contract Token{
  If your contract needs a specific initialization, you need to do it in the constructor.
  
  There are two specific addresses in Echidna:
-      - `0x00a329c0648769a73afac7f9381e08fb43dbea72` which calls the constructor.
-      - `0x00a329c0648769a73afac7f9381e08fb43dbea70` which calls the other functions.
+ * `0x00a329c0648769a73afac7f9381e08fb43dbea72` which calls the constructor.
+ * `0x00a329c0648769a73afac7f9381e08fb43dbea70` which calls the other functions.
       
 ## Running Echidna
  
  Echidna is launched with:
  
-        `$ echidna-test contract.sol`
+ `$ echidna-test contract.sol`
         
  If contract.sol contains multiple contracts, you can specify the target:
  
-        `$ echidna-test contract.sol MyContract`
+  `$ echidna-test contract.sol MyContract`
  
 ## Summary: Testing a property
  
  The following summarizes the run of echidna on our example:
-     ```Solidity
+ ```Solidity
       contract TestToken is Token{
-               constructor() public {}
-                  function echidna_balance_under_1000() public view returns(bool){
-                      return balances[msg.sender] <= 1000;
-                   }
-            }```
+          constructor() public {}
+              function echidna_balance_under_1000() public view returns(bool){
+                 return balances[msg.sender] <= 1000;
+              }
+        }
+ ```
             
            
-         ```$ echidna-test testtoken.sol TestToken
-            ...
-               ✗ "echidna_balance_under_1000" failed after 29 tests and 1
-             shrink.
+ ```$ echidna-test testtoken.sol TestToken
+     ...
+       ✗ "echidna_balance_under_1000" failed after 29 tests and 1 shrink.
              
-                 │ Call sequence: airdrop();
-                 │ backdoor();
-              ✗ 1 failed.```
+          │ Call sequence: airdrop();
+          │ backdoor();
+            ✗ 1 failed.
+ ```
     
   Echidna found that the property is violated if `backdoor` is called.
   
@@ -121,40 +123,43 @@ contract Token{
   
   We will test the following contract:
        
-      ```contract Ownership{
-            address owner = msg.sender;
-            function Owner(){
-               owner = msg.sender;
-            }
-            modifier isOwner(){
-               require(owner == msg.sender);
-               _;
-            }
-        }
+```Solidity
+ contract Ownership{
+    address owner = msg.sender;
+    function Owner(){
+         owner = msg.sender;
+     }
+     modifier isOwner(){
+         require(owner == msg.sender);
+         _;
+      }
+   }
         
-       contract Pausable is Ownership{
-          bool is_paused;
-          modifier ifNotPaused(){
+  contract Pausable is Ownership{
+     bool is_paused;
+     modifier ifNotPaused(){
               require(!is_paused);
               _;
-          }
-       
-          function paused() isOwner public{
-              is_paused = true;
-          }
-          
-          function resume() isOwner public{
-              is_paused = false;
-         }
       }
+       
+      function paused() isOwner public{
+          is_paused = true;
+      }
+          
+      function resume() isOwner public{
+          is_paused = false;
+      }
+   }
       
-     contract Token is Pausable{
-        mapping(address => uint) public balances;
-        function transfer(address to, uint value) ifNotPaused public{
-            balances[msg.sender] -= value;
-            balances[to] += value;
-        }
-     }```
+   contract Token is Pausable{
+      mapping(address => uint) public balances;
+      function transfer(address to, uint value) ifNotPaused public{
+           balances[msg.sender] -= value;
+           balances[to] += value;
+       }
+    }
+    
+```
      
      
 ## Exercise 1
@@ -164,16 +169,17 @@ contract Token{
    
    The skeleton for this exercise is:
    
-     ```import "token.sol";
-        
-        contract TestToken is Token {
-            address echidna_caller = 0x00a329c0648769a73afac7f9381e08fb43dbea70;
+```Solidity   
+     import "token.sol"; 
+     contract TestToken is Token {
+       address echidna_caller = 0x00a329c0648769a73afac7f9381e08fb43dbea70;
 
-            constructor() public{
-                 balances[echidna_caller] = 10000;
-               }
-           // add the property
-       }```
+        constructor() public{
+            balances[echidna_caller] = 10000;
+         }
+         // add the property
+      }
+ ```
        
    Once Echidna found the bug, fix the issue, and re-try your property with Echidna.
    
@@ -184,16 +190,17 @@ contract Token{
    
    The skeleton for this exercise is:
    
-     ```import "token.sol";
-        
-        contract TestToken is Token {
-            address echidna_caller = 0x00a329c0648769a73afac7f9381e08fb43dbea70;
-            constructor(){
-                paused(); // pause the contract
-                owner = 0x0; // lose ownership
-            }
-            // add the property
-         }```
+```Solidity
+   import "token.sol";
+   contract TestToken is Token {
+      address echidna_caller = 0x00a329c0648769a73afac7f9381e08fb43dbea70;
+      constructor(){
+         paused(); // pause the contract
+         owner = 0x0; // lose ownership
+       }
+         // add the property
+     }
+```
        
    Once Echidna found the bug, fix the issue, and re-try your property with Echidna.
    
@@ -201,24 +208,26 @@ contract Token{
 
    Consider the following extension of the token:
    
-   ```import "token.sol";
-      
-      contract MintableToken is Token{
-          int totalMinted;
-          int totalMintable;
+```Solidity
+   import "token.sol"; 
+   contract MintableToken is Token{
+      int totalMinted;
+      int totalMintable;
           
-          function MintableToken(int _totalMintable){
-              totalMintable = _totalMintable;
-          }
+      function MintableToken(int _totalMintable){
+         totalMintable = _totalMintable;
+      }
           
-          function mint(uint value) isOwner(){
-             require(int(value) + totalMinted < totalMintable);
-             totalMinted += int(value);
-             balances[msg.sender] += value;
-          }
-      }```
+      function mint(uint value) isOwner(){
+          require(int(value) + totalMinted < totalMintable);
+          totalMinted += int(value);
+          balances[msg.sender] += value;
+       }
+    }
+    
+```
       
-   Use the [version of token.sol] ( https://github.com/trailofbits/publications/blob/master/workshops/Automated%20Smart%20Contracts%20Audit%20-%20TruffleCon%202018/echidna/exercises/bonus/token.sol#L1) containing the fixes of the previous exercices.
+   Use the [version of token.sol](https://github.com/trailofbits/publications/blob/master/workshops/Automated%20Smart%20Contracts%20Audit%20-%20TruffleCon%202018/echidna/exercises/bonus/token.sol#L1) containing the fixes of the previous exercices.
    
    Create a scenario, where `echidna_caller (0x00a329c0648769a73afac7f9381e08fb43dbea70)`          becomes the owner of the contract at construction, and `totalMintable` is set to 10,000.        Recall that Echidna needs a constructor without argument.
    
