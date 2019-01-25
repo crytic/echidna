@@ -57,7 +57,9 @@ contract Token{
  an error.
  
  The following property checks that the caller has no more than 1000 tokens:
-       ```Solidity
+ 
+ 
+     ```Solidity
          function echidna_balance_under_1000()
          ```
  Use inheritance to separate your contract from your properties:
