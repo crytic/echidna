@@ -58,7 +58,9 @@ contract Token{
  
  The following property checks that the caller has no more than 1000 tokens:
  ```Solidity
-      function useBalance()
+     function echidna_balance_under_1000() public view returns(bool){
+          return balances[msg.sender] <= 1000;
+     }
  ```
  Use inheritance to separate your contract from your properties:
      ```Solidity
