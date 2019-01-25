@@ -57,14 +57,15 @@ contract Token{
  an error.
  
  The following property checks that the caller has no more than 1000 tokens:
- 
-        ```function echidna_balance_under_1000() public view returns(bool){
+       ```Solidity
+       function echidna_balance_under_1000() public view returns(bool){
                 return balances[msg.sender] <= 1000;
-            }```
+            }
+           ```
             
  Use inheritance to separate your contract from your properties:
-    
-       ```contract TestToken is Token{
+     ```Solidity
+     contract TestToken is Token{
             function echidna_balance_under_1000() public view returns(bool){
                 return balances[msg.sender] <= 1000;
             }
@@ -92,13 +93,12 @@ contract Token{
 ## Summary: Testing a property
  
  The following summarizes the run of echidna on our example:
- 
-         ```contract TestToken is Token{
+     ```Solidity
+      contract TestToken is Token{
                constructor() public {}
-               
-               function echidna_balance_under_1000() public view returns(bool){
-                    return balances[msg.sender] <= 1000;
-               }
+                  function echidna_balance_under_1000() public view returns(bool){
+                      return balances[msg.sender] <= 1000;
+                   }
             }```
             
            
