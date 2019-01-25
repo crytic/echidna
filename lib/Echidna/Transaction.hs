@@ -30,49 +30,62 @@ import qualified Data.Vector as V
 
 import Echidna.ABI
 
--- Note: I currently don't model gas cost, nonces, or signatures here
-data Tx = Tx { _call  :: Either SolCall ByteString
-             , _src   :: Addr
-             , _dst   :: Addr
-             , _value :: Word
+-- | A transaction is either a @CREATE@ or a regular call with an origin, destination, and value.
+-- Note: I currently don't model gas cost, nonces, or signatures here.
+data Tx = Tx { _call  :: Either SolCall ByteString -- | Either a call or code for a @CREATE@
+             , _src   :: Addr                      -- | Origin
+             , _dst   :: Addr                      -- | Destination
+             , _value :: Word                      -- | Value
              } deriving (Eq, Ord, Show)
 
 makeLenses ''Tx
 
+-- | A contract is just an address with an ABI (for our purposes).
 type ContractA = (Addr, [SolSignature])
 
+-- | The world is made our of humans with an address, and contracts with an address + ABI.
 data World = World { _senders   :: [Addr]
                    , _receivers :: [ContractA]
                    }
 
 makeLenses ''World
 
+-- | Given generators for an origin, destination, value, and function call, generate a call
+-- transaction. Note: This doesn't generate @CREATE@s because I don't know how to do that at random.
 genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m) 
-          => ([Addr] -> m Addr)                       -- Sender generator
-          -> ([ContractA] -> m ContractA)             -- Receiver generator
-          -> (Addr -> ContractA -> m SolCall)         -- Call generator
-          -> (Addr -> ContractA -> SolCall -> m Word) -- Value generator
+          => ([Addr] -> m Addr)                       -- ^ Sender generator
+          -> ([ContractA] -> m ContractA)             -- ^ Receiver generator
+          -> (Addr -> ContractA -> m SolCall)         -- ^ Call generator
+          -> (Addr -> ContractA -> SolCall -> m Word) -- ^ Value generator
           -> m Tx
 genTxWith s r c v = use hasLens >>= \case(World ss rs) -> do s' <- s ss
                                                              r' <- r rs
                                                              c' <- c s' r'
                                                              Tx (Left c') s' (fst r') <$> v s' r' c'
 
+-- | Synthesize a random 'Transaction', not using a dictionary.
 genTx :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m) => m Tx
-genTx = genTxWith (rElem "sender list") (rElem "recipient list") (const $ genInteractions . snd) (\_ _ _ -> pure 0)
+genTx = genTxWith (rElem "sender list") (rElem "recipient list")
+                  (const $ genInteractions . snd) (\_ _ _ -> pure 0)
 
+-- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
 genTxM :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m, MonadReader y m, Has GenConf y) => m Tx
-genTxM = genTxWith (rElem "sender list") (rElem "recipient list") (const $ genInteractionsM . snd) (\_ _ _ -> pure 0)
+genTxM = genTxWith (rElem "sender list") (rElem "recipient list")
+                   (const $ genInteractionsM . snd) (\_ _ _ -> pure 0)
 
+-- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool
 canShrinkTx (Tx (Right _) _ _ 0)    = False
 canShrinkTx (Tx (Left (_,l)) _ _ 0) = any canShrinkAbiValue l
 canShrinkTx _                       = True
 
+-- | Given a 'Transaction', generate a random \"smaller\" 'Transaction', preserving origin,
+-- destination, value, and call signature.
 shrinkTx :: MonadRandom m => Tx -> m Tx
 shrinkTx (Tx c s d (C _ v)) = let c' = either (fmap Left . shrinkAbiCall) (fmap Right . pure) c in
   liftM4 Tx c' (pure s) (pure d) $ w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral v)
 
+-- | Given a 'Set' of 'Transaction's, generate a similar 'Transaction' at random.
 spliceTxs :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m) => Set Tx -> m Tx
 spliceTxs ts = let l = S.toList ts; (cs, ss) = unzip $ (\(Tx c s _ _) -> (c,s)) <$> l in
   genTxWith (const . rElem "sender list" $ ss) (rElem "recipient list")
@@ -80,11 +93,15 @@ spliceTxs ts = let l = S.toList ts; (cs, ss) = unzip $ (\(Tx c s _ _) -> (c,s)) 
             (\ _ _ (n,_) -> let valOf (Tx c _ _ v) = if elem n $ c ^? _Left . _1 then v else 0
                             in rElem "values" $ valOf <$> l)
 
+-- | Lift an action in the context of a component of some 'MonadState' to an action in the
+-- 'MonadState' itself.
 liftSH :: (MonadState a m, Has b a) => State b x -> m x
 liftSH = S.state . runState . zoom hasLens
 
+-- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
+-- 'Transaction's \"on-chain\".
 setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
-setupTx (Tx c s r v) = liftSH . sequence_ $
+setupTx (Tx c s r v) = S.state . runState . zoom hasLens . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= 0xffffffff
   , env . origin .= s, state . caller .= s, state . callvalue .= v, setup] where
     setup = case c of

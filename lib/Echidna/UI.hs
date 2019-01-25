@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 
@@ -38,6 +37,7 @@ import Echidna.Exec
 import Echidna.Test
 import Echidna.Transaction
 
+-- | Pretty-print some 'AbiValue'.
 ppAbiValue :: AbiValue -> String
 ppAbiValue (AbiUInt _ n)         = show n
 ppAbiValue (AbiInt  _ n)         = show n
@@ -51,50 +51,61 @@ ppAbiValue (AbiArrayDynamic _ v) =
 ppAbiValue (AbiArray      _ _ v) =
   "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
 
+-- | Pretty-print some 'AbiCall'.
 ppSolCall :: SolCall -> String
 ppSolCall (t, vs) = T.unpack t ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
 
+-- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.
 data Role = Sender | Receiver | Ambiguous
 
+-- | Rules for pretty-printing addresses based on their role in a transaction.
 type Names = Role -> Addr -> String
 
+-- | Given rules for pretty-printing associated address, pretty-print a 'Transaction'.
 ppTx :: (MonadReader x m, Has Names x) => Tx -> m String
 ppTx (Tx c s r v) = let sOf = either ppSolCall (const "<CREATE>") in
   view hasLens <&> \f -> sOf c ++ f Sender s ++ f Receiver r
                       ++ (if v == 0 then "" else "Value: " ++ show v)
 
+-- | Given a number of boxes checked and a number of total boxes, pretty-print progress in box-checking.
 progress :: Int -> Int -> String
 progress n m = "(" ++ show n ++ "/" ++ show m ++ ")"
 
+-- | Pretty-print the status of a solved test.
 ppFail :: (MonadReader x m, Has Names x) => Maybe (Int, Int) -> [Tx] -> m String
 ppFail _ [] = pure "failed with no transactions made ⁉️  "
 ppFail b xs = let status = case b of
                                 Nothing    -> ""
                                 Just (n,m) -> ", shrinking " ++ progress n m in
- (("failed!💥  \n  Call sequence" ++ status ++ ":\n") ++) <$> unlines . fmap ("    " ++) <$> mapM ppTx xs
+ (("failed!💥  \n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> mapM ppTx xs
 
+-- | Pretty-print the status of a test.
 ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x) => TestState -> m String
 ppTS (Failed e)  = pure $ "could not evaluate ☣\n  " ++ show e
 ppTS (Solved l)  = ppFail Nothing l
-ppTS Passed      = pure $ "passed! 🎉"
+ppTS Passed      = pure "passed! 🎉"
 ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _) ->
                      if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
 ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m) 
                                                                               else Nothing) l
 
+-- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m String
 ppTests (Campaign ts _) = unlines <$> mapM (\((n, _), s) -> ((T.unpack n ++ ": ") ++ ) <$> ppTS s) ts
 
+-- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: Map W256 (Set Int) -> String
 ppCoverage s = "Unique instructions: " ++ show (coveragePoints s)
             ++ "\nUnique codehashes: " ++ show (length s)
 
+-- | Render 'Campaign' progress as a 'Widget'.
 campaignStatus :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m (Widget ())
 campaignStatus c = let mSection = maybe emptyWidget ((hBorder <=>) . padLeft (Pad 2) . str) in do
   stats <- padLeft (Pad 2) . str <$> ppTests c <&> (<=> mSection (ppCoverage <$> c ^. coverage))
   bl <- bool emptyWidget (str "Campaign complete, C-c or esc to print report") <$> isDone c
-  pure . hCenter . hLimit 120 . joinBorders $ (borderWithLabel (str "Echidna") stats) <=> bl
+  pure . hCenter . hLimit 120 . joinBorders $ borderWithLabel (str "Echidna") stats <=> bl
 
+-- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
 monitor :: (MonadReader x m, Has CampaignConf x, Has Names x)
         => IO a -> m (App Campaign Campaign ())
 monitor cleanup = let
@@ -108,10 +119,15 @@ monitor cleanup = let
     ((,) <$> view hasLens <*> view hasLens) <&> \s ->
        App (pure . cs s) neverShowCursor (se s) pure (const $ forceAttrMap mempty)
 
+-- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
+-- once done.
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
       , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Names x)
-   => VM -> World -> [SolTest] -> m Campaign
-ui v w ts = let xfer e = use hasLens >>= \c -> (isDone c >>= ($ e c) . bool id forever) in do
+   => VM        -- ^ Initial VM state
+   -> World     -- ^ Initial world state
+   -> [SolTest] -- ^ Tests to evaluate
+   -> m Campaign
+ui v w ts = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
   bc <- liftIO $ newBChan 100
   t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts >> pure ()
   a <- monitor (killThread t)
