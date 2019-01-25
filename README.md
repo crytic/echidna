@@ -45,11 +45,13 @@ The configuration file allows users to choose EVM and test generation parameters
 
 Echidna exports an API to build powerful fuzzing systems, and has a multitude of configuration options. Unfortunately, these parts of the codebase change quickly and are thus poorly documented. The [examples directory](examples) or [Trail of Bits blog](https://blog.trailofbits.com/2018/05/03/state-machine-testing-with-echidna/) are excellent references, or use the references below to get in touch with us directly.
 
-##Getting started
+## Getting started
 
 Use our prebuilt Docker container to quickly install and run the toolkit:
-         ```$ docker pull trailofbits/eth-security-toolbox
-            $ docker run -it trailofbits/eth-security-toolbox```
+         ```
+         $ docker pull trailofbits/eth-security-toolbox
+         $ docker run -it trailofbits/eth-security-toolbox
+            ```
 
 Alternatively, build the image from scratch:
         ```$ git clone https://github.com/trailofbits/eth-security-toolbox.git
