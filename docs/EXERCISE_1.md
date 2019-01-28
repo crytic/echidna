@@ -1,8 +1,8 @@
-# Exercice 1 
+# Exercise 1 
 
 **Table of contents:**
 - [Targeted contract](#Targeted-contract)
-- [Exercice](#exercice)
+- [Exercise](#exercice)
 - [Solution](#solution)
 
 
@@ -75,7 +75,7 @@ Once Echidna found the bug, fix the issue, and re-try your property with Echidna
    
 ## Solution
 
-This solution can be found in ```exercises/exercise1/exercise1_solution.sol``` or click [here](https://github.com/trailofbits/publications/blob/master/workshops/Automated%20Smart%20Contracts%20Audit%20-%20TruffleCon%202018/echidna/exercises/exercise1/exercise1_solution.sol)
+This solution can be found in ```/exercises/exercise1/exercise1_solution.sol``` or click [here](https://github.com/trailofbits/publications/blob/master/workshops/Automated%20Smart%20Contracts%20Audit%20-%20TruffleCon%202018/echidna/exercises/exercise1/exercise1_solution.sol)
   
 ```Solidity
 pragma solidity 0.4.25;
