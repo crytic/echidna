@@ -52,7 +52,7 @@ We will test the following contract *[exercises/token.sol](https://github.com/tr
     
 ```
      
-## Exercice
+## Exercise
 
 Add a property to check that `echidna_caller` cannot have more than an initial balance of
 10000.
@@ -75,4 +75,25 @@ Once Echidna found the bug, fix the issue, and re-try your property with Echidna
    
 ## Solution
 
+This solution can be found in ```exercises/exercise1/exercise1_solution.sol``` or click [here](https://github.com/trailofbits/publications/blob/master/workshops/Automated%20Smart%20Contracts%20Audit%20-%20TruffleCon%202018/echidna/exercises/exercise1/exercise1_solution.sol)
   
+```Solidity
+pragma solidity 0.4.25;
+import "token.sol";
+
+contract TestToken is Token {
+
+    address echidna_caller = 0x00a329c0648769a73afac7f9381e08fb43dbea70;
+
+    function TestToken() public{
+        balances[echidna_caller] = 10000;
+    }
+
+    // add the property
+    function echidna_test_balance() view public returns(bool){
+        return balances[echidna_caller] <= 10000;
+    }   
+
+}
+
+```
