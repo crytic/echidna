@@ -1,9 +1,9 @@
-# Exercice 3 
-This exercice requires to finish the [exercice 1](EXERCICE_1.md) and the [exercice 2](EXERCICE_2.md).
+# Exercise 3 
+This exercice requires to finish the [exercise 1](EXERCISE_1.md) and the [exercise 2](EXERCISE_2.md).
 
 **Table of contents:**
 - [Targeted contract](#targeted-contract)
-- [Exercice](#exercice)
+- [Exercise](#exercice)
 - [Solution](#solution)
 
 Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
@@ -18,7 +18,7 @@ We will test the following contract *[exercises/token.sol](https://github.com/tr
  contract Ownership{
     address owner = msg.sender;
     function Owner(){
-         owner = msg.sender;
+        owner = msg.sender;
      }
      modifier isOwner(){
          require(owner == msg.sender);
@@ -29,8 +29,8 @@ We will test the following contract *[exercises/token.sol](https://github.com/tr
   contract Pausable is Ownership{
      bool is_paused;
      modifier ifNotPaused(){
-              require(!is_paused);
-              _;
+                require(!is_paused);
+               _;
       }
        
       function paused() isOwner public{
@@ -52,7 +52,7 @@ We will test the following contract *[exercises/token.sol](https://github.com/tr
     
 ```
      
-## Exercice
+## Exercise
 
 Consider the following extension of the token (*[exercises/bonus/bonus.sol](https://github.com/trailofbits/publications/blob/master/workshops/Automated%20Smart%20Contracts%20Audit%20-%20TruffleCon%202018/echidna/exercises/bonus/bonus.sol)*):
    
@@ -84,3 +84,27 @@ Add a property to check if `echidna_caller` cannot mint more than 10,000 tokens.
 Once Echidna found the bug, fix the issue, and re-try your property with Echidna.
    
 ## Solution
+
+This solution can be found in ```/exercises/bonus/bonus_solution.sol``` or click [here](https://github.com/trailofbits/publications/blob/master/workshops/Automated%20Smart%20Contracts%20Audit%20-%20TruffleCon%202018/echidna/exercises/bonus/bonus_solution.sol)
+
+```Solidity
+import "bonus.sol";
+
+
+contract TestToken is MintableToken{
+
+    address echidna_caller = 0x00a329c0648769a73afac7f9381e08fb43dbea70;
+    function TestToken() MintableToken(10000){
+        owner = echidna_caller;
+    }
+
+    // add the property
+    function echidna_test_balance() view public returns(bool){
+        return balances[msg.sender] <= 10000;
+    }   
+
+
+
+}
+
+```
