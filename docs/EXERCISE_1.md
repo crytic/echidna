@@ -2,7 +2,7 @@
 
 **Table of contents:**
 - [Targeted contract](#Targeted-contract)
-- [Exercise](#exercice)
+- [Exercise](#exercise)
 - [Solution](#solution)
 
 
