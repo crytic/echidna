@@ -52,7 +52,7 @@ We will test the following contract *[exercises/token.sol](https://github.com/tr
     
 ```
      
-## Exercise
+## Exercice
 
 Consider the following extension of the token (*[exercises/bonus/bonus.sol](https://github.com/trailofbits/publications/blob/master/workshops/Automated%20Smart%20Contracts%20Audit%20-%20TruffleCon%202018/echidna/exercises/bonus/bonus.sol)*):
    

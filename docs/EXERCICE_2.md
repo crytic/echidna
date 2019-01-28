@@ -53,7 +53,7 @@ We will test the following contract *[exercises/token.sol](https://github.com/tr
     
 ```
      
-## Exercise
+## Exercice
 
 Consider `paused()` to be called at deployment, and the ownership removed.
 

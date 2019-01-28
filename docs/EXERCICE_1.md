@@ -1,6 +1,10 @@
 # Exercice 1 
 
 **Table of contents:**
+- [Targeted contract](#Targeted-contract)
+- [Exercice](#exercice)
+- [Solution](#solution)
+
 
 Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
 
@@ -48,7 +52,7 @@ We will test the following contract *[exercises/token.sol](https://github.com/tr
     
 ```
      
-## Exercise
+## Exercice
 
 Add a property to check that `echidna_caller` cannot have more than an initial balance of
 10000.
