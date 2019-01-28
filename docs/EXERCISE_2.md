@@ -1,10 +1,10 @@
-# Exercice 2
+# Exercise 2
 
-This exercice requires to finish the [exercice 1](EXERCICE_1.md).
+This exercise requires to finish the [exercise 1](EXERCIsE_1.md).
 
 **Table of contents:**
 - [Targeted contract](#targeted-contract)
-- [Exercice](#exercice)
+- [Exercise](#exercice)
 - [Solution](#solution)
 
 Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
@@ -30,8 +30,8 @@ We will test the following contract *[exercises/token.sol](https://github.com/tr
   contract Pausable is Ownership{
      bool is_paused;
      modifier ifNotPaused(){
-              require(!is_paused);
-              _;
+               require(!is_paused);
+               _;
       }
        
       function paused() isOwner public{
@@ -53,7 +53,7 @@ We will test the following contract *[exercises/token.sol](https://github.com/tr
     
 ```
      
-## Exercice
+## Exercise
 
 Consider `paused()` to be called at deployment, and the ownership removed.
 
@@ -77,5 +77,29 @@ Once Echidna found the bug, fix the issue, and re-try your property with Echidna
    
 ## Solution
 
-   
+ This solution can be found in ```/exercises/exercise2/exercise2_solution.sol``` or click [here](https://github.com/trailofbits/publications/blob/master/workshops/Automated%20Smart%20Contracts%20Audit%20-%20TruffleCon%202018/echidna/exercises/exercise2/exercise2_solution.sol)  
+ 
+ 
+```Solidity
+
+pragma solidity 0.4.25;
+import "token.sol";
+
+contract TestToken is Token {
+
+    address echidna_caller = 0x00a329c0648769a73afac7f9381e08fb43dbea70;
+
+    function TestToken(){
+        paused();
+        owner = 0x0; // lose ownership
+    }
+
+    // add the property
+    function echidna_no_transfer() view returns(bool){
+        return is_paused == true;
+    }   
+
+}
+
+```
    
