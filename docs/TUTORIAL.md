@@ -9,11 +9,11 @@ The last part contains advanced usages.
 **Table of contents:**
 - [Requirements](#requirements)
 - [How to test a property](TESTING_A_PROPERTY.md)
-- [Exercice 1](EXERCICE_1.md)
-- [Exercice 2](EXERCICE_2.md)
-- [Exercice 3](EXERCICE_3.md)
-- [Advanced: How to use Echidna with multiple contracts](TODO)
-- [Advanced: How to write efficient properties](TODO)
+- [Exercise 1](EXERCISE_1.md)
+- [Exercise 2](EXERCISE_2.md)
+- [Exercise 3](EXERCISE_3.md)
+- [Advanced: How to use Echidna with multiple contracts](#TODO)
+- [Advanced: How to write efficient properties](#TODO)
 
 Join the team on Slack at: https://empireslacking.herokuapp.com/ #ethereum
 
