@@ -70,3 +70,12 @@ executables:
     main: Main.hs
     source-dirs: gastest
     dependencies: echidna
+
+tests:
+  stack-test:
+    main: Spec.hs
+    source-dirs: src/test
+    dependencies:
+      - echidna
+      - tasty
+      - tasty-hunit
