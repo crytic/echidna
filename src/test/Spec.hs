@@ -1,18 +1,19 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TupleSections #-}
 
 import Test.Tasty
 import Test.Tasty.HUnit as HU
 
-import Echidna.Config (defaultConfig, returnType)
-import Echidna.Exec (ePropertySeq, checkTest)
-import Echidna.Solidity (readContracts, loadSolidity)
+import Echidna.Campaign (Campaign(..), campaign, TestState(..))
+import Echidna.Config (defaultConfig)
+import Echidna.Solidity (contracts, loadSolidity)
+import Echidna.Test (SolTest)
+import Echidna.Transaction (World(..))
 
 import Control.Lens ((^.))
 import Control.Monad.Reader (runReaderT)
-
-import Hedgehog as H
-import Hedgehog.Internal.Property as HIP hiding (defaultConfig)
+import Data.Maybe (fromJust)
+import Data.Text (Text)
+import EVM (state, contract)
 
 main :: IO ()
 main = defaultMain tests
@@ -24,30 +25,44 @@ solidityTests :: TestTree
 solidityTests = testGroup "Solidity-HUnit"
   [
     HU.testCase "Get Contracts" $ do
-      c <- flip runReaderT defaultConfig $ readContracts c1
+      c <- flip runReaderT defaultConfig $ contracts c1
       if length c == 3
       then return ()
       else assertFailure "Somehow we did not read 3 contracts"
-  , HU.testCase "True Properties" $ do
-      testContract c2 True
-  , HU.testCase "False Property" $ do
-      testContract c3 False
-  , HU.testCase "Mixed Properties" $ do
-      testContract c4 False
+  , HU.testCase "Old CLI" $ do
+      testContract c2 $
+        \(Campaign tests _) ->
+          let findtest' = flip findtest tests in
+          passed (fromJust (findtest' "echidna_alwaystrue")) &&
+          solved (fromJust (findtest' "echidna_sometimesfalse"))
   ]
   where c1 = "./src/test/contracts/num-contracts.sol"
-        c2 = "./src/test/contracts/cli_1.sol"
-        c3 = "./src/test/contracts/cli_2.sol"
-        c4 = "./src/test/contracts/cli_3.sol"
+        c2 = "./src/test/contracts/cli.sol"
 
-testContract :: FilePath -> Bool -> HU.Assertion
-testContract file expected = do
-  let f = checkTest (defaultConfig ^. returnType)
-  x <- flip runReaderT defaultConfig $ do
+testContract :: FilePath -> (Campaign -> Bool) -> HU.Assertion
+testContract file f = do
+  results <- flip runReaderT defaultConfig $ do
     (v,a,ts) <- loadSolidity file Nothing
-    let prop t = ePropertySeq (`f` t) a v >>= \x -> return (HIP.PropertyName $ show t, x)
-    checkParallel . H.Group (HIP.GroupName file) =<< mapM prop ts
-  if x == expected
+    let r = v ^. state . contract
+    let w = World [0] [(r, a)]
+    let ts' = zip ts (repeat r)
+    campaign (pure ()) v w ts'
+  if f results
   then return ()
-  else assertFailure failureMessage
-    where failureMessage = if expected then "Property failed" else "Property succeeded"
+  else assertFailure "Undesired campaign results found"
+
+solved :: TestState -> Bool
+solved (Large _ _) = True
+solved (Solved _)  = True
+solved _           = False
+
+passed :: TestState -> Bool
+passed Passed = True
+passed _      = False
+
+questionable :: TestState -> Bool
+questionable = not . passed
+
+findtest :: Text -> [(SolTest, TestState)] -> Maybe TestState
+findtest _ [] = Nothing
+findtest t ((st, ts):xs) = if t == fst st then Just ts else findtest t xs
