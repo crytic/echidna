@@ -1,72 +1,77 @@
-{-# LANGUAGE FlexibleContexts, TemplateHaskell #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Echidna.Config where
 
-import Control.Monad.Catch    (MonadThrow(..))
-import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Reader   (ReaderT, runReaderT)
 import Control.Lens
-import Control.Exception      (Exception)
+import Control.Monad.Catch (MonadThrow)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Reader (ReaderT(..))
+import Data.Has (Has(..))
 import Data.Aeson
-import Data.Text              (Text)
-import Hedgehog               (ShrinkLimit, TestLimit)
+import EVM (result)
 
-import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString as BS
 import qualified Data.Yaml as Y
 
-import Echidna.Property (PropertyType(..))
+import Echidna.Campaign
+import Echidna.ABI
+import Echidna.Solidity
+import Echidna.Test
+import Echidna.UI
 
-import EVM.Types (Addr, W256)
+-- | Our big glorious global config type, just a product of each local config.
+data EConfig = EConfig { _cConf :: CampaignConf
+                       , _gConf :: GenConf
+                       , _nConf :: Names
+                       , _sConf :: SolConf
+                       , _tConf :: TestConf
+                       }
+makeLenses ''EConfig
 
-data Config = Config
-  { _solcArgs      :: Maybe String
-  , _epochs        :: Int
-  , _range         :: Int
-  , _contractAddr  :: Addr
-  , _sender        :: Addr
-  , _addrList      :: Maybe [Addr]
-  , _gasLimit      :: W256 
-  , _testLimit     :: TestLimit
-  , _shrinkLimit   :: ShrinkLimit
-  , _returnType    :: PropertyType
-  , _prefix        :: Text
-  , _printCoverage :: Bool
-  , _outputJson    :: Bool
-  }
-  deriving Show
+instance Has CampaignConf EConfig where
+  hasLens = cConf
 
-makeLenses ''Config
+instance Has GenConf EConfig where
+  hasLens = gConf
 
-instance FromJSON Config where
+instance Has Names EConfig where
+  hasLens = nConf
+
+instance Has SolConf EConfig where
+  hasLens = sConf
+
+instance Has TestConf EConfig where
+  hasLens = tConf
+
+instance FromJSON EConfig where
   parseJSON (Object v) =
-    let fromInt s n = ((v .:? s :: Y.Parser (Maybe Int)) <&> fmap fromIntegral) .!= n in
-    Config <$> v .:? "solcArgs"      .!= Nothing
-           <*> v .:? "epochs"        .!= 2
-           <*> v .:? "range"         .!= 10
-           <*> v .:? "contractAddr"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
-           <*> v .:? "sender"        .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-           <*> v .:? "addrList"      .!= Nothing
-           <*> v .:? "gasLimit"      .!= 0xffffffffffffffff
-           <*> fromInt "testLimit"   10000
-           <*> fromInt "shrinkLimit" 1000
-           <*> v .:? "returnType"    .!= ShouldReturnTrue
-           <*> v .:? "prefix"        .!= "echidna_"
-           <*> v .:? "printCoverage" .!= False
-           <*> v .:? "outputJson"    .!= False
-  parseJSON _          = parseJSON (Object mempty)
+    let tc = do reverts <- v .:? "reverts" .!= True
+                sender  <- v .:? "sender"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                let good = if reverts then (`elem` [ResTrue, ResRevert]) else (== ResTrue)
+                return $ TestConf (good . maybe ResOther classifyRes . view result) (const sender) in
+    EConfig <$> (CampaignConf <$> v .:? "testLimit"   .!= 10000
+                              <*> v .:? "seqLen"      .!= 10
+                              <*> v .:? "shrinkLimit" .!= 5000
+                              <*> pure Nothing)
+            <*> pure (GenConf 0 mempty mempty)
+            <*> pure (const $ const mempty)
+            <*> (SolConf <$> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
+                         <*> v .:? "deployer"     .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                         <*> v .:? "prefix  "     .!= "echidna_"
+                         <*> v .:? "solcArgs  "   .!= "")
+            <*> tc
+  parseJSON _ = parseJSON (Object mempty)
 
-newtype ParseException = ParseException FilePath
-
-defaultConfig :: Config
+-- | The default config used by Echidna (see the 'FromJSON' instance for values used).
+defaultConfig :: EConfig
 defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEither' ""
 
-instance Show ParseException where
-  show (ParseException f) = "Could not parse config file " ++ show f
-
-instance Exception ParseException
-
-parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> m Config
+-- | Try to parse an Echidna config file, throw an error if we can't.
+parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> m EConfig
 parseConfig f = liftIO (BS.readFile f) >>= Y.decodeThrow
 
-withDefaultConfig :: ReaderT Config m a -> m a
+-- | Run some action with the default configuration, useful in the REPL.
+withDefaultConfig :: ReaderT EConfig m a -> m a
 withDefaultConfig = (`runReaderT` defaultConfig)
