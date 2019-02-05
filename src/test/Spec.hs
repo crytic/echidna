@@ -49,7 +49,7 @@ solidityTests = testGroup "Solidity-HUnit"
           let sol' = head sol in
           case sol' ^. call of
                Left ("f", [AbiInt _ (-1)]) -> True
-               _                       -> False
+               _                           -> False
   ]
   where c1 = "./src/test/contracts/num-contracts.sol"
         c2 = "./src/test/contracts/cli.sol"
