@@ -7,13 +7,16 @@ import Echidna.Campaign (Campaign(..), campaign, TestState(..))
 import Echidna.Config (defaultConfig)
 import Echidna.Solidity (contracts, loadSolidity)
 import Echidna.Test (SolTest)
-import Echidna.Transaction (World(..))
+import Echidna.Transaction (World(..), Tx, call, value)
 
 import Control.Lens ((^.))
 import Control.Monad.Reader (runReaderT)
 import Data.Maybe (fromJust)
 import Data.Text (Text)
 import EVM (state, contract)
+import EVM.ABI (AbiValue(..))
+
+import Debug.Trace
 
 main :: IO ()
 main = defaultMain tests
@@ -35,9 +38,22 @@ solidityTests = testGroup "Solidity-HUnit"
           let findtest' = flip findtest tests in
           passed (fromJust (findtest' "echidna_alwaystrue")) &&
           solved (fromJust (findtest' "echidna_sometimesfalse"))
+  , HU.testCase "Optimal Solve" $ do
+      testContract c3 $
+        \(Campaign tests _) ->
+          let findtest' = flip findtest tests in
+          let tr = fromJust (findtest' "echidna_revert") in
+          solved tr &&
+          let sol = solve tr in
+          length sol == 1 &&
+          let sol' = head sol in
+          case sol' ^. call of
+               Left ("f", [AbiInt _ (-1)]) -> True
+               _                       -> False
   ]
   where c1 = "./src/test/contracts/num-contracts.sol"
         c2 = "./src/test/contracts/cli.sol"
+        c3 = "./examples/solidity/basic/revert.sol"
 
 testContract :: FilePath -> (Campaign -> Bool) -> HU.Assertion
 testContract file f = do
@@ -62,6 +78,10 @@ passed _      = False
 
 questionable :: TestState -> Bool
 questionable = not . passed
+
+solve :: TestState -> [Tx]
+solve (Large _ s) = s
+solve (Solved s) = s
 
 findtest :: Text -> [(SolTest, TestState)] -> Maybe TestState
 findtest _ [] = Nothing
