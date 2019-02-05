@@ -1,146 +1,112 @@
-{-# LANGUAGE BangPatterns, DeriveGeneric, FlexibleContexts, KindSignatures, LambdaCase, StrictData #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns #-}
 
-module Echidna.Exec (
-    VMState(..)
-  , VMAction(..)
-  , checkTest
-  , checkBoolExpTest
-  , checkRevertTest
-  , checkTrueOrRevertTest
-  , checkFalseOrRevertTest
-  , eCommand
-  , eCommandUsing
-  , ePropertySeq
-  , ePropertyUsing
-  , execCall
-  , execCallUsing
-  , module Echidna.Internal.Runner
-  , module Echidna.Internal.JsonRunner
-  ) where
+module Echidna.Exec where
 
-import Control.Lens               ((&), (^.), (.=), (?~))
-import Control.Monad.Catch        (MonadCatch)
-import Control.Monad.State.Strict (MonadState, evalState, execState, get, put)
-import Control.Monad.Reader       (MonadReader, runReaderT, ask)
-import Data.List                  (intercalate)
-import Data.Text                  (Text)
-import Data.Typeable              (Typeable)
-import Data.Vector                (fromList)
-
-import Hedgehog
-import Hedgehog.Gen               (sequential)
-import Hedgehog.Internal.State    (Action(..))
-import Hedgehog.Internal.Property (PropertyConfig(..), mapConfig)
-import Hedgehog.Range             (linear)
-
+import Control.Lens
+import Control.Monad.Catch (Exception, MonadThrow(..))
+import Control.Monad.State.Strict (MonadState, execState, get, put)
+import Data.Either (isRight)
+import Data.Has (Has(..))
+import Data.Map.Strict (Map)
+import Data.Maybe (fromMaybe)
+import Data.Ord (comparing)
+import Data.Set (Set)
 import EVM
-import EVM.ABI      (AbiValue(..), abiCalldata, abiValueType, encodeAbiValue)
 import EVM.Concrete (Blob(..))
-import EVM.Exec     (exec)
+import EVM.Exec (exec)
+import EVM.Types (W256(..))
 
-import Echidna.ABI (SolCall, SolSignature, displayAbiCall, encodeSig, genInteractions)
-import Echidna.Config (Config(..), testLimit, range, shrinkLimit)
-import Echidna.Internal.Runner
-import Echidna.Internal.JsonRunner
-import Echidna.Property (PropertyType(..))
+import qualified Data.Map as M
+import qualified Data.Set as S
 
--------------------------------------------------------------------
--- Fuzzing and Hedgehog Init
+import Echidna.Transaction
 
-execCall :: MonadState VM m => SolCall -> m VMResult
-execCall = execCallUsing exec
+-- | Broad categories of execution failures: reversions, illegal operations, and ???.
+data ErrorClass = RevertE | IllegalE | UnknownE
 
-execCallUsing :: MonadState VM m => m VMResult -> SolCall -> m VMResult
-execCallUsing m (t,vs) = do og <- get
-                            cleanUp 
-                            state . calldata .= cd
-                            m >>= \case x@VMFailure{} -> put (og & result ?~ x) >> return x
-                                        x@VMSuccess{} -> return x
-  where cd = B . abiCalldata (encodeSig t $ abiValueType <$> vs) $ fromList vs
-        cleanUp = sequence_ [result .= Nothing, state . pc .= 0, state . stack .= mempty]
+-- | Given an execution error, classify it. Mostly useful for nice @pattern@s ('Reversion', 'Illegal').
+classifyError :: Error -> ErrorClass
+classifyError Revert                 = RevertE
+classifyError (UnrecognizedOpcode _) = RevertE
+classifyError StackUnderrun          = IllegalE
+classifyError BadJumpDestination     = IllegalE
+classifyError StackLimitExceeded     = IllegalE
+classifyError IllegalOverflow        = IllegalE
+classifyError _                      = UnknownE
 
-checkTest :: PropertyType -> VM -> Text -> Bool
-checkTest ShouldReturnTrue             = checkBoolExpTest True
-checkTest ShouldReturnFalse            = checkBoolExpTest False
-checkTest ShouldRevert                 = checkRevertTest
-checkTest ShouldReturnFalseRevert      = checkFalseOrRevertTest
+-- | Matches execution errors that just cause a reversion.
+pattern Reversion :: VMResult
+pattern Reversion <- VMFailure (classifyError -> RevertE)
 
-checkBoolExpTest :: Bool -> VM -> Text -> Bool
-checkBoolExpTest b v t = case evalState (execCall (t, [])) v of
-  VMSuccess (B s) -> s == encodeAbiValue (AbiBool b)
-  _               -> False
+-- | Matches execution errors caused by illegal behavior.
+pattern Illegal :: VMResult
+pattern Illegal <- VMFailure (classifyError -> IllegalE)
 
-checkRevertTest :: VM -> Text -> Bool
-checkRevertTest v t = case evalState (execCall (t, [])) v of
-  (VMFailure Revert) -> True
-  _                  -> False
+-- | We throw this when our execution fails due to something other than reversion.
+data ExecException = IllegalExec Error | UnknownFailure Error
 
-checkTrueOrRevertTest :: VM -> Text -> Bool
-checkTrueOrRevertTest v t = case evalState (execCall (t, [])) v of
-  (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool True)
-  (VMFailure Revert) -> True
-  _                  -> False
+instance Show ExecException where
+  show (IllegalExec e) = "VM attempted an illegal operation: " ++ show e
+  show (UnknownFailure e) = "VM failed for unhandled reason, " ++ show e
+    ++ ". This shouldn't happen. Please file a ticket with this error message and steps to reproduce!"
 
-checkFalseOrRevertTest :: VM -> Text -> Bool
-checkFalseOrRevertTest v t = case evalState (execCall (t, [])) v of
-  (VMSuccess (B s))  -> s == encodeAbiValue (AbiBool False)
-  (VMFailure Revert) -> True
-  _                  -> False
+instance Exception ExecException
 
+-- | Given an execution error, throw the appropriate exception.
+vmExcept :: MonadThrow m => Error -> m ()
+vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e}
 
-newtype VMState (v :: * -> *) =
-  VMState VM
- 
-instance Show (VMState v) where
-  show (VMState v) = "EVM state, current result: " ++ show (v ^. result)
- 
-newtype VMAction (v :: * -> *) = 
-  Call SolCall
- 
-instance Show (VMAction v) where
-  show (Call c) = displayAbiCall c
+-- | Given an error handler, an execution function, and a transaction, execute that transaction
+-- using the given execution strategy, handling errors with the given handler.
+execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m VMResult
+execTxWith h m t = do og <- get
+                      setupTx t
+                      res <- m
+                      case (res, isRight $ t ^. call) of
+                        (Reversion,   _)         -> put og
+                        (VMFailure x, _)         -> h x
+                        (VMSuccess (B bc), True) -> hasLens %= execState ( replaceCodeOfSelf bc
+                                                                        >> loadContract (t ^. dst))
+                        _                        -> pure ()
+                      return res
 
-instance HTraversable VMAction where
-  htraverse _ (Call b) = pure $ Call b
+-- | Execute a transaction "as normal".
+execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m VMResult
+execTx = execTxWith vmExcept $ liftSH exec
 
+-- | Capture the current PC and codehash. This should identify instructions uniquely (maybe? EVM is weird).
+pointCoverage :: (MonadState x m, Has (Map W256 (Set Int)) x, Has VM x) => m ()
+pointCoverage = use hasLens >>= \v ->
+  hasLens %= M.insertWith (const . S.insert $ v ^. state . pc) (h v) mempty where
+    h v = fromMaybe (W256 maxBound) $ v ^? env . contracts . at (v ^. state . contract) . _Just . codehash
 
-eCommandUsing :: (MonadGen n, MonadTest m, Typeable a)
-              => n SolCall
-              -> (VMAction Concrete -> m a)
-              -> (VM -> Bool)
-              -> Command n m VMState
-eCommandUsing gen ex p = Command (\_ -> pure $ Call <$> gen) ex
-  [ Ensure $ \_ (VMState v) _ _ -> assert $ p v
-  , Update $ \(VMState v) (Call c) _ -> VMState $ execState (execCall c) v
-  ]
-  
+-- | Capture just the current PC. WARNING: PCs are not unique across different contracts or contexts.
+fastCoverage :: (MonadState x m, Has (Set Int) x, Has VM x) => m ()
+fastCoverage = use hasLens >>= \v -> hasLens %= S.insert (v ^. state . pc)
 
-eCommand :: (MonadGen n, MonadTest m) => n SolCall -> (VM -> Bool) -> Command n m VMState
-eCommand = flip eCommandUsing (\ _ -> pure ())
+-- | Given a way of capturing coverage info, execute while doing so once per instruction.
+usingCoverage :: (MonadState x m, Has VM x) => m () -> m VMResult
+usingCoverage cov = maybe (cov >> liftSH exec1 >> usingCoverage cov) pure =<< use (hasLens . result)
 
-configProperty :: Config -> PropertyConfig -> PropertyConfig
-configProperty config x = x { propertyTestLimit   = config ^. testLimit
-                            , propertyShrinkLimit = config ^. shrinkLimit
-                            }
+-- | Execute a transaction, capturing the PC and codehash of each instruction executed.
+execTxRecC :: (MonadState x m, Has VM x, Has (Map W256 (Set Int)) x, MonadThrow m) => Tx -> m VMResult
+execTxRecC = execTxWith vmExcept (usingCoverage pointCoverage)
 
-ePropertyUsing :: (MonadCatch m, MonadTest m, MonadReader Config n)
-             => [Command Gen m VMState]
-             -> (m () -> PropertyT IO ())
-             -> VM             
-             -> n Property
-ePropertyUsing cs f v = do
-  config <- ask
-  return $ mapConfig (configProperty config) . property $
-    f . executeSequential (VMState v) =<< forAllWith printCallSeq
-    (sequential (linear 1 (config ^. range)) (VMState v) cs)
-  where printCallSeq = ("Call sequence: " ++) . intercalate "\n               " .
-          map showCall . sequentialActions
-        showCall (Action i _ _ _ _ _) = show i ++ ";"
+-- | Given good point coverage, count unique points.
+coveragePoints :: Map W256 (Set Int) -> Int
+coveragePoints = sum . M.map S.size
 
-
-ePropertySeq :: (MonadReader Config m)
-             => (VM -> Bool)   -- Predicate to fuzz for violations of
-             -> [SolSignature] -- Type signatures to fuzz
-             -> VM             -- Initial state
-             -> m Property
-ePropertySeq p ts vm = ask >>= \c -> ePropertyUsing [eCommand (runReaderT (genInteractions ts) c) p] id vm
+-- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
+-- transaction if it finds new coverage.
+execTxOptC :: (MonadState x m, Has VM x, Has (Map W256 (Set Int)) x, Has (Set Tx) x, MonadThrow m)
+           => Tx -> m VMResult
+execTxOptC t = let hint = id :: Map W256 (Set Int) -> Map W256 (Set Int) in do
+  og  <- hasLens <<.= mempty
+  res <- execTxRecC t
+  new <- M.unionWith S.union og . hint <$> use hasLens
+  if comparing coveragePoints new og == GT then hasLens %= S.insert t else pure ()
+  return res
