@@ -179,12 +179,19 @@ canShrinkAbiValue _ = True
 dropBits :: forall a m. (Bits a, Bounded a, Integral a, MonadRandom m) => a -> m a
 dropBits x = (x .&.) . fromIntegral <$> getRandomR bounds where
   bounds :: (Integer, Integer)
-  bounds = (fromIntegral (minBound :: a), fromIntegral (maxBound :: a))
+  bounds = (fromIntegral (0 :: a), fromIntegral (maxBound :: a))
+
+-- | Given a number with a bitvector representation, randomly set some bits to one.
+incBits :: forall a m. (Bits a, Bounded a, Integral a, MonadRandom m) => a -> m a
+incBits x = (x .|.) . fromIntegral <$> getRandomR bounds where
+  bounds :: (Integer, Integer)
+  bounds = (fromIntegral (minBound :: a), fromIntegral (0 :: a))
+
 
 -- | Given an 'AbiValue', generate a random \"smaller\" (simpler) value of the same 'AbiType'.
 shrinkAbiValue :: MonadRandom m => AbiValue -> m AbiValue
 shrinkAbiValue (AbiUInt n m) = AbiUInt n <$> dropBits m
-shrinkAbiValue (AbiInt n m)  = AbiInt n  <$> dropBits m
+shrinkAbiValue (AbiInt n m)  = AbiInt n  <$> (if (m > 0) then dropBits m else incBits m )
 shrinkAbiValue x@AbiAddress{} = pure x
 shrinkAbiValue (AbiBool _)    = pure $ AbiBool False
 shrinkAbiValue (AbiBytes n b)      = AbiBytes n <$> addNulls b
