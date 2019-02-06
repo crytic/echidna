@@ -28,30 +28,26 @@ solidityTests = testGroup "Solidity-HUnit"
   [
     HU.testCase "Get Contracts" $ do
       c <- flip runReaderT defaultConfig $ contracts c1
-      if length c == 3
-      then return ()
-      else assertFailure "Somehow we did not read 3 contracts"
-  , HU.testCase "Old CLI" $ do
-      testContract c2 $
-        \c -> do
-          let findtest' = flip findtest (c ^. tests)
-              t1 = fromJust $ findtest' "echidna_alwaystrue"
-              t2 = fromJust $ findtest' "echidna_sometimesfalse"
-          assertBool "echidna_alwaystrue did not pass" $ passed t1
-          assertBool "echidna_sometimesfalse unsolved" $ solved t2
-  , HU.testCase "Optimal Solve" $ do
-      testContract c3 $
-        \c -> do
-          let findtest' = flip findtest (c ^. tests)
-              tr = fromJust $ findtest' "echidna_revert"
-          assertBool "echidna_revert unsoved" $ solved tr
-          let sol = solve tr
-          assertBool "solution has length > 1" $ length sol == 1
-          let sol' = head sol
-          assertBool "solution is not f(-1)" $
-            case sol' ^. call of
-                 Left ("f", [AbiInt _ (-1)]) -> True
-                 _                           -> False
+      assertBool "Somehow we did not read 3 contracts" $ length c == 3
+  , HU.testCase "Old CLI" $ testContract c2 $
+      \c -> do
+        let findtest' = flip findtest (c ^. tests)
+            t1 = fromJust $ findtest' "echidna_alwaystrue"
+            t2 = fromJust $ findtest' "echidna_sometimesfalse"
+        assertBool "echidna_alwaystrue did not pass" $ passed t1
+        assertBool "echidna_sometimesfalse unsolved" $ solved t2
+  , HU.testCase "Optimal Solve" $ testContract c3 $
+      \c -> do
+        let findtest' = flip findtest (c ^. tests)
+            tr = fromJust $ findtest' "echidna_revert"
+        assertBool "echidna_revert unsoved" $ solved tr
+        let sol = solve tr
+        assertBool "solution has length > 1" $ length sol == 1
+        let sol' = head sol
+        assertBool "solution is not f(-1)" $
+          case sol' ^. call of
+               Left ("f", [AbiInt _ (-1)]) -> True
+               _                           -> False
   ]
   where c1 = "./src/test/contracts/num-contracts.sol"
         c2 = "./src/test/contracts/cli.sol"
