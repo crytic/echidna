@@ -50,7 +50,7 @@ executables:
     dependencies: echidna
 
 tests:
-  stack-test:
+  echidna-testsuite:
     main: Spec.hs
     source-dirs: src/test
     dependencies:
