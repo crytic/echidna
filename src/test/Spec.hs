@@ -1,13 +1,14 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ViewPatterns #-}
 
 import Test.Tasty
 import Test.Tasty.HUnit as HU
 
-import Echidna.Campaign (Campaign(..), campaign, TestState(..))
+import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..))
 import Echidna.Config (defaultConfig)
 import Echidna.Solidity (contracts, loadSolidity)
 import Echidna.Test (SolTest)
-import Echidna.Transaction (World(..), Tx, call, value)
+import Echidna.Transaction (World(..), Tx, call)
 
 import Control.Lens ((^.))
 import Control.Monad.Reader (runReaderT)
@@ -16,13 +17,11 @@ import Data.Text (Text)
 import EVM (state, contract)
 import EVM.ABI (AbiValue(..))
 
-import Debug.Trace
-
 main :: IO ()
-main = defaultMain tests
+main = defaultMain spec
 
-tests :: TestTree
-tests = testGroup "Echidna" [solidityTests]
+spec :: TestTree
+spec = testGroup "Echidna" [solidityTests]
 
 solidityTests :: TestTree
 solidityTests = testGroup "Solidity-HUnit"
@@ -34,38 +33,39 @@ solidityTests = testGroup "Solidity-HUnit"
       else assertFailure "Somehow we did not read 3 contracts"
   , HU.testCase "Old CLI" $ do
       testContract c2 $
-        \(Campaign tests _) ->
-          let findtest' = flip findtest tests in
-          passed (fromJust (findtest' "echidna_alwaystrue")) &&
-          solved (fromJust (findtest' "echidna_sometimesfalse"))
+        \c -> do
+          let findtest' = flip findtest (c ^. tests)
+              t1 = fromJust $ findtest' "echidna_alwaystrue"
+              t2 = fromJust $ findtest' "echidna_sometimesfalse"
+          assertBool "echidna_alwaystrue did not pass" $ passed t1
+          assertBool "echidna_sometimesfalse unsolved" $ solved t2
   , HU.testCase "Optimal Solve" $ do
       testContract c3 $
-        \(Campaign tests _) ->
-          let findtest' = flip findtest tests in
-          let tr = fromJust (findtest' "echidna_revert") in
-          solved tr &&
-          let sol = solve tr in
-          length sol == 1 &&
-          let sol' = head sol in
-          case sol' ^. call of
-               Left ("f", [AbiInt _ (-1)]) -> True
-               _                           -> False
+        \c -> do
+          let findtest' = flip findtest (c ^. tests)
+              tr = fromJust $ findtest' "echidna_revert"
+          assertBool "echidna_revert unsoved" $ solved tr
+          let sol = solve tr
+          assertBool "solution has length > 1" $ length sol == 1
+          let sol' = head sol
+          assertBool "solution is not f(-1)" $
+            case sol' ^. call of
+                 Left ("f", [AbiInt _ (-1)]) -> True
+                 _                           -> False
   ]
   where c1 = "./src/test/contracts/num-contracts.sol"
         c2 = "./src/test/contracts/cli.sol"
         c3 = "./examples/solidity/basic/revert.sol"
 
-testContract :: FilePath -> (Campaign -> Bool) -> HU.Assertion
+testContract :: FilePath -> (Campaign -> HU.Assertion) -> HU.Assertion
 testContract file f = do
   results <- flip runReaderT defaultConfig $ do
     (v,a,ts) <- loadSolidity file Nothing
     let r = v ^. state . contract
-    let w = World [0] [(r, a)]
-    let ts' = zip ts (repeat r)
+        w = World [0] [(r, a)]
+        ts' = zip ts (repeat r)
     campaign (pure ()) v w ts'
-  if f results
-  then return ()
-  else assertFailure "Undesired campaign results found"
+  f results
 
 solved :: TestState -> Bool
 solved (Large _ _) = True
@@ -76,12 +76,10 @@ passed :: TestState -> Bool
 passed Passed = True
 passed _      = False
 
-questionable :: TestState -> Bool
-questionable = not . passed
-
 solve :: TestState -> [Tx]
 solve (Large _ s) = s
 solve (Solved s) = s
+solve _ = undefined
 
 findtest :: Text -> [(SolTest, TestState)] -> Maybe TestState
 findtest _ [] = Nothing
