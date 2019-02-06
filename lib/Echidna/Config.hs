@@ -21,7 +21,7 @@ import Echidna.Solidity
 import Echidna.Test
 import Echidna.UI
 
--- | Our big glorious global config type, just a product of each local config.
+-- | Our big glorious global config type, just a product of each local config.,
 data EConfig = EConfig { _cConf :: CampaignConf
                        , _gConf :: GenConf
                        , _nConf :: Names
@@ -60,7 +60,8 @@ instance FromJSON EConfig where
             <*> (SolConf <$> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                          <*> v .:? "deployer"     .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                          <*> v .:? "prefix  "     .!= "echidna_"
-                         <*> v .:? "solcArgs  "   .!= "")
+                         <*> v .:? "solcArgs  "   .!= ""
+                         <*> v .:? "quiet"        .!= False)
             <*> tc
   parseJSON _ = parseJSON (Object mempty)
 

@@ -5,12 +5,12 @@ import Test.Tasty
 import Test.Tasty.HUnit as HU
 
 import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..))
-import Echidna.Config (defaultConfig)
-import Echidna.Solidity (contracts, loadSolidity)
+import Echidna.Config (EConfig, defaultConfig, sConf)
+import Echidna.Solidity (contracts, loadSolidity, quiet)
 import Echidna.Test (SolTest)
 import Echidna.Transaction (World(..), Tx, call)
 
-import Control.Lens ((^.))
+import Control.Lens ((^.), (&), (.~))
 import Control.Monad.Reader (runReaderT)
 import Data.Maybe (fromJust)
 import Data.Text (Text)
@@ -27,7 +27,7 @@ solidityTests :: TestTree
 solidityTests = testGroup "Solidity-HUnit"
   [
     HU.testCase "Get Contracts" $ do
-      c <- flip runReaderT defaultConfig $ contracts c1 True
+      c <- flip runReaderT testConfig $ contracts c1
       assertBool "Somehow we did not read 3 contracts" $ length c == 3
   , HU.testCase "Always True" $ testContract c5 $
       \c -> do
@@ -63,8 +63,8 @@ solidityTests = testGroup "Solidity-HUnit"
 
 testContract :: FilePath -> (Campaign -> HU.Assertion) -> HU.Assertion
 testContract file f = do
-  results <- flip runReaderT defaultConfig $ do
-    (v,a,ts) <- loadSolidity file Nothing True
+  results <- flip runReaderT testConfig $ do
+    (v,a,ts) <- loadSolidity file Nothing
     let r = v ^. state . contract
         w = World [0] [(r, a)]
         ts' = zip ts (repeat r)
@@ -94,3 +94,6 @@ findtest' = (fromJust .) . findtest
 findtest'' :: [(SolTest, TestState)] -> Text -> Maybe TestState
 findtest'' [] _ = Nothing
 findtest'' ((st, ts):xs) t = if t == fst st then Just ts else findtest'' xs t
+
+testConfig :: EConfig
+testConfig = defaultConfig & sConf . quiet .~ True

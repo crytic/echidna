@@ -63,31 +63,35 @@ data SolConf = SolConf { _contractAddr :: Addr   -- ^ Contract address to use
                        , _deployer     :: Addr   -- ^ Contract deployer address to use
                        , _prefix       :: Text   -- ^ Function name prefix used to denote tests
                        , _solcArgs     :: String -- ^ Args to pass to @solc@
+                       , _quiet        :: Bool   -- ^ Option to suppress some output and stderr of @solc@
                        }
 makeLenses ''SolConf
 
 -- | Given a file, try to compile it and get a list of its contracts, throwing exceptions if necessary.
-contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> Bool -> m [SolcContract]
-contracts fp stfu = view (hasLens . solcArgs) >>= liftIO . solc >>= (\case
-  Nothing -> throwM CompileFailure
-  Just m  -> pure . toList $ fst m) where
-    solc a = do
-      stderr' <- stderr
-      readSolc =<< writeSystemTempFile "" =<< readCreateProcess (proc "solc" (usual <> words a)) { std_err = stderr' } ""
-    usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", fp]
-    stderr = if stfu
-             then UseHandle <$> openFile "/dev/null" WriteMode
-             else pure Inherit
-    
+contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
+contracts fp = do
+  a <- view (hasLens . solcArgs)
+  stfu <- view (hasLens . quiet)
+  pure (a, stfu) >>= liftIO . solc >>= (\case
+    Nothing -> throwM CompileFailure
+    Just m  -> pure . toList $ fst m) where
+      solc (a, stfu) = do
+        stderr <- if stfu
+                  then UseHandle <$> openFile "/dev/null" WriteMode
+                  else pure Inherit
+        readSolc =<< writeSystemTempFile "" =<< readCreateProcess (proc "solc" (usual <> words a)) { std_err = stderr } ""
+      usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", fp]
+
 -- | Given a file and a possible contract name, compile the file as solidity, then, if a name is
 -- given, try to return the specified contract, otherwise, return the first contract in the file,
 -- throwing errors if necessary.
-selected :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> Maybe Text -> Bool -> m SolcContract
-selected fp name stfu = do cs <- contracts fp stfu
-                           c <- choose cs $ ((pack fp <> ":") <>) <$> name
-                           liftIO $ when (isNothing name && length cs > 1) $ putStrLn "Multiple contracts found in file, only analyzing the first"
-                           liftIO $ when (not stfu) $ putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
-                           return c
+selected :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> Maybe Text -> m SolcContract
+selected fp name = do cs <- contracts fp
+                      c <- choose cs $ ((pack fp <> ":") <>) <$> name
+                      stfu <- view (hasLens . quiet)
+                      liftIO $ when (isNothing name && length cs > 1) $ putStrLn "Multiple contracts found in file, only analyzing the first"
+                      liftIO $ when (not stfu) $ putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
+                      return c
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose cs    (Just n) = maybe (throwM $ ContractNotFound n) pure $
@@ -98,10 +102,10 @@ selected fp name stfu = do cs <- contracts fp stfu
 -- said contract and return an initial VM state with it loaded, its ABI (as 'SolSignature's), and the
 -- names of its Echidna tests.
 loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
-             => FilePath -> Maybe Text -> Bool -> m (VM, [SolSignature], [Text])
-loadSolidity fp name stfu = do
-    c <- selected fp name stfu
-    (SolConf ca d pref _) <- view hasLens
+             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
+loadSolidity fp name = do
+    c <- selected fp name
+    (SolConf ca d pref _ _) <- view hasLens
     let bc = c ^. creationCode
         abi = map (liftM2 (,) (view methodName) (fmap snd . view methodInputs)) . toList $ c ^. abiMap
         (tests, funs) = partition (isPrefixOf pref . fst) abi
