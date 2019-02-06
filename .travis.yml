@@ -30,12 +30,12 @@ install:
 
 script:
  - echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
- - GHC_OPTIONS="-Werror"
- - STACK_OPTS="$STACK_OPTS --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib"
+ #- GHC_OPTIONS="-Werror"
+ #- STACK_OPTS="$STACK_OPTS --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib"
  - |
    set -ex
    # Run tests
-   stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
+   stack --no-terminal test #--ghc-options="$GHC_OPTIONS" $STACK_OPTS
    set +ex
 
 after_success:
