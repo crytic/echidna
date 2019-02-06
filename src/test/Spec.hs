@@ -29,6 +29,10 @@ solidityTests = testGroup "Solidity-HUnit"
     HU.testCase "Get Contracts" $ do
       c <- flip runReaderT defaultConfig $ contracts c1 True
       assertBool "Somehow we did not read 3 contracts" $ length c == 3
+  , HU.testCase "Always True" $ testContract c5 $
+      \c -> do
+        let tr = findtest' c "echidna_true"
+        assertBool "echidna_true somehow did not pass" $ passed tr
   , HU.testCase "Old CLI" $ testContract c2 $
       \c -> do
         let t1 = findtest' c "echidna_alwaystrue"
@@ -55,6 +59,7 @@ solidityTests = testGroup "Solidity-HUnit"
         c2 = "./src/test/contracts/cli.sol"
         c3 = "./examples/solidity/basic/revert.sol"
         c4 = "./examples/solidity/basic/payable.sol"
+        c5 = "./src/test/contracts/true.sol"
 
 testContract :: FilePath -> (Campaign -> HU.Assertion) -> HU.Assertion
 testContract file f = do
