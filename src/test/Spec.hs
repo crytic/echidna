@@ -56,7 +56,7 @@ solidityTests = testGroup "Solidity-HUnit"
         assertBool "echidna_test unsolved" $ solved tr
   ]
   where c1 = "./src/test/contracts/num-contracts.sol"
-        c2 = "./src/test/contracts/cli.sol"
+        c2 = "./examples/solidity/basic/flags.sol"
         c3 = "./examples/solidity/basic/revert.sol"
         c4 = "./examples/solidity/basic/payable.sol"
         c5 = "./src/test/contracts/true.sol"
