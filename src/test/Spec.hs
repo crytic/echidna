@@ -27,7 +27,7 @@ solidityTests :: TestTree
 solidityTests = testGroup "Solidity-HUnit"
   [
     HU.testCase "Get Contracts" $ do
-      c <- flip runReaderT defaultConfig $ contracts c1
+      c <- flip runReaderT defaultConfig $ contracts c1 True
       assertBool "Somehow we did not read 3 contracts" $ length c == 3
   , HU.testCase "Old CLI" $ testContract c2 $
       \c -> do
@@ -59,7 +59,7 @@ solidityTests = testGroup "Solidity-HUnit"
 testContract :: FilePath -> (Campaign -> HU.Assertion) -> HU.Assertion
 testContract file f = do
   results <- flip runReaderT defaultConfig $ do
-    (v,a,ts) <- loadSolidity file Nothing
+    (v,a,ts) <- loadSolidity file Nothing True
     let r = v ^. state . contract
         w = World [0] [(r, a)]
         ts' = zip ts (repeat r)
