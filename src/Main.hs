@@ -39,7 +39,7 @@ main = do (Options f c cov conf) <- execParser opts
           cfg <- maybe (pure defaultConfig) parseConfig conf
           flip runReaderT (cfg & cConf %~ (if cov then \k -> k {knownCoverage = Just mempty}
                                                   else id)) $ do
-            (v,a,ts) <- loadSolidity f (pack <$> c)
+            (v,a,ts) <- loadSolidity f (pack <$> c) False
             let r = v ^. state . contract
             let w = World [0] [(r, a)]
             let ts' = zip ts $ repeat r
