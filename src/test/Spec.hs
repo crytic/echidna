@@ -31,16 +31,14 @@ solidityTests = testGroup "Solidity-HUnit"
       assertBool "Somehow we did not read 3 contracts" $ length c == 3
   , HU.testCase "Old CLI" $ testContract c2 $
       \c -> do
-        let findtest' = flip findtest (c ^. tests)
-            t1 = fromJust $ findtest' "echidna_alwaystrue"
-            t2 = fromJust $ findtest' "echidna_sometimesfalse"
+        let t1 = findtest' c "echidna_alwaystrue"
+            t2 = findtest' c "echidna_sometimesfalse"
         assertBool "echidna_alwaystrue did not pass" $ passed t1
         assertBool "echidna_sometimesfalse unsolved" $ solved t2
   , HU.testCase "Optimal Solve" $ testContract c3 $
       \c -> do
-        let findtest' = flip findtest (c ^. tests)
-            tr = fromJust $ findtest' "echidna_revert"
-        assertBool "echidna_revert unsoved" $ solved tr
+        let tr = findtest' c "echidna_revert"
+        assertBool "echidna_revert unsolved" $ solved tr
         let sol = solve tr
         assertBool "solution has length > 1" $ length sol == 1
         let sol' = head sol
@@ -48,10 +46,15 @@ solidityTests = testGroup "Solidity-HUnit"
           case sol' ^. call of
                Left ("f", [AbiInt _ (-1)]) -> True
                _                           -> False
+  , HU.testCase "Payment amounts" $ testContract c4 $
+      \c -> do
+        let tr = findtest' c "echidna_test"
+        assertBool "echidna_test unsolved" $ solved tr
   ]
   where c1 = "./src/test/contracts/num-contracts.sol"
         c2 = "./src/test/contracts/cli.sol"
         c3 = "./examples/solidity/basic/revert.sol"
+        c4 = "./examples/solidity/basic/payable.sol"
 
 testContract :: FilePath -> (Campaign -> HU.Assertion) -> HU.Assertion
 testContract file f = do
@@ -77,6 +80,12 @@ solve (Large _ s) = s
 solve (Solved s) = s
 solve _ = undefined
 
-findtest :: Text -> [(SolTest, TestState)] -> Maybe TestState
-findtest _ [] = Nothing
-findtest t ((st, ts):xs) = if t == fst st then Just ts else findtest t xs
+findtest :: Campaign -> Text -> Maybe TestState
+findtest = findtest'' . (^. tests)
+
+findtest' :: Campaign -> Text -> TestState
+findtest' = (fromJust .) . findtest
+
+findtest'' :: [(SolTest, TestState)] -> Text -> Maybe TestState
+findtest'' [] _ = Nothing
+findtest'' ((st, ts):xs) t = if t == fst st then Just ts else findtest'' xs t
