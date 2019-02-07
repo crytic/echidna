@@ -47,10 +47,10 @@ instance Has TestConf EConfig where
 
 instance FromJSON EConfig where
   parseJSON (Object v) =
-    let tc = do reverts <- v .:? "reverts" .!= True
-                sender  <- v .:? "sender"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+    let tc = do reverts <- v .:? "reverts"   .!= True
+                psender  <- v .:? "psender"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                 let good = if reverts then (`elem` [ResTrue, ResRevert]) else (== ResTrue)
-                return $ TestConf (good . maybe ResOther classifyRes . view result) (const sender) in
+                return $ TestConf (good . maybe ResOther classifyRes . view result) (const psender) in
     EConfig <$> (CampaignConf <$> v .:? "testLimit"   .!= 10000
                               <*> v .:? "seqLen"      .!= 10
                               <*> v .:? "shrinkLimit" .!= 5000
@@ -59,6 +59,7 @@ instance FromJSON EConfig where
             <*> pure (const $ const mempty)
             <*> (SolConf <$> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                          <*> v .:? "deployer"     .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                         <*> v .:? "sender"     .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
                          <*> v .:? "prefix  "     .!= "echidna_"
                          <*> v .:? "solcArgs  "   .!= ""
                          <*> v .:? "quiet"        .!= False)
