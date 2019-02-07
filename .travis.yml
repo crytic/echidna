@@ -27,6 +27,7 @@ install:
  - ./.travis/install-libsecp256k1.sh
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
+ - ./.travis/install-solc.sh
 
 script:
  - echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
