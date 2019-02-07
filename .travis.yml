@@ -36,6 +36,7 @@ script:
    set -ex
    # Run tests
    stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
+   stack install --ghc-options="$GHC_OPTIONS" $STACK_OPTS
    echidna-testsuite
    set +ex
 
