@@ -41,6 +41,6 @@ main = do (Options f c cov conf) <- execParser opts
                                                   else id)) $ do
             (v,a,ts) <- loadSolidity f (pack <$> c)
             let r = v ^. state . contract
-            let w = World [0] [(r, a)]
+            let w = World (view sender $ view sConf $ cfg ) [(r, a)]
             let ts' = zip ts $ repeat r
             ui v w ts' >> pure ()
