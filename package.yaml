@@ -49,6 +49,7 @@ executables:
     source-dirs: src/
     dependencies: echidna
 
+tests:
   echidna-testsuite:
     main: Spec.hs
     source-dirs: src/test
