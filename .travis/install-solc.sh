@@ -11,8 +11,8 @@ travis_retry() {
   $cmd || (sleep 2 && $cmd) || (sleep 10 && $cmd)
 }
 
-fetch_stack_osx() {
-}
+#fetch_stack_osx() {
+#}
 
 fetch_stack_linux() {
   rm -Rf solc-static-linux;
