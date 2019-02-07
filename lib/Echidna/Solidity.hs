@@ -60,6 +60,7 @@ instance Exception SolException
 -- | Configuration for loading Solidity for Echidna testing.
 data SolConf = SolConf { _contractAddr :: Addr   -- ^ Contract address to use
                        , _deployer     :: Addr   -- ^ Contract deployer address to use
+                       , _sender       :: [Addr] -- ^ Sender addresses to use
                        , _prefix       :: Text   -- ^ Function name prefix used to denote tests
                        , _solcArgs     :: String -- ^ Args to pass to @solc@
                        }
@@ -97,7 +98,7 @@ loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 loadSolidity fp name = do
     c <- selected fp name
-    (SolConf ca d pref _) <- view hasLens
+    (SolConf ca d _ pref _) <- view hasLens
     let bc = c ^. creationCode
         abi = map (liftM2 (,) (view methodName) (fmap snd . view methodInputs)) . toList $ c ^. abiMap
         (tests, funs) = partition (isPrefixOf pref . fst) abi
