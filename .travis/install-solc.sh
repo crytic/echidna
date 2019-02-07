@@ -16,7 +16,7 @@ travis_retry() {
 
 fetch_stack_linux() {
   rm -Rf solc-static-linux;
-  curl https://github.com/ethereum/solidity/releases/download/v0.4.25/solc-static-linux;
+  wget https://github.com/ethereum/solidity/releases/download/v0.4.25/solc-static-linux;
   chmod +x solc-static-linux;
   mv solc-static-linux ~/.local/bin;
 }
