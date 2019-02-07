@@ -26,5 +26,3 @@ if [ "$(uname)" = "Darwin" ]; then
 else
   travis_retry fetch_stack_linux
 fi
-
-solc --version
