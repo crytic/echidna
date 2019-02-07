@@ -35,6 +35,7 @@ script:
  - |
    set -ex
    # Run tests
+   export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
    stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
    stack install --ghc-options="$GHC_OPTIONS" $STACK_OPTS
    echidna-testsuite
