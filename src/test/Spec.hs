@@ -33,7 +33,7 @@ solidityTests = testGroup "Solidity-HUnit"
       \c -> do
         let tr = findtest' c "echidna_true"
         assertBool "echidna_true somehow did not pass" $ passed tr
-  , HU.testCase "Old CLI" $ testContract c2 $
+  , HU.testCase "Simple Flags Example" $ testContract c2 $
       \c -> do
         let t1 = findtest' c "echidna_alwaystrue"
             t2 = findtest' c "echidna_sometimesfalse"
@@ -50,15 +50,15 @@ solidityTests = testGroup "Solidity-HUnit"
           case sol' ^. call of
                Left ("f", [AbiInt _ (-1)]) -> True
                _                           -> False
-  , HU.testCase "Payment amounts" $ testContract c4 $
+  {-, HU.testCase "Payment amounts" $ testContract c4 $
       \c -> do
         let tr = findtest' c "echidna_test"
-        assertBool "echidna_test unsolved" $ solved tr
+        assertBool "echidna_test unsolved" $ solved tr -}
   ]
   where c1 = "./src/test/contracts/num-contracts.sol"
         c2 = "./examples/solidity/basic/flags.sol"
         c3 = "./examples/solidity/basic/revert.sol"
-        c4 = "./examples/solidity/basic/payable.sol"
+        --c4 = "./examples/solidity/basic/payable.sol"
         c5 = "./src/test/contracts/true.sol"
 
 testContract :: FilePath -> (Campaign -> HU.Assertion) -> HU.Assertion
