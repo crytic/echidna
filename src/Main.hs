@@ -4,12 +4,10 @@ import Control.Lens hiding (argument)
 import Control.Monad.Reader (runReaderT)
 import Data.Text (pack)
 import Options.Applicative
-import EVM
 
 import Echidna.Config
 import Echidna.Solidity
 import Echidna.Campaign
-import Echidna.Transaction
 import Echidna.UI
 
 data Options = Options
@@ -39,8 +37,5 @@ main = do (Options f c cov conf) <- execParser opts
           cfg <- maybe (pure defaultConfig) parseConfig conf
           flip runReaderT (cfg & cConf %~ (if cov then \k -> k {knownCoverage = Just mempty}
                                                   else id)) $ do
-            (v,a,ts) <- loadSolidity f (pack <$> c)
-            let r = v ^. state . contract
-            let w = World (view sender $ view sConf $ cfg ) [(r, a)]
-            let ts' = zip ts $ repeat r
-            ui v w ts' >> pure ()
+            (v, w, ts) <- loadTesting f (pack <$> c)
+            ui v w ts >> pure ()
