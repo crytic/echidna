@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ViewPatterns #-}
 
 import Test.Tasty
@@ -10,7 +11,7 @@ import Echidna.Solidity (loadTesting, quiet)
 import Echidna.Test (SolTest)
 import Echidna.Transaction (Tx, call)
 
-import Control.Lens ((^.), (&), (.~))
+import Control.Lens ((^.), (&), (.~), view)
 import Control.Monad.Reader (runReaderT)
 import Data.Maybe (fromJust)
 import Data.Text (Text)
@@ -39,7 +40,7 @@ solidityTests = testGroup "Solidity-HUnit"
         let tr = findtest' c "echidna_revert"
         assertBool "echidna_revert unsolved" $ solved tr
         let sol = solve tr
-        assertBool "solution has length > 1" $ length sol == 1
+        assertBool "solution has length /= 1" $ length sol == 1
         let sol' = head sol
         assertBool "solution is not f(-1)" $
           case sol' ^. call of
@@ -53,6 +54,12 @@ solidityTests = testGroup "Solidity-HUnit"
       \c -> do
         let tr = findtest' c "echidna_all_sender"
         assertBool "echidna_all_sender unsolved" $ solved tr
+        let sol = solve tr
+        assertBool "solution has length /= 3" $ length sol == 3
+        let calls = view call <$> sol
+        assertBool "s1 not in solution" $ any (\case {Left ("s1", _) -> True; _ -> False;}) calls
+        assertBool "s2 not in solution" $ any (\case {Left ("s2", _) -> True; _ -> False;}) calls
+        assertBool "s3 not in solution" $ any (\case {Left ("s3", _) -> True; _ -> False;}) calls
   ]
   where c2   = "./examples/solidity/basic/flags.sol"
         c3   = "./examples/solidity/basic/revert.sol"
