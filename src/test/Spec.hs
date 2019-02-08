@@ -6,15 +6,14 @@ import Test.Tasty.HUnit as HU
 
 import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..))
 import Echidna.Config (EConfig, defaultConfig, sConf)
-import Echidna.Solidity (contracts, loadSolidity, quiet)
+import Echidna.Solidity (contracts, loadTesting, quiet)
 import Echidna.Test (SolTest)
-import Echidna.Transaction (World(..), Tx, call)
+import Echidna.Transaction (Tx, call)
 
 import Control.Lens ((^.), (&), (.~))
 import Control.Monad.Reader (runReaderT)
 import Data.Maybe (fromJust)
 import Data.Text (Text)
-import EVM (state, contract)
 import EVM.ABI (AbiValue(..))
 
 main :: IO ()
@@ -25,21 +24,20 @@ spec = testGroup "Echidna" [solidityTests]
 
 solidityTests :: TestTree
 solidityTests = testGroup "Solidity-HUnit"
-  [
-    HU.testCase "Get Contracts" $ do
+  [ testCase "Get Contracts" $ do
       c <- flip runReaderT testConfig $ contracts c1
       assertBool "Somehow we did not read 3 contracts" $ length c == 3
-  , HU.testCase "Always True" $ testContract c5 $
+  , testCase "Always True" $ testContract c5 $
       \c -> do
         let tr = findtest' c "echidna_true"
         assertBool "echidna_true somehow did not pass" $ passed tr
-  , HU.testCase "Simple Flags Example" $ testContract c2 $
+  , testCase "Simple Flags Example" $ testContract c2 $
       \c -> do
         let t1 = findtest' c "echidna_alwaystrue"
             t2 = findtest' c "echidna_sometimesfalse"
         assertBool "echidna_alwaystrue did not pass" $ passed t1
         assertBool "echidna_sometimesfalse unsolved" $ solved t2
-  , HU.testCase "Optimal Solve" $ testContract c3 $
+  , testCase "Optimal Solve" $ testContract c3 $
       \c -> do
         let tr = findtest' c "echidna_revert"
         assertBool "echidna_revert unsolved" $ solved tr
@@ -50,25 +48,27 @@ solidityTests = testGroup "Solidity-HUnit"
           case sol' ^. call of
                Left ("f", [AbiInt _ (-1)]) -> True
                _                           -> False
-  {-, HU.testCase "Payment amounts" $ testContract c4 $
+  {-, testCase "Payment amounts" $ testContract c4 $
       \c -> do
         let tr = findtest' c "echidna_test"
         assertBool "echidna_test unsolved" $ solved tr -}
+  , testCase "Multisender" $ testContract c6 $
+      \c -> do
+        let tr = findtest' c "echidna_all_sender"
+        assertBool "echidna_all_sender did not pass" $ passed tr
   ]
   where c1 = "./src/test/contracts/num-contracts.sol"
         c2 = "./examples/solidity/basic/flags.sol"
         c3 = "./examples/solidity/basic/revert.sol"
         --c4 = "./examples/solidity/basic/payable.sol"
         c5 = "./src/test/contracts/true.sol"
+        c6 = "./examples/solidity/basic/multisender.sol"
 
 testContract :: FilePath -> (Campaign -> HU.Assertion) -> HU.Assertion
 testContract file f = do
   results <- flip runReaderT testConfig $ do
-    (v,a,ts) <- loadSolidity file Nothing
-    let r = v ^. state . contract
-        w = World [0] [(r, a)]
-        ts' = zip ts (repeat r)
-    campaign (pure ()) v w ts'
+    (v, w, ts) <- loadTesting file Nothing
+    campaign (pure ()) v w ts
   f results
 
 solved :: TestState -> Bool
