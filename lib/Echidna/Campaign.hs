@@ -77,7 +77,7 @@ updateTest v (Just (v', xs)) (n, t) = view (hasLens . to testLimit) >>= \tl -> (
   _                   -> snd <$> updateTest v Nothing (n,t)
 updateTest v Nothing (n, t) = view (hasLens . to shrinkLimit) >>= \sl -> (n,) <$> case t of
   Large i x | i >= sl -> pure $ Solved x
-  Large i x           -> if any canShrinkTx x || length x > 1
+  Large i x           -> if length x > 1 || any canShrinkTx x
                          then Large (i + 1) <$> evalStateT (shrinkSeq n x) v
                          else pure $ Solved x
   _                   -> pure t
