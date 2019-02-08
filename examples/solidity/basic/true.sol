@@ -1,5 +1,5 @@
 contract True {
-  function yolo() public returns (bool) {
+  function f() public returns (bool) {
     return(false);
   }
   function echidna_true() public returns (bool) {
