@@ -5,7 +5,7 @@ import Test.Tasty
 import Test.Tasty.HUnit as HU
 
 import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..))
-import Echidna.Config (EConfig, defaultConfig, sConf)
+import Echidna.Config (EConfig, defaultConfig, sConf, parseConfig)
 import Echidna.Solidity (contracts, loadTesting, quiet)
 import Echidna.Test (SolTest)
 import Echidna.Transaction (Tx, call)
@@ -27,17 +27,17 @@ solidityTests = testGroup "Solidity-HUnit"
   [ testCase "Get Contracts" $ do
       c <- flip runReaderT testConfig $ contracts c1
       assertBool "Somehow we did not read 3 contracts" $ length c == 3
-  , testCase "Always True" $ testContract c5 $
+  , testCase "Always True" $ testContract' c5 $
       \c -> do
         let tr = findtest' c "echidna_true"
         assertBool "echidna_true somehow did not pass" $ passed tr
-  , testCase "Simple Flags Example" $ testContract c2 $
+  , testCase "Simple Flags Example" $ testContract' c2 $
       \c -> do
         let t1 = findtest' c "echidna_alwaystrue"
             t2 = findtest' c "echidna_sometimesfalse"
         assertBool "echidna_alwaystrue did not pass" $ passed t1
         assertBool "echidna_sometimesfalse unsolved" $ solved t2
-  , testCase "Optimal Solve" $ testContract c3 $
+  , testCase "Optimal Solve" $ testContract' c3 $
       \c -> do
         let tr = findtest' c "echidna_revert"
         assertBool "echidna_revert unsolved" $ solved tr
@@ -52,10 +52,10 @@ solidityTests = testGroup "Solidity-HUnit"
       \c -> do
         let tr = findtest' c "echidna_test"
         assertBool "echidna_test unsolved" $ solved tr -}
-  , testCase "Multisender" $ testContract c6 $
+  , testCase "Multisender" $ testContract c6 (Right cfg6) $
       \c -> do
         let tr = findtest' c "echidna_all_sender"
-        assertBool "echidna_all_sender did not pass" $ passed tr
+        assertBool "echidna_all_sender unsolved" $ solved tr
   ]
   where c1 = "./src/test/contracts/num-contracts.sol"
         c2 = "./examples/solidity/basic/flags.sol"
@@ -63,13 +63,21 @@ solidityTests = testGroup "Solidity-HUnit"
         --c4 = "./examples/solidity/basic/payable.sol"
         c5 = "./src/test/contracts/true.sol"
         c6 = "./examples/solidity/basic/multisender.sol"
+        cfg6 = "./examples/solidity/basic/multisender.yaml"
 
-testContract :: FilePath -> (Campaign -> HU.Assertion) -> HU.Assertion
-testContract file f = do
-  results <- flip runReaderT testConfig $ do
+testContract :: FilePath -> Either EConfig FilePath -> (Campaign -> HU.Assertion) -> HU.Assertion
+testContract file cfg f = do
+  cfg' <- case cfg of
+               Left c   -> pure c
+               Right fp -> maybe (pure defaultConfig) parseConfig (Just fp)
+  let c = cfg' & sConf . quiet .~ True
+  results <- flip runReaderT c $ do
     (v, w, ts) <- loadTesting file Nothing
     campaign (pure ()) v w ts
   f results
+
+testContract' :: FilePath -> (Campaign -> HU.Assertion) -> HU.Assertion
+testContract' = flip testContract (Left defaultConfig)
 
 solved :: TestState -> Bool
 solved (Large _ _) = True
