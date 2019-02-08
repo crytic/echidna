@@ -8,7 +8,7 @@ module Echidna.Solidity where
 
 import Control.Lens
 import Control.Exception          (Exception)
-import Control.Monad              (liftM2, when)
+import Control.Monad              (liftM2, mapM_, when)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader)
@@ -104,16 +104,14 @@ selected fp name = do cs <- contracts fp
 -- names of its Echidna tests.
 loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
-loadSolidity fp name = do
+loadSolidity fp name = let ensure (l, e) = if null l then throwM e else pure () in do
     c <- selected fp name
     (SolConf ca d _ pref _ _) <- view hasLens
     let bc = c ^. creationCode
         abi = map (liftM2 (,) (view methodName) (fmap snd . view methodInputs)) . toList $ c ^. abiMap
         (tests, funs) = partition (isPrefixOf pref . fst) abi
     loaded <- execStateT (execTx $ Tx (Right bc) d ca 0) $ vmForEthrunCreation bc
-    if null abi  then throwM NoFuncs   else pure ()
-    if null tests  then throwM NoTests else pure ()
-    if null funs then throwM OnlyTests else pure ()
+    mapM_ ensure [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)]
     case find (not . null . snd) tests of
       (Just (t,_)) -> throwM $ TestArgsFound t
       Nothing      -> return (loaded, funs, fst <$> tests)
