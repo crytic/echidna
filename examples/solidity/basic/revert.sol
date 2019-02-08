@@ -10,5 +10,6 @@ contract C {
   function echidna_revert() public returns (bool) {
     if (state < 0)
       revert();
+    return true;
   }
 }
