@@ -25,7 +25,7 @@ import System.IO.Temp             (writeSystemTempFile)
 
 import Echidna.ABI (SolSignature)
 import Echidna.Exec (execTx)
-import Echidna.Transaction (Tx(..))
+import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
 import EVM.Exec     (vmForEthrunCreation)
@@ -117,3 +117,16 @@ loadSolidity fp name = do
     case find (not . null . snd) tests of
       (Just (t,_)) -> throwM $ TestArgsFound t
       Nothing      -> return (loaded, funs, fst <$> tests)
+
+-- | Basically loadSolidity, but prepares the results to be passed directly into
+-- a testing function.
+loadTesting :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+            => FilePath -> Maybe Text -> m (VM, World, [(Text, Addr)])
+loadTesting fp name = do
+  (v, a, ts) <- loadSolidity fp name
+  s <- view $ hasLens . sender
+  let r = v ^. state . contract
+      w = World s [(r, a)]
+      ts' = zip ts $ repeat r
+  return (v, w, ts')
+
