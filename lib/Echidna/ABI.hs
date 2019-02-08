@@ -189,7 +189,7 @@ incBits x = (x .|.) . fromIntegral <$> getRandomR (bounds x)
 -- | Given an 'AbiValue', generate a random \"smaller\" (simpler) value of the same 'AbiType'.
 shrinkAbiValue :: MonadRandom m => AbiValue -> m AbiValue
 shrinkAbiValue (AbiUInt n m) = AbiUInt n <$> dropBits m
-shrinkAbiValue (AbiInt n m)  = AbiInt n  <$> (if m > 0 then dropBits else incBits) m
+shrinkAbiValue (AbiInt n m)  = AbiInt n  <$> (case m `compare` 0 of {GT -> dropBits; EQ -> pure; LT -> incBits}) m
 shrinkAbiValue x@AbiAddress{} = pure x
 shrinkAbiValue (AbiBool _)    = pure $ AbiBool False
 shrinkAbiValue (AbiBytes n b)      = AbiBytes n <$> addNulls b
