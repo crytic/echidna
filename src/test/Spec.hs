@@ -6,7 +6,7 @@ import Test.Tasty.HUnit as HU
 
 import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..))
 import Echidna.Config (EConfig, defaultConfig, sConf, parseConfig)
-import Echidna.Solidity (contracts, loadTesting, quiet)
+import Echidna.Solidity (loadTesting, quiet)
 import Echidna.Test (SolTest)
 import Echidna.Transaction (Tx, call)
 
@@ -24,10 +24,7 @@ spec = testGroup "Echidna" [solidityTests]
 
 solidityTests :: TestTree
 solidityTests = testGroup "Solidity-HUnit"
-  [ testCase "Get Contracts" $ do
-      c <- flip runReaderT testConfig $ contracts c1
-      assertBool "Somehow we did not read 3 contracts" $ length c == 3
-  , testCase "Always True" $ testContract' c5 $
+  [ testCase "Always True" $ testContract' c5 $
       \c -> do
         let tr = findtest' c "echidna_true"
         assertBool "echidna_true somehow did not pass" $ passed tr
@@ -57,12 +54,11 @@ solidityTests = testGroup "Solidity-HUnit"
         let tr = findtest' c "echidna_all_sender"
         assertBool "echidna_all_sender unsolved" $ solved tr
   ]
-  where c1 = "./src/test/contracts/num-contracts.sol"
-        c2 = "./examples/solidity/basic/flags.sol"
-        c3 = "./examples/solidity/basic/revert.sol"
-        --c4 = "./examples/solidity/basic/payable.sol"
-        c5 = "./src/test/contracts/true.sol"
-        c6 = "./examples/solidity/basic/multisender.sol"
+  where c2   = "./examples/solidity/basic/flags.sol"
+        c3   = "./examples/solidity/basic/revert.sol"
+        --c4   = "./examples/solidity/basic/payable.sol"
+        c5   = "./examples/solidity/basic/true.sol"
+        c6   = "./examples/solidity/basic/multisender.sol"
         cfg6 = "./examples/solidity/basic/multisender.yaml"
 
 testContract :: FilePath -> Either EConfig FilePath -> (Campaign -> HU.Assertion) -> HU.Assertion
@@ -102,6 +98,3 @@ findtest' = (fromJust .) . findtest
 findtest'' :: [(SolTest, TestState)] -> Text -> Maybe TestState
 findtest'' [] _ = Nothing
 findtest'' ((st, ts):xs) t = if t == fst st then Just ts else findtest'' xs t
-
-testConfig :: EConfig
-testConfig = defaultConfig & sConf . quiet .~ True
