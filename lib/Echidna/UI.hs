@@ -134,7 +134,8 @@ sui t v w ts  = case t of
                  JSON     -> undefined
                  NCurses  -> ncui v w ts
                  Auto     -> do isTerminal <- liftIO $ queryTerminal (Fd 0)
-                                if isTerminal 
+                                isPipe <- liftIO $ queryTerminal (Fd 2)
+                                if isTerminal && (not isPipe)
                                 then sui NCurses v w ts 
                                 else sui Simple v w ts
 
