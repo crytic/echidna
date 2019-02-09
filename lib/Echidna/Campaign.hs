@@ -127,4 +127,4 @@ campaign u v w ts = view (hasLens . to knownCoverage) >>= \c ->
     update c    = view hasLens >>= \(CampaignConf tl q sl _ _) ->
       if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c -> step
-         | otherwise                                     -> u
+         | otherwise                                     -> return ()

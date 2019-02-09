@@ -120,23 +120,46 @@ monitor cleanup = let
     ((,) <$> view hasLens <*> view hasLens) <&> \s ->
        App (pure . cs s) neverShowCursor (se s) pure (const $ forceAttrMap mempty)
 
+-- | Select, set up and run an Echidna 'Campaign' with a given UI.
 sui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
       , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Names x)
-   => UIType    -- ^ ????
+   => UIType    -- ^ Type of UI
    -> VM        -- ^ Initial VM state
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
    -> m Campaign
-
 sui t v w ts  = case t of
-                 None     -> campaign (pure ()) v w ts
-                 Simple   -> undefined
+                 None     -> nui v w ts
+                 Simple   -> tui v w ts
                  JSON     -> undefined
                  NCurses  -> ncui v w ts
                  Auto     -> do isTerminal <- liftIO $ queryTerminal (Fd 0)
                                 if isTerminal 
                                 then sui NCurses v w ts 
                                 else sui Simple v w ts
+
+-- | Set up and run an Echidna 'Campaign' with no UI.
+nui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
+      , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Names x)
+   => VM        -- ^ Initial VM state
+   -> World     -- ^ Initial world state
+   -> [SolTest] -- ^ Tests to evaluate
+   -> m Campaign
+nui v w ts = campaign (pure ()) v w ts
+
+
+-- | Set up and run an Echidna 'Campaign' with a simple UI.
+tui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
+      , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Names x)
+   => VM        -- ^ Initial VM state
+   -> World     -- ^ Initial world state
+   -> [SolTest] -- ^ Tests to evaluate
+   -> m Campaign
+tui v w ts = let u = do c <- use hasLens
+                        b <- isDone c
+                        out <- ppTests c
+                        if b then liftIO $ putStr out else return ()
+              in campaign u v w ts
 
 
 -- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
