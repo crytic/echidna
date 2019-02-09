@@ -7,6 +7,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Echidna.Campaign where
 
@@ -20,6 +21,7 @@ import Data.Bool (bool)
 import Data.Map (Map)
 import Data.Has (Has(..))
 import Data.Set (Set)
+import GHC.Generics hiding (to)
 import EVM
 import EVM.Types (W256)
 
@@ -39,7 +41,11 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                  , knownCoverage :: Maybe (Map W256 (Set Int))
                                    -- ^ If applicable, initially known coverage. If this is 'Nothing',
                                    -- Echidna won't collect coverage information (and will go faster)
+                                 , uiType :: UIType
                                  }
+
+-- | Type of the UI to show during the campaign
+data UIType = Auto | Simple | NCurses | JSON | None deriving (Show, Read, Generic) 
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
 data TestState = Open Int             -- ^ Maybe solvable, tracking attempts already made
@@ -118,7 +124,7 @@ campaign u v w ts = view (hasLens . to knownCoverage) >>= \c ->
   execStateT runCampaign (Campaign ((,Open (-1)) <$> ts) c) where
     step        = runUpdate (updateTest v Nothing) >> u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl q sl _) ->
+    update c    = view hasLens >>= \(CampaignConf tl q sl _ _) ->
       if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c -> step
          | otherwise                                     -> u

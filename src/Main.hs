@@ -40,7 +40,8 @@ main = do (Options f c cov conf) <- execParser opts
           flip runReaderT (cfg & cConf %~ (if cov then \k -> k {knownCoverage = Just mempty}
                                                   else id)) $ do
             (v,a,ts) <- loadSolidity f (pack <$> c)
+            let uit = uiType (cfg ^. cConf)
             let r = v ^. state . contract
             let w = World (cfg ^. sConf . sender) [(r, a)]
             let ts' = zip ts $ repeat r
-            ui v w ts' >> pure ()
+            sui uit v w ts' >> pure ()

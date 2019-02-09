@@ -21,6 +21,8 @@ import Echidna.Solidity
 import Echidna.Test
 import Echidna.UI
 
+instance FromJSON UIType
+
 -- | Our big glorious global config type, just a product of each local config.
 data EConfig = EConfig { _cConf :: CampaignConf
                        , _gConf :: GenConf
@@ -54,7 +56,8 @@ instance FromJSON EConfig where
     EConfig <$> (CampaignConf <$> v .:? "testLimit"   .!= 10000
                               <*> v .:? "seqLen"      .!= 10
                               <*> v .:? "shrinkLimit" .!= 5000
-                              <*> pure Nothing)
+                              <*> pure Nothing
+                              <*> v .:? "ui"          .!= Auto)
             <*> pure (GenConf 0 mempty mempty)
             <*> pure (const $ const mempty)
             <*> (SolConf <$> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72

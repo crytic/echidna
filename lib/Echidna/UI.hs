@@ -28,7 +28,8 @@ import Graphics.Vty (Event(..), Key(..), Modifier(..), defaultConfig, mkVty)
 import Numeric (showHex)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (forkIO, killThread)
-
+import System.Posix.Terminal (queryTerminal)
+import System.Posix.Types ( Fd(..) )
 import qualified Data.Text as T
 
 import Echidna.Campaign
@@ -84,7 +85,7 @@ ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x) => TestState -> m Str
 ppTS (Failed e)  = pure $ "could not evaluate ☣\n  " ++ show e
 ppTS (Solved l)  = ppFail Nothing l
 ppTS Passed      = pure "passed! 🎉"
-ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _) ->
+ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _) ->
                      if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
 ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m) 
                                                                               else Nothing) l
@@ -119,15 +120,34 @@ monitor cleanup = let
     ((,) <$> view hasLens <*> view hasLens) <&> \s ->
        App (pure . cs s) neverShowCursor (se s) pure (const $ forceAttrMap mempty)
 
+sui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
+      , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Names x)
+   => UIType    -- ^ ????
+   -> VM        -- ^ Initial VM state
+   -> World     -- ^ Initial world state
+   -> [SolTest] -- ^ Tests to evaluate
+   -> m Campaign
+
+sui t v w ts  = case t of
+                 None     -> campaign (pure ()) v w ts
+                 Simple   -> undefined
+                 JSON     -> undefined
+                 NCurses  -> ncui v w ts
+                 Auto     -> do isTerminal <- liftIO $ queryTerminal (Fd 0)
+                                if isTerminal 
+                                then sui NCurses v w ts 
+                                else sui Simple v w ts
+
+
 -- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
 -- once done.
-ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
+ncui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
       , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Names x)
    => VM        -- ^ Initial VM state
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
    -> m Campaign
-ui v w ts = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
+ncui v w ts = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
   bc <- liftIO $ newBChan 100
   t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts >> pure ()
   a <- monitor (killThread t)

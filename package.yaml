@@ -36,6 +36,7 @@ dependencies:
   - word8
   - yaml
   - unordered-containers
+  - unix
 
 default-extensions:
   - OverloadedStrings
