@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Echidna.UI where
 
@@ -21,16 +22,20 @@ import Data.Has (Has(..))
 import Data.List (intercalate)
 import Data.Map (Map)
 import Data.Set (Set)
+import Data.Aeson (ToJSON, encode)
 import EVM (VM)
 import EVM.ABI (AbiValue(..))
 import EVM.Types (Addr, W256)
 import Graphics.Vty (Event(..), Key(..), Modifier(..), defaultConfig, mkVty)
+import GHC.Generics hiding (to)
 import Numeric (showHex)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (forkIO, killThread)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types ( Fd(..) )
+
 import qualified Data.Text as T
+import qualified Data.ByteString.Lazy.Char8 as LBS (unpack)
 
 import Echidna.Campaign
 import Echidna.ABI
@@ -94,6 +99,22 @@ ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m th
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m String
 ppTests (Campaign ts _) = unlines <$> mapM (\((n, _), s) -> ((T.unpack n ++ ": ") ++ ) <$> ppTS s) ts
 
+ppTestsJSON :: Campaign -> String
+ppTestsJSON (Campaign ts _) = LBS.unpack $ encode $ map ppJSON ts
+
+ppJSON :: (SolTest, TestState) -> JsonOutput
+ppJSON ((t,_), Passed)     = JsonOutput (T.unpack t) True Nothing
+ppJSON ((t,_), Solved ls)  = JsonOutput (T.unpack t) True (Just $ map show ls)
+ppJSON _                   = error "error in ppJSON"
+
+data JsonOutput = JsonOutput {
+    propName :: !String
+  , propTrue :: !Bool
+  , propCall :: !(Maybe [String])
+  } deriving (Generic, Show)
+
+instance ToJSON JsonOutput
+
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: Map W256 (Set Int) -> String
 ppCoverage s = "Unique instructions: " ++ show (coveragePoints s)
@@ -131,7 +152,7 @@ sui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
 sui t v w ts  = case t of
                  None     -> nui v w ts
                  Simple   -> tui v w ts
-                 JSON     -> undefined
+                 JSON     -> jsui v w ts
                  NCurses  -> ncui v w ts
                  Auto     -> do isTerminal <- liftIO $ queryTerminal (Fd 0)
                                 isPipe <- liftIO $ queryTerminal (Fd 2)
@@ -159,7 +180,21 @@ tui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
 tui v w ts = let u = do c <- use hasLens
                         b <- isDone c
                         out <- ppTests c
-                        if b then liftIO $ putStr out else return ()
+                        if b then liftIO $ print out else return ()
+              in campaign u v w ts
+
+
+-- | Set up and run an Echidna 'Campaign' with a simple UI.
+jsui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
+      , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Names x)
+   => VM        -- ^ Initial VM state
+   -> World     -- ^ Initial world state
+   -> [SolTest] -- ^ Tests to evaluate
+   -> m Campaign
+jsui v w ts = let u = do c <- use hasLens
+                         b <- isDone c
+                         j <- pure $ ppTestsJSON c
+                         if b then liftIO $ putStr j else return ()
               in campaign u v w ts
 
 
