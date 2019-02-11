@@ -15,7 +15,7 @@ import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
-import Data.List                  (find, partition)
+import Data.List                  (find, findIndices, partition)
 import Data.Maybe                 (isNothing)
 import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, pack, unpack)
@@ -30,6 +30,8 @@ import EVM hiding (contracts)
 import EVM.Exec     (vmForEthrunCreation)
 import EVM.Solidity
 import EVM.Types    (Addr)
+
+import qualified Data.ByteString as BS
 
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
@@ -104,6 +106,20 @@ loadSolidity fp name = let ensure (l, e) = if null l then throwM e else pure () 
         (tests, funs) = partition (isPrefixOf pref . fst) abi
     loaded <- execStateT (execTx $ Tx (Right bc) d ca 0) $ vmForEthrunCreation bc
     mapM_ ensure [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)]
+    liftIO $ print $ findConstants bc 
     case find (not . null . snd) tests of
       (Just (t,_)) -> throwM $ TestArgsFound t
       Nothing      -> return (loaded, funs, fst <$> tests)
+
+takeConstant :: Int -> ([Integer],[Integer]) -> [Integer]
+takeConstant n (_,xs) = take n $ drop 1 xs 
+
+findPush :: Int -> [Integer] -> [Int]
+findPush n =  findIndices (\x -> x >= 0x60 && x <= 0x60 + (toInteger (n-1)) )   
+
+findConstants_ :: Int -> [Integer] -> [[Integer]]
+findConstants_ n bs = map ((takeConstant n) . (flip splitAt bs)) (findPush n bs)
+ 
+findConstants :: BS.ByteString -> [[Integer]]
+findConstants bc = let bs = map toInteger $ BS.unpack bc 
+                  in (findConstants_ 1 bs) ++ (findConstants_ 2 bs) ++ (findConstants_ 3 bs)  
