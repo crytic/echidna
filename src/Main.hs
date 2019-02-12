@@ -40,7 +40,7 @@ main = do (Options f c cov conf) <- execParser opts
           cfg <- maybe (pure defaultConfig) parseConfig conf
           Campaign r _ <- flip runReaderT (cfg & cConf %~ (if cov then \k -> k {knownCoverage = Just mempty}
                                                                   else id)) $ do
-                                                                               (v, w, ts) <- loadTesting f (pack <$> c)
+                                                                               (v, w, ts) <- loadSolTests f (pack <$> c)
                                                                                ui v w ts
           if any (\case {Passed -> False; _ -> True;}) (snd <$> r)
           then exitWith $ ExitFailure 1

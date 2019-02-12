@@ -36,17 +36,6 @@ solidityTests = testGroup "Solidity-HUnit"
         assertBool "echidna_sometimesfalse unsolved" $ solved t2
         let sol = solve t2
         assertBool "solution has length /= 2" $ length sol == 2
-        -- the following check will fail with significantly higher probability
-        -- due to its higher requirements of being met
-        -- let calls@(call1:call2:[]) = view call <$> sol
-        -- assertBool ("solution is not 'set0(0);set1(0);', was '" ++ show calls ++ "'") $
-        --   case call1 of
-        --        Left ("set0", [AbiInt _ 0]) -> True
-        --        _                           -> False
-        --   &&
-        --   case call2 of
-        --        Left ("set1", [AbiInt _ 0]) -> True
-        --        _                           -> False
   , testCase "Optimal Solve" $ testContract' c3 $
       \c -> do
         let tr = findtest' c "echidna_revert"
@@ -58,10 +47,6 @@ solidityTests = testGroup "Solidity-HUnit"
           case sol' ^. call of
                Left ("f", [AbiInt _ (-1)]) -> True
                _                           -> False
-  {-, testCase "Payment amounts" $ testContract c4 $
-      \c -> do
-        let tr = findtest' c "echidna_test"
-        assertBool "echidna_test unsolved" $ solved tr -}
   , testCase "Multisender" $ testContract c6 (Right cfg6) $
       \c -> do
         let tr = findtest' c "echidna_all_sender"
@@ -76,7 +61,6 @@ solidityTests = testGroup "Solidity-HUnit"
   where cd   = "./examples/solidity/basic/"
         c2   = cd ++ "flags.sol"
         c3   = cd ++ "revert.sol"
-        --c4   = cd ++ "payable.sol"
         c5   = cd ++ "true.sol"
         c6   = cd ++ "multisender.sol"
         cfg6 = cd ++ "multisender.yaml"
@@ -88,7 +72,7 @@ testContract file cfg f = do
                Right fp -> maybe (pure defaultConfig) parseConfig (Just fp)
   let c = cfg' & sConf . quiet .~ True
   results <- flip runReaderT c $ do
-    (v, w, ts) <- loadTesting file Nothing
+    (v, w, ts) <- loadSolTests file Nothing
     campaign (pure ()) v w ts
   f results
 
