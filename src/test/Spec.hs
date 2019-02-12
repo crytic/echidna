@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE ViewPatterns #-}
 
 import Test.Tasty
 import Test.Tasty.HUnit as HU
@@ -74,12 +73,13 @@ solidityTests = testGroup "Solidity-HUnit"
         assertBool "s2 not in solution" $ any (\case {Left ("s2", _) -> True; _ -> False;}) calls
         assertBool "s3 not in solution" $ any (\case {Left ("s3", _) -> True; _ -> False;}) calls
   ]
-  where c2   = "./examples/solidity/basic/flags.sol"
-        c3   = "./examples/solidity/basic/revert.sol"
-        --c4   = "./examples/solidity/basic/payable.sol"
-        c5   = "./examples/solidity/basic/true.sol"
-        c6   = "./examples/solidity/basic/multisender.sol"
-        cfg6 = "./examples/solidity/basic/multisender.yaml"
+  where cd   = "./examples/solidity/basic/"
+        c2   = cd ++ "flags.sol"
+        c3   = cd ++ "revert.sol"
+        --c4   = cd ++ "payable.sol"
+        c5   = cd ++ "true.sol"
+        c6   = cd ++ "multisender.sol"
+        cfg6 = cd ++ "multisender.yaml"
 
 testContract :: FilePath -> Either EConfig FilePath -> (Campaign -> HU.Assertion) -> HU.Assertion
 testContract file cfg f = do
@@ -110,7 +110,7 @@ solve (Solved s) = s
 solve _ = undefined
 
 findtest :: Campaign -> Text -> Maybe TestState
-findtest = findtest'' . (^. tests)
+findtest = findtest'' . (view tests)
 
 findtest' :: Campaign -> Text -> TestState
 findtest' = (fromJust .) . findtest
