@@ -64,7 +64,7 @@ data SolConf = SolConf { _contractAddr :: Addr   -- ^ Contract address to use
                        , _sender       :: [Addr] -- ^ Sender addresses to use
                        , _prefix       :: Text   -- ^ Function name prefix used to denote tests
                        , _solcArgs     :: String -- ^ Args to pass to @solc@
-                       , _quiet        :: Bool   -- ^ Option to suppress some output and stderr of @solc@
+                       , _quiet        :: Bool   -- ^ Suppress @solc@ output, errors, and warnings
                        }
 makeLenses ''SolConf
 
