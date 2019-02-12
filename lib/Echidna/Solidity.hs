@@ -8,7 +8,7 @@ module Echidna.Solidity where
 
 import Control.Lens
 import Control.Exception          (Exception)
-import Control.Monad              (liftM2, mapM_, when)
+import Control.Monad              (liftM2, mapM_, when, unless)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader)
@@ -89,9 +89,9 @@ contracts fp = do
 selected :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> Maybe Text -> m SolcContract
 selected fp name = do cs <- contracts fp
                       c <- choose cs $ ((pack fp <> ":") <>) <$> name
-                      stfu <- view (hasLens . quiet)
+                      q <- view (hasLens . quiet)
                       liftIO $ when (isNothing name && length cs > 1) $ putStrLn "Multiple contracts found in file, only analyzing the first"
-                      liftIO $ when (not stfu) $ putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
+                      liftIO $ unless q $ putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
                       return c
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
