@@ -11,9 +11,6 @@ travis_retry() {
   $cmd || (sleep 2 && $cmd) || (sleep 10 && $cmd)
 }
 
-#fetch_stack_osx() {
-#}
-
 fetch_stack_linux() {
   rm -Rf solc-static-linux;
   wget https://github.com/ethereum/solidity/releases/download/v0.4.25/solc-static-linux;
@@ -21,8 +18,6 @@ fetch_stack_linux() {
   mv solc-static-linux ~/.local/bin/solc;
 }
 
-if [ "$(uname)" = "Darwin" ]; then
-  echo travis_retry fetch_stack_osx
-else
+if [ "$(uname)" != "Darwin" ]; then
   travis_retry fetch_stack_linux
 fi
