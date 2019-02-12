@@ -110,7 +110,7 @@ solve (Solved s) = s
 solve _ = undefined
 
 findtest :: Campaign -> Text -> Maybe TestState
-findtest = findtest'' . (view tests)
+findtest = findtest'' . view tests
 
 findtest' :: Campaign -> Text -> TestState
 findtest' = (fromJust .) . findtest
