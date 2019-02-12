@@ -43,5 +43,5 @@ main = do (Options f c cov conf) <- execParser opts
                                                                                (v, w, ts) <- loadSolTests f (pack <$> c)
                                                                                ui v w ts
           if any (\case {Passed -> False; _ -> True;}) (snd <$> r)
-          then exitWith $ ExitFailure 1
-          else exitSuccess
+            then exitWith $ ExitFailure 1
+            else exitSuccess
