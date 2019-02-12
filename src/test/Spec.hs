@@ -6,7 +6,7 @@ import Test.Tasty.HUnit as HU
 
 import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..))
 import Echidna.Config (EConfig, defaultConfig, sConf, parseConfig)
-import Echidna.Solidity (loadTesting, quiet)
+import Echidna.Solidity (loadSolTests, quiet)
 import Echidna.Test (SolTest)
 import Echidna.Transaction (Tx, call)
 
