@@ -14,6 +14,7 @@ import Control.Lens ((^.), (&), (.~), view)
 import Control.Monad.Reader (runReaderT)
 import Data.Maybe (fromJust)
 import Data.Text (Text)
+import Data.List (find)
 import EVM.ABI (AbiValue(..))
 
 main :: IO ()
@@ -100,5 +101,6 @@ findtest' :: Campaign -> Text -> TestState
 findtest' = (fromJust .) . findtest
 
 findtest'' :: [(SolTest, TestState)] -> Text -> Maybe TestState
-findtest'' [] _ = Nothing
-findtest'' ((st, ts):xs) t = if t == fst st then Just ts else findtest'' xs t
+findtest'' xs t = case find ((t ==) . fst . fst) xs of
+                    Just (_,ts) -> Just ts
+                    Nothing     -> Nothing
