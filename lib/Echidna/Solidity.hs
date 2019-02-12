@@ -72,14 +72,13 @@ makeLenses ''SolConf
 contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
 contracts fp = do
   a <- view (hasLens . solcArgs)
-  stfu <- view (hasLens . quiet)
-  pure (a, stfu) >>= liftIO . solc >>= (\case
+  q <- view (hasLens . quiet)
+  pure (a, q) >>= liftIO . solc >>= (\case
     Nothing -> throwM CompileFailure
     Just m  -> pure . toList $ fst m) where
-      solc (a, stfu) = do
-        stderr <- if stfu
-                  then UseHandle <$> openFile "/dev/null" WriteMode
-                  else pure Inherit
+      solc (a, q) = do
+        stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode
+                       else pure Inherit
         readSolc =<< writeSystemTempFile "" =<< readCreateProcess (proc "solc" (usual <> words a)) { std_err = stderr } ""
       usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", fp]
 
@@ -90,8 +89,9 @@ selected :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePat
 selected fp name = do cs <- contracts fp
                       c <- choose cs $ ((pack fp <> ":") <>) <$> name
                       q <- view (hasLens . quiet)
-                      liftIO $ when (isNothing name && length cs > 1) $ putStrLn "Multiple contracts found in file, only analyzing the first"
-                      liftIO $ unless q $ putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
+                      liftIO $ do
+                        when (isNothing name && length cs > 1) $ putStrLn "Multiple contracts found in file, only analyzing the first"
+                        unless q $ putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
                       return c
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
@@ -118,9 +118,9 @@ loadSolidity fp name = let ensure (l, e) = if null l then throwM e else pure () 
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
-loadTesting :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
-            => FilePath -> Maybe Text -> m (VM, World, [(Text, Addr)])
-loadTesting fp name = do
+loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+             => FilePath -> Maybe Text -> m (VM, World, [(Text, Addr)])
+loadSolTests fp name = do
   (v, a, ts) <- loadSolidity fp name
   s <- view $ hasLens . sender
   let r = v ^. state . contract
