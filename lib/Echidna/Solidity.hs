@@ -25,7 +25,7 @@ import System.Process             (readProcess)
 import System.IO.Temp             (writeSystemTempFile)
 import Prelude                    hiding (drop)
 
-import Echidna.ABI (SolSignature)
+import Echidna.ABI (SolSignature, mkConf, GenConf(..) )
 import Echidna.Exec (execTx)
 import Echidna.Transaction (Tx(..))
 
@@ -33,7 +33,7 @@ import EVM hiding (contracts)
 import EVM.Exec     (vmForEthrunCreation)
 import EVM.Solidity
 import EVM.Types    (Addr)
-
+import EVM.ABI      ( AbiValue(..) )
 import qualified Data.HashMap.Strict as HMap (toList)
 import qualified Data.Vector         as V (toList) 
 
@@ -101,7 +101,7 @@ selected fp name = do cs <- contracts fp
 -- said contract and return an initial VM state with it loaded, its ABI (as 'SolSignature's), and the
 -- names of its Echidna tests.
 loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
-             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
+             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text], GenConf)
 loadSolidity fp name = let ensure (l, e) = if null l then throwM e else pure () in do
     c <- selected fp name
     (SolConf ca d _ pref _) <- view hasLens
@@ -110,22 +110,22 @@ loadSolidity fp name = let ensure (l, e) = if null l then throwM e else pure () 
         (tests, funs) = partition (isPrefixOf pref . fst) abi
     loaded <- execStateT (execTx $ Tx (Right bc) d ca 0) $ vmForEthrunCreation bc
     mapM_ ensure [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)]
-    liftIO $ putStrLn $ "Constants found: " ++ (show $ findConstants $ c ^. contractAst)
+    vs <- return $ findConstants $ c ^. contractAst
     case find (not . null . snd) tests of
       (Just (t,_)) -> throwM $ TestArgsFound t
-      Nothing      -> return (loaded, funs, fst <$> tests)
+      Nothing      -> return (loaded, funs, fst <$> tests, mkConf 0.25 vs mempty)
 
 
 
-extractConstant :: (Text, Value) -> Maybe Integer
-extractConstant ("type", (String t)) = if (isPrefixOf "int_const" t) then Just n else Nothing
+extractConstant :: (Text, Value) -> Maybe AbiValue
+extractConstant ("type", (String t)) = if (isPrefixOf "int_const" t) then Just $ AbiInt 256 $ fromInteger n else Nothing
                                         where n = fst $ fromRight $ signed decimal $ drop 10 t
                                               fromRight (Right x) = x
                                               fromRight _         = error "error in constant parsing"
 extractConstant _                    = Nothing
 
 
-findConstants :: Value -> [Integer]
+findConstants :: Value -> [AbiValue]
 findConstants js = case js of 
                    (Object o) -> concat $ map f $ HMap.toList o
                    (Array vs) -> concat $ map findConstants $ V.toList vs
