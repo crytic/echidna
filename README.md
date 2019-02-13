@@ -61,7 +61,7 @@ docker run trailofbits/echidna
 for example
 
 ```
-docker run -v `pwd`:/src trailofbits/echidna echidna-test /src/examples/solidity/basic/flags.sol
+docker run -t -v `pwd`:/src trailofbits/echidna echidna-test /src/examples/solidity/basic/flags.sol
 ```
 
 
