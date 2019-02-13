@@ -1,6 +1,6 @@
 FROM ubuntu:bionic
 RUN apt-get update && apt-get -y upgrade
-RUN apt-get install -y curl libgmp-dev libbz2-dev libreadline-dev software-properties-common locales-all locales libsecp256k1-dev
+RUN apt-get install -y curl wget libgmp-dev libbz2-dev libreadline-dev software-properties-common locales-all locales libsecp256k1-dev
 RUN apt-get update
 RUN wget https://github.com/ethereum/solidity/releases/download/v0.4.25/solc-static-linux
 RUN chmod +x solc-static-linux
