@@ -96,6 +96,10 @@ genAbiValue (AbiArrayDynamicType t) = fmap (AbiArrayDynamic t) $ getRandomR (1, 
 genAbiCall :: MonadRandom m => SolSignature -> m SolCall
 genAbiCall = traverse $ traverse genAbiValue
 
+-- | Synthesize a random 'SolCall' given its 'SolSignature'. It uses a dictionary.
+genAbiCallDict :: (MonadReader x m, Has GenConf x, MonadRandom m, MonadThrow m) => SolSignature -> m SolCall
+genAbiCallDict = traverse $ traverse genAbiValueM
+
 -- | Synthesize a random 'SolCall' given a list of 'SolSignature's (effectively, an ABI). Doesn't use a dictionary.
 genInteractions :: (MonadThrow m, MonadRandom m) => [SolSignature] -> m SolCall
 genInteractions l = genAbiCall =<< rElem "ABI" l
@@ -236,7 +240,7 @@ genAbiValueM = genWithDict constants genAbiValue
 
 -- | Given a 'SolSignature', generate a random 'SolCalls' with that signature, possibly with a dictionary.
 genAbiCallM :: (MonadReader x m, Has GenConf x, MonadRandom m, MonadThrow m) => SolSignature -> m SolCall
-genAbiCallM = genWithDict wholeCalls genAbiCall
+genAbiCallM = genWithDict wholeCalls genAbiCallDict
 
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one, possibly with a dictionary.
 genInteractionsM :: (MonadReader x m, Has GenConf x, MonadRandom m, MonadThrow m)

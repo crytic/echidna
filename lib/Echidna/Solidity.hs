@@ -11,11 +11,11 @@ import Control.Exception          (Exception)
 import Control.Monad              (liftM2, mapM_)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
-import Control.Monad.Reader       (MonadReader)
+--import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
 import Data.Aeson                 (Value(..))
 import Data.Foldable              (toList)
-import Data.Has                   (Has(..))
+--import Data.Has                   (Has(..))
 import Data.List                  (find, partition)
 import Data.Maybe                 (isJust, isNothing, fromJust)
 import Data.Monoid                ((<>))
@@ -25,7 +25,7 @@ import System.Process             (readProcess)
 import System.IO.Temp             (writeSystemTempFile)
 import Prelude                    hiding (drop)
 
-import Echidna.ABI (SolSignature, mkConf, GenConf(..) )
+import Echidna.ABI (SolSignature) --, mkConf, GenConf(..) )
 import Echidna.Exec (execTx)
 import Echidna.Transaction (Tx(..))
 
@@ -73,8 +73,8 @@ data SolConf = SolConf { _contractAddr :: Addr   -- ^ Contract address to use
 makeLenses ''SolConf
 
 -- | Given a file, try to compile it and get a list of its contracts, throwing exceptions if necessary.
-contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
-contracts fp = view (hasLens . solcArgs) >>= liftIO . solc >>= (\case
+contracts :: (MonadIO m, MonadThrow m) => String -> FilePath -> m [SolcContract]
+contracts args fp = liftIO (solc args) >>= (\case
   Nothing -> throwM CompileFailure
   Just m  -> pure . toList $ fst m) where
     solc a = readSolc =<< writeSystemTempFile "" =<< readProcess "solc" (usual <> words a) ""
@@ -83,8 +83,9 @@ contracts fp = view (hasLens . solcArgs) >>= liftIO . solc >>= (\case
 -- | Given a file and a possible contract name, compile the file as solidity, then, if a name is
 -- given, try to return the specified contract, otherwise, return the first contract in the file,
 -- throwing errors if necessary.
-selected :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> Maybe Text -> m SolcContract
-selected fp name = do cs <- contracts fp
+selected :: (MonadIO m, MonadThrow m) => String -> FilePath -> Maybe Text -> m SolcContract
+selected args fp name = 
+                   do cs <- contracts args fp
                       c <- choose cs $ ((pack fp <> ":") <>) <$> name
                       liftIO $ if isNothing name && length cs > 1
                         then putStrLn "Multiple contracts found in file, only analyzing the first"
@@ -100,20 +101,20 @@ selected fp name = do cs <- contracts fp
 -- given, try to fine the specified contract, otherwise, find the first contract in the file. Take
 -- said contract and return an initial VM state with it loaded, its ABI (as 'SolSignature's), and the
 -- names of its Echidna tests.
-loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
-             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text], GenConf)
-loadSolidity fp name = let ensure (l, e) = if null l then throwM e else pure () in do
-    c <- selected fp name
-    (SolConf ca d _ pref _) <- view hasLens
+loadSolidity :: (MonadIO m, MonadThrow m)
+             => SolConf -> FilePath -> Maybe Text -> m (VM, [SolSignature], [Text], [AbiValue])
+loadSolidity (SolConf ca d _ pref args) fp name = let ensure (l, e) = if null l then throwM e else pure () in do
+    c <- selected args fp name
     let bc = c ^. creationCode
         abi = map (liftM2 (,) (view methodName) (fmap snd . view methodInputs)) . toList $ c ^. abiMap
         (tests, funs) = partition (isPrefixOf pref . fst) abi
     loaded <- execStateT (execTx $ Tx (Right bc) d ca 0) $ vmForEthrunCreation bc
     mapM_ ensure [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)]
     vs <- return $ findConstants $ c ^. contractAst
+    liftIO $ putStrLn $ "Constants found: " ++ (show vs)
     case find (not . null . snd) tests of
       (Just (t,_)) -> throwM $ TestArgsFound t
-      Nothing      -> return (loaded, funs, fst <$> tests, mkConf 0.25 vs mempty)
+      Nothing      -> return (loaded, funs, fst <$> tests, vs)
 
 
 

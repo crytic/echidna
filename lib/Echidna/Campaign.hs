@@ -27,6 +27,7 @@ import Echidna.ABI
 import Echidna.Exec
 import Echidna.Test
 import Echidna.Transaction
+import Echidna.Solidity
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { testLimit     :: Int
@@ -108,7 +109,7 @@ callseq v w ql = replicateM ql (evalStateT genTxM w) >>= \is -> use hasLens >>= 
 
 -- | Run a fuzzing campaign given an initial universe state and some tests. Return the 'Campaign' state once
 -- we can't solve or shrink anything.
-campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, Has GenConf x, Has TestConf x, Has CampaignConf x)
+campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, Has GenConf x, Has TestConf x, Has CampaignConf x, Has SolConf x)
          => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
          -> VM                  -- ^ Initial VM state
          -> World               -- ^ Initial world state

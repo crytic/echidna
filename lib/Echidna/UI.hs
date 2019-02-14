@@ -36,6 +36,7 @@ import Echidna.ABI
 import Echidna.Exec
 import Echidna.Test
 import Echidna.Transaction
+import Echidna.Solidity
 
 -- | Pretty-print some 'AbiValue'.
 ppAbiValue :: AbiValue -> String
@@ -122,7 +123,7 @@ monitor cleanup = let
 -- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
 -- once done.
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
-      , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Names x)
+      , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Names x, Has SolConf x)
    => VM        -- ^ Initial VM state
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
