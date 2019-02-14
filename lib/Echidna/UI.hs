@@ -149,16 +149,16 @@ sui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
    -> m Campaign
-sui t v w ts  = case t of
-                 None     -> nui v w ts
-                 Simple   -> tui v w ts
-                 JSON     -> jsui v w ts
-                 NCurses  -> ncui v w ts
-                 Auto     -> do isTerminal <- liftIO $ queryTerminal (Fd 0)
-                                isPipe <- liftIO $ queryTerminal (Fd 2)
-                                if isTerminal && (not isPipe)
-                                then sui NCurses v w ts 
-                                else sui Simple v w ts
+sui t = case t of
+         None     -> nui
+         Simple   -> tui
+         JSON     -> jsui
+         NCurses  -> ncui
+         Auto     -> (\v w ts -> do isTerminal <- liftIO $ queryTerminal (Fd 0)
+                                    isPipe <- liftIO $ queryTerminal (Fd 2)
+                                    if isTerminal && (not isPipe)
+                                    then sui NCurses v w ts
+                                    else sui Simple v w ts)
 
 -- | Set up and run an Echidna 'Campaign' with no UI.
 nui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
@@ -167,7 +167,7 @@ nui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
    -> m Campaign
-nui v w ts = campaign (pure ()) v w ts
+nui = campaign (pure ())
 
 
 -- | Set up and run an Echidna 'Campaign' with a simple UI.
@@ -177,11 +177,11 @@ tui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
    -> m Campaign
-tui v w ts = let u = do c <- use hasLens
-                        b <- isDone c
-                        out <- ppTests c
-                        if b then liftIO $ print out else return ()
-              in campaign u v w ts
+tui = let u = do c <- use hasLens
+                 b <- isDone c
+                 out <- ppTests c
+                 if b then liftIO $ print out else return ()
+              in campaign u
 
 
 -- | Set up and run an Echidna 'Campaign' with a simple UI.
@@ -191,11 +191,11 @@ jsui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
    -> m Campaign
-jsui v w ts = let u = do c <- use hasLens
-                         b <- isDone c
-                         j <- pure $ ppTestsJSON c
-                         if b then liftIO $ putStr j else return ()
-              in campaign u v w ts
+jsui = let u = do c <- use hasLens
+                  b <- isDone c
+                  j <- pure $ ppTestsJSON c
+                  if b then liftIO $ putStr j else return ()
+              in campaign u
 
 
 -- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
