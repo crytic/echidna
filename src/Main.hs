@@ -4,12 +4,11 @@ import Control.Lens hiding (argument)
 import Control.Monad.Reader (runReaderT)
 import Data.Text (pack)
 import Options.Applicative
-import EVM
+import System.Exit (exitWith, exitSuccess, ExitCode(..))
 
 import Echidna.Config
 import Echidna.Solidity
 import Echidna.Campaign
-import Echidna.Transaction
 import Echidna.UI
 
 data Options = Options
@@ -36,11 +35,8 @@ opts = info (options <**> helper) $ fullDesc
 
 main :: IO ()
 main = do (Options f c cov conf) <- execParser opts
-          cfg <- maybe (pure defaultConfig) parseConfig conf
-          flip runReaderT (cfg & cConf %~ (if cov then \k -> k {knownCoverage = Just mempty}
-                                                  else id)) $ do
-            (v,a,ts) <- loadSolidity f (pack <$> c)
-            let r = v ^. state . contract
-            let w = World (cfg ^. sConf . sender) [(r, a)]
-            let ts' = zip ts $ repeat r
-            ui v w ts' >> pure ()
+          cfg          <- maybe (pure defaultConfig) parseConfig conf
+          Campaign r _ <- runReaderT (loadSolTests f (pack <$> c) >>= \(v,w,ts) -> ui v w ts) $
+                            cfg & cConf %~ if cov then \k -> k {knownCoverage = Just mempty} else id
+          if any (/= Passed) $ snd <$> r then exitWith $ ExitFailure 1
+                                         else exitSuccess

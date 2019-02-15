@@ -4,7 +4,7 @@ module Echidna.Test where
 
 import Control.Monad (ap)
 import Control.Monad.Catch (MonadThrow)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Control.Monad.State.Strict (MonadState(..), gets)
 import Data.Bool (bool)
@@ -52,6 +52,7 @@ checkETest (f, a) = asks getter >>= \(TestConf p s) -> do
 -- still solves that test.
 shrinkSeq :: (MonadRandom m, MonadReader x m, Has TestConf x, MonadState y m, Has VM y, MonadThrow m)
           => SolTest -> [Tx] -> m [Tx]
-shrinkSeq t xs = shorten >>= mapM shrinkTx >>= ap (fmap . flip bool xs) check where
+shrinkSeq t xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
   check xs' = do {og <- get; res <- traverse_ execTx xs' >> checkETest t; put og; pure res}
+  shrunk = mapM shrinkTx xs
   shorten = (\i -> take i xs ++ drop (i + 1) xs) <$> getRandomR (0, length xs)

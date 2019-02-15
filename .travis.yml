@@ -17,7 +17,7 @@ matrix:
     # Add build targets here
     - env: CACHE_NAME=linux BUILD_BINARY=1
     - env: CACHE_NAME=osx   BUILD_BINARY=1
-           STACK_OPTS="--extra-include-dirs=/usr/local/opt/readline/include --extra-lib-dirs=/usr/local/opt/readline/lib"
+           STACK_OPTS="--no-run-tests --extra-include-dirs=/usr/local/opt/readline/include --extra-lib-dirs=/usr/local/opt/readline/lib"
            LDFLAGS=-L/usr/local/opt/readline/lib CFLAGS=-I/usr/local/opt/readline/include
       os: osx
 
@@ -27,14 +27,17 @@ install:
  - ./.travis/install-libsecp256k1.sh
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
+ - ./.travis/install-solc.sh
 
 script:
+ - PATH=$HOME/.local/bin:$PATH
  - echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - GHC_OPTIONS="-Werror"
  - STACK_OPTS="$STACK_OPTS --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib"
  - |
    set -ex
    # Run tests
+   export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
    stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
    set +ex
 

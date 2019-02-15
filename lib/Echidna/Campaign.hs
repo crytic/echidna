@@ -49,6 +49,13 @@ data TestState = Open Int             -- ^ Maybe solvable, tracking attempts alr
                | Failed ExecException -- ^ Broke the execution environment
                  deriving Show
 
+instance Eq TestState where
+  (Open i)    == (Open j)    = i == j
+  (Large i l) == (Large j m) = i == j && l == m
+  Passed      == Passed      = True
+  (Solved l)  == (Solved m)  = l == m
+  _           == _           = False
+
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests    :: [(SolTest, TestState)]     -- ^ Tests being evaluated
                          , _coverage :: Maybe (Map W256 (Set Int)) -- ^ Coverage, if applicable
@@ -77,8 +84,9 @@ updateTest v (Just (v', xs)) (n, t) = view (hasLens . to testLimit) >>= \tl -> (
   _                   -> snd <$> updateTest v Nothing (n,t)
 updateTest v Nothing (n, t) = view (hasLens . to shrinkLimit) >>= \sl -> (n,) <$> case t of
   Large i x | i >= sl -> pure $ Solved x
-  Large i x           -> if any canShrinkTx x then Large (i + 1) <$> evalStateT (shrinkSeq n x) v
-                                              else pure $ Solved x
+  Large i x           -> if length x > 1 || any canShrinkTx x
+                           then Large (i + 1) <$> evalStateT (shrinkSeq n x) v
+                           else pure $ Solved x
   _                   -> pure t
 
 -- | Given a rule for updating a particular test's state, apply it to each test in a 'Campaign'.
