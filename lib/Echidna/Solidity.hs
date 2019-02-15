@@ -76,11 +76,12 @@ contracts fp = do
   pure (a, q) >>= liftIO . solc >>= (\case
     Nothing -> throwM CompileFailure
     Just m  -> pure . toList $ fst m) where
+      usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", fp]
       solc (a, q) = do
         stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode
                        else pure Inherit
-        readSolc =<< writeSystemTempFile "" =<< readCreateProcess (proc "solc" (usual <> words a)) { std_err = stderr } ""
-      usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", fp]
+        readSolc =<< writeSystemTempFile ""
+                 =<< readCreateProcess (proc "solc" $ usual <> words a) {std_err = stderr} ""
 
 -- | Given a file and a possible contract name, compile the file as solidity, then, if a name is
 -- given, try to return the specified contract, otherwise, return the first contract in the file,
@@ -90,8 +91,9 @@ selected fp name = do cs <- contracts fp
                       c <- choose cs $ ((pack fp <> ":") <>) <$> name
                       q <- view (hasLens . quiet)
                       liftIO $ do
-                        when (isNothing name && length cs > 1) $ putStrLn "Multiple contracts found in file, only analyzing the first"
-                        unless q $ putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
+                        when (isNothing name && length cs > 1) $
+                          putStrLn "Multiple contracts found in file, only analyzing the first"
+                        unless q . putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
                       return c
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
@@ -105,16 +107,16 @@ selected fp name = do cs <- contracts fp
 loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 loadSolidity fp name = let ensure (l, e) = if null l then throwM e else pure () in do
-    c <- selected fp name
-    (SolConf ca d _ pref _ _) <- view hasLens
-    let bc = c ^. creationCode
-        abi = map (liftM2 (,) (view methodName) (fmap snd . view methodInputs)) . toList $ c ^. abiMap
-        (tests, funs) = partition (isPrefixOf pref . fst) abi
-    loaded <- execStateT (execTx $ Tx (Right bc) d ca 0) $ vmForEthrunCreation bc
-    mapM_ ensure [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)]
-    case find (not . null . snd) tests of
-      (Just (t,_)) -> throwM $ TestArgsFound t
-      Nothing      -> return (loaded, funs, fst <$> tests)
+  c <- selected fp name
+  (SolConf ca d _ pref _ _) <- view hasLens
+  let bc = c ^. creationCode
+      abi = map (liftM2 (,) (view methodName) (fmap snd . view methodInputs)) . toList $ c ^. abiMap
+      (tests, funs) = partition (isPrefixOf pref . fst) abi
+  loaded <- execStateT (execTx $ Tx (Right bc) d ca 0) $ vmForEthrunCreation bc
+  mapM_ ensure [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)]
+  case find (not . null . snd) tests of
+    (Just (t,_)) -> throwM $ TestArgsFound t
+    Nothing      -> return (loaded, funs, fst <$> tests)
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
@@ -125,6 +127,4 @@ loadSolTests fp name = do
   s <- view $ hasLens . sender
   let r = v ^. state . contract
       w = World s [(r, a)]
-      ts' = zip ts $ repeat r
-  return (v, w, ts')
-
+  return (v, w, zip ts $ repeat r)
