@@ -99,13 +99,19 @@ ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m th
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m String
 ppTests (Campaign ts _) = unlines <$> mapM (\((n, _), s) -> ((T.unpack n ++ ": ") ++ ) <$> ppTS s) ts
 
-ppTestsJSON :: Campaign -> String
-ppTestsJSON (Campaign ts _) = LBS.unpack $ encode $ map ppJSON ts
+ppTestsJSON :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m String
+ppTestsJSON (Campaign ts _) = do
+                                xs <- mapM ppJSON ts
+                                return $ LBS.unpack $ encode $ xs
 
-ppJSON :: (SolTest, TestState) -> JsonOutput
-ppJSON ((t,_), Passed)     = JsonOutput (T.unpack t) True Nothing
-ppJSON ((t,_), Solved ls)  = JsonOutput (T.unpack t) True (Just $ map show ls)
-ppJSON _                   = error "error in ppJSON"
+ppJSON ::   (MonadReader x m, Has CampaignConf x, Has Names x) => (SolTest, TestState) -> m JsonOutput
+ppJSON ((t,_), r) = case r of
+                      (Solved xs ) -> f xs
+                      (Large _ xs) -> f xs
+                      _            -> return $ JsonOutput (T.unpack t) True Nothing
+                    where f ls = do
+                                     ss <- mapM ppTx ls
+                                     return $ JsonOutput (T.unpack t) False $ Just ss
 
 data JsonOutput = JsonOutput {
     propName :: !String
@@ -193,7 +199,7 @@ jsui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> m Campaign
 jsui = let u = do c <- use hasLens
                   b <- isDone c
-                  j <- pure $ ppTestsJSON c
+                  j <- ppTestsJSON c
                   if b then liftIO $ putStr j else return ()
               in campaign u
 
