@@ -62,7 +62,7 @@ instance Eq TestState where
   _           == _           = False
 
 instance ToJSON TestState where
-  toJSON s = object $ [("passed", toJSON passed)] ++ maybeToList desc where
+  toJSON s = object $ ("passed", toJSON passed) : maybeToList desc where
     (passed, desc) = case s of Open _    -> (True, Nothing)
                                Passed    -> (True, Nothing)
                                Large _ l -> (False, Just ("callseq", toJSON l))
@@ -75,8 +75,8 @@ data Campaign = Campaign { _tests    :: [(SolTest, TestState)]     -- ^ Tests be
                          }
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co) = object $ [("tests", toJSON $ bimap (unpack . fst) toJSON <$> ts)]
-    ++ maybeToList (("coverage",) . toJSON . mapKeys (`showHex` "") . fmap toList <$> co)
+  toJSON (Campaign ts co) = object $ ("tests", toJSON $ bimap (unpack . fst) toJSON <$> ts)
+    : maybeToList (("coverage",) . toJSON . mapKeys (`showHex` "") . fmap toList <$> co)
 
 makeLenses ''Campaign
 
