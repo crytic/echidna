@@ -16,12 +16,17 @@ import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), StateT, evalStateT, execStateT)
+import Data.Aeson (ToJSON(..), object)
 import Data.Bool (bool)
-import Data.Map (Map)
+import Data.Map (Map, mapKeys)
+import Data.Maybe (maybeToList)
+import Data.Foldable (toList)
 import Data.Has (Has(..))
 import Data.Set (Set)
+import Data.Text (unpack)
 import EVM
 import EVM.Types (W256)
+import Numeric (showHex)
 
 import Echidna.ABI
 import Echidna.Exec
@@ -56,10 +61,23 @@ instance Eq TestState where
   (Solved l)  == (Solved m)  = l == m
   _           == _           = False
 
+instance ToJSON TestState where
+  toJSON s = object $ [("passed", toJSON passed)] ++ maybeToList desc where
+    (passed, desc) = case s of Open _    -> (True, Nothing)
+                               Passed    -> (True, Nothing)
+                               Large _ l -> (False, Just ("callseq", toJSON l))
+                               Solved  l -> (False, Just ("callseq", toJSON l))
+                               Failed  e -> (False, Just ("exception", toJSON $ show e))
+
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests    :: [(SolTest, TestState)]     -- ^ Tests being evaluated
                          , _coverage :: Maybe (Map W256 (Set Int)) -- ^ Coverage, if applicable
                          }
+
+instance ToJSON Campaign where
+  toJSON (Campaign ts co) = object $ [("tests", toJSON $ bimap (unpack . fst) toJSON <$> ts)]
+    ++ maybeToList (("coverage",) . toJSON . mapKeys (`showHex` "") . fmap toList <$> co)
+
 makeLenses ''Campaign
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
