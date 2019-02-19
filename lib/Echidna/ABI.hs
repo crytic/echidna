@@ -12,19 +12,35 @@ import Control.Monad.Random.Strict
 import Data.Bits (Bits(..))
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
+import Data.Foldable (toList)
 import Data.Has (Has(..))
 import Data.Hashable (Hashable)
 import Data.HashMap.Strict (HashMap)
-import Data.List (group, sort)
+import Data.List (group, intercalate, sort)
 import Data.Maybe (listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Vector (Vector)
 import Data.Word8 (Word8)
 import EVM.ABI (AbiType(..), AbiValue(..), abiValueType)
+import Numeric (showHex)
 
 import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
 import qualified Data.Vector as V
+
+-- | Pretty-print some 'AbiValue'.
+ppAbiValue :: AbiValue -> String
+ppAbiValue (AbiUInt _ n)         = show n
+ppAbiValue (AbiInt  _ n)         = show n
+ppAbiValue (AbiAddress n)        = showHex n ""
+ppAbiValue (AbiBool b)           = if b then "true" else "false"
+ppAbiValue (AbiBytes      _ b)   = show b
+ppAbiValue (AbiBytesDynamic b)   = show b
+ppAbiValue (AbiString       s)   = show s
+ppAbiValue (AbiArrayDynamic _ v) =
+  "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
+ppAbiValue (AbiArray      _ _ v) =
+  "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
 
 -- Safe random element of a list
 
