@@ -1,13 +1,16 @@
+{-# LANGUAGE LambdaCase #-}
+
 import Test.Tasty
 import Test.Tasty.HUnit
 
 import Echidna.ABI (SolCall)
 import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..))
 import Echidna.Config (defaultConfig, parseConfig, sConf)
-import Echidna.Solidity (loadSolTests, quiet)
+import Echidna.Solidity (SolException(..), loadSolidity, loadSolTests, quiet)
 import Echidna.Transaction (Tx, call)
 
 import Control.Lens
+import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Reader (runReaderT)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
@@ -17,10 +20,34 @@ import System.Directory (withCurrentDirectory)
 
 main :: IO ()
 main = withCurrentDirectory "./examples/solidity" . defaultMain $
-         testGroup "Echidna" [solidityTests]
+         testGroup "Echidna" [compilationTests, integrationTests]
 
-solidityTests :: TestTree
-solidityTests = testGroup "Solidity Integration Testing"
+-- Compilation tests
+
+compilationTests :: TestTree
+compilationTests = testGroup "Compilation and loading tests"
+  [ loadFails "bad/nocontract.sol" (Just "c") "failed to warn on contract not found" $
+                                              \case ContractNotFound{} -> True; _ -> False
+  , loadFails "bad/nobytecode.sol" Nothing    "failed to warn on abstract contract" $
+                                              \case NoBytecode{}       -> True; _ -> False
+  , loadFails "bad/nofuncs.sol"    Nothing    "failed to warn on no functions found" $
+                                              \case NoFuncs{}          -> True; _ -> False
+  , loadFails "bad/notests.sol"    Nothing    "failed to warn on no tests found" $
+                                              \case NoTests{}          -> True; _ -> False
+  , loadFails "bad/onlytests.sol"  Nothing    "failed to warn on no non-tests found" $
+                                              \case OnlyTests{}        -> True; _ -> False
+  , loadFails "bad/testargs.sol"   Nothing    "failed to warn on test args found" $
+                                              \case TestArgsFound{}    -> True; _ -> False
+  ]
+
+loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
+loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
+  tryLoad = runReaderT (loadSolidity fp c >> pure ()) $ defaultConfig & sConf . quiet .~ True
+
+-- Integration Tests
+
+integrationTests :: TestTree
+integrationTests = testGroup "Solidity Integration Testing"
   [ testContract "basic/true.sol"        Nothing
       [ ("echidna_true failed",                            not . solved "echidna_true") ]
   , testContract "basic/flags.sol"       Nothing
