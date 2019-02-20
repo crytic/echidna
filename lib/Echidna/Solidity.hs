@@ -8,11 +8,7 @@ module Echidna.Solidity where
 
 import Control.Lens
 import Control.Exception          (Exception)
-<<<<<<< HEAD
 import Control.Monad              (liftM2, mapM_, when, unless)
-=======
-import Control.Monad              (liftM2, mapM_, when)
->>>>>>> check for abstract contracts
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader)
@@ -112,7 +108,7 @@ loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 loadSolidity fp name = let ensure l = when (l == mempty) . throwM in do
   c <- selected fp name
-  (SolConf ca d _ pref _) <- view hasLens
+  (SolConf ca d _ pref _ _) <- view hasLens
   let bc = c ^. creationCode
       blank = vmForEthrunCreation bc
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
