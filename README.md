@@ -74,7 +74,7 @@ If you're getting errors building related to linking, try tinkering with `--extr
 
 Feel free to stop by our [Slack channel](https://empirehacking.slack.com/messages/C7KKY517H/) for help using or extending Echidna.
 
-* Get started by reviewing these simple [Echidna invariants](examples/solidity/flags.sol)
+* Get started by reviewing these simple [Echidna invariants](examples/solidity/basic/flags.sol)
 
 * Review the [Solidity examples](examples/solidity) directory for more extensive Echidna use cases
 
