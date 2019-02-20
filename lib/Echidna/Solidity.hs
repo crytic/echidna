@@ -106,17 +106,18 @@ selected fp name = do cs <- contracts fp
 -- names of its Echidna tests.
 loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
-loadSolidity fp name = let ensure (l, e) = if null l then throwM e else pure () in do
+loadSolidity fp name = let ensure l = when (l == mempty) . throwM in do
   c <- selected fp name
   (SolConf ca d _ pref _ _) <- view hasLens
   let bc = c ^. creationCode
-      abi = map (liftM2 (,) (view methodName) (fmap snd . view methodInputs)) . toList $ c ^. abiMap
+      blank = vmForEthrunCreation bc
+      abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
-  loaded <- execStateT (execTx $ Tx (Right bc) d ca 0) $ vmForEthrunCreation bc
-  mapM_ ensure [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)]
+  mapM_ (uncurry ensure) [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)] -- ABI checks
+  ensure bc (NoBytecode $ c ^. contractName)                                   -- Bytecode check
   case find (not . null . snd) tests of
-    (Just (t,_)) -> throwM $ TestArgsFound t
-    Nothing      -> return (loaded, funs, fst <$> tests)
+    Just (t,_) -> throwM $ TestArgsFound t
+    Nothing    -> (, funs, fst <$> tests) <$> execStateT (execTx $ Tx (Right bc) d ca 0) blank
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
