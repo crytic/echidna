@@ -13,24 +13,30 @@ import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
+import Data.Aeson                 (Value(..))
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
-import Data.List                  (find, partition)
-import Data.Maybe                 (isNothing)
+import Data.List                  (find, partition, stripPrefix)
+import Data.Maybe                 (isNothing, mapMaybe)
 import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, pack, unpack)
 import System.Process             (readCreateProcess, std_err, proc, StdStream(..))
 import System.IO                  (openFile, IOMode(..))
 import System.IO.Temp             (writeSystemTempFile)
+import Text.Read                  (readMaybe)
 
 import Echidna.ABI (SolSignature)
 import Echidna.Exec (execTx)
 import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
+import EVM.ABI      (AbiValue(..))
 import EVM.Exec     (vmForEthrunCreation)
 import EVM.Solidity
 import EVM.Types    (Addr)
+
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.HashMap.Strict   as M
 
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
@@ -83,49 +89,75 @@ contracts fp = do
         readSolc =<< writeSystemTempFile ""
                  =<< readCreateProcess (proc "solc" $ usual <> words a) {std_err = stderr} ""
 
--- | Given a file and a possible contract name, compile the file as solidity, then, if a name is
--- given, try to return the specified contract, otherwise, return the first contract in the file,
--- throwing errors if necessary.
-selected :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> Maybe Text -> m SolcContract
-selected fp name = do cs <- contracts fp
-                      c <- choose cs $ ((pack fp <> ":") <>) <$> name
-                      q <- view (hasLens . quiet)
-                      liftIO $ do
-                        when (isNothing name && length cs > 1) $
-                          putStrLn "Multiple contracts found in file, only analyzing the first"
-                        unless q . putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
-                      return c
-  where choose []    _        = throwM NoContracts
-        choose (c:_) Nothing  = return c
-        choose cs    (Just n) = maybe (throwM $ ContractNotFound n) pure $
-                                  find ((n ==) . view contractName) cs
+-- | Given a file, an optional name and a list of all the 'SolcContract's in a file, try to load the
+-- specified contract into a 'VM' usable for Echidna testing and extract an ABI and list of tests.
+-- Throws exceptions if anything returned doesn't look usable for Echidna
+loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+              => FilePath -> Maybe Text -> [SolcContract] -> m (VM, [SolSignature], [Text])
+loadSpecified fp name cs = let ensure l e = if l == mempty then throwM e else pure () in do
+  -- Pick contract to load
+  c <- choose cs $ ((pack fp <> ":") <>) <$> name
+  q <- view (hasLens . quiet)
+  liftIO $ do
+    when (isNothing name && length cs > 1) $
+      putStrLn "Multiple contracts found in file, only analyzing the first"
+    unless q . putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
 
--- | Given a file and a possible contract name, compile the file as solidity, then, if a name is
--- given, try to fine the specified contract, otherwise, find the first contract in the file. Take
--- said contract and return an initial VM state with it loaded, its ABI (as 'SolSignature's), and the
--- names of its Echidna tests.
-loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
-             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
-loadSolidity fp name = let ensure l = when (l == mempty) . throwM in do
-  c <- selected fp name
+  -- Local variables
   (SolConf ca d _ pref _ _) <- view hasLens
   let bc = c ^. creationCode
       blank = vmForEthrunCreation bc
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
+
+  -- Make sure everything is ready to use, then ship it
   mapM_ (uncurry ensure) [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)] -- ABI checks
   ensure bc (NoBytecode $ c ^. contractName)                                   -- Bytecode check
   case find (not . null . snd) tests of
-    Just (t,_) -> throwM $ TestArgsFound t
+    Just (t,_) -> throwM $ TestArgsFound t                                     -- Test args check
     Nothing    -> (, funs, fst <$> tests) <$> execStateT (execTx $ Tx (Right bc) d ca 0) blank
+
+  where choose []    _        = throwM NoContracts
+        choose (c:_) Nothing  = return c
+        choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
+                                      find ((n ==) . view contractName) cs
+
+loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
+loadSolidity fp name = contracts fp >>= loadSpecified fp name
+
+-- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
+-- for running a 'Campaign' against the tests found.
+prepareForTest :: (MonadReader x m, Has SolConf x)
+               => (VM, [SolSignature], [Text]) -> m (VM, World, [(Text, Addr)])
+prepareForTest (v, a, ts) = let r = v ^. state . contract in
+  view (hasLens . sender) <&> \s -> (v, World s [(r, a)], zip ts $ repeat r)
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
 loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, World, [(Text, Addr)])
-loadSolTests fp name = do
-  (v, a, ts) <- loadSolidity fp name
-  s <- view $ hasLens . sender
-  let r = v ^. state . contract
-      w = World s [(r, a)]
-  return (v, w, zip ts $ repeat r)
+loadSolTests fp name = loadSolidity fp name >>= prepareForTest
+
+-- | Given a list of 'SolcContract's, try to parse out string and integer literals
+extractConstants :: [SolcContract] -> [AbiValue]
+extractConstants = concatMap $ getConstants . view contractAst where
+  getConstants :: Value -> [AbiValue]
+  getConstants (Object o) = concat . mapMaybe fromPair $ M.toList o
+  getConstants (Array  a) = concatMap getConstants a
+  getConstants _          = []
+
+  fromPair ("type", (String s)) = let split = words $ unpack s in case split of
+    "int_const"      : i : _ -> ints      <$> readMaybe i
+    "literal_string" : l : _ -> (strs "") <$> stripPrefix "\\\"" l
+    _                        -> Nothing
+  fromPair _ = Nothing
+
+  ints :: Integer -> [AbiValue]
+  ints n = let l f = f <$> [8,16..256] <*> [fromIntegral n] in l AbiInt ++ l AbiUInt
+
+  strs :: String -> String -> [AbiValue]
+  strs _ ""                = []
+  strs x (y : '\\':'"':"") = let s = reverse $ y : x in
+    [AbiString, AbiBytes (length s), AbiBytesDynamic] <&> ($ (BS.pack s))
+  strs x (y : ys)          = strs (y : x) ys

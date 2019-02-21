@@ -6,6 +6,7 @@ import Data.Text (pack)
 import Options.Applicative
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 
+import Echidna.ABI
 import Echidna.Config
 import Echidna.Solidity
 import Echidna.Campaign
@@ -36,7 +37,10 @@ opts = info (options <**> helper) $ fullDesc
 main :: IO ()
 main = do (Options f c cov conf) <- execParser opts
           cfg          <- maybe (pure defaultConfig) parseConfig conf
-          Campaign r _ <- runReaderT (loadSolTests f (pack <$> c) >>= \(v,w,ts) -> ui v w ts) $
-                            cfg & cConf %~ if cov then \k -> k {knownCoverage = Just mempty} else id
+          cs           <- runReaderT (contracts f) cfg
+          Campaign r _ <- runReaderT (loadSpecified f (pack <$> c) cs >>= prepareForTest >>=
+            \(v,w,ts) -> ui v w ts) $ cfg
+                           & cConf %~ (if cov then \k -> k {knownCoverage = Just mempty} else id)
+                           & gConf .~ mkConf 0.15 (extractConstants cs) []
           if any (/= Passed) $ snd <$> r then exitWith $ ExitFailure 1
                                          else exitSuccess
