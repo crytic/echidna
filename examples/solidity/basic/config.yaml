@@ -1,11 +1,2 @@
-#Arguments to solc
-#solcArgs:
-#Choose the number of epochs to use in coverage-guided testing
-epochs: 2
-#Set the gas limit for each test
-gasLimit: 0xfffff
-#Number of tests that will run for each property
 testLimit: 100000000
-#Max call sequence length
 range: 10
-#Contract's address in the EVM
