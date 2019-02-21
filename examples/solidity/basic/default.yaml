@@ -1,0 +1,15 @@
+testLimit: 10000
+seqLen: 10
+shrinkLimit: 5000
+reverts: true
+dashboard: true
+style: "text"
+range: 10
+shrinkLimit: 5000
+contractAddr: "0x00a329c0648769a73afac7f9381e08fb43dbea72"
+deployer: "0x00a329c0648769a73afac7f9381e08fb43dbea70"
+sender: ["0x00a329c0648769a73afac7f9381e08fb43dbea70"]
+psender: "0x00a329c0648769a73afac7f9381e08fb43dbea70"
+prefix: "echidna_"
+solcArgs: ""
+quiet: False
