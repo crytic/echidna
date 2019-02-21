@@ -5,7 +5,6 @@
 
 module Echidna.ABI where
 
-import Control.Applicative ((<**>))
 import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Control.Monad.Random.Strict
@@ -223,9 +222,9 @@ mutateAbiCall = traverse $ traverse mutateAbiValue
 genWithDict :: (Eq a, Hashable a, MonadReader x m, Has GenConf x, MonadRandom m, MonadThrow m)
             => (GenConf -> HashMap a [b]) -> (a -> m b) -> a -> m b
 genWithDict f g t = asks getter >>= \c -> do
-  useD <- (pSynthA c <) <$> getRandom
-  g t <**> case (M.lookup t (f c), useD) of (Just l@(_:_), True) -> const <$> rElem "" l
-                                            _                    -> pure id
+  useD <- (pSynthA c >) <$> getRandom
+  case (M.lookup t (f c), useD) of (Just l@(_:_), True) -> rElem "" l
+                                   _                    -> g t
 
 -- | Given an 'AbiType', generate a random 'AbiValue' of that type, possibly with a dictionary.
 genAbiValueM :: (MonadReader x m, Has GenConf x, MonadRandom m, MonadThrow m) => AbiType -> m AbiValue
@@ -233,7 +232,7 @@ genAbiValueM = genWithDict constants genAbiValue
 
 -- | Given a 'SolSignature', generate a random 'SolCalls' with that signature, possibly with a dictionary.
 genAbiCallM :: (MonadReader x m, Has GenConf x, MonadRandom m, MonadThrow m) => SolSignature -> m SolCall
-genAbiCallM = genWithDict wholeCalls genAbiCall
+genAbiCallM = genWithDict wholeCalls (traverse $ traverse genAbiValueM)
 
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one, possibly with a dictionary.
 genInteractionsM :: (MonadReader x m, Has GenConf x, MonadRandom m, MonadThrow m)
