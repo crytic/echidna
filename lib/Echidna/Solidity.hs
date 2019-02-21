@@ -27,10 +27,33 @@ import Echidna.ABI (SolSignature)
 import Echidna.Exec (execTx)
 import Echidna.Transaction (Tx(..), World(..))
 
-import EVM hiding (contracts)
-import EVM.Exec     (vmForEthrunCreation)
+import EVM
+import EVM.Keccak (newContractAddress)
 import EVM.Solidity
 import EVM.Types    (Addr)
+
+import qualified Data.ByteString as BS
+import qualified EVM.FeeSchedule as FeeSchedule
+
+vmForEthrunCreation :: BS.ByteString -> Addr -> VM
+vmForEthrunCreation cCode ethrunAddress =
+  (makeVm $ VMOpts
+    { vmoptCode = cCode
+    , vmoptCalldata = ""
+    , vmoptValue = 0
+    , vmoptAddress = newContractAddress ethrunAddress 1
+    , vmoptCaller = ethrunAddress
+    , vmoptOrigin = ethrunAddress
+    , vmoptCoinbase = 0
+    , vmoptNumber = 0
+    , vmoptTimestamp = 0
+    , vmoptGaslimit = 0
+    , vmoptGasprice = 0
+    , vmoptDifficulty = 0
+    , vmoptGas = 0xffffffffffffffff
+    , vmoptSchedule = FeeSchedule.metropolis
+    }) & set (env . contracts . at ethrunAddress)
+             (Just (initialContract mempty))
 
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
@@ -69,8 +92,8 @@ data SolConf = SolConf { _contractAddr :: Addr   -- ^ Contract address to use
 makeLenses ''SolConf
 
 -- | Given a file, try to compile it and get a list of its contracts, throwing exceptions if necessary.
-contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
-contracts fp = do
+fcontracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
+fcontracts fp = do
   a <- view (hasLens . solcArgs)
   q <- view (hasLens . quiet)
   pure (a, q) >>= liftIO . solc >>= (\case
@@ -87,7 +110,7 @@ contracts fp = do
 -- given, try to return the specified contract, otherwise, return the first contract in the file,
 -- throwing errors if necessary.
 selected :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> Maybe Text -> m SolcContract
-selected fp name = do cs <- contracts fp
+selected fp name = do cs <- fcontracts fp
                       c <- choose cs $ ((pack fp <> ":") <>) <$> name
                       q <- view (hasLens . quiet)
                       liftIO $ do
@@ -110,7 +133,7 @@ loadSolidity fp name = let ensure l = when (l == mempty) . throwM in do
   c <- selected fp name
   (SolConf ca d _ pref _ _) <- view hasLens
   let bc = c ^. creationCode
-      blank = vmForEthrunCreation bc
+      blank = vmForEthrunCreation bc ca
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
   mapM_ (uncurry ensure) [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)] -- ABI checks
