@@ -16,7 +16,7 @@ import Control.Monad.State.Strict (execStateT)
 import Data.Aeson                 (Value(..))
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
-import Data.List                  (find, partition, stripPrefix)
+import Data.List                  (find, nub, partition)
 import Data.Maybe                 (isNothing, mapMaybe)
 import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, pack, unpack)
@@ -89,14 +89,16 @@ contracts fp = do
         readSolc =<< writeSystemTempFile ""
                  =<< readCreateProcess (proc "solc" $ usual <> words a) {std_err = stderr} ""
 
--- | Given a file, an optional name and a list of all the 'SolcContract's in a file, try to load the
--- specified contract into a 'VM' usable for Echidna testing and extract an ABI and list of tests.
--- Throws exceptions if anything returned doesn't look usable for Echidna
+-- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
+-- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
+-- testing and extract an ABI and list of tests. Throws exceptions if anything returned doesn't look
+-- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
+-- filename their code is in, plus a colon.
 loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
-              => FilePath -> Maybe Text -> [SolcContract] -> m (VM, [SolSignature], [Text])
-loadSpecified fp name cs = let ensure l e = if l == mempty then throwM e else pure () in do
+              => Maybe Text -> [SolcContract] -> m (VM, [SolSignature], [Text])
+loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure () in do
   -- Pick contract to load
-  c <- choose cs $ ((pack fp <> ":") <>) <$> name
+  c <- choose cs name
   q <- view (hasLens . quiet)
   liftIO $ do
     when (isNothing name && length cs > 1) $
@@ -122,9 +124,14 @@ loadSpecified fp name cs = let ensure l e = if l == mempty then throwM e else pu
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
                                       find ((n ==) . view contractName) cs
 
+-- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
+-- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
+-- the first contract in the file. Take said contract and return an initial VM state with it loaded,
+-- its ABI (as 'SolSignature's), and the names of its Echidna tests. NOTE: unlike 'loadSpecified',
+-- contract names passed here don't need the file they occur in specified.
 loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
-loadSolidity fp name = contracts fp >>= loadSpecified fp name
+loadSolidity fp name = contracts fp >>= loadSpecified ((pack fp <>) <$> name)
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
@@ -141,23 +148,20 @@ loadSolTests fp name = loadSolidity fp name >>= prepareForTest
 
 -- | Given a list of 'SolcContract's, try to parse out string and integer literals
 extractConstants :: [SolcContract] -> [AbiValue]
-extractConstants = concatMap $ getConstants . view contractAst where
+extractConstants = nub . concatMap (getConstants . view contractAst) where
   getConstants :: Value -> [AbiValue]
   getConstants (Object o) = concat . mapMaybe fromPair $ M.toList o
   getConstants (Array  a) = concatMap getConstants a
   getConstants _          = []
 
-  fromPair ("type", (String s)) = let split = words $ unpack s in case split of
-    "int_const"      : i : _ -> ints      <$> readMaybe i
-    "literal_string" : l : _ -> (strs "") <$> stripPrefix "\\\"" l
+  -- How does the solidity AST work? No one really knows, this is my best guess
+  fromPair ("type", String s) = let split = words $ unpack s in case split of
+    "int_const"      : i : _ -> ints <$> readMaybe i
+    "literal_string" : l : _ -> strs <$> BS.stripSuffix "\"" (BS.drop 1 $ BS.pack l)
     _                        -> Nothing
-  fromPair _ = Nothing
+  fromPair (_, o)               = Just $ getConstants o
 
   ints :: Integer -> [AbiValue]
   ints n = let l f = f <$> [8,16..256] <*> [fromIntegral n] in l AbiInt ++ l AbiUInt
 
-  strs :: String -> String -> [AbiValue]
-  strs _ ""                = []
-  strs x (y : '\\':'"':"") = let s = reverse $ y : x in
-    [AbiString, AbiBytes (length s), AbiBytesDynamic] <&> ($ (BS.pack s))
-  strs x (y : ys)          = strs (y : x) ys
+  strs s = [AbiString, AbiBytes (BS.length s), AbiBytesDynamic] <&> ($ s)
