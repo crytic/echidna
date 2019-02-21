@@ -38,14 +38,14 @@ script:
    set -ex
    # Run tests using solc 0.4.25
    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
-   sudo /usr/bin/solc-0.4.25 /usr/bin/solc
+   cp ~/.local/bin/solc-0.4.25 /usr/bin/solc
    stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
    set +ex
  - |
    set -ex
    # Run tests using solc 0.5.4
    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
-   sudo /usr/bin/solc-0.5.4 /usr/bin/solc
+   cp ~/.local/bin/solc-0.5.4 /usr/bin/solc
    stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
    set +ex
 
