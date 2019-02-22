@@ -159,9 +159,11 @@ extractConstants = nub . concatMap (getConstants . view contractAst) where
     "int_const"      : i : _ -> ints <$> readMaybe i
     "literal_string" : l : _ -> strs <$> BS.stripSuffix "\"" (BS.drop 1 $ BS.pack l)
     _                        -> Nothing
+
+  fromPair ("value", String s) = if (isPrefixOf "0x" s) then Just $ addr $ unpack s else Nothing
   fromPair (_, o)               = Just $ getConstants o
 
   ints :: Integer -> [AbiValue]
   ints n = let l f = f <$> [8,16..256] <*> [fromIntegral n] in l AbiInt ++ l AbiUInt
-
+  addr a = [AbiAddress $ fromInteger ((read a) :: Integer)]
   strs s = [AbiString, AbiBytes (BS.length s), AbiBytesDynamic] <&> ($ s)
