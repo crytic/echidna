@@ -12,7 +12,6 @@ import Control.Lens
 import Control.Monad (liftM4)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR)
-import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, runState)
 import Data.ByteString (ByteString)
 import Data.Either (either, lefts)
@@ -69,7 +68,7 @@ genTx = genTxWith (rElem "sender list") (rElem "recipient list")
                   (const $ genInteractions . snd) (\_ _ _ -> pure 0)
 
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
-genTxM :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m, MonadReader y m, Has GenConf y) => m Tx
+genTxM :: (MonadRandom m, MonadState x m, Has GenDict x, Has World x, MonadThrow m) => m Tx
 genTxM = genTxWith (rElem "sender list") (rElem "recipient list")
                    (const $ genInteractionsM . snd) (\_ _ _ -> pure 0)
 

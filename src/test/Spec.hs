@@ -73,7 +73,7 @@ integrationTests = testGroup "Solidity Integration Testing"
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg as = testCase fp $ do
   c <- set (sConf . quiet) True <$> maybe (pure defaultConfig) parseConfig cfg
-  res <- runReaderT (loadSolTests fp Nothing >>= \(v, w, ts) -> campaign (pure ()) v w ts) c
+  res <- runReaderT (loadSolTests fp Nothing >>= \(v, w, ts) -> campaign (pure ()) v w ts Nothing) c
   mapM_ (\(t,f) -> assertBool t $ f res) as
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
