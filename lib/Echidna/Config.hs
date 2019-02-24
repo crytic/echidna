@@ -11,6 +11,7 @@ import Control.Monad.Reader (ReaderT(..))
 import Data.Has (Has(..))
 import Data.Aeson
 import EVM (result)
+import EVM.Types (Addr)
 
 import qualified Data.ByteString as BS
 import qualified Data.Yaml as Y
@@ -56,7 +57,8 @@ instance FromJSON EConfig where
                               <*> v .:? "shrinkLimit" .!= 5000
                               <*> pure Nothing)
             <*> pure (GenConf 0 mempty mempty)
-            <*> pure (const $ const mempty)
+            <*> do ss <- (v .:? "sender" .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70])
+                   return $ makeSenderNames ss
             <*> (SolConf <$> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                          <*> v .:? "deployer"     .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                          <*> v .:? "sender"       .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
@@ -65,6 +67,11 @@ instance FromJSON EConfig where
                          <*> v .:? "quiet"        .!= False)
             <*> tc
   parseJSON _ = parseJSON (Object mempty)
+
+makeSenderNames :: [Addr] -> Role -> Addr -> String
+makeSenderNames ss Sender a  = maybe (error "Sender address not found") id $ lookup a (map (\x -> (x, "0x" ++ (show x))) ss)
+makeSenderNames _ Receiver _ = mempty
+makeSenderNames _ _ _        = error "No addresses found"
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
 defaultConfig :: EConfig
