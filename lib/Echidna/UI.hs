@@ -24,6 +24,8 @@ import Data.Set (Set)
 import EVM (VM)
 import EVM.Types (Addr, W256)
 import Graphics.Vty (Event(..), Key(..), Modifier(..), defaultConfig, mkVty)
+import System.Posix.Terminal (queryTerminal)
+import System.Posix.Types (Fd(..))
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (forkIO, killThread)
 
@@ -108,6 +110,10 @@ monitor cleanup = let
     liftM2 (,) (view hasLens) (view hasLens) <&> \s ->
       App (pure . cs s) neverShowCursor (se s) pure (const $ forceAttrMap mempty)
 
+-- | Heuristic check that we're in a sensible terminal (not a pipe)
+isTerminal :: MonadIO m => m Bool
+isTerminal = liftIO $ (&&) <$> queryTerminal (Fd 0) <*> (not <$> queryTerminal (Fd 2))
+
 -- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
 -- once done.
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
@@ -117,12 +123,11 @@ ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> [SolTest] -- ^ Tests to evaluate
    -> m Campaign
 ui v w ts = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
-  d <- view $ hasLens . dashboard
-  c <- if d
-         then do bc <- liftIO $ newBChan 100
-                 t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts >> pure ()
-                 a <- monitor (killThread t)
-                 liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty)
-         else campaign (pure ()) v w ts
+  d <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
+  c <- if d then do bc <- liftIO $ newBChan 100
+                    t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts >> pure ()
+                    a <- monitor (killThread t)
+                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty)
+            else campaign (pure ()) v w ts
   liftIO . putStrLn =<< ($ c) <$> view (hasLens . finished)
   return c
