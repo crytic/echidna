@@ -14,9 +14,11 @@ import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, runState)
+import Data.Aeson (ToJSON(..), object)
 import Data.ByteString (ByteString)
 import Data.Either (either, lefts)
 import Data.Has (Has(..))
+import Data.List (intercalate)
 import Data.Set (Set)
 import EVM
 import EVM.ABI (abiCalldata, abiTypeSolidity, abiValueType)
@@ -39,6 +41,18 @@ data Tx = Tx { _call  :: Either SolCall ByteString -- | Either a call or code fo
              } deriving (Eq, Ord, Show)
 
 makeLenses ''Tx
+
+-- | Pretty-print some 'AbiCall'.
+ppSolCall :: SolCall -> String
+ppSolCall (t, vs) = T.unpack t ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
+
+instance ToJSON Tx where
+  toJSON (Tx c s d v) = object [ ("call",  toJSON $ either ppSolCall (const "<CREATE>") c)
+                               -- from/to are Strings, since JSON doesn't support hexadecimal notation
+                               , ("from",  toJSON $ show s)
+                               , ("to",    toJSON $ show d)
+                               , ("value", toJSON $ show v)
+                               ]
 
 -- | A contract is just an address with an ABI (for our purposes).
 type ContractA = (Addr, [SolSignature])
