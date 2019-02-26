@@ -112,7 +112,7 @@ monitor cleanup = let
 
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
 isTerminal :: MonadIO m => m Bool
-isTerminal = liftIO $ (&&) <$> queryTerminal (Fd 0) <*> (not <$> queryTerminal (Fd 2))
+isTerminal = liftIO $ queryTerminal (Fd 0)
 
 -- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
 -- once done.
