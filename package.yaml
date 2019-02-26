@@ -33,6 +33,7 @@ dependencies:
   - vector               >= 0.11.0 && < 0.13
   - vty
   - wl-pprint-annotated
+  - unix
   - word8
   - yaml
   - unordered-containers

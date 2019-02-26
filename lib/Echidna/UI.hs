@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Echidna.UI where
 
@@ -9,23 +10,22 @@ import Brick.BChan
 import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Control.Lens
-import Control.Monad (forever)
+import Control.Monad (forever, liftM2)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader (MonadReader, runReader)
 import Data.Bool (bool)
 import Data.Either (either)
-import Data.Foldable (toList)
 import Data.Has (Has(..))
-import Data.List (intercalate)
 import Data.Map (Map)
+import Data.Maybe (maybe)
 import Data.Set (Set)
 import EVM (VM)
-import EVM.ABI (AbiValue(..))
 import EVM.Types (Addr, W256)
 import Graphics.Vty (Event(..), Key(..), Modifier(..), defaultConfig, mkVty)
-import Numeric (showHex)
+import System.Posix.Terminal (queryTerminal)
+import System.Posix.Types (Fd(..))
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (forkIO, killThread)
 
@@ -37,23 +37,11 @@ import Echidna.Exec
 import Echidna.Test
 import Echidna.Transaction
 
--- | Pretty-print some 'AbiValue'.
-ppAbiValue :: AbiValue -> String
-ppAbiValue (AbiUInt _ n)         = show n
-ppAbiValue (AbiInt  _ n)         = show n
-ppAbiValue (AbiAddress n)        = showHex n ""
-ppAbiValue (AbiBool b)           = if b then "true" else "false"
-ppAbiValue (AbiBytes      _ b)   = show b
-ppAbiValue (AbiBytesDynamic b)   = show b
-ppAbiValue (AbiString       s)   = show s
-ppAbiValue (AbiArrayDynamic _ v) =
-  "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
-ppAbiValue (AbiArray      _ _ v) =
-  "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
+data UIConf = UIConf { _dashboard :: Bool
+                     , _finished  :: Campaign -> String
+                     }
 
--- | Pretty-print some 'AbiCall'.
-ppSolCall :: SolCall -> String
-ppSolCall (t, vs) = T.unpack t ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
+makeLenses ''UIConf
 
 -- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.
 data Role = Sender | Receiver | Ambiguous
@@ -98,6 +86,9 @@ ppCoverage :: Map W256 (Set Int) -> String
 ppCoverage s = "Unique instructions: " ++ show (coveragePoints s)
             ++ "\nUnique codehashes: " ++ show (length s)
 
+ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m String
+ppCampaign c@(Campaign _ co) = (++) <$> ppTests c <*> pure (maybe "" (("\n" ++) . ppCoverage) co)
+
 -- | Render 'Campaign' progress as a 'Widget'.
 campaignStatus :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m (Widget ())
 campaignStatus c = let mSection = maybe emptyWidget ((hBorder <=>) . padLeft (Pad 2) . str) in do
@@ -116,22 +107,27 @@ monitor cleanup = let
   se _ c (VtyEvent (EvKey KEsc _))                         = liftIO cleanup >> halt c
   se _ c (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = liftIO cleanup >> halt c
   se _ c _                                                 = continue c in
-    ((,) <$> view hasLens <*> view hasLens) <&> \s ->
-       App (pure . cs s) neverShowCursor (se s) pure (const $ forceAttrMap mempty)
+    liftM2 (,) (view hasLens) (view hasLens) <&> \s ->
+      App (pure . cs s) neverShowCursor (se s) pure (const $ forceAttrMap mempty)
+
+-- | Heuristic check that we're in a sensible terminal (not a pipe)
+isTerminal :: MonadIO m => m Bool
+isTerminal = liftIO $ queryTerminal (Fd 0)
 
 -- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
 -- once done.
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
-      , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Names x)
+      , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Names x, Has UIConf x)
    => VM        -- ^ Initial VM state
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
    -> m Campaign
 ui v w ts = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
-  bc <- liftIO $ newBChan 100
-  t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts >> pure ()
-  a <- monitor (killThread t)
-  c <- liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty)
-  (cf, tf) <- (maybe "" ppCoverage (c ^. coverage),) <$> ppTests c
-  liftIO (putStrLn tf >> putStrLn cf)
+  d <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
+  c <- if d then do bc <- liftIO $ newBChan 100
+                    t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts >> pure ()
+                    a <- monitor (killThread t)
+                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty)
+            else campaign (pure ()) v w ts
+  liftIO . putStrLn =<< ($ c) <$> view (hasLens . finished)
   return c
