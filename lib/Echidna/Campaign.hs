@@ -17,6 +17,7 @@ import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, StateT, evalStateT, execStateT)
 import Data.Bool (bool)
+import Data.Either (lefts)
 import Data.Map (Map, unionWith)
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Ord (comparing)
@@ -118,15 +119,13 @@ execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => Tx -> 
 execTxOptC t = do
   og  <- hasLens . coverage <<.= mempty
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
-  new <- unionWith union og <$> use (hasLens . coverage)
-  p   <- pSynthA <$> use (hasLens . genDict)
-  let c = either pure (const []) $ t ^. call
-  when (comparing coveragePoints new og == GT) $ hasLens . genDict <>= mkGenDict p [] c
-  hasLens . coverage .= new
+  hasLens . coverage %= unionWith union og
+  grew <- (== GT) . comparing coveragePoints og <$> use (hasLens . coverage)
+  when grew $ hasLens . genDict %= gaddCalls (lefts [t ^. call])
   return res
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
--- constantly checking if we've solved any tests or can shrink known solves.
+-- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
 callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has TestConf x, Has CampaignConf x, Has Campaign y)
         => VM -> World -> Int -> m ()

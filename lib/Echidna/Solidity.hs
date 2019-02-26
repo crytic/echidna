@@ -160,7 +160,7 @@ extractConstants = nub . concatMap (getConstants . view contractAst) where
     "literal_string" : l : _ -> strs <$> BS.stripSuffix "\"" (BS.drop 1 $ BS.pack l)
     _                        -> Nothing
 
-  fromPair ("value", String s) = if (isPrefixOf "0x" s) then Just $ addr $ unpack s else Nothing
+  fromPair ("value", String s) = if (isPrefixOf "0x" s) then Just . addr $ unpack s else Nothing
   fromPair (_, o)               = Just $ getConstants o
 
   ints :: Integer -> [AbiValue]
