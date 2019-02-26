@@ -1,5 +1,3 @@
-//pragma solidity ^0.4.16;
-
 contract Test {
   bool private flag0=true;
   bool private flag1=true;

@@ -1,5 +1,3 @@
-//pragma solidity ^0.4.16;
-
 contract C {
 
   int private state = 0;
