@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Echidna.Solidity where
 
@@ -17,16 +18,18 @@ import Data.Aeson                 (Value(..))
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
 import Data.List                  (find, nub, partition)
-import Data.Maybe                 (isNothing, mapMaybe)
+import Data.List.Lens             (prefixed, suffixed)
+import Data.Maybe                 (isNothing)
 import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, pack, unpack)
+import Data.Text.Lens             (unpacked)
+import Data.Text.Read             (decimal, hexadecimal)
 import System.Process             (readCreateProcess, std_err, proc, StdStream(..))
 import System.IO                  (openFile, IOMode(..))
 import System.IO.Temp             (writeSystemTempFile)
-import Text.Read                  (readMaybe)
 
-import Echidna.ABI (SolSignature)
-import Echidna.Exec (execTx)
+import Echidna.ABI         (SolSignature, bsConsts, intConsts)
+import Echidna.Exec        (execTx)
 import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
@@ -35,8 +38,8 @@ import EVM.Exec     (vmForEthrunCreation)
 import EVM.Solidity
 import EVM.Types    (Addr)
 
-import qualified Data.ByteString.Char8 as BS
 import qualified Data.HashMap.Strict   as M
+import qualified Data.Text             as T
 
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
@@ -149,21 +152,14 @@ loadSolTests fp name = loadSolidity fp name >>= prepareForTest
 -- | Given a list of 'SolcContract's, try to parse out string and integer literals
 extractConstants :: [SolcContract] -> [AbiValue]
 extractConstants = nub . concatMap (getConstants . view contractAst) where
-  getConstants :: Value -> [AbiValue]
-  getConstants (Object o) = concat . mapMaybe fromPair $ M.toList o
+  getConstants (Object o) = concatMap fromPair $ M.toList o
   getConstants (Array  a) = concatMap getConstants a
   getConstants _          = []
 
   -- How does the solidity AST work? No one really knows, this is my best guess
-  fromPair ("type", String s) = let split = words $ unpack s in case split of
-    "int_const"      : i : _ -> ints <$> readMaybe i
-    "literal_string" : l : _ -> strs <$> BS.stripSuffix "\"" (BS.drop 1 $ BS.pack l)
-    _                        -> Nothing
-
-  fromPair ("value", String s) = if (isPrefixOf "0x" s) then Just . addr $ unpack s else Nothing
-  fromPair (_, o)               = Just $ getConstants o
-
-  ints :: Integer -> [AbiValue]
-  ints n = let l f = f <$> [8,16..256] <*> [fromIntegral n] in l AbiInt ++ l AbiUInt
-  addr a = [AbiAddress $ fromInteger ((read a) :: Integer)]
-  strs s = [AbiString, AbiBytes (BS.length s), AbiBytesDynamic] <&> ($ s)
+  fromPair ("type", String s) = let bookends c = prefixed c . suffixed c in case T.words s of
+    "int_const"      : (decimal -> Right (i,_))                       : _ -> intConsts i
+    "literal_string" : (preview (unpacked . bookends "\"") -> Just b) : _ -> bsConsts b
+    _                                                                     -> []
+  fromPair ("value", String (hexadecimal -> Right (i,_))) = [AbiAddress i]
+  fromPair (_, o) = getConstants o
