@@ -15,6 +15,7 @@ import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
 import Data.Aeson                 (Value(..))
+import Data.ByteString.Lens       (packedChars)
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
 import Data.List                  (find, nub, partition)
@@ -28,7 +29,7 @@ import System.Process             (readCreateProcess, std_err, proc, StdStream(.
 import System.IO                  (openFile, IOMode(..))
 import System.IO.Temp             (writeSystemTempFile)
 
-import Echidna.ABI         (SolSignature, bsConsts, intConsts)
+import Echidna.ABI         (SolSignature)
 import Echidna.Exec        (execTx)
 import Echidna.Transaction (Tx(..), World(..))
 
@@ -38,8 +39,9 @@ import EVM.Exec     (vmForEthrunCreation)
 import EVM.Solidity
 import EVM.Types    (Addr)
 
-import qualified Data.HashMap.Strict   as M
-import qualified Data.Text             as T
+import qualified Data.ByteString     as BS
+import qualified Data.HashMap.Strict as M
+import qualified Data.Text           as T
 
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
@@ -151,15 +153,31 @@ loadSolTests fp name = loadSolidity fp name >>= prepareForTest
 
 -- | Given a list of 'SolcContract's, try to parse out string and integer literals
 extractConstants :: [SolcContract] -> [AbiValue]
-extractConstants = nub . concatMap (getConstants . view contractAst) where
-  getConstants (Object o) = concatMap fromPair $ M.toList o
-  getConstants (Array  a) = concatMap getConstants a
-  getConstants _          = []
-
-  -- How does the solidity AST work? No one really knows, this is my best guess
-  fromPair ("type", String s) = let bookends c = prefixed c . suffixed c in case T.words s of
-    "int_const"      : (decimal -> Right (i,_))                       : _ -> intConsts i
-    "literal_string" : (preview (unpacked . bookends "\"") -> Just b) : _ -> bsConsts b
-    _                                                                     -> []
-  fromPair ("value", String (hexadecimal -> Right (i,_))) = [AbiAddress i]
-  fromPair (_, o) = getConstants o
+extractConstants = nub . concatMap (constants "" . view contractAst) where
+  -- Tools for parsing numbers and quoted strings from 'Text'
+  as f     = preview $ to f . _Right . _1
+  asAddr x = as hexadecimal =<< T.stripPrefix "0x" x
+  asQuoted = preview $ unpacked . prefixed "\"" . suffixed "\"" . packedChars
+  -- We need this because sometimes @solc@ emits a json string with a type, then a string
+  -- representation of some value of that type. Why is this? Unclear. Anyway, this lets us match
+  -- those cases like regular strings
+  literal t f = \case String (T.words -> ((^? only t) -> m) : y : _) -> m *> f y
+                      _                                              -> Nothing
+  -- 'constants' takes a property name and its 'Value', then tries to find solidity literals
+  -- CASE ONE: we're looking at a big object with a bunch of little objects, recurse
+  constants _ (Object o) = concatMap (uncurry constants) $ M.toList o
+  constants _ (Array  a) = concatMap (constants "")        a
+  -- CASE TWO: we're looking at a @type@ or @value@ object, try to parse it
+  -- 2.1: We're looking at a @value@ starting with "0x", which is how solc represents addresses
+  --      @value: "0x123"@ ==> @[AbiAddress 291]@
+  constants "value" (String                   (asAddr      -> Just i)) = [AbiAddress i]
+  -- 2.2: We're looking at something of the form @type: int_const [...]@, an integer literal
+  --      @type: "int_const 123"@ ==> @[AbiUInt 8 123, AbiUInt 16 123, ... AbiInt 256 123]@
+  constants "type"  (literal "int_const"      (as decimal) -> Just i) =
+    let l f = f <$> [8,16..256] <*> [fromIntegral (i :: Integer)] in l AbiInt ++ l AbiUInt
+  -- 2.3: We're looking at something of the form @type: literal_string "[...]"@, a string literal
+  --      @type: "literal_string \"123\""@ ==> @[AbiString "123", AbiBytes 3 "123"...]@
+  constants "type"  (literal "literal_string" asQuoted     -> Just b) =
+    fmap AbiBytes [BS.length b..32] ++ [AbiString, AbiBytesDynamic] <&> ($ b)
+  -- CASE THREE: we're at a leaf node with no constants
+  constants _  _ = []

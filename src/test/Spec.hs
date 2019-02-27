@@ -3,15 +3,18 @@
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Echidna.ABI (SolCall)
+import Echidna.ABI (SolCall, genInteractionsM, mkGenDict)
 import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..))
 import Echidna.Config (defaultConfig, parseConfig, sConf)
-import Echidna.Solidity (SolException(..), loadSolidity, loadSolTests, quiet)
+import Echidna.Solidity
 import Echidna.Transaction (Tx, call)
 
 import Control.Lens
+import Control.Monad (forM_, replicateM)
 import Control.Monad.Catch (MonadCatch(..))
+import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (runReaderT)
+import Control.Monad.State (evalStateT)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
 import Data.List (find)
@@ -20,9 +23,9 @@ import System.Directory (withCurrentDirectory)
 
 main :: IO ()
 main = withCurrentDirectory "./examples/solidity" . defaultMain $
-         testGroup "Echidna" [compilationTests, integrationTests]
+         testGroup "Echidna" [compilationTests, extractionTests, integrationTests]
 
--- Compilation tests
+-- Compilation Tests
 
 compilationTests :: TestTree
 compilationTests = testGroup "Compilation and loading tests"
@@ -43,6 +46,21 @@ compilationTests = testGroup "Compilation and loading tests"
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
   tryLoad = runReaderT (loadSolidity fp c >> pure ()) $ defaultConfig & sConf . quiet .~ True
+
+-- Extraction Tests
+
+extractionTests :: TestTree
+extractionTests = testGroup "Constant extraction/generation testing"
+  [ testCase "basic/constants.sol" . flip runReaderT (defaultConfig & sConf . quiet .~ True) $ do
+      cs  <- contracts "basic/constants.sol"
+      abi <- view _2 <$> loadSpecified Nothing cs
+      is  <- evalStateT (replicateM 1000 $ genInteractionsM abi)
+                      $ mkGenDict 0.15 (extractConstants cs) []
+      forM_ [ ("ints",  ("find",  [AbiInt 256 1337]))
+            , ("addrs", ("find2", [AbiAddress 0x123]))
+            , ("strs",  ("find3", [AbiString "test"]))
+            ] $ \(t, c) -> liftIO . assertBool ("failed to extract " ++ t) $ elem c is
+  ]
 
 -- Integration Tests
 
@@ -66,8 +84,6 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_all_sender didn't shrink optimally",     solvedLen 3        "echidna_all_sender")
       ] ++ (["s1", "s2", "s3"] <&> \n ->
         ("echidna_all_sender solved without " ++ unpack n, solvedWith (n, []) "echidna_all_sender"))
-  , testContract "basic/constants.sol"   Nothing
-      [ ("echidna_found failed (didn't find constant)",    solved "echidna_found") ]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
