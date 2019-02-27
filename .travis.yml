@@ -36,17 +36,14 @@ script:
  - STACK_OPTS="$STACK_OPTS --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib"
  - |
    set -ex
-   # Run tests using solc 0.4.25
-   export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
-   cp ~/.local/bin/solc-0.4.25 ~/.local/bin/solc || true
-   stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
-   set +ex
- - |
-   set -ex
-   # Run tests using solc 0.5.4
-   export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
-   cp ~/.local/bin/solc-0.5.4 ~/.local/bin/solc || true
-   stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
+   run_tests_using () {
+     export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
+     cp ~/.local/bin/$1 ~/.local/bin/solc || true
+     stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
+   }
+
+   run_tests_using "solc-0.4.25"
+   run_tests_using "solc-0.5.4"
    set +ex
 
 
