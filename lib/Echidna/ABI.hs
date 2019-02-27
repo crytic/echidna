@@ -13,6 +13,7 @@ import Control.Monad.Random.Strict
 import Data.Bits (Bits(..))
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
+import Data.ByteString.Char8 (pack)
 import Data.Has (Has(..))
 import Data.Hashable (Hashable)
 import Data.HashMap.Strict (HashMap)
@@ -68,14 +69,14 @@ makeLenses 'GenDict
 hashMapBy :: (Hashable k, Eq k, Ord a) => (a -> k) -> [a] -> HashMap k [a]
 hashMapBy f = M.fromList . mapMaybe (liftM2 fmap (\l x -> (f x, l)) listToMaybe) . group . sort
 
+intConsts :: Integer -> [AbiValue]
+intConsts n = let l f = f <$> [8,16..256] <*> [fromIntegral n] in l AbiInt ++ l AbiUInt
+
+bsConsts :: String -> [AbiValue]
+bsConsts s = [AbiString, AbiBytes (length s), AbiBytesDynamic] <&> ($ pack s)
+
 gaddConstants :: [AbiValue] -> GenDict -> GenDict
 gaddConstants l = constants <>~ hashMapBy abiValueType l
-
-gaddInt :: Integer -> GenDict -> GenDict
-gaddInt n = let l f = f <$> [8,16..256] <*> [fromIntegral n] in gaddConstants $ l AbiInt ++ l AbiUInt
-
-gaddBS :: ByteString -> GenDict -> GenDict
-gaddBS s = gaddConstants $ [AbiString, AbiBytes (BS.length s), AbiBytesDynamic] <&> ($ s)
 
 gaddCalls :: [SolCall] -> GenDict -> GenDict
 gaddCalls c = wholeCalls <>~ hashMapBy (fmap $ fmap abiValueType) c
