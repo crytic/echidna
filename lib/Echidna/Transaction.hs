@@ -120,7 +120,6 @@ setupTx (Tx c s r v) = S.state . runState . zoom hasLens . sequence_ $
   , env . origin .= s, state . caller .= s, state . callvalue .= v, setup] where
     setup = case c of
       Left cd  -> loadContract r >> state . calldata .= encode cd
-      Right bc -> sequence_ [ env . contracts . ix r .= initialContract bc,
-                              env . contracts . at r .= Just (initialContract bc)] >> loadContract r
+      Right bc -> assign (env . contracts . at r) (Just $ initialContract bc) >> loadContract r
     encode (n, vs) = B . abiCalldata
       (n <> "(" <> T.intercalate "," (abiTypeSolidity . abiValueType <$> vs) <> ")") $ V.fromList vs
