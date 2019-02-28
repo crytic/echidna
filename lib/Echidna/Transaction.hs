@@ -13,9 +13,11 @@ import Control.Monad (liftM4)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR)
 import Control.Monad.State.Strict (MonadState, State, runState)
+import Data.Aeson (ToJSON(..), object)
 import Data.ByteString (ByteString)
 import Data.Either (either, lefts)
 import Data.Has (Has(..))
+import Data.List (intercalate)
 import Data.Set (Set)
 import EVM
 import EVM.ABI (abiCalldata, abiTypeSolidity, abiValueType)
@@ -38,6 +40,18 @@ data Tx = Tx { _call  :: Either SolCall ByteString -- | Either a call or code fo
              } deriving (Eq, Ord, Show)
 
 makeLenses ''Tx
+
+-- | Pretty-print some 'AbiCall'.
+ppSolCall :: SolCall -> String
+ppSolCall (t, vs) = T.unpack t ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
+
+instance ToJSON Tx where
+  toJSON (Tx c s d v) = object [ ("call",  toJSON $ either ppSolCall (const "<CREATE>") c)
+                               -- from/to are Strings, since JSON doesn't support hexadecimal notation
+                               , ("from",  toJSON $ show s)
+                               , ("to",    toJSON $ show d)
+                               , ("value", toJSON $ show v)
+                               ]
 
 -- | A contract is just an address with an ABI (for our purposes).
 type ContractA = (Addr, [SolSignature])
@@ -105,6 +119,6 @@ setupTx (Tx c s r v) = S.state . runState . zoom hasLens . sequence_ $
   , env . origin .= s, state . caller .= s, state . callvalue .= v, setup] where
     setup = case c of
       Left cd  -> loadContract r >> state . calldata .= encode cd
-      Right bc -> assign (env . contracts . ix r) (initialContract bc) >> loadContract r
+      Right bc -> assign (env . contracts . at r) (Just $ initialContract bc) >> loadContract r
     encode (n, vs) = B . abiCalldata
       (n <> "(" <> T.intercalate "," (abiTypeSolidity . abiValueType <$> vs) <> ")") $ V.fromList vs
