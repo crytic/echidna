@@ -15,16 +15,20 @@ import Control.Monad (liftM2, replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.State.Strict (MonadState, StateT, evalStateT, execStateT)
+import Control.Monad.State.Strict (MonadState(..), StateT, evalStateT, execStateT)
+import Data.Aeson (ToJSON(..), object)
 import Data.Bool (bool)
 import Data.Either (lefts)
-import Data.Map (Map, unionWith)
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Foldable (toList)
+import Data.Map (Map, mapKeys, unionWith)
+import Data.Maybe (fromMaybe, isNothing, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
+import Data.Text (unpack)
 import EVM
-import EVM.Types (W256(..))
+import EVM.Types (W256)
+import Numeric (showHex)
 
 import Echidna.ABI
 import Echidna.Exec
@@ -59,11 +63,24 @@ instance Eq TestState where
   (Solved l)  == (Solved m)  = l == m
   _           == _           = False
 
+instance ToJSON TestState where
+  toJSON s = object $ ("passed", toJSON passed) : maybeToList desc where
+    (passed, desc) = case s of Open _    -> (True, Nothing)
+                               Passed    -> (True, Nothing)
+                               Large _ l -> (False, Just ("callseq", toJSON l))
+                               Solved  l -> (False, Just ("callseq", toJSON l))
+                               Failed  e -> (False, Just ("exception", toJSON $ show e))
+
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests    :: [(SolTest, TestState)] -- ^ Tests being evaluated
                          , _coverage :: Map W256 (Set Int)     -- ^ Coverage captured (NOTE: we don't always record this)
                          , _genDict  :: GenDict                -- ^ Generation dictionary
                          }
+
+instance ToJSON Campaign where
+  toJSON (Campaign ts co _) = object $ ("tests", toJSON $ bimap (unpack . fst) toJSON <$> ts)
+    : if co == mempty then [] else [("coverage",) . toJSON . mapKeys (`showHex` "") $ toList <$> co]
+
 makeLenses ''Campaign
 
 instance Semigroup Campaign where

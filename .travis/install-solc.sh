@@ -15,7 +15,10 @@ fetch_stack_linux() {
   rm -Rf solc-static-linux;
   wget https://github.com/ethereum/solidity/releases/download/v0.4.25/solc-static-linux;
   chmod +x solc-static-linux;
-  mv solc-static-linux ~/.local/bin/solc;
+  mv solc-static-linux ~/.local/bin/solc-0.4.25;
+  wget https://github.com/ethereum/solidity/releases/download/v0.5.4/solc-static-linux;
+  chmod +x solc-static-linux;
+  mv solc-static-linux ~/.local/bin/solc-0.5.4;
 }
 
 if [ "$(uname)" != "Darwin" ]; then

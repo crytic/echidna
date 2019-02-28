@@ -1,18 +1,22 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 
 module Echidna.Config where
 
 import Control.Lens
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Reader (ReaderT(..))
+import Control.Monad.Reader (Reader, ReaderT(..), runReader)
+import Data.ByteString.Lazy.Char8 (unpack)
 import Data.Has (Has(..))
 import Data.Aeson
-import Data.Bool (bool)
 import EVM (result)
 
+import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Data.ByteString as BS
 import qualified Data.Yaml as Y
 
@@ -26,6 +30,7 @@ data EConfig = EConfig { _cConf :: CampaignConf
                        , _nConf :: Names
                        , _sConf :: SolConf
                        , _tConf :: TestConf
+                       , _uConf :: UIConf
                        }
 makeLenses ''EConfig
 
@@ -41,17 +46,30 @@ instance Has SolConf EConfig where
 instance Has TestConf EConfig where
   hasLens = tConf
 
+instance Has UIConf EConfig where
+  hasLens = uConf
+
 instance FromJSON EConfig where
   parseJSON (Object v) =
     let tc = do reverts  <- v .:? "reverts"   .!= True
                 psender  <- v .:? "psender"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                 let good = if reverts then (`elem` [ResTrue, ResRevert]) else (== ResTrue)
-                return $ TestConf (good . maybe ResOther classifyRes . view result) (const psender) in
-    EConfig <$> (CampaignConf <$> v .:? "testLimit"   .!= 10000
-                              <*> v .:? "seqLen"      .!= 10
-                              <*> v .:? "shrinkLimit" .!= 5000
-                              <*> (bool Nothing (Just mempty) <$> v .:? "coverage" .!= False))
-            <*> pure (const $ const mempty)
+                return $ TestConf (good . maybe ResOther classifyRes . view result) (const psender)
+        cc = CampaignConf <$> v .:? "testLimit"   .!= 10000
+                          <*> v .:? "seqLen"      .!= 10
+                          <*> v .:? "shrinkLimit" .!= 5000
+                          <*> pure Nothing
+        names = const $ const mempty :: Names
+        ppc = cc <&> \c x -> runReader (ppCampaign x) (c, names)
+        style :: Y.Parser (Campaign -> String)
+        style = v .:? "format" >>= \case (Nothing :: Maybe String) -> ppc
+                                         (Just "text")             -> ppc
+                                         (Just "json")             -> pure $ unpack . encode
+                                         (Just "none")             -> pure $ const ""
+                                         _                         -> M.fail
+                                           "unrecognized ui type (should be text, json, or none)" in
+    EConfig <$> cc
+            <*> pure names
             <*> (SolConf <$> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                          <*> v .:? "deployer"     .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                          <*> v .:? "sender"       .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
@@ -59,6 +77,7 @@ instance FromJSON EConfig where
                          <*> v .:? "solcArgs"     .!= ""
                          <*> v .:? "quiet"        .!= False)
             <*> tc
+            <*> (UIConf <$> v .:? "dashboard" .!= True <*> style)
   parseJSON _ = parseJSON (Object mempty)
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
@@ -72,3 +91,7 @@ parseConfig f = liftIO (BS.readFile f) >>= Y.decodeThrow
 -- | Run some action with the default configuration, useful in the REPL.
 withDefaultConfig :: ReaderT EConfig m a -> m a
 withDefaultConfig = (`runReaderT` defaultConfig)
+
+-- | 'withDefaultConfig' but not for transformers
+withDefaultConfig' :: Reader EConfig a -> a
+withDefaultConfig' = (`runReader` defaultConfig)
