@@ -66,7 +66,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_all_sender didn't shrink optimally",     solvedLen 3        "echidna_all_sender")
       ] ++ (["s1", "s2", "s3"] <&> \n ->
         ("echidna_all_sender solved without " ++ unpack n, solvedWith (n, []) "echidna_all_sender"))
-  , testContract "basic/contractAddr.sol"        Nothing
+  , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
       [ ("echidna_addr failed",                  not . solved "echidna_addr") ]
   ]
 
