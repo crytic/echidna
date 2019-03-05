@@ -5,7 +5,7 @@ contract NewCoin {
   uint256 internal totalSupply_;
 
   constructor() public {
-    totalSupply_ = 300;
+    totalSupply_ = 30000;
   }
 
   function totalSupply() public view returns (uint256) {
@@ -13,7 +13,7 @@ contract NewCoin {
   }
 
   function transfer(address _to, uint _value) public returns (bool) {
- 
+
     require(_to != address(0));
     require(_value <= balances[msg.sender]);
 
@@ -32,9 +32,9 @@ contract TEST is NewCoin {
   address private eve = 0x00a329C0648769a73afAC7F9381e08fb43DBEA70;
 
   constructor() public {
-    balances[alice] = 100;
-    balances[bob] = 100;
-    balances[eve] = 100;
+    balances[alice] = 10000;
+    balances[bob] = 10000;
+    balances[eve] = 10000;
     initSupply = totalSupply_;
   }
 

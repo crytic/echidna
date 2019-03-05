@@ -77,12 +77,12 @@ data GenDict = GenDict { _pSynthA    :: Float
                          -- ^ Constants to use, sorted by type
                        , _wholeCalls :: HashMap SolSignature [SolCall] 
                          -- ^ Whole calls to use, sorted by type
-                       }
+                       } deriving (Show)
 
 makeLenses 'GenDict
 
 hashMapBy :: (Hashable k, Eq k, Ord a) => (a -> k) -> [a] -> HashMap k [a]
-hashMapBy f = M.fromList . mapMaybe (liftM2 fmap (\l x -> (f x, l)) listToMaybe) . group . sort
+hashMapBy f = M.fromListWith (++) . mapMaybe (liftM2 fmap (\l x -> (f x, l)) listToMaybe) . group . sort
 
 gaddConstants :: [AbiValue] -> GenDict -> GenDict
 gaddConstants l = constants <>~ hashMapBy abiValueType l
