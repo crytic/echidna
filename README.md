@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/trailofbits/echidna.svg?branch=master)](https://travis-ci.org/trailofbits/echidna)
 
-![echidna logo](echidna.png)
+![echidna logo](echidna_logo.png)
 
 Echidna is a weird creature that eats bugs and is highly electrosensitive (with apologies to Jacob Stanley)
 
