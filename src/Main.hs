@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Main where
 
 import Control.Lens hiding (argument)
@@ -8,6 +10,7 @@ import System.Exit (exitWith, exitSuccess, ExitCode(..))
 
 import Echidna.Config
 import Echidna.Solidity
+import Echidna.Truffle
 import Echidna.Campaign
 import Echidna.UI
 
@@ -36,7 +39,11 @@ opts = info (options <**> helper) $ fullDesc
 main :: IO ()
 main = do (Options f c cov conf) <- execParser opts
           cfg          <- maybe (pure defaultConfig) parseConfig conf
-          Campaign r _ <- runReaderT (loadSolTests f (pack <$> c) >>= \(v,w,ts) -> ui v w ts) $
+          Campaign r _ <- runReaderT (loader f (pack <$> c) >>= \(v,w,ts) -> ui v w ts) $
                             cfg & cConf %~ if cov then \k -> k {knownCoverage = Just mempty} else id
           if any (/= Passed) $ snd <$> r then exitWith $ ExitFailure 1
                                          else exitSuccess
+            where loader f = case (reverse f) of
+                                (_:".json") -> loadTruffleTests f
+                                (_:".sol")  -> loadSolTests f
+                                _           -> error "Format unknown" 
