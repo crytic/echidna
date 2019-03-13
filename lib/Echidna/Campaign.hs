@@ -137,7 +137,7 @@ execTxOptC t = do
   og  <- hasLens . coverage <<.= mempty
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
   hasLens . coverage %= unionWith union og
-  grew <- (== GT) . comparing coveragePoints og <$> use (hasLens . coverage)
+  grew <- (== LT) . comparing coveragePoints og <$> use (hasLens . coverage)
   when grew $ hasLens . genDict %= gaddCalls (lefts [t ^. call])
   return res
 
