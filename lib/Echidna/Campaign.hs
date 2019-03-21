@@ -12,14 +12,16 @@ module Echidna.Campaign where
 
 import Control.Lens
 import Control.Monad (liftM2, replicateM)
-import Control.Monad.Catch (MonadCatch(..))
-import Control.Monad.Random.Strict (MonadRandom)
+import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
+import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), StateT, evalStateT, execStateT)
+import Control.Monad.Trans (lift)
+import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Aeson (ToJSON(..), object)
 import Data.Bool (bool)
 import Data.Map (Map, mapKeys)
-import Data.Maybe (maybeToList)
+import Data.Maybe (maybeToList, fromMaybe)
 import Data.Foldable (toList)
 import Data.Has (Has(..))
 import Data.Set (Set)
@@ -27,11 +29,17 @@ import Data.Text (unpack)
 import EVM
 import EVM.Types (W256)
 import Numeric (showHex)
+import System.Random (StdGen, mkStdGen)
 
 import Echidna.ABI
 import Echidna.Exec
 import Echidna.Test
 import Echidna.Transaction
+
+instance MonadThrow m => MonadThrow (RandT g m) where
+  throwM = lift . throwM
+instance MonadCatch m => MonadCatch (RandT g m) where
+  catch = liftCatch catch
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { testLimit     :: Int
@@ -44,6 +52,7 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                  , knownCoverage :: Maybe (Map W256 (Set Int))
                                    -- ^ If applicable, initially known coverage. If this is 'Nothing',
                                    -- Echidna won't collect coverage information (and will go faster)
+                                 , seed          :: Maybe StdGen
                                  }
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
@@ -71,11 +80,13 @@ instance ToJSON TestState where
 
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests    :: [(SolTest, TestState)]     -- ^ Tests being evaluated
+                         , _cseed    :: StdGen                     -- ^ Random number source
                          , _coverage :: Maybe (Map W256 (Set Int)) -- ^ Coverage, if applicable
                          }
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co) = object $ ("tests", toJSON $ bimap (unpack . fst) toJSON <$> ts)
+  toJSON (Campaign ts s co) = object $ ("tests", toJSON $ bimap (unpack . fst) toJSON <$> ts)
+    : ("seed", toJSON (show s))
     : maybeToList (("coverage",) . toJSON . mapKeys (`showHex` "") . fmap toList <$> co)
 
 makeLenses ''Campaign
@@ -83,7 +94,7 @@ makeLenses ''Campaign
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
 isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
-isDone (Campaign ts _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
+isDone (Campaign ts _ _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
   all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts
 
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
@@ -134,17 +145,18 @@ callseq v w ql = replicateM ql (evalStateT genTxM w) >>= \is -> use hasLens >>= 
 
 -- | Run a fuzzing campaign given an initial universe state and some tests. Return the 'Campaign' state once
 -- we can't solve or shrink anything.
-campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, Has GenConf x, Has TestConf x, Has CampaignConf x)
+campaign :: ( MonadCatch m, MonadReader x m, Has GenConf x, Has TestConf x, Has CampaignConf x)
          => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
          -> VM                  -- ^ Initial VM state
          -> World               -- ^ Initial world state
          -> [SolTest]           -- ^ Tests to evaluate
          -> m Campaign
-campaign u v w ts = view (hasLens . to knownCoverage) >>= \c ->
-  execStateT runCampaign (Campaign ((,Open (-1)) <$> ts) c) where
-    step        = runUpdate (updateTest v Nothing) >> u >> runCampaign
+campaign u v w ts = view (hasLens . to knownCoverage) >>= \c -> do
+  g <- view (hasLens . to (fromMaybe (mkStdGen 0) . seed))
+  execStateT (evalRandT runCampaign g) (Campaign ((,Open (-1)) <$> ts) g c) where
+    step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl q sl _) ->
+    update c    = view hasLens >>= \(CampaignConf tl q sl _ _) ->
       if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c -> step
-         | otherwise                                     -> u
+         | otherwise                                     -> lift u

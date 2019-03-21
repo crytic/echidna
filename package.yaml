@@ -30,6 +30,7 @@ dependencies:
   - text                 >= 1.2.2  && < 1.3
   - transformers
   - unliftio
+  - unliftio-core
   - vector               >= 0.11.0 && < 0.13
   - vty
   - wl-pprint-annotated
@@ -37,6 +38,7 @@ dependencies:
   - word8
   - yaml
   - unordered-containers
+  - random
 
 default-extensions:
   - OverloadedStrings
