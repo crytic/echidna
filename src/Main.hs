@@ -35,8 +35,7 @@ opts = info (options <**> helper) $ fullDesc
 
 main :: IO ()
 main = do (Options f c cov conf) <- execParser opts
-          cfg          <- maybe (pure defaultConfig) parseConfig conf
-          Campaign r _ <- runReaderT (loadSolTests f (pack <$> c) >>= \(v,w,ts) -> ui v w ts) $
-                            cfg & cConf %~ if cov then \k -> k {knownCoverage = Just mempty} else id
-          if any (/= Passed) $ snd <$> r then exitWith $ ExitFailure 1
-                                         else exitSuccess
+          cfg <- maybe (pure defaultConfig) parseConfig conf
+          cpg <- runReaderT (loadSolTests f (pack <$> c) >>= \(v,w,ts) -> ui v w ts) $
+                   cfg & cConf %~ if cov then \k -> k {knownCoverage = Just mempty} else id
+          if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
