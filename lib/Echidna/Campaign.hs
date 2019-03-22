@@ -86,6 +86,12 @@ isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
 isDone (Campaign ts _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
   all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts
 
+-- | Given a 'Campaign', check if the test results should be reported as a
+-- success or a failure.
+isSuccess :: Campaign -> Bool
+isSuccess (Campaign ts _) =
+  any (\case { Passed -> True; Open _ -> True; _ -> False; }) $ snd <$> ts
+
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
 -- of transactions and the state after evaluation, see if:
 -- (0): The test is past its 'testLimit' or 'shrinkLimit' and should be presumed un[solve|shrink]able
