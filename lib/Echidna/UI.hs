@@ -25,6 +25,7 @@ import EVM.Types (Addr, W256)
 import Graphics.Vty (Event(..), Key(..), Modifier(..), defaultConfig, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
+import System.Random (mkStdGen)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (forkIO, killThread)
 
@@ -126,7 +127,7 @@ ui v w ts = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id fo
   c <- if d then do bc <- liftIO $ newBChan 100
                     t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts >> pure ()
                     a <- monitor (killThread t)
-                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty undefined mempty)
+                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty (mkStdGen 0) mempty)
             else campaign (pure ()) v w ts
   liftIO . putStrLn =<< ($ c) <$> view (hasLens . finished)
   return c
