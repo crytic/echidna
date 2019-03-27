@@ -16,7 +16,6 @@ import Data.Maybe (fromMaybe)
 import Data.Ord (comparing)
 import Data.Set (Set)
 import EVM
-import EVM.Concrete (Blob(..))
 import EVM.Exec (exec)
 import EVM.Types (W256(..))
 
@@ -30,7 +29,7 @@ data ErrorClass = RevertE | IllegalE | UnknownE
 
 -- | Given an execution error, classify it. Mostly useful for nice @pattern@s ('Reversion', 'Illegal').
 classifyError :: Error -> ErrorClass
-classifyError Revert                 = RevertE
+classifyError (Revert _)             = RevertE
 classifyError (UnrecognizedOpcode _) = RevertE
 classifyError StackUnderrun          = IllegalE
 classifyError BadJumpDestination     = IllegalE
@@ -69,7 +68,7 @@ execTxWith h m t = do og <- get
                       case (res, isRight $ t ^. call) of
                         (Reversion,   _)         -> put og
                         (VMFailure x, _)         -> h x
-                        (VMSuccess (B bc), True) -> hasLens %= execState ( replaceCodeOfSelf bc
+                        (VMSuccess bc, True) -> hasLens %= execState ( replaceCodeOfSelf bc
                                                                         >> loadContract (t ^. dst))
                         _                        -> pure ()
                       return res

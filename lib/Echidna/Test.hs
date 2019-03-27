@@ -13,7 +13,6 @@ import Data.Has (Has(..))
 import Data.Text (Text)
 import EVM
 import EVM.ABI (AbiValue(..), encodeAbiValue)
-import EVM.Concrete (Blob(..))
 import EVM.Types (Addr)
 
 import Echidna.Exec
@@ -35,7 +34,7 @@ data CallRes = ResFalse | ResTrue | ResRevert | ResOther deriving (Eq, Show)
 
 -- | Given a 'VMResult', classify it assuming it was the result of a call to an Echidna test.
 classifyRes :: VMResult -> CallRes
-classifyRes (VMSuccess (B b)) | b == encodeAbiValue (AbiBool True)  = ResTrue
+classifyRes (VMSuccess b) | b == encodeAbiValue (AbiBool True)  = ResTrue
                               | b == encodeAbiValue (AbiBool False) = ResFalse
 classifyRes Reversion = ResRevert
 classifyRes _ = ResOther

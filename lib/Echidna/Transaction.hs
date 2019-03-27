@@ -22,7 +22,7 @@ import Data.List (intercalate)
 import Data.Set (Set)
 import EVM
 import EVM.ABI (abiCalldata, abiTypeSolidity, abiValueType)
-import EVM.Concrete (Blob(..), Word(..), w256)
+import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
 
 import qualified Control.Monad.State.Strict as S (state)
@@ -121,5 +121,5 @@ setupTx (Tx c s r v) = S.state . runState . zoom hasLens . sequence_ $
     setup = case c of
       Left cd  -> loadContract r >> state . calldata .= encode cd
       Right bc -> assign (env . contracts . at r) (Just $ initialContract bc) >> loadContract r
-    encode (n, vs) = B . abiCalldata
+    encode (n, vs) = abiCalldata
       (n <> "(" <> T.intercalate "," (abiTypeSolidity . abiValueType <$> vs) <> ")") $ V.fromList vs
