@@ -16,7 +16,6 @@ import Data.Has (Has(..))
 import Data.Aeson
 import EVM (result)
 import Text.Read (readMaybe)
-import System.Random (StdGen)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Data.ByteString as BS
@@ -62,15 +61,11 @@ instance FromJSON EConfig where
                 psender  <- v .:? "psender"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                 let good = if reverts then (`elem` [ResTrue, ResRevert]) else (== ResTrue)
                 return $ TestConf (good . maybe ResOther classifyRes . view result) (const psender)
-        cc = do
-          s <- v .:? "seed"
-          let s' :: Maybe StdGen
-              s' = readMaybe =<< s
-          CampaignConf <$> v .:? "testLimit"   .!= 10000
-                       <*> v .:? "seqLen"      .!= 10
-                       <*> v .:? "shrinkLimit" .!= 5000
-                       <*> pure Nothing
-                       <*> pure s'
+        cc = CampaignConf <$> v .:? "testLimit"   .!= 10000
+                          <*> v .:? "seqLen"      .!= 10
+                          <*> v .:? "shrinkLimit" .!= 5000
+                          <*> pure Nothing
+                          <*> fmap (readMaybe =<<) (v .:? "seed")
         names = const $ const mempty :: Names
         ppc = cc <&> \c x -> runReader (ppCampaign x) (c, names)
         style :: Y.Parser (Campaign -> String)
