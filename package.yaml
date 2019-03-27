@@ -21,6 +21,7 @@ dependencies:
   - hashable
   - hevm
   - lens                 >= 4.15.1 && < 4.17
+  - lens-aeson
   - MonadRandom
   - mtl                  >= 2.2.1  && < 2.3
   - optparse-applicative >= 0.13.0 && < 0.15

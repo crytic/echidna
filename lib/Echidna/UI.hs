@@ -25,7 +25,7 @@ import EVM.Types (Addr, W256)
 import Graphics.Vty (Event(..), Key(..), Modifier(..), defaultConfig, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
-import System.Random (mkStdGen)
+import System.Random (StdGen)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (forkIO, killThread)
 
@@ -38,7 +38,7 @@ import Echidna.Test
 import Echidna.Transaction
 
 data UIConf = UIConf { _dashboard :: Bool
-                     , _finished  :: Campaign -> String
+                     , _finished  :: Campaign -> Maybe StdGen -> String
                      }
 
 makeLenses ''UIConf
@@ -79,7 +79,7 @@ ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m th
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m String
-ppTests (Campaign ts _ _) = unlines <$> mapM (\((n, _), s) -> ((T.unpack n ++ ": ") ++ ) <$> ppTS s) ts
+ppTests (Campaign ts _) = unlines <$> mapM (\((n, _), s) -> ((T.unpack n ++ ": ") ++ ) <$> ppTS s) ts
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: Map W256 (Set Int) -> String
@@ -87,7 +87,7 @@ ppCoverage s = "Unique instructions: " ++ show (coveragePoints s)
             ++ "\nUnique codehashes: " ++ show (length s)
 
 ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m String
-ppCampaign c@(Campaign _ _ co) = (++) <$> ppTests c <*> pure (maybe "" (("\n" ++) . ppCoverage) co)
+ppCampaign c@(Campaign _ co) = (++) <$> ppTests c <*> pure (maybe "" (("\n" ++) . ppCoverage) co)
 
 -- | Render 'Campaign' progress as a 'Widget'.
 campaignStatus :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m (Widget ())
@@ -124,10 +124,11 @@ ui :: ( MonadCatch m, MonadReader x m, MonadUnliftIO m
    -> m Campaign
 ui v w ts = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
   d <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
+  g <- view (hasLens . to seed)
   c <- if d then do bc <- liftIO $ newBChan 100
                     t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts >> pure ()
                     a <- monitor (killThread t)
-                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty (mkStdGen 0) mempty)
+                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty)
             else campaign (pure ()) v w ts
-  liftIO . putStrLn =<< ($ c) <$> view (hasLens . finished)
+  liftIO . putStrLn =<< view (hasLens . finished) <*> pure c <*> pure g
   return c

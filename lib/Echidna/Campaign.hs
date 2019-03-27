@@ -80,13 +80,11 @@ instance ToJSON TestState where
 
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests    :: [(SolTest, TestState)]     -- ^ Tests being evaluated
-                         , _cseed    :: StdGen                     -- ^ Random number source
                          , _coverage :: Maybe (Map W256 (Set Int)) -- ^ Coverage, if applicable
                          }
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts s co) = object $ ("tests", toJSON $ bimap (unpack . fst) toJSON <$> ts)
-    : ("seed", toJSON (show s))
+  toJSON (Campaign ts co) = object $ ("tests", toJSON $ bimap (unpack . fst) toJSON <$> ts)
     : maybeToList (("coverage",) . toJSON . mapKeys (`showHex` "") . fmap toList <$> co)
 
 makeLenses ''Campaign
@@ -94,7 +92,7 @@ makeLenses ''Campaign
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
 isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
-isDone (Campaign ts _ _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
+isDone (Campaign ts _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
   all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts
 
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
@@ -153,7 +151,7 @@ campaign :: ( MonadCatch m, MonadReader x m, Has GenConf x, Has TestConf x, Has 
          -> m Campaign
 campaign u v w ts = view (hasLens . to knownCoverage) >>= \c -> do
   g <- view (hasLens . to (fromMaybe (mkStdGen 0) . seed))
-  execStateT (evalRandT runCampaign g) (Campaign ((,Open (-1)) <$> ts) g c) where
+  execStateT (evalRandT runCampaign g) (Campaign ((,Open (-1)) <$> ts) c) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl q sl _ _) ->

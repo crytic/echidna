@@ -14,7 +14,9 @@ import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Data.ByteString.Lazy.Char8 (unpack)
 import Data.Has (Has(..))
 import Data.Aeson
+import Data.Aeson.Lens
 import EVM (result)
+import System.Random (StdGen)
 import Text.Read (readMaybe)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
@@ -67,13 +69,14 @@ instance FromJSON EConfig where
                           <*> pure Nothing
                           <*> fmap (readMaybe =<<) (v .:? "seed")
         names = const $ const mempty :: Names
-        ppc = cc <&> \c x -> runReader (ppCampaign x) (c, names)
-        style :: Y.Parser (Campaign -> String)
+        ppc = cc <&> \c x _ -> runReader (ppCampaign x) (c, names)
+        style :: Y.Parser (Campaign -> Maybe StdGen -> String)
         style = v .:? "format" >>= \case (Nothing :: Maybe String) -> ppc
                                          (Just "text")             -> ppc
-                                         (Just "json")             -> pure $ unpack . encode
-                                         (Just "none")             -> pure $ const ""
-                                         _                         -> M.fail
+                                         (Just "json")             -> pure . flip $ \g ->
+                                           unpack . encode . set (_Object . at "seed") (toJSON . show <$> g) . toJSON;
+                                         (Just "none")             -> pure . const . const $ ""
+                                         _                         -> pure $ \_ _ -> M.fail
                                            "unrecognized ui type (should be text, json, or none)" in
     EConfig <$> cc
             <*> pure (GenConf 0 mempty mempty)
