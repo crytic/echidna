@@ -61,7 +61,7 @@ instance FromJSON EConfig where
                 let good = if reverts then (`elem` [ResTrue, ResRevert]) else (== ResTrue)
                 return $ TestConf (good . maybe ResOther classifyRes . view result) (const psender)
         cc = CampaignConf <$> v .:? "testLimit"   .!= 10000
-                          <*> v .:? "seqLen"      .!= 10
+                          <*> v .:? "seqLen"      .!= 100
                           <*> v .:? "shrinkLimit" .!= 5000
                           <*> pure Nothing
         names = const $ const mempty :: Names
