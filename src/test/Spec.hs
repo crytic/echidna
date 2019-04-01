@@ -92,6 +92,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_addr failed",                  not . solved "echidna_addr") ]
   , testContract "basic/constants.sol"        Nothing
       [ ("echidna_found failed",                  not . solved "echidna_found") ]
+  , testContract "basic/constants2.sol"        Nothing
+      [ ("echidna_found32 failed",                  not . solved "echidna_found32") ]
   , testContract "coverage/single.sol"        Nothing
       [ ("echidna_state failed",                  not . solved "echidna_state") ]
   , testContract "coverage/multi.sol"        Nothing
