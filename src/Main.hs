@@ -1,6 +1,5 @@
 module Main where
 
-import Control.Lens hiding (argument)
 import Control.Monad.Reader (runReaderT)
 import Data.Text (pack)
 import Options.Applicative
@@ -34,8 +33,8 @@ opts = info (options <**> helper) $ fullDesc
 main :: IO ()
 main = do Options f c conf <- execParser opts
           cfg <- maybe (pure defaultConfig) parseConfig conf
-          res <- flip runReaderT cfg $ do
+          cpg <- flip runReaderT cfg $ do
             cs       <- contracts f
             (v,w,ts) <- loadSpecified (pack . (f ++) . (':' :) <$> c) cs >>= prepareForTest
-            view tests <$> ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [])
-          if any (/= Passed) $ snd <$> res then exitWith $ ExitFailure 1 else exitSuccess
+            ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [])
+          if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
