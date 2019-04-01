@@ -1,6 +1,6 @@
 # echidna
 
-[![Build Status](https://travis-ci.org/trailofbits/echidna.svg?branch=master)](https://travis-ci.org/trailofbits/echidna)
+[![Build Status](https://travis-ci.org/crytic/echidna.svg?branch=master)](https://travis-ci.org/trailofbits/echidna)
 
 ![echidna logo](echidna.png)
 
