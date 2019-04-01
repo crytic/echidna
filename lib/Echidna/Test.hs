@@ -35,7 +35,7 @@ data CallRes = ResFalse | ResTrue | ResRevert | ResOther deriving (Eq, Show)
 -- | Given a 'VMResult', classify it assuming it was the result of a call to an Echidna test.
 classifyRes :: VMResult -> CallRes
 classifyRes (VMSuccess b) | b == encodeAbiValue (AbiBool True)  = ResTrue
-                              | b == encodeAbiValue (AbiBool False) = ResFalse
+                          | b == encodeAbiValue (AbiBool False) = ResFalse
 classifyRes Reversion = ResRevert
 classifyRes _ = ResOther
 
