@@ -49,9 +49,9 @@ loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
 integrationTests :: TestTree
 integrationTests = testGroup "Solidity Integration Testing"
   [ testContract "basic/true.sol"        Nothing
-      [ ("echidna_true failed",                            not . solved "echidna_true") ]
+      [ ("echidna_true failed",                            passed       "echidna_true") ]
   , testContract "basic/flags.sol"       Nothing
-      [ ("echidna_alwaystrue failed",                      not . solved "echidna_alwaystrue")
+      [ ("echidna_alwaystrue failed",                      passed       "echidna_alwaystrue")
       , ("echidna_sometimesfalse passed",                  solved       "echidna_sometimesfalse")
       , ("echidna_sometimesfalse didn't shrink optimally", solvedLen 2  "echidna_sometimesfalse")
       ]
@@ -66,8 +66,10 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_all_sender didn't shrink optimally",     solvedLen 3        "echidna_all_sender")
       ] ++ (["s1", "s2", "s3"] <&> \n ->
         ("echidna_all_sender solved without " ++ unpack n, solvedWith (n, []) "echidna_all_sender"))
+  , testContract "basic/contractAddr.sol" Nothing
+      [ ("echidna_address failed",                         solved "echidna_address") ]
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
-      [ ("echidna_addr failed",                  not . solved "echidna_addr") ]
+      [ ("echidna_addr failed",                            passed "echidna_address") ]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
@@ -76,14 +78,23 @@ testContract fp cfg as = testCase fp $ do
   res <- runReaderT (loadSolTests fp Nothing >>= \(v, w, ts) -> campaign (pure ()) v w ts) c
   mapM_ (\(t,f) -> assertBool t $ f res) as
 
+getResult :: Text -> Campaign -> Maybe TestState
+getResult t = fmap snd <$> find ((t ==) . fst . fst) . view tests
+
 solnFor :: Text -> Campaign -> Maybe [Tx]
-solnFor t c = case fmap snd <$> find ((t ==) . fst . fst) $ c ^. tests of
+solnFor t c = case getResult t c of
   Just (Large _ s) -> Just s
   Just (Solved  s) -> Just s
   _                -> Nothing
 
 solved :: Text -> Campaign -> Bool
 solved t = isJust . solnFor t
+
+passed :: Text -> Campaign -> Bool
+passed t c = case getResult t c of
+  Just (Open _) -> True
+  Just Passed   -> True
+  _             -> False
 
 solvedLen :: Int -> Text -> Campaign -> Bool
 solvedLen i t = (== Just i) . fmap length . solnFor t
