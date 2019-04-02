@@ -20,6 +20,7 @@ dependencies:
   - exceptions           >= 0.8.1  && < 0.11
   - hashable
   - hevm
+  - hex
   - lens                 >= 4.15.1 && < 4.17
   - MonadRandom
   - mtl                  >= 2.2.1  && < 2.3

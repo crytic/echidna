@@ -141,7 +141,7 @@ callseq v w ql False = replicateM ql (evalStateT genTxM w) >>= \is -> use hasLen
                   hasLens .= (ca' & coverage ?~ co')
                   return s
 
-callseq _ w ql True = replicateM ql (evalStateT genTxM w) >>= (mapM ppTx) >>= \is -> liftIO $ print is >> return mempty 
+callseq _ w ql True = replicateM ql (evalStateT genTxM w) >>= (mapM ppRawTx) >>= \is -> liftIO $ print is >> return mempty 
 
 -- | Run a fuzzing campaign given an initial universe state and some tests. Return the 'Campaign' state once
 -- we can't solve or shrink anything.

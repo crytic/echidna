@@ -17,6 +17,7 @@ extra-deps:
 - text-format-0.3.2
 - tree-view-0.5
 - Unixutils-1.54.1
+- hex-0.1.2
 
 extra-include-dirs:
 - /usr/local/opt/readline/include

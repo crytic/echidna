@@ -18,11 +18,13 @@ import Data.Aeson (ToJSON(..), object)
 import Data.ByteString (ByteString)
 import Data.Either (either, lefts)
 import Data.Has (Has(..))
+import Data.Hex (hex)
 import Data.List (intercalate)
 import Data.Set (Set)
 import EVM
 import EVM.ABI (abiCalldata, abiTypeSolidity, abiValueType)
 import EVM.Concrete (Blob(..), Word(..), w256)
+
 import EVM.Types (Addr)
 
 import qualified Control.Monad.State.Strict as S (state)
@@ -57,6 +59,13 @@ ppTx :: (MonadReader x m, Has Names x) => Tx -> m String
 ppTx (Tx c s r v) = let sOf = either ppSolCall (const "<CREATE>") in
   view hasLens <&> \f -> sOf c ++ f Sender s ++ f Receiver r
                       ++ (if v == 0 then "" else "Value: " ++ show v)
+
+
+-- | Given rules for pretty-printing associated address, pretty-print a raw 'Transaction'.
+ppRawTx :: (MonadReader x m, Has Names x) => Tx -> m ByteString
+ppRawTx (Tx c _ _ _) = case c of
+                            Left (n,vs) -> return $ hex $ abiCalldata (n <> "(" <> T.intercalate "," (abiTypeSolidity . abiValueType <$> vs) <> ")") $ V.fromList vs
+                            Right bc -> return $ hex bc
 
 instance ToJSON Tx where
   toJSON (Tx c s d v) = object [ ("call",  toJSON $ either ppSolCall (const "<CREATE>") c)
