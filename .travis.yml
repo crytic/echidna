@@ -44,7 +44,7 @@ script:
    }
 
    run_tests_using "solc-0.4.25"
-   run_tests_using "solc-0.5.4"
+   run_tests_using "solc-0.5.7"
    set +ex
 
 
