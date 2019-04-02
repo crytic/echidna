@@ -15,7 +15,7 @@ import Control.Monad (liftM2, replicateM)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.State.Strict (MonadState(..), StateT, evalStateT, execStateT)
+import Control.Monad.State.Strict (MonadState(..), MonadIO, liftIO, StateT, evalStateT, execStateT)
 import Data.Aeson (ToJSON(..), object)
 import Data.Bool (bool)
 import Data.Map (Map, mapKeys)
@@ -32,6 +32,7 @@ import Echidna.ABI
 import Echidna.Exec
 import Echidna.Test
 import Echidna.Transaction
+--import Echidna.UI (ppTx) 
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { testLimit     :: Int
@@ -44,6 +45,8 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                  , knownCoverage :: Maybe (Map W256 (Set Int))
                                    -- ^ If applicable, initially known coverage. If this is 'Nothing',
                                    -- Echidna won't collect coverage information (and will go faster)
+                                 , ethenoMode   :: Bool
+                                   -- Print every transaction in a way that Etheno can parse
                                  }
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
@@ -129,18 +132,20 @@ evalSeq v e = go [] where
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves.
-callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
-           , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
-        => VM -> World -> Int -> m (Set Tx)
-callseq v w ql = replicateM ql (evalStateT genTxM w) >>= \is -> use hasLens >>= \ca -> case ca ^. coverage of
+callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m, MonadIO m
+           , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Campaign y, Has Names x)
+        => VM -> World -> Int -> Bool -> m (Set Tx)
+callseq v w ql False = replicateM ql (evalStateT genTxM w) >>= \is -> use hasLens >>= \ca -> case ca ^. coverage of
   Nothing   -> execStateT (evalSeq v execTx is) (v, ca) >>= assign hasLens . view _2 >> return mempty
   (Just co) -> do (_, co', ca', s) <- execStateT (evalSeq v execTxRecC is) (v, co, ca, mempty :: Set Tx)
                   hasLens .= (ca' & coverage ?~ co')
                   return s
 
+callseq _ w ql True = replicateM ql (evalStateT genTxM w) >>= (mapM ppTx) >>= \is -> liftIO $ print is >> return mempty 
+
 -- | Run a fuzzing campaign given an initial universe state and some tests. Return the 'Campaign' state once
 -- we can't solve or shrink anything.
-campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, Has GenConf x, Has TestConf x, Has CampaignConf x)
+campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, Has GenConf x, Has TestConf x, Has CampaignConf x, Has Names x)
          => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
          -> VM                  -- ^ Initial VM state
          -> World               -- ^ Initial world state
@@ -150,7 +155,7 @@ campaign u v w ts = view (hasLens . to knownCoverage) >>= \c ->
   execStateT runCampaign (Campaign ((,Open (-1)) <$> ts) c) where
     step        = runUpdate (updateTest v Nothing) >> u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl q sl _) ->
-      if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
+    update c    = view hasLens >>= \(CampaignConf tl q sl _ b) ->
+      if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q b >> step
          | any (\case Large n _ -> n < sl; _ -> False) c -> step
          | otherwise                                     -> u

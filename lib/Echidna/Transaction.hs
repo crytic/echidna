@@ -42,9 +42,21 @@ data Tx = Tx { _call  :: Either SolCall ByteString -- | Either a call or code fo
 
 makeLenses ''Tx
 
+-- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.
+data Role = Sender | Receiver | Ambiguous
+
+-- | Rules for pretty-printing addresses based on their role in a transaction.
+type Names = Role -> Addr -> String
+
 -- | Pretty-print some 'AbiCall'.
 ppSolCall :: SolCall -> String
 ppSolCall (t, vs) = T.unpack t ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
+
+-- | Given rules for pretty-printing associated address, pretty-print a 'Transaction'.
+ppTx :: (MonadReader x m, Has Names x) => Tx -> m String
+ppTx (Tx c s r v) = let sOf = either ppSolCall (const "<CREATE>") in
+  view hasLens <&> \f -> sOf c ++ f Sender s ++ f Receiver r
+                      ++ (if v == 0 then "" else "Value: " ++ show v)
 
 instance ToJSON Tx where
   toJSON (Tx c s d v) = object [ ("call",  toJSON $ either ppSolCall (const "<CREATE>") c)

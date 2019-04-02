@@ -25,6 +25,7 @@ import Echidna.ABI
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.UI
+import Echidna.Transaction
 
 -- | Our big glorious global config type, just a product of each local config.,
 data EConfig = EConfig { _cConf :: CampaignConf
@@ -64,6 +65,8 @@ instance FromJSON EConfig where
                           <*> v .:? "seqLen"      .!= 10
                           <*> v .:? "shrinkLimit" .!= 5000
                           <*> pure Nothing
+                          <*> v .:? "ethenoMode"  .!= False
+
         names = const $ const mempty :: Names
         ppc = cc <&> \c x -> runReader (ppCampaign x) (c, names)
         style :: Y.Parser (Campaign -> String)

@@ -43,18 +43,6 @@ data UIConf = UIConf { _dashboard :: Bool
 
 makeLenses ''UIConf
 
--- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.
-data Role = Sender | Receiver | Ambiguous
-
--- | Rules for pretty-printing addresses based on their role in a transaction.
-type Names = Role -> Addr -> String
-
--- | Given rules for pretty-printing associated address, pretty-print a 'Transaction'.
-ppTx :: (MonadReader x m, Has Names x) => Tx -> m String
-ppTx (Tx c s r v) = let sOf = either ppSolCall (const "<CREATE>") in
-  view hasLens <&> \f -> sOf c ++ f Sender s ++ f Receiver r
-                      ++ (if v == 0 then "" else "Value: " ++ show v)
-
 -- | Given a number of boxes checked and a number of total boxes, pretty-print progress in box-checking.
 progress :: Int -> Int -> String
 progress n m = "(" ++ show n ++ "/" ++ show m ++ ")"
@@ -72,7 +60,7 @@ ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x) => TestState -> m Str
 ppTS (Failed e)  = pure $ "could not evaluate ☣\n  " ++ show e
 ppTS (Solved l)  = ppFail Nothing l
 ppTS Passed      = pure "passed! 🎉"
-ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _) ->
+ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _) ->
                      if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
 ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m) 
                                                                               else Nothing) l
