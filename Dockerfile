@@ -5,6 +5,9 @@ RUN apt-get update
 RUN wget https://github.com/ethereum/solidity/releases/download/v0.4.25/solc-static-linux
 RUN chmod +x solc-static-linux
 RUN mv solc-static-linux /usr/bin/solc
+RUN wget https://github.com/ethereum/solidity/releases/download/v0.5.7/solc-static-linux
+RUN chmod +x solc-static-linux
+RUN mv solc-static-linux /usr/bin/solc-0.5.7
 RUN curl -sSL https://get.haskellstack.org/ | sh
 COPY . /echidna/
 WORKDIR /echidna
