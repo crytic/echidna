@@ -69,7 +69,7 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/contractAddr.sol" Nothing
       [ ("echidna_address failed",                         solved "echidna_address") ]
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
-      [ ("echidna_addr failed",                            passed "echidna_address") ]
+      [ ("echidna_address failed",                         passed "echidna_address") ]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
