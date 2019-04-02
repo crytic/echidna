@@ -16,9 +16,9 @@ fetch_stack_linux() {
   wget https://github.com/ethereum/solidity/releases/download/v0.4.25/solc-static-linux;
   chmod +x solc-static-linux;
   mv solc-static-linux ~/.local/bin/solc-0.4.25;
-  wget https://github.com/ethereum/solidity/releases/download/v0.5.4/solc-static-linux;
+  wget https://github.com/ethereum/solidity/releases/download/v0.5.7/solc-static-linux;
   chmod +x solc-static-linux;
-  mv solc-static-linux ~/.local/bin/solc-0.5.4;
+  mv solc-static-linux ~/.local/bin/solc-0.5.7;
 }
 
 if [ "$(uname)" != "Darwin" ]; then
