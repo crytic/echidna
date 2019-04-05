@@ -44,26 +44,41 @@ module Echidna.Transaction where
 
     data EthenoEvent = AccountCreated | ContractCreated | FunctionCall
 
-    execEthenoBatch :: (MonadState x m, Has VM x, MonadThrow m) => FilePath -> m VMResult-> m VMResult
+    loadEthenoBatch :: FilePath -> IO (VM, [Addr])
     execEthenoBatch fp m = do
-        txs <- -- load + parse the etheno file
-        forM_ txs $ \tx -> do
-            og <- get
-            setupEthenoTx tx 
-            res <- m
-            case (res, tx ^. event == ContractCreated) of
-                (Reversion,   _)         -> put og
-                (VMFailure x, _)         -> h x -- Need to determine error fn
-                (VMSuccess (B bc), True) -> hasLens %= execState ( replaceCodeOfSelf bc
-                                                                >> loadContract (tx ^.contractAddr))
-                _                        -> pure ()
-            return res
+        ethenoInit <- -- load + parse the etheno file
+
+        -- | Separate out account creation txns to use later for config
+        let (accounts, txs) = partition (^. event == AccountCreated) ethenoInit
+            knownAddrs      = map (\e -> e . address) accounts
+        
+        -- | Execute contract creations and initial transactions, 
+        let blank = vmForEthrunCreate $ (head txs) . data
+        vm <- execStateT (execEthenoTxs txs) blank
+
+        return (vm, knownAddrs)
+
+
+
+    execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m) => [Etheno] -> m ()
+    execEthenoTxs txs = forM_ txs $ \tx -> do
+        og <- get
+        setupEthenoTx tx 
+        res <- liftSH exec
+        case (res, tx ^. event == ContractCreated) of
+            (Reversion,   _)         -> put og
+            (VMFailure x, _)         -> vmExcept x
+            (VMSuccess (B bc), True) -> hasLens %= execState ( replaceCodeOfSelf bc
+                                                            >> loadContract (tx ^.contractAddr))
+            _                        -> pure ()
+        return res
+
 
     setupEthenoTx :: (MonadState x m, Has VM x) => Tx -> m ()
     setupEthenoTx (Etheno e a f t c _ _ d v) = S.state . runState . zoom hasLens . sequence_ $
         [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= 0xffffffff
         , env . origin .= f, state . caller .= f, state . callvalue .= v, setup] where 
         setup case e of 
-            AccountCreated -> -- ?
+            AccountCreated -> pure ()
             ContractCreated -> assign (env . contracts . at c) (Just $ initialContract d) >> loadContract r
             FunctionCall -> loadContract t >> state . calldata .= d
