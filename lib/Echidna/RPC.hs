@@ -29,10 +29,13 @@ module Echidna.RPC where
     import Echidna.Exec
     import Echidna.Transaction
 
+
+    -- | During initialization we can either call a function or create an account or contract
     data EthenoEvent = AccountCreated | ContractCreated | FunctionCall deriving(Eq, Show, Generic)
 
     instance FromJSON EthenoEvent
 
+    -- | A single initialization event
     data Etheno = Etheno { _event :: !EthenoEvent
                          , _address  :: !Addr
                          , _from  :: !Addr
@@ -50,6 +53,7 @@ module Echidna.RPC where
         parseJSON = genericParseJSON $ defaultOptions{omitNothingFields = True}
 
 
+    -- | Handler for parsing errors 
     data EthenoException = EthenoException String
 
     instance Show EthenoException where
@@ -57,6 +61,9 @@ module Echidna.RPC where
 
     instance Exception EthenoException
 
+
+    -- | Main function: takes a filepath where the initialization sequence lives and returns 
+    -- | the initialized VM along with a list of Addr's to put in GenConf
     loadEthenoBatch :: (MonadThrow m, MonadIO m) => FilePath -> m (VM, [Addr])
     loadEthenoBatch fp = do
         bs <- liftIO $ eitherDecodeFileStrict fp
@@ -76,7 +83,7 @@ module Echidna.RPC where
                 return (vm, knownAddrs)
 
 
-
+    -- | Takes a list of Etheno transactions and loads them into the VM
     execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m) => [Etheno] -> m ()
     execEthenoTxs txs = forM_ txs $ \t -> do
         og <- get
@@ -91,6 +98,7 @@ module Echidna.RPC where
         return res
 
 
+    -- | For an etheno txn, set up VM to execute txn
     setupEthenoTx :: (MonadState x m, Has VM x) => Etheno -> m ()
     setupEthenoTx (Etheno e _ f t c _ _ d v) = S.state . runState . zoom hasLens . sequence_ $
         [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= 0xffffffff
