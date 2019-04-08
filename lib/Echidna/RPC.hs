@@ -1,31 +1,37 @@
-module Echidna.Transaction where
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+module Echidna.RPC where
 
     import Prelude hiding (Word)
     
+    import Control.Exception (Exception)
     import Control.Lens
-    import Control.Monad (liftM4)
-    import Control.Monad.Catch (MonadThrow)
-    import Control.Monad.Random.Strict (MonadRandom, getRandomR)
-    import Control.Monad.Reader.Class (MonadReader)
-    import Control.Monad.State.Strict (MonadState, State, runState)
-    import Data.Aeson (ToJSON(..), object)
-    import Data.ByteString (ByteString)
-    import Data.Either (either, lefts)
+    import Control.Monad (forM_)
+    import Control.Monad.Catch (MonadThrow, throwM)
+    import Control.Monad.IO.Class (MonadIO(..))
+    import Control.Monad.State.Strict (MonadState, execState, execStateT, get, put, runState)
+    import Data.Aeson (FromJSON(..), defaultOptions, eitherDecodeFileStrict, genericParseJSON, omitNothingFields)
     import Data.Has (Has(..))
-    import Data.List (intercalate)
-    import Data.Set (Set)
+    import Data.List (partition)
+    import Data.Text.Encoding (encodeUtf8)
     import EVM
-    import EVM.ABI (abiCalldata, abiTypeSolidity, abiValueType)
-    import EVM.Concrete (Blob(..), Word(..), w256)
-    import EVM.Types (Addr)
+    import EVM.Concrete (Blob(..), w256)
+    import EVM.Exec (exec, vmForEthrunCreation)
+    import EVM.Types (Addr, W256)
+    import GHC.Generics
     
     import qualified Control.Monad.State.Strict as S (state)
-    import qualified Data.Set as S
     import qualified Data.Text as T
-    import qualified Data.Vector as V
     
-    import Echidna.ABI
+    import Echidna.Exec
     import Echidna.Transaction
+
+    data EthenoEvent = AccountCreated | ContractCreated | FunctionCall deriving(Eq, Show, Generic)
+
+    instance FromJSON EthenoEvent
 
     data Etheno = Etheno { _event :: !EthenoEvent
                          , _address  :: !Addr
@@ -34,52 +40,63 @@ module Echidna.Transaction where
                          , _contractAddr :: !Addr
                          , _gasUsed :: !Integer
                          , _gasPrice :: !Integer
-                         , _data :: !ByteString
-                         , _value :: !Word
-                         } deriving (Eq, Ord, Show, Generic)
+                         , _initCode :: !T.Text
+                         , _value :: !W256
+                         } deriving (Eq, Show, Generic)
 
     makeLenses ''Etheno
 
-    instance FromJSON Etheno
+    instance FromJSON Etheno where
         parseJSON = genericParseJSON $ defaultOptions{omitNothingFields = True}
 
-    data EthenoEvent = AccountCreated | ContractCreated | FunctionCall
 
-    loadEthenoBatch :: FilePath -> IO (VM, [Addr])
-    execEthenoBatch fp m = do
-        ethenoInit <- liftIO $ fromJSON (BS.readFile fp) -- load + parse the etheno file
+    data EthenoException = EthenoException String
 
-        -- | Separate out account creation txns to use later for config
-        let (accounts, txs) = partition (^. event == AccountCreated) ethenoInit
-            knownAddrs      = map (\e -> e . address) accounts
+    instance Show EthenoException where
+        show (EthenoException e) = "Error parsing Etheno initialization file: " ++ e
+
+    instance Exception EthenoException
+
+    loadEthenoBatch :: (MonadThrow m, MonadIO m) => FilePath -> m (VM, [Addr])
+    loadEthenoBatch fp = do
+        bs <- liftIO $ eitherDecodeFileStrict fp
+
+        case bs of 
+            (Left e) -> throwM $ EthenoException e
+            (Right ethenoInit) -> do
+                -- | Separate out account creation txns to use later for config
+                let (accounts, txs) = partition (\t -> t ^. event == AccountCreated) ethenoInit
+                    knownAddrs      = map (\e -> e ^. address) accounts
         
-        -- | Execute contract creations and initial transactions, 
-        let blank = vmForEthrunCreate $ (head txs) . data
-        vm <- execStateT (execEthenoTxs txs) blank
+                -- | Execute contract creations and initial transactions, 
+                let initTx  = head txs
+                    blank = vmForEthrunCreation $ encodeUtf8 (initTx ^. initCode)
+                vm <- execStateT (execEthenoTxs txs) blank
 
-        return (vm, knownAddrs)
+                return (vm, knownAddrs)
 
 
 
     execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m) => [Etheno] -> m ()
-    execEthenoTxs txs = forM_ txs $ \tx -> do
+    execEthenoTxs txs = forM_ txs $ \t -> do
         og <- get
-        setupEthenoTx tx 
+        setupEthenoTx t 
         res <- liftSH exec
-        case (res, tx ^. event == ContractCreated) of
+        case (res, t ^. event == ContractCreated) of
             (Reversion,   _)         -> put og
             (VMFailure x, _)         -> vmExcept x
             (VMSuccess (B bc), True) -> hasLens %= execState ( replaceCodeOfSelf bc
-                                                            >> loadContract (tx ^.contractAddr))
+                                                            >> loadContract (t ^.contractAddr))
             _                        -> pure ()
         return res
 
 
-    setupEthenoTx :: (MonadState x m, Has VM x) => Tx -> m ()
-    setupEthenoTx (Etheno e a f t c _ _ d v) = S.state . runState . zoom hasLens . sequence_ $
+    setupEthenoTx :: (MonadState x m, Has VM x) => Etheno -> m ()
+    setupEthenoTx (Etheno e _ f t c _ _ d v) = S.state . runState . zoom hasLens . sequence_ $
         [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= 0xffffffff
-        , env . origin .= f, state . caller .= f, state . callvalue .= v, setup] where 
-        setup case e of 
+        , env . origin .= f, state . caller .= f, state . callvalue .= w256 v, setup] where 
+        bc = encodeUtf8 d
+        setup = case e of 
             AccountCreated -> pure ()
-            ContractCreated -> assign (env . contracts . at c) (Just $ initialContract d) >> loadContract r
-            FunctionCall -> loadContract t >> state . calldata .= d
+            ContractCreated -> assign (env . contracts . at c) (Just $ initialContract bc) >> loadContract c
+            FunctionCall -> loadContract t >> state . calldata .= B bc
