@@ -178,6 +178,8 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
   -- 2.3: We're looking at something of the form @type: literal_string "[...]"@, a string literal
   --      @type: "literal_string \"123\""@ ==> @[AbiString "123", AbiBytes 3 "123"...]@
   constants "type"  (literal "literal_string" asQuoted     -> Just b) =
-   ([AbiString, AbiBytesDynamic] <&> ($ b)) ++ [AbiBytes 32 (BS.append b (BS.replicate (32 - BS.length b) 0))]
+   let size = BS.length b in  
+   ([AbiString, AbiBytesDynamic] <&> ($ b)) ++
+   map (\n -> AbiBytes n (BS.append b (BS.replicate (n - size) 0))) [size .. 32]
   -- CASE THREE: we're at a leaf node with no constants
   constants _  _ = []
