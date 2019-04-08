@@ -41,12 +41,13 @@ module Echidna.Transaction where
     makeLenses ''Etheno
 
     instance FromJSON Etheno
+        parseJSON = genericParseJSON $ defaultOptions{omitNothingFields = True}
 
     data EthenoEvent = AccountCreated | ContractCreated | FunctionCall
 
     loadEthenoBatch :: FilePath -> IO (VM, [Addr])
     execEthenoBatch fp m = do
-        ethenoInit <- -- load + parse the etheno file
+        ethenoInit <- liftIO $ fromJSON (BS.readFile fp) -- load + parse the etheno file
 
         -- | Separate out account creation txns to use later for config
         let (accounts, txs) = partition (^. event == AccountCreated) ethenoInit
