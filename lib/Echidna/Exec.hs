@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -13,7 +14,6 @@ import Data.Either (isRight)
 import Data.Has (Has(..))
 import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
-import Data.Ord (comparing)
 import Data.Set (Set)
 import EVM
 import EVM.Exec (exec)
@@ -77,35 +77,16 @@ execTxWith h m t = do og <- get
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m VMResult
 execTx = execTxWith vmExcept $ liftSH exec
 
--- | Capture the current PC and codehash. This should identify instructions uniquely (maybe? EVM is weird).
-pointCoverage :: (MonadState x m, Has (Map W256 (Set Int)) x, Has VM x) => m ()
-pointCoverage = use hasLens >>= \v ->
-  hasLens %= M.insertWith (const . S.insert $ v ^. state . pc) (h v) mempty where
-    h v = fromMaybe (W256 maxBound) $ v ^? env . contracts . at (v ^. state . contract) . _Just . codehash
-
--- | Capture just the current PC. WARNING: PCs are not unique across different contracts or contexts.
-fastCoverage :: (MonadState x m, Has (Set Int) x, Has VM x) => m ()
-fastCoverage = use hasLens >>= \v -> hasLens %= S.insert (v ^. state . pc)
-
 -- | Given a way of capturing coverage info, execute while doing so once per instruction.
 usingCoverage :: (MonadState x m, Has VM x) => m () -> m VMResult
 usingCoverage cov = maybe (cov >> liftSH exec1 >> usingCoverage cov) pure =<< use (hasLens . result)
 
--- | Execute a transaction, capturing the PC and codehash of each instruction executed.
-execTxRecC :: (MonadState x m, Has VM x, Has (Map W256 (Set Int)) x, MonadThrow m) => Tx -> m VMResult
-execTxRecC = execTxWith vmExcept (usingCoverage pointCoverage)
-
 -- | Given good point coverage, count unique points.
 coveragePoints :: Map W256 (Set Int) -> Int
-coveragePoints = sum . M.map S.size
+coveragePoints = sum . fmap S.size
 
--- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
--- transaction if it finds new coverage.
-execTxOptC :: (MonadState x m, Has VM x, Has (Map W256 (Set Int)) x, Has (Set Tx) x, MonadThrow m)
-           => Tx -> m VMResult
-execTxOptC t = let hint = id :: Map W256 (Set Int) -> Map W256 (Set Int) in do
-  og  <- hasLens <<.= mempty
-  res <- execTxRecC t
-  new <- M.unionWith S.union og . hint <$> use hasLens
-  if comparing coveragePoints new og == GT then hasLens %= S.insert t else pure ()
-  return res
+-- | Capture the current PC and codehash. This should identify instructions uniquely (maybe? EVM is weird).
+pointCoverage :: (MonadState x m, Has VM x) => Lens' x (Map W256 (Set Int)) -> m ()
+pointCoverage l = use hasLens >>= \v ->
+  l %= M.insertWith (const . S.insert $ v ^. state . pc) (fromMaybe (W256 maxBound) $ h v) mempty where
+    h v = v ^? env . contracts . at (v ^. state . contract) . _Just . codehash
