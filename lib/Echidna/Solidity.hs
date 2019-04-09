@@ -89,7 +89,7 @@ contracts fp = do
   pure (a, q) >>= liftIO . solc >>= (\case
     Nothing -> throwM CompileFailure
     Just m  -> pure . toList $ fst m) where
-      usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", fp]
+      usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast,compact-format", fp]
       solc (a, q) = do
         if (takeExtension fp == ".json")
         then readSolc fp
