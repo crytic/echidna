@@ -28,6 +28,7 @@ import Data.Text.Read             (decimal, hexadecimal)
 import System.Process             (readCreateProcess, std_err, proc, StdStream(..))
 import System.IO                  (openFile, IOMode(..))
 import System.IO.Temp             (writeSystemTempFile)
+import System.FilePath.Posix       (takeExtension)
 
 import Echidna.ABI         (SolSignature)
 import Echidna.Exec        (execTx)
@@ -79,7 +80,8 @@ data SolConf = SolConf { _contractAddr :: Addr   -- ^ Contract address to use
                        }
 makeLenses ''SolConf
 
--- | Given a file, try to compile it and get a list of its contracts, throwing exceptions if necessary.
+-- | Given a file, use its extenstion to check if it is a precompiled contract or try to compile it and
+-- get a list of its contracts, throwing exceptions if necessary.
 contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
 contracts fp = do
   a <- view (hasLens . solcArgs)
@@ -89,10 +91,13 @@ contracts fp = do
     Just m  -> pure . toList $ fst m) where
       usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", fp]
       solc (a, q) = do
-        stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode
-                       else pure Inherit
-        readSolc =<< writeSystemTempFile ""
-                 =<< readCreateProcess (proc "solc" $ usual <> words a) {std_err = stderr} ""
+        if (takeExtension fp == ".json")
+        then readSolc fp
+        else do
+              stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode
+                        else pure Inherit
+              readSolc =<< writeSystemTempFile ""
+                       =<< readCreateProcess (proc "solc" $ usual <> words a) {std_err = stderr} ""
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna

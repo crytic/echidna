@@ -77,6 +77,11 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_sometimesfalse passed",                  solved       "echidna_sometimesfalse")
       , ("echidna_sometimesfalse didn't shrink optimally", solvedLen 2  "echidna_sometimesfalse")
       ]
+  , testContract "basic/flags.json"       Nothing
+      [ ("echidna_alwaystrue failed",                      passed       "echidna_alwaystrue")
+      , ("echidna_sometimesfalse passed",                  solved       "echidna_sometimesfalse")
+      , ("echidna_sometimesfalse didn't shrink optimally", solvedLen 2  "echidna_sometimesfalse")
+      ]
   , testContract "basic/revert.sol"      Nothing
       [ ("echidna_revert passed",                          solved      "echidna_revert")
       , ("echidna_revert didn't shrink to length 1",       solvedLen 1 "echidna_revert")
