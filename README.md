@@ -38,13 +38,17 @@ Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` an
 ### Truffle integration
 
 Echidna can be used to test contracts compiled with [Truffle](https://truffleframework.com/) using [crytic-compile](https://github.com/crytic/crytic-compile). For instance,
-we can uncover an integer overview in the [Metacoin Truffle box](https://github.com/truffle-box/metacoin-box) executing:
+we can uncover an integer overflow in the [Metacoin Truffle box](https://github.com/truffle-box/metacoin-box) executing:
 
 ```
 $ cd examples/solidity/truffle/metacoin
 $ truffle compile
 $ crytic-compile --export-format solc .
 $ echidna-test crytic-export/combined_solc.json $(pwd)/contracts/MetaCoinEchidna.sol:TEST
+...
+echidna_convert: failed!💥
+  Call sequence:
+    mint(57896044618658097711785492504343953926634992332820282019728792003956564819968)
 ```
 
 ### Configuration options
