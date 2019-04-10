@@ -35,6 +35,18 @@ $ echidna-test examples/solidity/basic/flags.sol
 
 Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` and should be unable to find a falsifying input for `echidna_alwaystrue`.
 
+### Truffle integration
+
+Echidna can be used to test contracts compiled with [Truffle](https://truffleframework.com/) using [crytic-compile](https://github.com/crytic/crytic-compile). For instance,
+we can uncover an integer overview in the [Metacoin Truffle box](https://github.com/truffle-box/metacoin-box) executing:
+
+```
+$ cd examples/solidity/truffle/metacoin
+$ truffle compile
+$ crytic-compile --export-format solc .
+$ echidna-test crytic-export/combined_solc.json $(pwd)/contracts/MetaCoinEchidna.sol:TEST
+```
+
 ### Configuration options
 
 Echidna's CLI can be used to choose the contract to test, turn on coverage guided testing, or load a configuration file.

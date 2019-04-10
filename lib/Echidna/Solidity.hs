@@ -175,11 +175,12 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
   -- CASE TWO: we're looking at a @type@ or @value@ object, try to parse it
   -- 2.1: We're looking at a @value@ starting with "0x", which is how solc represents addresses
   --      @value: "0x123"@ ==> @[AbiAddress 291]@
-  constants "value" (String                   (asAddr      -> Just i)) = [AbiAddress i]
+  constants "value" (String                   ((as decimal) -> Just i)) = 
+     let l f = f <$> [8,16..256] <*> [fromIntegral (i :: Integer)] in l AbiInt ++ l AbiUInt ++ [AbiAddress (fromIntegral i)]
   -- 2.2: We're looking at something of the form @type: int_const [...]@, an integer literal
   --      @type: "int_const 123"@ ==> @[AbiUInt 8 123, AbiUInt 16 123, ... AbiInt 256 123]@
-  constants "type"  (literal "int_const"      (as decimal) -> Just i) =
-    let l f = f <$> [8,16..256] <*> [fromIntegral (i :: Integer)] in l AbiInt ++ l AbiUInt
+  --constants "type"  (literal "int_const"      (as decimal) -> Just i) =
+  --  let l f = f <$> [8,16..256] <*> [fromIntegral (i :: Integer)] in l AbiInt ++ l AbiUInt
   -- 2.3: We're looking at something of the form @type: literal_string "[...]"@, a string literal
   --      @type: "literal_string \"123\""@ ==> @[AbiString "123", AbiBytes 3 "123"...]@
   constants "type"  (literal "literal_string" asQuoted     -> Just b) =
