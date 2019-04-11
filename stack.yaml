@@ -7,7 +7,7 @@ packages:
 - .
 
 extra-deps:
-- git: git@github.com:ggrieco-tob/dapptools.git
+- git: https://github.com/ggrieco-tob/dapptools.git
   commit: 369ad17846e717da6e99cb30f5ffa1de43cd342a 
   subdirs:
   - src/hevm
