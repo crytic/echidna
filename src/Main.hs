@@ -2,6 +2,7 @@ module Main where
 
 import Control.Monad.Reader (runReaderT)
 import Data.Text (pack)
+import Data.Semigroup hiding (option)
 import Options.Applicative
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 

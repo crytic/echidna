@@ -95,7 +95,7 @@ campaignStatus :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign
 campaignStatus c = let mSection = maybe emptyWidget ((hBorder <=>) . padLeft (Pad 2) . str) in do
   stats <- padLeft (Pad 2) . str <$> ppTests c <&> (<=> mSection (ppCoverage $ c ^. coverage))
   bl <- bool emptyWidget (str "Campaign complete, C-c or esc to print report") <$> isDone c
-  pure . hCenter . hLimit 120 . joinBorders $ borderWithLabel (str "Echidna") stats <=> bl
+  pure . hCenter . hLimit 120 $ borderWithLabel (str "Echidna") stats <=> bl
 
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
 monitor :: (MonadReader x m, Has CampaignConf x, Has Names x)

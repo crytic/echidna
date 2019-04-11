@@ -19,6 +19,7 @@ import Data.Either (either, lefts)
 import Data.Has (Has(..))
 import Data.List (intercalate)
 import Data.Set (Set)
+import Data.Semigroup
 import EVM
 import EVM.ABI (abiCalldata, abiTypeSolidity, abiValueType)
 import EVM.Concrete (Word(..), w256)
@@ -116,9 +117,9 @@ liftSH = S.state . runState . zoom hasLens
 setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
 setupTx (Tx c s r v) = S.state . runState . zoom hasLens . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= 0xffffffff
-  , env . origin .= s, state . caller .= s, state . callvalue .= v, setup] where
+  , {-env . origin .= s,-} state . caller .= s, state . callvalue .= v, setup] where
     setup = case c of
       Left cd  -> loadContract r >> state . calldata .= encode cd
-      Right bc -> assign (env . contracts . at r) (Just $ initialContract bc) >> loadContract r
+      Right bc -> assign (env . contracts . at r) (Just $ initialContract (RuntimeCode bc)) >> loadContract r
     encode (n, vs) = abiCalldata
       (n <> "(" <> T.intercalate "," (abiTypeSolidity . abiValueType <$> vs) <> ")") $ V.fromList vs

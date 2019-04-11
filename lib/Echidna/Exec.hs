@@ -68,8 +68,7 @@ execTxWith h m t = do og <- get
                       case (res, isRight $ t ^. call) of
                         (Reversion,   _)         -> put og
                         (VMFailure x, _)         -> h x
-                        (VMSuccess bc, True) -> hasLens %= execState ( replaceCodeOfSelf bc
-                                                                        >> loadContract (t ^. dst))
+                        (VMSuccess bc, True) -> hasLens %= execState ( replaceCodeOfSelf (RuntimeCode bc) >> loadContract (t ^. dst))
                         _                        -> pure ()
                       return res
 

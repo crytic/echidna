@@ -22,6 +22,7 @@ import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Vector (Vector)
 import Data.Word8 (Word8)
+import Data.Semigroup 
 import EVM.ABI (AbiType(..), AbiValue(..), abiValueType)
 import Numeric (showHex)
 

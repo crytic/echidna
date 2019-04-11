@@ -25,6 +25,7 @@ import Data.Maybe (fromMaybe, isNothing, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
+import Data.Semigroup
 import Data.Text (unpack)
 import EVM
 import EVM.Types (W256)

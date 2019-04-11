@@ -18,6 +18,7 @@ import Control.Monad.Reader (runReaderT)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
 import Data.List (find)
+import Data.Semigroup
 import EVM.ABI (AbiValue(..))
 import System.Directory (withCurrentDirectory)
 
