@@ -29,8 +29,13 @@ install:
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
  - ./.travis/install-solc.sh
+ - sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+ - sudo apt-get update
+ - sudo apt-get install gcc-7 g++-7
 
 script:
+ - CC=gcc-7
+ - CXX=g++-7
  - PATH=$HOME/.local/bin:$PATH
  - echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
  #- GHC_OPTIONS="-Werror"
