@@ -24,7 +24,7 @@ import Data.Maybe                 (isNothing)
 import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, pack, unpack)
 import Data.Text.Lens             (unpacked)
-import Data.Text.Read             (decimal, hexadecimal)
+import Data.Text.Read             (decimal, {-hexadecimal-})
 import System.Process             (readCreateProcess, std_err, proc, StdStream(..))
 import System.IO                  (openFile, IOMode(..))
 import System.IO.Temp             (writeSystemTempFile)
@@ -161,7 +161,7 @@ extractConstants :: [SolcContract] -> [AbiValue]
 extractConstants = nub . concatMap (constants "" . view contractAst) where
   -- Tools for parsing numbers and quoted strings from 'Text'
   as f     = preview $ to f . _Right . _1
-  asAddr x = as hexadecimal =<< T.stripPrefix "0x" x
+  --asAddr x = as hexadecimal =<< T.stripPrefix "0x" x
   asQuoted = preview $ unpacked . prefixed "\"" . suffixed "\"" . packedChars
   -- We need this because sometimes @solc@ emits a json string with a type, then a string
   -- representation of some value of that type. Why is this? Unclear. Anyway, this lets us match

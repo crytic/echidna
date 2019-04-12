@@ -38,11 +38,11 @@ Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` an
 ### Truffle integration
 
 Echidna can be used to test contracts compiled with [Truffle](https://truffleframework.com/) using [crytic-compile](https://github.com/crytic/crytic-compile). For instance,
-we can uncover an integer overflow in the [Metacoin Truffle box](https://github.com/truffle-box/metacoin-box) executing:
+we can uncover an integer overflow in the [Metacoin Truffle box](https://github.com/truffle-box/metacoin-box) using a
+[contract with Echidna properties to test](examples/solidity/truffle/metacoin/contracts/MetaCoinEchidna.sol):
 
 ```
 $ cd examples/solidity/truffle/metacoin
-$ truffle compile
 $ crytic-compile --export-format solc .
 $ echidna-test crytic-export/combined_solc.json $(pwd)/contracts/MetaCoinEchidna.sol:TEST
 ...
