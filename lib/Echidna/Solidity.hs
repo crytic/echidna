@@ -34,10 +34,12 @@ import Echidna.Exec        (execTx)
 import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
+import qualified EVM (contracts)
 import EVM.ABI      (AbiValue(..))
 import EVM.Exec     (vmForEthrunCreation)
 import EVM.Solidity
 import EVM.Types    (Addr)
+import EVM.Concrete (w256)
 
 import qualified Data.ByteString     as BS
 import qualified Data.HashMap.Strict as M
@@ -70,12 +72,13 @@ instance Show SolException where
 instance Exception SolException
 
 -- | Configuration for loading Solidity for Echidna testing.
-data SolConf = SolConf { _contractAddr :: Addr   -- ^ Contract address to use
-                       , _deployer     :: Addr   -- ^ Contract deployer address to use
-                       , _sender       :: [Addr] -- ^ Sender addresses to use
-                       , _prefix       :: Text   -- ^ Function name prefix used to denote tests
-                       , _solcArgs     :: String -- ^ Args to pass to @solc@
-                       , _quiet        :: Bool   -- ^ Suppress @solc@ output, errors, and warnings
+data SolConf = SolConf { _contractAddr    :: Addr    -- ^ Contract address to use
+                       , _deployer        :: Addr    -- ^ Contract deployer address to use
+                       , _sender          :: [Addr]  -- ^ Sender addresses to use
+                       , _initialBalance  :: Integer -- ^ Initial balance of deployer and senders
+                       , _prefix          :: Text    -- ^ Function name prefix used to denote tests
+                       , _solcArgs        :: String  -- ^ Args to pass to @solc@
+                       , _quiet           :: Bool    -- ^ Suppress @solc@ output, errors, and warnings
                        }
 makeLenses ''SolConf
 
@@ -94,6 +97,12 @@ contracts fp = do
         readSolc =<< writeSystemTempFile ""
                  =<< readCreateProcess (proc "solc" $ usual <> words a) {std_err = stderr} ""
 
+populateAddresses :: [Addr] -> Integer -> VM -> VM
+populateAddresses []     _ vm = vm
+populateAddresses (a:as) b vm = populateAddresses as b (vm & set (env . EVM.contracts . at a) (Just account))
+                                 where account = initialContract mempty & set nonce 1 & set balance (w256 $ fromInteger b)
+
+
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
 -- testing and extract an ABI and list of tests. Throws exceptions if anything returned doesn't look
@@ -111,9 +120,9 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
     unless q . putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
 
   -- Local variables
-  (SolConf ca d _ pref _ _) <- view hasLens
+  (SolConf ca d ads b pref _ _) <- view hasLens
   let bc = c ^. creationCode
-      blank = vmForEthrunCreation bc
+      blank = populateAddresses (ads++[d]) b (vmForEthrunCreation bc)
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
 
