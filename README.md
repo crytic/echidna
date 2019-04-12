@@ -1,6 +1,6 @@
 # echidna
 
-[![Build Status](https://travis-ci.org/trailofbits/echidna.svg?branch=master)](https://travis-ci.org/trailofbits/echidna)
+[![Build Status](https://travis-ci.org/crytic/echidna.svg?branch=master)](https://travis-ci.org/trailofbits/echidna)
 
 ![echidna logo](echidna.png)
 
@@ -72,7 +72,7 @@ If you're getting errors building related to linking, try tinkering with `--extr
 
 ## Getting help
 
-Feel free to stop by our [Slack channel](https://empirehacking.slack.com/messages/C7KKY517H/) for help using or extending Echidna.
+Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://empireslacking.herokuapp.com/) for help using or extending Echidna.
 
 * Get started by reviewing these simple [Echidna invariants](examples/solidity/basic/flags.sol)
 

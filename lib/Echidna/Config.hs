@@ -21,14 +21,12 @@ import qualified Data.ByteString as BS
 import qualified Data.Yaml as Y
 
 import Echidna.Campaign
-import Echidna.ABI
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.UI
 
 -- | Our big glorious global config type, just a product of each local config.,
 data EConfig = EConfig { _cConf :: CampaignConf
-                       , _gConf :: GenConf
                        , _nConf :: Names
                        , _sConf :: SolConf
                        , _tConf :: TestConf
@@ -38,9 +36,6 @@ makeLenses ''EConfig
 
 instance Has CampaignConf EConfig where
   hasLens = cConf
-
-instance Has GenConf EConfig where
-  hasLens = gConf
 
 instance Has Names EConfig where
   hasLens = nConf
@@ -56,12 +51,12 @@ instance Has UIConf EConfig where
 
 instance FromJSON EConfig where
   parseJSON (Object v) =
-    let tc = do reverts <- v .:? "reverts"   .!= True
+    let tc = do reverts  <- v .:? "reverts"   .!= True
                 psender  <- v .:? "psender"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                 let good = if reverts then (`elem` [ResTrue, ResRevert]) else (== ResTrue)
                 return $ TestConf (good . maybe ResOther classifyRes . view result) (const psender)
         cc = CampaignConf <$> v .:? "testLimit"   .!= 10000
-                          <*> v .:? "seqLen"      .!= 10
+                          <*> v .:? "seqLen"      .!= 100
                           <*> v .:? "shrinkLimit" .!= 5000
                           <*> pure Nothing
         names = const $ const mempty :: Names
@@ -74,7 +69,6 @@ instance FromJSON EConfig where
                                          _                         -> M.fail
                                            "unrecognized ui type (should be text, json, or none)" in
     EConfig <$> cc
-            <*> pure (GenConf 0 mempty mempty)
             <*> pure names
             <*> (SolConf <$> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                          <*> v .:? "deployer"     .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
