@@ -18,7 +18,7 @@ module Echidna.RPC where
     import Data.List (partition)
     import Data.Text.Encoding (encodeUtf8)
     import EVM
-    import EVM.Concrete (Blob(..), w256)
+    import EVM.Concrete (w256)
     import EVM.Exec (exec, vmForEthrunCreation)
     import EVM.Types (Addr, W256)
     import GHC.Generics
@@ -92,7 +92,7 @@ module Echidna.RPC where
         case (res, t ^. event == ContractCreated) of
             (Reversion,   _)         -> put og
             (VMFailure x, _)         -> vmExcept x
-            (VMSuccess (B bc), True) -> hasLens %= execState ( replaceCodeOfSelf bc
+            (VMSuccess bc, True) -> hasLens %= execState ( replaceCodeOfSelf bc
                                                             >> loadContract (t ^.contractAddr))
             _                        -> pure ()
         return res
@@ -107,4 +107,4 @@ module Echidna.RPC where
         setup = case e of 
             AccountCreated -> pure ()
             ContractCreated -> assign (env . contracts . at c) (Just $ initialContract bc) >> loadContract c
-            FunctionCall -> loadContract t >> state . calldata .= B bc
+            FunctionCall -> loadContract t >> state . calldata .= bc

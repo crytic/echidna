@@ -75,7 +75,8 @@ instance FromJSON EConfig where
                          <*> v .:? "sender"       .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
                          <*> v .:? "prefix"       .!= "echidna_"
                          <*> v .:? "solcArgs"     .!= ""
-                         <*> v .:? "quiet"        .!= False)
+                         <*> v .:? "quiet"        .!= False
+                         <*> v .:? "initialize"   .!= Nothing)
             <*> tc
             <*> (UIConf <$> v .:? "dashboard" .!= True <*> style)
   parseJSON _ = parseJSON (Object mempty)

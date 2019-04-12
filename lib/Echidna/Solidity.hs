@@ -31,6 +31,7 @@ import System.IO.Temp             (writeSystemTempFile)
 
 import Echidna.ABI         (SolSignature)
 import Echidna.Exec        (execTx)
+import Echidna.RPC         (loadEthenoBatch)
 import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
@@ -70,12 +71,13 @@ instance Show SolException where
 instance Exception SolException
 
 -- | Configuration for loading Solidity for Echidna testing.
-data SolConf = SolConf { _contractAddr :: Addr   -- ^ Contract address to use
-                       , _deployer     :: Addr   -- ^ Contract deployer address to use
-                       , _sender       :: [Addr] -- ^ Sender addresses to use
-                       , _prefix       :: Text   -- ^ Function name prefix used to denote tests
-                       , _solcArgs     :: String -- ^ Args to pass to @solc@
-                       , _quiet        :: Bool   -- ^ Suppress @solc@ output, errors, and warnings
+data SolConf = SolConf { _contractAddr :: Addr     -- ^ Contract address to use
+                       , _deployer     :: Addr     -- ^ Contract deployer address to use
+                       , _sender       :: [Addr]   -- ^ Sender addresses to use
+                       , _prefix       :: Text     -- ^ Function name prefix used to denote tests
+                       , _solcArgs     :: String   -- ^ Args to pass to @solc@
+                       , _quiet        :: Bool     -- ^ Suppress @solc@ output, errors, and warnings
+                       , _initialize   :: Maybe FilePath -- ^ Initialize world with Etheno txns
                        }
 makeLenses ''SolConf
 
@@ -111,11 +113,14 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
     unless q . putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
 
   -- Local variables
-  (SolConf ca d _ pref _ _) <- view hasLens
+  (SolConf ca d _ pref _ _ fp) <- view hasLens
   let bc = c ^. creationCode
-      blank = vmForEthrunCreation bc
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
+
+  -- Set up initial VM, either with chosen contract or Etheno initialization file
+  -- need to use snd to add to ABI dict
+  (blank, _) <- maybe (pure (vmForEthrunCreation bc, [])) loadEthenoBatch fp 
 
   -- Make sure everything is ready to use, then ship it
   mapM_ (uncurry ensure) [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)] -- ABI checks
