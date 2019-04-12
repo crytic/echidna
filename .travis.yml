@@ -29,7 +29,7 @@ install:
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
  - ./.travis/install-solc.sh
- - sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+ - sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
  - sudo apt-get update
  - sudo apt-get install gcc-7 g++-7
 
