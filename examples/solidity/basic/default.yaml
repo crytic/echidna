@@ -1,5 +1,5 @@
 testLimit: 10000
-seqLen: 10
+seqLen: 100
 shrinkLimit: 5000
 reverts: true
 dashboard: true
