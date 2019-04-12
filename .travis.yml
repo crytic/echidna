@@ -33,7 +33,7 @@ install:
 script:
  - PATH=$HOME/.local/bin:$PATH
  - echo "$(stack ghc -- --version) [$(stack ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
- - GHC_OPTIONS="-Werror"
+ #- GHC_OPTIONS="-Werror"
  - STACK_OPTS="$STACK_OPTS --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib"
  - |
    set -ex
@@ -41,7 +41,7 @@ script:
    
    run_tests_using () {
      cp ~/.local/bin/$1 ~/.local/bin/solc || true
-     stack install
+     stack install hevm
      #stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
    }
 
