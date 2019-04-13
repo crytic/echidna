@@ -110,9 +110,13 @@ mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fma
 
 -- Generation (synthesis)
 
+getRandomUint :: MonadRandom m => Int -> m Integer
+getRandomUint n =  getRandomR (1 :: Integer, 100 :: Integer) >>= 
+                   (\x -> if x <= 10 then getRandomR (0, 1024) else getRandomR (0, 2 ^ n - 1))
+
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Doesn't use a dictionary.
 genAbiValue :: MonadRandom m => AbiType -> m AbiValue
-genAbiValue (AbiUIntType n) = AbiUInt n  . fromInteger <$> getRandomR (0, 2 ^ n - 1)
+genAbiValue (AbiUIntType n) = AbiUInt n  . fromInteger <$> getRandomUint n
 genAbiValue (AbiIntType n)  = AbiInt n   . fromInteger <$> getRandomR (-1 * 2 ^ n, 2 ^ (n - 1))
 genAbiValue AbiAddressType  = AbiAddress . fromInteger <$> getRandomR (0, 2 ^ (160 :: Integer) - 1)
 genAbiValue AbiBoolType     = AbiBool <$> getRandom
