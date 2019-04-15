@@ -83,6 +83,10 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_revert didn't shrink to f(-1)",
          solvedWith ("f", [AbiInt 256 (-1)]) "echidna_revert")
       ]
+  
+  , testContract "basic/memory-reset.sol"        Nothing
+      [ ("echidna_should_not_revert failed",                passed       "echidna_should_not_revert") ]
+
   , testContract "basic/multisender.sol" (Just "basic/multisender.yaml") $
       [ ("echidna_all_sender passed",                      solved             "echidna_all_sender")
       , ("echidna_all_sender didn't shrink optimally",     solvedLen 3        "echidna_all_sender")
