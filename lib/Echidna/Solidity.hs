@@ -30,7 +30,7 @@ import System.IO                  (openFile, IOMode(..))
 import System.IO.Temp             (writeSystemTempFile)
 
 import Echidna.ABI         (SolSignature)
-import Echidna.Exec        (execTx)
+import Echidna.Exec        (execTx, maxGas)
 import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
@@ -122,7 +122,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   ensure bc (NoBytecode $ c ^. contractName)                                   -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                                     -- Test args check
-    Nothing    -> (, funs, fst <$> tests) <$> execStateT (execTx $ Tx (Right bc) d ca 0) blank
+    Nothing    -> (, funs, fst <$> tests) <$> execStateT (execTx maxGas $ Tx (Right bc) d ca 0) blank
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c

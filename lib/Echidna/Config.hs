@@ -51,14 +51,17 @@ instance Has UIConf EConfig where
 
 instance FromJSON EConfig where
   parseJSON (Object v) =
-    let tc = do reverts  <- v .:? "reverts"   .!= True
-                psender  <- v .:? "psender"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+    let tc = do reverts  <- v .:? "reverts"    .!= True
+                psender  <- v .:? "psender"    .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                pmaxgas  <- v .:? "propMaxGas" .!= 0xffffffff
+                tmaxgas  <- v .:? "testMaxGas"  .!= 0xffffffff
                 let good = if reverts then (`elem` [ResTrue, ResRevert]) else (== ResTrue)
-                return $ TestConf (good . maybe ResOther classifyRes . view result) (const psender)
+                return $ TestConf (good . maybe ResOther classifyRes . view result) (const psender) pmaxgas tmaxgas
         cc = CampaignConf <$> v .:? "testLimit"   .!= 10000
                           <*> v .:? "seqLen"      .!= 100
                           <*> v .:? "shrinkLimit" .!= 5000
                           <*> pure Nothing
+ 
         names = const $ const mempty :: Names
         ppc = cc <&> \c x -> runReader (ppCampaign x) (c, names)
         style :: Y.Parser (Campaign -> String)
