@@ -102,7 +102,6 @@ populateAddresses []     _ vm = vm
 populateAddresses (a:as) b vm = populateAddresses as b (vm & set (env . EVM.contracts . at a) (Just account))
                                  where account = initialContract mempty & set nonce 1 & set balance (w256 $ fromInteger b)
 
-
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
 -- testing and extract an ABI and list of tests. Throws exceptions if anything returned doesn't look
@@ -122,7 +121,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   -- Local variables
   (SolConf ca d ads b pref _ _) <- view hasLens
   let bc = c ^. creationCode
-      blank = populateAddresses (ads++[d]) b (vmForEthrunCreation bc)
+      blank = populateAddresses (ads |> d) b (vmForEthrunCreation bc)
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
 
