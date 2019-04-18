@@ -12,5 +12,6 @@ contract nearbyMining {
     if (n >= 181888880989308021) {
       return true;
     }
+    return false;
   }
 }
