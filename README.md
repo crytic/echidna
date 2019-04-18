@@ -1,4 +1,4 @@
-# echidna 
+# echidna
 
 [![Build Status](https://travis-ci.org/crytic/echidna.svg?branch=master)](https://travis-ci.org/trailofbits/echidna)
 
