@@ -111,8 +111,7 @@ mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fma
 -- Generation (synthesis)
 
 getRandomUint :: MonadRandom m => Int -> m Integer
-getRandomUint n =  getRandomR (1 :: Integer, 100 :: Integer) >>= 
-                   (\x -> if x <= 10 then getRandomR (0, 1024) else getRandomR (0, 2 ^ n - 1))
+getRandomUint n = join $ fromList [(getRandomR (0, 1023), 1), (getRandomR (0, 2 ^ n - 1), 9)]
 
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Doesn't use a dictionary.
 genAbiValue :: MonadRandom m => AbiType -> m AbiValue
