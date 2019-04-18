@@ -89,6 +89,7 @@ instance Semigroup Campaign where
 
 instance Monoid Campaign where
   mempty = Campaign mempty mempty mempty
+  mappend = (<>)
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.

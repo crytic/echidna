@@ -7,8 +7,8 @@ packages:
 - .
 
 extra-deps:
-- git: https://github.com/ggrieco-tob/dapptools.git
-  commit: 369ad17846e717da6e99cb30f5ffa1de43cd342a 
+- git: https://github.com/dapphub/dapptools.git
+  commit: 660639f4081d60165e73a1556db32553f2d7c33c
   subdirs:
   - src/hevm
 - HSH-2.1.3

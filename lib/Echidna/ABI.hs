@@ -96,6 +96,7 @@ instance Semigroup GenDict where
 
 instance Monoid GenDict where
   mempty = mkGenDict 0 [] []
+  mappend = (<>)
 
 -- This instance is the only way for mkConf to work nicely, and is well-formed.
 {-# ANN module ("HLint: ignore Unused LANGUAGE pragma" :: String) #-}
