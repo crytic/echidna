@@ -174,7 +174,7 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
   -- 2.2: We're looking at something of the form @type: int_const [...]@, an integer literal
   --      @type: "int_const 123"@ ==> @[AbiUInt 8 123, AbiUInt 16 123, ... AbiInt 256 123]@
   constants "type"  (literal "int_const"      (as decimal) -> Just i) =
-    let l f = f <$> [8,16..256] <*> (fromIntegral <$> ([i, i+1, i-1] :: [Integer])) in l AbiInt ++ l AbiUInt
+    let l f = f <$> [8,16..256] <*> (fromIntegral <$> ([i-1..i+1] :: [Integer])) in l AbiInt ++ l AbiUInt
   -- 2.3: We're looking at something of the form @type: literal_string "[...]"@, a string literal
   --      @type: "literal_string \"123\""@ ==> @[AbiString "123", AbiBytes 3 "123"...]@
   constants "type"  (literal "literal_string" asQuoted     -> Just b) =
