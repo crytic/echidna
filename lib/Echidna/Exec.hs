@@ -68,7 +68,7 @@ replaceCodeOfSelf' newCode = do
   replaceCode' (view (state . contract) vm) newCode
 
 replaceCode' :: Addr -> ContractCode -> EVM ()
-replaceCode' target newCode = do
+replaceCode' target newCode =
   zoom (env . contracts . at target) $ do
     Just now <- get
     put . Just $
