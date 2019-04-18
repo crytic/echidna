@@ -90,20 +90,19 @@ integrationTests = testGroup "Solidity Integration Testing"
         ("echidna_all_sender solved without " ++ unpack n, solvedWith (n, []) "echidna_all_sender"))
 
   , testContract "basic/contractAddr.sol" Nothing
-      [ ("echidna_address failed",                         solved "echidna_address") ]
+      [ ("echidna_address failed",                solved "echidna_address") ]
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
-      [ ("echidna_address failed",                         passed "echidna_address") ]      
-  , testContract "basic/constants.sol"        Nothing
+      [ ("echidna_address failed",                passed "echidna_address") ]
+  , testContract "basic/constants.sol"    Nothing
       [ ("echidna_found failed",                  not . solved "echidna_found") ]
-  , testContract "basic/constants2.sol"        Nothing
-      [ ("echidna_found32 failed",                  not . solved "echidna_found32") ]
-  , testContract "coverage/single.sol"        Nothing
+  , testContract "basic/constants2.sol"   Nothing
+      [ ("echidna_found32 failed",                not . solved "echidna_found32") ]
+  , testContract "coverage/single.sol"    Nothing
       [ ("echidna_state failed",                  not . solved "echidna_state") ]
-  , testContract "coverage/multi.sol"        Nothing
-      [ ("echidna_state3 failed",                  not . solved "echidna_state3") ]
-  , testContract "basic/balance.sol"        (Just "basic/balance.yaml")
-      [ ("echidna_balance failed",                  passed       "echidna_balance") ]
-
+  , testContract "coverage/multi.sol"     Nothing
+      [ ("echidna_state3 failed",                 not . solved "echidna_state3") ]
+  , testContract "basic/balance.sol"      (Just "basic/balance.yaml")
+      [ ("echidna_balance failed",                passed       "echidna_balance") ]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
