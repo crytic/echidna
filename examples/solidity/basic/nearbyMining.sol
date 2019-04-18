@@ -5,7 +5,7 @@ contract nearbyMining {
     n = newn;
   }
   
-  function echidna_nearbyMining() public returns (bool) {
+  function echidna_findNearby() public returns (bool) {
     if (n <= 181888880989308019) {
       return true;
     }
