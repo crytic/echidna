@@ -32,6 +32,7 @@ classifyError :: Error -> ErrorClass
 classifyError (Revert _)             = RevertE
 classifyError (UnrecognizedOpcode _) = RevertE
 classifyError (OutOfGas _ _)         = RevertE
+classifyError (Query _)              = RevertE
 classifyError StackUnderrun          = IllegalE
 classifyError BadJumpDestination     = IllegalE
 classifyError StackLimitExceeded     = IllegalE

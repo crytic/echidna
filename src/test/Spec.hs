@@ -92,21 +92,24 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_all_sender didn't shrink optimally",     solvedLen 3        "echidna_all_sender")
       ] ++ (["s1", "s2", "s3"] <&> \n ->
         ("echidna_all_sender solved without " ++ unpack n, solvedWith (n, []) "echidna_all_sender"))
-
-  , testContract "basic/propGasLimit.sol"     (Just "basic/propGasLimit.yaml") 
-      [ ("echidna_runForever passed",             solved "echidna_runForever") ]  
-  , testContract "basic/contractAddr.sol"     Nothing
+        
+  , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml") 
+      [ ("echidna_runForever passed",             solved "echidna_runForever") ]
+  , testContract "basic/contractAddr.sol" Nothing
       [ ("echidna_address failed",                solved "echidna_address") ]
-  , testContract "basic/contractAddr.sol"     (Just "basic/contractAddr.yaml")
+  , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
       [ ("echidna_address failed",                passed "echidna_address") ]      
-  , testContract "basic/constants.sol"        Nothing
+  , testContract "basic/constants.sol"    Nothing
       [ ("echidna_found failed",                  solved "echidna_found") ]
-  , testContract "basic/constants2.sol"       Nothing
+  , testContract "basic/constants2.sol"   Nothing
       [ ("echidna_found32 failed",                solved "echidna_found32") ]
-  , testContract "coverage/single.sol"        (Just "coverage/test.yaml")
+  , testContract "coverage/single.sol"    (Just "coverage/test.yaml")
       [ ("echidna_state failed",                  solved "echidna_state") ]
-  , testContract "coverage/multi.sol"         Nothing
+  , testContract "coverage/multi.sol"     Nothing
       [ ("echidna_state3 failed",                 solved "echidna_state3") ]
+  , testContract "basic/balance.sol"      (Just "basic/balance.yaml")
+      [ ("echidna_balance failed",                passed "echidna_balance") ]
+
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
