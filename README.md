@@ -44,7 +44,7 @@ we can uncover an integer overflow in the [Metacoin Truffle box](https://github.
 ```
 $ cd examples/solidity/truffle/metacoin
 $ crytic-compile --export-format solc .
-$ echidna-test crytic-export/combined_solc.json $(pwd)/contracts/MetaCoinEchidna.sol:TEST
+$ echidna-test crytic-export/combined_solc.json TEST
 ...
 echidna_convert: failed!💥
   Call sequence:

@@ -7,7 +7,7 @@
 
 module Echidna.Solidity where
 
-import Control.Lens
+import Control.Lens        hiding (cons)
 import Control.Exception          (Exception)
 import Control.Monad              (liftM2, mapM_, when, unless)
 import Control.Monad.Catch        (MonadThrow(..))
@@ -22,7 +22,7 @@ import Data.List                  (find, nub, partition)
 import Data.List.Lens             (prefixed, suffixed)
 import Data.Maybe                 (isNothing)
 import Data.Monoid                ((<>))
-import Data.Text                  (Text, isPrefixOf, pack, unpack)
+import Data.Text                  (Text, isPrefixOf, isSuffixOf, unpack, cons)
 import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
 import System.Process             (readCreateProcess, std_err, proc, StdStream(..))
@@ -132,7 +132,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
-                                      find ((n ==) . view contractName) cs
+                                      find ((isSuffixOf (cons ':' n)) . view contractName) cs
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
 -- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
@@ -141,7 +141,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
 -- contract names passed here don't need the file they occur in specified.
 loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
-loadSolidity fp name = contracts fp >>= loadSpecified ((pack fp <>) <$> name)
+loadSolidity fp name = contracts fp >>= loadSpecified name
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
