@@ -29,6 +29,7 @@ install:
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
  - ./.travis/install-solc.sh
+ - ./.travis/install-crytic-compile.sh
 
 script:
  - PATH=$HOME/.local/bin:$PATH

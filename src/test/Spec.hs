@@ -45,7 +45,7 @@ compilationTests = testGroup "Compilation and loading tests"
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
-  tryLoad = runReaderT (loadSolidity fp c >> pure ()) $ defaultConfig & sConf . quiet .~ True
+  tryLoad = runReaderT (loadWithCryticCompile fp c >> pure ()) $ defaultConfig & sConf . quiet .~ True
 
 -- Extraction Tests
 
@@ -73,11 +73,6 @@ integrationTests = testGroup "Solidity Integration Testing"
   [ testContract "basic/true.sol"        Nothing
       [ ("echidna_true failed",                            passed       "echidna_true") ]
   , testContract "basic/flags.sol"       Nothing
-      [ ("echidna_alwaystrue failed",                      passed       "echidna_alwaystrue")
-      , ("echidna_sometimesfalse passed",                  solved       "echidna_sometimesfalse")
-      , ("echidna_sometimesfalse didn't shrink optimally", solvedLen 2  "echidna_sometimesfalse")
-      ]
-  , testContract "basic/flags.json"       Nothing
       [ ("echidna_alwaystrue failed",                      passed       "echidna_alwaystrue")
       , ("echidna_sometimesfalse passed",                  solved       "echidna_sometimesfalse")
       , ("echidna_sometimesfalse didn't shrink optimally", solvedLen 2  "echidna_sometimesfalse")

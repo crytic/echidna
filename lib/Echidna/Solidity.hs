@@ -86,18 +86,11 @@ contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePa
 contracts fp = do
   a <- view (hasLens . solcArgs)
   q <- view (hasLens . quiet)
-  pure (a, q) >>= liftIO . solc >>= (\case
+  pure (a, q) >>= liftIO . compile >>= (\case
     Nothing -> throwM CompileFailure
     Just m  -> pure . toList $ fst m) where
-      usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast,compact-format", fp]
-      solc (a, q) =
-        if takeExtension fp == ".json"
-        then readSolc fp
-        else do
-              stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode
-                             else pure Inherit
-              readSolc =<< writeSystemTempFile ""
-                       =<< readCreateProcess (proc "solc" $ usual <> words a) {std_err = stderr} ""
+      compile (a, q) = do readCreateProcess (proc "crytic-compile" ["--solc-disable-warnings", "--export-format", "solc", fp]) ""
+                          readSolc "crytic-export/combined_solc.json"
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -139,9 +132,15 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
 -- the first contract in the file. Take said contract and return an initial VM state with it loaded,
 -- its ABI (as 'SolSignature's), and the names of its Echidna tests. NOTE: unlike 'loadSpecified',
 -- contract names passed here don't need the file they occur in specified.
-loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+--loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+--             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
+--loadSolidity fp name = contracts fp >>= loadSpecified name
+
+
+loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
-loadSolidity fp name = contracts fp >>= loadSpecified name
+
+loadWithCryticCompile fp name = contracts fp >>= loadSpecified name 
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
@@ -154,7 +153,7 @@ prepareForTest (v, a, ts) = let r = v ^. state . contract in
 -- a testing function.
 loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, World, [(Text, Addr)])
-loadSolTests fp name = loadSolidity fp name >>= prepareForTest
+loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
 
 -- | Given a list of 'SolcContract's, try to parse out string and integer literals
 extractConstants :: [SolcContract] -> [AbiValue]
