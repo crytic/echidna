@@ -101,8 +101,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_found failed",                         solved "echidna_found") ]
   , testContract "basic/constants2.sol"        Nothing
       [ ("echidna_found32 failed",                       solved "echidna_found32") ]
-  --, testContract "coverage/single.sol"        Nothing
-  --    [ ("echidna_state failed",                         solved "echidna_state") ]
+  , testContract "coverage/single.sol"        Nothing
+      [ ("echidna_state failed",                         solved "echidna_state") ]
   , testContract "coverage/multi.sol"        Nothing
       [ ("echidna_state3 failed",                        solved "echidna_state3") ]
   ]
