@@ -32,8 +32,6 @@ install:
  - sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
  - sudo apt-get update
  - sudo apt-get install gcc-7 g++-7
-# - sudo update-alternatives --remove-all gcc 
-# - sudo update-alternatives --remove-all g++
  - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 10
  - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-7 10
 
@@ -48,8 +46,7 @@ script:
    
    run_tests_using () {
      cp ~/.local/bin/$1 ~/.local/bin/solc || true
-     stack install hevm
-     #stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
+     stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
    }
 
    run_tests_using "solc-0.4.25"
