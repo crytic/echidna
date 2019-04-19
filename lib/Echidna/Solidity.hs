@@ -24,11 +24,11 @@ import Data.Maybe                 (isNothing)
 import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, pack, unpack)
 import Data.Text.Lens             (unpacked)
-import Data.Text.Read             (decimal, {-hexadecimal-})
+import Data.Text.Read             (decimal)
 import System.Process             (readCreateProcess, std_err, proc, StdStream(..))
 import System.IO                  (openFile, IOMode(..))
 import System.IO.Temp             (writeSystemTempFile)
-import System.FilePath.Posix       (takeExtension)
+import System.FilePath.Posix      (takeExtension)
 
 import Echidna.ABI         (SolSignature)
 import Echidna.Exec        (execTx)
@@ -91,11 +91,11 @@ contracts fp = do
     Just m  -> pure . toList $ fst m) where
       usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast,compact-format", fp]
       solc (a, q) = do
-        if (takeExtension fp == ".json")
+        if takeExtension fp == ".json"
         then readSolc fp
         else do
               stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode
-                        else pure Inherit
+                             else pure Inherit
               readSolc =<< writeSystemTempFile ""
                        =<< readCreateProcess (proc "solc" $ usual <> words a) {std_err = stderr} ""
 
