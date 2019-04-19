@@ -1,8 +1,5 @@
 # Adapted from https://github.com/ChrisPenner/haskell-stack-travis-ci
-language: python
-python:
-- 3.6.6
-
+language: minimal
 sudo: true
 
 cache:
