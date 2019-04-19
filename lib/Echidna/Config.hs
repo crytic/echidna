@@ -70,12 +70,13 @@ instance FromJSON EConfig where
                                            "unrecognized ui type (should be text, json, or none)" in
     EConfig <$> cc
             <*> pure names
-            <*> (SolConf <$> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
-                         <*> v .:? "deployer"     .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                         <*> v .:? "sender"       .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
-                         <*> v .:? "prefix"       .!= "echidna_"
-                         <*> v .:? "solcArgs"     .!= ""
-                         <*> v .:? "quiet"        .!= False)
+            <*> (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
+                         <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                         <*> v .:? "sender"         .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
+                         <*> v .:? "initialBalance" .!= 0xffffffff
+                         <*> v .:? "prefix"         .!= "echidna_"
+                         <*> v .:? "solcArgs"       .!= ""
+                         <*> v .:? "quiet"          .!= False)
             <*> tc
             <*> (UIConf <$> v .:? "dashboard" .!= True <*> style)
   parseJSON _ = parseJSON (Object mempty)
