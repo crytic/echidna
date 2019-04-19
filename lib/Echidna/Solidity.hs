@@ -90,7 +90,7 @@ contracts fp = do
     Nothing -> throwM CompileFailure
     Just m  -> pure . toList $ fst m) where
       usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast,compact-format", fp]
-      solc (a, q) = do
+      solc (a, q) =
         if takeExtension fp == ".json"
         then readSolc fp
         else do
@@ -175,7 +175,7 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
   -- CASE TWO: we're looking at a @type@ or @value@ object, try to parse it
   -- 2.1: We're looking at a @value@ starting with "0x", which is how solc represents addresses
   --      @value: "0x123"@ ==> @[AbiAddress 291]@
-  constants "value" (String                   ((as decimal) -> Just i)) = 
+  constants "value" (String                   (as decimal -> Just i)) =
      let l f = f <$> [8,16..256] <*> [fromIntegral (i :: Integer)] in l AbiInt ++ l AbiUInt ++ [AbiAddress (fromIntegral i)]
   -- 2.2: We're looking at something of the form @type: int_const [...]@, an integer literal
   --      @type: "int_const 123"@ ==> @[AbiUInt 8 123, AbiUInt 16 123, ... AbiInt 256 123]@
