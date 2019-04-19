@@ -25,10 +25,10 @@ import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, unpack, cons)
 import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
-import System.Process             (readCreateProcess, std_err, proc, StdStream(..))
-import System.IO                  (openFile, IOMode(..))
-import System.IO.Temp             (writeSystemTempFile)
-import System.FilePath.Posix      (takeExtension)
+import System.Process             (readCreateProcess, proc)
+--import System.IO                  (openFile, IOMode(..))
+--import System.IO.Temp             (writeSystemTempFile)
+--import System.FilePath.Posix      (takeExtension)
 
 import Echidna.ABI         (SolSignature)
 import Echidna.Exec        (execTx)
@@ -84,13 +84,13 @@ makeLenses ''SolConf
 -- get a list of its contracts, throwing exceptions if necessary.
 contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
 contracts fp = do
-  a <- view (hasLens . solcArgs)
-  q <- view (hasLens . quiet)
-  pure (a, q) >>= liftIO . compile >>= (\case
+  --a <- view (hasLens . solcArgs)
+  --q <- view (hasLens . quiet)
+  liftIO compile >>= (\case
     Nothing -> throwM CompileFailure
     Just m  -> pure . toList $ fst m) where
-      compile (a, q) = do readCreateProcess (proc "crytic-compile" ["--solc-disable-warnings", "--export-format", "solc", fp]) ""
-                          readSolc "crytic-export/combined_solc.json"
+      compile = do _ <- readCreateProcess (proc "crytic-compile" ["--solc-disable-warnings", "--export-format", "solc", fp]) ""
+                   readSolc "crytic-export/combined_solc.json"
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
