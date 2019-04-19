@@ -81,10 +81,10 @@ integrationTests = testGroup "Solidity Integration Testing"
          solvedWith ("f", [AbiInt 256 (-1)]) "echidna_revert")
       ]
   
-  , testContract "basic/nearbyMining.sol"     Nothing 
+  , testContract "basic/nearbyMining.sol"     (Just "coverage/test.yaml")
       [ ("echidna_findNearby passed",                solved       "echidna_findNearby") ]
 
-  , testContract "basic/smallValues.sol"      Nothing
+  , testContract "basic/smallValues.sol"      (Just "coverage/test.yaml")
       [ ("echidna_findSmall passed",                solved       "echidna_findSmall") ]
 
   , testContract "basic/multisender.sol" (Just "basic/multisender.yaml") $
