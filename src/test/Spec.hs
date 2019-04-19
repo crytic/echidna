@@ -93,6 +93,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       ] ++ (["s1", "s2", "s3"] <&> \n ->
         ("echidna_all_sender solved without " ++ unpack n, solvedWith (n, []) "echidna_all_sender"))
 
+  , testContract "basic/memory-reset.sol" Nothing
+      [ ("echidna_should_not_revert failed",      passed "echidna_should_not_revert") ]
   , testContract "basic/contractAddr.sol" Nothing
       [ ("echidna_address failed",                solved "echidna_address") ]
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
