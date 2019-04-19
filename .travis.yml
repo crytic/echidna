@@ -46,7 +46,7 @@ script:
    
    run_tests_using () {
      cp ~/.local/bin/$1 ~/.local/bin/solc || true
-     stack test --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
+     stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
    }
 
    run_tests_using "solc-0.4.25"
