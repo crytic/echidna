@@ -20,10 +20,11 @@ matrix:
   include:
     # Add build targets here
     - env: CACHE_NAME=linux BUILD_BINARY=1
-      #- env: CACHE_NAME=osx   BUILD_BINARY=1
-      #     STACK_OPTS="--no-run-tests --extra-include-dirs=/usr/local/opt/readline/include --extra-lib-dirs=/usr/local/opt/readline/lib"
-      #     LDFLAGS=-L/usr/local/opt/readline/lib CFLAGS=-I/usr/local/opt/readline/include
-      #os: osx
+    - env: CACHE_NAME=osx   BUILD_BINARY=1
+           STACK_OPTS="--no-run-tests --extra-include-dirs=/usr/local/opt/readline/include --extra-lib-dirs=/usr/local/opt/readline/lib"
+           LDFLAGS=-L/usr/local/opt/readline/lib CFLAGS=-I/usr/local/opt/readline/include
+      os: osx
+      language: minimal
 
 install:
  - unset CC

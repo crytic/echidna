@@ -83,7 +83,7 @@ makeLenses ''SolConf
 -- | Given a file, use its extenstion to check if it is a precompiled contract or try to compile it and
 -- get a list of its contracts, throwing exceptions if necessary.
 contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
-contracts fp = do
+contracts fp = --do
   --a <- view (hasLens . solcArgs)
   --q <- view (hasLens . quiet)
   liftIO compile >>= (\case
