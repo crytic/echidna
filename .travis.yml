@@ -17,10 +17,10 @@ matrix:
   include:
     # Add build targets here
     - env: CACHE_NAME=linux BUILD_BINARY=1
-    #- env: CACHE_NAME=osx   BUILD_BINARY=1
-    #       STACK_OPTS="--no-run-tests --extra-include-dirs=/usr/local/opt/readline/include --extra-lib-dirs=/usr/local/opt/readline/lib"
-    #       LDFLAGS=-L/usr/local/opt/readline/lib CFLAGS=-I/usr/local/opt/readline/include
-    #  os: osx
+    - env: CACHE_NAME=osx   BUILD_BINARY=1
+           STACK_OPTS="--no-run-tests --extra-include-dirs=/usr/local/opt/readline/include --extra-lib-dirs=/usr/local/opt/readline/lib"
+           LDFLAGS=-L/usr/local/opt/readline/lib CFLAGS=-I/usr/local/opt/readline/include
+      os: osx
 
 install:
  - unset CC
@@ -29,11 +29,7 @@ install:
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
  - ./.travis/install-solc.sh
- - sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
- - sudo apt-get update
- - sudo apt-get install gcc-7 g++-7
- - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 10
- - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-7 10
+ - ./.travis/upgrade-gcc.sh
 
 script:
  - PATH=$HOME/.local/bin:$PATH
