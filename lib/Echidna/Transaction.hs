@@ -115,7 +115,7 @@ liftSH = S.state . runState . zoom hasLens
 -- 'Transaction's \"on-chain\".
 setupTx :: (MonadState x m, Has VM x) => Integer -> Tx -> m ()
 setupTx g (Tx c s r v) = S.state . runState . zoom hasLens . sequence_ $
-  [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= fromInteger g
+  [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty, state . gas .= fromInteger g
   , env . origin .= s, state . caller .= s, state . callvalue .= v, setup] where
     setup = case c of
       Left cd  -> loadContract r >> state . calldata .= encode cd

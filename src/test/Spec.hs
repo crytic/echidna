@@ -95,6 +95,8 @@ integrationTests = testGroup "Solidity Integration Testing"
         
   , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml") 
       [ ("echidna_runForever passed",             solved "echidna_runForever") ]
+  , testContract "basic/memory-reset.sol" Nothing
+      [ ("echidna_should_not_revert failed",      passed "echidna_should_not_revert") ]
   , testContract "basic/contractAddr.sol" Nothing
       [ ("echidna_address failed",                solved "echidna_address") ]
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
