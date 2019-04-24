@@ -29,6 +29,8 @@ import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
 import qualified Data.Vector as V
 
+import Echidna.Mutation
+
 -- | Pretty-print some 'AbiValue'.
 ppAbiValue :: AbiValue -> String
 ppAbiValue (AbiUInt _ n)         = show n
@@ -140,7 +142,8 @@ genInteractions l = genAbiCall =<< rElem "ABI" l
 
 -- | Given an 'Integral' number n, get a random number in [0,2n].
 mutateNum :: (Integral a, MonadRandom m) => a -> m a
-mutateNum x = bool (x +) (x -) <$> getRandom <*> (fromIntegral <$> getRandomR (0, toInteger x))
+mutateNum x = let mut = (bool (x +) (x -) <$> getRandom <*> (fromIntegral <$> getRandomR (0, toInteger x)))
+                 in bool (return x) mut =<< getRandom 
 
 -- | Given a way to generate random 'Word8's and a 'ByteString' b of length l,
 -- generate between 0 and 2l 'Word8's and add insert them into b at random indices.
@@ -188,10 +191,11 @@ growWith m f g l t = foldM withR t =<< flip replicateM m =<< rand where
   withR t' x = bool (f x t') (g t' x) <$> getRandom
 
 -- | Given a 'ByteString', add and drop some characters at random.
-mutateBS :: MonadRandom m => ByteString -> m ByteString
-mutateBS b = addChars getRandom =<< changeSize where
-  changeSize = bool (shrinkBS b) (growWith getRandom BS.cons BS.snoc BS.length b) =<< getRandom
+--mutateBS :: MonadRandom m => ByteString -> m ByteString
+--mutateBS b = addChars getRandom =<< changeSize where
+--  changeSize = bool (shrinkBS b) (growWith getRandom BS.cons BS.snoc BS.length b) =<< getRandom
 
+--
 -- | Given a 'Vector', add and drop some characters at random.
 mutateV :: MonadRandom m => AbiType -> Vector AbiValue -> m (Vector AbiValue)
 mutateV t v = traverse mutateAbiValue =<< changeSize where
@@ -241,9 +245,9 @@ mutateAbiValue (AbiUInt n x)  = AbiUInt n <$> mutateNum x
 mutateAbiValue (AbiInt n x)   = AbiInt n  <$> mutateNum x
 mutateAbiValue (AbiAddress _) = genAbiValue AbiAddressType
 mutateAbiValue (AbiBool _)    = genAbiValue AbiBoolType
-mutateAbiValue (AbiBytes n b)        = AbiBytes n        <$> addChars getRandom b
-mutateAbiValue (AbiBytesDynamic b)   = AbiBytesDynamic   <$> mutateBS b
-mutateAbiValue (AbiString b)         = AbiString         <$> mutateBS b
+mutateAbiValue (AbiBytes n b)        = AbiBytes n    <$> mutateBS n b
+mutateAbiValue (AbiBytesDynamic b)   = AbiBytesDynamic   <$> mutateBS 1024 b
+mutateAbiValue (AbiString b)         = AbiString         <$> mutateBS 1024 b
 mutateAbiValue (AbiArray n t l)      = AbiArray n t      <$> traverse mutateAbiValue l
 mutateAbiValue (AbiArrayDynamic t l) = AbiArrayDynamic t <$> mutateV t l
 
@@ -263,7 +267,8 @@ genWithDict f g t = let fromDict = uniformMay . M.lookupDefault [] t . f in gets
 
 -- | Given an 'AbiType', generate a random 'AbiValue' of that type, possibly with a dictionary.
 genAbiValueM :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m) => AbiType -> m AbiValue
-genAbiValueM = genWithDict (view constants) genAbiValue
+genAbiValueM abi = do abi' <- (genWithDict (view constants) genAbiValue abi)
+                      mutateAbiValue abi'
 
 -- | Given a 'SolSignature', generate a random 'SolCalls' with that signature, possibly with a dictionary.
 genAbiCallM :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m) => SolSignature -> m SolCall
