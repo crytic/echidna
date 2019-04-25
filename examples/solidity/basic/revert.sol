@@ -5,7 +5,7 @@ contract C {
     state = x;
   }
 
-  function echidna_revert() public returns (bool) {
+  function echidna_revert_is_false() public returns (bool) {
     if (state < 0)
       revert();
     return true;
