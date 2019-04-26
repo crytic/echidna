@@ -1,13 +1,14 @@
 module Echidna.Mutation where
 
 import Control.Monad.Random.Strict
+import Data.Maybe (maybe)
 import Data.ByteString (ByteString, pack, unpack)
 
-mutateBS :: MonadRandom m => Int -> ByteString -> m ByteString
-mutateBS n bs = do
+mutateBS :: MonadRandom m => Maybe Int -> ByteString -> m ByteString
+mutateBS mn bs = do
                  f <- fromList [(identity, 1), (modify,3), (expand, 3), (delete, 3), (swap, 3)] 
-                 xs <- f $ unpack bs 
-                 return $ pack $ take n xs
+                 xs <- f $ unpack bs
+                 return $ pack $ maybe xs (flip take (xs ++ repeat 0)) mn
 
                 where modify [] = return []
                       modify xs = do

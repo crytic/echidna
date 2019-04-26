@@ -245,9 +245,9 @@ mutateAbiValue (AbiUInt n x)  = AbiUInt n <$> mutateNum x
 mutateAbiValue (AbiInt n x)   = AbiInt n  <$> mutateNum x
 mutateAbiValue (AbiAddress _) = genAbiValue AbiAddressType
 mutateAbiValue (AbiBool _)    = genAbiValue AbiBoolType
-mutateAbiValue (AbiBytes n b)        = AbiBytes n    <$> mutateBS n b
-mutateAbiValue (AbiBytesDynamic b)   = AbiBytesDynamic   <$> mutateBS 1024 b
-mutateAbiValue (AbiString b)         = AbiString         <$> mutateBS 1024 b
+mutateAbiValue (AbiBytes n b)        = AbiBytes n    <$> mutateBS (Just n) b
+mutateAbiValue (AbiBytesDynamic b)   = AbiBytesDynamic   <$> mutateBS Nothing b
+mutateAbiValue (AbiString b)         = AbiString         <$> mutateBS Nothing b
 mutateAbiValue (AbiArray n t l)      = AbiArray n t      <$> traverse mutateAbiValue l
 mutateAbiValue (AbiArrayDynamic t l) = AbiArrayDynamic t <$> mutateV t l
 
