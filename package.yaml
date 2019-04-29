@@ -49,6 +49,12 @@ executables:
     main: Main.hs
     source-dirs: src/
     dependencies: echidna
+    ghc-options:
+      - -threaded
+      - -static
+      - -O2
+    cc-options: -static
+    ld-options: -static -pthread
 
 tests:
   echidna-testsuite:
