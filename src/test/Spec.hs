@@ -3,7 +3,7 @@
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Echidna.ABI (SolCall, mkGenDict)
+import Echidna.ABI (SolCall, mkGenDict, genInteractionsM)
 import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..))
 import Echidna.Config (defaultConfig, parseConfig, sConf)
 import Echidna.Solidity
@@ -11,16 +11,19 @@ import Echidna.Transaction (Tx, call)
 
 import Control.Lens
 import Control.Monad.Catch (MonadCatch(..))
-import Control.Monad.Reader (runReaderT)
+import Control.Monad.Reader (runReaderT, liftIO)
+import Control.Monad (replicateM)
+import Control.Monad.State.Strict (evalStateT)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
 import Data.List (find)
 import EVM.ABI (AbiValue(..))
 import System.Directory (withCurrentDirectory)
+--import System.Random (mkStdGen)
 
 main :: IO ()
 main = withCurrentDirectory "./examples/solidity" . defaultMain $
-         testGroup "Echidna" [compilationTests, {- extractionTests,-} integrationTests]
+         testGroup "Echidna" [compilationTests, seedTests, integrationTests]
 
 -- Compilation Tests
 
@@ -62,6 +65,38 @@ extractionTests = testGroup "Constant extraction/generation testing"
             ] $ \(t, c) -> liftIO . assertBool ("failed to extract " ++ t ++ " " ++ show (c,is)) $ elem c is
   ]
 -}
+
+
+seedTests :: TestTree
+seedTests = let defaultConfig' = defaultConfig & sConf . quiet .~ True in 
+ testGroup "Seed reproducibility testing"
+ [ testCase "basic/flags.sol" . flip runReaderT (defaultConfig') $ do
+      cs  <- contracts "basic/flags.sol"
+      abi <- view _2 <$> loadSpecified Nothing cs
+      is_1  <- evalStateT (replicateM 1000 $ genInteractionsM abi)
+                      $ mkGenDict 0.15 (extractConstants cs) []
+
+      is_2  <- evalStateT (replicateM 1000 $ genInteractionsM abi)
+                      $ mkGenDict 0.15 (extractConstants cs) []
+
+      liftIO . assertBool "seed generation failed" $ not $ is_1 == is_2
+
+   {- ,
+   testCase "basic/flags.sol" . flip runReaderT (defaultConfig' { _cConf = (_cConf defaultConfig) {seed = Just (mkStdGen 123)} } )$ do 
+      cs  <- contracts "basic/flags.sol"
+      abi <- view _2 <$> loadSpecified Nothing cs
+      is_1  <- evalStateT (replicateM 1000 $ genInteractionsM abi)
+                      $ mkGenDict 0.15 (extractConstants cs) []
+
+      is_2  <- evalStateT (replicateM 1000 $ genInteractionsM abi)
+                      $ mkGenDict 0.15 (extractConstants cs) []
+
+      liftIO . assertBool "seed specification failed" $ is_1 == is_2
+   -}
+  ]
+
+
+
 
 -- Integration Tests
 
