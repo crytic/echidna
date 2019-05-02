@@ -10,6 +10,7 @@ cache:
         - .stack-work
         - /usr/local/include
         - /usr/local/lib
+    timeout: 1000
 
 matrix:
   fast_finish: true

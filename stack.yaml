@@ -5,7 +5,7 @@ packages:
 
 extra-deps:
 - ghci-pretty-0.0.2
-- hevm-0.21
+- hevm-0.24
 - HSH-2.1.3
 - ipprint-0.6
 - multiset-0.3.4.1
