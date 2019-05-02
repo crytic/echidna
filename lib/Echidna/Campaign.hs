@@ -20,8 +20,6 @@ import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Aeson (ToJSON(..), object)
 import Data.Bool (bool)
-import Data.Map (Map, mapKeys)
-import Data.Maybe (maybeToList, fromMaybe)
 import Data.Either (lefts)
 import Data.Foldable (toList)
 import Data.Map (Map, mapKeys, unionWith)
@@ -169,24 +167,6 @@ callseq v w ql = do
   is <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
   execStateT (evalSeq v ef is) (v, ca) >>= assign hasLens . view _2
 
-
-
--- <<<<<<< HEAD
---           , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
---        => VM -> World -> Int -> m (Set Tx)
---callseq v w ql = replicateM ql (evalStateT genTxM w) >>= \is -> use hasLens >>= \ca -> case ca ^. coverage of
--- Nothing   -> execStateT (evalSeq v execTx is) (v, ca) >>= assign hasLens . view _2 >> return mempty
---  (Just co) -> do (_, co', ca', s) <- execStateT (evalSeq v execTxRecC is) (v, co, ca, mempty :: Set Tx)
---                  hasLens .= (ca' & coverage ?~ co')
---                  return s
-
--- | Run a fuzzing campaign given an initial universe state and some tests. Return the 'Campaign' state once
--- we can't solve or shrink anything.
---campaign :: ( MonadCatch m, MonadReader x m, Has GenConf x, Has TestConf x, Has CampaignConf x)
--- =======
-
-
-
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
 campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, Has TestConf x, Has CampaignConf x)
@@ -196,17 +176,10 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, Has TestConf x, Has 
          -> [SolTest]           -- ^ Tests to evaluate
          -> Maybe GenDict       -- ^ Optional generation dictionary
          -> m Campaign
--- <<<<<<< HEAD
---campaign u v w ts = view (hasLens . to knownCoverage) >>= \c -> do
---  g <- view (hasLens . to (fromMaybe (mkStdGen 0) . seed))
---  execStateT (evalRandT runCampaign g) (Campaign ((,Open (-1)) <$> ts) c) where
---    step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
--- =======
 campaign u v w ts d = let d' = fromMaybe mempty d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
   g <- view (hasLens . to (fromMaybe (mkStdGen 0) . seed))
   execStateT (evalRandT runCampaign g) (Campaign ((,Open (-1)) <$> ts) c d') where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
--- >>>>>>> 3d095989fa11fe9a2d0760c3e453620ccc1f3a25
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl q sl _ _) ->
       if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
