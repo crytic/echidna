@@ -267,7 +267,7 @@ genWithDict f g t = let fromDict = uniformMay . M.lookupDefault [] t . f in gets
 
 -- | Given an 'AbiType', generate a random 'AbiValue' of that type, possibly with a dictionary.
 genAbiValueM :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m) => AbiType -> m AbiValue
-genAbiValueM abi = do abi' <- (genWithDict (view constants) genAbiValue abi)
+genAbiValueM abi = do abi' <- genWithDict (view constants) genAbiValue abi
                       mutateAbiValue abi'
 
 -- | Given a 'SolSignature', generate a random 'SolCalls' with that signature, possibly with a dictionary.
