@@ -41,7 +41,7 @@ modify' (x:xs) i a = case i of
 expand' :: [a] -> Int -> Int -> [a]
 expand' []     _ _ = []
 expand' (x:xs) i n = case i of 
-                       0   -> (replicate n x) ++ xs 
+                       0   -> replicate n x ++ xs 
                        _   -> x: expand' xs (i-1) n
 
 delete' :: [a] -> Int -> [a]
