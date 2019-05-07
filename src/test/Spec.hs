@@ -73,7 +73,7 @@ seedTests =
  [   testCase "basic/flags.sol" $ do
       is_1  <- gen Nothing 
       is_2  <- gen Nothing
-      liftIO . assertBool "seed generation failed" $ not $ is_1 == is_2
+      liftIO . assertBool "seed generation failed" $ is_1 /= is_2
    , testCase "basic/flags.sol" $ do
       is_1  <- gen $ Just $ mkStdGen 1  
       is_2  <- gen $ Just $ mkStdGen 1
