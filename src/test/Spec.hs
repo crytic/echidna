@@ -5,7 +5,7 @@ import Test.Tasty.HUnit
 
 import Echidna.ABI (SolCall, mkGenDict, genInteractionsM)
 import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..), seed)
-import Echidna.Config (defaultConfig, parseConfig, sConf, _cConf)
+import Echidna.Config (defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (Tx, call)
 
@@ -75,19 +75,20 @@ seedTests =
       is_2  <- gen Nothing
       liftIO . assertBool "seed generation failed" $ is_1 /= is_2
    , testCase "basic/flags.sol" $ do
-      is_1  <- gen $ Just $ mkStdGen 1  
-      is_2  <- gen $ Just $ mkStdGen 1
+      is_1  <- gen seed
+      is_2  <- gen seed
+      --liftIO $ print is_1
+      --liftIO $ print is_2
       liftIO . assertBool "seed generation failed" $ is_1 == is_2
   ]
-  where gen s = let defaultConfig' = defaultConfig & sConf . quiet .~ True in 
-                flip runReaderT (defaultConfig' { _cConf = (_cConf defaultConfig') {seed = s} }) $ do
+  where seed = Just $ mkStdGen 1
+        gen s = let defaultConfig' = defaultConfig & sConf . quiet .~ True 
+                    cfg = defaultConfig' & cConf %~ \x -> x { seed = s } in
+                flip runReaderT cfg $ do
                  cs  <- contracts "basic/flags.sol"
                  abi <- view _2 <$> loadSpecified Nothing cs
                  evalStateT (replicateM 1000 $ genInteractionsM abi)
                       $ mkGenDict 0.15 (extractConstants cs) []
- 
-
-
 
 -- Integration Tests
 

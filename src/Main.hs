@@ -35,16 +35,6 @@ opts = info (options <**> helper) $ fullDesc
 
 main :: IO ()
 
-{- <<<<<<< HEAD
-main = do (Options f c cov conf) <- execParser opts
-          g <- getStdGen
-          cfg          <- maybe (pure defaultConfig) parseConfig conf
-          Campaign r _ <- runReaderT (loadSolTests f (pack <$> c) >>= (\(v,w,ts) -> ui v w ts)) $
-                            cfg & cConf %~ (if cov then \k -> k {knownCoverage = Just mempty} else id)
-                                & cConf %~ \x -> if isJust (seed x) then x else x { seed = Just g }
-          if any (/= Passed) $ snd <$> r then exitWith $ ExitFailure 1
-                                         else exitSuccess
-======= -}
 main = do Options f c conf <- execParser opts
           g    <- getStdGen
           cfg  <- maybe (pure defaultConfig) parseConfig conf
@@ -54,4 +44,3 @@ main = do Options f c conf <- execParser opts
             (v,w,ts) <- loadSpecified (pack . (f ++) . (':' :) <$> c) cs >>= prepareForTest
             ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [])
           if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
--- >>>>>>> 3d095989fa11fe9a2d0760c3e453620ccc1f3a25
