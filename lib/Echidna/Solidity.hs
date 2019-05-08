@@ -97,7 +97,7 @@ contracts fp = do
         stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode
                        else pure Inherit
         readSolc =<< writeSystemTempFile ""
-                 =<< readCreateProcess (proc "solc" $ usual <> words (a ++ (linkLibraries ls))) {std_err = stderr} ""
+                 =<< readCreateProcess (proc "solc" $ usual <> words (a ++ linkLibraries ls)) {std_err = stderr} ""
 
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm
@@ -124,7 +124,7 @@ linkLibraries ls = "--libraries " ++ linkLibraries' ls addrLibrary
 
 linkLibraries' :: [String] -> Addr -> String
 linkLibraries' []     _  = ""
-linkLibraries' (l:ls) la = l ++ ":" ++ (show la) ++ "," ++ (linkLibraries' ls (la+1))
+linkLibraries' (l:ls) la = l ++ ":" ++ show la ++ "," ++ linkLibraries' ls (la+1)
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -138,7 +138,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   c <- choose cs name
   q <- view (hasLens . quiet)
   liftIO $ do
-    when (isNothing name && length cs > 1 && (not q)) $
+    when (isNothing name && length cs > 1 && not q) $
       putStrLn "Multiple contracts found in file, only analyzing the first"
     unless q . putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
 
