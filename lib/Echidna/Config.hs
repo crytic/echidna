@@ -76,6 +76,7 @@ instance FromJSON EConfig where
                          <*> v .:? "initialBalance" .!= 0xffffffff
                          <*> v .:? "prefix"         .!= "echidna_"
                          <*> v .:? "solcArgs"       .!= ""
+                         <*> v .:? "solcLibs"       .!= []
                          <*> v .:? "quiet"          .!= False)
             <*> tc
             <*> (UIConf <$> v .:? "dashboard" .!= True <*> style)

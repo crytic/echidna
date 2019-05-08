@@ -72,13 +72,14 @@ instance Show SolException where
 instance Exception SolException
 
 -- | Configuration for loading Solidity for Echidna testing.
-data SolConf = SolConf { _contractAddr    :: Addr    -- ^ Contract address to use
-                       , _deployer        :: Addr    -- ^ Contract deployer address to use
-                       , _sender          :: [Addr]  -- ^ Sender addresses to use
-                       , _initialBalance  :: Integer -- ^ Initial balance of deployer and senders
-                       , _prefix          :: Text    -- ^ Function name prefix used to denote tests
-                       , _solcArgs        :: String  -- ^ Args to pass to @solc@
-                       , _quiet           :: Bool    -- ^ Suppress @solc@ output, errors, and warnings
+data SolConf = SolConf { _contractAddr    :: Addr     -- ^ Contract address to use
+                       , _deployer        :: Addr     -- ^ Contract deployer address to use
+                       , _sender          :: [Addr]   -- ^ Sender addresses to use
+                       , _initialBalance  :: Integer  -- ^ Initial balance of deployer and senders
+                       , _prefix          :: Text     -- ^ Function name prefix used to denote tests
+                       , _solcArgs        :: String   -- ^ Args to pass to @solc@
+                       , _solcLibs        :: [String] -- ^ List of libraries to load, in order.
+                       , _quiet           :: Bool     -- ^ Suppress @solc@ output, errors, and warnings
                        }
 makeLenses ''SolConf
 
@@ -87,20 +88,43 @@ contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePa
 contracts fp = do
   a <- view (hasLens . solcArgs)
   q <- view (hasLens . quiet)
-  pure (a, q) >>= liftIO . solc >>= (\case
+  ls <- view (hasLens . solcLibs)
+  pure (a, q, ls) >>= liftIO . solc >>= (\case
     Nothing -> throwM CompileFailure
     Just m  -> pure . toList $ fst m) where
       usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", fp]
-      solc (a, q) = do
+      solc (a, q, ls) = do
         stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode
                        else pure Inherit
         readSolc =<< writeSystemTempFile ""
-                 =<< readCreateProcess (proc "solc" $ usual <> words a) {std_err = stderr} ""
+                 =<< readCreateProcess (proc "solc" $ usual <> words (a ++ (linkLibraries ls))) {std_err = stderr} ""
 
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm
 populateAddresses (a:as) b vm = populateAddresses as b (vm & set (env . EVM.contracts . at a) (Just account))
   where account = initialContract (RuntimeCode mempty) & set nonce 1 & set balance (w256 $ fromInteger b)
+
+-- | Address to load the first library
+addrLibrary :: Addr
+addrLibrary = 0xff
+
+-- | Load a list of solidity contracts as libraries
+loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+              => [SolcContract] -> Addr -> Addr -> VM -> m VM
+loadLibraries []     _    _ vm = return vm
+loadLibraries (l:ls) la d vm = do vm' <- execStateT (execTx $ Tx (Right bc) d la 0) vm 
+                                  loadLibraries ls (la+1) d vm'
+                               where bc = l ^. creationCode
+
+
+-- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
+linkLibraries :: [String] -> String
+linkLibraries [] = ""
+linkLibraries ls = "--libraries " ++ linkLibraries' ls addrLibrary
+
+linkLibraries' :: [String] -> Addr -> String
+linkLibraries' []     _  = ""
+linkLibraries' (l:ls) la = l ++ ":" ++ (show la) ++ "," ++ (linkLibraries' ls (la+1))
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -114,23 +138,28 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   c <- choose cs name
   q <- view (hasLens . quiet)
   liftIO $ do
-    when (isNothing name && length cs > 1) $
+    when (isNothing name && length cs > 1 && (not q)) $
       putStrLn "Multiple contracts found in file, only analyzing the first"
     unless q . putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
 
   -- Local variables
-  (SolConf ca d ads b pref _ _) <- view hasLens
+  (SolConf ca d ads b pref _ libs _) <- view hasLens
   let bc = c ^. creationCode
       blank = populateAddresses (ads |> d) b (vmForEthrunCreation bc)
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
+
+  -- Select libraries
+  ls <- mapM (choose cs . Just . pack) libs
 
   -- Make sure everything is ready to use, then ship it
   mapM_ (uncurry ensure) [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)] -- ABI checks
   ensure bc (NoBytecode $ c ^. contractName)                                   -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                                     -- Test args check
-    Nothing    -> (, funs, fst <$> tests) <$> execStateT (execTx $ Tx (Right bc) d ca 0) blank
+    Nothing    -> do vm <- loadLibraries ls addrLibrary d blank
+                     (, funs, fst <$> tests) <$> execStateT (execTx $ Tx (Right bc) d ca 0) vm
+
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
