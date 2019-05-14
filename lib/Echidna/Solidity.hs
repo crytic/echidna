@@ -102,6 +102,14 @@ populateAddresses []     _ vm = vm
 populateAddresses (a:as) b vm = populateAddresses as b (vm & set (env . EVM.contracts . at a) (Just account))
   where account = initialContract mempty & set nonce 1 & set balance (w256 $ fromInteger b)
 
+
+execInit :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+            => Addr -> Addr -> [SolSignature] -> VM -> m VM
+execInit ca d abi vm = if (elem initSign abi) then (execStateT (execTx initTx) vm)
+                      else return vm
+                      where  initSign = ("init_function",[])
+                             initTx =  Tx (Left initSign) d ca 0
+
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
 -- testing and extract an ABI and list of tests. Throws exceptions if anything returned doesn't look
@@ -130,7 +138,9 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   ensure bc (NoBytecode $ c ^. contractName)                                   -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                                     -- Test args check
-    Nothing    -> (, funs, fst <$> tests) <$> execStateT (execTx $ Tx (Right bc) d ca 0) blank
+    Nothing    -> do vm <- execStateT (execTx $ Tx (Right bc) d ca 0) blank
+                     vm' <- execInit ca d abi vm
+                     return (vm', funs, fst <$> tests)
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
