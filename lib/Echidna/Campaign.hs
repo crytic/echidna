@@ -99,7 +99,7 @@ isDone (Campaign ts _ _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)
 -- success or a failure.
 isSuccess :: Campaign -> Bool
 isSuccess (Campaign ts _ _) =
-  any (\case { Passed -> True; Open _ -> True; _ -> False; }) $ snd <$> ts
+  all (\case { Passed -> True; Open _ -> True; _ -> False; }) $ snd <$> ts
 
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
 -- of transactions and the state after evaluation, see if:
