@@ -9,11 +9,12 @@ module Echidna.RPC where
     
     import Control.Exception (Exception)
     import Control.Lens
-    import Control.Monad (forM_)
+    import Control.Monad (foldM)
     import Control.Monad.Catch (MonadThrow, throwM)
     import Control.Monad.IO.Class (MonadIO(..))
     import Control.Monad.State.Strict (MonadState, execState, execStateT, get, put, runState)
     import Data.Aeson (FromJSON(..), defaultOptions, eitherDecodeFileStrict, genericParseJSON, omitNothingFields)
+    import Data.ByteString (ByteString, empty)
     import Data.Has (Has(..))
     import Data.List (partition)
     import Data.Text.Encoding (encodeUtf8)
@@ -64,8 +65,8 @@ module Echidna.RPC where
 
     -- | Main function: takes a filepath where the initialization sequence lives and returns 
     -- | the initialized VM along with a list of Addr's to put in GenConf
-    loadEthenoBatch :: (MonadThrow m, MonadIO m) => FilePath -> m (VM, [Addr])
-    loadEthenoBatch fp = do
+    loadEthenoBatch :: (MonadThrow m, MonadIO m) => ByteString -> FilePath -> m (VM, [Addr])
+    loadEthenoBatch echidnaInit fp = do
         bs <- liftIO $ eitherDecodeFileStrict fp
 
         case bs of 
@@ -76,16 +77,18 @@ module Echidna.RPC where
                     knownAddrs      = map (\e -> e ^. address) accounts
         
                 -- | Execute contract creations and initial transactions, 
-                let initTx  = head txs
-                    blank = vmForEthrunCreation $ encodeUtf8 (initTx ^. initCode)
-                vm <- execStateT (execEthenoTxs txs) blank
+                let blank  = vmForEthrunCreation empty
+                    initVM = foldM (execEthenoTxs echidnaInit) 0x0 txs >>= liftSH . loadContract
+                
+                vm <- execStateT initVM blank
 
                 return (vm, knownAddrs)
 
 
-    -- | Takes a list of Etheno transactions and loads them into the VM
-    execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m) => [Etheno] -> m ()
-    execEthenoTxs txs = forM_ txs $ \t -> do
+    -- | Takes a list of Etheno transactions and loads them into the VM, returning the 
+    -- | address containing echidna tests
+    execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m) => ByteString -> Addr -> Etheno -> m Addr
+    execEthenoTxs bs addr t = do
         og <- get
         setupEthenoTx t 
         res <- liftSH exec
@@ -93,9 +96,13 @@ module Echidna.RPC where
             (Reversion,   _)         -> put og
             (VMFailure x, _)         -> vmExcept x
             (VMSuccess bc, True) -> hasLens %= execState ( replaceCodeOfSelf bc
-                                                            >> loadContract (t ^.contractAddr))
+                                                            >> loadContract (t ^. contractAddr))
             _                        -> pure ()
-        return res
+            
+        -- See if current contract is the same as echidna test
+        if t ^. event == ContractCreated && encodeUtf8 (t ^. initCode) == bs 
+            then return (t ^. contractAddr)
+            else return addr
 
 
     -- | For an etheno txn, set up VM to execute txn

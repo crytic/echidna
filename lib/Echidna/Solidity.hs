@@ -120,7 +120,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
-  (blank, _) <- maybe (pure (vmForEthrunCreation bc, [])) loadEthenoBatch fp 
+  (blank, _) <- maybe (pure (vmForEthrunCreation bc, [])) (loadEthenoBatch bc) fp
 
   -- Make sure everything is ready to use, then ship it
   mapM_ (uncurry ensure) [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)] -- ABI checks
