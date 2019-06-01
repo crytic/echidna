@@ -100,7 +100,7 @@ contracts fp = do
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm
 populateAddresses (a:as) b vm = populateAddresses as b (vm & set (env . EVM.contracts . at a) (Just account))
-  where account = initialContract mempty & set nonce 1 & set balance (w256 $ fromInteger b)
+  where account = initialContract (RuntimeCode mempty) & set nonce 1 & set balance (w256 $ fromInteger b)
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
