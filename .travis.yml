@@ -26,6 +26,7 @@ install:
  - unset CC
  - export PATH=$HOME/.local/bin:$PATH
  - ./.travis/install-libsecp256k1.sh
+ - ./.travis/install-libff.sh
  - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
  - ./.travis/install-solc.sh
