@@ -8,5 +8,5 @@ if ls /usr/local/lib | grep -q libff; then exit 0; fi
 
 git clone https://github.com/scipr-lab/libff --recursive
 cd libff
-WITH_PROCPS=OFF CXXFLAGS='-fPIC' cmake .
+WITH_PROCPS=0 CXXFLAGS='-fPIC' cmake .
 sudo make install
