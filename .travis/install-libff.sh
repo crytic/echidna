@@ -8,8 +8,8 @@ git clone https://github.com/scipr-lab/libff --recursive
 cd libff
 ARGS="-DWITH_PROCPS=OFF"
 if [ "$(uname)" == "Darwin" ]; then
-  brew update # not sure if this is required
-  brew upgrade openssl
+  export LDFLAGS=-L/usr/local/opt/openssl/lib
+  export CPPFLAGS=-I/usr/local/opt/openssl/include
   ARGS="$ARGS -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include/openssl"
 fi
 CXXFLAGS='-fPIC' cmake $ARGS .
