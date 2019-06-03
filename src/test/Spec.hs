@@ -3,7 +3,7 @@
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Echidna.ABI (SolCall, mkGenDict, genInteractionsM)
+import Echidna.ABI (SolCall, mkGenDict)
 import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..), seed)
 import Echidna.Config (defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
@@ -12,14 +12,11 @@ import Echidna.Transaction (Tx, call)
 import Control.Lens
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Reader (runReaderT, liftIO)
-import Control.Monad (replicateM)
-import Control.Monad.State.Strict (evalStateT)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
 import Data.List (find)
 import EVM.ABI (AbiValue(..))
 import System.Directory (withCurrentDirectory)
-import System.Random (mkStdGen)
 
 main :: IO ()
 main = withCurrentDirectory "./examples/solidity" . defaultMain $
@@ -68,27 +65,24 @@ extractionTests = testGroup "Constant extraction/generation testing"
 
 
 seedTests :: TestTree
-seedTests =  
- testGroup "Seed reproducibility testing"
- [   testCase "basic/flags.sol" $ do
-      is_1  <- gen Nothing 
-      is_2  <- gen Nothing
-      liftIO . assertBool "seed generation failed" $ is_1 /= is_2
-   , testCase "basic/flags.sol" $ do
-      is_1  <- gen seed
-      is_2  <- gen seed
-      --liftIO $ print is_1
-      --liftIO $ print is_2
-      liftIO . assertBool "seed generation failed" $ is_1 == is_2
-  ]
-  where seed = Just $ mkStdGen 1
-        gen s = let defaultConfig' = defaultConfig & sConf . quiet .~ True 
-                    cfg = defaultConfig' & cConf %~ \x -> x { seed = s } in
-                flip runReaderT cfg $ do
-                 cs  <- contracts "basic/flags.sol"
-                 abi <- view _2 <$> loadSpecified Nothing cs
-                 evalStateT (replicateM 1000 $ genInteractionsM abi)
-                      $ mkGenDict 0.15 (extractConstants cs) []
+seedTests =
+  testGroup "Seed reproducibility testing"
+    [ testCase "gen seed" $ do
+        is_1  <- gen seed'
+        is_2  <- gen seed'
+        --liftIO $ print is_1
+        --liftIO $ print is_2
+        liftIO . assertBool "results differ" $ is_1 == is_2
+    ]
+    where seed' = Just $ 0
+          fp    = "basic/flags.sol"
+          gen s = let defaultConfig' = defaultConfig & sConf . quiet .~ True
+                      cfg = defaultConfig' & cConf %~ \x -> x { seed = s } in do
+                  res <- flip runReaderT cfg $ do
+                    (v,w,ts) <- loadSolTests fp Nothing
+                    cs  <- contracts fp
+                    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [])
+                  return $ res ^. tests
 
 -- Integration Tests
 
