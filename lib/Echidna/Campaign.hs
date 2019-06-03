@@ -31,7 +31,7 @@ import Data.Text (unpack)
 import EVM
 import EVM.Types (W256)
 import Numeric (showHex)
-import System.Random (StdGen, mkStdGen)
+import System.Random (mkStdGen)
 
 import Echidna.ABI
 import Echidna.Exec
@@ -54,7 +54,7 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                  , knownCoverage :: Maybe (Map W256 (Set Int))
                                    -- ^ If applicable, initially known coverage. If this is 'Nothing',
                                    -- Echidna won't collect coverage information (and will go faster)
-                                 , seed          :: Maybe StdGen
+                                 , seed          :: Maybe Int
                                  }
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
@@ -177,7 +177,7 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, Has TestConf x, Has 
          -> Maybe GenDict       -- ^ Optional generation dictionary
          -> m Campaign
 campaign u v w ts d = let d' = fromMaybe mempty d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
-  g <- view (hasLens . to (fromMaybe (mkStdGen 0) . seed))
+  g <- view (hasLens . to (fromMaybe (mkStdGen 0) . fmap mkStdGen . seed))
   execStateT (evalRandT runCampaign g) (Campaign ((,Open (-1)) <$> ts) c d') where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update

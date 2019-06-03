@@ -16,8 +16,7 @@ import Data.Has (Has(..))
 import Data.Aeson
 import Data.Aeson.Lens
 import EVM (result)
-import System.Random (StdGen, mkStdGen)
- 
+
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Data.ByteString as BS
 import qualified Data.Yaml as Y
@@ -61,10 +60,10 @@ instance FromJSON EConfig where
                           <*> v .:? "seqLen"      .!= 100
                           <*> v .:? "shrinkLimit" .!= 5000
                           <*> pure Nothing
-                          <*> fmap (Just . mkStdGen =<<) (v .:? "seed")
+                          <*> v .:? "seed"
         names = const $ const mempty :: Names
         ppc = cc <&> \c x _ -> runReader (ppCampaign x) (c, names)
-        style :: Y.Parser (Campaign -> Maybe StdGen -> String)
+        style :: Y.Parser (Campaign -> Maybe Int -> String)
         style = v .:? "format" >>= \case (Nothing :: Maybe String) -> ppc
                                          (Just "text")             -> ppc
                                          (Just "json")             -> pure . flip $ \g ->

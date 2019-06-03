@@ -26,7 +26,6 @@ import EVM.Types (Addr, W256)
 import Graphics.Vty (Event(..), Key(..), Modifier(..), defaultConfig, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
-import System.Random (StdGen)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (forkIO, killThread)
 
@@ -39,7 +38,7 @@ import Echidna.Test
 import Echidna.Transaction
 
 data UIConf = UIConf { _dashboard :: Bool
-                     , _finished  :: Campaign -> Maybe StdGen -> String
+                     , _finished  :: Campaign -> Maybe Int -> String
                      }
 
 makeLenses ''UIConf
