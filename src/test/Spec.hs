@@ -67,17 +67,18 @@ extractionTests = testGroup "Constant extraction/generation testing"
 seedTests :: TestTree
 seedTests =
   testGroup "Seed reproducibility testing"
-    [ testCase "gen seed" $ do
-        is_1  <- gen seed'
-        is_2  <- gen seed'
-        --liftIO $ print is_1
-        --liftIO $ print is_2
+    [ testCase "different seeds" $ do
+        is_1 <- gen (-6710962225043795776)
+        is_2 <- gen 0
+        liftIO . assertBool "results are the same" $ is_1 /= is_2
+    , testCase "same seeds" $ do
+        is_1 <- gen 0
+        is_2 <- gen 0
         liftIO . assertBool "results differ" $ is_1 == is_2
     ]
-    where seed' = Just $ 0
-          fp    = "basic/flags.sol"
+    where fp    = "basic/flags.sol"
           gen s = let defaultConfig' = defaultConfig & sConf . quiet .~ True
-                      cfg = defaultConfig' & cConf %~ \x -> x { seed = s } in do
+                      cfg = defaultConfig' & cConf %~ \x -> x { seed = Just s } in do
                   res <- flip runReaderT cfg $ do
                     (v,w,ts) <- loadSolTests fp Nothing
                     cs  <- contracts fp
