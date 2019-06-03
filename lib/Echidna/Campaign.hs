@@ -23,7 +23,7 @@ import Data.Bool (bool)
 import Data.Either (lefts)
 import Data.Foldable (toList)
 import Data.Map (Map, mapKeys, unionWith)
-import Data.Maybe (fromMaybe, isNothing, maybeToList)
+import Data.Maybe (maybe, fromMaybe, isNothing, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
@@ -177,7 +177,7 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, Has TestConf x, Has 
          -> Maybe GenDict       -- ^ Optional generation dictionary
          -> m Campaign
 campaign u v w ts d = let d' = fromMaybe mempty d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
-  g <- view (hasLens . to (fromMaybe (mkStdGen 0) . fmap mkStdGen . seed))
+  g <- view (hasLens . to (maybe (mkStdGen 0) mkStdGen . seed))
   execStateT (evalRandT runCampaign g) (Campaign ((,Open (-1)) <$> ts) c d') where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
