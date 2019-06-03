@@ -4,9 +4,11 @@ set -eux
 
 if ls /usr/local/lib | grep -q libff; then exit 0; fi
 
-#gitRef="1086fda4c1975d0cad8d3cad96794a64ec12dca4"
-
 git clone https://github.com/scipr-lab/libff --recursive
 cd libff
-CXXFLAGS='-fPIC' cmake -DWITH_PROCPS=OFF .
+ARGS="-DWITH_PROCPS=OFF"
+if [ "$(uname)" == "Darwin" ]; then
+  ARGS="$ARGS -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include/openssl"
+fi
+CXXFLAGS='-fPIC' cmake $ARGS .
 sudo make install
