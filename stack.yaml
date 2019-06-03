@@ -4,9 +4,8 @@ packages:
 - '.'
 
 extra-deps:
-- git: https://github.com/japesinator/dapptools.git
-  commit: 5c260809f2f467145ade232f08e994ee453e4088
-  branch: patch-1
+- git: https://github.com/dapphub/dapptools.git
+  commit: 80c39ced5653727e7e38873bb215a99bc6acc56c
   subdirs:
   - src/hevm
 
