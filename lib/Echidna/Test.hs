@@ -36,7 +36,7 @@ data CallRes = ResFalse | ResTrue | ResRevert | ResOther deriving (Eq, Show)
 classifyRes :: VMResult -> CallRes
 classifyRes (VMSuccess b) | b == encodeAbiValue (AbiBool True)  = ResTrue
                           | b == encodeAbiValue (AbiBool False) = ResFalse
-                          | otherwise                           = error "invalid result"
+                          | otherwise                           = ResOther
 
 classifyRes Reversion = ResRevert
 classifyRes _ = ResOther
