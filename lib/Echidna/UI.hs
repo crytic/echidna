@@ -117,19 +117,13 @@ isTerminal = liftIO $ (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 
 -- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
 -- once done.
--- <<<<<<< HEAD
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
       , Has TestConf x, Has CampaignConf x, Has Names x, Has UIConf x)
--- =======
---ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
---      , Has TestConf x, Has CampaignConf x, Has Names x, Has UIConf x)
--- >>>>>>> 3d095989fa11fe9a2d0760c3e453620ccc1f3a25
    => VM        -- ^ Initial VM state
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
    -> Maybe GenDict
    -> m Campaign
--- <<<<<<< HEAD
 ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
   s <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
   g <- view (hasLens . to seed)
@@ -139,14 +133,4 @@ ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id 
                     liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty (fromJust d))
             else campaign (pure ()) v w ts d
   liftIO . putStrLn =<< view (hasLens . finished) <*> pure c <*> pure g
-{- =======
-ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
-  s <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
-  c <- if s then do bc <- liftIO $ newBChan 100
-                    t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts d >> pure ()
-                    a <- monitor (killThread t)
-                    liftIO (customMain (mkVty defaultConfig) (Just bc) a mempty)
-            else campaign (pure ()) v w ts d
-  liftIO . putStrLn =<< ($ c) <$> view (hasLens . finished)
->>>>>>> 3d095989fa11fe9a2d0760c3e453620ccc1f3a25 -}
   return c
