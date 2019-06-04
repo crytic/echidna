@@ -9,7 +9,7 @@ module Echidna.Exec where
 
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
-import Control.Monad.State.Strict (MonadState, execState)
+import Control.Monad.State.Strict (MonadState, execState, put, get)
 import Data.Either (isRight)
 import Data.Has (Has(..))
 import Data.Map.Strict (Map)
@@ -63,10 +63,11 @@ vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> Unknow
 -- | Given an error handler, an execution function, and a transaction, execute that transaction
 -- using the given execution strategy, handling errors with the given handler.
 execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m VMResult
-execTxWith h m t = do setupTx t
+execTxWith h m t = do og <- get
+                      setupTx t
                       res <- m
                       case (res, isRight $ t ^. call) of
-                        (Reversion,   _)         -> return ()
+                        (f@Reversion,   _)         -> put og >> liftSH (result .= Just f)
                         (VMFailure x, _)         -> h x
                         (VMSuccess bc, True) -> hasLens %= execState ( replaceCodeOfSelf bc
                                                                         >> loadContract (t ^. dst))
