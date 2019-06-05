@@ -5,6 +5,7 @@ set -eux
 if ls /usr/local/lib | grep -q libff; then exit 0; fi
 
 git clone https://github.com/scipr-lab/libff --recursive
+git submodule init && git submodule update
 cd libff
 ARGS="-DWITH_PROCPS=OFF"
 if [ "$(uname)" == "Darwin" ]; then
