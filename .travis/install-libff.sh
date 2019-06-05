@@ -16,5 +16,5 @@ if [ "$(uname)" == "Darwin" ]; then
 fi
 mkdir build
 cd build
-CXXFLAGS="-fPIC $CXXFLAGS" cmake $ARGS ..
+CURVE="ALT_BN128" CXXFLAGS="-fPIC $CXXFLAGS" cmake $ARGS ..
 make && sudo make install
