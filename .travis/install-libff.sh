@@ -12,7 +12,7 @@ if [ "$(uname)" == "Darwin" ]; then
   export LDFLAGS=-L/usr/local/opt/openssl/lib
   export CPPFLAGS=-I/usr/local/opt/openssl/include
   export CXXFLAGS=-I/usr/local/opt/openssl/include
-  ARGS="$ARGS -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include/openssl"
+  ARGS="$ARGS -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include/openssl -DCMAKE_CXX_STANDARD=14"
 fi
 mkdir build
 cd build
