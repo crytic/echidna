@@ -13,5 +13,7 @@ if [ "$(uname)" == "Darwin" ]; then
   export CXXFLAGS=-I/usr/local/opt/openssl/include
   ARGS="$ARGS -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include/openssl"
 fi
-CXXFLAGS="-fPIC $CXXFLAGS" cmake $ARGS .
-sudo make install
+mkdir build
+cd build
+CXXFLAGS="-fPIC $CXXFLAGS" cmake $ARGS ..
+make && sudo make install
