@@ -4,7 +4,7 @@ author: JP Smith
 
 version: 0.0.0.1
 
-ghc-options: -Wall -fno-warn-orphans -O2 -threaded +RTS -N -RTS
+ghc-options: -Wall -fno-warn-orphans -O2 -threaded -static +RTS -N -RTS
 
 dependencies:
   - aeson                >= 1.3    && < 1.5
