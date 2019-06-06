@@ -18,6 +18,3 @@ mkdir build
 cd build
 CXXFLAGS="-fPIC $CXXFLAGS" cmake $ARGS ..
 make && sudo make install
-cp libff/libff.dylib /usr/local/lib
-cp depends/libzm.dylib /usr/local/lib
-cp depends/libzm.a /usr/local/lib
