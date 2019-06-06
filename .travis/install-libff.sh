@@ -18,3 +18,4 @@ mkdir build
 cd build
 CXXFLAGS="-fPIC $CXXFLAGS" cmake $ARGS ..
 make && sudo make install
+ls /usr/local/lib
