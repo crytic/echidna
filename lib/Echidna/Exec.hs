@@ -17,7 +17,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import EVM
 import EVM.Exec (exec)
-import EVM.Types (W256(..), Addr)
+import EVM.Types (W256(..))
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -60,25 +60,6 @@ instance Exception ExecException
 vmExcept :: MonadThrow m => Error -> m ()
 vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e}
 
--- | replaceCodeOfSelf and replaceCode in hevm 0.29 do not allow to replace the code
--- of an already deployed contracts. We need the previous versions of them, so we have them here:
-
-replaceCodeOfSelf' :: ContractCode -> EVM ()
-replaceCodeOfSelf' newCode = do
-  vm <- get
-  replaceCode' (view (state . contract) vm) newCode
-
-replaceCode' :: Addr -> ContractCode -> EVM ()
-replaceCode' target newCode =
-  zoom (env . contracts . at target) $ do
-    Just now <- get
-    put . Just $
-     initialContract newCode
-     & set storage (view storage now)
-     & set balance (view balance now)
-     & set nonce   (view nonce now)
-
-
 -- | Given an error handler, an execution function, and a transaction, execute that transaction
 -- using the given execution strategy, handling errors with the given handler.
 execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m VMResult
@@ -88,7 +69,10 @@ execTxWith h m t = do og <- get
                       case (res, isRight $ t ^. call) of
                         (Reversion,   _)         -> put og
                         (VMFailure x, _)         -> h x
-                        (VMSuccess bc, True)     -> hasLens %= execState ( replaceCodeOfSelf' (RuntimeCode bc) >> loadContract (t ^. dst))
+                        (VMSuccess bc, True)     -> (hasLens %=) . execState $ do
+                          env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
+                          replaceCodeOfSelf (RuntimeCode bc) 
+                          loadContract (t ^. dst)
                         _                        -> pure ()
                       return res
 
