@@ -1,6 +1,6 @@
 FROM ubuntu:bionic
 RUN apt-get update && apt-get -y upgrade
-RUN apt-get install -y curl wget libgmp-dev libbz2-dev libreadline-dev software-properties-common locales-all locales libsecp256k1-dev
+RUN apt-get install -y cmake curl wget libgmp-dev libssl-dev libbz2-dev libreadline-dev software-properties-common locales-all locales libsecp256k1-dev
 RUN apt-get update
 RUN wget https://github.com/ethereum/solidity/releases/download/v0.4.25/solc-static-linux
 RUN chmod +x solc-static-linux
@@ -8,6 +8,7 @@ RUN mv solc-static-linux /usr/bin/solc
 RUN curl -sSL https://get.haskellstack.org/ | sh
 COPY . /echidna/
 WORKDIR /echidna
+ENV TRAVIS_OS_NAME linux
 RUN .travis/install-libff.sh
 RUN stack upgrade && stack setup && stack install
 ENV PATH=$PATH:/root/.local/bin
