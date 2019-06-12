@@ -67,7 +67,7 @@ execTxWith h m t = do og <- get
                       setupTx t
                       res <- m
                       case (res, isRight $ t ^. call) of
-                        (f@Reversion,   _)         -> put og >> liftSH (result .= Just f)
+                        (f@Reversion, _)         -> put og >> liftSH (result .= Just f)
                         (VMFailure x, _)         -> h x
                         (VMSuccess bc, True)     -> (hasLens %=) . execState $ do
                           env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""

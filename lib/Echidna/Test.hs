@@ -23,7 +23,8 @@ type SolTest = (Text, Addr)
 
 -- | Configuration for evaluating Echidna tests.
 data TestConf = TestConf { classifier :: Text -> VM -> Bool
-                           -- ^ Given a VM state, check if a test just passed (typically examing '_result'.)
+                           -- ^ Given a VM state and test name, check if a test just passed (typically
+                           -- examining '_result'.)
                          , testSender :: Addr -> Addr
                            -- ^ Given the address of a test, return the address to send test evaluation
                            -- transactions from.
