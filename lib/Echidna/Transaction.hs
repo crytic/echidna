@@ -12,7 +12,6 @@ import Control.Lens
 import Control.Monad (liftM4)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR)
-import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, runState)
 import Data.Aeson (ToJSON(..), object)
 import Data.ByteString (ByteString)
@@ -22,7 +21,7 @@ import Data.List (intercalate)
 import Data.Set (Set)
 import EVM
 import EVM.ABI (abiCalldata, abiTypeSolidity, abiValueType)
-import EVM.Concrete (Blob(..), Word(..), w256)
+import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
 
 import qualified Control.Monad.State.Strict as S (state)
@@ -83,7 +82,7 @@ genTx = genTxWith (rElem "sender list") (rElem "recipient list")
                   (const $ genInteractions . snd) (\_ _ _ -> pure 0)
 
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
-genTxM :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m, MonadReader y m, Has GenConf y) => m Tx
+genTxM :: (MonadRandom m, MonadState x m, Has GenDict x, Has World x, MonadThrow m) => m Tx
 genTxM = genTxWith (rElem "sender list") (rElem "recipient list")
                    (const $ genInteractionsM . snd) (\_ _ _ -> pure 0)
 
@@ -116,10 +115,10 @@ liftSH = S.state . runState . zoom hasLens
 -- 'Transaction's \"on-chain\".
 setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
 setupTx (Tx c s r v) = S.state . runState . zoom hasLens . sequence_ $
-  [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= 0xffffffff
-  , env . origin .= s, state . caller .= s, state . callvalue .= v, setup] where
+  [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty, state . gas .= 0xffffffff
+  , tx . origin .= s, state . caller .= s, state . callvalue .= v, setup] where
     setup = case c of
       Left cd  -> loadContract r >> state . calldata .= encode cd
-      Right bc -> assign (env . contracts . at r) (Just $ initialContract bc) >> loadContract r
-    encode (n, vs) = B . abiCalldata
+      Right bc -> assign (env . contracts . at r) (Just $ initialContract (RuntimeCode bc)) >> loadContract r
+    encode (n, vs) = abiCalldata
       (n <> "(" <> T.intercalate "," (abiTypeSolidity . abiValueType <$> vs) <> ")") $ V.fromList vs

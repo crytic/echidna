@@ -1,6 +1,6 @@
 contract Foo {
   bool state = true;
-  function f(int256 a, int256 b, int256 c) returns (int256) {
+  function f(int256 a, int256 b, int256 c) public returns (int256) {
     int256 d = b + c;
     if (d < 1) {
       if (b < 3) {
@@ -19,5 +19,5 @@ contract Foo {
     }
   }
 
-  function echidna_state() returns (bool) { return(state); }
+  function echidna_state() public returns (bool) { return(state); }
 }
