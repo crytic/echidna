@@ -9,8 +9,9 @@ RUN curl -sSL https://get.haskellstack.org/ | sh
 COPY . /echidna/
 WORKDIR /echidna
 ENV TRAVIS_OS_NAME linux
+ENV LD_LIBRARY_PATH /usr/local/lib
 RUN .travis/install-libff.sh
-RUN stack upgrade && stack setup && stack install
+RUN stack upgrade && stack setup && stack install --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
 ENV PATH=$PATH:/root/.local/bin
 RUN update-locale LANG=en_US.UTF-8
 RUN locale-gen en_US.UTF-8  
