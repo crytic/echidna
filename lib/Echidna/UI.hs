@@ -79,20 +79,21 @@ ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m th
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m String
-ppTests (Campaign ts _) = unlines <$> mapM (\((n, _), s) -> ((T.unpack n ++ ": ") ++ ) <$> ppTS s) ts
+ppTests (Campaign ts _ _) = unlines <$> mapM (\((n, _), s) -> ((T.unpack n ++ ": ") ++ ) <$> ppTS s) ts
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
-ppCoverage :: Map W256 (Set Int) -> String
-ppCoverage s = "Unique instructions: " ++ show (coveragePoints s)
-            ++ "\nUnique codehashes: " ++ show (length s)
+ppCoverage :: Map W256 (Set Int) -> Maybe String
+ppCoverage s | s == mempty = Nothing 
+             | otherwise   = Just $ "Unique instructions: " ++ show (coveragePoints s)
+                                ++ "\nUnique codehashes: " ++ show (length s)
 
 ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m String
-ppCampaign c@(Campaign _ co) = (++) <$> ppTests c <*> pure (maybe "" (("\n" ++) . ppCoverage) co)
+ppCampaign c = (++) <$> ppTests c <*> pure (maybe "" ("\n" ++) . ppCoverage $ c ^. coverage)
 
 -- | Render 'Campaign' progress as a 'Widget'.
 campaignStatus :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m (Widget ())
 campaignStatus c = let mSection = maybe emptyWidget ((hBorder <=>) . padLeft (Pad 2) . str) in do
-  stats <- padLeft (Pad 2) . str <$> ppTests c <&> (<=> mSection (ppCoverage <$> c ^. coverage))
+  stats <- padLeft (Pad 2) . str <$> ppTests c <&> (<=> mSection (ppCoverage $ c ^. coverage))
   bl <- bool emptyWidget (str "Campaign complete, C-c or esc to print report") <$> isDone c
   pure . hCenter . hLimit 120 . joinBorders $ borderWithLabel (str "Echidna") stats <=> bl
 
@@ -117,17 +118,18 @@ isTerminal = liftIO $ queryTerminal (Fd 0)
 -- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
 -- once done.
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
-      , Has GenConf x, Has TestConf x, Has CampaignConf x, Has Names x, Has UIConf x)
+      , Has TestConf x, Has CampaignConf x, Has Names x, Has UIConf x)
    => VM        -- ^ Initial VM state
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
+   -> Maybe GenDict
    -> m Campaign
-ui v w ts = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
-  d <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
-  c <- if d then do bc <- liftIO $ newBChan 100
-                    t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts >> pure ()
+ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
+  s <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
+  c <- if s then do bc <- liftIO $ newBChan 100
+                    t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts d >> pure ()
                     a <- monitor (killThread t)
-                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty)
-            else campaign (pure ()) v w ts
+                    liftIO (customMain (mkVty defaultConfig) (Just bc) a mempty)
+            else campaign (pure ()) v w ts d
   liftIO . putStrLn =<< ($ c) <$> view (hasLens . finished)
   return c
