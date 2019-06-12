@@ -11,7 +11,7 @@ import Data.Bool (bool)
 import Data.Foldable (traverse_)
 import Data.Has (Has(..))
 import Data.Text (Text)
-import EVM
+import EVM (VMResult(..), VM)
 import EVM.ABI (AbiValue(..), encodeAbiValue)
 import EVM.Types (Addr)
 
@@ -22,8 +22,9 @@ import Echidna.Transaction
 type SolTest = (Text, Addr)
 
 -- | Configuration for evaluating Echidna tests.
-data TestConf = TestConf { classifier :: VM -> Bool
-                           -- ^ Given a VM state, check if a test just passed (typically examing '_result'.)
+data TestConf = TestConf { classifier :: Text -> VM -> Bool
+                           -- ^ Given a VM state and test name, check if a test just passed (typically
+                           -- examining '_result'.)
                          , testSender :: Addr -> Addr
                            -- ^ Given the address of a test, return the address to send test evaluation
                            -- transactions from.
@@ -36,6 +37,8 @@ data CallRes = ResFalse | ResTrue | ResRevert | ResOther deriving (Eq, Show)
 classifyRes :: VMResult -> CallRes
 classifyRes (VMSuccess b) | b == encodeAbiValue (AbiBool True)  = ResTrue
                           | b == encodeAbiValue (AbiBool False) = ResFalse
+                          | otherwise                           = ResOther
+
 classifyRes Reversion = ResRevert
 classifyRes _ = ResOther
 
@@ -43,7 +46,7 @@ classifyRes _ = ResOther
 checkETest :: (MonadReader x m, Has TestConf x, MonadState y m, Has VM y, MonadThrow m) => SolTest -> m Bool
 checkETest (f, a) = asks getter >>= \(TestConf p s) -> do
   og <- get 
-  res <- execTx (Tx (Left (f, [])) (s a) a 0) >> gets (p . getter)
+  res <- execTx (Tx (Left (f, [])) (s a) a 0) >> gets (p f . getter)
   put og
   pure res
 
