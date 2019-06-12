@@ -109,6 +109,9 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_state3 failed",                 solved "echidna_state3") ]
   , testContract "basic/balance.sol"      (Just "basic/balance.yaml")
       [ ("echidna_balance failed",                passed "echidna_balance") ]
+  , testContract "basic/library.sol"      (Just "basic/library.yaml")
+      [ ("echidna_library_call failed",           solved "echidna_library_call") ]
+
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
