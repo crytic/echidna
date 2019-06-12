@@ -8,6 +8,7 @@ RUN mv solc-static-linux /usr/bin/solc
 RUN curl -sSL https://get.haskellstack.org/ | sh
 COPY . /echidna/
 WORKDIR /echidna
+RUN .travis/install-libff.sh
 RUN stack upgrade && stack setup && stack install
 ENV PATH=$PATH:/root/.local/bin
 RUN update-locale LANG=en_US.UTF-8
