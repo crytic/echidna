@@ -14,7 +14,7 @@ import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Data.ByteString.Lazy.Char8 (unpack)
 import Data.Has (Has(..))
 import Data.Aeson
-import Data.Text (pack, isPrefixOf)
+import Data.Text (isPrefixOf)
 import EVM (result)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
@@ -54,7 +54,7 @@ instance FromJSON EConfig where
   parseJSON (Object v) =
     let tc = do psender <- v .:? "psender" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                 fprefix <- v .:? "prefix"  .!= "echidna_"
-                let goal fname = if fprefix <> "revert_" `isPrefixOf` fname then ResRevert else ResTrue
+                let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
                 return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result) (const psender)
         cc = CampaignConf <$> v .:? "testLimit"   .!= 10000
                           <*> v .:? "seqLen"      .!= 100
