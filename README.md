@@ -40,7 +40,7 @@ Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` an
 Echidna's CLI can be used to choose the contract to test, turn on coverage guided testing, or load a configuration file.
 
 ```
-echidna-test contract.sol TEST --coverage --config="config.yaml"
+$ echidna-test contract.sol TEST --coverage --config="config.yaml"
 ```
 
 The configuration file allows users to choose EVM and test generation parameters. An example of a complete config file with the default options can be found at [examples/solidity/basic/default.yaml](examples/solidity/basic/default.yaml). More detailed documentation on the configuration options is available in our [wiki](https://github.com/trailofbits/echidna/wiki/Config).
@@ -54,20 +54,21 @@ Echidna exports an API to build powerful fuzzing systems, and has a multitude of
 [docker](https://www.docker.com/) is recommended to install Echidna.
 
 ```
-docker pull trailofbits/echidna
-docker run trailofbits/echidna
+$ docker build -t echidna .
 ```
 
 for example
 
 ```
-docker run -t -v `pwd`:/src trailofbits/echidna echidna-test /src/examples/solidity/basic/flags.sol
+$ docker run -t -v `pwd`:/src echidna echidna-test /src/examples/solidity/basic/flags.sol
 ```
 
 
 If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/README/).
 `stack install` should build and compile `echidna-test` in `~/.local/bin`.
 You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choosing.
+Additionally, you need to install the latest release of [libff](https://github.com/scipr-lab/libff) (you can take a look to [this script](.travis/install-libff.sh) used in our CI tests)
+
 If you're getting errors building related to linking, try tinkering with `--extra-include-dirs` and `--extra-lib-dirs`.
 
 ## Getting help
