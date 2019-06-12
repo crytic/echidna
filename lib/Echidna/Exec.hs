@@ -69,8 +69,10 @@ execTxWith h m t = do og <- get
                       case (res, isRight $ t ^. call) of
                         (f@Reversion,   _)         -> put og >> liftSH (result .= Just f)
                         (VMFailure x, _)         -> h x
-                        (VMSuccess bc, True) -> hasLens %= execState ( replaceCodeOfSelf bc
-                                                                        >> loadContract (t ^. dst))
+                        (VMSuccess bc, True)     -> (hasLens %=) . execState $ do
+                          env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
+                          replaceCodeOfSelf (RuntimeCode bc) 
+                          loadContract (t ^. dst)
                         _                        -> pure ()
                       return res
 
