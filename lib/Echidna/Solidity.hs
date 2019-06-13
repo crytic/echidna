@@ -111,7 +111,7 @@ addrLibrary = 0xff
  -- | Load a list of solidity contracts as libraries
 loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
               => [SolcContract] -> Addr -> Addr -> VM -> m VM
-loadLibraries []     _    _ vm = return vm
+loadLibraries []     _  _ vm = return vm
 loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
                                where loadRest = execStateT (execTx $ Tx (Right $ l ^. creationCode) d la 0) vm
 
