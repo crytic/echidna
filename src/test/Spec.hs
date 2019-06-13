@@ -71,14 +71,16 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_true failed",                            passed       "echidna_true") ]
   , testContract "basic/flags.sol"       Nothing
       [ ("echidna_alwaystrue failed",                      passed       "echidna_alwaystrue")
+      , ("echidna_revert_always failed",                      passed       "echidna_revert_always")
       , ("echidna_sometimesfalse passed",                  solved       "echidna_sometimesfalse")
       , ("echidna_sometimesfalse didn't shrink optimally", solvedLen 2  "echidna_sometimesfalse")
       ]
   , testContract "basic/revert.sol"      Nothing
-      [ ("echidna_revert passed",                          solved      "echidna_revert")
-      , ("echidna_revert didn't shrink to length 1",       solvedLen 1 "echidna_revert")
-      , ("echidna_revert didn't shrink to f(-1)",
-         solvedWith ("f", [AbiInt 256 (-1)]) "echidna_revert")
+      [ ("echidna_fails_on_revert passed",                 solved      "echidna_fails_on_revert")
+      , ("echidna_fails_on_revert didn't shrink to one transaction",
+         solvedLen 1 "echidna_fails_on_revert")
+      , ("echidna_revert_is_false didn't shrink to f(-1)",
+         solvedWith ("f", [AbiInt 256 (-1)]) "echidna_fails_on_revert")
       ]
   
   , testContract "basic/nearbyMining.sol"     (Just "coverage/test.yaml")
@@ -94,7 +96,7 @@ integrationTests = testGroup "Solidity Integration Testing"
         ("echidna_all_sender solved without " ++ unpack n, solvedWith (n, []) "echidna_all_sender"))
 
   , testContract "basic/memory-reset.sol" Nothing
-      [ ("echidna_should_not_revert failed",      passed "echidna_should_not_revert") ]
+      [ ("echidna_memory failed",      passed "echidna_memory") ]
   , testContract "basic/contractAddr.sol" Nothing
       [ ("echidna_address failed",                solved "echidna_address") ]
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
@@ -109,6 +111,9 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_state3 failed",                 solved "echidna_state3") ]
   , testContract "basic/balance.sol"      (Just "basic/balance.yaml")
       [ ("echidna_balance failed",                passed "echidna_balance") ]
+  , testContract "basic/library.sol"      (Just "basic/library.yaml")
+      [ ("echidna_library_call failed",           solved "echidna_library_call") ]
+
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
