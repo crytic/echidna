@@ -118,7 +118,7 @@ loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
 linkLibraries [] = ""
-linkLibraries ls = "--libraries " ++ (concat $ imap (\i x -> concat [x, ":", show $ addrLibrary + (toEnum i :: Addr) , ","]) ls)
+linkLibraries ls = "--libraries " ++ concat (imap (\i x -> concat [x, ":", show $ addrLibrary + (toEnum i :: Addr) , ","]) ls)
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -152,7 +152,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                                     -- Test args check
     Nothing    -> loadLibraries ls addrLibrary d blank >>=
-                    \vm -> (, funs, fst <$> tests) <$> execStateT (execTx $ Tx (Right bc) d ca 0) vm
+                    fmap (, funs, fst <$> tests) . execStateT (execTx $ Tx (Right bc) d ca 0)
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
