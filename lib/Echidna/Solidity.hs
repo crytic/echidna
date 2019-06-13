@@ -112,19 +112,13 @@ addrLibrary = 0xff
 loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
               => [SolcContract] -> Addr -> Addr -> VM -> m VM
 loadLibraries []     _    _ vm = return vm
-loadLibraries (l:ls) la d vm = do vm' <- execStateT (execTx $ Tx (Right bc) d la 0) vm 
-                                  loadLibraries ls (la+1) d vm'
-                               where bc = l ^. creationCode
+loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
+                               where loadRest = execStateT (execTx $ Tx (Right $ l ^. creationCode) d la 0) vm
 
-
- -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
+-- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
 linkLibraries [] = ""
-linkLibraries ls = "--libraries " ++ linkLibraries' ls addrLibrary
-
-linkLibraries' :: [String] -> Addr -> String
-linkLibraries' []     _  = ""
-linkLibraries' (l:ls) la = l ++ ":" ++ show la ++ "," ++ linkLibraries' ls (la+1)
+linkLibraries ls = "--libraries " ++ (concat $ imap (\i x -> concat [x, ":", show $ addrLibrary + (toEnum i :: Addr) , ","]) ls)
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -157,8 +151,8 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   ensure bc (NoBytecode $ c ^. contractName)                                   -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                                     -- Test args check
-    Nothing    -> do vm <- loadLibraries ls addrLibrary d blank
-                     (, funs, fst <$> tests) <$> execStateT (execTx $ Tx (Right bc) d ca 0) vm
+    Nothing    -> loadLibraries ls addrLibrary d blank >>=
+                    \vm -> (, funs, fst <$> tests) <$> execStateT (execTx $ Tx (Right bc) d ca 0) vm
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
