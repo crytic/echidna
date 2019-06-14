@@ -10,7 +10,7 @@ travis_retry() {
 }
 
 fetch_stack_osx() {
-  curl -skL https://www.stackage.org/stack/osx-x86_64 | tar xz --strip-components=1 --include '*/stack' -C ~/.local/bin;
+  curl -skL https://github.com/commercialhaskell/stack/releases/download/v1.9.3/stack-1.9.3-osx-x86_64.tar.gz | tar xz --strip-components=1 --include '*/stack' -C ~/.local/bin;
 }
 
 fetch_stack_linux() {
