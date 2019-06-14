@@ -1,6 +1,6 @@
 # echidna
 
-[![Build Status](https://travis-ci.org/crytic/echidna.svg?branch=master)](https://travis-ci.org/trailofbits/echidna)
+[![Build Status](https://travis-ci.org/crytic/echidna.svg?branch=master)](https://travis-ci.org/crytic/echidna)
 
 ![echidna logo](echidna.png)
 
@@ -51,7 +51,9 @@ Echidna exports an API to build powerful fuzzing systems, and has a multitude of
 
 ## Installation
 
-[docker](https://www.docker.com/) is recommended to install Echidna.
+If you want to quickly test Echidna in Linux, we offer a statically-linked binary release of v1.0.0.0 to download [here](https://github.com/crytic/echidna/releases/tag/1.0.0.0). 
+
+Otherwise, to install the latest revision of Echidna, we recommand to use [docker](https://www.docker.com/):
 
 ```
 $ docker build -t echidna .
@@ -64,7 +66,7 @@ $ docker run -t -v `pwd`:/src echidna echidna-test /src/examples/solidity/basic/
 ```
 
 
-If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/README/).
+If you'd prefer to build manually from source, use [Stack](https://docs.haskellstack.org/en/stable/README/).
 `stack install` should build and compile `echidna-test` in `~/.local/bin`.
 You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choosing.
 Additionally, you need to install the latest release of [libff](https://github.com/scipr-lab/libff) (you can take a look to [this script](.travis/install-libff.sh) used in our CI tests)
