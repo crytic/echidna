@@ -1,6 +1,6 @@
 # echidna
 
-[![Build Status](https://travis-ci.org/crytic/echidna.svg?branch=master)](https://travis-ci.org/trailofbits/echidna)
+[![Build Status](https://travis-ci.org/crytic/echidna.svg?branch=master)](https://travis-ci.org/crytic/echidna)
 
 ![echidna logo](echidna.png)
 
@@ -51,7 +51,9 @@ Echidna exports an API to build powerful fuzzing systems, and has a multitude of
 
 ## Installation
 
-[docker](https://www.docker.com/) is recommended to install Echidna.
+If you want to quickly test Echidna in Linux, we offer a statically linked binary release of v1.0.0.0 to download [here](https://github.com/crytic/echidna/releases/tag/1.0.0.0). 
+
+Otherwise, to install the latest revision of Echidna, we recommend to use [docker](https://www.docker.com/):
 
 ```
 $ docker build -t echidna .
