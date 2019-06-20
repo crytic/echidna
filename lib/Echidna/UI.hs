@@ -79,7 +79,7 @@ ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m th
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m String
-ppTests (Campaign ts _ _) = unlines <$> mapM (\((n, _), s) -> ((T.unpack n ++ ": ") ++ ) <$> ppTS s) ts
+ppTests (Campaign ts _ _ _ _) = unlines <$> mapM (\((n, _), s) -> ((T.unpack n ++ ": ") ++ ) <$> ppTS s) ts
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: Map W256 (Set Int) -> Maybe String
