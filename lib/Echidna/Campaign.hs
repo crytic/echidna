@@ -18,7 +18,6 @@ import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), MonadIO, liftIO, StateT, evalStateT, runStateT, execStateT)
 import Data.Aeson (ToJSON(..), object)
 import Data.Bool (bool)
-import Data.Either (lefts)
 import Data.Foldable (toList)
 import Data.Map (Map, mapKeys, unionWith)
 import Data.Maybe (fromMaybe, isNothing, maybeToList)
@@ -160,7 +159,7 @@ ppTxs :: [Tx] -> String
 ppTxs txs = intercalate " " $ map (\(Tx c _ _ _ ) -> either ppSolCall (const "<CREATE>") c) txs
 
 insertAt :: a -> [a] -> Int -> [a]
-insertAt v [] n = [v]
+insertAt v [] _ = [v]
 insertAt v arr 1 = (v:arr)
 insertAt v (x:xs) n = (x:(insertAt v xs $ n - 1))
 
@@ -192,13 +191,9 @@ randseq ql w = do ca <- use hasLens
                     (3, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                   sequence $ map shrinkTx $ gts !! idx
                               -- randomly insert transactions into a rare sequence
-                    (_, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                  n <- getRandomR (0, 10)
-                                  insertAtRandom (gts !! idx) (take n rtxs) 
-                   
-
-                --2 -> undefined
-                --3 -> undefined 
+                    (4, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                  k <- getRandomR (1, 10)
+                                  insertAtRandom (gts !! idx) (take k rtxs) 
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
@@ -209,14 +204,12 @@ callseq v w ql = do
   ef <- bool execTx execTxOptC . isNothing . knownCoverage <$> view hasLens
   hasLens . newCoverage .= False
   ca <- use hasLens
-  --r <- getRandomR (1 , 10 :: Int) 
-  is <- randseq ql w --if ((length $ ca ^. genTrans) <= 1 || r <= 9) then replicateM ql (evalStateT genTxM (w, ca ^. genDict)) else randseq ql (ca ^. genTrans)
+  is <- randseq ql w 
+  --liftIO $ putStrLn $ ppTxs is
   (rtxs, (_, ca')) <- runStateT (evalSeq v ef is) (v, ca)
   assign hasLens ca'
   when (ca' ^. newCoverage) $ hasLens . genTrans %= ((reverse rtxs):)
-  when (ca' ^. newCoverage) $ liftIO $ print $ ppTxs $ reverse rtxs -- $ length $ ca' ^. genTrans
-  --ca'' <- use hasLens
-  --assign hasLens ca''
+  when (ca' ^. newCoverage) $ liftIO $ putStrLn $ "new coverage:" ++ (ppTxs $ reverse rtxs)
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
