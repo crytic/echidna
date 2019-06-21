@@ -26,7 +26,19 @@ The core Echidna functionality is an executable called `echidna-test`. `echidna-
 
 ### Writing invariants
 
-Invariants are expressed as Solidity functions with names that begin with `echidna_`, have no arguments, and return a boolean. For example, if I have some `balance` variable that should never go below 20, I can write `function echidna_balance() { return(balance >= 20); }`. To check these invariants, run `echidna-test myContract.sol`.
+Invariants are expressed as Solidity functions with names that begin with `echidna_`, have no arguments, and return a boolean. For example, if I have some `balance` variable that should never go below `20`, I can write an extra function in my contract like this one:
+
+```solidity
+function echidna_check_balance() { 
+    return(balance >= 20); 
+}
+```
+
+To check these invariants, run:
+
+```
+$ echidna-test myContract.sol
+```
 
 An example contract with tests can be found [examples/solidity/basic/flags.sol](examples/solidity/basic/flags.sol). To run it, execute: 
 ```
@@ -37,10 +49,10 @@ Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` an
 
 ### Configuration options
 
-Echidna's CLI can be used to choose the contract to test, turn on coverage guided testing, or load a configuration file.
+Echidna's CLI can be used to choose the contract to test and load a configuration file.
 
 ```
-$ echidna-test contract.sol TEST --coverage --config="config.yaml"
+$ echidna-test contract.sol TEST --config="config.yaml"
 ```
 
 The configuration file allows users to choose EVM and test generation parameters. An example of a complete config file with the default options can be found at [examples/solidity/basic/default.yaml](examples/solidity/basic/default.yaml). More detailed documentation on the configuration options is available in our [wiki](https://github.com/trailofbits/echidna/wiki/Config).
