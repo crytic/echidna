@@ -26,7 +26,7 @@ The core Echidna functionality is an executable called `echidna-test`. `echidna-
 
 ### Writing invariants
 
-Invariants are expressed as Solidity functions with names that begin with `echidna_`, have no arguments, and return a boolean. For example, if I have some `balance` variable that should never go below `20`, I can write an extra function in my contract like this one:
+Invariants are expressed as Solidity functions with names that begin with `echidna_`, have no arguments, and return a boolean. For example, if you have some `balance` variable that should never go below `20`, you can write an extra function in your contract like this one:
 
 ```solidity
 function echidna_check_balance() { 
@@ -40,7 +40,7 @@ To check these invariants, run:
 $ echidna-test myContract.sol
 ```
 
-An example contract with tests can be found [examples/solidity/basic/flags.sol](examples/solidity/basic/flags.sol). To run it, execute: 
+An example contract with tests can be found [examples/solidity/basic/flags.sol](examples/solidity/basic/flags.sol). To run it, you should execute: 
 ```
 $ echidna-test examples/solidity/basic/flags.sol
 ```
