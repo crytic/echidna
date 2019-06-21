@@ -98,6 +98,11 @@ shrinkTx :: MonadRandom m => Tx -> m Tx
 shrinkTx (Tx c s d (C _ v)) = let c' = either (fmap Left . shrinkAbiCall) (fmap Right . pure) c in
   liftM4 Tx c' (pure s) (pure d) $ w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral v)
 
+mutTx :: (MonadRandom m, MonadState x m, MonadThrow m) => Tx -> m Tx
+mutTx (Tx (Left c) a b d ) = mutateAbiCall c >>= \c' -> return $ Tx (Left c') a b d
+mutTx tx                   = return tx
+
+
 -- | Given a 'Set' of 'Transaction's, generate a similar 'Transaction' at random.
 spliceTxs :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m) => Set Tx -> m Tx
 spliceTxs ts = let l = S.toList ts; (cs, ss) = unzip $ (\(Tx c s _ _) -> (c,s)) <$> l in

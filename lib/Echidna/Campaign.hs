@@ -13,7 +13,7 @@ module Echidna.Campaign where
 import Control.Lens
 import Control.Monad (liftM2, replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow)
-import Control.Monad.Random.Strict (MonadRandom)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), MonadIO, liftIO, StateT, evalStateT, runStateT, execStateT)
 import Data.Aeson (ToJSON(..), object)
@@ -159,6 +159,47 @@ execTxOptC t = do
 ppTxs :: [Tx] -> String
 ppTxs txs = intercalate " " $ map (\(Tx c _ _ _ ) -> either ppSolCall (const "<CREATE>") c) txs
 
+insertAt :: a -> [a] -> Int -> [a]
+insertAt v [] n = [v]
+insertAt v arr 1 = (v:arr)
+insertAt v (x:xs) n = (x:(insertAt v xs $ n - 1))
+
+insertAtRandom :: MonadRandom m => [a] -> [a] -> m [a]
+insertAtRandom xs [] = return xs
+insertAtRandom xs (y:ys) = do idx <- getRandomR (0, (length xs) - 1) 
+                              insertAtRandom (insertAt y xs idx) ys
+
+
+randseq :: ( MonadCatch m, MonadRandom m, MonadIO m,  MonadReader x m, MonadState y m
+           , Has TestConf x, Has CampaignConf x, Has Campaign y)
+        => Int -> World -> m [Tx]
+
+randseq ql w = do ca <- use hasLens
+                  n <- getRandomR (0, 4 :: Integer)
+                  let gts = ca ^. genTrans
+                  rtxs <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
+                  case (n, gts) of
+                              -- random generation of transactions
+                    (_, []) -> return rtxs
+                    (0, _ ) -> return rtxs
+                              -- concatenate rare sequences
+                    (1, _ ) -> do idxs <- sequence $ replicate 10 (getRandomR (0, (length gts) - 1))
+                                  return $ take (10*ql) $ concatMap (gts !!) idxs
+                              -- mutate a rare sequence
+                    (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                  sequence $ map mutTx $ gts !! idx
+                              -- shrink a rare sequence
+                    (3, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                  sequence $ map shrinkTx $ gts !! idx
+                              -- randomly insert transactions into a rare sequence
+                    (_, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                  n <- getRandomR (0, 10)
+                                  insertAtRandom (gts !! idx) (take n rtxs) 
+                   
+
+                --2 -> undefined
+                --3 -> undefined 
+
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
 callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, MonadState y m
@@ -168,12 +209,14 @@ callseq v w ql = do
   ef <- bool execTx execTxOptC . isNothing . knownCoverage <$> view hasLens
   hasLens . newCoverage .= False
   ca <- use hasLens
-  is <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
+  --r <- getRandomR (1 , 10 :: Int) 
+  is <- randseq ql w --if ((length $ ca ^. genTrans) <= 1 || r <= 9) then replicateM ql (evalStateT genTxM (w, ca ^. genDict)) else randseq ql (ca ^. genTrans)
   (rtxs, (_, ca')) <- runStateT (evalSeq v ef is) (v, ca)
-  let txs = reverse rtxs
-  when (ca' ^. newCoverage) $ hasLens . genTrans %= (txs:)
-  --when (ca' ^. newCoverage) $ liftIO $ putStrLn $ ppTxs txs
   assign hasLens ca'
+  when (ca' ^. newCoverage) $ hasLens . genTrans %= ((reverse rtxs):)
+  when (ca' ^. newCoverage) $ liftIO $ print $ ppTxs $ reverse rtxs -- $ length $ ca' ^. genTrans
+  --ca'' <- use hasLens
+  --assign hasLens ca''
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
