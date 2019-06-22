@@ -21,6 +21,7 @@ import Data.Has (Has(..))
 import Data.Map (Map)
 import Data.Maybe (maybe)
 import Data.Set (Set)
+import Data.Text (unpack, intercalate)
 import EVM (VM)
 import EVM.Types (Addr, W256)
 import Graphics.Vty (Event(..), Key(..), Modifier(..), defaultConfig, mkVty)
@@ -36,6 +37,7 @@ import Echidna.ABI
 import Echidna.Exec
 import Echidna.Test
 import Echidna.Transaction
+import Echidna.Events
 
 data UIConf = UIConf { _dashboard :: Bool
                      , _finished  :: Campaign -> String
@@ -60,26 +62,27 @@ progress :: Int -> Int -> String
 progress n m = "(" ++ show n ++ "/" ++ show m ++ ")"
 
 -- | Pretty-print the status of a solved test.
-ppFail :: (MonadReader x m, Has Names x) => Maybe (Int, Int) -> [Tx] -> m String
-ppFail _ [] = pure "failed with no transactions made ⁉️  "
-ppFail b xs = let status = case b of
+ppFail :: (MonadReader x m, Has Names x) => Maybe (Int, Int) -> [Tx] -> Events -> m String
+ppFail _ [] _ = pure "failed with no transactions made ⁉️  "
+ppFail b xs es = let status = case b of
                                 Nothing    -> ""
                                 Just (n,m) -> ", shrinking " ++ progress n m in
- (("failed!💥  \n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> mapM ppTx xs
+ (("failed!💥  \n Event sequence:" ++ (unpack (intercalate "\n" es)) ++ "\n Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) 
+  <$> (mapM ppTx xs)
 
 -- | Pretty-print the status of a test.
 ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x) => TestState -> m String
 ppTS (Failed e)  = pure $ "could not evaluate ☣\n  " ++ show e
-ppTS (Solved l)  = ppFail Nothing l
+ppTS (Solved l e)  = ppFail Nothing l e
 ppTS Passed      = pure "passed! 🎉"
 ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _) ->
                      if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
-ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m) 
-                                                                              else Nothing) l
+ppTS (Large n l e) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m) 
+                                                                              else Nothing) l e
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x) => Campaign -> m String
-ppTests (Campaign ts _ _) = unlines <$> mapM (\((n, _), s) -> ((T.unpack n ++ ": ") ++ ) <$> ppTS s) ts
+ppTests (Campaign ts _ _ _ _) = unlines <$> mapM (\((n, _), s) -> ((T.unpack n ++ ": ") ++ ) <$> ppTS s) ts
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: Map W256 (Set Int) -> Maybe String
@@ -120,16 +123,17 @@ isTerminal = liftIO $ queryTerminal (Fd 0)
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
       , Has TestConf x, Has CampaignConf x, Has Names x, Has UIConf x)
    => VM        -- ^ Initial VM state
+   -> EventMap  -- ^ Event map 
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
    -> Maybe GenDict
    -> m Campaign
-ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
+ui v em w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
   s <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
   c <- if s then do bc <- liftIO $ newBChan 100
-                    t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts d >> pure ()
+                    t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v em w ts d >> pure ()
                     a <- monitor (killThread t)
                     liftIO (customMain (mkVty defaultConfig) (Just bc) a mempty)
-            else campaign (pure ()) v w ts d
+            else campaign (pure ()) v em w ts d
   liftIO . putStrLn =<< ($ c) <$> view (hasLens . finished)
   return c
