@@ -263,11 +263,11 @@ genAbiValueM = genWithDict (view constants) $ \case
   AbiBoolType     -> AbiBool <$> getRandom
   (AbiBytesType n)    -> AbiBytes n . BS.pack . take n <$> getRandoms
   AbiBytesDynamicType -> liftM2 (\n -> AbiBytesDynamic . BS.pack . take n)
-                               (getRandomR (1, 32)) getRandoms
+                                (getRandomR (1, 32)) getRandoms
   AbiStringType       -> liftM2 (\n -> AbiString       . BS.pack . take n)
-                               (getRandomR (1, 32)) getRandoms
+                                (getRandomR (1, 32)) getRandoms
   (AbiArrayDynamicType t) -> fmap (AbiArrayDynamic t) $ getRandomR (1, 32)
-                                 >>= flip V.replicateM (genAbiValueM t)
+                             >>= flip V.replicateM (genAbiValueM t)
   (AbiArrayType n t)      -> AbiArray n t <$> V.replicateM n (genAbiValueM t)
 
 -- | Given a 'SolSignature', generate a random 'SolCalls' with that signature, possibly with a dictionary.
