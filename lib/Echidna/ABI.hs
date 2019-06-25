@@ -124,9 +124,21 @@ genAbiValue AbiBytesDynamicType = liftM2 (\n -> AbiBytesDynamic . BS.pack . take
                                          (getRandomR (1, 32)) getRandoms
 genAbiValue AbiStringType       = liftM2 (\n -> AbiString       . BS.pack . take n)
                                          (getRandomR (1, 32)) getRandoms
-genAbiValue (AbiArrayType n t)      = AbiArray n t <$> V.replicateM n (genAbiValue t)
 genAbiValue (AbiArrayDynamicType t) = fmap (AbiArrayDynamic t) $ getRandomR (1, 32)
-                                      >>= flip V.replicateM (genAbiValue t)
+                                           >>= flip V.replicateM (genAbiValue t)
+genAbiValue (AbiArrayType n t)      = AbiArray n t <$> V.replicateM n (genAbiValue t)
+
+genAbiArrayValue :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m) => AbiType -> m AbiValue
+genAbiArrayValue (AbiArrayDynamicType t) = fmap (AbiArrayDynamic t) $ getRandomR (1, 32)
+                                           >>= flip V.replicateM (genAbiValueM t)
+genAbiArrayValue (AbiArrayType n t)      = AbiArray n t <$> V.replicateM n (genAbiValueM t)
+genAbiArrayValue _                       = error "Not an array type in genAbiArrayValue"
+
+isArrayValue :: AbiType -> Bool
+isArrayValue (AbiArrayDynamicType _) = True
+isArrayValue (AbiArrayType _ _) = True
+isArrayValue _                  = False
+
 
 -- | Synthesize a random 'SolCall' given its 'SolSignature'. Doesn't use a dictionary.
 genAbiCall :: MonadRandom m => SolSignature -> m SolCall
@@ -208,7 +220,7 @@ canShrinkAbiValue (AbiBytes _ b)       = BS.any (/= 0) b
 canShrinkAbiValue (AbiBytesDynamic "") = False
 canShrinkAbiValue (AbiString "")       = False
 canShrinkAbiValue (AbiArray _ _ l)      = any canShrinkAbiValue l
-canShrinkAbiValue (AbiArrayDynamic _ l) = l == mempty
+canShrinkAbiValue (AbiArrayDynamic _ l) = l /= mempty
 canShrinkAbiValue _ = True
 
 bounds :: forall a. (Bounded a, Integral a) => a -> (Integer, Integer)
@@ -263,7 +275,7 @@ genWithDict f g t = let fromDict = uniformMay . M.lookupDefault [] t . f in gets
 
 -- | Given an 'AbiType', generate a random 'AbiValue' of that type, possibly with a dictionary.
 genAbiValueM :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m) => AbiType -> m AbiValue
-genAbiValueM = genWithDict (view constants) genAbiValue
+genAbiValueM = genWithDict (view constants) (\t -> if (isArrayValue t) then (genAbiArrayValue t) else (genAbiValue t))
 
 -- | Given a 'SolSignature', generate a random 'SolCalls' with that signature, possibly with a dictionary.
 genAbiCallM :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m) => SolSignature -> m SolCall
