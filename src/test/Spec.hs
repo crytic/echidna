@@ -113,7 +113,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_balance failed",                passed "echidna_balance") ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
       [ ("echidna_library_call failed",           solved "echidna_library_call") ]
-  , testContract "basic/darray.sol"       Nothing $
+  , testContract "basic/darray.sol"       Nothing
       [ ("echidna_darray passed",                      solved             "echidna_darray")
       , ("echidna_darray didn't shrink optimally",     solvedLen 1        "echidna_darray") ]
  
