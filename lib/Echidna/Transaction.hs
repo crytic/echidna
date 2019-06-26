@@ -43,7 +43,7 @@ makeLenses ''Tx
 
 -- | Pretty-print some 'AbiCall'.
 ppSolCall :: SolCall -> String
-ppSolCall (t, vs) = T.unpack t ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
+ppSolCall (t, vs) = (if t == "" then T.unpack "*fallback*" else T.unpack t) ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
 
 instance ToJSON Tx where
   toJSON (Tx c s d v) = object [ ("call",  toJSON $ either ppSolCall (const "<CREATE>") c)
