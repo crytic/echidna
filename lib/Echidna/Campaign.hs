@@ -175,7 +175,7 @@ campaign u v w ts d = let d' = fromMaybe mempty d in fmap (fromMaybe mempty) (vi
     step        = runUpdate (updateTest v Nothing) >> u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c      = (liftIO getCPUTime) >>= \t -> view hasLens >>= \(CampaignConf tl q sl _ tm) ->
-      if | t > 0 && t >= tm                              -> u
+      if | tm > 0 && t >= tm                              -> u
          | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c -> step
          | otherwise                                     -> u
