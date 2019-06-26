@@ -3,6 +3,33 @@ module Echidna.Mutation where
 import Control.Monad.Random.Strict
 import Data.Maybe (maybe)
 import Data.ByteString (ByteString, pack, unpack)
+import EVM.ABI (AbiValue(..))
+
+
+mutateV :: MonadRandom m => Maybe Int -> [AbiValue] -> [AbiValue] -> m [AbiValue]
+mutateV mn fs vs = do
+                 f <- fromList [(identity, 1), (modify, 3), (expand, 3), (delete, 3), (swap, 3)]
+                 xs <- f vs
+                 return $ maybe xs (`take` (xs ++ fs)) mn
+
+                where modify [] = return []
+                      modify xs = do
+                                     i <- getRandomR (0, length xs - 1)
+                                     return $ modify' xs i (head fs)
+                      expand [] = return []
+                      expand xs = do
+                                   i <- getRandomR (0, length xs - 1)
+                                   m <- getRandomR (0, length xs * 2)
+                                   return $ expand' xs i m
+                      delete [] = return []
+                      delete xs = getRandomR (0, length xs - 1) >>= \i -> return $ delete' xs i
+                      swap [] = return []
+                      swap xs = do
+                                   i <- getRandomR (0, length xs - 1)
+                                   j <- getRandomR (0, length xs - 1)
+                                   return $ swap' xs i j
+
+                      identity = return
 
 mutateBS :: MonadRandom m => Maybe Int -> ByteString -> m ByteString
 mutateBS mn bs = do

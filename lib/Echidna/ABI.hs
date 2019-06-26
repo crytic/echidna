@@ -20,7 +20,7 @@ import Data.HashMap.Strict (HashMap)
 import Data.List (group, intercalate, sort)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
-import Data.Vector (Vector)
+import Data.Vector (Vector, fromList, toList)
 import Data.Word8 (Word8)
 import EVM.ABI (AbiType(..), AbiValue(..), abiValueType)
 import Numeric (showHex)
@@ -41,9 +41,9 @@ ppAbiValue (AbiBytes      _ b)   = show b
 ppAbiValue (AbiBytesDynamic b)   = show b
 ppAbiValue (AbiString       s)   = show s
 ppAbiValue (AbiArrayDynamic _ v) =
-  "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
+  "[" ++ intercalate ", " (ppAbiValue <$> Data.Foldable.toList v) ++ "]"
 ppAbiValue (AbiArray      _ _ v) =
-  "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
+  "[" ++ intercalate ", " (ppAbiValue <$> Data.Foldable.toList v) ++ "]"
 
 -- Safe random element of a list
 
@@ -113,7 +113,7 @@ mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fma
 -- Generation (synthesis)
 
 getRandomUint :: MonadRandom m => Int -> m Integer
-getRandomUint n = join $ fromList [(getRandomR (0, 1023), 1), (getRandomR (0, 2 ^ n - 1), 9)]
+getRandomUint n = join $ Control.Monad.Random.Strict.fromList [(getRandomR (0, 1023), 1), (getRandomR (0, 2 ^ n - 1), 9)]
 
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Doesn't use a dictionary.
 genAbiValue :: MonadRandom m => AbiType -> m AbiValue
@@ -197,9 +197,9 @@ growWith m f g l t = foldM withR t =<< flip replicateM m =<< rand where
 
 --
 -- | Given a 'Vector', add and drop some characters at random.
-mutateV :: MonadRandom m => AbiType -> Vector AbiValue -> m (Vector AbiValue)
-mutateV t v = traverse mutateAbiValue =<< changeSize where
-  changeSize = bool (shrinkV v) (growWith (genAbiValue t) V.cons V.snoc V.length v) =<< getRandom
+--mutateV :: MonadRandom m => AbiType -> Vector AbiValue -> m (Vector AbiValue)
+--mutateV t v = traverse mutateAbiValue =<< changeSize where
+--  changeSize = bool (shrinkV v) (growWith (genAbiValue t) V.cons V.snoc V.length v) =<< getRandom
 
 -- Mutation
 
@@ -248,9 +248,13 @@ mutateAbiValue (AbiBool _)    = genAbiValue AbiBoolType
 mutateAbiValue (AbiBytes n b)        = AbiBytes n    <$> mutateBS (Just n) b
 mutateAbiValue (AbiBytesDynamic b)   = AbiBytesDynamic   <$> mutateBS Nothing b
 mutateAbiValue (AbiString b)         = AbiString         <$> mutateBS Nothing b
-mutateAbiValue (AbiArray n t l)      = AbiArray n t      <$> traverse mutateAbiValue l
-mutateAbiValue (AbiArrayDynamic t l) = AbiArrayDynamic t <$> mutateV t l
+mutateAbiValue (AbiArray n t l)      = do fs <- sequence $ repeat $ genAbiValue t
+                                          xs <- mutateV (Just n) fs (Data.Vector.toList l) 
+                                          return (AbiArray n t (Data.Vector.fromList xs))
 
+mutateAbiValue (AbiArrayDynamic t l) =  do fs <- sequence $ repeat $ genAbiValue t
+                                           xs <- mutateV Nothing fs (Data.Vector.toList l) 
+                                           return (AbiArrayDynamic t (Data.Vector.fromList xs))
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
 mutateAbiCall :: MonadRandom m => SolCall -> m SolCall
 mutateAbiCall = traverse $ traverse mutateAbiValue
