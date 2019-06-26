@@ -115,7 +115,9 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_library_call failed",           solved "echidna_library_call") ]
   , testContract "basic/fallback.sol"     Nothing
       [ ("echidna_fallback failed",       solved "echidna_fallback") ]
-
+  , testContract "basic/darray.sol"       Nothing
+      [ ("echidna_darray passed",                      solved             "echidna_darray")
+      , ("echidna_darray didn't shrink optimally",     solvedLen 1        "echidna_darray") ]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
