@@ -81,7 +81,8 @@ instance FromJSON EConfig where
             <*> (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                          <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                          <*> v .:? "sender"         .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
-                         <*> v .:? "initialBalance" .!= 0xffffffff
+                         <*> v .:? "balanceAddr"    .!= 0xffffffff
+                         <*> v .:? "balanceContract".!= 0
                          <*> v .:? "prefix"         .!= "echidna_"
                          <*> v .:? "solcArgs"       .!= ""
                          <*> v .:? "solcLibs"       .!= []
