@@ -4,6 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE NumDecimals #-}
 
 module Echidna.Config where
 
@@ -56,10 +57,16 @@ instance FromJSON EConfig where
                 fprefix <- v .:? "prefix"  .!= "echidna_"
                 let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
                 return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result) (const psender)
+
+        timeoutp :: Y.Parser Integer
+        timeoutp = v .:? "timeout" >>= \case (Nothing :: Maybe Integer) -> pure (-1) 
+                                             (Just n) -> pure (n*1e12)
         cc = CampaignConf <$> v .:? "testLimit"   .!= 10000
                           <*> v .:? "seqLen"      .!= 100
                           <*> v .:? "shrinkLimit" .!= 5000
                           <*> pure Nothing
+                          <*> timeoutp 
+
         names = const $ const mempty :: Names
         ppc = cc <&> \c x -> runReader (ppCampaign x) (c, names)
         style :: Y.Parser (Campaign -> String)

@@ -72,7 +72,7 @@ ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x) => TestState -> m Str
 ppTS (Failed e)  = pure $ "could not evaluate ☣\n  " ++ show e
 ppTS (Solved l)  = ppFail Nothing l
 ppTS Passed      = pure "passed! 🎉"
-ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _) ->
+ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _) ->
                      if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
 ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m) 
                                                                               else Nothing) l

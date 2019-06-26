@@ -15,7 +15,7 @@ import Control.Monad (liftM2, replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.State.Strict (MonadState(..), StateT, evalStateT, execStateT)
+import Control.Monad.State.Strict (MonadState(..), MonadIO, liftIO, StateT, evalStateT, execStateT)
 import Data.Aeson (ToJSON(..), object)
 import Data.Bool (bool)
 import Data.Either (lefts)
@@ -29,6 +29,7 @@ import Data.Text (unpack)
 import EVM
 import EVM.Types (W256)
 import Numeric (showHex)
+import System.CPUTime (getCPUTime)
 
 import Echidna.ABI
 import Echidna.Exec
@@ -46,6 +47,8 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                  , knownCoverage :: Maybe (Map W256 (Set Int))
                                    -- ^ If applicable, initially known coverage. If this is 'Nothing',
                                    -- Echidna won't collect coverage information (and will go faster)
+                                 , timeout       :: Integer
+                                   -- ^ Timeout in picoseconds
                                  }
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
@@ -160,7 +163,7 @@ callseq v w ql = do
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
-campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, Has TestConf x, Has CampaignConf x)
+campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, Has TestConf x, Has CampaignConf x)
          => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
          -> VM                  -- ^ Initial VM state
          -> World               -- ^ Initial world state
@@ -171,7 +174,8 @@ campaign u v w ts d = let d' = fromMaybe mempty d in fmap (fromMaybe mempty) (vi
   >>= \c -> execStateT runCampaign (Campaign ((,Open (-1)) <$> ts) c d') where
     step        = runUpdate (updateTest v Nothing) >> u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl q sl _) ->
-      if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
+    update c      = (liftIO getCPUTime) >>= \t -> view hasLens >>= \(CampaignConf tl q sl _ tm) ->
+      if | t > 0 && t >= tm                              -> u
+         | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c -> step
          | otherwise                                     -> u
