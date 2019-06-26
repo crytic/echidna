@@ -119,6 +119,6 @@ setupTx (Tx c s r v) = liftSH . sequence_ $
   , tx . origin .= s, state . caller .= s, state . callvalue .= v, setup] where
     setup = case c of
       Left cd  -> loadContract r >> state . calldata .= encode cd
-      Right bc -> assign (env . contracts . at r) (Just $ initialContract (RuntimeCode bc)) >> loadContract r
+      Right bc -> assign (env . contracts . at r) (Just $ initialContract (RuntimeCode bc) & set balance v) >> loadContract r
     encode (n, vs) = abiCalldata
       (n <> "(" <> T.intercalate "," (abiTypeSolidity . abiValueType <$> vs) <> ")") $ V.fromList vs
