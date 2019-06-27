@@ -114,6 +114,11 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
       [ ("echidna_library_call failed",           solved "echidna_library_call") ]
 
+  -- Examples from the HARVEY paper
+  , testContract "harvey/foo.sol"         Nothing
+      [ ("echidna_assert failed",                 solved "echidna_assert") ]
+  , testContract "harvey/baz.sol"         Nothing
+      [ ("echidna_all_states failed",             solved "echidna_all_states") ]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
