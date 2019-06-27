@@ -25,20 +25,20 @@ import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, unpack, cons)
 import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
-import System.Process             (readCreateProcess, proc)
---import System.IO                  (openFile, IOMode(..))
---import System.IO.Temp             (writeSystemTempFile)
---import System.FilePath.Posix      (takeExtension)
+import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
+import System.IO                  (openFile, IOMode(..))
 
 import Echidna.ABI         (SolSignature)
 import Echidna.Exec        (execTx)
 import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
+import qualified EVM (contracts)
 import EVM.ABI      (AbiValue(..))
 import EVM.Exec     (vmForEthrunCreation)
 import EVM.Solidity
 import EVM.Types    (Addr)
+import EVM.Concrete (w256)
 
 import qualified Data.ByteString     as BS
 import qualified Data.HashMap.Strict as M
@@ -71,26 +71,52 @@ instance Show SolException where
 instance Exception SolException
 
 -- | Configuration for loading Solidity for Echidna testing.
-data SolConf = SolConf { _contractAddr :: Addr   -- ^ Contract address to use
-                       , _deployer     :: Addr   -- ^ Contract deployer address to use
-                       , _sender       :: [Addr] -- ^ Sender addresses to use
-                       , _prefix       :: Text   -- ^ Function name prefix used to denote tests
-                       , _solcArgs     :: String -- ^ Args to pass to @solc@
-                       , _quiet        :: Bool   -- ^ Suppress @solc@ output, errors, and warnings
+data SolConf = SolConf { _contractAddr    :: Addr    -- ^ Contract address to use
+                       , _deployer        :: Addr    -- ^ Contract deployer address to use
+                       , _sender          :: [Addr]  -- ^ Sender addresses to use
+                       , _balanceAddr     :: Integer -- ^ Initial balance of deployer and senders
+                       , _balanceContract :: Integer -- ^ Initial balance of contract to test
+                       , _prefix          :: Text    -- ^ Function name prefix used to denote tests
+                       , _solcArgs        :: String  -- ^ Args to pass to @solc@
+                       , _solcLibs        :: [String] -- ^ List of libraries to load, in order.
+                       , _quiet           :: Bool    -- ^ Suppress @solc@ output, errors, and warnings
                        }
 makeLenses ''SolConf
 
 -- | Given a file, use its extenstion to check if it is a precompiled contract or try to compile it and
 -- get a list of its contracts, throwing exceptions if necessary.
 contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
-contracts fp = --do
-  --a <- view (hasLens . solcArgs)
-  --q <- view (hasLens . quiet)
-  liftIO compile >>= (\case
-    Nothing -> throwM CompileFailure
-    Just m  -> pure . toList $ fst m) where
-      compile = do _ <- readCreateProcess (proc "crytic-compile" ["--solc-disable-warnings", "--export-format", "solc", fp]) ""
-                   readSolc "crytic-export/combined_solc.json"
+contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"] in do
+  a  <- view (hasLens . solcArgs)
+  q  <- view (hasLens . quiet)
+  ls <- view (hasLens . solcLibs)
+  let solargs = a ++ linkLibraries ls & (usual ++) . 
+                  (\sa -> if null sa then [] else ["--solc-args", "\"" ++ sa ++ "\""])
+  maybe (throwM CompileFailure) (pure . toList . fst) =<< (liftIO $ do
+    stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
+    _ <- readCreateProcess (proc "crytic-compile" $ solargs |> fp) {std_err = stderr} ""
+    readSolc "crytic-export/combined_solc.json")
+
+populateAddresses :: [Addr] -> Integer -> VM -> VM
+populateAddresses []     _ vm = vm
+populateAddresses (a:as) b vm = populateAddresses as b (vm & set (env . EVM.contracts . at a) (Just account))
+  where account = initialContract (RuntimeCode mempty) & set nonce 1 & set balance (w256 $ fromInteger b)
+
+-- | Address to load the first library
+addrLibrary :: Addr
+addrLibrary = 0xff
+
+ -- | Load a list of solidity contracts as libraries
+loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+              => [SolcContract] -> Addr -> Addr -> VM -> m VM
+loadLibraries []     _  _ vm = return vm
+loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
+  where loadRest = execStateT (execTx $ Tx (Right $ l ^. creationCode) d la 0) vm
+
+-- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
+linkLibraries :: [String] -> String
+linkLibraries [] = ""
+linkLibraries ls = " --libraries " ++ concat (imap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls)
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -104,23 +130,27 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   c <- choose cs name
   q <- view (hasLens . quiet)
   liftIO $ do
-    when (isNothing name && length cs > 1) $
+    when (isNothing name && length cs > 1 && not q) $
       putStrLn "Multiple contracts found in file, only analyzing the first"
     unless q . putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
 
   -- Local variables
-  (SolConf ca d _ pref _ _) <- view hasLens
+  (SolConf ca d ads bala balc pref _ libs _) <- view hasLens
   let bc = c ^. creationCode
-      blank = vmForEthrunCreation bc
+      blank = populateAddresses (ads |> d) bala (vmForEthrunCreation bc)
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
+
+  -- Select libraries
+  ls <- mapM (choose cs . Just . T.pack) libs
 
   -- Make sure everything is ready to use, then ship it
   mapM_ (uncurry ensure) [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)] -- ABI checks
   ensure bc (NoBytecode $ c ^. contractName)                                   -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                                     -- Test args check
-    Nothing    -> (, funs, fst <$> tests) <$> execStateT (execTx $ Tx (Right bc) d ca 0) blank
+    Nothing    -> loadLibraries ls addrLibrary d blank >>=
+                    fmap (, funs, fst <$> tests) . execStateT (execTx $ Tx (Right bc) d ca (w256 $ fromInteger balc))
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c

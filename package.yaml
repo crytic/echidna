@@ -2,7 +2,7 @@ name: echidna
 
 author: JP Smith
 
-version: 0.0.0.1
+version: 1.0.0.0
 
 ghc-options: -Wall -fno-warn-orphans -O2 -threaded +RTS -N -RTS
 
@@ -50,6 +50,14 @@ executables:
     main: Main.hs
     source-dirs: src/
     dependencies: echidna
+    when:
+        - condition: os(linux)
+          ghc-options:
+            - -threaded
+            - -static
+            - -O2
+          cc-options: -static
+          ld-options: -static -pthread
 
 tests:
   echidna-testsuite:
