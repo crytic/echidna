@@ -22,7 +22,7 @@ import Data.List                  (find, nub, partition)
 import Data.List.Lens             (prefixed, suffixed)
 import Data.Maybe                 (isNothing)
 import Data.Monoid                ((<>))
-import Data.Text                  (Text, isPrefixOf, isSuffixOf, unpack, cons)
+import Data.Text                  (Text, isPrefixOf, isSuffixOf)
 import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
 import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
@@ -116,7 +116,8 @@ loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
 linkLibraries [] = ""
-linkLibraries ls = " --libraries " ++ concat (imap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls)
+linkLibraries ls = " --libraries " ++
+  iconcatMap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -132,7 +133,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   liftIO $ do
     when (isNothing name && length cs > 1 && not q) $
       putStrLn "Multiple contracts found in file, only analyzing the first"
-    unless q . putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
+    unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
   (SolConf ca d ads bala balc pref _ libs _) <- view hasLens
@@ -155,7 +156,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
-                                      find (isSuffixOf (cons ':' n) . view contractName) cs
+                                      find (isSuffixOf n . view contractName) cs
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
 -- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
@@ -165,11 +166,8 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
 --loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
 --             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 --loadSolidity fp name = contracts fp >>= loadSpecified name
-
-
 loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
-
 loadWithCryticCompile fp name = contracts fp >>= loadSpecified name 
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
@@ -189,32 +187,26 @@ loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
 extractConstants :: [SolcContract] -> [AbiValue]
 extractConstants = nub . concatMap (constants "" . view contractAst) where
   -- Tools for parsing numbers and quoted strings from 'Text'
-  as f     = preview $ to f . _Right . _1
-  --asAddr x = as hexadecimal =<< T.stripPrefix "0x" x
-  asQuoted = preview $ unpacked . prefixed "\"" . suffixed "\"" . packedChars
+  asDecimal = preview $ to decimal . _Right . _1
+  asQuoted  = preview $ unpacked . prefixed "\"" . suffixed "\"" . packedChars
   -- We need this because sometimes @solc@ emits a json string with a type, then a string
   -- representation of some value of that type. Why is this? Unclear. Anyway, this lets us match
   -- those cases like regular strings
-  literal t f = \case String (T.words -> ((^? only t) -> m) : y : _) -> m *> f y
-                      _                                              -> Nothing
+  literal t f (String (T.words -> ((^? only t) -> m) : y : _)) = m *> f y
+  literal _ _ _                                                = Nothing
   -- 'constants' takes a property name and its 'Value', then tries to find solidity literals
   -- CASE ONE: we're looking at a big object with a bunch of little objects, recurse
   constants _ (Object o) = concatMap (uncurry constants) $ M.toList o
   constants _ (Array  a) = concatMap (constants "")        a
   -- CASE TWO: we're looking at a @type@ or @value@ object, try to parse it
-  -- 2.1: We're looking at a @value@ starting with "0x", which is how solc represents addresses
-  --      @value: "0x123"@ ==> @[AbiAddress 291]@
-  constants "value" (String                   (as decimal -> Just i)) =
-     let l f = f <$> [8,16..256] <*> (fromIntegral <$> ([i-1..i+1] :: [Integer])) in l AbiInt ++ l AbiUInt ++ [AbiAddress (fromIntegral i)]
-  -- 2.2: We're looking at something of the form @type: int_const [...]@, an integer literal
-  --      @type: "int_const 123"@ ==> @[AbiUInt 8 123, AbiUInt 16 123, ... AbiInt 256 123]@
-  --constants "type"  (literal "int_const"      (as decimal) -> Just i) =
-  --  let l f = f <$> [8,16..256] <*> [fromIntegral (i :: Integer)] in l AbiInt ++ l AbiUInt
-  -- 2.3: We're looking at something of the form @type: literal_string "[...]"@, a string literal
+  -- 2.1: We're looking at a @value@ with a decimal number inside, could be an address, int, or uint
+  --      @value: "0x12"@ ==> @[AbiAddress 18, AbiUInt 8 18,..., AbiUInt 256 18, AbiInt 8 18,...]@
+  constants "value" (String (asDecimal -> Just i)) = AbiAddress i : l AbiInt ++ l AbiUInt where
+    l f = f <$> [8,16..256] <*> fmap fromIntegral [i-1..i+1]
+  -- 2.2: We're looking at something of the form @type: literal_string "[...]"@, a string literal
   --      @type: "literal_string \"123\""@ ==> @[AbiString "123", AbiBytes 3 "123"...]@
-  constants "typeString"  (literal "literal_string" asQuoted     -> Just b) =
-   let size = BS.length b in  
-   ([AbiString, AbiBytesDynamic] <&> ($ b)) ++
-   map (\n -> AbiBytes n (BS.append b (BS.replicate (n - size) 0))) [size .. 32]
+  constants "typeString" (literal "literal_string" asQuoted -> Just b) =
+    let size = BS.length b in [AbiString b, AbiBytesDynamic b] ++
+      fmap (\n -> AbiBytes n . BS.append b $ BS.replicate (n - size) 0) [size..32]
   -- CASE THREE: we're at a leaf node with no constants
   constants _  _ = []
