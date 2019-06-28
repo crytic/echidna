@@ -7,7 +7,7 @@
 
 module Echidna.Solidity where
 
-import Control.Lens        hiding (cons)
+import Control.Lens
 import Control.Exception          (Exception)
 import Control.Monad              (liftM2, mapM_, when, unless)
 import Control.Monad.Catch        (MonadThrow(..))
@@ -92,7 +92,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
   ls <- view (hasLens . solcLibs)
   let solargs = a ++ linkLibraries ls & (usual ++) . 
                   (\sa -> if null sa then [] else ["--solc-args", "\"" ++ sa ++ "\""])
-  maybe (throwM CompileFailure) (pure . toList . fst) =<< (liftIO $ do
+  maybe (throwM CompileFailure) (pure . toList . fst) =<< liftIO (do
     stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
     _ <- readCreateProcess (proc "crytic-compile" $ solargs |> fp) {std_err = stderr} ""
     readSolc "crytic-export/combined_solc.json")
@@ -194,6 +194,9 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
   -- those cases like regular strings
   literal t f (String (T.words -> ((^? only t) -> m) : y : _)) = m *> f y
   literal _ _ _                                                = Nothing
+  -- When we get a number, it could be an address, uint, or int. We'll try everything.
+  dec i = let l f = f <$> [8,16..256] <*> fmap fromIntegral [i-1..i+1] in
+    AbiAddress i : l AbiInt ++ l AbiUInt
   -- 'constants' takes a property name and its 'Value', then tries to find solidity literals
   -- CASE ONE: we're looking at a big object with a bunch of little objects, recurse
   constants _ (Object o) = concatMap (uncurry constants) $ M.toList o
@@ -201,8 +204,9 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
   -- CASE TWO: we're looking at a @type@ or @value@ object, try to parse it
   -- 2.1: We're looking at a @value@ with a decimal number inside, could be an address, int, or uint
   --      @value: "0x12"@ ==> @[AbiAddress 18, AbiUInt 8 18,..., AbiUInt 256 18, AbiInt 8 18,...]@
-  constants "value" (String (asDecimal -> Just i)) = AbiAddress i : l AbiInt ++ l AbiUInt where
-    l f = f <$> [8,16..256] <*> fmap fromIntegral [i-1..i+1]
+  --      Since adding crytic-compile, this could also be a literal_string int_const
+  constants s (String (asDecimal -> Just i)) | s `elem` ["value", "hexValue"] = dec i
+  constants "typeString" (literal "int_const" asDecimal -> Just i)            = dec i
   -- 2.2: We're looking at something of the form @type: literal_string "[...]"@, a string literal
   --      @type: "literal_string \"123\""@ ==> @[AbiString "123", AbiBytes 3 "123"...]@
   constants "typeString" (literal "literal_string" asQuoted -> Just b) =
