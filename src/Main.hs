@@ -2,8 +2,6 @@ module Main where
 
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
-import Control.Lens hiding (argument)
-import Data.Maybe (isJust)
 import Data.Text (pack)
 import Options.Applicative
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
@@ -37,9 +35,10 @@ main :: IO ()
 
 main = do Options f c conf <- execParser opts
           g    <- getRandom
-          cfg  <- maybe (pure defaultConfig) parseConfig conf
-          let cfg' = cfg & cConf %~ \x -> if isJust (seed x) then x else x { seed = Just g }
-          cpg  <- flip runReaderT cfg' $ do
+          let rts = RuntimeState g
+          cfg  <- maybe (pure (defaultConfig rts)) (flip parseConfig rts) conf
+          -- let cfg' = cfg & cConf %~ \x -> if isJust (seed x) then x else x { seed = Just g }
+          cpg  <- flip runReaderT cfg $ do
             cs       <- contracts f
             (v,w,ts) <- loadSpecified (pack . (f ++) . (':' :) <$> c) cs >>= prepareForTest
             ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [])

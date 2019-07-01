@@ -15,6 +15,7 @@ import Data.ByteString.Lazy.Char8 (unpack)
 import Data.Has (Has(..))
 import Data.Aeson
 import Data.Aeson.Lens
+import Data.Maybe (fromMaybe)
 import EVM (result)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
@@ -26,6 +27,10 @@ import Echidna.Solidity
 import Echidna.Test
 import Echidna.UI
 
+data RuntimeState = RuntimeState { _rtSeed :: Int
+                                 }
+makeLenses ''RuntimeState
+
 -- | Our big glorious global config type, just a product of each local config.,
 data EConfig = EConfig { _cConf :: CampaignConf
                        , _nConf :: Names
@@ -34,6 +39,8 @@ data EConfig = EConfig { _cConf :: CampaignConf
                        , _uConf :: UIConf
                        }
 makeLenses ''EConfig
+
+newtype EchidnaRuntime = EchidnaRuntime { getConfig :: RuntimeState -> EConfig }
 
 instance Has CampaignConf EConfig where
   hasLens = cConf
@@ -50,52 +57,71 @@ instance Has TestConf EConfig where
 instance Has UIConf EConfig where
   hasLens = uConf
 
-instance FromJSON EConfig where
-  parseJSON (Object v) =
-    let tc = do reverts  <- v .:? "reverts"   .!= True
-                psender  <- v .:? "psender"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                let good = if reverts then (`elem` [ResTrue, ResRevert]) else (== ResTrue)
-                return $ TestConf (good . maybe ResOther classifyRes . view result) (const psender)
-        cc = CampaignConf <$> v .:? "testLimit"   .!= 10000
-                          <*> v .:? "seqLen"      .!= 100
-                          <*> v .:? "shrinkLimit" .!= 5000
-                          <*> pure Nothing
-                          <*> v .:? "seed"
+instance FromJSON (RuntimeState -> EConfig) where
+  parseJSON (Object v) = do
+    tc <- do reverts  <- v .:? "reverts"   .!= True
+             psender  <- v .:? "psender"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+             let good = if reverts then (`elem` [ResTrue, ResRevert]) else (== ResTrue)
+             return $ TestConf (good . maybe ResOther classifyRes . view result) (const psender)
+    tl    <- v .:? "testLimit"   .!= 10000
+    seql  <- v .:? "seqLen"      .!= 100
+    shrl  <- v .:? "shrinkLimit" .!= 5000
+    seed' <- v .:? "seed"
+    let mkCC s = CampaignConf tl seql shrl Nothing (fromMaybe (s ^. rtSeed) seed')
         names = const $ const mempty :: Names
-        ppc = cc <&> \c x _ -> runReader (ppCampaign x) (c, names)
-        style :: Y.Parser (Campaign -> Maybe Int -> String)
-        style = v .:? "format" >>= \case (Nothing :: Maybe String) -> ppc
-                                         (Just "text")             -> ppc
-                                         (Just "json")             -> pure . flip $ \g ->
-                                           unpack . encode . set (_Object . at "seed") (toJSON . show <$> g) . toJSON;
-                                         (Just "none")             -> pure . const . const $ ""
-                                         _                         -> pure $ \_ _ -> M.fail
-                                           "unrecognized ui type (should be text, json, or none)" in
-    EConfig <$> cc
-            <*> pure names
-            <*> (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
-                         <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                         <*> v .:? "sender"         .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
-                         <*> v .:? "initialBalance" .!= 0xffffffff
-                         <*> v .:? "prefix"         .!= "echidna_"
-                         <*> v .:? "solcArgs"       .!= ""
-                         <*> v .:? "quiet"          .!= False)
-            <*> tc
-            <*> (UIConf <$> v .:? "dashboard" .!= True <*> style)
+        ppc :: Campaign -> Int -> String
+        ppc = \c _ -> runReader (ppCampaign c) (mkCC (RuntimeState 0), names)
+    --cc <- \s -> CampaignConf <$> v .:? "testLimit"   .!= 10000
+    --                         <*> v .:? "seqLen"      .!= 100
+    --                         <*> v .:? "shrinkLimit" .!= 5000
+    --                         <*> pure Nothing
+    --                         <*> v .:? "seed"        .!= s ^. rtSeed
+    --style :: Y.Parser (Campaign -> Int -> String)
+    style <- v .:? "format" >>= \case (Nothing :: Maybe String) -> pure ppc
+                                      (Just "text")             -> pure ppc
+                                      (Just "json")             -> pure . flip $ \g ->
+                                        unpack . encode . set (_Object . at "seed") (Just $ toJSON g) . toJSON;
+                                      (Just "none")             -> pure . const . const $ ""
+                                      _                         -> pure $ \_ _ -> M.fail
+                                        "unrecognized ui type (should be text, json, or none)"
+    --cfg <- EConfig <$> cc s
+    --               <*> pure names
+    --               <*> (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
+    --                            <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+    --                            <*> v .:? "sender"         .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
+    --                            <*> v .:? "initialBalance" .!= 0xffffffff
+    --                            <*> v .:? "prefix"         .!= "echidna_"
+    --                            <*> v .:? "solcArgs"       .!= ""
+    --                            <*> v .:? "quiet"          .!= False)
+    --               <*> tc
+    --               <*> (UIConf <$> v .:? "dashboard" .!= True <*> style)
+    sc <- (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
+                   <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                   <*> v .:? "sender"         .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
+                   <*> v .:? "initialBalance" .!= 0xffffffff
+                   <*> v .:? "prefix"         .!= "echidna_"
+                   <*> v .:? "solcArgs"       .!= ""
+                   <*> v .:? "quiet"          .!= False)
+    uic <- (UIConf <$> v .:? "dashboard" .!= True <*> pure style)
+    return $ \s -> EConfig (mkCC s)
+                           (names)
+                           (sc)
+                           (tc)
+                           (uic)
   parseJSON _ = parseJSON (Object mempty)
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
-defaultConfig :: EConfig
+defaultConfig :: RuntimeState -> EConfig
 defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEither' ""
 
 -- | Try to parse an Echidna config file, throw an error if we can't.
-parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> m EConfig
-parseConfig f = liftIO (BS.readFile f) >>= Y.decodeThrow
+parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> RuntimeState -> m EConfig
+parseConfig f s = (liftIO (BS.readFile f) >>= Y.decodeThrow) <*> pure s
 
 -- | Run some action with the default configuration, useful in the REPL.
-withDefaultConfig :: ReaderT EConfig m a -> m a
-withDefaultConfig = (`runReaderT` defaultConfig)
+withDefaultConfig :: RuntimeState -> ReaderT EConfig m a -> m a
+withDefaultConfig s = (`runReaderT` (defaultConfig s))
 
 -- | 'withDefaultConfig' but not for transformers
-withDefaultConfig' :: Reader EConfig a -> a
-withDefaultConfig' = (`runReader` defaultConfig)
+withDefaultConfig' :: RuntimeState -> Reader EConfig a -> a
+withDefaultConfig' s = (`runReader` (defaultConfig s))

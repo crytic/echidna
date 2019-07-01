@@ -38,7 +38,7 @@ import Echidna.Test
 import Echidna.Transaction
 
 data UIConf = UIConf { _dashboard :: Bool
-                     , _finished  :: Campaign -> Maybe Int -> String
+                     , _finished  :: Campaign -> Int -> String
                      }
 
 makeLenses ''UIConf
