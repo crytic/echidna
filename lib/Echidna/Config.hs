@@ -80,7 +80,7 @@ instance FromJSON (RuntimeState -> EConfig) where
                          unpack . encode . set (_Object . at "seed") (Just $ toJSON g) . toJSON;
                        "none" -> const . const $ ""
                        _      -> const . const $ M.fail
-                        "unrecognized ui type (should be text, json, or none)"
+                         "unrecognized ui type (should be text, json, or none)"
     sc <- SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                   <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                   <*> v .:? "sender"         .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
