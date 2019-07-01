@@ -55,6 +55,8 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- ^ If applicable, initially known coverage. If this is 'Nothing',
                                    -- Echidna won't collect coverage information (and will go faster)
                                  , seed          :: Int
+                                   -- ^ The seed number passed to `mkStdGen` to generate the random
+                                   -- numbers used in testing
                                  }
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
