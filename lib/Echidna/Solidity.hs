@@ -16,11 +16,12 @@ import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
 import Data.Aeson                 (Value(..))
 import Data.ByteString.Lens       (packedChars)
+import Data.DoubleWord            (Int256, Word256)
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
 import Data.List                  (find, nub, partition)
 import Data.List.Lens             (prefixed, suffixed)
-import Data.Maybe                 (isNothing)
+import Data.Maybe                 (isNothing, catMaybes)
 import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, isSuffixOf)
 import Data.Text.Lens             (unpacked)
@@ -183,6 +184,12 @@ loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, World, [(Text, Addr)])
 loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
 
+mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
+mkValidAbiInt i x = if (abs x <= (2 ^ (i - 1) - 1)) then Just $ AbiInt i x else Nothing
+
+mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue
+mkValidAbiUInt i x = if (x <= ((2 ^ i) - 1)) then Just $ AbiUInt i x else Nothing
+
 -- | Given a list of 'SolcContract's, try to parse out string and integer literals
 extractConstants :: [SolcContract] -> [AbiValue]
 extractConstants = nub . concatMap (constants "" . view contractAst) where
@@ -196,7 +203,7 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
   literal _ _ _                                                = Nothing
   -- When we get a number, it could be an address, uint, or int. We'll try everything.
   dec i = let l f = f <$> [8,16..256] <*> fmap fromIntegral [i-1..i+1] in
-    AbiAddress i : l AbiInt ++ l AbiUInt
+    AbiAddress i : catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
   -- 'constants' takes a property name and its 'Value', then tries to find solidity literals
   -- CASE ONE: we're looking at a big object with a bunch of little objects, recurse
   constants _ (Object o) = concatMap (uncurry constants) $ M.toList o
