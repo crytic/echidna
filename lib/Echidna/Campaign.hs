@@ -23,7 +23,7 @@ import Data.Bool (bool)
 import Data.Either (lefts)
 import Data.Foldable (toList)
 import Data.Map (Map, mapKeys, unionWith)
-import Data.Maybe (maybe, fromMaybe, isNothing, maybeToList)
+import Data.Maybe (fromMaybe, isNothing, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
@@ -40,6 +40,7 @@ import Echidna.Transaction
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
+
 instance MonadCatch m => MonadCatch (RandT g m) where
   catch = liftCatch catch
 

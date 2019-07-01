@@ -36,7 +36,7 @@ main :: IO ()
 main = do Options f c conf <- execParser opts
           g    <- getRandom
           let rts = RuntimeState g
-          cfg  <- maybe (pure (defaultConfig rts)) (flip parseConfig rts) conf
+          cfg  <- maybe (pure (defaultConfig rts)) (`parseConfig` rts) conf
           -- let cfg' = cfg & cConf %~ \x -> if isJust (seed x) then x else x { seed = Just g }
           cpg  <- flip runReaderT cfg $ do
             cs       <- contracts f

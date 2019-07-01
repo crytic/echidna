@@ -71,7 +71,7 @@ instance FromJSON (RuntimeState -> EConfig) where
     -- and define a function to make one given a RuntimeState
     let mkCC s = CampaignConf tl seql shrl Nothing (fromMaybe (s ^. rtSeed) seed')
     let names = const $ const mempty :: Names
-        ppc s = \c _ -> runReader (ppCampaign c) (mkCC s, names)
+        ppc = \s c _ -> runReader (ppCampaign c) (mkCC s, names)
     --style :: Y.Parser (Campaign -> Int -> String)
     fmt <- v .:? "format" .!= ("text" :: String)
     let style s = case fmt of
@@ -81,13 +81,13 @@ instance FromJSON (RuntimeState -> EConfig) where
                        "none" -> const . const $ ""
                        _      -> const . const $ M.fail
                         "unrecognized ui type (should be text, json, or none)"
-    sc <- (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
-                   <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                   <*> v .:? "sender"         .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
-                   <*> v .:? "initialBalance" .!= 0xffffffff
-                   <*> v .:? "prefix"         .!= "echidna_"
-                   <*> v .:? "solcArgs"       .!= ""
-                   <*> v .:? "quiet"          .!= False)
+    sc <- SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
+                  <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                  <*> v .:? "sender"         .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
+                  <*> v .:? "initialBalance" .!= 0xffffffff
+                  <*> v .:? "prefix"         .!= "echidna_"
+                  <*> v .:? "solcArgs"       .!= ""
+                  <*> v .:? "quiet"          .!= False
     db <- v .:? "dashboard" .!= True
     -- we need to use this make style of conf generation for every conf that
     -- uses RuntimeState
@@ -105,8 +105,8 @@ parseConfig f s = (liftIO (BS.readFile f) >>= Y.decodeThrow) <*> pure s
 
 -- | Run some action with the default configuration, useful in the REPL.
 withDefaultConfig :: RuntimeState -> ReaderT EConfig m a -> m a
-withDefaultConfig s = (`runReaderT` (defaultConfig s))
+withDefaultConfig s = (`runReaderT` defaultConfig s)
 
 -- | 'withDefaultConfig' but not for transformers
 withDefaultConfig' :: RuntimeState -> Reader EConfig a -> a
-withDefaultConfig' s = (`runReader` (defaultConfig s))
+withDefaultConfig' s = (`runReader` defaultConfig s)
