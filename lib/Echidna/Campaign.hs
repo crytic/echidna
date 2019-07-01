@@ -12,10 +12,12 @@ module Echidna.Campaign where
 
 import Control.Lens
 import Control.Monad (liftM2, replicateM, when)
-import Control.Monad.Catch (MonadCatch(..), MonadThrow)
-import Control.Monad.Random.Strict (MonadRandom)
+import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
+import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), StateT, evalStateT, execStateT)
+import Control.Monad.Trans (lift)
+import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Aeson (ToJSON(..), object)
 import Data.Bool (bool)
 import Data.Either (lefts)
@@ -29,11 +31,17 @@ import Data.Text (unpack)
 import EVM
 import EVM.Types (W256)
 import Numeric (showHex)
+import System.Random (mkStdGen)
 
 import Echidna.ABI
 import Echidna.Exec
 import Echidna.Test
 import Echidna.Transaction
+
+instance MonadThrow m => MonadThrow (RandT g m) where
+  throwM = lift . throwM
+instance MonadCatch m => MonadCatch (RandT g m) where
+  catch = liftCatch catch
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { testLimit     :: Int
@@ -46,6 +54,7 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                  , knownCoverage :: Maybe (Map W256 (Set Int))
                                    -- ^ If applicable, initially known coverage. If this is 'Nothing',
                                    -- Echidna won't collect coverage information (and will go faster)
+                                 , seed          :: Maybe Int
                                  }
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
@@ -83,11 +92,8 @@ instance ToJSON Campaign where
 
 makeLenses ''Campaign
 
-instance Semigroup Campaign where
-  (Campaign t c g) <> (Campaign t' c' g') = Campaign (t <> t') (c <> c') (g <> g')
-
-instance Monoid Campaign where
-  mempty = Campaign mempty mempty mempty
+defaultCampaign :: Campaign
+defaultCampaign = Campaign mempty mempty defaultDict
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
@@ -167,11 +173,13 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, Has TestConf x, Has 
          -> [SolTest]           -- ^ Tests to evaluate
          -> Maybe GenDict       -- ^ Optional generation dictionary
          -> m Campaign
-campaign u v w ts d = let d' = fromMaybe mempty d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage))
-  >>= \c -> execStateT runCampaign (Campaign ((,Open (-1)) <$> ts) c d') where
-    step        = runUpdate (updateTest v Nothing) >> u >> runCampaign
+campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
+  g <- view (hasLens . to seed)
+  let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d') where
+    step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl q sl _) ->
+    update c    = view hasLens >>= \(CampaignConf tl q sl _ _) ->
       if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c -> step
-         | otherwise                                     -> u
+         | otherwise                                     -> lift u
