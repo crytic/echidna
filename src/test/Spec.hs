@@ -11,6 +11,7 @@ import Echidna.Transaction (Tx, call)
 
 import Control.Lens
 import Control.Monad.Catch (MonadCatch(..))
+import Control.Monad.Random (getRandom)
 import Control.Monad.Reader (runReaderT, liftIO)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
@@ -139,9 +140,10 @@ testContract fp cfg as = testCase fp $ do
 runContract :: FilePath -> EConfig -> IO Campaign
 runContract fp c =
   flip runReaderT c $ do
+    g <- getRandom
     (v,w,ts) <- loadSolTests fp Nothing
     cs  <- contracts fp
-    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [])
+    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [] g)
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . fst . fst) . view tests

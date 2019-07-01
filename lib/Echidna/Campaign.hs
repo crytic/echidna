@@ -23,7 +23,7 @@ import Data.Bool (bool)
 import Data.Either (lefts)
 import Data.Foldable (toList)
 import Data.Map (Map, mapKeys, unionWith)
-import Data.Maybe (maybe, fromMaybe, isNothing, maybeToList)
+import Data.Maybe (fromMaybe, isNothing, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
@@ -92,11 +92,8 @@ instance ToJSON Campaign where
 
 makeLenses ''Campaign
 
-instance Semigroup Campaign where
-  (Campaign t c g) <> (Campaign t' c' g') = Campaign (t <> t') (c <> c') (g <> g')
-
-instance Monoid Campaign where
-  mempty = Campaign mempty mempty mempty
+defaultCampaign :: Campaign
+defaultCampaign = Campaign mempty mempty defaultDict
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
@@ -176,9 +173,10 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, Has TestConf x, Has 
          -> [SolTest]           -- ^ Tests to evaluate
          -> Maybe GenDict       -- ^ Optional generation dictionary
          -> m Campaign
-campaign u v w ts d = let d' = fromMaybe mempty d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
-  g <- view (hasLens . to (maybe (mkStdGen 0) mkStdGen . seed))
-  execStateT (evalRandT runCampaign g) (Campaign ((,Open (-1)) <$> ts) c d') where
+campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
+  g <- view (hasLens . to seed)
+  let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d') where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl q sl _ _) ->

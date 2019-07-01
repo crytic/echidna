@@ -77,6 +77,8 @@ data GenDict = GenDict { _pSynthA    :: Float
                          -- ^ Constants to use, sorted by type
                        , _wholeCalls :: HashMap SolSignature [SolCall] 
                          -- ^ Whole calls to use, sorted by type
+                       , _defSeed    :: Int
+                         -- ^ Default seed to use if one is not provided in EConfig
                        } deriving (Show)
 
 makeLenses 'GenDict
@@ -90,11 +92,8 @@ gaddConstants l = constants <>~ hashMapBy abiValueType l
 gaddCalls :: [SolCall] -> GenDict -> GenDict
 gaddCalls c = wholeCalls <>~ hashMapBy (fmap $ fmap abiValueType) c
 
-instance Semigroup GenDict where
-  (GenDict p c w) <> (GenDict p' c' w') = GenDict ((p + p') / 2) (c <> c') (w <> w')
-
-instance Monoid GenDict where
-  mempty = mkGenDict 0 [] []
+defaultDict :: GenDict
+defaultDict = mkGenDict 0 [] [] 0
 
 -- This instance is the only way for mkConf to work nicely, and is well-formed.
 {-# ANN module ("HLint: ignore Unused LANGUAGE pragma" :: String) #-}
@@ -105,8 +104,9 @@ deriving instance Hashable AbiType
 mkGenDict :: Float      -- ^ Percentage of time to mutate instead of synthesiz. Should be in [0,1]
           -> [AbiValue] -- ^ A list of 'AbiValue' constants to use during dictionary-based generation
           -> [SolCall]  -- ^ A list of complete 'SolCall's to mutate
+          -> Int        -- ^ A default seed
           -> GenDict
-mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fmap abiValueType) cs)
+mkGenDict p vs cs g = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fmap abiValueType) cs) g
 
 -- Generation (synthesis)
 

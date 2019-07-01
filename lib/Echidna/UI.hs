@@ -19,7 +19,7 @@ import Data.Bool (bool)
 import Data.Either (either)
 import Data.Has (Has(..))
 import Data.Map (Map)
-import Data.Maybe (maybe, fromJust)
+import Data.Maybe (maybe, fromMaybe)
 import Data.Set (Set)
 import EVM (VM)
 import EVM.Types (Addr, W256)
@@ -38,7 +38,7 @@ import Echidna.Test
 import Echidna.Transaction
 
 data UIConf = UIConf { _dashboard :: Bool
-                     , _finished  :: Campaign -> Maybe Int -> String
+                     , _finished  :: Campaign -> Int -> String
                      }
 
 makeLenses ''UIConf
@@ -125,12 +125,14 @@ ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> Maybe GenDict
    -> m Campaign
 ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
+  let d' = fromMaybe defaultDict d
   s <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
   g <- view (hasLens . to seed)
+  let g' = fromMaybe (d' ^. defSeed) g
   c <- if s then do bc <- liftIO $ newBChan 100
                     t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts d >> pure ()
                     a <- monitor (killThread t)
-                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty (fromJust d))
+                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty d')
             else campaign (pure ()) v w ts d
-  liftIO . putStrLn =<< view (hasLens . finished) <*> pure c <*> pure g
+  liftIO . putStrLn =<< view (hasLens . finished) <*> pure c <*> pure g'
   return c

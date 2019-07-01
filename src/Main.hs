@@ -2,8 +2,6 @@ module Main where
 
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
-import Control.Lens hiding (argument)
-import Data.Maybe (isJust)
 import Data.Text (pack)
 import Options.Applicative
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
@@ -36,11 +34,10 @@ opts = info (options <**> helper) $ fullDesc
 main :: IO ()
 
 main = do Options f c conf <- execParser opts
-          g    <- getRandom
-          cfg  <- maybe (pure defaultConfig) parseConfig conf
-          let cfg' = cfg & cConf %~ \x -> if isJust (seed x) then x else x { seed = Just g }
-          cpg  <- flip runReaderT cfg' $ do
+          g   <- getRandom
+          cfg <- maybe (pure defaultConfig) parseConfig conf
+          cpg <- flip runReaderT cfg $ do
             cs       <- contracts f
             (v,w,ts) <- loadSpecified (pack . (f ++) . (':' :) <$> c) cs >>= prepareForTest
-            ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [])
+            ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [] g)
           if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
