@@ -63,7 +63,7 @@ instance FromJSON EConfig where
                           <*> pure Nothing
                           <*> v .:? "seed"
         names = const $ const mempty :: Names
-        ppc = cc <&> \c x g -> (runReader (ppCampaign x) (c, names)) ++ "\nSeed: " ++ show g
+        ppc = cc <&> \c x g -> runReader (ppCampaign x) (c, names) ++ "\nSeed: " ++ show g
         style :: Y.Parser (Campaign -> Int -> String)
         style = v .:? "format" .!= ("text" :: String) >>=
           \case "text"             -> ppc

@@ -108,7 +108,7 @@ mkGenDict :: Float      -- ^ Percentage of time to mutate instead of synthesiz. 
           -> [SolCall]  -- ^ A list of complete 'SolCall's to mutate
           -> Int        -- ^ A default seed
           -> GenDict
-mkGenDict p vs cs g = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fmap abiValueType) cs) g
+mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fmap abiValueType) cs)
 
 -- Generation (synthesis)
 
