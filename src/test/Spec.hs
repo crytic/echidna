@@ -4,13 +4,14 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import Echidna.ABI (SolCall, mkGenDict)
-import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..), seed)
-import Echidna.Config (EConfig, defaultConfig, parseConfig, sConf, cConf)
+import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..))
+import Echidna.Config (EConfig, RuntimeState(..), defaultConfig, parseConfig, sConf)
 import Echidna.Solidity
 import Echidna.Transaction (Tx, call)
 
 import Control.Lens
 import Control.Monad.Catch (MonadCatch(..))
+import Control.Monad.Random (getRandom)
 import Control.Monad.Reader (runReaderT, liftIO)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
@@ -42,7 +43,7 @@ compilationTests = testGroup "Compilation and loading tests"
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
-  tryLoad = runReaderT (loadSolidity fp c >> pure ()) $ defaultConfig & sConf . quiet .~ True
+  tryLoad = runReaderT (loadSolidity fp c >> pure ()) $ defaultConfig (RuntimeState 0) & sConf . quiet .~ True
 
 -- Extraction Tests
 
@@ -77,10 +78,10 @@ seedTests =
         liftIO . assertBool "results differ" $ is_1 == is_2
     ]
     where fp    = "basic/flags.sol"
-          gen s = let defaultConfig' = defaultConfig & sConf . quiet .~ True
-                      cfg = defaultConfig' & cConf %~ \x -> x { seed = Just s } in do
-                  res <- runContract fp cfg
-                  return $ res ^. tests
+          gen s = let rts = RuntimeState s
+                      cfg = defaultConfig rts & sConf . quiet .~ True in do
+                    res <- runContract fp cfg
+                    return $ res ^. tests
 
 -- Integration Tests
 
@@ -132,7 +133,9 @@ integrationTests = testGroup "Solidity Integration Testing"
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg as = testCase fp $ do
-  c <- set (sConf . quiet) True <$> maybe (pure defaultConfig) parseConfig cfg
+  g    <- getRandom
+  let rts = RuntimeState g
+  c <- set (sConf . quiet) True <$> maybe (pure (defaultConfig rts)) (`parseConfig` rts) cfg
   res <- runContract fp c
   mapM_ (\(t,f) -> assertBool t $ f res) as
 
