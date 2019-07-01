@@ -14,6 +14,7 @@ import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Data.ByteString.Lazy.Char8 (unpack)
 import Data.Has (Has(..))
 import Data.Aeson
+import Data.Aeson.Lens
 import Data.Text (isPrefixOf)
 import EVM (result)
 
@@ -60,15 +61,17 @@ instance FromJSON EConfig where
                           <*> v .:? "seqLen"      .!= 100
                           <*> v .:? "shrinkLimit" .!= 5000
                           <*> pure Nothing
+                          <*> v .:? "seed"
         names = const $ const mempty :: Names
-        ppc = cc <&> \c x -> runReader (ppCampaign x) (c, names)
-        style :: Y.Parser (Campaign -> String)
-        style = v .:? "format" >>= \case (Nothing :: Maybe String) -> ppc
-                                         (Just "text")             -> ppc
-                                         (Just "json")             -> pure $ unpack . encode
-                                         (Just "none")             -> pure $ const ""
-                                         _                         -> M.fail
-                                           "unrecognized ui type (should be text, json, or none)" in
+        ppc = cc <&> \c x g -> runReader (ppCampaign x) (c, names) ++ "\nSeed: " ++ show g
+        style :: Y.Parser (Campaign -> Int -> String)
+        style = v .:? "format" .!= ("text" :: String) >>=
+          \case "text"             -> ppc
+                "json"             -> pure . flip $ \g ->
+                  unpack . encode . set (_Object . at "seed") (Just . toJSON $ g) . toJSON;
+                "none"             -> pure . const . const $ ""
+                _                  -> pure $ \_ _ -> M.fail
+                  "unrecognized ui type (should be text, json, or none)" in
     EConfig <$> cc
             <*> pure names
             <*> (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72

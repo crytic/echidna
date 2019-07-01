@@ -4,14 +4,15 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import Echidna.ABI (SolCall, mkGenDict)
-import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..))
-import Echidna.Config (defaultConfig, parseConfig, sConf)
+import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..), seed)
+import Echidna.Config (EConfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (Tx, call)
 
 import Control.Lens
 import Control.Monad.Catch (MonadCatch(..))
-import Control.Monad.Reader (runReaderT)
+import Control.Monad.Random (getRandom)
+import Control.Monad.Reader (runReaderT, liftIO)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
 import Data.List (find)
@@ -20,7 +21,7 @@ import System.Directory (withCurrentDirectory)
 
 main :: IO ()
 main = withCurrentDirectory "./examples/solidity" . defaultMain $
-         testGroup "Echidna" [compilationTests, {- extractionTests,-} integrationTests]
+         testGroup "Echidna" [compilationTests, seedTests, integrationTests]
 
 -- Compilation Tests
 
@@ -62,6 +63,25 @@ extractionTests = testGroup "Constant extraction/generation testing"
             ] $ \(t, c) -> liftIO . assertBool ("failed to extract " ++ t ++ " " ++ show (c,is)) $ elem c is
   ]
 -}
+
+
+seedTests :: TestTree
+seedTests =
+  testGroup "Seed reproducibility testing"
+    [ testCase "different seeds" $ do
+        is_1 <- gen (-6710962225043795776)
+        is_2 <- gen 0
+        liftIO . assertBool "results are the same" $ is_1 /= is_2
+    , testCase "same seeds" $ do
+        is_1 <- gen 0
+        is_2 <- gen 0
+        liftIO . assertBool "results differ" $ is_1 == is_2
+    ]
+    where fp    = "basic/flags.sol"
+          gen s = let defaultConfig' = defaultConfig & sConf . quiet .~ True
+                      cfg = defaultConfig' & cConf %~ \x -> x { seed = Just s } in do
+                  res <- runContract fp cfg
+                  return $ res ^. tests
 
 -- Integration Tests
 
@@ -122,11 +142,16 @@ integrationTests = testGroup "Solidity Integration Testing"
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg as = testCase fp $ do
   c <- set (sConf . quiet) True <$> maybe (pure defaultConfig) parseConfig cfg
-  res <- flip runReaderT c $ do
-           (v,w,ts) <- loadSolTests fp Nothing
-           cs  <- contracts fp
-           campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [])
+  res <- runContract fp c
   mapM_ (\(t,f) -> assertBool t $ f res) as
+
+runContract :: FilePath -> EConfig -> IO Campaign
+runContract fp c =
+  flip runReaderT c $ do
+    g <- getRandom
+    (v,w,ts) <- loadSolTests fp Nothing
+    cs  <- contracts fp
+    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [] g)
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . fst . fst) . view tests
