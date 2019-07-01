@@ -59,42 +59,28 @@ instance Has UIConf EConfig where
 
 instance FromJSON (RuntimeState -> EConfig) where
   parseJSON (Object v) = do
-    tc <- do reverts  <- v .:? "reverts"   .!= True
+    tc <- do reverts  <- v .:? "reverts"  .!= True
              psender  <- v .:? "psender"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
              let good = if reverts then (`elem` [ResTrue, ResRevert]) else (== ResTrue)
              return $ TestConf (good . maybe ResOther classifyRes . view result) (const psender)
+    -- monadically get the values needed to construct a campaign conf
     tl    <- v .:? "testLimit"   .!= 10000
     seql  <- v .:? "seqLen"      .!= 100
     shrl  <- v .:? "shrinkLimit" .!= 5000
     seed' <- v .:? "seed"
+    -- and define a function to make one given a RuntimeState
     let mkCC s = CampaignConf tl seql shrl Nothing (fromMaybe (s ^. rtSeed) seed')
-        names = const $ const mempty :: Names
-        ppc :: Campaign -> Int -> String
-        ppc = \c _ -> runReader (ppCampaign c) (mkCC (RuntimeState 0), names)
-    --cc <- \s -> CampaignConf <$> v .:? "testLimit"   .!= 10000
-    --                         <*> v .:? "seqLen"      .!= 100
-    --                         <*> v .:? "shrinkLimit" .!= 5000
-    --                         <*> pure Nothing
-    --                         <*> v .:? "seed"        .!= s ^. rtSeed
+    let names = const $ const mempty :: Names
+        ppc s = \c _ -> runReader (ppCampaign c) (mkCC s, names)
     --style :: Y.Parser (Campaign -> Int -> String)
-    style <- v .:? "format" >>= \case (Nothing :: Maybe String) -> pure ppc
-                                      (Just "text")             -> pure ppc
-                                      (Just "json")             -> pure . flip $ \g ->
-                                        unpack . encode . set (_Object . at "seed") (Just $ toJSON g) . toJSON;
-                                      (Just "none")             -> pure . const . const $ ""
-                                      _                         -> pure $ \_ _ -> M.fail
-                                        "unrecognized ui type (should be text, json, or none)"
-    --cfg <- EConfig <$> cc s
-    --               <*> pure names
-    --               <*> (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
-    --                            <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-    --                            <*> v .:? "sender"         .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
-    --                            <*> v .:? "initialBalance" .!= 0xffffffff
-    --                            <*> v .:? "prefix"         .!= "echidna_"
-    --                            <*> v .:? "solcArgs"       .!= ""
-    --                            <*> v .:? "quiet"          .!= False)
-    --               <*> tc
-    --               <*> (UIConf <$> v .:? "dashboard" .!= True <*> style)
+    fmt <- v .:? "format" .!= ("text" :: String)
+    let style s = case fmt of
+                       "text" -> ppc s
+                       "json" -> flip $ \g ->
+                         unpack . encode . set (_Object . at "seed") (Just $ toJSON g) . toJSON;
+                       "none" -> const . const $ ""
+                       _      -> const . const $ M.fail
+                        "unrecognized ui type (should be text, json, or none)"
     sc <- (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                    <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                    <*> v .:? "sender"         .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
@@ -102,12 +88,11 @@ instance FromJSON (RuntimeState -> EConfig) where
                    <*> v .:? "prefix"         .!= "echidna_"
                    <*> v .:? "solcArgs"       .!= ""
                    <*> v .:? "quiet"          .!= False)
-    uic <- (UIConf <$> v .:? "dashboard" .!= True <*> pure style)
-    return $ \s -> EConfig (mkCC s)
-                           (names)
-                           (sc)
-                           (tc)
-                           (uic)
+    db <- v .:? "dashboard" .!= True
+    -- we need to use this make style of conf generation for every conf that
+    -- uses RuntimeState
+    let mkUIC s = UIConf db (style s)
+    return $ \s -> EConfig (mkCC s) names sc tc (mkUIC s)
   parseJSON _ = parseJSON (Object mempty)
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
