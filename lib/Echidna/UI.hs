@@ -14,7 +14,6 @@ import Control.Monad (forever, liftM2)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader, runReader)
-import Control.Monad.Random.Strict (MonadRandom)
 import Data.Bool (bool)
 import Data.Either (either)
 import Data.Has (Has(..))
@@ -117,8 +116,8 @@ isTerminal = liftIO $ (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 
 -- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
 -- once done.
-ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
-      , Has TestConf x, Has CampaignConf x, Has Names x, Has UIConf x)
+ui :: ( MonadCatch m, MonadReader x m, MonadUnliftIO m , Has TestConf x,
+        Has CampaignConf x, Has Names x, Has UIConf x)
    => VM        -- ^ Initial VM state
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
