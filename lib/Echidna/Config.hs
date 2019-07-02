@@ -14,6 +14,8 @@ import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Data.ByteString.Lazy.Char8 (unpack)
 import Data.Has (Has(..))
 import Data.Aeson
+import Data.Aeson.Lens
+import Data.Text (isPrefixOf)
 import EVM (result)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
@@ -51,32 +53,37 @@ instance Has UIConf EConfig where
 
 instance FromJSON EConfig where
   parseJSON (Object v) =
-    let tc = do reverts  <- v .:? "reverts"   .!= True
-                psender  <- v .:? "psender"  .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                let good = if reverts then (`elem` [ResTrue, ResRevert]) else (== ResTrue)
-                return $ TestConf (good . maybe ResOther classifyRes . view result) (const psender)
+    let tc = do psender <- v .:? "psender" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                fprefix <- v .:? "prefix"  .!= "echidna_"
+                let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
+                return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result) (const psender)
         cc = CampaignConf <$> v .:? "testLimit"   .!= 10000
                           <*> v .:? "seqLen"      .!= 100
                           <*> v .:? "shrinkLimit" .!= 5000
                           <*> pure Nothing
+                          <*> v .:? "seed"
         names = const $ const mempty :: Names
-        ppc = cc <&> \c x -> runReader (ppCampaign x) (c, names)
-        style :: Y.Parser (Campaign -> String)
-        style = v .:? "format" >>= \case (Nothing :: Maybe String) -> ppc
-                                         (Just "text")             -> ppc
-                                         (Just "json")             -> pure $ unpack . encode
-                                         (Just "none")             -> pure $ const ""
-                                         _                         -> M.fail
-                                           "unrecognized ui type (should be text, json, or none)" in
+        ppc = cc <&> \c x g -> runReader (ppCampaign x) (c, names) ++ "\nSeed: " ++ show g
+        style :: Y.Parser (Campaign -> Int -> String)
+        style = v .:? "format" .!= ("text" :: String) >>=
+          \case "text"             -> ppc
+                "json"             -> pure . flip $ \g ->
+                  unpack . encode . set (_Object . at "seed") (Just . toJSON $ g) . toJSON;
+                "none"             -> pure . const . const $ ""
+                _                  -> pure $ \_ _ -> M.fail
+                  "unrecognized ui type (should be text, json, or none)" in
     EConfig <$> cc
             <*> pure names
-            <*> (SolConf <$> v .:? "contractAddr" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
-                         <*> v .:? "deployer"     .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                         <*> v .:? "sender"       .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
-                         <*> v .:? "prefix"       .!= "echidna_"
-                         <*> v .:? "solcArgs"     .!= ""
-                         <*> v .:? "quiet"        .!= False
-                         <*> v .:? "initialize"   .!= Nothing)
+            <*> (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
+                         <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                         <*> v .:? "sender"         .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
+                         <*> v .:? "balanceAddr"    .!= 0xffffffff
+                         <*> v .:? "balanceContract".!= 0
+                         <*> v .:? "prefix"         .!= "echidna_"
+                         <*> v .:? "solcArgs"       .!= ""
+                         <*> v .:? "solcLibs"       .!= []
+                         <*> v .:? "quiet"          .!= False
+                         <*> v .:? "initialize"     .!= Nothing)
             <*> tc
             <*> (UIConf <$> v .:? "dashboard" .!= True <*> style)
   parseJSON _ = parseJSON (Object mempty)

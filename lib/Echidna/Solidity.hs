@@ -35,10 +35,12 @@ import Echidna.RPC         (loadEthenoBatch)
 import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
+import qualified EVM (contracts)
 import EVM.ABI      (AbiValue(..))
 import EVM.Exec     (vmForEthrunCreation)
 import EVM.Solidity
 import EVM.Types    (Addr)
+import EVM.Concrete (w256)
 
 import qualified Data.ByteString     as BS
 import qualified Data.HashMap.Strict as M
@@ -71,13 +73,16 @@ instance Show SolException where
 instance Exception SolException
 
 -- | Configuration for loading Solidity for Echidna testing.
-data SolConf = SolConf { _contractAddr :: Addr     -- ^ Contract address to use
-                       , _deployer     :: Addr     -- ^ Contract deployer address to use
-                       , _sender       :: [Addr]   -- ^ Sender addresses to use
-                       , _prefix       :: Text     -- ^ Function name prefix used to denote tests
-                       , _solcArgs     :: String   -- ^ Args to pass to @solc@
-                       , _quiet        :: Bool     -- ^ Suppress @solc@ output, errors, and warnings
-                       , _initialize   :: Maybe FilePath -- ^ Initialize world with Etheno txns
+data SolConf = SolConf { _contractAddr    :: Addr           -- ^ Contract address to use
+                       , _deployer        :: Addr           -- ^ Contract deployer address to use
+                       , _sender          :: [Addr]         -- ^ Sender addresses to use
+                       , _balanceAddr     :: Integer        -- ^ Initial balance of deployer and senders
+                       , _balanceContract :: Integer        -- ^ Initial balance of contract to test
+                       , _prefix          :: Text           -- ^ Function name prefix used to denote tests
+                       , _solcArgs        :: String         -- ^ Args to pass to @solc@
+                       , _solcLibs        :: [String]       -- ^ List of libraries to load, in order.
+                       , _quiet           :: Bool           -- ^ Suppress @solc@ output, errors, and warnings
+                       , _initialize      :: Maybe FilePath -- ^ Initialize world with Etheno txns
                        }
 makeLenses ''SolConf
 
@@ -86,15 +91,37 @@ contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePa
 contracts fp = do
   a <- view (hasLens . solcArgs)
   q <- view (hasLens . quiet)
-  pure (a, q) >>= liftIO . solc >>= (\case
+  ls <- view (hasLens . solcLibs)
+  pure (a, q, ls) >>= liftIO . solc >>= (\case
     Nothing -> throwM CompileFailure
     Just m  -> pure . toList $ fst m) where
       usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", fp]
-      solc (a, q) = do
+      solc (a, q, ls) = do
         stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode
                        else pure Inherit
         readSolc =<< writeSystemTempFile ""
-                 =<< readCreateProcess (proc "solc" $ usual <> words a) {std_err = stderr} ""
+                 =<< readCreateProcess (proc "solc" $ usual <> words (a ++ linkLibraries ls)) {std_err = stderr} ""
+
+populateAddresses :: [Addr] -> Integer -> VM -> VM
+populateAddresses []     _ vm = vm
+populateAddresses (a:as) b vm = populateAddresses as b (vm & set (env . EVM.contracts . at a) (Just account))
+  where account = initialContract (RuntimeCode mempty) & set nonce 1 & set balance (w256 $ fromInteger b)
+
+-- | Address to load the first library
+addrLibrary :: Addr
+addrLibrary = 0xff
+
+ -- | Load a list of solidity contracts as libraries
+loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+              => [SolcContract] -> Addr -> Addr -> VM -> m VM
+loadLibraries []     _  _ vm = return vm
+loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
+                               where loadRest = execStateT (execTx $ Tx (Right $ l ^. creationCode) d la 0) vm
+
+-- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
+linkLibraries :: [String] -> String
+linkLibraries [] = ""
+linkLibraries ls = "--libraries " ++ concat (imap (\i x -> concat [x, ":", show $ addrLibrary + (toEnum i :: Addr) , ","]) ls)
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -108,26 +135,30 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   c <- choose cs name
   q <- view (hasLens . quiet)
   liftIO $ do
-    when (isNothing name && length cs > 1) $
+    when (isNothing name && length cs > 1 && not q) $
       putStrLn "Multiple contracts found in file, only analyzing the first"
     unless q . putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
 
   -- Local variables
-  (SolConf ca d _ pref _ _ fp) <- view hasLens
+  (SolConf ca d ads bala balc pref _ libs _ fp) <- view hasLens
   let bc = c ^. creationCode
+  -- Set up initial VM, either with chosen contract or Etheno initialization file
+  -- need to use snd to add to ABI dict
+  (blank', _) <- maybe (pure (vmForEthrunCreation bc, [])) (loadEthenoBatch bc) fp
+  let blank = populateAddresses (ads |> d) bala blank'
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
 
-  -- Set up initial VM, either with chosen contract or Etheno initialization file
-  -- need to use snd to add to ABI dict
-  (blank, _) <- maybe (pure (vmForEthrunCreation bc, [])) (loadEthenoBatch bc) fp
+  -- Select libraries
+  ls <- mapM (choose cs . Just . pack) libs
 
   -- Make sure everything is ready to use, then ship it
   mapM_ (uncurry ensure) [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)] -- ABI checks
   ensure bc (NoBytecode $ c ^. contractName)                                   -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                                     -- Test args check
-    Nothing    -> (, funs, fst <$> tests) <$> execStateT (execTx $ Tx (Right bc) d ca 0) blank
+    Nothing    -> loadLibraries ls addrLibrary d blank >>=
+                    fmap (, funs, fst <$> tests) . execStateT (execTx $ Tx (Right bc) d ca (w256 $ fromInteger balc))
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
@@ -179,7 +210,7 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
   -- 2.2: We're looking at something of the form @type: int_const [...]@, an integer literal
   --      @type: "int_const 123"@ ==> @[AbiUInt 8 123, AbiUInt 16 123, ... AbiInt 256 123]@
   constants "type"  (literal "int_const"      (as decimal) -> Just i) =
-    let l f = f <$> [8,16..256] <*> [fromIntegral (i :: Integer)] in l AbiInt ++ l AbiUInt
+    let l f = f <$> [8,16..256] <*> (fromIntegral <$> ([i-1..i+1] :: [Integer])) in l AbiInt ++ l AbiUInt
   -- 2.3: We're looking at something of the form @type: literal_string "[...]"@, a string literal
   --      @type: "literal_string \"123\""@ ==> @[AbiString "123", AbiBytes 3 "123"...]@
   constants "type"  (literal "literal_string" asQuoted     -> Just b) =

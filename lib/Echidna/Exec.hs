@@ -9,7 +9,7 @@ module Echidna.Exec where
 
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
-import Control.Monad.State.Strict (MonadState, execState, get, put)
+import Control.Monad.State.Strict (MonadState, execState, put, get)
 import Data.Either (isRight)
 import Data.Has (Has(..))
 import Data.Map.Strict (Map)
@@ -31,6 +31,7 @@ data ErrorClass = RevertE | IllegalE | UnknownE
 classifyError :: Error -> ErrorClass
 classifyError (Revert _)             = RevertE
 classifyError (UnrecognizedOpcode _) = RevertE
+classifyError (Query _)              = RevertE
 classifyError StackUnderrun          = IllegalE
 classifyError BadJumpDestination     = IllegalE
 classifyError StackLimitExceeded     = IllegalE
@@ -66,10 +67,12 @@ execTxWith h m t = do og <- get
                       setupTx t
                       res <- m
                       case (res, isRight $ t ^. call) of
-                        (Reversion,   _)         -> put og
+                        (f@Reversion, _)         -> put og >> liftSH (result .= Just f)
                         (VMFailure x, _)         -> h x
-                        (VMSuccess bc, True) -> hasLens %= execState ( replaceCodeOfSelf bc
-                                                                        >> loadContract (t ^. dst))
+                        (VMSuccess bc, True)     -> (hasLens %=) . execState $ do
+                          env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
+                          replaceCodeOfSelf (RuntimeCode bc) 
+                          loadContract (t ^. dst)
                         _                        -> pure ()
                       return res
 

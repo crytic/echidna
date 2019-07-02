@@ -95,7 +95,7 @@ module Echidna.RPC where
         case (res, t ^. event == ContractCreated) of
             (Reversion,   _)         -> put og
             (VMFailure x, _)         -> vmExcept x
-            (VMSuccess bc, True) -> hasLens %= execState ( replaceCodeOfSelf bc
+            (VMSuccess bc, True) -> hasLens %= execState ( replaceCodeOfSelf (RuntimeCode bc)
                                                             >> loadContract (t ^. contractAddr))
             _                        -> pure ()
             
@@ -109,9 +109,9 @@ module Echidna.RPC where
     setupEthenoTx :: (MonadState x m, Has VM x) => Etheno -> m ()
     setupEthenoTx (Etheno e _ f t c _ _ d v) = S.state . runState . zoom hasLens . sequence_ $
         [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= 0xffffffff
-        , env . origin .= f, state . caller .= f, state . callvalue .= w256 v, setup] where 
+        , tx . origin .= f, state . caller .= f, state . callvalue .= w256 v, setup] where 
         bc = encodeUtf8 d
         setup = case e of 
             AccountCreated -> pure ()
-            ContractCreated -> assign (env . contracts . at c) (Just $ initialContract bc) >> loadContract c
+            ContractCreated -> assign (env . contracts . at c) (Just . initialContract . RuntimeCode $ bc) >> loadContract c
             FunctionCall -> loadContract t >> state . calldata .= bc

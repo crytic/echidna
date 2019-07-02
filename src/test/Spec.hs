@@ -3,18 +3,16 @@
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Echidna.ABI (SolCall) --, genInteractionsM, mkGenDict)
-import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..))
-import Echidna.Config (defaultConfig, parseConfig, sConf)
+import Echidna.ABI (SolCall, mkGenDict)
+import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..), seed)
+import Echidna.Config (EConfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (Tx, call)
 
 import Control.Lens
---import Control.Monad (forM_, replicateM)
 import Control.Monad.Catch (MonadCatch(..))
---import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Reader (runReaderT)
---import Control.Monad.State (evalStateT)
+import Control.Monad.Random (getRandom)
+import Control.Monad.Reader (runReaderT, liftIO)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
 import Data.List (find)
@@ -23,7 +21,7 @@ import System.Directory (withCurrentDirectory)
 
 main :: IO ()
 main = withCurrentDirectory "./examples/solidity" . defaultMain $
-         testGroup "Echidna" [compilationTests, {- extractionTests,-} integrationTests]
+         testGroup "Echidna" [compilationTests, seedTests, integrationTests]
 
 -- Compilation Tests
 
@@ -66,6 +64,25 @@ extractionTests = testGroup "Constant extraction/generation testing"
   ]
 -}
 
+
+seedTests :: TestTree
+seedTests =
+  testGroup "Seed reproducibility testing"
+    [ testCase "different seeds" $ do
+        is_1 <- gen (-6710962225043795776)
+        is_2 <- gen 0
+        liftIO . assertBool "results are the same" $ is_1 /= is_2
+    , testCase "same seeds" $ do
+        is_1 <- gen 0
+        is_2 <- gen 0
+        liftIO . assertBool "results differ" $ is_1 == is_2
+    ]
+    where fp    = "basic/flags.sol"
+          gen s = let defaultConfig' = defaultConfig & sConf . quiet .~ True
+                      cfg = defaultConfig' & cConf %~ \x -> x { seed = Just s } in do
+                  res <- runContract fp cfg
+                  return $ res ^. tests
+
 -- Integration Tests
 
 integrationTests :: TestTree
@@ -74,40 +91,67 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_true failed",                            passed       "echidna_true") ]
   , testContract "basic/flags.sol"       Nothing
       [ ("echidna_alwaystrue failed",                      passed       "echidna_alwaystrue")
+      , ("echidna_revert_always failed",                      passed       "echidna_revert_always")
       , ("echidna_sometimesfalse passed",                  solved       "echidna_sometimesfalse")
       , ("echidna_sometimesfalse didn't shrink optimally", solvedLen 2  "echidna_sometimesfalse")
       ]
   , testContract "basic/revert.sol"      Nothing
-      [ ("echidna_revert passed",                          solved      "echidna_revert")
-      , ("echidna_revert didn't shrink to length 1",       solvedLen 1 "echidna_revert")
-      , ("echidna_revert didn't shrink to f(-1)",
-         solvedWith ("f", [AbiInt 256 (-1)]) "echidna_revert")
+      [ ("echidna_fails_on_revert passed",                 solved      "echidna_fails_on_revert")
+      , ("echidna_fails_on_revert didn't shrink to one transaction",
+         solvedLen 1 "echidna_fails_on_revert")
+      , ("echidna_revert_is_false didn't shrink to f(-1)",
+         solvedWith ("f", [AbiInt 256 (-1)]) "echidna_fails_on_revert")
       ]
+  
+  , testContract "basic/nearbyMining.sol"     (Just "coverage/test.yaml")
+      [ ("echidna_findNearby passed",                solved       "echidna_findNearby") ]
+
+  , testContract "basic/smallValues.sol"      (Just "coverage/test.yaml")
+      [ ("echidna_findSmall passed",                solved       "echidna_findSmall") ]
+
   , testContract "basic/multisender.sol" (Just "basic/multisender.yaml") $
       [ ("echidna_all_sender passed",                      solved             "echidna_all_sender")
       , ("echidna_all_sender didn't shrink optimally",     solvedLen 3        "echidna_all_sender")
       ] ++ (["s1", "s2", "s3"] <&> \n ->
         ("echidna_all_sender solved without " ++ unpack n, solvedWith (n, []) "echidna_all_sender"))
 
+  , testContract "basic/memory-reset.sol" Nothing
+      [ ("echidna_memory failed",      passed "echidna_memory") ]
   , testContract "basic/contractAddr.sol" Nothing
-      [ ("echidna_address failed",                         solved "echidna_address") ]
+      [ ("echidna_address failed",                solved "echidna_address") ]
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
-      [ ("echidna_address failed",                         passed "echidna_address") ]      
-  , testContract "basic/constants.sol"        Nothing
-      [ ("echidna_found failed",                  not . solved "echidna_found") ]
-  , testContract "basic/constants2.sol"        Nothing
-      [ ("echidna_found32 failed",                  not . solved "echidna_found32") ]
-  , testContract "coverage/single.sol"        Nothing
-      [ ("echidna_state failed",                  not . solved "echidna_state") ]
-  , testContract "coverage/multi.sol"        Nothing
-      [ ("echidna_state3 failed",                  not . solved "echidna_state3") ]
+      [ ("echidna_address failed",                passed "echidna_address") ]      
+  , testContract "basic/constants.sol"    Nothing
+      [ ("echidna_found failed",                  solved "echidna_found") ]
+  , testContract "basic/constants2.sol"   Nothing
+      [ ("echidna_found32 failed",                solved "echidna_found32") ]
+  , testContract "coverage/single.sol"    (Just "coverage/test.yaml")
+      [ ("echidna_state failed",                  solved "echidna_state") ]
+  , testContract "coverage/multi.sol"     Nothing
+      [ ("echidna_state3 failed",                 solved "echidna_state3") ]
+  , testContract "basic/balance.sol"      (Just "basic/balance.yaml")
+      [ ("echidna_balance failed",                passed "echidna_balance") ]
+  , testContract "basic/library.sol"      (Just "basic/library.yaml")
+      [ ("echidna_library_call failed",           solved "echidna_library_call") ]
+  , testContract "basic/darray.sol"       Nothing
+      [ ("echidna_darray passed",                      solved             "echidna_darray")
+      , ("echidna_darray didn't shrink optimally",     solvedLen 1        "echidna_darray") ]
+ 
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg as = testCase fp $ do
   c <- set (sConf . quiet) True <$> maybe (pure defaultConfig) parseConfig cfg
-  res <- runReaderT (loadSolTests fp Nothing >>= \(v, w, ts) -> campaign (pure ()) v w ts Nothing) c
+  res <- runContract fp c
   mapM_ (\(t,f) -> assertBool t $ f res) as
+
+runContract :: FilePath -> EConfig -> IO Campaign
+runContract fp c =
+  flip runReaderT c $ do
+    g <- getRandom
+    (v,w,ts) <- loadSolTests fp Nothing
+    cs  <- contracts fp
+    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [] g)
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . fst . fst) . view tests
