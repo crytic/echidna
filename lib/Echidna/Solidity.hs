@@ -185,10 +185,10 @@ loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
 loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
 
 mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
-mkValidAbiInt i x = if (abs x <= (2 ^ (i - 1) - 1)) then Just $ AbiInt i x else Nothing
+mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Nothing
 
 mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue
-mkValidAbiUInt i x = if (x <= ((2 ^ i) - 1)) then Just $ AbiUInt i x else Nothing
+mkValidAbiUInt i x = if x <= 2 ^ i - 1 then Just $ AbiUInt i x else Nothing
 
 -- | Given a list of 'SolcContract's, try to parse out string and integer literals
 extractConstants :: [SolcContract] -> [AbiValue]
