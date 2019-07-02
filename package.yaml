@@ -2,7 +2,7 @@ name: echidna
 
 author: JP Smith
 
-version: 0.0.0.1
+version: 1.0.0.0
 
 ghc-options: -Wall -fno-warn-orphans -O2 -threaded +RTS -N -RTS
 
@@ -21,6 +21,7 @@ dependencies:
   - hashable
   - hevm
   - lens                 >= 4.15.1 && < 4.17
+  - lens-aeson
   - MonadRandom
   - mtl                  >= 2.2.1  && < 2.3
   - optparse-applicative >= 0.13.0 && < 0.15
@@ -30,6 +31,7 @@ dependencies:
   - text                 >= 1.2.2  && < 1.3
   - transformers
   - unliftio
+  - unliftio-core
   - vector               >= 0.11.0 && < 0.13
   - vty
   - wl-pprint-annotated
@@ -37,6 +39,7 @@ dependencies:
   - word8
   - yaml
   - unordered-containers
+  - random
 
 default-extensions:
   - OverloadedStrings
@@ -49,6 +52,14 @@ executables:
     main: Main.hs
     source-dirs: src/
     dependencies: echidna
+    when:
+        - condition: os(linux)
+          ghc-options:
+            - -threaded
+            - -static
+            - -O2
+          cc-options: -static
+          ld-options: -static -pthread
 
 tests:
   echidna-testsuite:

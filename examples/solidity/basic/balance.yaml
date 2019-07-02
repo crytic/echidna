@@ -1,0 +1,5 @@
+deployer: "0x42"
+sender: ["0x42"]
+psender: "0x42"
+balanceAddr: 42
+balanceContract: 123

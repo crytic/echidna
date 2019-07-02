@@ -11,6 +11,9 @@ contract Test {
   function echidna_alwaystrue() public returns (bool){
     return(true);
   }
+  function echidna_revert_always() public returns (bool){
+    revert();
+  }
   function echidna_sometimesfalse() public returns (bool){
     return(flag1);
   }
