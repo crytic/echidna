@@ -208,12 +208,10 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
   -- CASE ONE: we're looking at a big object with a bunch of little objects, recurse
   constants _ (Object o) = concatMap (uncurry constants) $ M.toList o
   constants _ (Array  a) = concatMap (constants "")        a
-  -- CASE TWO: we're looking at a @type@ or @value@ object, try to parse it
-  -- 2.1: We're looking at a @value@ with a decimal number inside, could be an address, int, or uint
-  --      @value: "0x12"@ ==> @[AbiAddress 18, AbiUInt 8 18,..., AbiUInt 256 18, AbiInt 8 18,...]@
-  --      Since adding crytic-compile, this could also be a literal_string int_const
-  constants s (String (asDecimal -> Just i)) | s `elem` ["value", "hexValue"] = dec i
-  constants "typeString" (literal "int_const" asDecimal -> Just i)            = dec i
+  -- CASE TWO: we're looking at a @type@, try to parse it
+  -- 2.1: We're looking at a @int_const@ with a decimal number inside, could be an address, int, or uint
+  --      @type: "int_const 0x12"@ ==> @[AbiAddress 18, AbiUInt 8 18,..., AbiUInt 256 18, AbiInt 8 18,...]@
+  constants "typeString" (literal "int_const" asDecimal -> Just i) = dec i
   -- 2.2: We're looking at something of the form @type: literal_string "[...]"@, a string literal
   --      @type: "literal_string \"123\""@ ==> @[AbiString "123", AbiBytes 3 "123"...]@
   constants "typeString" (literal "literal_string" asQuoted -> Just b) =

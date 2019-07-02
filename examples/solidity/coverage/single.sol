@@ -2,7 +2,7 @@ contract C {
   bool state = true;
   function f(uint x, uint y, uint z) public {
     require(x == 42424242);
-    //require(y == 8);
+    require(y == 8);
     require(z == 123);
     state = false;
     return; 
