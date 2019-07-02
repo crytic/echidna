@@ -69,7 +69,7 @@ seedTests :: TestTree
 seedTests =
   testGroup "Seed reproducibility testing"
     [ testCase "different seeds" $ do
-        is_1 <- gen (-6710962225043795776)
+        is_1 <- gen (-7207205166296825433)
         is_2 <- gen 0
         liftIO . assertBool "results are the same" $ is_1 /= is_2
     , testCase "same seeds" $ do
