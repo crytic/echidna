@@ -90,8 +90,7 @@ genTxs fp c s =
     liftIO $ setStdGen $ mkStdGen s
     (_,w,_) <- loadSolTests fp Nothing
     cs  <- contracts fp
-    is <- evalStateT genTxM (w, mkGenDict 0.15 (extractConstants cs) [] s)
-    return is
+    evalStateT genTxM (w, mkGenDict 0.15 (extractConstants cs) [] s)
 
 -- Integration Tests
 
