@@ -7,12 +7,14 @@ import Echidna.ABI (SolCall, mkGenDict)
 import Echidna.Campaign (Campaign(..), tests, campaign, TestState(..), seed)
 import Echidna.Config (EConfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
-import Echidna.Transaction (Tx, call)
+import Echidna.Transaction (Tx, call, genTxM)
 
 import Control.Lens
 import Control.Monad.Catch (MonadCatch(..))
-import Control.Monad.Random (getRandom)
+import Control.Monad.Random (getRandom, setStdGen, mkStdGen)
 import Control.Monad.Reader (runReaderT, liftIO)
+import Control.Monad.State.Strict (evalStateT)
+
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
 import Data.List (find)
@@ -69,7 +71,7 @@ seedTests :: TestTree
 seedTests =
   testGroup "Seed reproducibility testing"
     [ testCase "different seeds" $ do
-        is_1 <- gen (-6710962225043795776)
+        is_1 <- gen 123
         is_2 <- gen 0
         liftIO . assertBool "results are the same" $ is_1 /= is_2
     , testCase "same seeds" $ do
@@ -79,9 +81,17 @@ seedTests =
     ]
     where fp    = "basic/flags.sol"
           gen s = let defaultConfig' = defaultConfig & sConf . quiet .~ True
-                      cfg = defaultConfig' & cConf %~ \x -> x { seed = Just s } in do
-                  res <- runContract fp cfg
-                  return $ res ^. tests
+                      cfg = defaultConfig' & cConf %~ \x -> x { seed = Just s } in 
+                  genTxs fp cfg s
+
+genTxs :: FilePath -> EConfig -> Int -> IO Tx
+genTxs fp c s =
+  flip runReaderT c $ do
+    liftIO $ setStdGen $ mkStdGen s
+    (_,w,_) <- loadSolTests fp Nothing
+    cs  <- contracts fp
+    is <- evalStateT genTxM (w, mkGenDict 0.15 (extractConstants cs) [] s)
+    return is
 
 -- Integration Tests
 

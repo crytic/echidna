@@ -1,7 +1,8 @@
 module Main where
 
+import Control.Lens hiding (argument)
 import Control.Monad.Reader (runReaderT)
-import Control.Monad.Random (getRandom)
+import Control.Monad.Random (getRandom, setStdGen, mkStdGen)
 import Data.Text (pack)
 import Options.Applicative
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
@@ -34,8 +35,11 @@ opts = info (options <**> helper) $ fullDesc
 main :: IO ()
 
 main = do Options f c conf <- execParser opts
-          g   <- getRandom
           cfg <- maybe (pure defaultConfig) parseConfig conf
+          case seed (cfg ^. cConf) of
+            Just s -> setStdGen $ mkStdGen s
+            _      -> return ()
+          g <- getRandom
           cpg <- flip runReaderT cfg $ do
             cs       <- contracts f
             (v,w,ts) <- loadSpecified (pack . (f ++) . (':' :) <$> c) cs >>= prepareForTest
