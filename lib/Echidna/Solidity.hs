@@ -92,7 +92,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
   q  <- view (hasLens . quiet)
   ls <- view (hasLens . solcLibs)
   let solargs = a ++ linkLibraries ls & (usual ++) . 
-                  (\sa -> if null sa then [] else ["--solc-args", "\"" ++ sa ++ "\""])
+                  (\sa -> if null sa then [] else ["--solc-args", sa])
   maybe (throwM CompileFailure) (pure . toList . fst) =<< liftIO (do
     stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
     _ <- readCreateProcess (proc "crytic-compile" $ solargs |> fp) {std_err = stderr} ""
@@ -117,7 +117,7 @@ loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
 linkLibraries [] = ""
-linkLibraries ls = " --libraries " ++
+linkLibraries ls = "--libraries " ++
   iconcatMap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
@@ -152,12 +152,14 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                                     -- Test args check
     Nothing    -> loadLibraries ls addrLibrary d blank >>=
-                    fmap (, funs, fst <$> tests) . execStateT (execTx $ Tx (Right bc) d ca (w256 $ fromInteger balc))
+                    fmap (, funs ++ [fallback], fst <$> tests) . execStateT (execTx $ Tx (Right bc) d ca (w256 $ fromInteger balc))
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
                                       find (isSuffixOf n . view contractName) cs
+                                      --find ((n ==) . view contractName) cs
+        fallback = ("",[])
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
 -- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
