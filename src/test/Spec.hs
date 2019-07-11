@@ -133,9 +133,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_darray passed",                      solved             "echidna_darray")
       , ("echidna_darray didn't shrink optimally",     solvedLen 1        "echidna_darray") ]
   , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml") 
-      [ ("echidna_runForever passed",              solved      "echidna_runForever")
-      , ("echidna_darray passed",                  solved      "echidna_darray")
-      , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
+      [ ("echidna_runForever passed",              solved      "echidna_runForever")]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
