@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
@@ -15,23 +16,28 @@ import Control.Monad (liftM2, replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.State.Strict (MonadState(..), StateT, evalStateT, execStateT)
+import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Aeson (ToJSON(..), object)
+import Data.Bifunctor (Bifunctor(..))
+import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
 import Data.Either (lefts)
 import Data.Foldable (toList)
 import Data.Map (Map, mapKeys, unionWith)
-import Data.Maybe (fromMaybe, isNothing, maybeToList)
+import Data.Maybe (fromMaybe, isNothing, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
 import Data.Text (unpack)
 import EVM
+import EVM.ABI
 import EVM.Types (W256)
 import Numeric (showHex)
 import System.Random (mkStdGen)
+
+import qualified Data.HashMap.Strict  as H
 
 import Echidna.ABI
 import Echidna.Exec
@@ -92,6 +98,9 @@ instance ToJSON Campaign where
 
 makeLenses ''Campaign
 
+instance Has GenDict Campaign where
+  hasLens = genDict
+
 defaultCampaign :: Campaign
 defaultCampaign = Campaign mempty mempty defaultDict
 
@@ -136,11 +145,11 @@ runUpdate f = use (hasLens . tests) >>= mapM f >>= (hasLens . tests .=)
 -- checking if we've solved any tests or can shrink known solves.
 evalSeq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has TestConf x, Has CampaignConf x, Has Campaign y, Has VM y)
-        => VM -> (Tx -> m a) -> [Tx] -> m ()
+        => VM -> (Tx -> m a) -> [Tx] -> m [(Tx, a)]
 evalSeq v e = go [] where
   go r xs = use hasLens >>= \v' -> runUpdate (updateTest v $ Just (v',reverse r)) >>
-    case xs of []     -> pure ()
-               (y:ys) -> e y >> go (y:r) ys
+    case xs of []     -> pure []
+               (y:ys) -> e y >>= \a -> ((y, a) :) <$> go (y:r) ys
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
 -- transaction if it finds new coverage.
@@ -156,13 +165,18 @@ execTxOptC t = do
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
 callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
-           , Has TestConf x, Has CampaignConf x, Has Campaign y)
+           , Has TestConf x, Has CampaignConf x, Has Campaign y, Has GenDict y)
         => VM -> World -> Int -> m ()
 callseq v w ql = do
   ef <- bool execTx execTxOptC . isNothing . knownCoverage <$> view hasLens
   ca <- use hasLens
   is <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
-  execStateT (evalSeq v ef is) (v, ca) >>= assign hasLens . view _2
+  (res, s) <- runStateT (evalSeq v ef is) (v, ca)
+  hasLens .= snd s
+  (hasLens . constants <>=) . parse res =<< use (hasLens . rTypes) where
+    parse l rt = H.fromList . flip mapMaybe l $ \(x, r) -> case (rt =<< x ^? call . _Left . _1, r) of
+      (Just ty, VMSuccess b) -> (ty, ) . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
+      _                      -> Nothing
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.

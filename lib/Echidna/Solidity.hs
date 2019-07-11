@@ -35,7 +35,7 @@ import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
-import EVM.ABI      (AbiValue(..))
+import EVM.ABI      (AbiType, AbiValue(..))
 import EVM.Exec     (vmForEthrunCreation)
 import EVM.Solidity
 import EVM.Types    (Addr)
@@ -215,3 +215,7 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
    map (\n -> AbiBytes n (BS.append b (BS.replicate (n - size) 0))) [size .. 32]
   -- CASE THREE: we're at a leaf node with no constants
   constants _  _ = []
+
+returnTypes :: [SolcContract] -> Text -> Maybe AbiType
+returnTypes cs t = preview (_Just . methodOutput . _Just . _2) .
+  find ((== t) . view methodName) $ concatMap (toList . view abiMap) cs

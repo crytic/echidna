@@ -81,7 +81,9 @@ data GenDict = GenDict { _pSynthA    :: Float
                          -- ^ Whole calls to use, sorted by type
                        , _defSeed    :: Int
                          -- ^ Default seed to use if one is not provided in EConfig
-                       } deriving (Show)
+                       , _rTypes     :: Text -> Maybe AbiType
+                         -- ^ Return types of any methods we scrape return values from
+                       }
 
 makeLenses 'GenDict
 
@@ -95,18 +97,21 @@ gaddCalls :: [SolCall] -> GenDict -> GenDict
 gaddCalls c = wholeCalls <>~ hashMapBy (fmap $ fmap abiValueType) c
 
 defaultDict :: GenDict
-defaultDict = mkGenDict 0 [] [] 0
+defaultDict = mkGenDict 0 [] [] 0 (const Nothing)
 
 -- This instance is the only way for mkConf to work nicely, and is well-formed.
 {-# ANN module ("HLint: ignore Unused LANGUAGE pragma" :: String) #-}
 -- We need the above since hlint doesn't notice DeriveAnyClass in StandaloneDeriving.
 deriving instance Hashable AbiType
 
--- | Construct a 'GenDict' from some dictionaries and a 'Float'.
-mkGenDict :: Float      -- ^ Percentage of time to mutate instead of synthesiz. Should be in [0,1]
+-- | Construct a 'GenDict' from some dictionaries, a 'Float', a default seed, and a typing rule for
+-- return values
+mkGenDict :: Float      -- ^ Percentage of time to mutate instead of synthesize. Should be in [0,1]
           -> [AbiValue] -- ^ A list of 'AbiValue' constants to use during dictionary-based generation
           -> [SolCall]  -- ^ A list of complete 'SolCall's to mutate
           -> Int        -- ^ A default seed
+          -> (Text -> Maybe AbiType)
+          -- ^ A return value typing rule
           -> GenDict
 mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fmap abiValueType) cs)
 
