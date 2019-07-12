@@ -168,12 +168,22 @@ callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has TestConf x, Has CampaignConf x, Has Campaign y, Has GenDict y)
         => VM -> World -> Int -> m ()
 callseq v w ql = do
+  -- First, we figure out whether we need to execute with or without coverage optimization, and pick
+  -- our execution function appropriately
   ef <- bool execTx execTxOptC . isNothing . knownCoverage <$> view hasLens
+  -- Then, we get the current campaign state
   ca <- use hasLens
+  -- Then, we generate the actual transaction in the sequence
   is <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
+  -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, s) <- runStateT (evalSeq v ef is) (v, ca)
+  -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= snd s
+  -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   modifying (hasLens . constants) . H.unionWith (++) . parse res =<< use (hasLens . rTypes) where
+    -- Given a list of transactions and a return typing rule, this checks whether we know the return
+    -- type for each function called, and if we do, tries to parse the return value as a value of that
+    -- type. It returns a 'GenDict' style HashMap.
     parse l rt = H.fromList . flip mapMaybe l $ \(x, r) -> case (rt =<< x ^? call . _Left . _1, r) of
       (Just ty, VMSuccess b) -> (ty, ) . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
       _                      -> Nothing
