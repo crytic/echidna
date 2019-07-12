@@ -129,7 +129,11 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/balance.sol"      (Just "basic/balance.yaml")
       [ ("echidna_balance failed",                 passed      "echidna_balance") ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
-      [ ("echidna_library_call failed",            solved      "echidna_library_call") ]
+      [ ("echidna_library_call failed",            solved "echidna_library_call") ]
+  , testContract "harvey/foo.sol"         Nothing
+      [ ("echidna_assert failed",                  solved "echidna_assert") ]
+  , testContract "harvey/baz.sol"         Nothing
+      [ ("echidna_all_states failed",              solved "echidna_all_states") ]
   , testContract "basic/fallback.sol"     Nothing
       [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
   , testContract "basic/darray.sol"       Nothing
