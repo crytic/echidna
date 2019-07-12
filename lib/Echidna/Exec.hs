@@ -29,6 +29,7 @@ data ErrorClass = RevertE | IllegalE | UnknownE
 
 -- | Given an execution error, classify it. Mostly useful for nice @pattern@s ('Reversion', 'Illegal').
 classifyError :: Error -> ErrorClass
+classifyError (OutOfGas _ _)         = RevertE
 classifyError (Revert _)             = RevertE
 classifyError (UnrecognizedOpcode _) = RevertE
 classifyError (Query _)              = RevertE
