@@ -173,7 +173,7 @@ callseq v w ql = do
   is <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
   (res, s) <- runStateT (evalSeq v ef is) (v, ca)
   hasLens .= snd s
-  (hasLens . constants <>=) . parse res =<< use (hasLens . rTypes) where
+  modifying (hasLens . constants) . H.unionWith (++) . parse res =<< use (hasLens . rTypes) where
     parse l rt = H.fromList . flip mapMaybe l $ \(x, r) -> case (rt =<< x ^? call . _Left . _1, r) of
       (Just ty, VMSuccess b) -> (ty, ) . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
       _                      -> Nothing
