@@ -7,18 +7,20 @@ import Prelude hiding (Word)
 import Control.Lens
 import Control.Monad (ap)
 import Control.Monad.Catch (MonadThrow)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform, uniformMay)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Control.Monad.State.Strict (MonadState(..), gets)
 import Data.Bool (bool)
 import Data.Foldable (traverse_)
 import Data.Has (Has(..))
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import EVM (VMResult(..), VM)
 import EVM.ABI (AbiValue(..), encodeAbiValue)
 import EVM.Types (Addr)
 
 import Echidna.Exec
+import Echidna.Solidity
 import Echidna.Transaction
 
 -- | An Echidna test is just the name of the function to call and the address where its contract is.
@@ -55,9 +57,13 @@ checkETest (f, a) = asks getter >>= \(TestConf p s) -> view (hasLens . propGas) 
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
 -- still solves that test.
-shrinkSeq :: (MonadRandom m, MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+shrinkSeq :: ( MonadRandom m, MonadReader x m, MonadThrow m
+             , Has SolConf x, Has TestConf x, Has TxConf x, MonadState y m, Has VM y)
           => SolTest -> [Tx] -> m [Tx]
 shrinkSeq t xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
   check xs' = do {og <- get; res <- traverse_ execTx xs' >> checkETest t; put og; pure res}
-  shrunk = mapM shrinkTx xs
+  shrinkSender x = view (hasLens . sender) >>= \l -> case ifind (const (== x ^. src)) l of
+    Nothing     -> pure x
+    Just (i, _) -> flip (set src) x . fromMaybe (x ^. src) <$> uniformMay (l ^.. folded . indices (< i))
+  shrunk = mapM (\x -> shrinkSender =<< shrinkTx x) xs
   shorten = (\i -> take i xs ++ drop (i + 1) xs) <$> getRandomR (0, length xs)
