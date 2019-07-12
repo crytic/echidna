@@ -5,7 +5,7 @@ module Echidna.Test where
 import Prelude hiding (Word)
 
 import Control.Lens
-import Control.Monad (ap)
+import Control.Monad ((<=<), ap)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform, uniformMay)
 import Control.Monad.Reader.Class (MonadReader, asks)
@@ -65,5 +65,5 @@ shrinkSeq t xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool
   shrinkSender x = view (hasLens . sender) >>= \l -> case ifind (const (== x ^. src)) l of
     Nothing     -> pure x
     Just (i, _) -> flip (set src) x . fromMaybe (x ^. src) <$> uniformMay (l ^.. folded . indices (< i))
-  shrunk = mapM (\x -> shrinkSender =<< shrinkTx x) xs
+  shrunk = mapM (shrinkSender <=< shrinkTx) xs
   shorten = (\i -> take i xs ++ drop (i + 1) xs) <$> getRandomR (0, length xs)
