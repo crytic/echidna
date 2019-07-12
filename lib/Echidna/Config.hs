@@ -68,7 +68,7 @@ instance FromJSON EConfig where
         xc = liftM2 TxConf
                (C Dull . fromIntegral <$> v .:? "propMaxGas"  .!= (0xffffffff :: Integer))
                (C Dull . fromIntegral <$> v .:? "testMaxGas"  .!= (0xffffffff :: Integer))
-        cc = CampaignConf <$> v .:? "testLimit"   .!= 10000
+        cc = CampaignConf <$> v .:? "testLimit"   .!= 50000
                           <*> v .:? "seqLen"      .!= 100
                           <*> v .:? "shrinkLimit" .!= 5000
                           <*> pure Nothing
