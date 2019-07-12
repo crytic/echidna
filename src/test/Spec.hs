@@ -119,6 +119,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_found failed",                   solved      "echidna_found") ]
   , testContract "basic/constants2.sol"   Nothing
       [ ("echidna_found32 failed",                 solved      "echidna_found32") ]
+  , testContract "basic/rconstants.sol"   Nothing
+      [ ("echidna_found failed",                   solved      "echidna_found") ]
   , testContract "coverage/single.sol"    (Just "coverage/test.yaml")
       [ ("echidna_state failed",                   solved      "echidna_state") ]
   , testContract "coverage/multi.sol"     Nothing
@@ -146,7 +148,7 @@ runContract fp c =
     g <- getRandom
     (v,w,ts) <- loadSolTests fp Nothing
     cs  <- contracts fp
-    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [] g)
+    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [] g (returnTypes cs))
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . fst . fst) . view tests
