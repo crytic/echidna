@@ -13,13 +13,13 @@ import Control.Lens
 import Control.Monad (forever, liftM2)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader (MonadReader, runReader)
+import Control.Monad.Random.Strict (MonadRandom)
 import Data.Bool (bool)
 import Data.Either (either)
 import Data.Has (Has(..))
 import Data.Map (Map)
-import Data.Maybe (maybe)
+import Data.Maybe (maybe, fromMaybe)
 import Data.Set (Set)
 import EVM (VM)
 import EVM.Types (Addr, W256)
@@ -38,7 +38,7 @@ import Echidna.Test
 import Echidna.Transaction
 
 data UIConf = UIConf { _dashboard :: Bool
-                     , _finished  :: Campaign -> String
+                     , _finished  :: Campaign -> Int -> String
                      }
 
 makeLenses ''UIConf
@@ -51,9 +51,10 @@ type Names = Role -> Addr -> String
 
 -- | Given rules for pretty-printing associated address, pretty-print a 'Transaction'.
 ppTx :: (MonadReader x m, Has Names x) => Tx -> m String
-ppTx (Tx c s r v) = let sOf = either ppSolCall (const "<CREATE>") in
+ppTx (Tx c s r g v) = let sOf = either ppSolCall (const "<CREATE>") in
   view hasLens <&> \f -> sOf c ++ f Sender s ++ f Receiver r
-                      ++ (if v == 0 then "" else "Value: " ++ show v)
+                      ++ (if g /= 0xffffffff then "" else "Gas: "   ++ show g)
+                      ++ (if v == 0          then "" else "Value: " ++ show v)
 
 -- | Given a number of boxes checked and a number of total boxes, pretty-print progress in box-checking.
 progress :: Int -> Int -> String
@@ -72,7 +73,7 @@ ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x) => TestState -> m Str
 ppTS (Failed e)  = pure $ "could not evaluate ☣\n  " ++ show e
 ppTS (Solved l)  = ppFail Nothing l
 ppTS Passed      = pure "passed! 🎉"
-ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _) ->
+ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _) ->
                      if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
 ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m) 
                                                                               else Nothing) l
@@ -113,23 +114,26 @@ monitor cleanup = let
 
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
 isTerminal :: MonadIO m => m Bool
-isTerminal = liftIO $ queryTerminal (Fd 0)
+isTerminal = liftIO $ (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 
 -- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
 -- once done.
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
-      , Has TestConf x, Has CampaignConf x, Has Names x, Has UIConf x)
+      , Has TestConf x, Has TxConf x, Has CampaignConf x, Has Names x, Has UIConf x)
    => VM        -- ^ Initial VM state
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
    -> Maybe GenDict
    -> m Campaign
 ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
+  let d' = fromMaybe defaultDict d
   s <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
+  g <- view (hasLens . to seed)
+  let g' = fromMaybe (d' ^. defSeed) g
   c <- if s then do bc <- liftIO $ newBChan 100
                     t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts d >> pure ()
                     a <- monitor (killThread t)
-                    liftIO (customMain (mkVty defaultConfig) (Just bc) a mempty)
+                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty d')
             else campaign (pure ()) v w ts d
-  liftIO . putStrLn =<< ($ c) <$> view (hasLens . finished)
+  liftIO . putStrLn =<< view (hasLens . finished) <*> pure c <*> pure g'
   return c

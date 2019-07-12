@@ -35,7 +35,7 @@ import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
-import EVM.ABI      (AbiValue(..))
+import EVM.ABI      (AbiType, AbiValue(..))
 import EVM.Exec     (vmForEthrunCreation)
 import EVM.Solidity
 import EVM.Types    (Addr)
@@ -75,7 +75,8 @@ instance Exception SolException
 data SolConf = SolConf { _contractAddr    :: Addr    -- ^ Contract address to use
                        , _deployer        :: Addr    -- ^ Contract deployer address to use
                        , _sender          :: [Addr]  -- ^ Sender addresses to use
-                       , _initialBalance  :: Integer -- ^ Initial balance of deployer and senders
+                       , _balanceAddr     :: Integer -- ^ Initial balance of deployer and senders
+                       , _balanceContract :: Integer -- ^ Initial balance of contract to test
                        , _prefix          :: Text    -- ^ Function name prefix used to denote tests
                        , _solcArgs        :: String  -- ^ Args to pass to @solc@
                        , _solcLibs        :: [String] -- ^ List of libraries to load, in order.
@@ -113,7 +114,7 @@ loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
               => [SolcContract] -> Addr -> Addr -> VM -> m VM
 loadLibraries []     _  _ vm = return vm
 loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
-                               where loadRest = execStateT (execTx $ Tx (Right $ l ^. creationCode) d la 0) vm
+  where loadRest = execStateT (execTx $ Tx (Right $ l ^. creationCode) d la 0xffffffff 0) vm
 
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
@@ -137,9 +138,9 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
     unless q . putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
 
   -- Local variables
-  (SolConf ca d ads b pref _ libs _) <- view hasLens
+  (SolConf ca d ads bala balc pref _ libs _) <- view hasLens
   let bc = c ^. creationCode
-      blank = populateAddresses (ads |> d) b (vmForEthrunCreation bc)
+      blank = populateAddresses (ads |> d) bala (vmForEthrunCreation bc)
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
 
@@ -151,13 +152,15 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   ensure bc (NoBytecode $ c ^. contractName)                                   -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                                     -- Test args check
-    Nothing    -> loadLibraries ls addrLibrary d blank >>=
-                    fmap (, funs, fst <$> tests) . execStateT (execTx $ Tx (Right bc) d ca 0)
+    Nothing    -> loadLibraries ls addrLibrary d blank >>= fmap (, fallback : funs, fst <$> tests) .
+      execStateT (execTx $ Tx (Right bc) d ca 0xffffffff (w256 $ fromInteger balc))
+
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
                                       find ((n ==) . view contractName) cs
+        fallback = ("",[])
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
 -- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
@@ -213,3 +216,7 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
    map (\n -> AbiBytes n (BS.append b (BS.replicate (n - size) 0))) [size .. 32]
   -- CASE THREE: we're at a leaf node with no constants
   constants _  _ = []
+
+returnTypes :: [SolcContract] -> Text -> Maybe AbiType
+returnTypes cs t = preview (_Just . methodOutput . _Just . _2) .
+  find ((== t) . view methodName) $ concatMap (toList . view abiMap) cs

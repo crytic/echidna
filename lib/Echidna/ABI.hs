@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -9,6 +10,7 @@ module Echidna.ABI where
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.State.Class (MonadState, gets)
+import Control.Monad.State (evalStateT)
 import Control.Monad.Random.Strict
 import Data.Bits (Bits(..))
 import Data.Bool (bool)
@@ -77,7 +79,11 @@ data GenDict = GenDict { _pSynthA    :: Float
                          -- ^ Constants to use, sorted by type
                        , _wholeCalls :: HashMap SolSignature [SolCall] 
                          -- ^ Whole calls to use, sorted by type
-                       } deriving (Show)
+                       , _defSeed    :: Int
+                         -- ^ Default seed to use if one is not provided in EConfig
+                       , _rTypes     :: Text -> Maybe AbiType
+                         -- ^ Return types of any methods we scrape return values from
+                       }
 
 makeLenses 'GenDict
 
@@ -90,21 +96,22 @@ gaddConstants l = constants <>~ hashMapBy abiValueType l
 gaddCalls :: [SolCall] -> GenDict -> GenDict
 gaddCalls c = wholeCalls <>~ hashMapBy (fmap $ fmap abiValueType) c
 
-instance Semigroup GenDict where
-  (GenDict p c w) <> (GenDict p' c' w') = GenDict ((p + p') / 2) (c <> c') (w <> w')
-
-instance Monoid GenDict where
-  mempty = mkGenDict 0 [] []
+defaultDict :: GenDict
+defaultDict = mkGenDict 0 [] [] 0 (const Nothing)
 
 -- This instance is the only way for mkConf to work nicely, and is well-formed.
 {-# ANN module ("HLint: ignore Unused LANGUAGE pragma" :: String) #-}
 -- We need the above since hlint doesn't notice DeriveAnyClass in StandaloneDeriving.
 deriving instance Hashable AbiType
 
--- | Construct a 'GenDict' from some dictionaries and a 'Float'.
-mkGenDict :: Float      -- ^ Percentage of time to mutate instead of synthesiz. Should be in [0,1]
+-- | Construct a 'GenDict' from some dictionaries, a 'Float', a default seed, and a typing rule for
+-- return values
+mkGenDict :: Float      -- ^ Percentage of time to mutate instead of synthesize. Should be in [0,1]
           -> [AbiValue] -- ^ A list of 'AbiValue' constants to use during dictionary-based generation
           -> [SolCall]  -- ^ A list of complete 'SolCall's to mutate
+          -> Int        -- ^ A default seed
+          -> (Text -> Maybe AbiType)
+          -- ^ A return value typing rule
           -> GenDict
 mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fmap abiValueType) cs)
 
@@ -114,19 +121,10 @@ getRandomUint :: MonadRandom m => Int -> m Integer
 getRandomUint n = join $ fromList [(getRandomR (0, 1023), 1), (getRandomR (0, 2 ^ n - 1), 9)]
 
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Doesn't use a dictionary.
+-- Note that we define the dictionary case ('genAbiValueM') first (below), so recursive types can be
+-- be generated using the same dictionary easily
 genAbiValue :: MonadRandom m => AbiType -> m AbiValue
-genAbiValue (AbiUIntType n) = AbiUInt n  . fromInteger <$> getRandomUint n
-genAbiValue (AbiIntType n)  = AbiInt n   . fromInteger <$> getRandomR (-1 * 2 ^ n, 2 ^ (n - 1))
-genAbiValue AbiAddressType  = AbiAddress . fromInteger <$> getRandomR (0, 2 ^ (160 :: Integer) - 1)
-genAbiValue AbiBoolType     = AbiBool <$> getRandom
-genAbiValue (AbiBytesType n)    = AbiBytes n . BS.pack . take n <$> getRandoms
-genAbiValue AbiBytesDynamicType = liftM2 (\n -> AbiBytesDynamic . BS.pack . take n)
-                                         (getRandomR (1, 32)) getRandoms
-genAbiValue AbiStringType       = liftM2 (\n -> AbiString       . BS.pack . take n)
-                                         (getRandomR (1, 32)) getRandoms
-genAbiValue (AbiArrayType n t)      = AbiArray n t <$> V.replicateM n (genAbiValue t)
-genAbiValue (AbiArrayDynamicType t) = fmap (AbiArrayDynamic t) $ getRandomR (1, 32)
-                                      >>= flip V.replicateM (genAbiValue t)
+genAbiValue = flip evalStateT defaultDict . genAbiValueM
 
 -- | Synthesize a random 'SolCall' given its 'SolSignature'. Doesn't use a dictionary.
 genAbiCall :: MonadRandom m => SolSignature -> m SolCall
@@ -208,7 +206,7 @@ canShrinkAbiValue (AbiBytes _ b)       = BS.any (/= 0) b
 canShrinkAbiValue (AbiBytesDynamic "") = False
 canShrinkAbiValue (AbiString "")       = False
 canShrinkAbiValue (AbiArray _ _ l)      = any canShrinkAbiValue l
-canShrinkAbiValue (AbiArrayDynamic _ l) = l == mempty
+canShrinkAbiValue (AbiArrayDynamic _ l) = l /= mempty
 canShrinkAbiValue _ = True
 
 bounds :: forall a. (Bounded a, Integral a) => a -> (Integer, Integer)
@@ -256,17 +254,29 @@ mutateAbiCall = traverse $ traverse mutateAbiValue
 -- | Given a generator taking an @a@ and returning a @b@ and a way to get @b@s associated with some
 -- @a@ from a GenDict, return a generator that takes an @a@ and either synthesizes new @b@s with the
 -- provided generator or uses the 'GenDict' dictionary (when available).
-genWithDict :: (Eq a, Hashable a, MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m)
+genWithDict :: (Eq a, Hashable a, MonadState x m, Has GenDict x, MonadRandom m)
             => (GenDict -> HashMap a [b]) -> (a -> m b) -> a -> m b
 genWithDict f g t = let fromDict = uniformMay . M.lookupDefault [] t . f in gets getter >>= \c ->
   fromMaybe <$> g t <*> (bool (pure Nothing) (fromDict c) . (c ^. pSynthA >=) =<< getRandom)
 
--- | Given an 'AbiType', generate a random 'AbiValue' of that type, possibly with a dictionary.
-genAbiValueM :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m) => AbiType -> m AbiValue
-genAbiValueM = genWithDict (view constants) genAbiValue
+-- | Synthesize a random 'AbiValue' given its 'AbiType'. Requires a dictionary.
+genAbiValueM :: (MonadState x m, Has GenDict x, MonadRandom m) => AbiType -> m AbiValue
+genAbiValueM = genWithDict (view constants) $ \case
+  (AbiUIntType n) -> AbiUInt n  . fromInteger <$> getRandomUint n
+  (AbiIntType n)  -> AbiInt n   . fromInteger <$> getRandomR (-1 * 2 ^ n, 2 ^ (n - 1))
+  AbiAddressType  -> AbiAddress . fromInteger <$> getRandomR (0, 2 ^ (160 :: Integer) - 1)
+  AbiBoolType     -> AbiBool <$> getRandom
+  (AbiBytesType n)    -> AbiBytes n . BS.pack . take n <$> getRandoms
+  AbiBytesDynamicType -> liftM2 (\n -> AbiBytesDynamic . BS.pack . take n)
+                                (getRandomR (1, 32)) getRandoms
+  AbiStringType       -> liftM2 (\n -> AbiString       . BS.pack . take n)
+                                (getRandomR (1, 32)) getRandoms
+  (AbiArrayDynamicType t) -> fmap (AbiArrayDynamic t) $ getRandomR (1, 32)
+                             >>= flip V.replicateM (genAbiValueM t)
+  (AbiArrayType n t)      -> AbiArray n t <$> V.replicateM n (genAbiValueM t)
 
 -- | Given a 'SolSignature', generate a random 'SolCalls' with that signature, possibly with a dictionary.
-genAbiCallM :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m) => SolSignature -> m SolCall
+genAbiCallM :: (MonadState x m, Has GenDict x, MonadRandom m) => SolSignature -> m SolCall
 genAbiCallM = genWithDict (view wholeCalls) (traverse $ traverse genAbiValueM)
 
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one, possibly with a dictionary.
