@@ -51,9 +51,10 @@ type Names = Role -> Addr -> String
 
 -- | Given rules for pretty-printing associated address, pretty-print a 'Transaction'.
 ppTx :: (MonadReader x m, Has Names x) => Tx -> m String
-ppTx (Tx c s r v) = let sOf = either ppSolCall (const "<CREATE>") in
+ppTx (Tx c s r g v) = let sOf = either ppSolCall (const "<CREATE>") in
   view hasLens <&> \f -> sOf c ++ f Sender s ++ f Receiver r
-                      ++ (if v == 0 then "" else "Value: " ++ show v)
+                      ++ (if g /= 0xffffffff then "" else "Gas: "   ++ show g)
+                      ++ (if v == 0          then "" else "Value: " ++ show v)
 
 -- | Given a number of boxes checked and a number of total boxes, pretty-print progress in box-checking.
 progress :: Int -> Int -> String
@@ -118,7 +119,7 @@ isTerminal = liftIO $ (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 -- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
 -- once done.
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
-      , Has TestConf x, Has CampaignConf x, Has Names x, Has UIConf x)
+      , Has TestConf x, Has TxConf x, Has CampaignConf x, Has Names x, Has UIConf x)
    => VM        -- ^ Initial VM state
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
