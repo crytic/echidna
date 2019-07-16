@@ -100,6 +100,12 @@ contracts fp = do
         readSolc =<< writeSystemTempFile ""
                  =<< readCreateProcess (proc "solc" $ usual <> words (a ++ linkLibraries ls)) {std_err = stderr} ""
 
+
+addresses :: (MonadReader x m, Has SolConf x) => m [AbiValue]
+addresses = do 
+              (SolConf ca d ads _ _ _ _ _ _) <- view hasLens
+              return $ map (AbiAddress . fromIntegral) $ nub $ ads ++ [ca, d, 0x0]
+
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm
 populateAddresses (a:as) b vm = populateAddresses as b (vm & set (env . EVM.contracts . at a) (Just account))

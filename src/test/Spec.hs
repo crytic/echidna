@@ -119,6 +119,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_found failed",                   solved      "echidna_found") ]
   , testContract "basic/constants2.sol"   Nothing
       [ ("echidna_found32 failed",                 solved      "echidna_found32") ]
+  , testContract "basic/constants3.sol"   Nothing
+      [ ("echidna_found_sender failed",            solved      "echidna_found_sender") ] 
   , testContract "basic/rconstants.sol"   Nothing
       [ ("echidna_found failed",                   solved      "echidna_found") ]
 -- single.sol is really slow and kind of unstable. it also messes up travis.
@@ -155,7 +157,8 @@ runContract fp c =
     g <- getRandom
     (v,w,ts) <- loadSolTests fp Nothing
     cs  <- contracts fp
-    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [] g (returnTypes cs))
+    ads <- addresses
+    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads) [] g (returnTypes cs))
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . fst . fst) . view tests
