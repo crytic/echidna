@@ -73,21 +73,24 @@ instance FromJSON EConfig where
                           <*> v .:? "shrinkLimit" .!= 5000
                           <*> pure Nothing
                           <*> v .:? "seed"
-        names = const $ const mempty :: Names
-        ppc = cc <&> \c x g -> runReader (ppCampaign x) (c, names) ++ "\nSeed: " ++ show g
+        names :: Names
+        names Sender = (" from: " ++) . show
+        names _      = const ""
+        ppc :: Y.Parser (Campaign -> Int -> String)
+        ppc = liftM2 (\cf xf c g -> runReader (ppCampaign c) (cf, xf, names) ++ "\nSeed: " ++ show g) cc xc
         style :: Y.Parser (Campaign -> Int -> String)
         style = v .:? "format" .!= ("text" :: String) >>=
           \case "text"             -> ppc
                 "json"             -> pure . flip $ \g ->
                   unpack . encode . set (_Object . at "seed") (Just . toJSON $ g) . toJSON;
-                "none"             -> pure . const . const $ ""
+                "none"             -> pure $ \_ _ -> ""
                 _                  -> pure $ \_ _ -> M.fail
                   "unrecognized ui type (should be text, json, or none)" in
     EConfig <$> cc
             <*> pure names
             <*> (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                          <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                         <*> v .:? "sender"         .!= [0x00a329c0648769a73afac7f9381e08fb43dbea70]
+                         <*> v .:? "sender"         .!= [0x10000, 0x20000]
                          <*> v .:? "balanceAddr"    .!= 0xffffffff
                          <*> v .:? "balanceContract".!= 0
                          <*> v .:? "prefix"         .!= "echidna_"
