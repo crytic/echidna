@@ -2,6 +2,9 @@
 
 module Echidna.Test where
 
+import Prelude hiding (Word)
+
+import Control.Lens
 import Control.Monad (ap)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
@@ -43,16 +46,16 @@ classifyRes Reversion = ResRevert
 classifyRes _ = ResOther
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
-checkETest :: (MonadReader x m, Has TestConf x, MonadState y m, Has VM y, MonadThrow m) => SolTest -> m Bool
-checkETest (f, a) = asks getter >>= \(TestConf p s) -> do
+checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m) => SolTest -> m Bool
+checkETest (f, a) = asks getter >>= \(TestConf p s) -> view (hasLens . propGas) >>= \g -> do
   og <- get 
-  res <- execTx (Tx (Left (f, [])) (s a) a 0) >> gets (p f . getter)
+  res <- execTx (Tx (Left (f, [])) (s a) a g 0) >> gets (p f . getter)
   put og
   pure res
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
 -- still solves that test.
-shrinkSeq :: (MonadRandom m, MonadReader x m, Has TestConf x, MonadState y m, Has VM y, MonadThrow m)
+shrinkSeq :: (MonadRandom m, MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
           => SolTest -> [Tx] -> m [Tx]
 shrinkSeq t xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
   check xs' = do {og <- get; res <- traverse_ execTx xs' >> checkETest t; put og; pure res}

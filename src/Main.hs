@@ -39,5 +39,5 @@ main = do Options f c conf <- execParser opts
           cpg <- flip runReaderT cfg $ do
             cs       <- contracts f
             (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
-            ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [] g)
+            ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [] g (returnTypes cs))
           if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess

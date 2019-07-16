@@ -119,19 +119,28 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_found failed",                   solved      "echidna_found") ]
   , testContract "basic/constants2.sol"   Nothing
       [ ("echidna_found32 failed",                 solved      "echidna_found32") ]
-  , testContract "coverage/single.sol"    (Just "coverage/test.yaml")
-      [ ("echidna_state failed",                   solved      "echidna_state") ]
+  , testContract "basic/rconstants.sol"   Nothing
+      [ ("echidna_found failed",                   solved      "echidna_found") ]
+-- single.sol is really slow and kind of unstable. it also messes up travis.
+--  , testContract "coverage/single.sol"    (Just "coverage/test.yaml")
+--      [ ("echidna_state failed",                   solved      "echidna_state") ]
   , testContract "coverage/multi.sol"     Nothing
       [ ("echidna_state3 failed",                  solved      "echidna_state3") ]
   , testContract "basic/balance.sol"      (Just "basic/balance.yaml")
       [ ("echidna_balance failed",                 passed      "echidna_balance") ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
-       [ ("echidna_library_call failed",           solved      "echidna_library_call") ]
+      [ ("echidna_library_call failed",            solved "echidna_library_call") ]
+  , testContract "harvey/foo.sol"         Nothing
+      [ ("echidna_assert failed",                  solved "echidna_assert") ]
+  , testContract "harvey/baz.sol"         Nothing
+      [ ("echidna_all_states failed",              solved "echidna_all_states") ]
   , testContract "basic/fallback.sol"     Nothing
       [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
   , testContract "basic/darray.sol"       Nothing
       [ ("echidna_darray passed",                  solved      "echidna_darray")
       , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
+  , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml") 
+      [ ("echidna_runForever passed",              solved      "echidna_runForever")]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
@@ -146,7 +155,7 @@ runContract fp c =
     g <- getRandom
     (v,w,ts) <- loadSolTests fp Nothing
     cs  <- contracts fp
-    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [] g)
+    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [] g (returnTypes cs))
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . fst . fst) . view tests

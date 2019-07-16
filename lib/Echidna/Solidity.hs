@@ -35,7 +35,7 @@ import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
-import EVM.ABI      (AbiValue(..))
+import EVM.ABI      (AbiType, AbiValue(..))
 import EVM.Exec     (vmForEthrunCreation)
 import EVM.Solidity
 import EVM.Types    (Addr)
@@ -112,7 +112,7 @@ loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
               => [SolcContract] -> Addr -> Addr -> VM -> m VM
 loadLibraries []     _  _ vm = return vm
 loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
-  where loadRest = execStateT (execTx $ Tx (Right $ l ^. creationCode) d la 0) vm
+  where loadRest = execStateT (execTx $ Tx (Right $ l ^. creationCode) d la 0xffffffff 0) vm
 
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
@@ -151,8 +151,9 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   ensure bc (NoBytecode $ c ^. contractName)                                   -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                                     -- Test args check
-    Nothing    -> loadLibraries ls addrLibrary d blank >>=
-                    fmap (, funs ++ [fallback], fst <$> tests) . execStateT (execTx $ Tx (Right bc) d ca (w256 $ fromInteger balc))
+    Nothing    -> loadLibraries ls addrLibrary d blank >>= fmap (, fallback : funs, fst <$> tests) .
+      execStateT (execTx $ Tx (Right bc) d ca 0xffffffff (w256 $ fromInteger balc))
+
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
@@ -221,3 +222,7 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
       fmap (\n -> AbiBytes n . BS.append b $ BS.replicate (n - size) 0) [size..32]
   -- CASE THREE: we're at a leaf node with no constants
   constants _  _ = []
+
+returnTypes :: [SolcContract] -> Text -> Maybe AbiType
+returnTypes cs t = preview (_Just . methodOutput . _Just . _2) .
+  find ((== t) . view methodName) $ concatMap (toList . view abiMap) cs
