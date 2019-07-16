@@ -98,6 +98,12 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
     _ <- readCreateProcess (proc "crytic-compile" $ solargs |> fp) {std_err = stderr} ""
     readSolc "crytic-export/combined_solc.json")
 
+
+addresses :: (MonadReader x m, Has SolConf x) => m [AbiValue]
+addresses = do 
+              (SolConf ca d ads _ _ _ _ _ _) <- view hasLens
+              return $ map (AbiAddress . fromIntegral) $ nub $ ads ++ [ca, d, 0x0]
+
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm
 populateAddresses (a:as) b vm = populateAddresses as b (vm & set (env . EVM.contracts . at a) (Just account))
