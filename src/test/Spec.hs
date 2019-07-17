@@ -44,7 +44,7 @@ compilationTests = testGroup "Compilation and loading tests"
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
-  tryLoad = runReaderT (loadSolidity fp c >> pure ()) $ defaultConfig & sConf . quiet .~ True
+  tryLoad = runReaderT (loadWithCryticCompile fp c >> pure ()) $ defaultConfig & sConf . quiet .~ True
 
 -- Extraction Tests
 

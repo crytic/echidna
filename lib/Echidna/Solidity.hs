@@ -16,18 +16,18 @@ import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
 import Data.Aeson                 (Value(..))
 import Data.ByteString.Lens       (packedChars)
+import Data.DoubleWord            (Int256, Word256)
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
 import Data.List                  (find, nub, partition)
 import Data.List.Lens             (prefixed, suffixed)
-import Data.Maybe                 (isNothing)
+import Data.Maybe                 (isNothing, catMaybes)
 import Data.Monoid                ((<>))
-import Data.Text                  (Text, isPrefixOf, pack, unpack)
+import Data.Text                  (Text, isPrefixOf, isSuffixOf)
 import Data.Text.Lens             (unpacked)
-import Data.Text.Read             (decimal, hexadecimal)
-import System.Process             (readCreateProcess, std_err, proc, StdStream(..))
+import Data.Text.Read             (decimal)
+import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
-import System.IO.Temp             (writeSystemTempFile)
 
 import Echidna.ABI         (SolSignature)
 import Echidna.Exec        (execTx)
@@ -84,21 +84,19 @@ data SolConf = SolConf { _contractAddr    :: Addr    -- ^ Contract address to us
                        }
 makeLenses ''SolConf
 
--- | Given a file, try to compile it and get a list of its contracts, throwing exceptions if necessary.
+-- | Given a file, use its extenstion to check if it is a precompiled contract or try to compile it and
+-- get a list of its contracts, throwing exceptions if necessary.
 contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
-contracts fp = do
-  a <- view (hasLens . solcArgs)
-  q <- view (hasLens . quiet)
+contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"] in do
+  a  <- view (hasLens . solcArgs)
+  q  <- view (hasLens . quiet)
   ls <- view (hasLens . solcLibs)
-  pure (a, q, ls) >>= liftIO . solc >>= (\case
-    Nothing -> throwM CompileFailure
-    Just m  -> pure . toList $ fst m) where
-      usual = ["--combined-json=bin-runtime,bin,srcmap,srcmap-runtime,abi,ast", fp]
-      solc (a, q, ls) = do
-        stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode
-                       else pure Inherit
-        readSolc =<< writeSystemTempFile ""
-                 =<< readCreateProcess (proc "solc" $ usual <> words (a ++ linkLibraries ls)) {std_err = stderr} ""
+  let solargs = a ++ linkLibraries ls & (usual ++) . 
+                  (\sa -> if null sa then [] else ["--solc-args", sa])
+  maybe (throwM CompileFailure) (pure . toList . fst) =<< liftIO (do
+    stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
+    _ <- readCreateProcess (proc "crytic-compile" $ solargs |> fp) {std_err = stderr} ""
+    readSolc "crytic-export/combined_solc.json")
 
 
 addresses :: (MonadReader x m, Has SolConf x) => m [AbiValue]
@@ -125,7 +123,8 @@ loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
 linkLibraries [] = ""
-linkLibraries ls = "--libraries " ++ concat (imap (\i x -> concat [x, ":", show $ addrLibrary + (toEnum i :: Addr) , ","]) ls)
+linkLibraries ls = "--libraries " ++
+  iconcatMap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -141,7 +140,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   liftIO $ do
     when (isNothing name && length cs > 1 && not q) $
       putStrLn "Multiple contracts found in file, only analyzing the first"
-    unless q . putStrLn $ "Analyzing contract: " <> unpack (c ^. contractName)
+    unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
   (SolConf ca d ads bala balc pref _ libs _) <- view hasLens
@@ -151,7 +150,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
       (tests, funs) = partition (isPrefixOf pref . fst) abi
 
   -- Select libraries
-  ls <- mapM (choose cs . Just . pack) libs
+  ls <- mapM (choose cs . Just . T.pack) libs
 
   -- Make sure everything is ready to use, then ship it
   mapM_ (uncurry ensure) [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)] -- ABI checks
@@ -165,7 +164,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
-                                      find ((n ==) . view contractName) cs
+                                      find (isSuffixOf n . view contractName) cs
         fallback = ("",[])
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
@@ -173,9 +172,12 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
 -- the first contract in the file. Take said contract and return an initial VM state with it loaded,
 -- its ABI (as 'SolSignature's), and the names of its Echidna tests. NOTE: unlike 'loadSpecified',
 -- contract names passed here don't need the file they occur in specified.
-loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+--loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+--             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
+--loadSolidity fp name = contracts fp >>= loadSpecified name
+loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
-loadSolidity fp name = contracts fp >>= loadSpecified ((pack fp <>) <$> name)
+loadWithCryticCompile fp name = contracts fp >>= loadSpecified name 
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
@@ -188,38 +190,41 @@ prepareForTest (v, a, ts) = let r = v ^. state . contract in
 -- a testing function.
 loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, World, [(Text, Addr)])
-loadSolTests fp name = loadSolidity fp name >>= prepareForTest
+loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
+
+mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
+mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Nothing
+
+mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue
+mkValidAbiUInt i x = if x <= 2 ^ i - 1 then Just $ AbiUInt i x else Nothing
 
 -- | Given a list of 'SolcContract's, try to parse out string and integer literals
 extractConstants :: [SolcContract] -> [AbiValue]
 extractConstants = nub . concatMap (constants "" . view contractAst) where
   -- Tools for parsing numbers and quoted strings from 'Text'
-  as f     = preview $ to f . _Right . _1
-  asAddr x = as hexadecimal =<< T.stripPrefix "0x" x
-  asQuoted = preview $ unpacked . prefixed "\"" . suffixed "\"" . packedChars
+  asDecimal = preview $ to decimal . _Right . _1
+  asQuoted  = preview $ unpacked . prefixed "\"" . suffixed "\"" . packedChars
   -- We need this because sometimes @solc@ emits a json string with a type, then a string
   -- representation of some value of that type. Why is this? Unclear. Anyway, this lets us match
   -- those cases like regular strings
-  literal t f = \case String (T.words -> ((^? only t) -> m) : y : _) -> m *> f y
-                      _                                              -> Nothing
+  literal t f (String (T.words -> ((^? only t) -> m) : y : _)) = m *> f y
+  literal _ _ _                                                = Nothing
+  -- When we get a number, it could be an address, uint, or int. We'll try everything.
+  dec i = let l f = f <$> [8,16..256] <*> fmap fromIntegral [i-1..i+1] in
+    AbiAddress i : catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
   -- 'constants' takes a property name and its 'Value', then tries to find solidity literals
   -- CASE ONE: we're looking at a big object with a bunch of little objects, recurse
   constants _ (Object o) = concatMap (uncurry constants) $ M.toList o
   constants _ (Array  a) = concatMap (constants "")        a
-  -- CASE TWO: we're looking at a @type@ or @value@ object, try to parse it
-  -- 2.1: We're looking at a @value@ starting with "0x", which is how solc represents addresses
-  --      @value: "0x123"@ ==> @[AbiAddress 291]@
-  constants "value" (String                   (asAddr      -> Just i)) = [AbiAddress i]
-  -- 2.2: We're looking at something of the form @type: int_const [...]@, an integer literal
-  --      @type: "int_const 123"@ ==> @[AbiUInt 8 123, AbiUInt 16 123, ... AbiInt 256 123]@
-  constants "type"  (literal "int_const"      (as decimal) -> Just i) =
-    let l f = f <$> [8,16..256] <*> (fromIntegral <$> ([i-1..i+1] :: [Integer])) in l AbiInt ++ l AbiUInt
-  -- 2.3: We're looking at something of the form @type: literal_string "[...]"@, a string literal
+  -- CASE TWO: we're looking at a @type@, try to parse it
+  -- 2.1: We're looking at a @int_const@ with a decimal number inside, could be an address, int, or uint
+  --      @type: "int_const 0x12"@ ==> @[AbiAddress 18, AbiUInt 8 18,..., AbiUInt 256 18, AbiInt 8 18,...]@
+  constants "typeString" (literal "int_const" asDecimal -> Just i) = dec i
+  -- 2.2: We're looking at something of the form @type: literal_string "[...]"@, a string literal
   --      @type: "literal_string \"123\""@ ==> @[AbiString "123", AbiBytes 3 "123"...]@
-  constants "type"  (literal "literal_string" asQuoted     -> Just b) =
-   let size = BS.length b in  
-   ([AbiString, AbiBytesDynamic] <&> ($ b)) ++
-   map (\n -> AbiBytes n (BS.append b (BS.replicate (n - size) 0))) [size .. 32]
+  constants "typeString" (literal "literal_string" asQuoted -> Just b) =
+    let size = BS.length b in [AbiString b, AbiBytesDynamic b] ++
+      fmap (\n -> AbiBytes n . BS.append b $ BS.replicate (n - size) 0) [size..32]
   -- CASE THREE: we're at a leaf node with no constants
   constants _  _ = []
 
