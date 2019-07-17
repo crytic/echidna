@@ -18,3 +18,5 @@ cabal.sandbox.config
 .stack-work/
 cabal.project.local
 .HTF/
+crytic-export/
+echidna.cabal
