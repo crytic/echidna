@@ -1,15 +1,36 @@
-testLimit: 10000
-seqLen: 100
-shrinkLimit: 5000
-dashboard: true
-style: "text"
-shrinkLimit: 5000
-contractAddr: "0x00a329c0648769a73afac7f9381e08fb43dbea72"
-deployer: "0x00a329c0648769a73afac7f9381e08fb43dbea70"
-sender: ["0x00a329c0648769a73afac7f9381e08fb43dbea70"]
-initialBalance: 0xffffffff
+#psender is the sender for property transactions; by default intentionally
+#the same as contract deployer
 psender: "0x00a329c0648769a73afac7f9381e08fb43dbea70"
+#prefix is the prefix for Boolean functions that are properties to be checked
 prefix: "echidna_"
+#propMaxGas defines gas cost at which a property fails
+propMaxGas: 8000030
+#testMaxGas is a gas limit; does not cause failure, but terminates sequence
+testMaxGas: 0xffffffff
+#testLimit is the number of test sequences to run
+testLimit: 50000
+#seqLen defines how many transactions are in a test sequence
+seqLen: 100
+#shrinkLimit determines how much effort is spent shrinking failing sequences
+shrinkLimit: 5000
+#format can be "text" or "json" for different output (human or machine readable)
+format: "text"
+#contractAddr is the address of the contract itself
+contractAddr: "0x00a329c0648769a73afac7f9381e08fb43dbea72"
+#deployer is address of the contract deployer (who often is privileged owner, etc.)
+deployer: "0x00a329c0648769a73afac7f9381e08fb43dbea70"
+#sender is set of addresses transactions may originate from
+sender: ["0x10000", "0x20000", "0x00a329c0648769a73afac7f9381e08fb43dbea70"]
+#balanceAddr is default balance for addresses
+balanceAddr: 0xffffffff
+#balanceContract overrides balanceAddr for the contract address
+balanceContract: 0
+#solcArgs allows special Args to solc
 solcArgs: ""
+#solcLibs is solc libraries
+solcLibs: ""
+#quiet produces (much) less verbose output
 quiet: False
-#seed not defined
+#dashboard determines if output is just text or an AFL-like display
+dashboard: true
+#seed not defined by default, is the random seed

@@ -70,7 +70,8 @@ Echidna's CLI can be used to choose the contract to test and load a configuratio
 $ echidna-test contract.sol TEST --config="config.yaml"
 ```
 
-The configuration file allows users to choose EVM and test generation parameters. An example of a complete config file with the default options can be found at [examples/solidity/basic/default.yaml](examples/solidity/basic/default.yaml). More detailed documentation on the configuration options is available in our [wiki](https://github.com/trailofbits/echidna/wiki/Config).
+The configuration file allows users to choose EVM and test generation
+parameters. An example of a complete and annotated config file with the default options can be found at [examples/solidity/basic/default.yaml](examples/solidity/basic/default.yaml). More detailed documentation on the configuration options is available in our [wiki](https://github.com/trailofbits/echidna/wiki/Config).
 
 ### Advanced usage
 

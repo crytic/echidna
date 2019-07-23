@@ -66,7 +66,7 @@ instance FromJSON EConfig where
                 return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result)
                                   (const psender)
         xc = liftM2 TxConf
-               (C Dull . fromIntegral <$> v .:? "propMaxGas"  .!= (0xffffffff :: Integer))
+               (C Dull . fromIntegral <$> v .:? "propMaxGas"  .!= (8000030 :: Integer))
                (C Dull . fromIntegral <$> v .:? "testMaxGas"  .!= (0xffffffff :: Integer))
         cc = CampaignConf <$> v .:? "testLimit"   .!= 50000
                           <*> v .:? "seqLen"      .!= 100
@@ -90,7 +90,7 @@ instance FromJSON EConfig where
             <*> pure names
             <*> (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                          <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                         <*> v .:? "sender"         .!= [0x10000, 0x20000]
+                         <*> v .:? "sender"         .!= [0x10000, 0x20000, 0x00a329c0648769a73afac7f9381e08fb43dbea70]
                          <*> v .:? "balanceAddr"    .!= 0xffffffff
                          <*> v .:? "balanceContract".!= 0
                          <*> v .:? "prefix"         .!= "echidna_"
