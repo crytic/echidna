@@ -72,15 +72,16 @@ instance Show SolException where
 instance Exception SolException
 
 -- | Configuration for loading Solidity for Echidna testing.
-data SolConf = SolConf { _contractAddr    :: Addr    -- ^ Contract address to use
-                       , _deployer        :: Addr    -- ^ Contract deployer address to use
-                       , _sender          :: [Addr]  -- ^ Sender addresses to use
-                       , _balanceAddr     :: Integer -- ^ Initial balance of deployer and senders
-                       , _balanceContract :: Integer -- ^ Initial balance of contract to test
-                       , _prefix          :: Text    -- ^ Function name prefix used to denote tests
-                       , _solcArgs        :: String  -- ^ Args to pass to @solc@
+data SolConf = SolConf { _contractAddr    :: Addr     -- ^ Contract address to use
+                       , _deployer        :: Addr     -- ^ Contract deployer address to use
+                       , _sender          :: [Addr]   -- ^ Sender addresses to use
+                       , _balanceAddr     :: Integer  -- ^ Initial balance of deployer and senders
+                       , _balanceContract :: Integer  -- ^ Initial balance of contract to test
+                       , _prefix          :: Text     -- ^ Function name prefix used to denote tests
+                       , _solcArgs        :: String   -- ^ Args to pass to @solc@
                        , _solcLibs        :: [String] -- ^ List of libraries to load, in order.
-                       , _quiet           :: Bool    -- ^ Suppress @solc@ output, errors, and warnings
+                       , _quiet           :: Bool     -- ^ Suppress @solc@ output, errors, and warnings
+                       , _checkAsserts    :: Bool     -- ^ Test if we can cause assertions to fail
                        }
 makeLenses ''SolConf
 
@@ -100,9 +101,8 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
 
 
 addresses :: (MonadReader x m, Has SolConf x) => m [AbiValue]
-addresses = do 
-              (SolConf ca d ads _ _ _ _ _ _) <- view hasLens
-              return $ map (AbiAddress . fromIntegral) $ nub $ ads ++ [ca, d, 0x0]
+addresses = view hasLens <&> \(SolConf ca d ads _ _ _ _ _ _ _) ->
+  AbiAddress . fromIntegral <$> nub (ads ++ [ca, d, 0x0])
 
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm
@@ -143,7 +143,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  (SolConf ca d ads bala balc pref _ libs _) <- view hasLens
+  (SolConf ca d ads bala balc pref _ libs _ _) <- view hasLens
   let bc = c ^. creationCode
       blank = populateAddresses (ads |> d) bala (vmForEthrunCreation bc)
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
@@ -183,8 +183,9 @@ loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
                => (VM, [SolSignature], [Text]) -> m (VM, World, [(Text, Addr)])
-prepareForTest (v, a, ts) = let r = v ^. state . contract in
-  view (hasLens . sender) <&> \s -> (v, World s [(r, a)], zip ts $ repeat r)
+prepareForTest (v, a, ts) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ ch) ->
+  (v, World s [(r, a)], zip (ts ++ if ch then ["<ASSERTIONS>"] else []) $ repeat r) where
+    r = v ^. state . contract
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.

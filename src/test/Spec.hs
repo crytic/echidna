@@ -110,7 +110,7 @@ integrationTests = testGroup "Solidity Integration Testing"
         ("echidna_all_sender solved without " ++ unpack n, solvedWith (n, []) "echidna_all_sender"))
 
   , testContract "basic/memory-reset.sol" Nothing
-      [ ("echidna_memory failed",      passed "echidna_memory") ]
+      [ ("echidna_memory failed",                  passed "echidna_memory") ]
   , testContract "basic/contractAddr.sol" Nothing
       [ ("echidna_address failed",                 solved      "echidna_address") ]
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
@@ -143,6 +143,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
   , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml") 
       [ ("echidna_runForever passed",              solved      "echidna_runForever")]
+  , testContract "basic/assert.sol"       (Just "basic/assert.yaml") 
+      [ ("<ASSERTIONS> passed",                    solved      "<ASSERTIONS>")]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
