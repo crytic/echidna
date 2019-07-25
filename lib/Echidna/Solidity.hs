@@ -85,6 +85,10 @@ data SolConf = SolConf { _contractAddr    :: Addr     -- ^ Contract address to u
                        }
 makeLenses ''SolConf
 
+-- | An Echidna test is either the name of the function to call and the address where its contract is,
+-- or a function that could experience an exception
+type SolTest = Either (Text, Addr) SolSignature
+
 -- | Given a file, use its extenstion to check if it is a precompiled contract or try to compile it and
 -- get a list of its contracts, throwing exceptions if necessary.
 contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
@@ -182,15 +186,15 @@ loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
-               => (VM, [SolSignature], [Text]) -> m (VM, World, [(Text, Addr)])
+               => (VM, [SolSignature], [Text]) -> m (VM, World, [SolTest])
 prepareForTest (v, a, ts) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ ch) ->
-  (v, World s [(r, a)], zip (ts ++ if ch then ["<ASSERTIONS>"] else []) $ repeat r) where
+  (v, World s [(r, a)], fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a else []) where
     r = v ^. state . contract
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
 loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
-             => FilePath -> Maybe Text -> m (VM, World, [(Text, Addr)])
+             => FilePath -> Maybe Text -> m (VM, World, [SolTest])
 loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
 
 mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue

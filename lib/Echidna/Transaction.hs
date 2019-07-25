@@ -21,7 +21,7 @@ import Data.Has (Has(..))
 import Data.List (intercalate)
 import Data.Set (Set)
 import EVM
-import EVM.ABI (abiCalldata, abiTypeSolidity, abiValueType)
+import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
 
@@ -133,4 +133,4 @@ setupTx (Tx c s r g v) = liftSH . sequence_ $
       Left cd  -> loadContract r >> state . calldata .= encode cd
       Right bc -> assign (env . contracts . at r) (Just $ initialContract (RuntimeCode bc) & set balance v) >> loadContract r
     encode (n, vs) = abiCalldata
-      (n <> "(" <> T.intercalate "," (abiTypeSolidity . abiValueType <$> vs) <> ")") $ V.fromList vs
+      (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
