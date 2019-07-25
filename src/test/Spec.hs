@@ -110,7 +110,7 @@ integrationTests = testGroup "Solidity Integration Testing"
         ("echidna_all_sender solved without " ++ unpack n, solvedWith (n, []) "echidna_all_sender"))
 
   , testContract "basic/memory-reset.sol" Nothing
-      [ ("echidna_memory failed",                  passed "echidna_memory") ]
+      [ ("echidna_memory failed",                  passed      "echidna_memory") ]
   , testContract "basic/contractAddr.sol" Nothing
       [ ("echidna_address failed",                 solved      "echidna_address") ]
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
@@ -131,20 +131,21 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/balance.sol"      (Just "basic/balance.yaml")
       [ ("echidna_balance failed",                 passed      "echidna_balance") ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
-      [ ("echidna_library_call failed",            solved "echidna_library_call") ]
+      [ ("echidna_library_call failed",            solved      "echidna_library_call") ]
   , testContract "harvey/foo.sol"         Nothing
-      [ ("echidna_assert failed",                  solved "echidna_assert") ]
+      [ ("echidna_assert failed",                  solved      "echidna_assert") ]
   , testContract "harvey/baz.sol"         Nothing
-      [ ("echidna_all_states failed",              solved "echidna_all_states") ]
+      [ ("echidna_all_states failed",              solved      "echidna_all_states") ]
   , testContract "basic/fallback.sol"     Nothing
       [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
   , testContract "basic/darray.sol"       Nothing
       [ ("echidna_darray passed",                  solved      "echidna_darray")
       , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
   , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml") 
-      [ ("echidna_runForever passed",              solved      "echidna_runForever")]
+      [ ("echidna_runForever passed",              solved      "echidna_runForever") ]
   , testContract "basic/assert.sol"       (Just "basic/assert.yaml") 
-      [ ("<ASSERTIONS> passed",                    solved      "<ASSERTIONS>")]
+      [ ("echidna_set0 passed",                    solved      "set0")
+      , ("echidna_set1 failed",                    passed      "set1") ]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
@@ -163,7 +164,7 @@ runContract fp c =
     campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads) [] g (returnTypes cs))
 
 getResult :: Text -> Campaign -> Maybe TestState
-getResult t = fmap snd <$> find ((t ==) . fst . fst) . view tests
+getResult t = fmap snd <$> find ((t ==) . either fst fst . fst) . view tests
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor t c = case getResult t c of

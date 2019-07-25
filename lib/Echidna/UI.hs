@@ -21,7 +21,7 @@ import Data.Either (either)
 import Data.Has (Has(..))
 import Data.List (nub)
 import Data.Map (Map)
-import Data.Maybe (maybe, fromMaybe)
+import Data.Maybe (catMaybes, maybe, fromMaybe)
 import Data.Set (Set)
 import EVM (VM)
 import EVM.Types (Addr, W256)
@@ -86,10 +86,10 @@ ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m th
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppTests (Campaign ts _ _) = unlines <$> mapM pp ts where
-  pp (Left _,       Open _) = pure ""
-  pp (Left  (n, _), s)      =                    ((T.unpack n ++ ": ") ++) <$> ppTS s
-  pp (Right (n, _), s)      = (("assertion in " ++ T.unpack n ++ ": ") ++) <$> ppTS s
+ppTests (Campaign ts _ _) = unlines . catMaybes <$> mapM pp ts where
+  pp (Left  (n, _), s)      = Just .                    ((T.unpack n ++ ": ") ++) <$> ppTS s
+  pp (Right _,      Open _) = pure Nothing
+  pp (Right (n, _), s)      = Just . (("assertion in " ++ T.unpack n ++ ": ") ++) <$> ppTS s
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: Map W256 (Set Int) -> Maybe String
