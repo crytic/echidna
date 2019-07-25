@@ -1,0 +1,2 @@
+contractAddr: "0x12342"
+initialize: "./examples/basic_multicontract/export.json"
