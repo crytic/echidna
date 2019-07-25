@@ -147,7 +147,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  (SolConf ca d ads bala balc pref _ libs _ _) <- view hasLens
+  (SolConf ca d ads bala balc pref _ libs _ ch) <- view hasLens
   let bc = c ^. creationCode
       blank = populateAddresses (ads |> d) bala (vmForEthrunCreation bc)
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
@@ -157,10 +157,11 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   ls <- mapM (choose cs . Just . T.pack) libs
 
   -- Make sure everything is ready to use, then ship it
-  mapM_ (uncurry ensure) [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)] -- ABI checks
-  ensure bc (NoBytecode $ c ^. contractName)                                   -- Bytecode check
+  mapM_ (uncurry ensure) $ [(abi, NoFuncs), (funs, OnlyTests)]
+                        ++ if ch then [] else [(tests, NoTests)] -- ABI checks
+  ensure bc (NoBytecode $ c ^. contractName)                     -- Bytecode check
   case find (not . null . snd) tests of
-    Just (t,_) -> throwM $ TestArgsFound t                                     -- Test args check
+    Just (t,_) -> throwM $ TestArgsFound t                       -- Test args check
     Nothing    -> loadLibraries ls addrLibrary d blank >>= fmap (, fallback : funs, fst <$> tests) .
       execStateT (execTx $ Tx (Right bc) d ca 0xffffffff (w256 $ fromInteger balc))
 
