@@ -144,8 +144,8 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml") 
       [ ("echidna_runForever passed",              solved      "echidna_runForever") ]
   , testContract "basic/assert.sol"       (Just "basic/assert.yaml") 
-      [ ("echidna_set0 passed",                    solved      "set0")
-      , ("echidna_set1 failed",                    passed      "set1") ]
+      [ ("echidna_set0 passed",                    solved      "ASSERTION set0")
+      , ("echidna_set1 failed",                    passed      "ASSERTION set1") ]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
@@ -164,7 +164,7 @@ runContract fp c =
     campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads) [] g (returnTypes cs))
 
 getResult :: Text -> Campaign -> Maybe TestState
-getResult t = fmap snd <$> find ((t ==) . either fst fst . fst) . view tests
+getResult t = fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor t c = case getResult t c of
