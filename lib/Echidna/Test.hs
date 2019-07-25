@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Echidna.Test where
 
@@ -15,7 +16,7 @@ import Data.Foldable (traverse_)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import EVM (VMResult(..), VM)
+import EVM (Error(..), VMResult(..), VM, result)
 import EVM.ABI (AbiValue(..), encodeAbiValue)
 import EVM.Types (Addr)
 
@@ -51,7 +52,10 @@ classifyRes _ = ResOther
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m) => SolTest -> m Bool
 checkETest (f, a) = asks getter >>= \(TestConf p s) -> view (hasLens . propGas) >>= \g -> do
   og <- get 
-  res <- execTx (Tx (Left (f, [])) (s a) a g 0) >> gets (p f . getter)
+  res <- if f == "<ASSERTIONS>"
+    then use (hasLens . result) <&> \case (Just (VMFailure (UnrecognizedOpcode 0xfe))) -> False
+                                          _                                            -> True
+    else execTx (Tx (Left (f, [])) (s a) a g 0) >> gets (p f . getter)
   put og
   pure res
 

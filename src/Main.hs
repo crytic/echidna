@@ -32,7 +32,6 @@ opts = info (options <**> helper) $ fullDesc
   <> header "Echidna"
 
 main :: IO ()
-
 main = do Options f c conf <- execParser opts
           g   <- getRandom
           cfg <- maybe (pure defaultConfig) parseConfig conf
