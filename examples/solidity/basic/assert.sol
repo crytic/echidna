@@ -4,7 +4,4 @@ contract Test {
   }
   function set1(int val) public returns (bool){
   }
-  function echidna_true() public returns (bool){
-    return(true);
-  }
 }
