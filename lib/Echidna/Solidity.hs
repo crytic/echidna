@@ -45,6 +45,7 @@ import EVM.Concrete (w256)
 import qualified Data.ByteString     as BS
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text           as T
+import qualified EVM as E (contracts)
 
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
@@ -142,12 +143,13 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   -- Local variables
   (SolConf ca d ads bala balc pref _ libs _ fp) <- view hasLens
   let bc = c ^. creationCode
-  -- Set up initial VM, either with chosen contract or Etheno initialization file
-  -- need to use snd to add to ABI dict
-  (blank', _) <- maybe (pure (vmForEthrunCreation bc, [])) (loadEthenoBatch bc) fp
-  let blank = populateAddresses (ads |> d) bala blank'
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
+  -- Set up initial VM, either with chosen contract or Etheno initialization file
+  -- need to use snd to add to ABI dict
+  (blank', _) <- maybe (pure (vmForEthrunCreation bc, [])) (loadEthenoBatch (fst <$> tests)) fp
+  liftIO . print $ blank' ^. env . E.contracts . to length
+  let blank = populateAddresses (ads |> d) bala blank'
 
   -- Select libraries
   ls <- mapM (choose cs . Just . pack) libs
