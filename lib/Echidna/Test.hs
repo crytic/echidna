@@ -10,22 +10,22 @@ import Control.Monad ((<=<), ap)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform, uniformMay)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import Control.Monad.State.Strict (MonadState(..), gets)
+import Control.Monad.State.Strict (MonadState(get, put), gets)
 import Data.Bool (bool)
 import Data.Foldable (traverse_)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import EVM (Error(..), VMResult(..), VM, result)
-import EVM.ABI (AbiValue(..), encodeAbiValue)
+import EVM (Error(..), VMResult(..), VM, calldata, result, state)
+import EVM.ABI (AbiValue(..), abiCalldata, encodeAbiValue)
 import EVM.Types (Addr)
 
+import qualified Data.ByteString as BS
+
+import Echidna.ABI
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
-
--- | An Echidna test is just the name of the function to call and the address where its contract is.
-type SolTest = (Text, Addr)
 
 -- | Configuration for evaluating Echidna tests.
 data TestConf = TestConf { classifier :: Text -> VM -> Bool
@@ -49,13 +49,17 @@ classifyRes Reversion = ResRevert
 classifyRes _ = ResOther
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
-checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m) => SolTest -> m Bool
-checkETest (f, a) = asks getter >>= \(TestConf p s) -> view (hasLens . propGas) >>= \g -> do
+checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+           => SolTest -> m Bool
+checkETest t = asks getter >>= \(TestConf p s) -> view (hasLens . propGas) >>= \g -> do
   og <- get 
-  res <- if f == "<ASSERTIONS>"
-    then use (hasLens . result) <&> \case (Just (VMFailure (UnrecognizedOpcode 0xfe))) -> False
-                                          _                                            -> True
-    else execTx (Tx (Left (f, [])) (s a) a g 0) >> gets (p f . getter)
+  let matchR (Just (VMFailure (UnrecognizedOpcode 0xfe))) = False
+      matchR _                                            = True
+      matchC sig = not . (BS.isPrefixOf . BS.take 4 $ abiCalldata (encodeSig sig) mempty)
+  res <- case t of
+    Left  (f, a) -> execTx (Tx (Left (f, [])) (s a) a g 0) >> gets (p f . getter)
+    Right sig    -> (||) <$> fmap matchR       (use $ hasLens . result)
+                         <*> fmap (matchC sig) (use $ hasLens . state . calldata)
   put og
   pure res
 

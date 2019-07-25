@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Echidna.UI where
 
@@ -85,7 +86,10 @@ ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m th
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppTests (Campaign ts _ _) = unlines <$> mapM (\((n, _), s) -> ((T.unpack n ++ ": ") ++ ) <$> ppTS s) ts
+ppTests (Campaign ts _ _) = unlines <$> mapM pp ts where
+  pp (Left _,       Open _) = pure ""
+  pp (Left  (n, _), s)      =                    ((T.unpack n ++ ": ") ++) <$> ppTS s
+  pp (Right (n, _), s)      = (("assertion in " ++ T.unpack n ++ ": ") ++) <$> ppTS s
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: Map W256 (Set Int) -> Maybe String
