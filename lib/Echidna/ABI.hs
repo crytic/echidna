@@ -24,11 +24,12 @@ import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Vector (Vector)
 import Data.Word8 (Word8)
-import EVM.ABI (AbiType(..), AbiValue(..), abiValueType)
+import EVM.ABI (AbiType(..), AbiValue(..), abiTypeSolidity, abiValueType)
 import Numeric (showHex)
 
 import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
+import qualified Data.Text as T
 import qualified Data.Vector as V
 
 -- | Pretty-print some 'AbiValue'.
@@ -71,6 +72,10 @@ type SolCall      = (Text, [AbiValue])
 -- | Represents the type of a Solidity function.
 -- A tuple of 'Text' for the name of the function, and then the 'AbiType's of any arguments it expects.
 type SolSignature = (Text, [AbiType])
+
+-- | Get the text signature of a solidity method (for later hashing)
+encodeSig :: SolSignature -> Text
+encodeSig (n, ts) = n <> "(" <> T.intercalate "," (abiTypeSolidity <$> ts) <> ")"
 
 -- | Configuration necessary for generating new 'SolCalls'. Don't construct this by hand! Use 'mkConf'.
 data GenDict = GenDict { _pSynthA    :: Float

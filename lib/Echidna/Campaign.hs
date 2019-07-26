@@ -20,7 +20,6 @@ import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execS
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Aeson (ToJSON(..), object)
-import Data.Bifunctor (Bifunctor(..))
 import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
 import Data.Either (lefts)
@@ -30,7 +29,6 @@ import Data.Maybe (fromMaybe, isNothing, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
-import Data.Text (unpack)
 import EVM
 import EVM.ABI
 import EVM.Types (W256)
@@ -94,8 +92,11 @@ data Campaign = Campaign { _tests    :: [(SolTest, TestState)] -- ^ Tests being 
                          }
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co _) = object $ ("tests", toJSON $ bimap (unpack . fst) toJSON <$> ts)
-    : if co == mempty then [] else [("coverage",) . toJSON . mapKeys (`showHex` "") $ toList <$> co]
+  toJSON (Campaign ts co _) = object $ ("tests", toJSON $ mapMaybe format ts)
+    : if co == mempty then [] else [("coverage",) . toJSON . mapKeys (`showHex` "") $ toList <$> co] where
+      format (Right _,      Open _) = Nothing
+      format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
+      format (Left (n, _),  s)      = Just (n,                    toJSON s)
 
 makeLenses ''Campaign
 

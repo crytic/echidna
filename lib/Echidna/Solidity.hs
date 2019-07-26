@@ -72,17 +72,22 @@ instance Show SolException where
 instance Exception SolException
 
 -- | Configuration for loading Solidity for Echidna testing.
-data SolConf = SolConf { _contractAddr    :: Addr    -- ^ Contract address to use
-                       , _deployer        :: Addr    -- ^ Contract deployer address to use
-                       , _sender          :: [Addr]  -- ^ Sender addresses to use
-                       , _balanceAddr     :: Integer -- ^ Initial balance of deployer and senders
-                       , _balanceContract :: Integer -- ^ Initial balance of contract to test
-                       , _prefix          :: Text    -- ^ Function name prefix used to denote tests
-                       , _solcArgs        :: String  -- ^ Args to pass to @solc@
+data SolConf = SolConf { _contractAddr    :: Addr     -- ^ Contract address to use
+                       , _deployer        :: Addr     -- ^ Contract deployer address to use
+                       , _sender          :: [Addr]   -- ^ Sender addresses to use
+                       , _balanceAddr     :: Integer  -- ^ Initial balance of deployer and senders
+                       , _balanceContract :: Integer  -- ^ Initial balance of contract to test
+                       , _prefix          :: Text     -- ^ Function name prefix used to denote tests
+                       , _solcArgs        :: String   -- ^ Args to pass to @solc@
                        , _solcLibs        :: [String] -- ^ List of libraries to load, in order.
-                       , _quiet           :: Bool    -- ^ Suppress @solc@ output, errors, and warnings
+                       , _quiet           :: Bool     -- ^ Suppress @solc@ output, errors, and warnings
+                       , _checkAsserts    :: Bool     -- ^ Test if we can cause assertions to fail
                        }
 makeLenses ''SolConf
+
+-- | An Echidna test is either the name of the function to call and the address where its contract is,
+-- or a function that could experience an exception
+type SolTest = Either (Text, Addr) SolSignature
 
 -- | Given a file, use its extenstion to check if it is a precompiled contract or try to compile it and
 -- get a list of its contracts, throwing exceptions if necessary.
@@ -100,9 +105,8 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
 
 
 addresses :: (MonadReader x m, Has SolConf x) => m [AbiValue]
-addresses = do 
-              (SolConf ca d ads _ _ _ _ _ _) <- view hasLens
-              return $ map (AbiAddress . fromIntegral) $ nub $ ads ++ [ca, d, 0x0]
+addresses = view hasLens <&> \(SolConf ca d ads _ _ _ _ _ _ _) ->
+  AbiAddress . fromIntegral <$> nub (ads ++ [ca, d, 0x0])
 
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm
@@ -143,7 +147,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  (SolConf ca d ads bala balc pref _ libs _) <- view hasLens
+  (SolConf ca d ads bala balc pref _ libs _ ch) <- view hasLens
   let bc = c ^. creationCode
       blank = populateAddresses (ads |> d) bala (vmForEthrunCreation bc)
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
@@ -153,10 +157,11 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   ls <- mapM (choose cs . Just . T.pack) libs
 
   -- Make sure everything is ready to use, then ship it
-  mapM_ (uncurry ensure) [(abi, NoFuncs), (tests, NoTests), (funs, OnlyTests)] -- ABI checks
-  ensure bc (NoBytecode $ c ^. contractName)                                   -- Bytecode check
+  mapM_ (uncurry ensure) $ [(abi, NoFuncs), (funs, OnlyTests)]
+                        ++ if ch then [] else [(tests, NoTests)] -- ABI checks
+  ensure bc (NoBytecode $ c ^. contractName)                     -- Bytecode check
   case find (not . null . snd) tests of
-    Just (t,_) -> throwM $ TestArgsFound t                                     -- Test args check
+    Just (t,_) -> throwM $ TestArgsFound t                       -- Test args check
     Nothing    -> loadLibraries ls addrLibrary d blank >>= fmap (, fallback : funs, fst <$> tests) .
       execStateT (execTx $ Tx (Right bc) d ca 0xffffffff (w256 $ fromInteger balc))
 
@@ -182,14 +187,15 @@ loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
-               => (VM, [SolSignature], [Text]) -> m (VM, World, [(Text, Addr)])
-prepareForTest (v, a, ts) = let r = v ^. state . contract in
-  view (hasLens . sender) <&> \s -> (v, World s [(r, a)], zip ts $ repeat r)
+               => (VM, [SolSignature], [Text]) -> m (VM, World, [SolTest])
+prepareForTest (v, a, ts) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ ch) ->
+  (v, World s [(r, a)], fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a else []) where
+    r = v ^. state . contract
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
 loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
-             => FilePath -> Maybe Text -> m (VM, World, [(Text, Addr)])
+             => FilePath -> Maybe Text -> m (VM, World, [SolTest])
 loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
 
 mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
