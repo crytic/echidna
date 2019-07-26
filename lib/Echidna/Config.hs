@@ -96,7 +96,8 @@ instance FromJSON EConfig where
                          <*> v .:? "prefix"         .!= "echidna_"
                          <*> v .:? "solcArgs"       .!= ""
                          <*> v .:? "solcLibs"       .!= []
-                         <*> v .:? "quiet"          .!= False)
+                         <*> v .:? "quiet"          .!= False
+                         <*> v .:? "checkAsserts"   .!= False)
             <*> tc
             <*> xc
             <*> (UIConf <$> v .:? "dashboard" .!= True <*> style)
