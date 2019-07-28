@@ -97,6 +97,7 @@ instance FromJSON EConfig where
                          <*> v .:? "solcArgs"       .!= ""
                          <*> v .:? "solcLibs"       .!= []
                          <*> v .:? "quiet"          .!= False
+                         <*> v .:? "cryticArgs"     .!= ""
                          <*> v .:? "checkAsserts"   .!= False)
             <*> tc
             <*> xc
