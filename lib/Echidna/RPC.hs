@@ -112,28 +112,28 @@ loadEthenoBatch ts fp = do
 -- | address containing echidna tests
 execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m) => [T.Text] -> Maybe Addr -> Etheno -> m (Maybe Addr)
 execEthenoTxs ts addr t = do
-    setupEthenoTx t
-    res <- liftSH exec
-    case (res, t) of
-         (Reversion,   _)               -> throwM $ EthenoException "Encountered reversion while setting up Etheno transactions"
-         (VMFailure x, _)               -> vmExcept x >> return addr
-         (VMSuccess bc,
-          ContractCreated _ ca _ _ _ _) -> do
-            og <- get
-            -- See if current contract is the same as echidna test
-            case addr of
-                 Just m  -> return $ Just m
-                 Nothing -> let txs = ts <&> \t -> Tx (Left (t, [])) ca ca 0
-                                go []     = put og >> return (Just ca)
-                                go (x:xs) = execTx x >>= \case
-                                  Reversion -> put og >> return Nothing
-                                  _         -> put og >> go xs in
-                              go txs
-           -- hasLens %= execState (replaceCodeOfSelf (RuntimeCode bc) >> loadContract ca)
-         _                              -> return addr
-    --if t ^. event == ContractCreated && encodeUtf8 (fromJustt (t ^. initCode)) == bs
-    --    then return (fromJust (t ^. contractAddr))
-    --    else return addr
+  setupEthenoTx t
+  res <- liftSH exec
+  case (res, t) of
+       (Reversion,   _)               -> throwM $ EthenoException "Encountered reversion while setting up Etheno transactions"
+       (VMFailure x, _)               -> vmExcept x >> return addr
+       (VMSuccess bc,
+        ContractCreated _ ca _ _ _ _) -> do
+          og <- get
+          -- See if current contract is the same as echidna test
+          case addr of
+               Just m  -> return $ Just m
+               Nothing -> let txs = ts <&> \t -> Tx (Left (t, [])) ca ca 0
+                              go []     = put og >> return (Just ca)
+                              go (x:xs) = execTx x >>= \case
+                                Reversion -> put og >> return Nothing
+                                _         -> put og >> go xs in
+                            go txs
+         -- hasLens %= execState (replaceCodeOfSelf (RuntimeCode bc) >> loadContract ca)
+       _                              -> return addr
+  --if t ^. event == ContractCreated && encodeUtf8 (fromJustt (t ^. initCode)) == bs
+  --    then return (fromJust (t ^. contractAddr))
+  --    else return addr
 
 
 -- | For an etheno txn, set up VM to execute txn
