@@ -18,9 +18,10 @@ import Control.Monad.Catch (MonadThrow, throwM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.State.Strict (MonadState, execState, execStateT, runStateT, get, put, runState)
 import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
-import Data.ByteString.Char8 (ByteString, empty, unpack)
+import Data.ByteString.Char8 (ByteString, empty, pack, unpack)
 import Data.Has (Has(..))
 import Data.List (partition)
+import Data.List.Split (split, keepDelimsL, startsWith, chunksOf)
 import Data.Map (fromList)
 import Data.Text.Encoding (encodeUtf8)
 import EVM
@@ -37,28 +38,10 @@ import Echidna.Exec
 import Echidna.Transaction
 
 -- | During initialization we can either call a function or create an account or contract
---data EthenoEvent = AccountCreated | ContractCreated | FunctionCall deriving(Eq, Show, Generic)
-
---instance FromJSON EthenoEvent
-
--- | A single initialization event
---data Etheno = Etheno { _event        :: !EthenoEvent
---                     , _address      :: Maybe Addr
---                     , _from         :: Maybe Addr
---                     , _to           :: Maybe Addr
---                     , _contractAddr :: Maybe Addr
---                     , _gasUsed      :: Maybe Integer
---                     , _gasPrice     :: Maybe Integer
---                     , _initCode     :: Maybe T.Text
---                     , _value        :: Maybe W256
---                     } deriving (Eq, Show, Generic)
-
 data Etheno = AccountCreated Addr
             | ContractCreated Addr Addr Integer Integer ByteString W256
             | FunctionCall Addr Addr Integer Integer ByteString W256
   deriving (Eq, Show)
-
---makeLenses ''Etheno
 
 instance FromJSON Etheno where
   -- parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = tail, omitNothingFields = True}
@@ -112,12 +95,10 @@ loadEthenoBatch ts fp = do
              initVM = foldM (execEthenoTxs ts) Nothing txs
 
          liftIO $ print (length cs)
-         -- liftIO $ print $ view contractcode <$> cs
          liftIO $ putStrLn "---"
          (addr, vm') <- runStateT initVM blank
          let cs' = vm' ^. env . contracts
          liftIO $ print (length cs')
-         -- liftIO $ print $ view contractcode <$> cs'
          liftIO $ putStrLn "done loading"
          liftIO $ print ts
          case addr of
@@ -161,7 +142,7 @@ setupEthenoTx (AccountCreated _) = pure ()
 setupEthenoTx (ContractCreated f c _ _ d v) = S.state . runState . zoom hasLens . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= 0xffffffff
   , tx . origin .= f, state . caller .= f, state . callvalue .= w256 v, setup]
-  where setup = assign (env . contracts . at (traceShow c c)) (Just . initialContract . RuntimeCode $ trace ("bc: " ++ (unpack $ BS16.encode d)) d)
+  where setup = assign (env . contracts . at (traceShow c c)) (Just . initialContract . RuntimeCode $ d)
     --setup = do
     --  env . contracts . at c .= Just . initialContract . RuntimeCode . encodeUtf8 $ d
     --  loadContract c
@@ -179,3 +160,6 @@ setupEthenoTx (FunctionCall f t _ _ d v) = S.state . runState . zoom hasLens . s
 --        AccountCreated -> pure ()
 --        ContractCreated -> assign (env . contracts . at c) (Just . initialContract . RuntimeCode $ bc) >> loadContract (fromJust c)
 --        FunctionCall -> loadContract (fromJust t) >> state . calldata .= bc
+--
+removeConstructor :: ByteString -> ByteString
+removeConstructor = pack . (!! 1) . split (keepDelimsL $ startsWith "\x60\x80") . unpack
