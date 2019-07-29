@@ -78,10 +78,10 @@ data SolConf = SolConf { _contractAddr    :: Addr     -- ^ Contract address to u
                        , _balanceAddr     :: Integer  -- ^ Initial balance of deployer and senders
                        , _balanceContract :: Integer  -- ^ Initial balance of contract to test
                        , _prefix          :: Text     -- ^ Function name prefix used to denote tests
+                       , _cryticArgs      :: [String] -- ^ Args to pass to crytic
                        , _solcArgs        :: String   -- ^ Args to pass to @solc@
                        , _solcLibs        :: [String] -- ^ List of libraries to load, in order.
                        , _quiet           :: Bool     -- ^ Suppress @solc@ output, errors, and warnings
-                       , _cryticArgs      :: String   -- ^ Args to pass to crytic
                        , _checkAsserts    :: Bool     -- ^ Test if we can cause assertions to fail
                        }
 makeLenses ''SolConf
@@ -102,7 +102,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
                   (\sa -> if null sa then [] else ["--solc-args", sa])
   maybe (throwM CompileFailure) (pure . toList . fst) =<< liftIO (do
     stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
-    _ <- readCreateProcess (proc "crytic-compile" $ (c : solargs) |> fp) {std_err = stderr} ""
+    _ <- readCreateProcess (proc "crytic-compile" $ (c ++ solargs) |> fp) {std_err = stderr} ""
     readSolc "crytic-export/combined_solc.json")
 
 
@@ -149,7 +149,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  (SolConf ca d ads bala balc pref _ libs _ _ ch) <- view hasLens
+  (SolConf ca d ads bala balc pref _ _ libs _ ch) <- view hasLens
   let bc = c ^. creationCode
       blank = populateAddresses (ads |> d) bala (vmForEthrunCreation bc)
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
