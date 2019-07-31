@@ -94,6 +94,7 @@ instance FromJSON EConfig where
                          <*> v .:? "balanceAddr"    .!= 0xffffffff
                          <*> v .:? "balanceContract".!= 0
                          <*> v .:? "prefix"         .!= "echidna_"
+                         <*> v .:? "cryticArgs"     .!= []
                          <*> v .:? "solcArgs"       .!= ""
                          <*> v .:? "solcLibs"       .!= []
                          <*> v .:? "quiet"          .!= False
