@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -15,6 +16,7 @@ import Control.Monad.Random.Strict
 import Data.Bits (Bits(..))
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
+import Data.DoubleWord (Word256, Int256, Word160)
 import Data.Foldable (toList)
 import Data.Has (Has(..))
 import Data.Hashable (Hashable)
@@ -24,6 +26,7 @@ import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Vector (Vector)
 import Data.Word8 (Word8)
+import GHC.Generics (Generic)
 import EVM.ABI (AbiType(..), AbiValue(..), abiTypeSolidity, abiValueType)
 import Numeric (showHex)
 
@@ -31,6 +34,69 @@ import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
+
+-- types for EVM ABIv2
+data AbiValue2 = AbiUInt2         Int Word256
+               | AbiInt2          Int Int256
+               | AbiAddress2      Word160
+               | AbiBool2         Bool
+               | AbiBytes2        Int BS.ByteString
+               | AbiBytesDynamic2 BS.ByteString
+               | AbiString2       BS.ByteString
+               | AbiArrayDynamic2 AbiType2 (Vector AbiValue2)
+               | AbiArray2        Int AbiType2 (Vector AbiValue2)
+               | AbiTuple2        [AbiValue2]
+  deriving (Show, Read, Eq, Ord, Generic)
+
+data AbiType2 = AbiUIntType2         Int
+              | AbiIntType2          Int
+              | AbiAddressType2
+              | AbiBoolType2
+              | AbiBytesType2        Int
+              | AbiBytesDynamicType2
+              | AbiStringType2
+              | AbiArrayDynamicType2 AbiType2
+              | AbiArrayType2        Int AbiType2
+              | AbiTupleType2        [AbiType2]
+  deriving (Show, Read, Eq, Ord, Generic)
+
+abiValueType2 :: AbiValue2 -> AbiType2
+abiValueType2 = \case
+  AbiUInt2 n _         -> AbiUIntType2 n
+  AbiInt2 n _          -> AbiIntType2  n
+  AbiAddress2 _        -> AbiAddressType2
+  AbiBool2 _           -> AbiBoolType2
+  AbiBytes2 n _        -> AbiBytesType2 n
+  AbiBytesDynamic2 _   -> AbiBytesDynamicType2
+  AbiString2 _         -> AbiStringType2
+  AbiArrayDynamic2 t _ -> AbiArrayDynamicType2 t
+  AbiArray2 n t _      -> AbiArrayType2 n t
+  AbiTuple2 v          -> AbiTupleType2 (abiValueType2 <$> v)
+
+abiTypeSolidity2 :: AbiType2 -> Text
+abiTypeSolidity2 = \case
+  AbiUIntType2 n         -> "uint" <> T.pack (show n)
+  AbiIntType2 n          -> "int" <> T.pack (show n)
+  AbiAddressType2        -> "address"
+  AbiBoolType2           -> "bool"
+  AbiBytesType2 n        -> "bytes" <> T.pack (show n)
+  AbiBytesDynamicType2   -> "bytes"
+  AbiStringType2         -> "string"
+  AbiArrayDynamicType2 t -> abiTypeSolidity2 t <> "[]"
+  AbiArrayType2 n t      -> abiTypeSolidity2 t <> "[" <> T.pack (show n) <> "]"
+  AbiTupleType2 v        -> "(" <> (T.intercalate "," $ abiTypeSolidity2 <$> v) <> ")"
+
+data AbiKind = Dynamic | Static
+  deriving (Show, Read, Eq, Ord)
+
+abiKind2 :: AbiType2 -> AbiKind
+abiKind2 = \case
+  AbiBytesDynamicType2   -> Dynamic
+  AbiStringType2         -> Dynamic
+  AbiArrayDynamicType2 _ -> Dynamic
+  AbiArrayType2 _ t      -> abiKind2 t
+  AbiTupleType2 v        -> if any (==Dynamic) (abiKind2 <$> v) then Dynamic else Static
+  _                      -> Static
 
 -- | Pretty-print some 'AbiValue'.
 ppAbiValue :: AbiValue -> String
@@ -45,6 +111,21 @@ ppAbiValue (AbiArrayDynamic _ v) =
   "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
 ppAbiValue (AbiArray      _ _ v) =
   "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
+
+ppAbiValue2 :: AbiValue2 -> String
+ppAbiValue2 (AbiUInt2 _ n)         = show n
+ppAbiValue2 (AbiInt2  _ n)         = show n
+ppAbiValue2 (AbiAddress2 n)        = showHex n ""
+ppAbiValue2 (AbiBool2 b)           = if b then "true" else "false"
+ppAbiValue2 (AbiBytes2      _ b)   = show b
+ppAbiValue2 (AbiBytesDynamic2 b)   = show b
+ppAbiValue2 (AbiString2       s)   = show s
+ppAbiValue2 (AbiArrayDynamic2 _ v) =
+  "[" ++ intercalate ", " (ppAbiValue2 <$> toList v) ++ "]"
+ppAbiValue2 (AbiArray2      _ _ v) =
+  "[" ++ intercalate ", " (ppAbiValue2 <$> toList v) ++ "]"
+ppAbiValue2 (AbiTuple2 v) =
+  "(" ++ intercalate ", " (ppAbiValue2 <$> toList v) ++ ")"
 
 -- Safe random element of a list
 
@@ -68,21 +149,25 @@ rElem _ l  = (l !!) <$> getRandomR (0, length l - 1)
 -- | Represents a call to a Solidity function.
 -- A tuple of 'Text' for the name of the function, and then any 'AbiValue' arguments passed (as a list).
 type SolCall      = (Text, [AbiValue])
+type SolCall2     = (Text, [AbiValue2])
 
 -- | Represents the type of a Solidity function.
 -- A tuple of 'Text' for the name of the function, and then the 'AbiType's of any arguments it expects.
 type SolSignature = (Text, [AbiType])
+type SolSignature2 = (Text, [AbiType2])
 
 -- | Get the text signature of a solidity method (for later hashing)
 encodeSig :: SolSignature -> Text
 encodeSig (n, ts) = n <> "(" <> T.intercalate "," (abiTypeSolidity <$> ts) <> ")"
+encodeSig2 :: SolSignature2 -> Text
+encodeSig2 (n, ts) = n <> "(" <> T.intercalate "," (abiTypeSolidity2 <$> ts) <> ")"
 
 -- | Configuration necessary for generating new 'SolCalls'. Don't construct this by hand! Use 'mkConf'.
 data GenDict = GenDict { _pSynthA    :: Float
                          -- ^ Fraction of time to use dictionary vs. synthesize
                        , _constants  :: HashMap AbiType [AbiValue]
                          -- ^ Constants to use, sorted by type
-                       , _wholeCalls :: HashMap SolSignature [SolCall] 
+                       , _wholeCalls :: HashMap SolSignature [SolCall]
                          -- ^ Whole calls to use, sorted by type
                        , _defSeed    :: Int
                          -- ^ Default seed to use if one is not provided in EConfig
@@ -92,22 +177,46 @@ data GenDict = GenDict { _pSynthA    :: Float
 
 makeLenses 'GenDict
 
+data GenDict2 = GenDict2 { _pSynthA2    :: Float
+                           -- ^ Fraction of time to use dictionary vs. synthesize
+                         , _constants2  :: HashMap AbiType2 [AbiValue2]
+                           -- ^ Constants to use, sorted by type
+                         , _wholeCalls2 :: HashMap SolSignature2 [SolCall2]
+                           -- ^ Whole calls to use, sorted by type
+                         , _defSeed2    :: Int
+                           -- ^ Default seed to use if one is not provided in EConfig
+                         , _rTypes2     :: Text -> Maybe AbiType2
+                           -- ^ Return types of any methods we scrape return values from
+                         }
+
+makeLenses 'GenDict2
+
 hashMapBy :: (Hashable k, Eq k, Ord a) => (a -> k) -> [a] -> HashMap k [a]
 hashMapBy f = M.fromListWith (++) . mapMaybe (liftM2 fmap (\l x -> (f x, l)) listToMaybe) . group . sort
 
 gaddConstants :: [AbiValue] -> GenDict -> GenDict
 gaddConstants l = constants <>~ hashMapBy abiValueType l
 
+gaddConstants2 :: [AbiValue2] -> GenDict2 -> GenDict2
+gaddConstants2 l = constants2 <>~ hashMapBy abiValueType2 l
+
 gaddCalls :: [SolCall] -> GenDict -> GenDict
 gaddCalls c = wholeCalls <>~ hashMapBy (fmap $ fmap abiValueType) c
 
+gaddCalls2 :: [SolCall2] -> GenDict2 -> GenDict2
+gaddCalls2 c = wholeCalls2 <>~ hashMapBy (fmap $ fmap abiValueType2) c
+
 defaultDict :: GenDict
 defaultDict = mkGenDict 0 [] [] 0 (const Nothing)
+
+defaultDict2 :: GenDict2
+defaultDict2 = mkGenDict2 0 [] [] 0 (const Nothing)
 
 -- This instance is the only way for mkConf to work nicely, and is well-formed.
 {-# ANN module ("HLint: ignore Unused LANGUAGE pragma" :: String) #-}
 -- We need the above since hlint doesn't notice DeriveAnyClass in StandaloneDeriving.
 deriving instance Hashable AbiType
+deriving instance Hashable AbiType2
 
 -- | Construct a 'GenDict' from some dictionaries, a 'Float', a default seed, and a typing rule for
 -- return values
@@ -119,6 +228,14 @@ mkGenDict :: Float      -- ^ Percentage of time to mutate instead of synthesize.
           -- ^ A return value typing rule
           -> GenDict
 mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fmap abiValueType) cs)
+mkGenDict2 :: Float       -- ^ Percentage of time to mutate instead of synthesize. Should be in [0,1]
+           -> [AbiValue2] -- ^ A list of 'AbiValue' constants to use during dictionary-based generation
+           -> [SolCall2]  -- ^ A list of complete 'SolCall's to mutate
+           -> Int         -- ^ A default seed
+           -> (Text -> Maybe AbiType2)
+           -- ^ A return value typing rule
+           -> GenDict2
+mkGenDict2 p vs cs = GenDict2 p (hashMapBy abiValueType2 vs) (hashMapBy (fmap $ fmap abiValueType2) cs)
 
 -- Generation (synthesis)
 
@@ -131,13 +248,22 @@ getRandomUint n = join $ fromList [(getRandomR (0, 1023), 1), (getRandomR (0, 2 
 genAbiValue :: MonadRandom m => AbiType -> m AbiValue
 genAbiValue = flip evalStateT defaultDict . genAbiValueM
 
+genAbiValue2 :: MonadRandom m => AbiType2 -> m AbiValue2
+genAbiValue2 = flip evalStateT defaultDict2 . genAbiValueM2
+
 -- | Synthesize a random 'SolCall' given its 'SolSignature'. Doesn't use a dictionary.
 genAbiCall :: MonadRandom m => SolSignature -> m SolCall
 genAbiCall = traverse $ traverse genAbiValue
 
+genAbiCall2 :: MonadRandom m => SolSignature2 -> m SolCall2
+genAbiCall2 = traverse $ traverse genAbiValue2
+
 -- | Synthesize a random 'SolCall' given a list of 'SolSignature's (effectively, an ABI). Doesn't use a dictionary.
 genInteractions :: (MonadThrow m, MonadRandom m) => [SolSignature] -> m SolCall
 genInteractions l = genAbiCall =<< rElem "ABI" l
+
+genInteractions2 :: (MonadThrow m, MonadRandom m) => [SolSignature2] -> m SolCall2
+genInteractions2 l = genAbiCall2 =<< rElem "ABIv2" l
 
 -- Mutation helper functions
 
@@ -200,6 +326,10 @@ mutateV :: MonadRandom m => AbiType -> Vector AbiValue -> m (Vector AbiValue)
 mutateV t v = traverse mutateAbiValue =<< changeSize where
   changeSize = bool (shrinkV v) (growWith (genAbiValue t) V.cons V.snoc V.length v) =<< getRandom
 
+mutateV2 :: MonadRandom m => AbiType2 -> Vector AbiValue2 -> m (Vector AbiValue2)
+mutateV2 t v = traverse mutateAbiValue2 =<< changeSize where
+  changeSize = bool (shrinkV v) (growWith (genAbiValue2 t) V.cons V.snoc V.length v) =<< getRandom
+
 -- Mutation
 
 -- | Check if an 'AbiValue' is as \"small\" (trivial) as possible (using ad-hoc heuristics).
@@ -213,6 +343,18 @@ canShrinkAbiValue (AbiString "")       = False
 canShrinkAbiValue (AbiArray _ _ l)      = any canShrinkAbiValue l
 canShrinkAbiValue (AbiArrayDynamic _ l) = l /= mempty
 canShrinkAbiValue _ = True
+
+canShrinkAbiValue2 :: AbiValue2 -> Bool
+canShrinkAbiValue2 (AbiUInt2 _ 0) = False
+canShrinkAbiValue2 (AbiInt2  _ 0) = False
+canShrinkAbiValue2 (AbiBool2 b) = b
+canShrinkAbiValue2 (AbiBytes2 _ b)       = BS.any (/= 0) b
+canShrinkAbiValue2 (AbiBytesDynamic2 "") = False
+canShrinkAbiValue2 (AbiString2 "")       = False
+canShrinkAbiValue2 (AbiArray2 _ _ l)      = any canShrinkAbiValue2 l
+canShrinkAbiValue2 (AbiArrayDynamic2 _ l) = l /= mempty
+canShrinkAbiValue2 (AbiTuple2 v) = any canShrinkAbiValue2 v
+canShrinkAbiValue2 _ = True
 
 bounds :: forall a. (Bounded a, Integral a) => a -> (Integer, Integer)
 bounds = const (fromIntegral (0 :: a), fromIntegral (maxBound :: a))
@@ -234,9 +376,24 @@ shrinkAbiValue (AbiString b)       = fmap AbiString       $ addNulls =<< shrinkB
 shrinkAbiValue (AbiArray n t l)      = AbiArray n t <$> traverse shrinkAbiValue l
 shrinkAbiValue (AbiArrayDynamic t l) = fmap (AbiArrayDynamic t) $ traverse shrinkAbiValue =<< shrinkV l
 
+shrinkAbiValue2 :: MonadRandom m => AbiValue2 -> m AbiValue2
+shrinkAbiValue2 (AbiUInt2 n m)  = AbiUInt2 n <$> shrinkInt m
+shrinkAbiValue2 (AbiInt2 n m)   = AbiInt2 n  <$> shrinkInt m
+shrinkAbiValue2 x@AbiAddress2{} = pure x
+shrinkAbiValue2 (AbiBool2 _)    = pure $ AbiBool2 False
+shrinkAbiValue2 (AbiBytes2 n b)      = AbiBytes2 n <$> addNulls b
+shrinkAbiValue2 (AbiBytesDynamic2 b) = fmap AbiBytesDynamic2 $ addNulls =<< shrinkBS b
+shrinkAbiValue2 (AbiString2 b)       = fmap AbiString2       $ addNulls =<< shrinkBS b
+shrinkAbiValue2 (AbiArray2 n t l)    = AbiArray2 n t <$> traverse shrinkAbiValue2 l
+shrinkAbiValue2 (AbiArrayDynamic2 t l) = fmap (AbiArrayDynamic2 t) $ traverse shrinkAbiValue2 =<< shrinkV l
+shrinkAbiValue2 (AbiTuple2 v)   = AbiTuple2 <$> traverse shrinkAbiValue2 v
+
 -- | Given a 'SolCall', generate a random \"smaller\" (simpler) call.
 shrinkAbiCall :: MonadRandom m => SolCall -> m SolCall
 shrinkAbiCall = traverse $ traverse shrinkAbiValue
+
+shrinkAbiCall2 :: MonadRandom m => SolCall2 -> m SolCall2
+shrinkAbiCall2 = traverse $ traverse shrinkAbiValue2
 
 -- | Given an 'AbiValue', generate a random \"similar\" value of the same 'AbiType'.
 mutateAbiValue :: MonadRandom m => AbiValue -> m AbiValue
@@ -250,9 +407,24 @@ mutateAbiValue (AbiString b)         = AbiString         <$> mutateBS b
 mutateAbiValue (AbiArray n t l)      = AbiArray n t      <$> traverse mutateAbiValue l
 mutateAbiValue (AbiArrayDynamic t l) = AbiArrayDynamic t <$> mutateV t l
 
+mutateAbiValue2 :: MonadRandom m => AbiValue2 -> m AbiValue2
+mutateAbiValue2 (AbiUInt2 n x)  = AbiUInt2 n <$> mutateNum x
+mutateAbiValue2 (AbiInt2 n x)   = AbiInt2 n  <$> mutateNum x
+mutateAbiValue2 (AbiAddress2 _) = genAbiValue2 AbiAddressType2
+mutateAbiValue2 (AbiBool2 _)    = genAbiValue2 AbiBoolType2
+mutateAbiValue2 (AbiBytes2 n b)        = AbiBytes2 n        <$> addChars getRandom b
+mutateAbiValue2 (AbiBytesDynamic2 b)   = AbiBytesDynamic2   <$> mutateBS b
+mutateAbiValue2 (AbiString2 b)         = AbiString2         <$> mutateBS b
+mutateAbiValue2 (AbiArray2 n t l)      = AbiArray2 n t      <$> traverse mutateAbiValue2 l
+mutateAbiValue2 (AbiArrayDynamic2 t l) = AbiArrayDynamic2 t <$> mutateV2 t l
+mutateAbiValue2 (AbiTuple2 v)  = AbiTuple2 <$> traverse mutateAbiValue2 v
+
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
 mutateAbiCall :: MonadRandom m => SolCall -> m SolCall
 mutateAbiCall = traverse $ traverse mutateAbiValue
+
+mutateAbiCall2 :: MonadRandom m => SolCall2 -> m SolCall2
+mutateAbiCall2 = traverse $ traverse mutateAbiValue2
 
 -- Generation, with dictionary
 
@@ -263,6 +435,11 @@ genWithDict :: (Eq a, Hashable a, MonadState x m, Has GenDict x, MonadRandom m)
             => (GenDict -> HashMap a [b]) -> (a -> m b) -> a -> m b
 genWithDict f g t = let fromDict = uniformMay . M.lookupDefault [] t . f in gets getter >>= \c ->
   fromMaybe <$> g t <*> (bool (pure Nothing) (fromDict c) . (c ^. pSynthA >=) =<< getRandom)
+
+genWithDict2 :: (Eq a, Hashable a, MonadState x m, Has GenDict2 x, MonadRandom m)
+             => (GenDict2 -> HashMap a [b]) -> (a -> m b) -> a -> m b
+genWithDict2 f g t = let fromDict = uniformMay . M.lookupDefault [] t . f in gets getter >>= \c ->
+  fromMaybe <$> g t <*> (bool (pure Nothing) (fromDict c) . (c ^. pSynthA2 >=) =<< getRandom)
 
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Requires a dictionary.
 genAbiValueM :: (MonadState x m, Has GenDict x, MonadRandom m) => AbiType -> m AbiValue
@@ -280,11 +457,34 @@ genAbiValueM = genWithDict (view constants) $ \case
                              >>= flip V.replicateM (genAbiValueM t)
   (AbiArrayType n t)      -> AbiArray n t <$> V.replicateM n (genAbiValueM t)
 
+genAbiValueM2 :: (MonadState x m, Has GenDict2 x, MonadRandom m) => AbiType2 -> m AbiValue2
+genAbiValueM2 = genWithDict2 (view constants2) $ \case
+  (AbiUIntType2 n) -> AbiUInt2 n  . fromInteger <$> getRandomUint n
+  (AbiIntType2 n)  -> AbiInt2 n   . fromInteger <$> getRandomR (-1 * 2 ^ n, 2 ^ (n - 1))
+  AbiAddressType2  -> AbiAddress2 . fromInteger <$> getRandomR (0, 2 ^ (160 :: Integer) - 1)
+  AbiBoolType2     -> AbiBool2 <$> getRandom
+  (AbiBytesType2 n)    -> AbiBytes2 n . BS.pack . take n <$> getRandoms
+  AbiBytesDynamicType2 -> liftM2 (\n -> AbiBytesDynamic2 . BS.pack . take n)
+                                 (getRandomR (1, 32)) getRandoms
+  AbiStringType2       -> liftM2 (\n -> AbiString2       . BS.pack . take n)
+                                 (getRandomR (1, 32)) getRandoms
+  (AbiArrayDynamicType2 t) -> fmap (AbiArrayDynamic2 t) $ getRandomR (1, 32)
+                              >>= flip V.replicateM (genAbiValueM2 t)
+  (AbiArrayType2 n t)      -> AbiArray2 n t <$> V.replicateM n (genAbiValueM2 t)
+  (AbiTupleType2 v)    -> AbiTuple2 <$> traverse genAbiValueM2 v
+
 -- | Given a 'SolSignature', generate a random 'SolCalls' with that signature, possibly with a dictionary.
 genAbiCallM :: (MonadState x m, Has GenDict x, MonadRandom m) => SolSignature -> m SolCall
 genAbiCallM = genWithDict (view wholeCalls) (traverse $ traverse genAbiValueM)
+
+genAbiCallM2 :: (MonadState x m, Has GenDict2 x, MonadRandom m) => SolSignature2 -> m SolCall2
+genAbiCallM2 = genWithDict2 (view wholeCalls2) (traverse $ traverse genAbiValueM2)
 
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one, possibly with a dictionary.
 genInteractionsM :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m)
                  => [SolSignature] -> m SolCall
 genInteractionsM l = genAbiCallM =<< rElem "ABI" l
+
+genInteractionsM2 :: (MonadState x m, Has GenDict2 x, MonadRandom m, MonadThrow m)
+                  => [SolSignature2] -> m SolCall2
+genInteractionsM2 l = genAbiCallM2 =<< rElem "ABI" l
