@@ -146,6 +146,8 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/assert.sol"       (Just "basic/assert.yaml") 
       [ ("echidna_set0 passed",                    solved      "ASSERTION set0")
       , ("echidna_set1 failed",                    passed      "ASSERTION set1") ]
+  , testContract "basic/time.sol"         (Just "basic/time.yaml")
+      [ ("echidna_timepassed passed",              solved      "echidna_timepassed") ]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
