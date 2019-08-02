@@ -54,12 +54,13 @@ type Names = Role -> Addr -> String
 
 -- | Given rules for pretty-printing associated address, and whether to print them, pretty-print a 'Transaction'.
 ppTx :: (MonadReader x m, Has Names x, Has TxConf x) => Bool -> Tx -> m String
-ppTx b (Tx c s r g v) = let sOf = either ppSolCall (const "<CREATE>") in do
+ppTx b (Tx c s r g v t) = let sOf = either ppSolCall (const "<CREATE>") in do
   names <- view hasLens
   tGas  <- view $ hasLens . txGas
   return $ sOf c ++ (if not b     then "" else names Sender s ++ names Receiver r)
                  ++ (if g == tGas then "" else " Gas: "   ++ show g)
                  ++ (if v == 0    then "" else " Value: " ++ show v)
+                 ++ (if t == 0    then "" else " Delay: " ++ show t)
 
 -- | Given a number of boxes checked and a number of total boxes, pretty-print progress in box-checking.
 progress :: Int -> Int -> String
