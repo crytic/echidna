@@ -110,9 +110,9 @@ genTx = use (hasLens :: Lens' y World) >>= evalStateT genTxM . (defaultDict,)
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
 genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has GenDict y, Has World y, MonadThrow m) => m Tx
 genTxM = view hasLens >>= \(TxConf _ g t b) -> genTxWith
-  (rElem "sender list") (rElem "recipient list")                                -- src and dst
-  (const $ genInteractionsM . snd)                                              -- call itself
-  (pure g) (\_ _ _ -> pure 0) (fmap level $ liftM2 (,) (inRange t) (inRange b)) -- gas, value, delay
+  (rElem "sender list") (rElem "recipient list")                             -- src and dst
+  (const $ genInteractionsM . snd)                                           -- call itself
+  (pure g) (\_ _ _ -> pure 0) (level <$> liftM2 (,) (inRange t) (inRange b)) -- gas, value, delay
      where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
