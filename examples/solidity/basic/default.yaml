@@ -34,3 +34,7 @@ quiet: False
 #dashboard determines if output is just text or an AFL-like display
 dashboard: true
 #seed not defined by default, is the random seed
+maxTimeDelay: 0
+#maximum time between generated txs
+maxBlockDelay: 0
+#maximum number of blocks elapsed between generated txs
