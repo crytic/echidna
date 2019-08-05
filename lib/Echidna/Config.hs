@@ -65,10 +65,9 @@ instance FromJSON EConfig where
                 let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
                 return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result)
                                   (const psender)
-        xc = liftM4 TxConf (C Dull . fromIntegral <$> v .:? "propMaxGas"    .!= (8000030 :: Integer))
-                           (C Dull . fromIntegral <$> v .:? "testMaxGas"    .!= (0xffffffff :: Integer))
-                           (C Dull . fromIntegral <$> v .:? "maxTimeDelay"  .!= (0 :: Integer))
-                           (C Dull . fromIntegral <$> v .:? "maxBlockDelay" .!= (0 :: Integer))
+        getWord s d = C Dull . fromIntegral <$> v .: s .!= (d :: Integer)
+        xc = liftM4 TxConf (getWord "propMaxGas" 8000030) (getWord "testMaxGas" 0xffffffff)
+                           (getWord "maxTimeDelay" 0)     (getWord "maxBlockDelay" 0)
         cc = CampaignConf <$> v .:? "testLimit"   .!= 50000
                           <*> v .:? "seqLen"      .!= 100
                           <*> v .:? "shrinkLimit" .!= 5000
