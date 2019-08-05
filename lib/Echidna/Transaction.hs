@@ -70,14 +70,15 @@ level (elemOf each 0 -> True) = (0,0)
 level x                       = x
 
 instance ToJSON Tx where
-  toJSON (Tx c s d g v t) = object [ ("call",  toJSON $ either ppSolCall (const "<CREATE>") c)
-                                   -- from/to are Strings, since JSON doesn't support hexadecimal notation
-                                   , ("from",  toJSON $ show s)
-                                   , ("to",    toJSON $ show d)
-                                   , ("value", toJSON $ show v)
-                                   , ("gas",   toJSON $ show g)
-                                   , ("delay", toJSON $ show t)
-                                   ]
+  toJSON (Tx c s d g v (t,b)) = object [ ("call",        toJSON $ either ppSolCall (const "<CREATE>") c)
+                                       -- from/to are Strings, since JSON doesn't support hexadecimal notation
+                                       , ("from",        toJSON $ show s)
+                                       , ("to",          toJSON $ show d)
+                                       , ("value",       toJSON $ show v)
+                                       , ("gas",         toJSON $ show g)
+                                       , ("time delay",  toJSON $ show t)
+                                       , ("block delay", toJSON $ show b)
+                                       ]
 
 -- | A contract is just an address with an ABI (for our purposes).
 type ContractA = (Addr, [SolSignature])
