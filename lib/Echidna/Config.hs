@@ -8,7 +8,7 @@
 module Echidna.Config where
 
 import Control.Lens
-import Control.Monad (liftM2)
+import Control.Monad (liftM2, liftM4)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)
@@ -65,9 +65,9 @@ instance FromJSON EConfig where
                 let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
                 return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result)
                                   (const psender)
-        xc = liftM2 TxConf
-               (C Dull . fromIntegral <$> v .:? "propMaxGas"  .!= (8000030 :: Integer))
-               (C Dull . fromIntegral <$> v .:? "testMaxGas"  .!= (0xffffffff :: Integer))
+        getWord s d = C Dull . fromIntegral <$> v .:? s .!= (d :: Integer)
+        xc = liftM4 TxConf (getWord "propMaxGas" 8000030) (getWord "testMaxGas" 0xffffffff)
+                           (getWord "maxTimeDelay" 0)     (getWord "maxBlockDelay" 0)
         cc = CampaignConf <$> v .:? "testLimit"   .!= 50000
                           <*> v .:? "seqLen"      .!= 100
                           <*> v .:? "shrinkLimit" .!= 5000
