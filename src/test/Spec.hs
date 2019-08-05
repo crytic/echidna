@@ -73,7 +73,7 @@ seedTests =
     , testCase "same seeds" $ assertBool "results differ" =<< same 0 0
     ]
     where cfg s = defaultConfig & sConf . quiet .~ True
-                                & cConf .~ CampaignConf 600 5 0 Nothing (Just s)
+                                & cConf .~ CampaignConf 600 20 0 Nothing (Just s)
           gen s = view tests <$> runContract "basic/flags.sol" (cfg s)
           same s t = liftM2 (==) (gen s) (gen t)
 
@@ -146,6 +146,8 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/assert.sol"       (Just "basic/assert.yaml") 
       [ ("echidna_set0 passed",                    solved      "ASSERTION set0")
       , ("echidna_set1 failed",                    passed      "ASSERTION set1") ]
+  , testContract "basic/time.sol"         (Just "basic/time.yaml")
+      [ ("echidna_timepassed passed",              solved      "echidna_timepassed") ]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
