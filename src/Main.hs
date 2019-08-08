@@ -39,5 +39,5 @@ main = do Options f c conf <- execParser opts
             cs       <- contracts f
             ads      <- addresses
             (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
-            ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads) [] g (returnTypes cs))
+            ui v w ts (Just $ mkGenDict2 0.15 (extractConstants cs ++ ads) [] g (returnTypes cs))
           if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess

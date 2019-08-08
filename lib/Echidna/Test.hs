@@ -57,7 +57,7 @@ checkETest t = asks getter >>= \(TestConf p s) -> view (hasLens . propGas) >>= \
   --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
   let matchR (Just (VMFailure (UnrecognizedOpcode 0xfe))) = False
       matchR _                                            = True
-      matchC sig = not . (BS.isPrefixOf . BS.take 4 $ abiCalldata (encodeSig sig) mempty)
+      matchC sig = not . (BS.isPrefixOf . BS.take 4 $ abiCalldata2 (encodeSig2 sig) mempty)
   res <- case t of
     -- If our test is a regular user-defined test, we exec it and check the result
     Left  (f, a) -> execTx (Tx (Left (f, [])) (s a) a g 0) >> gets (p f . getter)
@@ -78,4 +78,15 @@ shrinkSeq t xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool
     Nothing     -> pure x
     Just (i, _) -> flip (set src) x . fromMaybe (x ^. src) <$> uniformMay (l ^.. folded . indices (< i))
   shrunk = mapM (shrinkSender <=< shrinkTx) xs
+  shorten = (\i -> take i xs ++ drop (i + 1) xs) <$> getRandomR (0, length xs)
+
+shrinkSeq2 :: ( MonadRandom m, MonadReader x m, MonadThrow m
+              , Has SolConf x, Has TestConf x, Has TxConf x, MonadState y m, Has VM y)
+           => SolTest -> [Tx2] -> m [Tx2]
+shrinkSeq2 t xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
+  check xs' = do {og <- get; res <- traverse_ execTx2 xs' >> checkETest t; put og; pure res}
+  shrinkSender x = view (hasLens . sender) >>= \l -> case ifind (const (== x ^. src2)) l of
+    Nothing     -> pure x
+    Just (i, _) -> flip (set src2) x . fromMaybe (x ^. src2) <$> uniformMay (l ^.. folded . indices (< i))
+  shrunk = mapM (shrinkSender <=< shrinkTx2) xs
   shorten = (\i -> take i xs ++ drop (i + 1) xs) <$> getRandomR (0, length xs)
