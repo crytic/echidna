@@ -22,7 +22,7 @@ import Data.Foldable              (toList, fold)
 import Data.Has                   (Has(..))
 import Data.List                  (find, nub, partition)
 import Data.List.Lens             (prefixed, suffixed)
-import Data.Maybe                 (isNothing, catMaybes, fromMaybe)
+import Data.Maybe                 (isNothing, catMaybes, fromMaybe, fromJust)
 import Data.Monoid                ((<>))
 import Data.Sequence              (Seq)
 import Data.Text                  (Text, isPrefixOf, isSuffixOf)
@@ -136,7 +136,7 @@ force s = fromMaybe (error s)
 parseMethodInput2 :: (Show s, AsValue s) => s -> (Text, AbiType2)
 parseMethodInput2 x =
   ( x ^?! key "name" . _String
-  , force "internal error: method type" (parseTypeName2 (x ^?! key "type" . _String))
+  , force "internal error: method type" (parseTypeName2 (x ^? key "components" . _Array) (x ^?! key "type" . _String))
   )
 
 readSolc2 :: FilePath -> IO (Maybe (Map.Map Text SolcContract2, SourceCache))
@@ -215,7 +215,7 @@ readJSON2 json = do
                   (case abi ^?! key "anonymous" . _Bool of
                      True -> Anonymous
                      False -> NotAnonymous)
-                  (map (\y -> ( force "internal error: type" (parseTypeName2 (y ^?! key "type" . _String))
+                  (map (\y -> ( force "internal error: type" (parseTypeName2 (y ^? key "components" . _Array) (y ^?! key "type" . _String))
                               , if y ^?! key "indexed" . _Bool
                                 then Indexed
                                 else NotIndexed ))
@@ -250,12 +250,12 @@ makeSourceCache paths asts = do
         asts
     }
 
-parseTypeName2 :: Text -> Maybe AbiType2
-parseTypeName2 = P.parseMaybe typeWithArraySuffix
+parseTypeName2 :: Maybe (V.Vector Value) -> Text -> Maybe AbiType2
+parseTypeName2 v = P.parseMaybe (typeWithArraySuffix (fromMaybe (V.fromList []) v))
 
-typeWithArraySuffix :: P.Parsec () Text AbiType2
-typeWithArraySuffix = do
-  base <- basicType2
+typeWithArraySuffix :: V.Vector Value -> P.Parsec () Text AbiType2
+typeWithArraySuffix v = do
+  base <- basicType2 v
   sizes <-
     P.many $
       P.between
@@ -269,8 +269,8 @@ typeWithArraySuffix = do
 
   pure (foldl parseSize base sizes)
 
-basicType2 :: P.Parsec () Text AbiType2
-basicType2 =
+basicType2 :: V.Vector Value -> P.Parsec () Text AbiType2
+basicType2 v =
   P.choice
     [ P.string "address" *> pure AbiAddressType2
     , P.string "bool"    *> pure AbiBoolType2
@@ -281,6 +281,7 @@ basicType2 =
     , sizedType "bytes" AbiBytesType2
 
     , P.string "bytes" *> pure AbiBytesDynamicType2
+    , P.string "tuple" *> pure (AbiTupleType2 $ V.toList tupleTypes)
     ]
 
   where
@@ -288,6 +289,9 @@ basicType2 =
     sizedType s f = P.try $ do
       void (P.string s)
       fmap (f . read) (P.some P.digitChar)
+    tupleTypes = catMaybes' $ parseTypeName2' <$> v
+    parseTypeName2' x = parseTypeName2 (x ^? key "components" . _Array) (x ^?! key "type" . _String)
+    catMaybes' = fmap fromJust . V.filter (/= Nothing)
 
 -- | Given a file, use its extenstion to check if it is a precompiled contract or try to compile it and
 -- get a list of its contracts, throwing exceptions if necessary.
