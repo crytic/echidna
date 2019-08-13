@@ -389,7 +389,10 @@ shrinkAbiValue2 (AbiBytesDynamic2 b) = fmap AbiBytesDynamic2 $ addNulls =<< shri
 shrinkAbiValue2 (AbiString2 b)       = fmap AbiString2       $ addNulls =<< shrinkBS b
 shrinkAbiValue2 (AbiArray2 n t l)    = AbiArray2 n t <$> traverse shrinkAbiValue2 l
 shrinkAbiValue2 (AbiArrayDynamic2 t l) = fmap (AbiArrayDynamic2 t) $ traverse shrinkAbiValue2 =<< shrinkV l
-shrinkAbiValue2 (AbiTuple2 v)   = AbiTuple2 <$> traverse shrinkAbiValue2 v
+shrinkAbiValue2 (AbiTuple2 v)   = AbiTuple2 <$> traverse shrinkAbiValue2' v
+  where shrinkAbiValue2' x = do
+          f <- uniform [return . id, shrinkAbiValue2]
+          f x
 
 -- | Given a 'SolCall', generate a random \"smaller\" (simpler) call.
 shrinkAbiCall :: MonadRandom m => SolCall -> m SolCall
