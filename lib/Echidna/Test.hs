@@ -16,12 +16,12 @@ import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import EVM (Error(..), VMResult(..), VM, calldata, result, state)
-import EVM.ABI (AbiValue(..), encodeAbiValue)
 import EVM.Types (Addr)
 
 import qualified Data.ByteString as BS
 
 import Echidna.ABI
+import Echidna.ABIv2 (abiCalldata2, AbiValue2(..), encodeAbiValue2)
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
@@ -40,9 +40,9 @@ data CallRes = ResFalse | ResTrue | ResRevert | ResOther deriving (Eq, Show)
 
 -- | Given a 'VMResult', classify it assuming it was the result of a call to an Echidna test.
 classifyRes :: VMResult -> CallRes
-classifyRes (VMSuccess b) | b == encodeAbiValue (AbiBool True)  = ResTrue
-                          | b == encodeAbiValue (AbiBool False) = ResFalse
-                          | otherwise                           = ResOther
+classifyRes (VMSuccess b) | b == encodeAbiValue2 (AbiBool2 True)  = ResTrue
+                          | b == encodeAbiValue2 (AbiBool2 False) = ResFalse
+                          | otherwise                             = ResOther
 
 classifyRes Reversion = ResRevert
 classifyRes _ = ResOther

@@ -6,9 +6,11 @@ module Echidna.ABIv2 where
 
 import Control.Lens.TH            (makeLenses)
 import Control.Lens hiding        (Indexed)
-import Control.Monad              (void)
+import Control.Monad              (void, forM_, replicateM_)
 import Data.Aeson                 (Value(..))
 import Data.Aeson.Lens
+import Data.Binary.Put            (Put, runPut, putWord8, putWord32be)
+import Data.Bits                  (shiftR, (.&.))
 import Data.DoubleWord            (Word256, Int256, Word160)
 import Data.Foldable              (toList, fold)
 import Data.Functor               (($>))
@@ -26,6 +28,7 @@ import EVM.Solidity (SrcMap, SourceCache(..), makeSrcMaps, stripBytecodeMetadata
 import EVM.Types    (W256)
 
 import qualified Data.ByteString        as BS
+import qualified Data.ByteString.Lazy   as BSLazy
 import qualified Data.ByteString.Base16 as BS16
 import qualified Data.HashMap.Strict    as M
 import qualified Data.Map.Strict        as Map
@@ -291,3 +294,120 @@ basicType2 v =
     tupleTypes = catMaybes' $ parseTypeName2' <$> v
     parseTypeName2' x = parseTypeName2 (x ^? key "components" . _Array) (x ^?! key "type" . _String)
     catMaybes' = fmap fromJust . V.filter (/= Nothing)
+
+encodeAbiValue2 :: AbiValue2 -> BS.ByteString
+encodeAbiValue2 = BSLazy.toStrict . runPut . putAbi2
+
+abiCalldata2 :: T.Text -> V.Vector AbiValue2 -> BS.ByteString
+abiCalldata2 s xs = BSLazy.toStrict . runPut $ do
+  putWord32be (abiKeccak (encodeUtf8 s))
+  putAbiSeq2 xs
+
+putAbi2 :: AbiValue2 -> Put
+putAbi2 = \case
+  AbiUInt2 n x -> do
+    let word32Count = div (roundTo256Bits n) 4
+    forM_ (reverse [0 .. word32Count - 1]) $ \i ->
+      putWord32be (fromIntegral (shiftR x (i * 32) .&. 0xffffffff))
+
+  AbiInt2 n x   -> putAbi2 (AbiUInt2 n (fromIntegral x))
+  AbiAddress2 x -> putAbi2 (AbiUInt2 160 (fromIntegral x))
+  AbiBool2 x    -> putAbi2 (AbiUInt2 8 (if x then 1 else 0))
+
+  AbiBytes2 n xs -> do
+    forM_ [0 .. n-1] (putWord8 . BS.index xs)
+    replicateM_ (roundTo256Bits n - n) (putWord8 0)
+
+  AbiBytesDynamic2 xs -> do
+    let n = BS.length xs
+    putAbi2 (AbiUInt2 256 (fromIntegral n))
+    putAbi2 (AbiBytes2 n xs)
+
+  AbiString2 s ->
+    putAbi2 (AbiBytesDynamic2 s)
+
+  AbiArray2 _ _ xs ->
+    putAbiSeq2 xs
+
+  AbiArrayDynamic2 _ xs -> do
+    putAbi2 (AbiUInt2 256 (fromIntegral (V.length xs)))
+    putAbiSeq2 xs
+
+  AbiTuple2 v ->
+    putAbiSeq2 v
+
+putAbiSeq2 :: V.Vector AbiValue2 -> Put
+putAbiSeq2 xs =
+  do snd $ V.foldl' f (headSize, pure ()) (V.zip xs tailSizes)
+     V.sequence_ (V.map putAbiTail2 xs)
+  where
+    headSize = V.sum $ V.map abiHeadSize2 xs
+    tailSizes = V.map abiTailSize2 xs
+    -- f is like a putHead
+    f (i, m) (x, j) =
+      case abiKind2 (abiValueType2 x) of
+        Static -> (i, m >> putAbi2 x)
+        Dynamic -> (i + j, m >> putAbi2 (AbiUInt2 256 (fromIntegral i)))
+
+putAbiTail2 :: AbiValue2 -> Put
+putAbiTail2 x =
+  case abiKind2 (abiValueType2 x) of
+    -- static types always have tail = ""
+    Static  -> pure ()
+    -- dynamic types (even in the case of tuple) just get encoded and inserted
+    Dynamic -> putAbi2 x
+
+abiHeadSize2 :: AbiValue2 -> Int
+abiHeadSize2 x =
+  case abiKind2 (abiValueType2 x) of
+    -- even for dynamic tuples it's just a len() invocation, which is uint256
+    Dynamic -> 32
+      --case x of
+      --     AbiTuple2 v -> 32 * length v
+      --     _           -> 32
+    Static ->
+      case x of
+        AbiUInt2 n _  -> roundTo256Bits n
+        AbiInt2  n _  -> roundTo256Bits n
+        AbiBytes2 n _ -> roundTo256Bits n
+        AbiAddress2 _ -> 32
+        AbiBool2 _    -> 32
+        AbiArray2 _ _ xs -> V.sum (V.map abiHeadSize2 xs) +
+                            V.sum (V.map abiTailSize2 xs)
+        AbiBytesDynamic2 _ -> 32
+        AbiArrayDynamic2 _ _ -> 32
+        AbiString2 _       -> 32
+        AbiTuple2 v   -> sum (abiHeadSize2 <$> v) +
+                         sum (abiTailSize2 <$> v) -- pretty sure this is just 0 but w/e
+
+abiTailSize2 :: AbiValue2 -> Int
+abiTailSize2 x =
+  case abiKind2 (abiValueType2 x) of
+    Static -> 0
+    Dynamic ->
+      case x of
+        AbiString2 s -> 32 + roundTo256Bits (BS.length s)
+        AbiBytesDynamic2 s -> 32 + roundTo256Bits (BS.length s)
+        AbiArrayDynamic2 _ xs -> 32 + V.sum (V.map abiValueSize2 xs)
+        AbiArray2 _ _ xs -> V.sum (V.map abiValueSize2 xs)
+        AbiTuple2 v -> sum (abiValueSize2 <$> v)
+        _ -> error "impossible"
+
+abiValueSize2 :: AbiValue2 -> Int
+abiValueSize2 x =
+  case x of
+    AbiUInt2 n _  -> roundTo256Bits n
+    AbiInt2  n _  -> roundTo256Bits n
+    AbiBytes2 n _ -> roundTo256Bits n
+    AbiAddress2 _ -> 32
+    AbiBool2 _    -> 32
+    AbiArray2 _ _ xs -> V.sum (V.map abiHeadSize2 xs) +
+                        V.sum (V.map abiTailSize2 xs)
+    AbiBytesDynamic2 xs -> 32 + roundTo256Bits (BS.length xs)
+    AbiArrayDynamic2 _ xs -> 32 + V.sum (V.map abiHeadSize2 xs) +
+                                  V.sum (V.map abiTailSize2 xs)
+    AbiString2 s -> 32 + roundTo256Bits (BS.length s)
+    AbiTuple2 v  -> sum (abiValueSize2 <$> v)
+
+roundTo256Bits :: Integral a => a -> a
+roundTo256Bits n = 32 * div (n + 255) 256
