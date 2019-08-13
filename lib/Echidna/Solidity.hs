@@ -19,6 +19,7 @@ import Data.Aeson.Lens
 import Data.ByteString.Lens       (packedChars)
 import Data.DoubleWord            (Int256, Word256)
 import Data.Foldable              (toList, fold)
+import Data.Functor               (($>))
 import Data.Has                   (Has(..))
 import Data.List                  (find, nub, partition)
 import Data.List.Lens             (prefixed, suffixed)
@@ -212,9 +213,7 @@ readJSON2 json = do
               ( keccak (encodeUtf8 (signature abi))
               , Event2
                   (abi ^?! key "name" . _String)
-                  (case abi ^?! key "anonymous" . _Bool of
-                     True -> Anonymous
-                     False -> NotAnonymous)
+                  (if abi ^?! key "anonymous" . _Bool then Anonymous else NotAnonymous)
                   (map (\y -> ( force "internal error: type" (parseTypeName2 (y ^? key "components" . _Array) (y ^?! key "type" . _String))
                               , if y ^?! key "indexed" . _Bool
                                 then Indexed
@@ -263,7 +262,7 @@ typeWithArraySuffix v = do
         (P.many P.digitChar)
 
   let
-    parseSize :: AbiType2 -> [Char] -> AbiType2
+    parseSize :: AbiType2 -> String -> AbiType2
     parseSize t "" = AbiArrayDynamicType2 t
     parseSize t s  = AbiArrayType2 (read s) t
 
@@ -272,16 +271,16 @@ typeWithArraySuffix v = do
 basicType2 :: V.Vector Value -> P.Parsec () Text AbiType2
 basicType2 v =
   P.choice
-    [ P.string "address" *> pure AbiAddressType2
-    , P.string "bool"    *> pure AbiBoolType2
-    , P.string "string"  *> pure AbiStringType2
+    [ P.string "address" $> AbiAddressType2
+    , P.string "bool"    $> AbiBoolType2
+    , P.string "string"  $> AbiStringType2
 
     , sizedType "uint" AbiUIntType2
     , sizedType "int"  AbiIntType2
     , sizedType "bytes" AbiBytesType2
 
-    , P.string "bytes" *> pure AbiBytesDynamicType2
-    , P.string "tuple" *> pure (AbiTupleType2 tupleTypes)
+    , P.string "bytes" $> AbiBytesDynamicType2
+    , P.string "tuple" $> (AbiTupleType2 tupleTypes)
     ]
 
   where

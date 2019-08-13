@@ -97,7 +97,7 @@ abiKind2 = \case
   AbiStringType2         -> Dynamic
   AbiArrayDynamicType2 _ -> Dynamic
   AbiArrayType2 _ t      -> abiKind2 t
-  AbiTupleType2 v        -> if any (==Dynamic) (abiKind2 <$> v) then Dynamic else Static
+  AbiTupleType2 v        -> if Dynamic `elem` (abiKind2 <$> v) then Dynamic else Static
   _                      -> Static
 
 -- | Pretty-print some 'AbiValue'.
@@ -306,7 +306,7 @@ shrinkAbiValue2 (AbiArray2 n t l)    = AbiArray2 n t <$> traverse shrinkAbiValue
 shrinkAbiValue2 (AbiArrayDynamic2 t l) = fmap (AbiArrayDynamic2 t) $ traverse shrinkAbiValue2 =<< shrinkV l
 shrinkAbiValue2 (AbiTuple2 v)   = AbiTuple2 <$> traverse shrinkAbiValue2' v
   where shrinkAbiValue2' x = do
-          f <- uniform [return . id, shrinkAbiValue2]
+          f <- uniform [return, shrinkAbiValue2]
           f x
 
 -- | Given a 'SolCall', generate a random \"smaller\" (simpler) call.
