@@ -36,6 +36,7 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 
 import Echidna.ABI
+import Echidna.ABIv2
 
 -- | A transaction is either a @CREATE@ or a regular call with an origin, destination, and value.
 -- Note: I currently don't model nonces or signatures here.
