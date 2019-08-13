@@ -281,7 +281,7 @@ basicType2 v =
     , sizedType "bytes" AbiBytesType2
 
     , P.string "bytes" *> pure AbiBytesDynamicType2
-    , P.string "tuple" *> pure (AbiTupleType2 $ V.toList tupleTypes)
+    , P.string "tuple" *> pure (AbiTupleType2 tupleTypes)
     ]
 
   where

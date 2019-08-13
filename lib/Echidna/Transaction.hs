@@ -246,7 +246,7 @@ putAbi2 = \case
     putAbiSeq2 xs
 
   AbiTuple2 v ->
-    forM_ v putAbi2
+    putAbiSeq2 v
 
 putAbiSeq2 :: V.Vector AbiValue2 -> Put
 putAbiSeq2 xs =
@@ -274,6 +274,9 @@ abiHeadSize2 x =
   case abiKind2 (abiValueType2 x) of
     -- even for dynamic tuples it's just a len() invocation, which is uint256
     Dynamic -> 32
+      --case x of
+      --     AbiTuple2 v -> 32 * length v
+      --     _           -> 32
     Static ->
       case x of
         AbiUInt2 n _  -> roundTo256Bits n

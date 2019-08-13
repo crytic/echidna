@@ -3,10 +3,10 @@ pragma solidity ^0.4.25;
 
 contract Ballot {
   struct Voter { // Struct
-      uint weight;
-      bool voted;
-      address delegate;
-      uint vote;
+    uint weight;
+    bool voted;
+    address delegate;
+    uint vote;
   }
 
   bool cond = true;
