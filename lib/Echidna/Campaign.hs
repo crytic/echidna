@@ -37,6 +37,7 @@ import System.Random (mkStdGen)
 import qualified Data.HashMap.Strict  as H
 
 import Echidna.ABI
+import Echidna.ABIv2 (getAbi2)
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Test
@@ -188,7 +189,7 @@ callseq v w ql = do
     -- type for each function called, and if we do, tries to parse the return value as a value of that
     -- type. It returns a 'GenDict' style HashMap.
     parse l rt = H.fromList . flip mapMaybe l $ \(x, r) -> case (rt =<< x ^? call2 . _Left . _1, r) of
-      --(Just ty, VMSuccess b) -> (ty, ) . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
+      (Just ty, VMSuccess b) -> (ty, ) . pure <$> runGetOrFail (getAbi2 ty) (b ^. lazy) ^? _Right . _3
       _                      -> Nothing
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
