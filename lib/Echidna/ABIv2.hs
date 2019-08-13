@@ -156,13 +156,13 @@ readSolc2 fp =
       Nothing -> return Nothing
       Just (cs, asts, sources) -> do
         sc <- makeSourceCache sources asts
-        return $! Just (cs, sc)
+        return (Just (cs, sc))
 
 readJSON2 :: Text -> Maybe (Map.Map Text SolcContract2, Map.Map Text Value, [Text])
 readJSON2 json = do
   cs <-
     f <$> (json ^? key "contracts" . _Object)
-      <*> (fmap (fmap (^. _String)) $ json ^? key "sourceList" . _Array)
+      <*> fmap (fmap (^. _String)) (json ^? key "sourceList" . _Array)
   sources <- toList . fmap (view _String) <$> json ^? key "sourceList" . _Array
   return (cs, Map.fromList (M.toList asts), sources)
   where
@@ -185,7 +185,7 @@ readJSON2 json = do
         _contractAst2 =
           fromMaybe
             (error "JSON lacks abstract syntax trees.")
-            (preview (ix (T.split (== ':') s !! 0) . key "AST") asts),
+            (preview (ix (head $ T.split (== ':') s) . key "AST") asts),
 
         _constructorInputs2 =
           let
@@ -289,7 +289,7 @@ basicType2 v =
     , sizedType "bytes" AbiBytesType2
 
     , P.string "bytes" $> AbiBytesDynamicType2
-    , P.string "tuple" $> (AbiTupleType2 tupleTypes)
+    , P.string "tuple" $> AbiTupleType2 tupleTypes
     ]
 
   where
@@ -402,7 +402,7 @@ getAbiHead2 :: Int -> [AbiType2]
   -> Get [Either AbiType2 AbiValue2]
 getAbiHead2 0 _      = pure []
 getAbiHead2 _ []     = fail "ran out of types"
-getAbiHead2 n (t:ts) = do
+getAbiHead2 n (t:ts) =
   case abiKind2 t of
     Dynamic ->
       (Left t :) <$> (skip 32 *> getAbiHead2 (n - 1) ts)
@@ -477,7 +477,7 @@ roundTo256Bits n = 32 * div (n + 255) 256
 getBytesWith256BitPadding :: Integral a => a -> Get BS.ByteString
 getBytesWith256BitPadding i =
   (BS.pack <$> replicateM n getWord8)
-    <* skip ((roundTo256Bits n) - n)
+    <* skip (roundTo256Bits n - n)
   where n = fromIntegral i
 
 pack32 :: Int -> [Word32] -> Word256
