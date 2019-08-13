@@ -19,7 +19,7 @@ import Data.ByteString (ByteString)
 import Data.DoubleWord (Word256, Int256, Word160)
 import Data.Foldable (toList)
 import Data.Has (Has(..))
-import Data.Hashable (Hashable)
+import Data.Hashable (Hashable(..))
 import Data.HashMap.Strict (HashMap)
 import Data.List (group, intercalate, sort)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
@@ -45,7 +45,7 @@ data AbiValue2 = AbiUInt2         Int Word256
                | AbiString2       BS.ByteString
                | AbiArrayDynamic2 AbiType2 (Vector AbiValue2)
                | AbiArray2        Int AbiType2 (Vector AbiValue2)
-               | AbiTuple2        [AbiValue2]
+               | AbiTuple2        (Vector AbiValue2)
   deriving (Show, Read, Eq, Ord, Generic)
 
 data AbiType2 = AbiUIntType2         Int
@@ -57,8 +57,11 @@ data AbiType2 = AbiUIntType2         Int
               | AbiStringType2
               | AbiArrayDynamicType2 AbiType2
               | AbiArrayType2        Int AbiType2
-              | AbiTupleType2        [AbiType2]
+              | AbiTupleType2        (Vector AbiType2)
   deriving (Show, Read, Eq, Ord, Generic)
+
+instance Hashable a => Hashable (Vector a) where
+  hashWithSalt s = hashWithSalt s . V.toList
 
 abiValueType2 :: AbiValue2 -> AbiType2
 abiValueType2 = \case
@@ -84,7 +87,7 @@ abiTypeSolidity2 = \case
   AbiStringType2         -> "string"
   AbiArrayDynamicType2 t -> abiTypeSolidity2 t <> "[]"
   AbiArrayType2 n t      -> abiTypeSolidity2 t <> "[" <> T.pack (show n) <> "]"
-  AbiTupleType2 v        -> "(" <> (T.intercalate "," $ abiTypeSolidity2 <$> v) <> ")"
+  AbiTupleType2 v        -> "(" <> (T.intercalate "," . toList $ abiTypeSolidity2 <$> v) <> ")"
 
 data AbiKind = Dynamic | Static
   deriving (Show, Read, Eq, Ord)
