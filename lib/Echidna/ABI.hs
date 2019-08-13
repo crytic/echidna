@@ -16,89 +16,23 @@ import Control.Monad.Random.Strict
 import Data.Bits (Bits(..))
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
-import Data.DoubleWord (Word256, Int256, Word160)
 import Data.Foldable (toList)
 import Data.Has (Has(..))
-import Data.Hashable (Hashable(..))
+import Data.Hashable (Hashable)
 import Data.HashMap.Strict (HashMap)
 import Data.List (group, intercalate, sort)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Vector (Vector)
 import Data.Word8 (Word8)
-import GHC.Generics (Generic)
 import Numeric (showHex)
+
+import Echidna.ABIv2
 
 import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
-
--- types for EVM ABIv2
-data AbiValue2 = AbiUInt2         Int Word256
-               | AbiInt2          Int Int256
-               | AbiAddress2      Word160
-               | AbiBool2         Bool
-               | AbiBytes2        Int BS.ByteString
-               | AbiBytesDynamic2 BS.ByteString
-               | AbiString2       BS.ByteString
-               | AbiArrayDynamic2 AbiType2 (Vector AbiValue2)
-               | AbiArray2        Int AbiType2 (Vector AbiValue2)
-               | AbiTuple2        (Vector AbiValue2)
-  deriving (Show, Read, Eq, Ord, Generic)
-
-data AbiType2 = AbiUIntType2         Int
-              | AbiIntType2          Int
-              | AbiAddressType2
-              | AbiBoolType2
-              | AbiBytesType2        Int
-              | AbiBytesDynamicType2
-              | AbiStringType2
-              | AbiArrayDynamicType2 AbiType2
-              | AbiArrayType2        Int AbiType2
-              | AbiTupleType2        (Vector AbiType2)
-  deriving (Show, Read, Eq, Ord, Generic)
-
-instance Hashable a => Hashable (Vector a) where
-  hashWithSalt s = hashWithSalt s . V.toList
-
-abiValueType2 :: AbiValue2 -> AbiType2
-abiValueType2 = \case
-  AbiUInt2 n _         -> AbiUIntType2 n
-  AbiInt2 n _          -> AbiIntType2  n
-  AbiAddress2 _        -> AbiAddressType2
-  AbiBool2 _           -> AbiBoolType2
-  AbiBytes2 n _        -> AbiBytesType2 n
-  AbiBytesDynamic2 _   -> AbiBytesDynamicType2
-  AbiString2 _         -> AbiStringType2
-  AbiArrayDynamic2 t _ -> AbiArrayDynamicType2 t
-  AbiArray2 n t _      -> AbiArrayType2 n t
-  AbiTuple2 v          -> AbiTupleType2 (abiValueType2 <$> v)
-
-abiTypeSolidity2 :: AbiType2 -> Text
-abiTypeSolidity2 = \case
-  AbiUIntType2 n         -> "uint" <> T.pack (show n)
-  AbiIntType2 n          -> "int" <> T.pack (show n)
-  AbiAddressType2        -> "address"
-  AbiBoolType2           -> "bool"
-  AbiBytesType2 n        -> "bytes" <> T.pack (show n)
-  AbiBytesDynamicType2   -> "bytes"
-  AbiStringType2         -> "string"
-  AbiArrayDynamicType2 t -> abiTypeSolidity2 t <> "[]"
-  AbiArrayType2 n t      -> abiTypeSolidity2 t <> "[" <> T.pack (show n) <> "]"
-  AbiTupleType2 v        -> "(" <> (T.intercalate "," . toList $ abiTypeSolidity2 <$> v) <> ")"
-
-data AbiKind = Dynamic | Static
-  deriving (Show, Read, Eq, Ord)
-
-abiKind2 :: AbiType2 -> AbiKind
-abiKind2 = \case
-  AbiBytesDynamicType2   -> Dynamic
-  AbiStringType2         -> Dynamic
-  AbiArrayDynamicType2 _ -> Dynamic
-  AbiArrayType2 _ t      -> abiKind2 t
-  AbiTupleType2 v        -> if Dynamic `elem` (abiKind2 <$> v) then Dynamic else Static
-  _                      -> Static
 
 -- | Pretty-print some 'AbiValue'.
 ppAbiValue2 :: AbiValue2 -> String

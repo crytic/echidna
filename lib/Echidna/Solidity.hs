@@ -9,53 +9,42 @@ module Echidna.Solidity where
 
 import Control.Lens hiding        (Indexed)
 import Control.Exception          (Exception)
-import Control.Monad              (liftM2, mapM_, when, unless, void)
+import Control.Monad              (liftM2, mapM_, when, unless)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
 import Data.Aeson                 (Value(..))
-import Data.Aeson.Lens
 import Data.ByteString.Lens       (packedChars)
 import Data.DoubleWord            (Int256, Word256)
-import Data.Foldable              (toList, fold)
-import Data.Functor               (($>))
+import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
 import Data.List                  (find, nub, partition)
 import Data.List.Lens             (prefixed, suffixed)
-import Data.Maybe                 (isNothing, catMaybes, fromMaybe, fromJust)
+import Data.Maybe                 (isNothing, catMaybes)
 import Data.Monoid                ((<>))
-import Data.Sequence              (Seq)
 import Data.Text                  (Text, isPrefixOf, isSuffixOf)
-import Data.Text.Encoding         (encodeUtf8)
 import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
-import Data.Word
 import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 
-import Echidna.ABI         (SolSignature2, AbiType2(..), AbiValue2(..), SolSignature2)
+import Echidna.ABI         (SolSignature2, SolSignature2)
+import Echidna.ABIv2       (AbiType2(..), AbiValue2(..), readSolc2, SolcContract2,
+                            abiMap2, methodName2, creationCode2, methodOutput2,
+                            methodInputs2, contractName2, contractAst2)
 import Echidna.Exec        (execTx2)
 import Echidna.Transaction (Tx2(..), World2(..))
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
-import EVM.ABI      (Indexed(..), Anonymity(..))
 import EVM.Exec     (vmForEthrunCreation)
-import EVM.Keccak   (keccak, abiKeccak)
-import EVM.Solidity
-import EVM.Types    (Addr, W256)
+import EVM.Types    (Addr)
 import EVM.Concrete (w256)
 
 import qualified Data.ByteString     as BS
-import qualified Data.ByteString.Base16 as BS16
 import qualified Data.HashMap.Strict as M
-import qualified Data.Map.Strict     as Map
 import qualified Data.Text           as T
-import qualified Data.Text.IO        as TIO
-import qualified Data.Vector         as V
-import qualified Text.Megaparsec      as P
-import qualified Text.Megaparsec.Char as P
 
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
@@ -97,200 +86,9 @@ data SolConf = SolConf { _contractAddr    :: Addr     -- ^ Contract address to u
                        }
 makeLenses ''SolConf
 
-data SolcContract2 = SolcContract2
-  { _runtimeCodehash2  :: W256
-  , _creationCodehash2 :: W256
-  , _runtimeCode2      :: BS.ByteString
-  , _creationCode2     :: BS.ByteString
-  , _contractName2     :: Text
-  , _constructorInputs2 :: [(Text, AbiType2)]
-  , _abiMap2           :: Map.Map Word32 Method2
-  , _eventMap2         :: Map.Map W256 Event2
-  , _runtimeSrcmap2    :: Seq SrcMap
-  , _creationSrcmap2   :: Seq SrcMap
-  , _contractAst2      :: Value
-  } deriving (Show, Eq)
-
-data Method2 = Method2
-  { _methodOutput2 :: Maybe (Text, AbiType2)
-  , _methodInputs2 :: [(Text, AbiType2)]
-  , _methodName2 :: Text
-  , _methodSignature2 :: Text
-  } deriving (Show, Eq, Ord)
-
-data Event2 = Event2 Text Anonymity [(AbiType2, Indexed)]
-  deriving (Show, Ord, Eq)
-
-makeLenses ''SolcContract2
-makeLenses ''Method2
-
 -- | An Echidna test is either the name of the function to call and the address where its contract is,
 -- or a function that could experience an exception
 type SolTest = Either (Text, Addr) SolSignature2
-
-toCode :: Text -> BS.ByteString
-toCode = fst . BS16.decode . encodeUtf8
-
-force :: String -> Maybe a -> a
-force s = fromMaybe (error s)
-
-parseMethodInput2 :: (Show s, AsValue s) => s -> (Text, AbiType2)
-parseMethodInput2 x =
-  ( x ^?! key "name" . _String
-  , force "internal error: method type" (parseTypeName2 (x ^? key "components" . _Array) (x ^?! key "type" . _String))
-  )
-
-readSolc2 :: FilePath -> IO (Maybe (Map.Map Text SolcContract2, SourceCache))
-readSolc2 fp =
-  (readJSON2 <$> TIO.readFile fp) >>=
-    \case
-      Nothing -> return Nothing
-      Just (cs, asts, sources) -> do
-        sc <- makeSourceCache sources asts
-        return $! Just (cs, sc)
-
-readJSON2 :: Text -> Maybe (Map.Map Text SolcContract2, Map.Map Text Value, [Text])
-readJSON2 json = do
-  cs <-
-    f <$> (json ^? key "contracts" . _Object)
-      <*> (fmap (fmap (^. _String)) $ json ^? key "sourceList" . _Array)
-  sources <- toList . fmap (view _String) <$> json ^? key "sourceList" . _Array
-  return (cs, Map.fromList (M.toList asts), sources)
-  where
-    asts = fromMaybe (error "JSON lacks abstract syntax trees.") (json ^? key "sources" . _Object)
-    f x y = Map.fromList . map (g y) . M.toList $ x
-    g _ (s, x) =
-      let
-        theRuntimeCode = toCode (x ^?! key "bin-runtime" . _String)
-        theCreationCode = toCode (x ^?! key "bin" . _String)
-        abis =
-          toList ((x ^?! key "abi" . _String) ^?! _Array)
-      in (s, SolcContract2 {
-        _runtimeCode2      = theRuntimeCode,
-        _creationCode2     = theCreationCode,
-        _runtimeCodehash2  = keccak (stripBytecodeMetadata theRuntimeCode),
-        _creationCodehash2 = keccak (stripBytecodeMetadata theCreationCode),
-        _runtimeSrcmap2    = force "internal error: srcmap-runtime" (makeSrcMaps (x ^?! key "srcmap-runtime" . _String)),
-        _creationSrcmap2   = force "internal error: srcmap" (makeSrcMaps (x ^?! key "srcmap" . _String)),
-        _contractName2 = s,
-        _contractAst2 =
-          fromMaybe
-            (error "JSON lacks abstract syntax trees.")
-            (preview (ix (T.split (== ':') s !! 0) . key "AST") asts),
-
-        _constructorInputs2 =
-          let
-            isConstructor y =
-              "constructor" == y ^?! key "type" . _String
-          in
-            case filter isConstructor abis of
-              [abi] -> map parseMethodInput2 (toList (abi ^?! key "inputs" . _Array))
-              [] -> [] -- default constructor has zero inputs
-              _  -> error "strange: contract has multiple constructors",
-
-        _abiMap2       = Map.fromList $
-          let
-            relevant =
-              filter (\y -> "function" == y ^?! key "type" . _String) abis
-          in flip map relevant $
-            \abi -> (
-              abiKeccak (encodeUtf8 (signature abi)),
-              Method2
-                { _methodName2 = abi ^?! key "name" . _String
-                , _methodSignature2 = signature abi
-                , _methodInputs2 =
-                    map parseMethodInput2
-                      (toList (abi ^?! key "inputs" . _Array))
-                , _methodOutput2 =
-                    fmap parseMethodInput2
-                      (abi ^? key "outputs" . _Array . ix 0)
-                }
-            ),
-        _eventMap2     = Map.fromList $
-          flip map (filter (\y -> "event" == y ^?! key "type" . _String)
-                     . toList $ (x ^?! key "abi" . _String) ^?! _Array) $
-            \abi ->
-              ( keccak (encodeUtf8 (signature abi))
-              , Event2
-                  (abi ^?! key "name" . _String)
-                  (if abi ^?! key "anonymous" . _Bool then Anonymous else NotAnonymous)
-                  (map (\y -> ( force "internal error: type" (parseTypeName2 (y ^? key "components" . _Array) (y ^?! key "type" . _String))
-                              , if y ^?! key "indexed" . _Bool
-                                then Indexed
-                                else NotIndexed ))
-                    (toList $ abi ^?! key "inputs" . _Array))
-              )
-      })
-
-signature :: AsValue s => s -> Text
-signature abi =
-  case abi ^?! key "type" of
-    "fallback" -> "<fallback>"
-    _ ->
-      fold [
-        fromMaybe "<constructor>" (abi ^? key "name" . _String), "(",
-        T.intercalate ","
-          (map (\x -> x ^?! key "type" . _String)
-            (toList $ abi ^?! key "inputs" . _Array)),
-        ")"
-      ]
-
-makeSourceCache :: [Text] -> Map.Map Text Value -> IO SourceCache
-makeSourceCache paths asts = do
-  xs <- mapM (BS.readFile . T.unpack) paths
-  return $! SourceCache
-    { _snippetCache = mempty
-    , _sourceFiles =
-        Map.fromList (zip [0..] (zip paths xs))
-    , _sourceLines =
-        Map.fromList (zip [0 .. length paths - 1]
-                       (map (V.fromList . BS.split 0xa) xs))
-    , _sourceAsts =
-        asts
-    }
-
-parseTypeName2 :: Maybe (V.Vector Value) -> Text -> Maybe AbiType2
-parseTypeName2 v = P.parseMaybe (typeWithArraySuffix (fromMaybe (V.fromList []) v))
-
-typeWithArraySuffix :: V.Vector Value -> P.Parsec () Text AbiType2
-typeWithArraySuffix v = do
-  base <- basicType2 v
-  sizes <-
-    P.many $
-      P.between
-        (P.char '[') (P.char ']')
-        (P.many P.digitChar)
-
-  let
-    parseSize :: AbiType2 -> String -> AbiType2
-    parseSize t "" = AbiArrayDynamicType2 t
-    parseSize t s  = AbiArrayType2 (read s) t
-
-  pure (foldl parseSize base sizes)
-
-basicType2 :: V.Vector Value -> P.Parsec () Text AbiType2
-basicType2 v =
-  P.choice
-    [ P.string "address" $> AbiAddressType2
-    , P.string "bool"    $> AbiBoolType2
-    , P.string "string"  $> AbiStringType2
-
-    , sizedType "uint" AbiUIntType2
-    , sizedType "int"  AbiIntType2
-    , sizedType "bytes" AbiBytesType2
-
-    , P.string "bytes" $> AbiBytesDynamicType2
-    , P.string "tuple" $> (AbiTupleType2 tupleTypes)
-    ]
-
-  where
-    sizedType :: Text -> (Int -> AbiType2) -> P.Parsec () Text AbiType2
-    sizedType s f = P.try $ do
-      void (P.string s)
-      fmap (f . read) (P.some P.digitChar)
-    tupleTypes = catMaybes' $ parseTypeName2' <$> v
-    parseTypeName2' x = parseTypeName2 (x ^? key "components" . _Array) (x ^?! key "type" . _String)
-    catMaybes' = fmap fromJust . V.filter (/= Nothing)
 
 -- | Given a file, use its extenstion to check if it is a precompiled contract or try to compile it and
 -- get a list of its contracts, throwing exceptions if necessary.
