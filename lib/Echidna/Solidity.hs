@@ -33,13 +33,13 @@ import Data.Word
 import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 
-import Echidna.ABI         (SolSignature, AbiType2(..), AbiValue2(..), SolSignature2)
-import Echidna.Exec        (execTx)
-import Echidna.Transaction (Tx(..), World(..), World2(..))
+import Echidna.ABI         (SolSignature2, AbiType2(..), AbiValue2(..), SolSignature2)
+import Echidna.Exec        (execTx2)
+import Echidna.Transaction (Tx2(..), World2(..))
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
-import EVM.ABI      (AbiType, AbiValue(..), Indexed(..), Event(..), Anonymity(..), parseTypeName)
+import EVM.ABI      (Indexed(..), Anonymity(..))
 import EVM.Exec     (vmForEthrunCreation)
 import EVM.Keccak   (keccak, abiKeccak)
 import EVM.Solidity
@@ -144,17 +144,17 @@ readSolc2 fp =
   (readJSON2 <$> TIO.readFile fp) >>=
     \case
       Nothing -> return Nothing
-      Just (contracts, asts, sources) -> do
-        sourceCache <- makeSourceCache sources asts
-        return $! Just (contracts, sourceCache)
+      Just (cs, asts, sources) -> do
+        sc <- makeSourceCache sources asts
+        return $! Just (cs, sc)
 
 readJSON2 :: Text -> Maybe (Map.Map Text SolcContract2, Map.Map Text Value, [Text])
 readJSON2 json = do
-  contracts <-
+  cs <-
     f <$> (json ^? key "contracts" . _Object)
       <*> (fmap (fmap (^. _String)) $ json ^? key "sourceList" . _Array)
   sources <- toList . fmap (view _String) <$> json ^? key "sourceList" . _Array
-  return (contracts, Map.fromList (M.toList asts), sources)
+  return (cs, Map.fromList (M.toList asts), sources)
   where
     asts = fromMaybe (error "JSON lacks abstract syntax trees.") (json ^? key "sources" . _Object)
     f x y = Map.fromList . map (g y) . M.toList $ x
@@ -326,7 +326,7 @@ loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
               => [SolcContract2] -> Addr -> Addr -> VM -> m VM
 loadLibraries []     _  _ vm = return vm
 loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
-  where loadRest = execStateT (execTx $ Tx (Right $ l ^. creationCode2) d la 0xffffffff 0) vm
+  where loadRest = execStateT (execTx2 $ Tx2 (Right $ l ^. creationCode2) d la 0xffffffff 0) vm
 
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
@@ -367,7 +367,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                       -- Test args check
     Nothing    -> loadLibraries ls addrLibrary d blank >>= fmap (, fallback : funs, fst <$> tests) .
-      execStateT (execTx $ Tx (Right bc) d ca 0xffffffff (w256 $ fromInteger balc))
+      execStateT (execTx2 $ Tx2 (Right bc) d ca 0xffffffff (w256 $ fromInteger balc))
 
 
   where choose []    _        = throwM NoContracts

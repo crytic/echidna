@@ -30,7 +30,6 @@ import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
 import EVM
-import EVM.ABI
 import EVM.Types (W256)
 import Numeric (showHex)
 import System.Random (mkStdGen)

@@ -63,22 +63,6 @@ vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> Unknow
 
 -- | Given an error handler, an execution function, and a transaction, execute that transaction
 -- using the given execution strategy, handling errors with the given handler.
-execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m VMResult
-execTxWith h m t = do og <- get
-                      setupTx t
-                      res <- m
-                      cd  <- use $ hasLens . state . calldata
-                      case (res, isRight $ t ^. call) of
-                        (f@Reversion, _)         -> do put og
-                                                       hasLens . state . calldata .= cd
-                                                       hasLens . result ?= f
-                        (VMFailure x, _)         -> h x
-                        (VMSuccess bc, True)     -> (hasLens %=) . execState $ do
-                          env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
-                          replaceCodeOfSelf (RuntimeCode bc) 
-                          loadContract (t ^. dst)
-                        _                        -> pure ()
-                      return res
 execTxWith2 :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx2 -> m VMResult
 execTxWith2 h m t = do og <- get
                        setupTx2 t
@@ -97,8 +81,6 @@ execTxWith2 h m t = do og <- get
                        return res
 
 -- | Execute a transaction "as normal".
-execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m VMResult
-execTx = execTxWith vmExcept $ liftSH exec
 execTx2 :: (MonadState x m, Has VM x, MonadThrow m) => Tx2 -> m VMResult
 execTx2 = execTxWith2 vmExcept $ liftSH exec
 
