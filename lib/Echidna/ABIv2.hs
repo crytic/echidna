@@ -2,15 +2,20 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
 
+-- The entirety of this file is pretty much stolen from EVM.Solidity and EVM.ABI
+-- and modified to work with ABIv2 by adding a Tuple entry to AbiType and
+-- AbiValue.
+
 module Echidna.ABIv2 where
 
 import Control.Lens.TH            (makeLenses)
 import Control.Lens hiding        (Indexed)
-import Control.Monad              (void, forM_, replicateM_)
+import Control.Monad              (void, forM_, replicateM_, replicateM)
 import Data.Aeson                 (Value(..))
 import Data.Aeson.Lens
+import Data.Binary.Get            (Get, label, getWord8, getWord32be, skip)
 import Data.Binary.Put            (Put, runPut, putWord8, putWord32be)
-import Data.Bits                  (shiftR, (.&.))
+import Data.Bits                  (shiftL, shiftR, (.&.))
 import Data.DoubleWord            (Word256, Int256, Word160)
 import Data.Foldable              (toList, fold)
 import Data.Functor               (($>))
@@ -19,7 +24,7 @@ import Data.Maybe                 (fromMaybe, fromJust)
 import Data.Sequence              (Seq)
 import Data.Text                  (Text)
 import Data.Text.Encoding         (encodeUtf8)
-import Data.Word                  (Word32)
+import Data.Word                  (Word8, Word32)
 import GHC.Generics               (Generic)
 
 import EVM.ABI      (Indexed(..), Anonymity(..))
@@ -101,6 +106,7 @@ abiKind2 = \case
   AbiTupleType2 v        -> if Dynamic `elem` (abiKind2 <$> v) then Dynamic else Static
   _                      -> Static
 
+-- orphan instance for Hashable a => Hashable (Vector a)
 instance Hashable a => Hashable (V.Vector a) where
   hashWithSalt s = hashWithSalt s . V.toList
 
@@ -295,6 +301,8 @@ basicType2 v =
     parseTypeName2' x = parseTypeName2 (x ^? key "components" . _Array) (x ^?! key "type" . _String)
     catMaybes' = fmap fromJust . V.filter (/= Nothing)
 
+
+-- ABI encode/decode functions
 encodeAbiValue2 :: AbiValue2 -> BS.ByteString
 encodeAbiValue2 = BSLazy.toStrict . runPut . putAbi2
 
@@ -302,6 +310,41 @@ abiCalldata2 :: T.Text -> V.Vector AbiValue2 -> BS.ByteString
 abiCalldata2 s xs = BSLazy.toStrict . runPut $ do
   putWord32be (abiKeccak (encodeUtf8 s))
   putAbiSeq2 xs
+
+getAbi2 :: AbiType2 -> Get AbiValue2
+getAbi2 t = label (T.unpack (abiTypeSolidity2 t)) $
+  case t of
+    AbiUIntType2 n  -> do
+      let word32Count = 8 * div (n + 255) 256
+      xs <- replicateM word32Count getWord32be
+      pure (AbiUInt2 n (pack32 word32Count xs))
+
+    AbiIntType2 n   -> asUInt n (AbiInt2 n)
+    AbiAddressType2 -> asUInt 256 AbiAddress2
+    AbiBoolType2    -> asUInt 256 (AbiBool2 . (== (1 :: Int)))
+
+    AbiBytesType2 n ->
+      AbiBytes2 n <$> getBytesWith256BitPadding n
+
+    AbiBytesDynamicType2 ->
+      AbiBytesDynamic2 <$>
+        (label "bytes length prefix" getWord256
+          >>= label "bytes data" . getBytesWith256BitPadding)
+
+    AbiStringType2 -> do
+      AbiBytesDynamic2 x <- getAbi2 AbiBytesDynamicType2
+      pure (AbiString2 x)
+
+    AbiArrayType2 n t' ->
+      AbiArray2 n t' <$> getAbiSeq2 n (repeat t')
+
+    AbiArrayDynamicType2 t' -> do
+      AbiUInt2 _ n <- label "array length" (getAbi2 (AbiUIntType2 256))
+      AbiArrayDynamic2 t' <$>
+        label "array body" (getAbiSeq2 (fromIntegral n) (repeat t'))
+
+    AbiTupleType2 v ->
+      AbiTuple2 <$> getAbiSeq2 (V.length v) (V.toList v)
 
 putAbi2 :: AbiValue2 -> Put
 putAbi2 = \case
@@ -348,6 +391,25 @@ putAbiSeq2 xs =
       case abiKind2 (abiValueType2 x) of
         Static -> (i, m >> putAbi2 x)
         Dynamic -> (i + j, m >> putAbi2 (AbiUInt2 256 (fromIntegral i)))
+
+getAbiSeq2 :: Int -> [AbiType2] -> Get (V.Vector AbiValue2)
+getAbiSeq2 n ts = label "sequence" $ do
+  hs <- label "sequence head" (getAbiHead2 n ts)
+  V.fromList <$>
+    label "sequence tail" (mapM (either getAbi2 pure) hs)
+
+getAbiHead2 :: Int -> [AbiType2]
+  -> Get [Either AbiType2 AbiValue2]
+getAbiHead2 0 _      = pure []
+getAbiHead2 _ []     = fail "ran out of types"
+getAbiHead2 n (t:ts) = do
+  case abiKind2 t of
+    Dynamic ->
+      (Left t :) <$> (skip 32 *> getAbiHead2 (n - 1) ts)
+    Static ->
+      do x  <- getAbi2 t
+         xs <- getAbiHead2 (n - 1) ts
+         pure (Right x : xs)
 
 putAbiTail2 :: AbiValue2 -> Put
 putAbiTail2 x =
@@ -411,3 +473,25 @@ abiValueSize2 x =
 
 roundTo256Bits :: Integral a => a -> a
 roundTo256Bits n = 32 * div (n + 255) 256
+
+getBytesWith256BitPadding :: Integral a => a -> Get BS.ByteString
+getBytesWith256BitPadding i =
+  (BS.pack <$> replicateM n getWord8)
+    <* skip ((roundTo256Bits n) - n)
+  where n = fromIntegral i
+
+pack32 :: Int -> [Word32] -> Word256
+pack32 n xs =
+  sum [ shiftL x ((n - i) * 32)
+      | (x, i) <- zip (map fromIntegral xs) [1..] ]
+
+pack8 :: Int -> [Word8] -> Word256
+pack8 n xs =
+  sum [ shiftL x ((n - i) * 8)
+      | (x, i) <- zip (map fromIntegral xs) [1..] ]
+
+asUInt :: Integral i => Int -> (i -> a) -> Get a
+asUInt n f = (\(AbiUInt2 _ x) -> f (fromIntegral x)) <$> getAbi2 (AbiUIntType2 n)
+
+getWord256 :: Get Word256
+getWord256 = pack32 8 <$> replicateM 8 getWord32be
