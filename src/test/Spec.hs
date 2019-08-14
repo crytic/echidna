@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 
-import Test.QuickCheck.Instances.ByteString ()
+import Test.QuickCheck.Instances ()
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck (Arbitrary(..), oneof, sized, choose, listOf, testProperty, withMaxSuccess)
@@ -80,10 +80,10 @@ instance Arbitrary AbiType where
           type' m = oneof
             [ pure $ AbiUIntType 256
             , pure $ AbiIntType  256
-            , pure $ AbiAddressType
-            , pure $ AbiBoolType
+            , pure AbiAddressType
+            , pure AbiBoolType
             , sized $ \n -> AbiBytesType <$> choose (1, n)
-            , pure $ AbiStringType
+            , pure AbiStringType
             , AbiArrayDynamicType <$> type' (m `div` 2)
             , sized $ \n -> AbiArrayType <$> choose (1, n) <*> type' (m `div` 2)
             , AbiTupleType . V.fromList <$> listOf (type' (m `div` 2))
@@ -100,10 +100,8 @@ instance Arbitrary AbiValue where
             return $ AbiBytes (length b) (BS.pack b)
           arb AbiBytesDynamicType     = AbiBytesDynamic <$> arbitrary
           arb AbiStringType           = AbiString       <$> arbitrary
-          arb (AbiArrayDynamicType t) = AbiArrayDynamic t . V.fromList <$> (listOf (arb t))
-          arb (AbiArrayType n t)      = do
-            v <- V.replicateM n (arb t)
-            return $ AbiArray n t v
+          arb (AbiArrayDynamicType t) = AbiArrayDynamic t . V.fromList <$> listOf (arb t)
+          arb (AbiArrayType n t)      = AbiArray n t <$> V.replicateM n (arb t)
           arb (AbiTupleType t)        = AbiTuple        <$> V.forM t arb
           arbw256 = Word256 <$> arbw128 <*> arbw128
           arbi256 = Int256  <$> arbi128 <*> arbw128
