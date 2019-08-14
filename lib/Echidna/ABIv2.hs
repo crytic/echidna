@@ -44,98 +44,98 @@ import qualified Text.Megaparsec        as P
 import qualified Text.Megaparsec.Char   as P
 
 -- types for EVM ABIv2
-data AbiValue2 = AbiUInt2         Int Word256
-               | AbiInt2          Int Int256
-               | AbiAddress2      Word160
-               | AbiBool2         Bool
-               | AbiBytes2        Int BS.ByteString
-               | AbiBytesDynamic2 BS.ByteString
-               | AbiString2       BS.ByteString
-               | AbiArrayDynamic2 AbiType2 (V.Vector AbiValue2)
-               | AbiArray2        Int AbiType2 (V.Vector AbiValue2)
-               | AbiTuple2        (V.Vector AbiValue2)
+data AbiValue = AbiUInt         Int Word256
+              | AbiInt          Int Int256
+              | AbiAddress      Word160
+              | AbiBool         Bool
+              | AbiBytes        Int BS.ByteString
+              | AbiBytesDynamic BS.ByteString
+              | AbiString       BS.ByteString
+              | AbiArrayDynamic AbiType (V.Vector AbiValue)
+              | AbiArray        Int AbiType (V.Vector AbiValue)
+              | AbiTuple        (V.Vector AbiValue)
   deriving (Show, Read, Eq, Ord, Generic)
 
-data AbiType2 = AbiUIntType2         Int
-              | AbiIntType2          Int
-              | AbiAddressType2
-              | AbiBoolType2
-              | AbiBytesType2        Int
-              | AbiBytesDynamicType2
-              | AbiStringType2
-              | AbiArrayDynamicType2 AbiType2
-              | AbiArrayType2        Int AbiType2
-              | AbiTupleType2        (V.Vector AbiType2)
+data AbiType = AbiUIntType         Int
+             | AbiIntType          Int
+             | AbiAddressType
+             | AbiBoolType
+             | AbiBytesType        Int
+             | AbiBytesDynamicType
+             | AbiStringType
+             | AbiArrayDynamicType AbiType
+             | AbiArrayType        Int AbiType
+             | AbiTupleType        (V.Vector AbiType)
   deriving (Show, Read, Eq, Ord, Generic)
 
-abiValueType2 :: AbiValue2 -> AbiType2
-abiValueType2 = \case
-  AbiUInt2 n _         -> AbiUIntType2 n
-  AbiInt2 n _          -> AbiIntType2  n
-  AbiAddress2 _        -> AbiAddressType2
-  AbiBool2 _           -> AbiBoolType2
-  AbiBytes2 n _        -> AbiBytesType2 n
-  AbiBytesDynamic2 _   -> AbiBytesDynamicType2
-  AbiString2 _         -> AbiStringType2
-  AbiArrayDynamic2 t _ -> AbiArrayDynamicType2 t
-  AbiArray2 n t _      -> AbiArrayType2 n t
-  AbiTuple2 v          -> AbiTupleType2 (abiValueType2 <$> v)
+abiValueType :: AbiValue -> AbiType
+abiValueType = \case
+  AbiUInt n _         -> AbiUIntType n
+  AbiInt n _          -> AbiIntType  n
+  AbiAddress _        -> AbiAddressType
+  AbiBool _           -> AbiBoolType
+  AbiBytes n _        -> AbiBytesType n
+  AbiBytesDynamic _   -> AbiBytesDynamicType
+  AbiString _         -> AbiStringType
+  AbiArrayDynamic t _ -> AbiArrayDynamicType t
+  AbiArray n t _      -> AbiArrayType n t
+  AbiTuple v          -> AbiTupleType (abiValueType <$> v)
 
-abiTypeSolidity2 :: AbiType2 -> Text
-abiTypeSolidity2 = \case
-  AbiUIntType2 n         -> "uint" <> T.pack (show n)
-  AbiIntType2 n          -> "int" <> T.pack (show n)
-  AbiAddressType2        -> "address"
-  AbiBoolType2           -> "bool"
-  AbiBytesType2 n        -> "bytes" <> T.pack (show n)
-  AbiBytesDynamicType2   -> "bytes"
-  AbiStringType2         -> "string"
-  AbiArrayDynamicType2 t -> abiTypeSolidity2 t <> "[]"
-  AbiArrayType2 n t      -> abiTypeSolidity2 t <> "[" <> T.pack (show n) <> "]"
-  AbiTupleType2 v        -> "(" <> (T.intercalate "," . V.toList $ abiTypeSolidity2 <$> v) <> ")"
+abiTypeSolidity :: AbiType -> Text
+abiTypeSolidity = \case
+  AbiUIntType n         -> "uint" <> T.pack (show n)
+  AbiIntType n          -> "int" <> T.pack (show n)
+  AbiAddressType        -> "address"
+  AbiBoolType           -> "bool"
+  AbiBytesType n        -> "bytes" <> T.pack (show n)
+  AbiBytesDynamicType   -> "bytes"
+  AbiStringType         -> "string"
+  AbiArrayDynamicType t -> abiTypeSolidity t <> "[]"
+  AbiArrayType n t      -> abiTypeSolidity t <> "[" <> T.pack (show n) <> "]"
+  AbiTupleType v        -> "(" <> (T.intercalate "," . V.toList $ abiTypeSolidity <$> v) <> ")"
 
 data AbiKind = Dynamic | Static
   deriving (Show, Read, Eq, Ord)
 
-abiKind2 :: AbiType2 -> AbiKind
-abiKind2 = \case
-  AbiBytesDynamicType2   -> Dynamic
-  AbiStringType2         -> Dynamic
-  AbiArrayDynamicType2 _ -> Dynamic
-  AbiArrayType2 _ t      -> abiKind2 t
-  AbiTupleType2 v        -> if Dynamic `elem` (abiKind2 <$> v) then Dynamic else Static
+abiKind :: AbiType -> AbiKind
+abiKind = \case
+  AbiBytesDynamicType   -> Dynamic
+  AbiStringType         -> Dynamic
+  AbiArrayDynamicType _ -> Dynamic
+  AbiArrayType _ t      -> abiKind t
+  AbiTupleType v        -> if Dynamic `elem` (abiKind <$> v) then Dynamic else Static
   _                      -> Static
 
 -- orphan instance for Hashable a => Hashable (Vector a)
 instance Hashable a => Hashable (V.Vector a) where
   hashWithSalt s = hashWithSalt s . V.toList
 
-data SolcContract2 = SolcContract2
-  { _runtimeCodehash2  :: W256
-  , _creationCodehash2 :: W256
-  , _runtimeCode2      :: BS.ByteString
-  , _creationCode2     :: BS.ByteString
-  , _contractName2     :: Text
-  , _constructorInputs2 :: [(Text, AbiType2)]
-  , _abiMap2           :: Map.Map Word32 Method2
-  , _eventMap2         :: Map.Map W256 Event2
-  , _runtimeSrcmap2    :: Seq SrcMap
-  , _creationSrcmap2   :: Seq SrcMap
-  , _contractAst2      :: Value
+data SolcContract = SolcContract
+  { _runtimeCodehash  :: W256
+  , _creationCodehash :: W256
+  , _runtimeCode      :: BS.ByteString
+  , _creationCode     :: BS.ByteString
+  , _contractName     :: Text
+  , _constructorInputs :: [(Text, AbiType)]
+  , _abiMap           :: Map.Map Word32 Method
+  , _eventMap         :: Map.Map W256 Event
+  , _runtimeSrcmap    :: Seq SrcMap
+  , _creationSrcmap   :: Seq SrcMap
+  , _contractAst      :: Value
   } deriving (Show, Eq)
 
-data Method2 = Method2
-  { _methodOutput2 :: Maybe (Text, AbiType2)
-  , _methodInputs2 :: [(Text, AbiType2)]
-  , _methodName2 :: Text
-  , _methodSignature2 :: Text
+data Method = Method
+  { _methodOutput :: Maybe (Text, AbiType)
+  , _methodInputs :: [(Text, AbiType)]
+  , _methodName :: Text
+  , _methodSignature :: Text
   } deriving (Show, Eq, Ord)
 
-data Event2 = Event2 Text Anonymity [(AbiType2, Indexed)]
+data Event = Event Text Anonymity [(AbiType, Indexed)]
   deriving (Show, Ord, Eq)
 
-makeLenses ''SolcContract2
-makeLenses ''Method2
+makeLenses ''SolcContract
+makeLenses ''Method
 
 toCode :: Text -> BS.ByteString
 toCode = fst . BS16.decode . encodeUtf8
@@ -143,23 +143,23 @@ toCode = fst . BS16.decode . encodeUtf8
 force :: String -> Maybe a -> a
 force s = fromMaybe (error s)
 
-parseMethodInput2 :: (Show s, AsValue s) => s -> (Text, AbiType2)
-parseMethodInput2 x =
+parseMethodInput :: (Show s, AsValue s) => s -> (Text, AbiType)
+parseMethodInput x =
   ( x ^?! key "name" . _String
-  , force "internal error: method type" (parseTypeName2 (x ^? key "components" . _Array) (x ^?! key "type" . _String))
+  , force "internal error: method type" (parseTypeName (x ^? key "components" . _Array) (x ^?! key "type" . _String))
   )
 
-readSolc2 :: FilePath -> IO (Maybe (Map.Map Text SolcContract2, SourceCache))
-readSolc2 fp =
-  (readJSON2 <$> TIO.readFile fp) >>=
+readSolc :: FilePath -> IO (Maybe (Map.Map Text SolcContract, SourceCache))
+readSolc fp =
+  (readJSON <$> TIO.readFile fp) >>=
     \case
       Nothing -> return Nothing
       Just (cs, asts, sources) -> do
         sc <- makeSourceCache sources asts
         return (Just (cs, sc))
 
-readJSON2 :: Text -> Maybe (Map.Map Text SolcContract2, Map.Map Text Value, [Text])
-readJSON2 json = do
+readJSON :: Text -> Maybe (Map.Map Text SolcContract, Map.Map Text Value, [Text])
+readJSON json = do
   cs <-
     f <$> (json ^? key "contracts" . _Object)
       <*> fmap (fmap (^. _String)) (json ^? key "sourceList" . _Array)
@@ -174,56 +174,56 @@ readJSON2 json = do
         theCreationCode = toCode (x ^?! key "bin" . _String)
         abis =
           toList ((x ^?! key "abi" . _String) ^?! _Array)
-      in (s, SolcContract2 {
-        _runtimeCode2      = theRuntimeCode,
-        _creationCode2     = theCreationCode,
-        _runtimeCodehash2  = keccak (stripBytecodeMetadata theRuntimeCode),
-        _creationCodehash2 = keccak (stripBytecodeMetadata theCreationCode),
-        _runtimeSrcmap2    = force "internal error: srcmap-runtime" (makeSrcMaps (x ^?! key "srcmap-runtime" . _String)),
-        _creationSrcmap2   = force "internal error: srcmap" (makeSrcMaps (x ^?! key "srcmap" . _String)),
-        _contractName2 = s,
-        _contractAst2 =
+      in (s, SolcContract {
+        _runtimeCode      = theRuntimeCode,
+        _creationCode     = theCreationCode,
+        _runtimeCodehash  = keccak (stripBytecodeMetadata theRuntimeCode),
+        _creationCodehash = keccak (stripBytecodeMetadata theCreationCode),
+        _runtimeSrcmap    = force "internal error: srcmap-runtime" (makeSrcMaps (x ^?! key "srcmap-runtime" . _String)),
+        _creationSrcmap   = force "internal error: srcmap" (makeSrcMaps (x ^?! key "srcmap" . _String)),
+        _contractName = s,
+        _contractAst =
           fromMaybe
             (error "JSON lacks abstract syntax trees.")
             (preview (ix (head $ T.split (== ':') s) . key "AST") asts),
 
-        _constructorInputs2 =
+        _constructorInputs =
           let
             isConstructor y =
               "constructor" == y ^?! key "type" . _String
           in
             case filter isConstructor abis of
-              [abi] -> map parseMethodInput2 (toList (abi ^?! key "inputs" . _Array))
+              [abi] -> map parseMethodInput (toList (abi ^?! key "inputs" . _Array))
               [] -> [] -- default constructor has zero inputs
               _  -> error "strange: contract has multiple constructors",
 
-        _abiMap2       = Map.fromList $
+        _abiMap       = Map.fromList $
           let
             relevant =
               filter (\y -> "function" == y ^?! key "type" . _String) abis
           in flip map relevant $
             \abi -> (
               abiKeccak (encodeUtf8 (signature abi)),
-              Method2
-                { _methodName2 = abi ^?! key "name" . _String
-                , _methodSignature2 = signature abi
-                , _methodInputs2 =
-                    map parseMethodInput2
+              Method
+                { _methodName = abi ^?! key "name" . _String
+                , _methodSignature = signature abi
+                , _methodInputs =
+                    map parseMethodInput
                       (toList (abi ^?! key "inputs" . _Array))
-                , _methodOutput2 =
-                    fmap parseMethodInput2
+                , _methodOutput =
+                    fmap parseMethodInput
                       (abi ^? key "outputs" . _Array . ix 0)
                 }
             ),
-        _eventMap2     = Map.fromList $
+        _eventMap     = Map.fromList $
           flip map (filter (\y -> "event" == y ^?! key "type" . _String)
                      . toList $ (x ^?! key "abi" . _String) ^?! _Array) $
             \abi ->
               ( keccak (encodeUtf8 (signature abi))
-              , Event2
+              , Event
                   (abi ^?! key "name" . _String)
                   (if abi ^?! key "anonymous" . _Bool then Anonymous else NotAnonymous)
-                  (map (\y -> ( force "internal error: type" (parseTypeName2 (y ^? key "components" . _Array) (y ^?! key "type" . _String))
+                  (map (\y -> ( force "internal error: type" (parseTypeName (y ^? key "components" . _Array) (y ^?! key "type" . _String))
                               , if y ^?! key "indexed" . _Bool
                                 then Indexed
                                 else NotIndexed ))
@@ -258,12 +258,12 @@ makeSourceCache paths asts = do
         asts
     }
 
-parseTypeName2 :: Maybe (V.Vector Value) -> Text -> Maybe AbiType2
-parseTypeName2 v = P.parseMaybe (typeWithArraySuffix (fromMaybe (V.fromList []) v))
+parseTypeName :: Maybe (V.Vector Value) -> Text -> Maybe AbiType
+parseTypeName v = P.parseMaybe (typeWithArraySuffix (fromMaybe (V.fromList []) v))
 
-typeWithArraySuffix :: V.Vector Value -> P.Parsec () Text AbiType2
+typeWithArraySuffix :: V.Vector Value -> P.Parsec () Text AbiType
 typeWithArraySuffix v = do
-  base <- basicType2 v
+  base <- basicType v
   sizes <-
     P.many $
       P.between
@@ -271,157 +271,157 @@ typeWithArraySuffix v = do
         (P.many P.digitChar)
 
   let
-    parseSize :: AbiType2 -> String -> AbiType2
-    parseSize t "" = AbiArrayDynamicType2 t
-    parseSize t s  = AbiArrayType2 (read s) t
+    parseSize :: AbiType -> String -> AbiType
+    parseSize t "" = AbiArrayDynamicType t
+    parseSize t s  = AbiArrayType (read s) t
 
   pure (foldl parseSize base sizes)
 
-basicType2 :: V.Vector Value -> P.Parsec () Text AbiType2
-basicType2 v =
+basicType :: V.Vector Value -> P.Parsec () Text AbiType
+basicType v =
   P.choice
-    [ P.string "address" $> AbiAddressType2
-    , P.string "bool"    $> AbiBoolType2
-    , P.string "string"  $> AbiStringType2
+    [ P.string "address" $> AbiAddressType
+    , P.string "bool"    $> AbiBoolType
+    , P.string "string"  $> AbiStringType
 
-    , sizedType "uint" AbiUIntType2
-    , sizedType "int"  AbiIntType2
-    , sizedType "bytes" AbiBytesType2
+    , sizedType "uint" AbiUIntType
+    , sizedType "int"  AbiIntType
+    , sizedType "bytes" AbiBytesType
 
-    , P.string "bytes" $> AbiBytesDynamicType2
-    , P.string "tuple" $> AbiTupleType2 tupleTypes
+    , P.string "bytes" $> AbiBytesDynamicType
+    , P.string "tuple" $> AbiTupleType tupleTypes
     ]
 
   where
-    sizedType :: Text -> (Int -> AbiType2) -> P.Parsec () Text AbiType2
+    sizedType :: Text -> (Int -> AbiType) -> P.Parsec () Text AbiType
     sizedType s f = P.try $ do
       void (P.string s)
       fmap (f . read) (P.some P.digitChar)
-    tupleTypes = catMaybes' $ parseTypeName2' <$> v
-    parseTypeName2' x = parseTypeName2 (x ^? key "components" . _Array) (x ^?! key "type" . _String)
+    tupleTypes = catMaybes' $ parseTypeName' <$> v
+    parseTypeName' x = parseTypeName (x ^? key "components" . _Array) (x ^?! key "type" . _String)
     catMaybes' = fmap fromJust . V.filter (/= Nothing)
 
 
 -- ABI encode/decode functions
-encodeAbiValue2 :: AbiValue2 -> BS.ByteString
-encodeAbiValue2 = BSLazy.toStrict . runPut . putAbi2
+encodeAbiValue :: AbiValue -> BS.ByteString
+encodeAbiValue = BSLazy.toStrict . runPut . putAbi
 
-abiCalldata2 :: T.Text -> V.Vector AbiValue2 -> BS.ByteString
-abiCalldata2 s xs = BSLazy.toStrict . runPut $ do
+abiCalldata :: T.Text -> V.Vector AbiValue -> BS.ByteString
+abiCalldata s xs = BSLazy.toStrict . runPut $ do
   putWord32be (abiKeccak (encodeUtf8 s))
-  putAbiSeq2 xs
+  putAbiSeq xs
 
-getAbi2 :: AbiType2 -> Get AbiValue2
-getAbi2 t = label (T.unpack (abiTypeSolidity2 t)) $
+getAbi :: AbiType -> Get AbiValue
+getAbi t = label (T.unpack (abiTypeSolidity t)) $
   case t of
-    AbiUIntType2 n  -> do
+    AbiUIntType n  -> do
       let word32Count = 8 * div (n + 255) 256
       xs <- replicateM word32Count getWord32be
-      pure (AbiUInt2 n (pack32 word32Count xs))
+      pure (AbiUInt n (pack32 word32Count xs))
 
-    AbiIntType2 n   -> asUInt n (AbiInt2 n)
-    AbiAddressType2 -> asUInt 256 AbiAddress2
-    AbiBoolType2    -> asUInt 256 (AbiBool2 . (== (1 :: Int)))
+    AbiIntType n   -> asUInt n (AbiInt n)
+    AbiAddressType -> asUInt 256 AbiAddress
+    AbiBoolType    -> asUInt 256 (AbiBool . (== (1 :: Int)))
 
-    AbiBytesType2 n ->
-      AbiBytes2 n <$> getBytesWith256BitPadding n
+    AbiBytesType n ->
+      AbiBytes n <$> getBytesWith256BitPadding n
 
-    AbiBytesDynamicType2 ->
-      AbiBytesDynamic2 <$>
+    AbiBytesDynamicType ->
+      AbiBytesDynamic <$>
         (label "bytes length prefix" getWord256
           >>= label "bytes data" . getBytesWith256BitPadding)
 
-    AbiStringType2 -> do
-      AbiBytesDynamic2 x <- getAbi2 AbiBytesDynamicType2
-      pure (AbiString2 x)
+    AbiStringType -> do
+      AbiBytesDynamic x <- getAbi AbiBytesDynamicType
+      pure (AbiString x)
 
-    AbiArrayType2 n t' ->
-      AbiArray2 n t' <$> getAbiSeq2 n (repeat t')
+    AbiArrayType n t' ->
+      AbiArray n t' <$> getAbiSeq n (repeat t')
 
-    AbiArrayDynamicType2 t' -> do
-      AbiUInt2 _ n <- label "array length" (getAbi2 (AbiUIntType2 256))
-      AbiArrayDynamic2 t' <$>
-        label "array body" (getAbiSeq2 (fromIntegral n) (repeat t'))
+    AbiArrayDynamicType t' -> do
+      AbiUInt _ n <- label "array length" (getAbi (AbiUIntType 256))
+      AbiArrayDynamic t' <$>
+        label "array body" (getAbiSeq (fromIntegral n) (repeat t'))
 
-    AbiTupleType2 v ->
-      AbiTuple2 <$> getAbiSeq2 (V.length v) (V.toList v)
+    AbiTupleType v ->
+      AbiTuple <$> getAbiSeq (V.length v) (V.toList v)
 
-putAbi2 :: AbiValue2 -> Put
-putAbi2 = \case
-  AbiUInt2 n x -> do
+putAbi :: AbiValue -> Put
+putAbi = \case
+  AbiUInt n x -> do
     let word32Count = div (roundTo256Bits n) 4
     forM_ (reverse [0 .. word32Count - 1]) $ \i ->
       putWord32be (fromIntegral (shiftR x (i * 32) .&. 0xffffffff))
 
-  AbiInt2 n x   -> putAbi2 (AbiUInt2 n (fromIntegral x))
-  AbiAddress2 x -> putAbi2 (AbiUInt2 160 (fromIntegral x))
-  AbiBool2 x    -> putAbi2 (AbiUInt2 8 (if x then 1 else 0))
+  AbiInt n x   -> putAbi (AbiUInt n (fromIntegral x))
+  AbiAddress x -> putAbi (AbiUInt 160 (fromIntegral x))
+  AbiBool x    -> putAbi (AbiUInt 8 (if x then 1 else 0))
 
-  AbiBytes2 n xs -> do
+  AbiBytes n xs -> do
     forM_ [0 .. n-1] (putWord8 . BS.index xs)
     replicateM_ (roundTo256Bits n - n) (putWord8 0)
 
-  AbiBytesDynamic2 xs -> do
+  AbiBytesDynamic xs -> do
     let n = BS.length xs
-    putAbi2 (AbiUInt2 256 (fromIntegral n))
-    putAbi2 (AbiBytes2 n xs)
+    putAbi (AbiUInt 256 (fromIntegral n))
+    putAbi (AbiBytes n xs)
 
-  AbiString2 s ->
-    putAbi2 (AbiBytesDynamic2 s)
+  AbiString s ->
+    putAbi (AbiBytesDynamic s)
 
-  AbiArray2 _ _ xs ->
-    putAbiSeq2 xs
+  AbiArray _ _ xs ->
+    putAbiSeq xs
 
-  AbiArrayDynamic2 _ xs -> do
-    putAbi2 (AbiUInt2 256 (fromIntegral (V.length xs)))
-    putAbiSeq2 xs
+  AbiArrayDynamic _ xs -> do
+    putAbi (AbiUInt 256 (fromIntegral (V.length xs)))
+    putAbiSeq xs
 
-  AbiTuple2 v ->
-    putAbiSeq2 v
+  AbiTuple v ->
+    putAbiSeq v
 
-putAbiSeq2 :: V.Vector AbiValue2 -> Put
-putAbiSeq2 xs =
+putAbiSeq :: V.Vector AbiValue -> Put
+putAbiSeq xs =
   do snd $ V.foldl' f (headSize, pure ()) (V.zip xs tailSizes)
-     V.sequence_ (V.map putAbiTail2 xs)
+     V.sequence_ (V.map putAbiTail xs)
   where
-    headSize = V.sum $ V.map abiHeadSize2 xs
-    tailSizes = V.map abiTailSize2 xs
+    headSize = V.sum $ V.map abiHeadSize xs
+    tailSizes = V.map abiTailSize xs
     -- f is like a putHead
     f (i, m) (x, j) =
-      case abiKind2 (abiValueType2 x) of
-        Static -> (i, m >> putAbi2 x)
-        Dynamic -> (i + j, m >> putAbi2 (AbiUInt2 256 (fromIntegral i)))
+      case abiKind (abiValueType x) of
+        Static -> (i, m >> putAbi x)
+        Dynamic -> (i + j, m >> putAbi (AbiUInt 256 (fromIntegral i)))
 
-getAbiSeq2 :: Int -> [AbiType2] -> Get (V.Vector AbiValue2)
-getAbiSeq2 n ts = label "sequence" $ do
-  hs <- label "sequence head" (getAbiHead2 n ts)
+getAbiSeq :: Int -> [AbiType] -> Get (V.Vector AbiValue)
+getAbiSeq n ts = label "sequence" $ do
+  hs <- label "sequence head" (getAbiHead n ts)
   V.fromList <$>
-    label "sequence tail" (mapM (either getAbi2 pure) hs)
+    label "sequence tail" (mapM (either getAbi pure) hs)
 
-getAbiHead2 :: Int -> [AbiType2]
-  -> Get [Either AbiType2 AbiValue2]
-getAbiHead2 0 _      = pure []
-getAbiHead2 _ []     = fail "ran out of types"
-getAbiHead2 n (t:ts) =
-  case abiKind2 t of
+getAbiHead :: Int -> [AbiType]
+  -> Get [Either AbiType AbiValue]
+getAbiHead 0 _      = pure []
+getAbiHead _ []     = fail "ran out of types"
+getAbiHead n (t:ts) =
+  case abiKind t of
     Dynamic ->
-      (Left t :) <$> (skip 32 *> getAbiHead2 (n - 1) ts)
+      (Left t :) <$> (skip 32 *> getAbiHead (n - 1) ts)
     Static ->
-      do x  <- getAbi2 t
-         xs <- getAbiHead2 (n - 1) ts
+      do x  <- getAbi t
+         xs <- getAbiHead (n - 1) ts
          pure (Right x : xs)
 
-putAbiTail2 :: AbiValue2 -> Put
-putAbiTail2 x =
-  case abiKind2 (abiValueType2 x) of
+putAbiTail :: AbiValue -> Put
+putAbiTail x =
+  case abiKind (abiValueType x) of
     -- static types always have tail = ""
     Static  -> pure ()
     -- dynamic types (even in the case of tuple) just get encoded and inserted
-    Dynamic -> putAbi2 x
+    Dynamic -> putAbi x
 
-abiHeadSize2 :: AbiValue2 -> Int
-abiHeadSize2 x =
-  case abiKind2 (abiValueType2 x) of
+abiHeadSize :: AbiValue -> Int
+abiHeadSize x =
+  case abiKind (abiValueType x) of
     -- even for dynamic tuples it's just a len() invocation, which is uint256
     Dynamic -> 32
       --case x of
@@ -429,47 +429,47 @@ abiHeadSize2 x =
       --     _           -> 32
     Static ->
       case x of
-        AbiUInt2 n _  -> roundTo256Bits n
-        AbiInt2  n _  -> roundTo256Bits n
-        AbiBytes2 n _ -> roundTo256Bits n
-        AbiAddress2 _ -> 32
-        AbiBool2 _    -> 32
-        AbiArray2 _ _ xs -> V.sum (V.map abiHeadSize2 xs) +
-                            V.sum (V.map abiTailSize2 xs)
-        AbiBytesDynamic2 _ -> 32
-        AbiArrayDynamic2 _ _ -> 32
-        AbiString2 _       -> 32
-        AbiTuple2 v   -> sum (abiHeadSize2 <$> v) +
-                         sum (abiTailSize2 <$> v) -- pretty sure this is just 0 but w/e
+        AbiUInt n _  -> roundTo256Bits n
+        AbiInt  n _  -> roundTo256Bits n
+        AbiBytes n _ -> roundTo256Bits n
+        AbiAddress _ -> 32
+        AbiBool _    -> 32
+        AbiArray _ _ xs -> V.sum (V.map abiHeadSize xs) +
+                           V.sum (V.map abiTailSize xs)
+        AbiBytesDynamic _ -> 32
+        AbiArrayDynamic _ _ -> 32
+        AbiString _       -> 32
+        AbiTuple v   -> sum (abiHeadSize <$> v) +
+                        sum (abiTailSize <$> v) -- pretty sure this is just 0 but w/e
 
-abiTailSize2 :: AbiValue2 -> Int
-abiTailSize2 x =
-  case abiKind2 (abiValueType2 x) of
+abiTailSize :: AbiValue -> Int
+abiTailSize x =
+  case abiKind (abiValueType x) of
     Static -> 0
     Dynamic ->
       case x of
-        AbiString2 s -> 32 + roundTo256Bits (BS.length s)
-        AbiBytesDynamic2 s -> 32 + roundTo256Bits (BS.length s)
-        AbiArrayDynamic2 _ xs -> 32 + V.sum (V.map abiValueSize2 xs)
-        AbiArray2 _ _ xs -> V.sum (V.map abiValueSize2 xs)
-        AbiTuple2 v -> sum (abiValueSize2 <$> v)
+        AbiString s -> 32 + roundTo256Bits (BS.length s)
+        AbiBytesDynamic s -> 32 + roundTo256Bits (BS.length s)
+        AbiArrayDynamic _ xs -> 32 + V.sum (V.map abiValueSize xs)
+        AbiArray _ _ xs -> V.sum (V.map abiValueSize xs)
+        AbiTuple v -> sum (abiValueSize <$> v)
         _ -> error "impossible"
 
-abiValueSize2 :: AbiValue2 -> Int
-abiValueSize2 x =
+abiValueSize :: AbiValue -> Int
+abiValueSize x =
   case x of
-    AbiUInt2 n _  -> roundTo256Bits n
-    AbiInt2  n _  -> roundTo256Bits n
-    AbiBytes2 n _ -> roundTo256Bits n
-    AbiAddress2 _ -> 32
-    AbiBool2 _    -> 32
-    AbiArray2 _ _ xs -> V.sum (V.map abiHeadSize2 xs) +
-                        V.sum (V.map abiTailSize2 xs)
-    AbiBytesDynamic2 xs -> 32 + roundTo256Bits (BS.length xs)
-    AbiArrayDynamic2 _ xs -> 32 + V.sum (V.map abiHeadSize2 xs) +
-                                  V.sum (V.map abiTailSize2 xs)
-    AbiString2 s -> 32 + roundTo256Bits (BS.length s)
-    AbiTuple2 v  -> sum (abiValueSize2 <$> v)
+    AbiUInt n _  -> roundTo256Bits n
+    AbiInt  n _  -> roundTo256Bits n
+    AbiBytes n _ -> roundTo256Bits n
+    AbiAddress _ -> 32
+    AbiBool _    -> 32
+    AbiArray _ _ xs -> V.sum (V.map abiHeadSize xs) +
+                       V.sum (V.map abiTailSize xs)
+    AbiBytesDynamic xs -> 32 + roundTo256Bits (BS.length xs)
+    AbiArrayDynamic _ xs -> 32 + V.sum (V.map abiHeadSize xs) +
+                                 V.sum (V.map abiTailSize xs)
+    AbiString s -> 32 + roundTo256Bits (BS.length s)
+    AbiTuple v  -> sum (abiValueSize <$> v)
 
 roundTo256Bits :: Integral a => a -> a
 roundTo256Bits n = 32 * div (n + 255) 256
@@ -491,7 +491,7 @@ pack8 n xs =
       | (x, i) <- zip (map fromIntegral xs) [1..] ]
 
 asUInt :: Integral i => Int -> (i -> a) -> Get a
-asUInt n f = (\(AbiUInt2 _ x) -> f (fromIntegral x)) <$> getAbi2 (AbiUIntType2 n)
+asUInt n f = (\(AbiUInt _ x) -> f (fromIntegral x)) <$> getAbi (AbiUIntType n)
 
 getWord256 :: Get Word256
 getWord256 = pack32 8 <$> replicateM 8 getWord32be
