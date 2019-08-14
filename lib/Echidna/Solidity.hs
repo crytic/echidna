@@ -79,6 +79,7 @@ data SolConf = SolConf { _contractAddr    :: Addr     -- ^ Contract address to u
                        , _balanceAddr     :: Integer  -- ^ Initial balance of deployer and senders
                        , _balanceContract :: Integer  -- ^ Initial balance of contract to test
                        , _prefix          :: Text     -- ^ Function name prefix used to denote tests
+                       , _cryticArgs      :: [String] -- ^ Args to pass to crytic
                        , _solcArgs        :: String   -- ^ Args to pass to @solc@
                        , _solcLibs        :: [String] -- ^ List of libraries to load, in order.
                        , _quiet           :: Bool     -- ^ Suppress @solc@ output, errors, and warnings
@@ -97,16 +98,17 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
   a  <- view (hasLens . solcArgs)
   q  <- view (hasLens . quiet)
   ls <- view (hasLens . solcLibs)
+  c  <- view (hasLens . cryticArgs)
   let solargs = a ++ linkLibraries ls & (usual ++) . 
                   (\sa -> if null sa then [] else ["--solc-args", sa])
   maybe (throwM CompileFailure) (pure . toList . fst) =<< liftIO (do
     stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
-    _ <- readCreateProcess (proc "crytic-compile" $ solargs |> fp) {std_err = stderr} ""
+    _ <- readCreateProcess (proc "crytic-compile" $ (c ++ solargs) |> fp) {std_err = stderr} ""
     readSolc2 "crytic-export/combined_solc.json")
 
 
 addresses :: (MonadReader x m, Has SolConf x) => m [AbiValue2]
-addresses = view hasLens <&> \(SolConf ca d ads _ _ _ _ _ _ _) ->
+addresses = view hasLens <&> \(SolConf ca d ads _ _ _ _ _ _ _ _) ->
   AbiAddress2 . fromIntegral <$> nub (ads ++ [ca, d, 0x0])
 
 populateAddresses :: [Addr] -> Integer -> VM -> VM
@@ -123,7 +125,7 @@ loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
               => [SolcContract2] -> Addr -> Addr -> VM -> m VM
 loadLibraries []     _  _ vm = return vm
 loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
-  where loadRest = execStateT (execTx2 $ Tx2 (Right $ l ^. creationCode2) d la 0xffffffff 0) vm
+  where loadRest = execStateT (execTx2 $ Tx2 (Right $ l ^. creationCode2) d la 0xffffffff 0 (0,0)) vm
 
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
@@ -148,7 +150,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName2 . unpacked
 
   -- Local variables
-  (SolConf ca d ads bala balc pref _ libs _ ch) <- view hasLens
+  (SolConf ca d ads bala balc pref _ _ libs _ ch) <- view hasLens
   let bc = c ^. creationCode2
       blank = populateAddresses (ads |> d) bala (vmForEthrunCreation bc)
       abi = liftM2 (,) (view methodName2) (fmap snd . view methodInputs2) <$> toList (c ^. abiMap2)
@@ -164,8 +166,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                       -- Test args check
     Nothing    -> loadLibraries ls addrLibrary d blank >>= fmap (, fallback : funs, fst <$> tests) .
-      execStateT (execTx2 $ Tx2 (Right bc) d ca 0xffffffff (w256 $ fromInteger balc))
-
+      execStateT (execTx2 $ Tx2 (Right bc) d ca 0xffffffff (w256 $ fromInteger balc) (0, 0))
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
@@ -189,7 +190,7 @@ loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
                => (VM, [SolSignature2], [Text]) -> m (VM, World2, [SolTest])
-prepareForTest (v, a, ts) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ ch) ->
+prepareForTest (v, a, ts) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ ch) ->
   (v, World2 s [(r, a)], fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a else []) where
     r = v ^. state . contract
 
