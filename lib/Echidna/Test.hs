@@ -21,7 +21,7 @@ import EVM.Types (Addr)
 import qualified Data.ByteString as BS
 
 import Echidna.ABI
-import Echidna.ABIv2 (abiCalldata2, AbiValue2(..), encodeAbiValue2)
+import Echidna.ABIv2 (abiCalldata, AbiValue(..), encodeAbiValue)
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
@@ -40,9 +40,9 @@ data CallRes = ResFalse | ResTrue | ResRevert | ResOther deriving (Eq, Show)
 
 -- | Given a 'VMResult', classify it assuming it was the result of a call to an Echidna test.
 classifyRes :: VMResult -> CallRes
-classifyRes (VMSuccess b) | b == encodeAbiValue2 (AbiBool2 True)  = ResTrue
-                          | b == encodeAbiValue2 (AbiBool2 False) = ResFalse
-                          | otherwise                             = ResOther
+classifyRes (VMSuccess b) | b == encodeAbiValue (AbiBool True)  = ResTrue
+                          | b == encodeAbiValue (AbiBool False) = ResFalse
+                          | otherwise                           = ResOther
 
 classifyRes Reversion = ResRevert
 classifyRes _ = ResOther
@@ -57,10 +57,10 @@ checkETest t = asks getter >>= \(TestConf p s) -> view (hasLens . propGas) >>= \
   --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
   let matchR (Just (VMFailure (UnrecognizedOpcode 0xfe))) = False
       matchR _                                            = True
-      matchC sig = not . (BS.isPrefixOf . BS.take 4 $ abiCalldata2 (encodeSig2 sig) mempty)
+      matchC sig = not . (BS.isPrefixOf . BS.take 4 $ abiCalldata (encodeSig sig) mempty)
   res <- case t of
     -- If our test is a regular user-defined test, we exec it and check the result
-    Left  (f, a) -> execTx2 (Tx2 (Left (f, [])) (s a) a g 0 (0, 0)) >> gets (p f . getter)
+    Left  (f, a) -> execTx (Tx (Left (f, [])) (s a) a g 0 (0, 0)) >> gets (p f . getter)
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
     Right sig    -> (||) <$> fmap matchR       (use $ hasLens . result)
                          <*> fmap (matchC sig) (use $ hasLens . state . calldata)
@@ -69,13 +69,13 @@ checkETest t = asks getter >>= \(TestConf p s) -> view (hasLens . propGas) >>= \
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
 -- still solves that test.
-shrinkSeq2 :: ( MonadRandom m, MonadReader x m, MonadThrow m
-              , Has SolConf x, Has TestConf x, Has TxConf x, MonadState y m, Has VM y)
-           => SolTest -> [Tx2] -> m [Tx2]
-shrinkSeq2 t xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
-  check xs' = do {og <- get; res <- traverse_ execTx2 xs' >> checkETest t; put og; pure res}
-  shrinkSender x = view (hasLens . sender) >>= \l -> case ifind (const (== x ^. src2)) l of
+shrinkSeq :: ( MonadRandom m, MonadReader x m, MonadThrow m
+             , Has SolConf x, Has TestConf x, Has TxConf x, MonadState y m, Has VM y)
+          => SolTest -> [Tx] -> m [Tx]
+shrinkSeq t xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
+  check xs' = do {og <- get; res <- traverse_ execTx xs' >> checkETest t; put og; pure res}
+  shrinkSender x = view (hasLens . sender) >>= \l -> case ifind (const (== x ^. src)) l of
     Nothing     -> pure x
-    Just (i, _) -> flip (set src2) x . fromMaybe (x ^. src2) <$> uniformMay (l ^.. folded . indices (< i))
-  shrunk = mapM (shrinkSender <=< shrinkTx2) xs
+    Just (i, _) -> flip (set src) x . fromMaybe (x ^. src) <$> uniformMay (l ^.. folded . indices (< i))
+  shrunk = mapM (shrinkSender <=< shrinkTx) xs
   shorten = (\i -> take i xs ++ drop (i + 1) xs) <$> getRandomR (0, length xs)

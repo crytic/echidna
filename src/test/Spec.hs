@@ -8,7 +8,7 @@ import Echidna.ABIv2 (AbiValue2(..))
 import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests)
 import Echidna.Config (EConfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
-import Echidna.Transaction (Tx2, call2)
+import Echidna.Transaction (Tx, call)
 
 import Control.Lens
 import Control.Monad (liftM2)
@@ -175,7 +175,7 @@ runContract fp c =
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
 
-solnFor :: Text -> Campaign -> Maybe [Tx2]
+solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor t c = case getResult t c of
   Just (Large _ s) -> Just s
   Just (Solved  s) -> Just s

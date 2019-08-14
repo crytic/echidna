@@ -53,8 +53,8 @@ data Role = Sender | Receiver | Ambiguous
 type Names = Role -> Addr -> String
 
 -- | Given rules for pretty-printing associated address, and whether to print them, pretty-print a 'Transaction'.
-ppTx :: (MonadReader x m, Has Names x, Has TxConf x) => Bool -> Tx2 -> m String
-ppTx pn (Tx2 c s r g v (t, b)) = let sOf = either ppSolCall2 (const "<CREATE>") in do
+ppTx :: (MonadReader x m, Has Names x, Has TxConf x) => Bool -> Tx -> m String
+ppTx pn (Tx c s r g v (t, b)) = let sOf = either ppSolCall (const "<CREATE>") in do
   names <- view hasLens
   tGas  <- view $ hasLens . txGas
   return $ sOf c ++ (if not pn    then "" else names Sender s ++ names Receiver r)
@@ -68,12 +68,12 @@ progress :: Int -> Int -> String
 progress n m = "(" ++ show n ++ "/" ++ show m ++ ")"
 
 -- | Pretty-print the status of a solved test.
-ppFail :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> [Tx2] -> m String
+ppFail :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> [Tx] -> m String
 ppFail _ [] = pure "failed with no transactions made ⁉️  "
 ppFail b xs = let status = case b of
                                 Nothing    -> ""
                                 Just (n,m) -> ", shrinking " ++ progress n m
-                  pxs = mapM (ppTx $ length (nub $ view src2 <$> xs) /= 1) xs in
+                  pxs = mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs in
  (("failed!💥  \n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> pxs
 
 -- | Pretty-print the status of a test.
@@ -133,15 +133,15 @@ isTerminal = liftIO $ (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
       , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Names x, Has TxConf x, Has UIConf x)
    => VM        -- ^ Initial VM state
-   -> World2    -- ^ Initial world state
+   -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
-   -> Maybe GenDict2
+   -> Maybe GenDict
    -> m Campaign
 ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
-  let d' = fromMaybe defaultDict2 d
+  let d' = fromMaybe defaultDict d
   s <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
   g <- view (hasLens . to seed)
-  let g' = fromMaybe (d' ^. defSeed2) g
+  let g' = fromMaybe (d' ^. defSeed) g
   c <- if s then do bc <- liftIO $ newBChan 100
                     t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts d >> pure ()
                     a <- monitor (killThread t)

@@ -29,12 +29,12 @@ import Data.Text.Read             (decimal)
 import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 
-import Echidna.ABI         (SolSignature2, SolSignature2)
-import Echidna.ABIv2       (AbiType2(..), AbiValue2(..), readSolc2, SolcContract2,
-                            abiMap2, methodName2, creationCode2, methodOutput2,
-                            methodInputs2, contractName2, contractAst2)
-import Echidna.Exec        (execTx2)
-import Echidna.Transaction (Tx2(..), World2(..))
+import Echidna.ABI         (SolSignature, SolSignature)
+import Echidna.ABIv2       (AbiType(..), AbiValue(..), readSolc, SolcContract,
+                            abiMap, methodName, creationCode, methodOutput,
+                            methodInputs, contractName, contractAst)
+import Echidna.Exec        (execTx)
+import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
@@ -89,11 +89,11 @@ makeLenses ''SolConf
 
 -- | An Echidna test is either the name of the function to call and the address where its contract is,
 -- or a function that could experience an exception
-type SolTest = Either (Text, Addr) SolSignature2
+type SolTest = Either (Text, Addr) SolSignature
 
 -- | Given a file, use its extenstion to check if it is a precompiled contract or try to compile it and
 -- get a list of its contracts, throwing exceptions if necessary.
-contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract2]
+contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
 contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"] in do
   a  <- view (hasLens . solcArgs)
   q  <- view (hasLens . quiet)
@@ -104,12 +104,12 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
   maybe (throwM CompileFailure) (pure . toList . fst) =<< liftIO (do
     stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
     _ <- readCreateProcess (proc "crytic-compile" $ (c ++ solargs) |> fp) {std_err = stderr} ""
-    readSolc2 "crytic-export/combined_solc.json")
+    readSolc "crytic-export/combined_solc.json")
 
 
-addresses :: (MonadReader x m, Has SolConf x) => m [AbiValue2]
+addresses :: (MonadReader x m, Has SolConf x) => m [AbiValue]
 addresses = view hasLens <&> \(SolConf ca d ads _ _ _ _ _ _ _ _) ->
-  AbiAddress2 . fromIntegral <$> nub (ads ++ [ca, d, 0x0])
+  AbiAddress . fromIntegral <$> nub (ads ++ [ca, d, 0x0])
 
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm
@@ -122,10 +122,10 @@ addrLibrary = 0xff
 
  -- | Load a list of solidity contracts as libraries
 loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
-              => [SolcContract2] -> Addr -> Addr -> VM -> m VM
+              => [SolcContract] -> Addr -> Addr -> VM -> m VM
 loadLibraries []     _  _ vm = return vm
 loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
-  where loadRest = execStateT (execTx2 $ Tx2 (Right $ l ^. creationCode2) d la 0xffffffff 0 (0,0)) vm
+  where loadRest = execStateT (execTx $ Tx (Right $ l ^. creationCode) d la 0xffffffff 0 (0,0)) vm
 
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
@@ -139,7 +139,7 @@ linkLibraries ls = "--libraries " ++
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
 loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
-              => Maybe Text -> [SolcContract2] -> m (VM, [SolSignature2], [Text])
+              => Maybe Text -> [SolcContract] -> m (VM, [SolSignature], [Text])
 loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure () in do
   -- Pick contract to load
   c <- choose cs name
@@ -147,13 +147,13 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   liftIO $ do
     when (isNothing name && length cs > 1 && not q) $
       putStrLn "Multiple contracts found in file, only analyzing the first"
-    unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName2 . unpacked
+    unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
   (SolConf ca d ads bala balc pref _ _ libs _ ch) <- view hasLens
-  let bc = c ^. creationCode2
+  let bc = c ^. creationCode
       blank = populateAddresses (ads |> d) bala (vmForEthrunCreation bc)
-      abi = liftM2 (,) (view methodName2) (fmap snd . view methodInputs2) <$> toList (c ^. abiMap2)
+      abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
 
   -- Select libraries
@@ -162,16 +162,16 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   -- Make sure everything is ready to use, then ship it
   mapM_ (uncurry ensure) $ [(abi, NoFuncs), (funs, OnlyTests)]
                         ++ if ch then [] else [(tests, NoTests)] -- ABI checks
-  ensure bc (NoBytecode $ c ^. contractName2)                    -- Bytecode check
+  ensure bc (NoBytecode $ c ^. contractName)                    -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                       -- Test args check
     Nothing    -> loadLibraries ls addrLibrary d blank >>= fmap (, fallback : funs, fst <$> tests) .
-      execStateT (execTx2 $ Tx2 (Right bc) d ca 0xffffffff (w256 $ fromInteger balc) (0, 0))
+      execStateT (execTx $ Tx (Right bc) d ca 0xffffffff (w256 $ fromInteger balc) (0, 0))
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
-                                      find (isSuffixOf n . view contractName2) cs
+                                      find (isSuffixOf n . view contractName) cs
         fallback = ("",[])
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
@@ -183,32 +183,32 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
 --             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 --loadSolidity fp name = contracts fp >>= loadSpecified name
 loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
-             => FilePath -> Maybe Text -> m (VM, [SolSignature2], [Text])
+             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
-               => (VM, [SolSignature2], [Text]) -> m (VM, World2, [SolTest])
+               => (VM, [SolSignature], [Text]) -> m (VM, World, [SolTest])
 prepareForTest (v, a, ts) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ ch) ->
-  (v, World2 s [(r, a)], fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a else []) where
+  (v, World s [(r, a)], fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a else []) where
     r = v ^. state . contract
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
 loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
-             => FilePath -> Maybe Text -> m (VM, World2, [SolTest])
+             => FilePath -> Maybe Text -> m (VM, World, [SolTest])
 loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
 
-mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue2
-mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt2 i x else Nothing
+mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
+mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Nothing
 
-mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue2
-mkValidAbiUInt i x = if x <= 2 ^ i - 1 then Just $ AbiUInt2 i x else Nothing
+mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue
+mkValidAbiUInt i x = if x <= 2 ^ i - 1 then Just $ AbiUInt i x else Nothing
 
 -- | Given a list of 'SolcContract's, try to parse out string and integer literals
-extractConstants :: [SolcContract2] -> [AbiValue2]
-extractConstants = nub . concatMap (constants "" . view contractAst2) where
+extractConstants :: [SolcContract] -> [AbiValue]
+extractConstants = nub . concatMap (constants "" . view contractAst) where
   -- Tools for parsing numbers and quoted strings from 'Text'
   asDecimal = preview $ to decimal . _Right . _1
   asQuoted  = preview $ unpacked . prefixed "\"" . suffixed "\"" . packedChars
@@ -219,7 +219,7 @@ extractConstants = nub . concatMap (constants "" . view contractAst2) where
   literal _ _ _                                                = Nothing
   -- When we get a number, it could be an address, uint, or int. We'll try everything.
   dec i = let l f = f <$> [8,16..256] <*> fmap fromIntegral [i-1..i+1] in
-    AbiAddress2 i : catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
+    AbiAddress i : catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
   -- 'constants' takes a property name and its 'Value', then tries to find solidity literals
   -- CASE ONE: we're looking at a big object with a bunch of little objects, recurse
   constants _ (Object o) = concatMap (uncurry constants) $ M.toList o
@@ -231,11 +231,11 @@ extractConstants = nub . concatMap (constants "" . view contractAst2) where
   -- 2.2: We're looking at something of the form @type: literal_string "[...]"@, a string literal
   --      @type: "literal_string \"123\""@ ==> @[AbiString "123", AbiBytes 3 "123"...]@
   constants "typeString" (literal "literal_string" asQuoted -> Just b) =
-    let size = BS.length b in [AbiString2 b, AbiBytesDynamic2 b] ++
-      fmap (\n -> AbiBytes2 n . BS.append b $ BS.replicate (n - size) 0) [size..32]
+    let size = BS.length b in [AbiString b, AbiBytesDynamic b] ++
+      fmap (\n -> AbiBytes n . BS.append b $ BS.replicate (n - size) 0) [size..32]
   -- CASE THREE: we're at a leaf node with no constants
   constants _  _ = []
 
-returnTypes :: [SolcContract2] -> Text -> Maybe AbiType2
-returnTypes cs t = preview (_Just . methodOutput2 . _Just . _2) .
-  find ((== t) . view methodName2) $ concatMap (toList . view abiMap2) cs
+returnTypes :: [SolcContract] -> Text -> Maybe AbiType
+returnTypes cs t = preview (_Just . methodOutput . _Just . _2) .
+  find ((== t) . view methodName) $ concatMap (toList . view abiMap) cs
