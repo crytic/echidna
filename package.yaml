@@ -71,5 +71,8 @@ tests:
     source-dirs: src/test
     dependencies:
       - echidna
+      - QuickCheck
+      - quickcheck-instances
       - tasty
       - tasty-hunit
+      - tasty-quickcheck
