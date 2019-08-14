@@ -7,7 +7,7 @@
 
 module Echidna.Solidity where
 
-import Control.Lens hiding        (Indexed)
+import Control.Lens
 import Control.Exception          (Exception)
 import Control.Monad              (liftM2, mapM_, when, unless)
 import Control.Monad.Catch        (MonadThrow(..))
@@ -30,9 +30,7 @@ import System.Process             (StdStream(..), readCreateProcess, proc, std_e
 import System.IO                  (openFile, IOMode(..))
 
 import Echidna.ABI         (SolSignature, SolSignature)
-import Echidna.ABIv2       (AbiType(..), AbiValue(..), readSolc, SolcContract,
-                            abiMap, methodName, creationCode, methodOutput,
-                            methodInputs, contractName, contractAst)
+import Echidna.ABIv2
 import Echidna.Exec        (execTx)
 import Echidna.Transaction (Tx(..), World(..))
 
@@ -162,7 +160,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   -- Make sure everything is ready to use, then ship it
   mapM_ (uncurry ensure) $ [(abi, NoFuncs), (funs, OnlyTests)]
                         ++ if ch then [] else [(tests, NoTests)] -- ABI checks
-  ensure bc (NoBytecode $ c ^. contractName)                    -- Bytecode check
+  ensure bc (NoBytecode $ c ^. contractName)                     -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                       -- Test args check
     Nothing    -> loadLibraries ls addrLibrary d blank >>= fmap (, fallback : funs, fst <$> tests) .

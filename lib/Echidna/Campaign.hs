@@ -64,9 +64,9 @@ data CampaignConf = CampaignConf { testLimit     :: Int
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
 data TestState = Open Int             -- ^ Maybe solvable, tracking attempts already made
-               | Large Int [Tx]      -- ^ Solved, maybe shrinable, tracking shrinks tried + best solve
+               | Large Int [Tx]       -- ^ Solved, maybe shrinable, tracking shrinks tried + best solve
                | Passed               -- ^ Presumed unsolvable
-               | Solved [Tx]         -- ^ Solved with no need for shrinking
+               | Solved [Tx]          -- ^ Solved with no need for shrinking
                | Failed ExecException -- ^ Broke the execution environment
                  deriving Show
 
@@ -88,7 +88,7 @@ instance ToJSON TestState where
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests    :: [(SolTest, TestState)] -- ^ Tests being evaluated
                          , _coverage :: Map W256 (Set Int)     -- ^ Coverage captured (NOTE: we don't always record this)
-                         , _genDict  :: GenDict               -- ^ Generation dictionary
+                         , _genDict  :: GenDict                -- ^ Generation dictionary
                          }
 
 instance ToJSON Campaign where
