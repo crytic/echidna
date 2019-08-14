@@ -94,7 +94,7 @@ makeLenses ''World
 -- transaction. Note: This doesn't generate @CREATE@s because I don't know how to do that at random.
 genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m) 
           => ([Addr] -> m Addr)                       -- ^ Sender generator
-          -> ([ContractA] -> m ContractA)           -- ^ Receiver generator
+          -> ([ContractA] -> m ContractA)             -- ^ Receiver generator
           -> (Addr -> ContractA -> m SolCall)         -- ^ Call generator
           -> m Word                                   -- ^ Gas generator
           -> (Addr -> ContractA -> SolCall -> m Word) -- ^ Value generator

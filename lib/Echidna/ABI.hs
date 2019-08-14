@@ -116,7 +116,7 @@ deriving instance Hashable AbiType
 -- | Construct a 'GenDict' from some dictionaries, a 'Float', a default seed, and a typing rule for
 -- return values
 mkGenDict :: Float       -- ^ Percentage of time to mutate instead of synthesize. Should be in [0,1]
-          -> [AbiValue] -- ^ A list of 'AbiValue' constants to use during dictionary-based generation
+          -> [AbiValue]  -- ^ A list of 'AbiValue' constants to use during dictionary-based generation
           -> [SolCall]   -- ^ A list of complete 'SolCall's to mutate
           -> Int         -- ^ A default seed
           -> (Text -> Maybe AbiType)
@@ -141,7 +141,7 @@ genAbiCall = traverse $ traverse genAbiValue
 
 -- | Synthesize a random 'SolCall' given a list of 'SolSignature's (effectively, an ABI). Doesn't use a dictionary.
 genInteractions :: (MonadThrow m, MonadRandom m) => [SolSignature] -> m SolCall
-genInteractions l = genAbiCall =<< rElem "ABIv2" l
+genInteractions l = genAbiCall =<< rElem "ABI" l
 
 -- Mutation helper functions
 
@@ -239,9 +239,7 @@ shrinkAbiValue (AbiString b)       = fmap AbiString       $ addNulls =<< shrinkB
 shrinkAbiValue (AbiArray n t l)    = AbiArray n t <$> traverse shrinkAbiValue l
 shrinkAbiValue (AbiArrayDynamic t l) = fmap (AbiArrayDynamic t) $ traverse shrinkAbiValue =<< shrinkV l
 shrinkAbiValue (AbiTuple v)   = AbiTuple <$> traverse shrinkAbiValue' v
-  where shrinkAbiValue' x = do
-          f <- uniform [return, shrinkAbiValue]
-          f x
+  where shrinkAbiValue' x = liftM3 bool (pure x) (shrinkAbiValue x) getRandom
 
 -- | Given a 'SolCall', generate a random \"smaller\" (simpler) call.
 shrinkAbiCall :: MonadRandom m => SolCall -> m SolCall
@@ -287,7 +285,7 @@ genAbiValueM = genWithDict (view constants) $ \case
   AbiStringType       -> liftM2 (\n -> AbiString       . BS.pack . take n)
                                 (getRandomR (1, 32)) getRandoms
   (AbiArrayDynamicType t) -> fmap (AbiArrayDynamic t) $ getRandomR (1, 32)
-                              >>= flip V.replicateM (genAbiValueM t)
+                             >>= flip V.replicateM (genAbiValueM t)
   (AbiArrayType n t)      -> AbiArray n t <$> V.replicateM n (genAbiValueM t)
   (AbiTupleType v)    -> AbiTuple <$> traverse genAbiValueM v
 
