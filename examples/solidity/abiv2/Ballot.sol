@@ -1,5 +1,4 @@
 pragma experimental ABIEncoderV2;
-pragma solidity ^0.4.25;
 
 contract Ballot {
   struct Voter { // Struct
