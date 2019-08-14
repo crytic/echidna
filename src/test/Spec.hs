@@ -3,8 +3,8 @@
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Echidna.ABI (SolCall2, mkGenDict2)
-import Echidna.ABIv2 (AbiValue2(..))
+import Echidna.ABI (SolCall, mkGenDict)
+import Echidna.ABIv2 (AbiValue(..))
 import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests)
 import Echidna.Config (EConfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
@@ -95,7 +95,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_fails_on_revert didn't shrink to one transaction",
          solvedLen 1 "echidna_fails_on_revert")
       , ("echidna_revert_is_false didn't shrink to f(-1)",
-         solvedWith ("f", [AbiInt2 256 (-1)]) "echidna_fails_on_revert")
+         solvedWith ("f", [AbiInt 256 (-1)]) "echidna_fails_on_revert")
       ]
   
   , testContract "basic/nearbyMining.sol" (Just "coverage/test.yaml")
@@ -170,7 +170,7 @@ runContract fp c =
     (v,w,ts) <- loadSolTests fp Nothing
     cs  <- contracts fp
     ads <- addresses
-    campaign (pure ()) v w ts (Just $ mkGenDict2 0.15 (extractConstants cs ++ ads) [] g (returnTypes cs))
+    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads) [] g (returnTypes cs))
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
@@ -194,5 +194,5 @@ solvedLen :: Int -> Text -> Campaign -> Bool
 solvedLen i t = (== Just i) . fmap length . solnFor t
 
 -- NOTE: this just verifies a call was found in the solution. Doesn't care about ordering/seq length
-solvedWith :: SolCall2 -> Text -> Campaign -> Bool
-solvedWith c t = maybe False (any $ (== Left c) . view call2) . solnFor t
+solvedWith :: SolCall -> Text -> Campaign -> Bool
+solvedWith c t = maybe False (any $ (== Left c) . view call) . solnFor t
