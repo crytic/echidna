@@ -34,3 +34,7 @@ quiet: False
 #dashboard determines if output is just text or an AFL-like display
 dashboard: true
 #seed not defined by default, is the random seed
+maxTimeDelay: 604800
+#maximum time between generated txs; default is one week
+maxBlockDelay: 60480
+#maximum number of blocks elapsed between generated txs; default is expected increment in one week
