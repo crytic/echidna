@@ -5,7 +5,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck (Arbitrary(..), oneof, sized, choose, listOf, testProperty, withMaxSuccess)
 
-import Echidna.ABI (SolCall, mkGenDict)
+import Echidna.ABI (SolCall, mkGenDict, genAbiValue)
 import Echidna.ABIv2 (AbiType(..), AbiValue(..), getAbi, putAbi, abiValueType)
 import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests)
 import Echidna.Config (EConfig, defaultConfig, parseConfig, sConf, cConf)
@@ -15,7 +15,7 @@ import Echidna.Transaction (Tx, call)
 import Control.Lens
 import Control.Monad (liftM2, replicateM)
 import Control.Monad.Catch (MonadCatch(..))
-import Control.Monad.Random (getRandom)
+import Control.Monad.Random (getRandom, evalRand, mkStdGen)
 import Control.Monad.Reader (runReaderT)
 import Data.Binary.Get (runGetOrFail)
 import Data.Binary.Put (runPut)
@@ -119,7 +119,8 @@ encodingTests =
     -- if we can improve the Arbitrary instance for AbiType then we can use the
     -- default of 100.
     [ testProperty "decode . encode = id" $ withMaxSuccess 32 $
-        \v -> get (abiValueType v) (put v) == Just v
+        \t s -> let v = evalRand (genAbiValue t) (mkStdGen s) in
+                  get (abiValueType v) (put v) == Just v
     ]
   where get :: AbiType -> BSLazy.ByteString -> Maybe AbiValue
         get = (preview (_Right . _3) .) . runGetOrFail . getAbi
