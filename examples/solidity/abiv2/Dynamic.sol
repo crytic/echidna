@@ -1,5 +1,4 @@
 pragma experimental ABIEncoderV2;
-pragma solidity ^0.4.25;
 
 contract Dynamic {
   struct Yolo { // Struct
@@ -11,7 +10,7 @@ contract Dynamic {
   bool cond = true;
 
   function yolo(Yolo memory y) public returns (bool) {
-    if (keccak256(y.s) == keccak256("yolo")) {
+    if (keccak256(abi.encodePacked(y.s)) == keccak256(abi.encodePacked("yolo"))) {
       cond = false;
     }
     return(true);
