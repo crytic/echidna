@@ -87,7 +87,6 @@ type ContractA = (Addr, [SolSignature])
 data World = World { _senders   :: [Addr]
                    , _receivers :: [ContractA]
                    }
-  deriving (Show)
 makeLenses ''World
 
 -- | Given generators for an origin, destination, value, and function call, generate a call
