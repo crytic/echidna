@@ -1,9 +1,12 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
 
-import Test.QuickCheck.Instances ()
+import Hedgehog (MonadGen, withTests, Size(unSize), property, (===), forAll)
+import Hedgehog.Gen (choice, sized, integral, list)
+import Hedgehog.Range (constant, constantBounded)
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.QuickCheck (Arbitrary(..), oneof, sized, choose, listOf, testProperty, withMaxSuccess)
+import Test.Tasty.Hedgehog (testProperty)
 
 import Echidna.ABI (SolCall, mkGenDict, genAbiValue)
 import Echidna.ABIv2 (AbiType(..), AbiValue(..), getAbi, putAbi, abiValueType)
@@ -13,19 +16,17 @@ import Echidna.Solidity
 import Echidna.Transaction (Tx, call)
 
 import Control.Lens
-import Control.Monad (liftM2, replicateM)
+import Control.Monad (liftM2)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Random (getRandom, evalRand, mkStdGen)
 import Control.Monad.Reader (runReaderT)
 import Data.Binary.Get (runGetOrFail)
 import Data.Binary.Put (runPut)
-import Data.DoubleWord (Word256(..), Int256(..), Word160(..), Word128(..), Int128(..))
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
 import Data.List (find)
 import System.Directory (withCurrentDirectory)
 
-import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BSLazy
 import qualified Data.Vector          as V
 
@@ -74,40 +75,22 @@ extractionTests = testGroup "Constant extraction/generation testing"
   ]
 -}
 
-instance Arbitrary AbiType where
-  arbitrary = sized type'
-    where type' 0 = pure $ AbiUIntType 256
-          type' m = oneof
-            [ pure $ AbiUIntType 256
-            , pure $ AbiIntType  256
-            , pure AbiAddressType
-            , pure AbiBoolType
-            , sized $ \n -> AbiBytesType <$> choose (1, n)
-            , pure AbiStringType
-            , AbiArrayDynamicType <$> type' (m `div` 2)
-            , sized $ \n -> AbiArrayType <$> choose (1, n) <*> type' (m `div` 2)
-            , AbiTupleType . V.fromList <$> listOf (type' (m `div` 2))
-            ]
-
-instance Arbitrary AbiValue where
-  arbitrary = arb =<< arbitrary
-    where arb (AbiUIntType n)         = AbiUInt n       <$> arbw256
-          arb (AbiIntType n)          = AbiInt  n       <$> arbi256
-          arb AbiAddressType          = AbiAddress      <$> arbw160
-          arb AbiBoolType             = AbiBool         <$> arbitrary
-          arb (AbiBytesType n)        = do
-            b <- replicateM n arbitrary
-            return $ AbiBytes (length b) (BS.pack b)
-          arb AbiBytesDynamicType     = AbiBytesDynamic <$> arbitrary
-          arb AbiStringType           = AbiString       <$> arbitrary
-          arb (AbiArrayDynamicType t) = AbiArrayDynamic t . V.fromList <$> listOf (arb t)
-          arb (AbiArrayType n t)      = AbiArray n t <$> V.replicateM n (arb t)
-          arb (AbiTupleType t)        = AbiTuple        <$> V.forM t arb
-          arbw256 = Word256 <$> arbw128 <*> arbw128
-          arbi256 = Int256  <$> arbi128 <*> arbw128
-          arbw160 = Word160 <$> arbitrary <*> arbw128
-          arbw128 = Word128 <$> arbitrary <*> arbitrary
-          arbi128 = Int128  <$> arbitrary <*> arbitrary
+abitype :: MonadGen m => m AbiType
+abitype = sized type'
+  where type' n =
+          case n of
+               0 -> pure $ AbiUIntType 256
+               _ -> let range = constant 1 (unSize n) in choice
+                 [ pure $ AbiUIntType 256
+                 , pure $ AbiIntType  256
+                 , pure AbiAddressType
+                 , pure AbiBoolType
+                 , AbiBytesType <$> integral range
+                 , pure AbiStringType
+                 , AbiArrayDynamicType <$> type' (n `div` 2)
+                 , AbiArrayType <$> integral range <*> type' (n `div` 2)
+                 , AbiTupleType . V.fromList <$> list range (type' (n `div` 2))
+                 ]
 
 encodingTests :: TestTree
 encodingTests =
@@ -115,12 +98,14 @@ encodingTests =
     -- the Arbitrary instance can produce somewhat large test cases which take a
     -- very long time to verify, so we only try a small number of test cases
     -- you can try generating your own test cases with
-    -- > replicateM 100 (generate arbitrary) :: IO [AbiValue]
+    -- > replicateM n (sample abitype) >>= \ts -> sequence $ genAbiValue <$> ts
     -- if we can improve the Arbitrary instance for AbiType then we can use the
     -- default of 100.
-    [ testProperty "decode . encode = id" $ withMaxSuccess 32 $
-        \t s -> let v = evalRand (genAbiValue t) (mkStdGen s) in
-                  get (abiValueType v) (put v) == Just v
+    [ testProperty "decode . encode = id" $ withTests 32 $ property $ do
+        t <- forAll abitype
+        g <- forAll $ integral constantBounded
+        let v = evalRand (genAbiValue t) (mkStdGen g)
+        get (abiValueType v) (put v) === Just v
     ]
   where get :: AbiType -> BSLazy.ByteString -> Maybe AbiValue
         get = (preview (_Right . _3) .) . runGetOrFail . getAbi
