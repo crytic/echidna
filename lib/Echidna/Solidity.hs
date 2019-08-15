@@ -29,7 +29,7 @@ import Data.Text.Read             (decimal)
 import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 
-import Echidna.ABI         (SolSignature, SolSignature)
+import Echidna.ABI         (SolSignature)
 import Echidna.ABIv2
 import Echidna.Exec        (execTx)
 import Echidna.Transaction (Tx(..), World(..))
