@@ -24,7 +24,6 @@ import Data.Has (Has(..))
 import Data.List (intercalate)
 import Data.Set (Set)
 import EVM
-import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
 
@@ -34,6 +33,7 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 
 import Echidna.ABI
+import Echidna.ABIv2
 
 -- | A transaction is either a @CREATE@ or a regular call with an origin, destination, and value.
 -- Note: I currently don't model nonces or signatures here.
@@ -63,22 +63,22 @@ makeLenses 'TxConf
 ppSolCall :: SolCall -> String
 ppSolCall (t, vs) = (if t == "" then T.unpack "*fallback*" else T.unpack t) ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
 
+instance ToJSON Tx where
+  toJSON (Tx c s d g v (t, b)) = object [ ("call",        toJSON $ either ppSolCall (const "<CREATE>") c)
+                                        -- from/to are Strings, since JSON doesn't support hexadecimal notation
+                                        , ("from",        toJSON $ show s)
+                                        , ("to",          toJSON $ show d)
+                                        , ("value",       toJSON $ show v)
+                                        , ("gas",         toJSON $ show g)
+                                        , ("time delay",  toJSON $ show t)
+                                        , ("block delay", toJSON $ show b)
+                                        ]
+
 -- | If half a tuple is zero, make both halves zero. Useful for generating delays, since block number
 -- only goes up with timestamp
 level :: (Num a, Eq a) => (a, a) -> (a, a)
 level (elemOf each 0 -> True) = (0,0)
 level x                       = x
-
-instance ToJSON Tx where
-  toJSON (Tx c s d g v (t,b)) = object [ ("call",        toJSON $ either ppSolCall (const "<CREATE>") c)
-                                       -- from/to are Strings, since JSON doesn't support hexadecimal notation
-                                       , ("from",        toJSON $ show s)
-                                       , ("to",          toJSON $ show d)
-                                       , ("value",       toJSON $ show v)
-                                       , ("gas",         toJSON $ show g)
-                                       , ("time delay",  toJSON $ show t)
-                                       , ("block delay", toJSON $ show b)
-                                       ]
 
 -- | A contract is just an address with an ABI (for our purposes).
 type ContractA = (Addr, [SolSignature])
@@ -87,7 +87,6 @@ type ContractA = (Addr, [SolSignature])
 data World = World { _senders   :: [Addr]
                    , _receivers :: [ContractA]
                    }
-
 makeLenses ''World
 
 -- | Given generators for an origin, destination, value, and function call, generate a call
@@ -118,9 +117,9 @@ genTxM = view hasLens >>= \(TxConf _ g t b) -> genTxWith
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool
-canShrinkTx (Tx (Right _) _ _ _ 0 (0,0))    = False
-canShrinkTx (Tx (Left (_,l)) _ _ _ 0 (0,0)) = any canShrinkAbiValue l
-canShrinkTx _                               = True
+canShrinkTx (Tx (Right _) _ _ _ 0 (0, 0))    = False
+canShrinkTx (Tx (Left (_,l)) _ _ _ 0 (0, 0)) = any canShrinkAbiValue l
+canShrinkTx _                                = True
 
 -- | Given a 'Transaction', generate a random \"smaller\" 'Transaction', preserving origin,
 -- destination, value, and call signature.
@@ -138,7 +137,7 @@ spliceTxs ts = let l = S.toList ts; (cs, ss) = unzip $ (\(Tx c s _ _ _ _) -> (c,
               (\_ _ -> mutateAbiCall =<< rElem "past calls" (lefts cs)) (pure g)
               (\ _ _ (n,_) -> let valOf (Tx c _ _ _ v _) = if elem n $ c ^? _Left . _1 then v else 0
                               in rElem "values" $ valOf <$> l)
-              (pure (0,0))
+              (pure (0, 0))
 
 -- | Lift an action in the context of a component of some 'MonadState' to an action in the
 -- 'MonadState' itself.
