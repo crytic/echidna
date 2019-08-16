@@ -16,12 +16,12 @@ import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import EVM (Error(..), VMResult(..), VM, calldata, result, state)
-import EVM.ABI (AbiValue(..), abiCalldata, encodeAbiValue)
 import EVM.Types (Addr)
 
 import qualified Data.ByteString as BS
 
 import Echidna.ABI
+import Echidna.ABIv2 (abiCalldata, AbiValue(..), encodeAbiValue)
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
@@ -60,7 +60,7 @@ checkETest t = asks getter >>= \(TestConf p s) -> view (hasLens . propGas) >>= \
       matchC sig = not . (BS.isPrefixOf . BS.take 4 $ abiCalldata (encodeSig sig) mempty)
   res <- case t of
     -- If our test is a regular user-defined test, we exec it and check the result
-    Left  (f, a) -> execTx (Tx (Left (f, [])) (s a) a g 0 (0,0)) >> gets (p f . getter)
+    Left  (f, a) -> execTx (Tx (Left (f, [])) (s a) a g 0 (0, 0)) >> gets (p f . getter)
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
     Right sig    -> (||) <$> fmap matchR       (use $ hasLens . result)
                          <*> fmap (matchC sig) (use $ hasLens . state . calldata)

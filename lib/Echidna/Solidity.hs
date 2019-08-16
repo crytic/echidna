@@ -30,14 +30,13 @@ import System.Process             (StdStream(..), readCreateProcess, proc, std_e
 import System.IO                  (openFile, IOMode(..))
 
 import Echidna.ABI         (SolSignature)
+import Echidna.ABIv2
 import Echidna.Exec        (execTx)
 import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
-import EVM.ABI      (AbiType, AbiValue(..))
 import EVM.Exec     (vmForEthrunCreation)
-import EVM.Solidity
 import EVM.Types    (Addr)
 import EVM.Concrete (w256)
 
@@ -165,8 +164,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                       -- Test args check
     Nothing    -> loadLibraries ls addrLibrary d blank >>= fmap (, fallback : funs, fst <$> tests) .
-      execStateT (execTx $ Tx (Right bc) d ca 0xffffffff (w256 $ fromInteger balc) (0,0))
-
+      execStateT (execTx $ Tx (Right bc) d ca 0xffffffff (w256 $ fromInteger balc) (0, 0))
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
@@ -184,7 +182,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
 --loadSolidity fp name = contracts fp >>= loadSpecified name
 loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
              => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
-loadWithCryticCompile fp name = contracts fp >>= loadSpecified name 
+loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.

@@ -69,13 +69,13 @@ execTxWith h m t = do og <- get
                       res <- m
                       cd  <- use $ hasLens . state . calldata
                       case (res, isRight $ t ^. call) of
-                        (f@Reversion, _)         -> do put og 
+                        (f@Reversion, _)         -> do put og
                                                        hasLens . state . calldata .= cd
                                                        hasLens . result ?= f
                         (VMFailure x, _)         -> h x
                         (VMSuccess bc, True)     -> (hasLens %=) . execState $ do
                           env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
-                          replaceCodeOfSelf (RuntimeCode bc) 
+                          replaceCodeOfSelf (RuntimeCode bc)
                           loadContract (t ^. dst)
                         _                        -> pure ()
                       return res

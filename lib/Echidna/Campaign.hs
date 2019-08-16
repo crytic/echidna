@@ -30,7 +30,6 @@ import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
 import EVM
-import EVM.ABI
 import EVM.Types (W256)
 import Numeric (showHex)
 import System.Random (mkStdGen)
@@ -38,6 +37,7 @@ import System.Random (mkStdGen)
 import qualified Data.HashMap.Strict  as H
 
 import Echidna.ABI
+import Echidna.ABIv2 (getAbi)
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Test
