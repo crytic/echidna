@@ -3,7 +3,9 @@ module Main where
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
 import Data.Text (pack)
+import Data.Version (showVersion)
 import Options.Applicative
+import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 
 import Echidna.ABI
@@ -26,8 +28,13 @@ options = Options <$> argument str (metavar "FILE"
                   <*> optional (option str $ long "config"
                         <> help "Config file")
 
+versionOption :: Parser (a -> a)
+versionOption = infoOption
+                  ("Echidna " ++ showVersion version)
+                  (long "version" <> help "Show version")
+
 opts :: ParserInfo Options
-opts = info (options <**> helper) $ fullDesc
+opts = info (helper <*> versionOption <*> options) $ fullDesc
   <> progDesc "EVM property-based testing framework"
   <> header "Echidna"
 

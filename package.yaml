@@ -2,7 +2,7 @@ name: echidna
 
 author: JP Smith
 
-version: 1.0.0.0
+version: 1.1.0.0
 
 ghc-options: -Wall -fno-warn-orphans -O2 -threaded +RTS -N -RTS
 
