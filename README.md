@@ -79,7 +79,7 @@ Echidna exports an API to build powerful fuzzing systems, and has a multitude of
 
 ## Installation
 
-If you want to quickly test Echidna in Linux, we offer a statically linked binary release of v1.0.0.0 to download [here](https://github.com/crytic/echidna/releases/tag/1.0.0.0). 
+If you want to quickly test Echidna in Linux, we offer a statically linked binary release of v1.1.0.0 to download [here](https://github.com/crytic/echidna/releases/tag/1.1.0.0).
 
 Otherwise, to install the latest revision of Echidna, we recommend to use [docker](https://www.docker.com/):
 
