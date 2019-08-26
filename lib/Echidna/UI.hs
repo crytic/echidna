@@ -88,7 +88,8 @@ ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m th
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppTests (Campaign ts _ _) = unlines . catMaybes <$> mapM pp ts where
+ppTests (Campaign _ _ _ False) = pure "starting up, please wait  "
+ppTests (Campaign ts _ _ _) = unlines . catMaybes <$> mapM pp ts where
   pp (Left  (n, _), s)      = Just .                    ((T.unpack n ++ ": ") ++) <$> ppTS s
   pp (Right _,      Open _) = pure Nothing
   pp (Right (n, _), s)      = Just . (("assertion in " ++ T.unpack n ++ ": ") ++) <$> ppTS s
@@ -145,7 +146,7 @@ ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id 
   c <- if s then do bc <- liftIO $ newBChan 100
                     t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts d >> pure ()
                     a <- monitor (killThread t)
-                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty d')
+                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty d' False)
             else campaign (pure ()) v w ts d
   liftIO . putStrLn =<< view (hasLens . finished) <*> pure c <*> pure g'
   return c
