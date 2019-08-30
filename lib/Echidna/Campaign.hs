@@ -86,13 +86,18 @@ instance ToJSON TestState where
                                Failed  e -> (False, Just ("exception", toJSON $ show e))
 
 -- | The state of a fuzzing campaign.
-data Campaign = Campaign { _tests    :: [(SolTest, TestState)] -- ^ Tests being evaluated
-                         , _coverage :: Map W256 (Set Int)     -- ^ Coverage captured (NOTE: we don't always record this)
-                         , _genDict  :: GenDict                -- ^ Generation dictionary
+data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
+                           -- ^ Tests being evaluated
+                         , _coverage    :: Map W256 (Set Int)
+                           -- ^ Coverage captured (NOTE: we don't always record this)
+                         , _genDict     :: GenDict
+                           -- ^ Generation dictionary
+                         , _initialized :: Bool
+                           -- ^ Has the campaign started
                          }
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co _) = object $ ("tests", toJSON $ mapMaybe format ts)
+  toJSON (Campaign ts co _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
     : if co == mempty then [] else [("coverage",) . toJSON . mapKeys (`showHex` "") $ toList <$> co] where
       format (Right _,      Open _) = Nothing
       format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
@@ -104,18 +109,19 @@ instance Has GenDict Campaign where
   hasLens = genDict
 
 defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty defaultDict
+defaultCampaign = Campaign mempty mempty defaultDict False
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
 isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
-isDone (Campaign ts _ _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
+isDone (Campaign _ _ _ False) = pure False
+isDone (Campaign ts _ _ _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
   all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
 isSuccess :: Campaign -> Bool
-isSuccess (Campaign ts _ _) =
+isSuccess (Campaign ts _ _ _) =
   all (\case { Passed -> True; Open _ -> True; _ -> False; }) $ snd <$> ts
 
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
@@ -205,7 +211,7 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
 campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d') where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d' True) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl q sl _ _) ->
