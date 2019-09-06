@@ -112,7 +112,7 @@ addresses = view hasLens <&> \(SolConf ca d ads _ _ _ _ _ _ _ _) ->
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm
 populateAddresses (a:as) b vm = populateAddresses as b (vm & set (env . EVM.contracts . at a) (Just account))
-  where account = initialContract (RuntimeCode mempty) & set nonce 1 & set balance (w256 $ fromInteger b)
+  where account = initialContract (RuntimeCode mempty) & set nonce 0 & set balance (w256 $ fromInteger b)
 
 -- | Address to load the first library
 addrLibrary :: Addr
@@ -151,6 +151,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   (SolConf ca d ads bala balc pref _ _ libs _ ch) <- view hasLens
   let bc = c ^. creationCode
       blank = populateAddresses (ads |> d) bala (vmForEthrunCreation bc)
+            & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
 
