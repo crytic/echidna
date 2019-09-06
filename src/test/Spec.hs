@@ -194,6 +194,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_set1 failed",                    passed      "ASSERTION set1") ]
   , testContract "basic/time.sol"         (Just "basic/time.yaml")
       [ ("echidna_timepassed passed",              solved      "echidna_timepassed") ]
+  , testContract "basic/construct.sol"    Nothing
+      [ ("echidna_construct passed",               solved      "echidna_construct") ]
   , testContract "abiv2/Ballot.sol"       Nothing
       [ ("echidna_test failed",                    solved      "echidna_test") ]
   , testContract "abiv2/Dynamic.sol"      Nothing
