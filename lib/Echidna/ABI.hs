@@ -22,8 +22,8 @@ import Data.Has (Has(..))
 import Data.Hashable (Hashable(..))
 import Data.HashMap.Strict (HashMap)
 import Data.HashSet (HashSet, fromList, union)
-import Data.List (group, intercalate, sort)
-import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
+import Data.List (intercalate)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Vector (Vector)
 import Data.Vector.Instances ()
@@ -91,7 +91,6 @@ data GenDict = GenDict { _pSynthA    :: Float
 makeLenses 'GenDict
 
 hashMapBy :: (Hashable k, Hashable a, Eq k, Ord a) => (a -> k) -> [a] -> HashMap k (HashSet a)
---hashMapBy f = M.fromListWith union . mapMaybe (liftM2 fmap (\l x -> (f x, l)) listToMaybe) . group . sort
 hashMapBy f = M.fromListWith union . fmap (\v -> (f v, fromList [v]))
 
 gaddConstants :: [AbiValue] -> GenDict -> GenDict
