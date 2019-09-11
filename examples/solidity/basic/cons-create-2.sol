@@ -11,18 +11,14 @@ contract C {
   }
 
   function c() public {
-    if (b == address(0))
+    if (b == A(address(0x0)))
       b = new A();
   }
-
-  //function d() public returns (address) {
-  //  return (new A());
-  //}
 
   function f(address x) public {
     if (A(x) == a)
       state = false;
-    if ((A(x) == b) && (b != address(0)))
+    if ((A(x) == b) && (b != A(address(0x0))))
       state2 = false;
   }
 
