@@ -16,7 +16,7 @@ import Control.Monad (liftM3, replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.State.Strict (MonadState(..), StateT(..), gets, evalStateT, execStateT)
+import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Aeson (ToJSON(..), object)
@@ -30,14 +30,13 @@ import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
 import EVM
-import EVM.ABI (getAbi, AbiValue(AbiAddress)))
+import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (W256, addressWord160)
 import Numeric (showHex)
 import System.Random (mkStdGen)
 
-import qualified Data.HashMap.Strict  as H
-
-import Debug.Trace
+import qualified Data.HashMap.Strict as H
+import qualified Data.HashSet as S
 
 import Echidna.ABI
 import Echidna.Exec
@@ -166,20 +165,21 @@ evalSeq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
 evalSeq v e = go [] where
   go r xs = use hasLens >>= \v' -> runUpdate (updateTest v $ Just (v',reverse r)) >>
     case xs of []     -> pure []
-               (y:ys) -> e y >>= \a -> ((y, a) :) <$> go (y:r) ys
+               (y:ys) -> do
+                 --old <- gets $ view $ hasLens . env . EVM.contracts
+                 a <- e y
+                 --new <- gets $ view $ hasLens . env . EVM.contracts
+                 --let diff = keys $ new \\ old
+                 --hasLens . genDict %= gaddConstants (AbiAddress . addressWord160 <$> traceShow diff diff)
+                 ((y, a) :) <$> go (y:r) ys
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
 -- transaction if it finds new coverage.
 execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => Tx -> m VMResult
 execTxOptC t = do
   og  <- hasLens . coverage <<.= mempty
-  og' <- gets $ view $ hasLens . env . EVM.contracts
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
-  new <- gets $ view $ hasLens . env . EVM.contracts
-  let diff = new \\ og'
   hasLens . coverage %= unionWith union og
-  --hasLens . genDict %= gaddConstants (AbiAddress . addressWord160 <$> keys (traceShow (keys diff) diff))
-  hasLens . genDict %= gaddConstants (AbiAddress . addressWord160 <$> keys new)
   grew <- (== LT) . comparing coveragePoints og <$> use (hasLens . coverage)
   when grew $ hasLens . genDict %= gaddCalls (lefts [t ^. call])
   return res
@@ -194,21 +194,33 @@ callseq v w ql = do
   -- our execution function appropriately
   coverageEnabled <- isJust . knownCoverage <$> view hasLens
   let ef = if coverageEnabled then execTxOptC else execTx
+      old = v ^. env . EVM.contracts
+  --hasLens . genDict %= gaddConstants (AbiAddress . addressWord160 <$> traceShow addrs addrs)
   -- Then, we get the current campaign state
   ca <- use hasLens
   -- Then, we generate the actual transaction in the sequence
   is <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, s) <- runStateT (evalSeq v ef is) (v, ca)
+  let new = s ^. _1 . env . EVM.contracts
+      diff = keys $ new \\ old
+      diffs = H.fromList [(AbiAddressType, S.fromList $ AbiAddress . addressWord160 <$> diff)]
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= snd s
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
-  modifying (hasLens . constants) . H.unionWith (++) . parse res =<< use (hasLens . rTypes) where
+  -- modifying (hasLens . constants) . H.unionWith (++) . parse res =<< use (hasLens . rTypes) where
+  types <- use $ hasLens . rTypes
+  let results = parse res types
+      additions = H.unionWith S.union diffs results
+  --modifying (hasLens . genDict . constants) . H.unionWith S.union $ H.fromList [(AbiAddressType, S.fromList diffs)]
+  --modifying (hasLens . genDict . constants) . H.unionWith S.union $ H.unionWith S.union results
+  modifying (hasLens . genDict . constants) . H.unionWith S.union $ additions
+  where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
     -- type for each function called, and if we do, tries to parse the return value as a value of that
     -- type. It returns a 'GenDict' style HashMap.
     parse l rt = H.fromList . flip mapMaybe l $ \(x, r) -> case (rt =<< x ^? call . _Left . _1, r) of
-      (Just ty, VMSuccess b) -> (ty, ) . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
+      (Just ty, VMSuccess b) -> (ty, ) . S.fromList . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
       _                      -> Nothing
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
