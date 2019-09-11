@@ -16,7 +16,7 @@ import Control.Monad (liftM3, replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
+import Control.Monad.State.Strict (MonadState(..), StateT(..), gets, evalStateT, execStateT)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Aeson (ToJSON(..), object)
@@ -24,18 +24,20 @@ import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
 import Data.Either (lefts)
 import Data.Foldable (toList)
-import Data.Map (Map, mapKeys, unionWith)
-import Data.Maybe (fromMaybe, isJust, mapMaybe, maybeToList)
+import Data.Map (Map, mapKeys, unionWith, (\\), keys)
+import Data.Maybe (fromMaybe, isNothing, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
 import EVM
-import EVM.ABI (getAbi)
-import EVM.Types (W256)
+import EVM.ABI (getAbi, AbiValue(AbiAddress)))
+import EVM.Types (W256, addressWord160)
 import Numeric (showHex)
 import System.Random (mkStdGen)
 
 import qualified Data.HashMap.Strict  as H
+
+import Debug.Trace
 
 import Echidna.ABI
 import Echidna.Exec
@@ -171,8 +173,13 @@ evalSeq v e = go [] where
 execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => Tx -> m VMResult
 execTxOptC t = do
   og  <- hasLens . coverage <<.= mempty
+  og' <- gets $ view $ hasLens . env . EVM.contracts
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
+  new <- gets $ view $ hasLens . env . EVM.contracts
+  let diff = new \\ og'
   hasLens . coverage %= unionWith union og
+  --hasLens . genDict %= gaddConstants (AbiAddress . addressWord160 <$> keys (traceShow (keys diff) diff))
+  hasLens . genDict %= gaddConstants (AbiAddress . addressWord160 <$> keys new)
   grew <- (== LT) . comparing coveragePoints og <$> use (hasLens . coverage)
   when grew $ hasLens . genDict %= gaddCalls (lefts [t ^. call])
   return res
