@@ -73,6 +73,8 @@ instance FromJSON EConfig where
                           <*> v .:? "shrinkLimit" .!= 5000
                           <*> pure Nothing
                           <*> v .:? "seed"
+                          <*> pure Nothing
+
         names :: Names
         names Sender = (" from: " ++) . show
         names _      = const ""
