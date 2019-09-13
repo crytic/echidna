@@ -4,12 +4,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE BangPatterns #-}
 
 module Echidna.ABI where
 
 import Control.Lens
-import Control.Monad.Catch (Exception, MonadThrow(..), bracket)
+import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.State.Class (MonadState, gets)
 import Control.Monad.State (evalStateT)
 import Control.Monad.Random.Strict
@@ -18,7 +17,7 @@ import Data.Bool (bool)
 import Data.ByteString (ByteString)
 import Data.Foldable (toList)
 import Data.Has (Has(..))
-import Data.Hashable (Hashable, hash)
+import Data.Hashable (Hashable)
 import Data.HashMap.Strict (HashMap)
 import Data.List (group, intercalate, sort)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
@@ -26,12 +25,10 @@ import Data.Text (Text)
 import Data.Vector (Vector)
 import Data.Word8 (Word8)
 import Numeric (showHex)
-import System.Directory hiding (listDirectory, withCurrentDirectory)
 
 import Echidna.ABIv2
 
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as BSC8
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
@@ -97,31 +94,6 @@ data GenDict = GenDict { _pSynthA    :: Float
                        }
 
 makeLenses 'GenDict
-
-saveCalls :: Maybe FilePath -> GenDict -> IO ()
-saveCalls (Just d) gd = mapM_ (\vs -> mapM_ (\v -> writeFile ( d ++ "/" ++ (show (hash (show v))) ++ ".txt") (show v)) vs) $ toList $ _wholeCalls gd
-saveCalls Nothing  _  = return ()
-
-listDirectory :: FilePath -> IO [FilePath]
-listDirectory path =
-  (Prelude.filter f) <$> (getDirectoryContents path)
-  where f filename = filename /= "." && filename /= ".."
-
-withCurrentDirectory :: FilePath  -- ^ Directory to execute in
-                     -> IO a      -- ^ Action to be executed
-                     -> IO a
-withCurrentDirectory dir action =
-  bracket getCurrentDirectory setCurrentDirectory $ \ _ -> do
-    setCurrentDirectory dir
-    action
-
-loadCalls :: Maybe FilePath -> IO [SolCall]
-loadCalls (Just d) = do fs <- listDirectory d
-                        xs <- mapM makeRelativeToCurrentDirectory fs
-                        withCurrentDirectory d (mapM readCall xs)
-                     where readCall f = do !buf <- BSC8.readFile f
-                                           return (read $ BSC8.unpack buf) 
-loadCalls Nothing  = return []
 
 hashMapBy :: (Hashable k, Eq k, Ord a) => (a -> k) -> [a] -> HashMap k [a]
 hashMapBy f = M.fromListWith (++) . mapMaybe (liftM2 fmap (\l x -> (f x, l)) listToMaybe) . group . sort

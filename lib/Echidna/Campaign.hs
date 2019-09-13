@@ -13,8 +13,8 @@ module Echidna.Campaign where
 
 import Control.Lens
 import Control.Monad (liftM2, replicateM, when)
-import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
-import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
+import Control.Monad.Catch (MonadCatch(..), MonadThrow(..), bracket)
+import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT, MonadIO, liftIO)
 import Control.Monad.Trans (lift)
@@ -22,7 +22,7 @@ import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Aeson (ToJSON(..), object)
 import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
-import Data.Either (lefts)
+--import Data.Either (lefts)
 import Data.Foldable (toList)
 import Data.Map (Map, mapKeys, unionWith)
 import Data.Maybe (fromMaybe, isNothing, mapMaybe, maybeToList)
@@ -30,9 +30,11 @@ import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
 import Data.List (intercalate)
+
 import EVM
 import EVM.Types (W256)
 import Numeric (showHex)
+
 import System.Random (mkStdGen)
 
 import qualified Data.HashMap.Strict  as H
@@ -177,6 +179,45 @@ execTxOptC t = do
   when grew $ hasLens . newCoverage .= True
   return res
 
+insertAt :: a -> [a] -> Int -> [a]
+insertAt v [] _ = [v]
+insertAt v arr 1 = (v:arr)
+insertAt v (x:xs) n = (x:(insertAt v xs $ n - 1))
+
+insertAtRandom :: MonadRandom m => [a] -> [a] -> m [a]
+insertAtRandom xs [] = return xs
+insertAtRandom xs (y:ys) = do idx <- getRandomR (0, (length xs) - 1) 
+                              insertAtRandom (insertAt y xs idx) ys
+
+
+randseq :: ( MonadCatch m, MonadRandom m, MonadIO m,  MonadReader x m, MonadState y m
+           , Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
+        => Int -> World -> m [Tx]
+
+randseq ql w = do ca <- use hasLens
+                  n <- getRandomR (0, 4 :: Integer)
+                  let gts = ca ^. genTrans
+                  rtxs <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
+                  case (n, gts) of
+                              -- random generation of transactions
+                    (_, xs) | (length xs <= 25) -> return rtxs
+                    (0, _ ) -> return rtxs
+                              -- concatenate rare sequences
+                    (1, _ ) -> do idxs <- sequence $ replicate 10 (getRandomR (0, (length gts) - 1))
+                                  return $ take (10*ql) $ concatMap (gts !!) idxs
+                              -- mutate a rare sequence
+                    (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                  sequence $ map mutTx $ gts !! idx
+                              -- shrink a rare sequence
+                    (3, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                  sequence $ map shrinkTx $ gts !! idx
+                              -- randomly insert transactions into a rare sequence
+                    (4, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                  k <- getRandomR (1, 10)
+                                  insertAtRandom (gts !! idx) (take k rtxs)
+                    _       -> error "Invalid selection in randseq" 
+              
+
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
 callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m, MonadIO m
@@ -191,12 +232,13 @@ callseq v w ql = do
   -- Then, we get the current campaign state
   ca <- use hasLens
   -- Then, we generate the actual transaction in the sequence
-  is <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
+  is <- randseq ql w --replicateM ql (evalStateT genTxM (w, ca ^. genDict))
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, (_, ca')) <- runStateT (evalSeq v ef is) (v, ca)
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= ca'
-  when (ca' ^. newCoverage) $ liftIO $ putStrLn $ "new coverage:" ++ (ppTxs $ reverse $ map fst res)
+  when (ca' ^. newCoverage) $ liftIO $ putStrLn $ "new coverage:" ++ (show $ reverse $ map fst res)
+  when (ca' ^. newCoverage) $ hasLens . genTrans %= ((reverse $ map fst res):)
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   modifying (hasLens . constants) . H.unionWith (++) . parse res =<< use (hasLens . rTypes) where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return

@@ -6,6 +6,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Echidna.Transaction where
 
@@ -13,7 +14,7 @@ import Prelude hiding (Word)
 
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, liftM5)
-import Control.Monad.Catch (MonadThrow)
+import Control.Monad.Catch (MonadThrow, bracket)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
@@ -21,13 +22,17 @@ import Data.Aeson (ToJSON(..), object)
 import Data.ByteString (ByteString)
 import Data.Either (either, lefts)
 import Data.Has (Has(..))
+import Data.Hashable (hash)
 import Data.List (intercalate)
 import Data.Set (Set)
+import System.Directory hiding (listDirectory, withCurrentDirectory)
+
 import EVM
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
 
 import qualified Control.Monad.State.Strict as S (state)
+import qualified Data.ByteString.Char8 as BSC8
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
@@ -43,9 +48,35 @@ data Tx = Tx { _call  :: Either SolCall ByteString -- | Either a call or code fo
              , _gas'  :: Word                      -- | Gas
              , _value :: Word                      -- | Value
              , _delay :: (Word, Word)              -- | (Time, # of blocks since last call)
-             } deriving (Eq, Ord, Show)
+             } deriving (Eq, Ord, Show, Read)
 
 makeLenses ''Tx
+
+saveTrans :: Maybe FilePath -> [[Tx]] -> IO ()
+saveTrans (Just d) txs = mapM_ (\v -> writeFile ( d ++ "/" ++ (show (hash (show v))) ++ ".txt") ( show v)) txs
+saveTrans Nothing  _   = return ()
+
+listDirectory :: FilePath -> IO [FilePath]
+listDirectory path =
+  (Prelude.filter f) <$> (getDirectoryContents path)
+  where f filename = filename /= "." && filename /= ".."
+
+withCurrentDirectory :: FilePath  -- ^ Directory to execute in
+                     -> IO a      -- ^ Action to be executed
+                     -> IO a
+withCurrentDirectory dir action =
+  bracket getCurrentDirectory setCurrentDirectory $ \ _ -> do
+    setCurrentDirectory dir
+    action
+
+loadTrans :: Maybe FilePath -> IO [[Tx]]
+loadTrans (Just d) = do fs <- listDirectory d
+                        xs <- mapM makeRelativeToCurrentDirectory fs
+                        withCurrentDirectory d (mapM readCall xs)
+                     where readCall f = do !buf <- BSC8.readFile f
+                                           print buf
+                                           return ( (read $ BSC8.unpack buf) :: [Tx]) 
+loadTrans Nothing  = return []
 
 data TxConf = TxConf { _propGas       :: Word
                      -- ^ Gas to use evaluating echidna properties
@@ -128,6 +159,11 @@ shrinkTx (Tx c s d g (C _ v) (C _ t, C _ b)) = let
   c' = either (fmap Left . shrinkAbiCall) (fmap Right . pure) c
   lower x = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral x) in
     liftM5 Tx c' (pure s) (pure d) (pure g) (lower v) <*> fmap level (liftM2 (,) (lower t) (lower b))
+
+
+mutTx :: (MonadRandom m, MonadState x m, MonadThrow m) => Tx -> m Tx
+mutTx (Tx (Left c) a b d x y) = mutateAbiCall c >>= \c' -> return $ Tx (Left c') a b d x y
+mutTx tx                      = return tx
 
 -- | Given a 'Set' of 'Transaction's, generate a similar 'Transaction' at random.
 spliceTxs :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m) => Set Tx -> m Tx
