@@ -16,7 +16,7 @@ import Control.Monad (liftM2, replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
+import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT, MonadIO, liftIO)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Aeson (ToJSON(..), object)
@@ -29,6 +29,7 @@ import Data.Maybe (fromMaybe, isNothing, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
+import Data.List (intercalate)
 import EVM
 import EVM.Types (W256)
 import Numeric (showHex)
@@ -95,10 +96,12 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                            -- ^ Generation dictionary
                          , _initialized :: Bool
                            -- ^ Has the campaign started
+                         , _newCoverage :: Bool
+                         , _genTrans :: [[Tx]]
                          }
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
+  toJSON (Campaign ts co _ _ _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
     : if co == mempty then [] else [("coverage",) . toJSON . mapKeys (`showHex` "") $ toList <$> co] where
       format (Right _,      Open _) = Nothing
       format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
@@ -110,19 +113,19 @@ instance Has GenDict Campaign where
   hasLens = genDict
 
 defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty defaultDict False
+defaultCampaign = Campaign mempty mempty defaultDict False False mempty
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
 isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
-isDone (Campaign _ _ _ False) = pure False
-isDone (Campaign ts _ _ _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
+isDone (Campaign _ _ _ False _ _) = pure False
+isDone (Campaign ts _ _ _ _ _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
   all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
 isSuccess :: Campaign -> Bool
-isSuccess (Campaign ts _ _ _) =
+isSuccess (Campaign ts _ _ _ _ _) =
   all (\case { Passed -> True; Open _ -> True; _ -> False; }) $ snd <$> ts
 
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
@@ -170,15 +173,18 @@ execTxOptC t = do
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
   hasLens . coverage %= unionWith union og
   grew <- (== LT) . comparing coveragePoints og <$> use (hasLens . coverage)
-  when grew $ hasLens . genDict %= gaddCalls (lefts [t ^. call])
+  --when grew $ hasLens . genDict %= gaddCalls (lefts [t ^. call])
+  when grew $ hasLens . newCoverage .= True
   return res
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
-callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
+callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m, MonadIO m
            , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Campaign y, Has GenDict y)
         => VM -> World -> Int -> m ()
 callseq v w ql = do
+  -- Reset the new coverage flag
+  hasLens . newCoverage .= False
   -- First, we figure out whether we need to execute with or without coverage optimization, and pick
   -- our execution function appropriately
   ef <- bool execTx execTxOptC . isNothing . knownCoverage <$> view hasLens
@@ -187,9 +193,10 @@ callseq v w ql = do
   -- Then, we generate the actual transaction in the sequence
   is <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
-  (res, s) <- runStateT (evalSeq v ef is) (v, ca)
+  (res, (_, ca')) <- runStateT (evalSeq v ef is) (v, ca)
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
-  hasLens .= snd s
+  hasLens .= ca'
+  when (ca' ^. newCoverage) $ liftIO $ putStrLn $ "new coverage:" ++ (ppTxs $ reverse $ map fst res)
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   modifying (hasLens . constants) . H.unionWith (++) . parse res =<< use (hasLens . rTypes) where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
@@ -201,7 +208,7 @@ callseq v w ql = do
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
-campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
+campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m
             , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x)
          => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
          -> VM                  -- ^ Initial VM state
@@ -212,10 +219,14 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
 campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d' True) where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d' True False mempty) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl q sl _ _ _) ->
       if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c -> step
          | otherwise                                     -> lift u
+
+
+ppTxs :: [Tx] -> String
+ppTxs txs = intercalate " " $ map (\(Tx c _ _ _ _ _ ) -> either ppSolCall (const "<CREATE>") c) txs
