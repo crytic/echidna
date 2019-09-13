@@ -163,7 +163,7 @@ shrinkTx (Tx c s d g (C _ v) (C _ t, C _ b)) = let
 
 mutTx :: (MonadRandom m, MonadState x m, MonadThrow m) => Tx -> m Tx
 mutTx (Tx (Left c) a b d x y) = mutateAbiCall c >>= \c' -> return $ Tx (Left c') a b d x y
-mutTx tx                      = return tx
+mutTx x                       = return x
 
 -- | Given a 'Set' of 'Transaction's, generate a similar 'Transaction' at random.
 spliceTxs :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m) => Set Tx -> m Tx

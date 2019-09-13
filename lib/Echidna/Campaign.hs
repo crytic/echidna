@@ -13,7 +13,7 @@ module Echidna.Campaign where
 
 import Control.Lens
 import Control.Monad (liftM2, replicateM, when)
-import Control.Monad.Catch (MonadCatch(..), MonadThrow(..), bracket)
+import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT, MonadIO, liftIO)
