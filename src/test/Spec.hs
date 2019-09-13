@@ -119,7 +119,7 @@ seedTests =
     , testCase "same seeds" $ assertBool "results differ" =<< same 0 0
     ]
     where cfg s = defaultConfig & sConf . quiet .~ True
-                                & cConf .~ CampaignConf 600 20 0 Nothing (Just s)
+                                & cConf .~ CampaignConf 600 20 0 Nothing (Just s) Nothing
           gen s = view tests <$> runContract "basic/flags.sol" (cfg s)
           same s t = liftM2 (==) (gen s) (gen t)
 
