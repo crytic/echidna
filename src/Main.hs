@@ -15,6 +15,8 @@ import Echidna.Solidity
 import Echidna.Campaign
 import Echidna.UI
 
+import qualified Data.List.NonEmpty as NE
+
 data Options = Options
   { filePath         :: FilePath
   , selectedContract :: Maybe String
@@ -47,5 +49,5 @@ main = do Options f c conf <- execParser opts
             cs       <- contracts f
             ads      <- addresses
             (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
-            ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg)  (extractConstants cs ++ ads) [] g (returnTypes cs))
+            ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg) (extractConstants cs ++ NE.toList ads) [] g (returnTypes cs))
           if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess

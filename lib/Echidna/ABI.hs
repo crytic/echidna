@@ -9,7 +9,7 @@
 module Echidna.ABI where
 
 import Control.Lens
-import Control.Monad.Catch (Exception, MonadThrow(..))
+import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Class (MonadState, gets)
 import Control.Monad.State (evalStateT)
 import Control.Monad.Random.Strict
@@ -32,6 +32,7 @@ import EVM.ABI
 
 import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
@@ -51,20 +52,9 @@ ppAbiValue (AbiArray      _ _ v) =
 ppAbiValue (AbiTuple v) =
   "(" ++ intercalate ", " (ppAbiValue <$> toList v) ++ ")"
 
--- Safe random element of a list
-
--- | Thrown when trying to pick a random element of an empty list. The 'String' describes the list.
-newtype ElemException = ElemException String
-
-instance Show ElemException where
-  show (ElemException s) = "Exception: tried to get element of " ++ s ++ ", but it was empty!"
-
-instance Exception ElemException
-
--- | Get a random element of a list, or throw 'ElemException' if the list is empty.
-rElem :: (MonadThrow m, MonadRandom m) => String -> [a] -> m a
-rElem s [] = throwM $ ElemException s
-rElem _ l  = (l !!) <$> getRandomR (0, length l - 1)
+-- | Get a random element of a non-empty list.
+rElem :: MonadRandom m => NE.NonEmpty a -> m a
+rElem l  = (l NE.!!) <$> getRandomR (0, length l - 1)
 
 -- Types
 
@@ -141,8 +131,8 @@ genAbiCall :: MonadRandom m => SolSignature -> m SolCall
 genAbiCall = traverse $ traverse genAbiValue
 
 -- | Synthesize a random 'SolCall' given a list of 'SolSignature's (effectively, an ABI). Doesn't use a dictionary.
-genInteractions :: (MonadThrow m, MonadRandom m) => [SolSignature] -> m SolCall
-genInteractions l = genAbiCall =<< rElem "ABI" l
+genInteractions :: (MonadThrow m, MonadRandom m) => NE.NonEmpty SolSignature -> m SolCall
+genInteractions l = genAbiCall =<< rElem l
 
 -- Mutation helper functions
 
@@ -296,5 +286,5 @@ genAbiCallM = genWithDict (view wholeCalls) (traverse $ traverse genAbiValueM)
 
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one, possibly with a dictionary.
 genInteractionsM :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m)
-                 => [SolSignature] -> m SolCall
-genInteractionsM l = genAbiCallM =<< rElem "ABI" l
+                 => NE.NonEmpty SolSignature -> m SolCall
+genInteractionsM l = genAbiCallM =<< rElem l
