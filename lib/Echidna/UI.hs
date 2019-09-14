@@ -137,16 +137,17 @@ ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
    -> Maybe GenDict
+   -> [[Tx]]
    -> m Campaign
-ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
+ui v w ts d txs = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
   let d' = fromMaybe defaultDict d
   s <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
   g <- view (hasLens . to seed)
   let g' = fromMaybe (d' ^. defSeed) g
   c <- if s then do bc <- liftIO $ newBChan 100
-                    t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts d >> pure ()
+                    t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts d txs >> pure ()
                     a <- monitor (killThread t)
-                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty d' False False mempty)
-            else campaign (pure ()) v w ts d
+                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty d' False False txs)
+            else campaign (pure ()) v w ts d txs
   liftIO . putStrLn =<< view (hasLens . finished) <*> pure c <*> pure g'
   return c

@@ -53,7 +53,11 @@ data Tx = Tx { _call  :: Either SolCall ByteString -- | Either a call or code fo
 makeLenses ''Tx
 
 saveTrans :: Maybe FilePath -> [[Tx]] -> IO ()
-saveTrans (Just d) txs = mapM_ (\v -> writeFile ( d ++ "/" ++ (show (hash (show v))) ++ ".txt") ( show v)) txs
+saveTrans (Just d) txs = mapM_ (\v -> writeFile ( d ++ "/" ++ ((show . hash . sv) v) ++ ".txt") (sv v)) txs                                   
+                             where sv = patch . show
+                                   patch [] = []
+                                   patch (' ':'=':' ':xs) = '=':patch xs
+                                   patch (x:xs)           =  x:patch xs
 saveTrans Nothing  _   = return ()
 
 listDirectory :: FilePath -> IO [FilePath]
@@ -74,7 +78,6 @@ loadTrans (Just d) = do fs <- listDirectory d
                         xs <- mapM makeRelativeToCurrentDirectory fs
                         withCurrentDirectory d (mapM readCall xs)
                      where readCall f = do !buf <- BSC8.readFile f
-                                           print buf
                                            return ( (read $ BSC8.unpack buf) :: [Tx]) 
 loadTrans Nothing  = return []
 

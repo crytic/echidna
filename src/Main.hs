@@ -45,11 +45,11 @@ main = do Options f c conf <- execParser opts
           g   <- getRandom
           cfg <- maybe (pure defaultConfig) parseConfig conf
           txs <- loadTrans (corpusDir $ view cConf cfg)
-          print txs
+          --print txs
           cpg <- flip runReaderT cfg $ do
             cs       <- contracts f
             ads      <- addresses
             (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
-            ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads) [] g (returnTypes cs))
+            ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads) [] g (returnTypes cs)) txs
           saveTrans (corpusDir $ view cConf cfg) (view genTrans cpg)
           if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess

@@ -130,6 +130,11 @@ isSuccess :: Campaign -> Bool
 isSuccess (Campaign ts _ _ _ _ _) =
   all (\case { Passed -> True; Open _ -> True; _ -> False; }) $ snd <$> ts
 
+
+-- | Given a 'Campaign', return the progress of it
+getProgress :: Campaign -> Int
+getProgress (Campaign ts _ _ _ _ _) = foldr1 max $ map ((\case Open i -> i; _ -> 0) . snd) ts 
+
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
 -- of transactions and the state after evaluation, see if:
 -- (0): The test is past its 'testLimit' or 'shrinkLimit' and should be presumed un[solve|shrink]able
@@ -192,30 +197,34 @@ insertAtRandom xs (y:ys) = do idx <- getRandomR (0, (length xs) - 1)
 
 randseq :: ( MonadCatch m, MonadRandom m, MonadIO m,  MonadReader x m, MonadState y m
            , Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
-        => Int -> World -> m [Tx]
+        => Int -> Int ->  World -> m [Tx]
 
-randseq ql w = do ca <- use hasLens
-                  n <- getRandomR (0, 4 :: Integer)
-                  let gts = ca ^. genTrans
-                  rtxs <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
-                  case (n, gts) of
+randseq ql p w = do ca <- use hasLens
+                    n <- getRandomR (0, 4 :: Integer)
+                    let gts = ca ^. genTrans
+                    if (length gts > p) 
+                    then return $ gts !! p
+                    else 
+                     do 
+                      rtxs <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
+                      case (n, gts) of
                               -- random generation of transactions
-                    (_, xs) | (length xs <= 25) -> return rtxs
-                    (0, _ ) -> return rtxs
+                       (_, xs) | (length xs <= 25) -> return rtxs
+                       (0, _ ) -> return rtxs
                               -- concatenate rare sequences
-                    (1, _ ) -> do idxs <- sequence $ replicate 10 (getRandomR (0, (length gts) - 1))
-                                  return $ take (10*ql) $ concatMap (gts !!) idxs
+                       (1, _ ) -> do idxs <- sequence $ replicate 10 (getRandomR (0, (length gts) - 1))
+                                     return $ take (10*ql) $ concatMap (gts !!) idxs
                               -- mutate a rare sequence
-                    (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                  sequence $ map mutTx $ gts !! idx
+                       (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                     sequence $ map mutTx $ gts !! idx
                               -- shrink a rare sequence
-                    (3, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                  sequence $ map shrinkTx $ gts !! idx
+                       (3, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                     sequence $ map shrinkTx $ gts !! idx
                               -- randomly insert transactions into a rare sequence
-                    (4, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                  k <- getRandomR (1, 10)
-                                  insertAtRandom (gts !! idx) (take k rtxs)
-                    _       -> error "Invalid selection in randseq" 
+                       (4, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                     k <- getRandomR (1, 10)
+                                     insertAtRandom (gts !! idx) (take k rtxs)
+                       _       -> error "Invalid selection in randseq" 
               
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
@@ -232,13 +241,14 @@ callseq v w ql = do
   -- Then, we get the current campaign state
   ca <- use hasLens
   -- Then, we generate the actual transaction in the sequence
-  is <- randseq ql w --replicateM ql (evalStateT genTxM (w, ca ^. genDict))
+  --liftIO $ print ((getProgress ca + 1) `div` (ql+1))
+  is <- randseq ql ((getProgress ca + 1) `div` (ql+1)) w
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, (_, ca')) <- runStateT (evalSeq v ef is) (v, ca)
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= ca'
-  when (ca' ^. newCoverage) $ liftIO $ putStrLn $ "new coverage:" ++ (show $ reverse $ map fst res)
-  when (ca' ^. newCoverage) $ hasLens . genTrans %= ((reverse $ map fst res):)
+  when (ca' ^. newCoverage) $ liftIO $ putStrLn $ "new coverage:" ++ (ppTxs $ map fst res)
+  when (ca' ^. newCoverage) $ hasLens . genTrans %= ((map fst res):)
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   modifying (hasLens . constants) . H.unionWith (++) . parse res =<< use (hasLens . rTypes) where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
@@ -257,11 +267,12 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m
          -> World               -- ^ Initial world state
          -> [SolTest]           -- ^ Tests to evaluate
          -> Maybe GenDict       -- ^ Optional generation dictionary
+         -> [[Tx]]
          -> m Campaign
-campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
+campaign u v w ts d txs = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d' True False mempty) where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d' True False txs) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl q sl _ _ _) ->
