@@ -200,7 +200,7 @@ runContract fp c =
     (v,w,ts) <- loadSolTests fp Nothing
     cs  <- contracts fp
     ads <- addresses
-    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ (NE.toList ads)) [] g (returnTypes cs))
+    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ NE.toList ads) [] g (returnTypes cs))
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests

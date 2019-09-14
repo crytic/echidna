@@ -156,7 +156,7 @@ loadSpecified name cs = do
   -- Local variables
   (SolConf ca d ads bala balc pref _ _ libs _ ch) <- view hasLens
   let bc = c ^. creationCode
-      blank = populateAddresses ((NE.toList ads) |> d) bala (vmForEthrunCreation bc)
+      blank = populateAddresses (NE.toList ads |> d) bala (vmForEthrunCreation bc)
             & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       con = view constructorInputs c
@@ -167,9 +167,9 @@ loadSpecified name cs = do
   ls <- mapM (choose cs . Just . T.pack) libs
 
   -- Make sure everything is ready to use, then ship it
-  when (abi == []) $ throwM NoFuncs                             -- < ABI checks
+  when (null abi) $ throwM NoFuncs                              -- < ABI checks
   neFuns <- maybe (throwM OnlyTests) pure (NE.nonEmpty funs)    -- <
-  when (not ch && tests == []) $ throwM NoTests                 -- <
+  when (not ch && null tests) $ throwM NoTests                  -- <
   when (bc == mempty) $ throwM (NoBytecode $ c ^. contractName) -- Bytecode check
 
   case find (not . null . snd) tests of
