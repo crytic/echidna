@@ -224,7 +224,7 @@ randseq :: ( MonadCatch m, MonadRandom m, MonadIO m,  MonadReader x m, MonadStat
         => Int -> Int ->  World -> m [Tx]
 
 randseq ql p w = do ca <- use hasLens
-                    n <- getRandomR (0, 7 :: Integer)
+                    n <- getRandomR (0, 13 :: Integer)
                     let gts = ca ^. genTrans
                     if (length gts > p) 
                     then return $ gts !! p
@@ -233,38 +233,40 @@ randseq ql p w = do ca <- use hasLens
                       gtxs <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
                       case (n, gts) of
                               -- random generation of transactions
-                       (_, xs) | (length xs <= 25) -> return gtxs
-                       (0, _ ) -> return gtxs
+                       (_, []) -> return gtxs
                               -- concatenate rare sequences
-                       (1, _ ) -> do idxs <- sequence $ replicate 10 (getRandomR (0, (length gts) - 1))
+                       (0, _ ) -> do idxs <- sequence $ replicate 10 (getRandomR (0, (length gts) - 1))
                                      return $ take (10*ql) $ concatMap (gts !!) idxs
-                              -- mutate a transaction in a rare sequence
-                       (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                              -- mutate one transaction from a rare sequence
+                       (1, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                      let rtxs = gts !! idx
                                      k <- getRandomR (0, (length rtxs - 1))
                                      mtx <- mutTx $ rtxs !! k
                                      return $ replaceAt mtx rtxs k
                               -- mutate all transactions in a rare sequence
-                       (3, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                       (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                      let rtxs = gts !! idx
                                      sequence $ map mutTx rtxs 
                               -- shrink all elements from a rare sequence
-                       (4, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                       (3, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                      sequence $ map shrinkTx $ gts !! idx
                               -- randomly insert transactions into a rare sequence
-                       (5, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                       (4, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                      k <- getRandomR (1, 10)
-                                     insertAtRandom (gts !! idx) (take k gtxs)
+                                     rtxs <- insertAtRandom (gts !! idx) (take k gtxs)
+                                     return $ take (10*ql) rtxs
                               -- randomly remove transactions from a rare sequence
-                       (6, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                       (5, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                      k <- getRandomR (0, (length  (gts !! idx)) - 1 )
                                      return $ deleteAt k (gts !! idx)
-                       (7, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                              -- randomly swap transactions from a rare sequence
+                       (6, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                      let rtxs = gts !! idx
                                      k1 <- getRandomR (0, (length  rtxs) - 1 )
                                      k2 <- getRandomR (0, (length  rtxs) - 1 )
                                      return $ swapAt rtxs k1 k2
-                       _       -> error "Invalid selection in randseq" 
+
+                       _       -> return gtxs
               
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
