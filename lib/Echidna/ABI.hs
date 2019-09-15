@@ -199,7 +199,7 @@ mutateBS b = addChars getRandom =<< changeSize where
   changeSize = bool (shrinkBS b) (growWith getRandom BS.cons BS.snoc BS.length b) =<< getRandom
 
 -- | Given a 'Vector', add and drop some characters at random.
-mutateV :: MonadRandom m => AbiType -> Vector AbiValue -> m (Vector AbiValue)
+mutateV :: (MonadState x m, Has GenDict x, MonadRandom m) => AbiType -> Vector AbiValue -> m (Vector AbiValue)
 mutateV t v = traverse mutateAbiValue =<< changeSize where
   changeSize = bool (shrinkV v) (growWith (genAbiValue t) V.cons V.snoc V.length v) =<< getRandom
 
@@ -245,11 +245,11 @@ shrinkAbiCall :: MonadRandom m => SolCall -> m SolCall
 shrinkAbiCall = traverse $ traverse shrinkAbiValue
 
 -- | Given an 'AbiValue', generate a random \"similar\" value of the same 'AbiType'.
-mutateAbiValue :: MonadRandom m => AbiValue -> m AbiValue
+mutateAbiValue :: (MonadState x m, Has GenDict x, MonadRandom m) => AbiValue -> m AbiValue
 mutateAbiValue (AbiUInt n x)         = AbiUInt n         <$> mutateNum x
 mutateAbiValue (AbiInt n x)          = AbiInt n          <$> mutateNum x
-mutateAbiValue (AbiAddress _)        = genAbiValue AbiAddressType
-mutateAbiValue (AbiBool _)           = genAbiValue AbiBoolType
+mutateAbiValue (AbiAddress _)        = genAbiValueM AbiAddressType
+mutateAbiValue (AbiBool _)           = genAbiValueM AbiBoolType
 mutateAbiValue (AbiBytes n b)        = AbiBytes n        <$> addChars getRandom b
 mutateAbiValue (AbiBytesDynamic b)   = AbiBytesDynamic   <$> mutateBS b
 mutateAbiValue (AbiString b)         = AbiString         <$> mutateBS b
@@ -258,7 +258,7 @@ mutateAbiValue (AbiArrayDynamic t l) = AbiArrayDynamic t <$> mutateV t l
 mutateAbiValue (AbiTuple v)          = AbiTuple          <$> traverse mutateAbiValue v
 
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
-mutateAbiCall :: MonadRandom m => SolCall -> m SolCall
+mutateAbiCall :: (MonadState x m, Has GenDict x, MonadRandom m) => SolCall -> m SolCall
 mutateAbiCall = traverse $ traverse mutateAbiValue
 
 -- Generation, with dictionary
