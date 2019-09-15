@@ -210,7 +210,7 @@ insertAtRandom xs (y:ys) = do idx <- getRandomR (0, (length xs) - 1)
 
 
 randseq :: ( MonadCatch m, MonadRandom m, MonadIO m,  MonadReader x m, MonadState y m
-           , Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
+           , Has GenDict y, Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
         => Int -> Int ->  World -> m [Tx]
 
 randseq ql p w = do ca <- use hasLens

@@ -164,19 +164,20 @@ shrinkTx (Tx c s d g (C _ v) (C _ t, C _ b)) = let
     liftM5 Tx c' (pure s) (pure d) (pure g) (lower v) <*> fmap level (liftM2 (,) (lower t) (lower b))
 
 
-mutTx :: (MonadRandom m, MonadState x m, MonadThrow m) => Tx -> m Tx
+mutTx :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) => Tx -> m Tx
 mutTx (Tx (Left c) a b d x y) = mutateAbiCall c >>= \c' -> return $ Tx (Left c') a b d x y
 mutTx x                       = return x
 
+
 -- | Given a 'Set' of 'Transaction's, generate a similar 'Transaction' at random.
-spliceTxs :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m) => Set Tx -> m Tx
-spliceTxs ts = let l = S.toList ts; (cs, ss) = unzip $ (\(Tx c s _ _ _ _) -> (c,s)) <$> l in
-  view (hasLens . txGas) >>= \g ->
-    genTxWith (const . rElem "sender list" $ ss) (rElem "recipient list")
-              (\_ _ -> mutateAbiCall =<< rElem "past calls" (lefts cs)) (pure g)
-              (\ _ _ (n,_) -> let valOf (Tx c _ _ _ v _) = if elem n $ c ^? _Left . _1 then v else 0
-                              in rElem "values" $ valOf <$> l)
-              (pure (0, 0))
+--spliceTxs :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m) => Set Tx -> m Tx
+--spliceTxs ts = let l = S.toList ts; (cs, ss) = unzip $ (\(Tx c s _ _ _ _) -> (c,s)) <$> l in
+--  view (hasLens . txGas) >>= \g ->
+--    genTxWith (const . rElem "sender list" $ ss) (rElem "recipient list")
+--              (\_ _ -> mutateAbiCall =<< rElem "past calls" (lefts cs)) (pure g)
+--              (\ _ _ (n,_) -> let valOf (Tx c _ _ _ v _) = if elem n $ c ^? _Left . _1 then v else 0
+--                              in rElem "values" $ valOf <$> l)
+--              (pure (0, 0))
 
 -- | Lift an action in the context of a component of some 'MonadState' to an action in the
 -- 'MonadState' itself.
