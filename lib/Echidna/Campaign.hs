@@ -209,12 +209,22 @@ insertAtRandom xs (y:ys) = do idx <- getRandomR (0, (length xs) - 1)
                               insertAtRandom (insertAt y xs idx) ys
 
 
+-- taken from https://stackoverflow.com/questions/30551033/swap-two-elements-in-a-list-by-its-indices/30551130#30551130
+swapAt :: [a] -> Int -> Int -> [a]
+swapAt xs i j =  let elemI = xs !! i
+                     elemJ = xs !! j
+                     left = take i xs
+                     middle = take (j - i - 1) (drop (i + 1) xs)
+                     right = drop (j + 1) xs
+                 in  left ++ [elemJ] ++ middle ++ [elemI] ++ right 
+
+
 randseq :: ( MonadCatch m, MonadRandom m, MonadIO m,  MonadReader x m, MonadState y m
            , Has GenDict y, Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
         => Int -> Int ->  World -> m [Tx]
 
 randseq ql p w = do ca <- use hasLens
-                    n <- getRandomR (0, 5 :: Integer)
+                    n <- getRandomR (0, 7 :: Integer)
                     let gts = ca ^. genTrans
                     if (length gts > p) 
                     then return $ gts !! p
@@ -234,17 +244,26 @@ randseq ql p w = do ca <- use hasLens
                                      k <- getRandomR (0, (length rtxs - 1))
                                      mtx <- mutTx $ rtxs !! k
                                      return $ replaceAt mtx rtxs k
-                              -- shrink all elements from a rare sequence
+                              -- mutate all transactions in a rare sequence
                        (3, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                     let rtxs = gts !! idx
+                                     sequence $ map mutTx rtxs 
+                              -- shrink all elements from a rare sequence
+                       (4, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                      sequence $ map shrinkTx $ gts !! idx
                               -- randomly insert transactions into a rare sequence
-                       (4, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                       (5, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                      k <- getRandomR (1, 10)
                                      insertAtRandom (gts !! idx) (take k gtxs)
                               -- randomly remove transactions from a rare sequence
-                       (5, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                       (6, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                      k <- getRandomR (0, (length  (gts !! idx)) - 1 )
                                      return $ deleteAt k (gts !! idx)
+                       (7, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                     let rtxs = gts !! idx
+                                     k1 <- getRandomR (0, (length  rtxs) - 1 )
+                                     k2 <- getRandomR (0, (length  rtxs) - 1 )
+                                     return $ swapAt rtxs k1 k2
                        _       -> error "Invalid selection in randseq" 
               
 
