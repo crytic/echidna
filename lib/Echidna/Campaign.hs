@@ -170,7 +170,7 @@ evalSeq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
 evalSeq v e = go [] where
   go r xs = use hasLens >>= \v' -> runUpdate (updateTest v $ Just (v',reverse r)) >>
     case xs of []     -> pure []
-               (y:ys) -> e y >>= \a -> ((y, a) :) <$> go (y:r) ys
+               (y:ys) ->  e y >>= \a -> ((y, a) :) <$> go (y:r) ys
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
 -- transaction if it finds new coverage.
@@ -183,6 +183,20 @@ execTxOptC t = do
   --when grew $ hasLens . genDict %= gaddCalls (lefts [t ^. call])
   when grew $ hasLens . newCoverage .= True
   return res
+
+replaceAt :: a -> [a] -> Int -> [a]
+replaceAt _ []     _ = []
+replaceAt a (_:xs) 0 = a:xs
+replaceAt a (x:xs) n =
+  if n < 0
+    then (x:xs)
+    else x: replaceAt a xs (n-1)
+
+deleteAt :: Int -> [a] -> [a]
+deleteAt _ [] = []
+deleteAt i (a:as)
+   | i == 0    = as
+   | otherwise = a : deleteAt (i-1) as
 
 insertAt :: a -> [a] -> Int -> [a]
 insertAt v [] _ = [v]
@@ -200,30 +214,37 @@ randseq :: ( MonadCatch m, MonadRandom m, MonadIO m,  MonadReader x m, MonadStat
         => Int -> Int ->  World -> m [Tx]
 
 randseq ql p w = do ca <- use hasLens
-                    n <- getRandomR (0, 4 :: Integer)
+                    n <- getRandomR (0, 5 :: Integer)
                     let gts = ca ^. genTrans
                     if (length gts > p) 
                     then return $ gts !! p
                     else 
                      do 
-                      rtxs <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
+                      gtxs <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
                       case (n, gts) of
                               -- random generation of transactions
-                       (_, xs) | (length xs <= 25) -> return rtxs
-                       (0, _ ) -> return rtxs
+                       (_, xs) | (length xs <= 25) -> return gtxs
+                       (0, _ ) -> return gtxs
                               -- concatenate rare sequences
                        (1, _ ) -> do idxs <- sequence $ replicate 10 (getRandomR (0, (length gts) - 1))
                                      return $ take (10*ql) $ concatMap (gts !!) idxs
-                              -- mutate a rare sequence
+                              -- mutate a transaction in a rare sequence
                        (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                     sequence $ map mutTx $ gts !! idx
-                              -- shrink a rare sequence
+                                     let rtxs = gts !! idx
+                                     k <- getRandomR (0, (length rtxs - 1))
+                                     mtx <- mutTx $ rtxs !! k
+                                     return $ replaceAt mtx rtxs k
+                              -- shrink all elements from a rare sequence
                        (3, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                      sequence $ map shrinkTx $ gts !! idx
                               -- randomly insert transactions into a rare sequence
                        (4, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                      k <- getRandomR (1, 10)
-                                     insertAtRandom (gts !! idx) (take k rtxs)
+                                     insertAtRandom (gts !! idx) (take k gtxs)
+                              -- randomly remove transactions from a rare sequence
+                       (5, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                     k <- getRandomR (0, (length  (gts !! idx)) - 1 )
+                                     return $ deleteAt k (gts !! idx)
                        _       -> error "Invalid selection in randseq" 
               
 
@@ -247,8 +268,9 @@ callseq v w ql = do
   (res, (_, ca')) <- runStateT (evalSeq v ef is) (v, ca)
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= ca'
-  when (ca' ^. newCoverage) $ liftIO $ putStrLn $ "new coverage:" ++ (ppTxs $ map fst res)
-  when (ca' ^. newCoverage) $ hasLens . genTrans %= ((map fst res):)
+  let rtxs = map fst (filter (\(_, vm) -> classifyRes vm /= ResRevert) res)
+  when (ca' ^. newCoverage) $ liftIO $ putStrLn $ "new coverage:" ++ (ppTxs rtxs)
+  when (ca' ^. newCoverage) $ hasLens . genTrans %= (rtxs:)
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   modifying (hasLens . constants) . H.unionWith (++) . parse res =<< use (hasLens . rTypes) where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
