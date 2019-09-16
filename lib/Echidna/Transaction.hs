@@ -53,7 +53,10 @@ data Tx = Tx { _call  :: Either SolCall ByteString -- | Either a call or code fo
 makeLenses ''Tx
 
 saveTrans :: Maybe FilePath -> [[Tx]] -> IO ()
-saveTrans (Just d) txs = mapM_ (\v -> writeFile ( d ++ "/" ++ ((show . hash . sv) v) ++ ".txt") (sv v)) txs                                   
+saveTrans (Just d) txs = mapM_ (\v -> do let fn = d ++ "/" ++ ((show . hash . sv) v) ++ ".txt"
+                                         b <- doesFileExist fn
+                                         if (not b) then writeFile fn (sv v) else return ()
+                               ) txs
                              where sv = patch . show
                                    patch [] = []
                                    patch (' ':'=':' ':xs) = '=':patch xs
