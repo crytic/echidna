@@ -165,13 +165,7 @@ evalSeq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
 evalSeq v e = go [] where
   go r xs = use hasLens >>= \v' -> runUpdate (updateTest v $ Just (v',reverse r)) >>
     case xs of []     -> pure []
-               (y:ys) -> do
-                 --old <- gets $ view $ hasLens . env . EVM.contracts
-                 a <- e y
-                 --new <- gets $ view $ hasLens . env . EVM.contracts
-                 --let diff = keys $ new \\ old
-                 --hasLens . genDict %= gaddConstants (AbiAddress . addressWord160 <$> traceShow diff diff)
-                 ((y, a) :) <$> go (y:r) ys
+               (y:ys) -> e y >>= \a -> ((y, a) :) <$> go (y:r) ys
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
 -- transaction if it finds new coverage.
@@ -208,12 +202,9 @@ callseq v w ql = do
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= snd s
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
-  -- modifying (hasLens . constants) . H.unionWith (++) . parse res =<< use (hasLens . rTypes) where
   types <- use $ hasLens . rTypes
   let results = parse res types
       additions = H.unionWith S.union diffs results
-  --modifying (hasLens . genDict . constants) . H.unionWith S.union $ H.fromList [(AbiAddressType, S.fromList diffs)]
-  --modifying (hasLens . genDict . constants) . H.unionWith S.union $ H.unionWith S.union results
   modifying (hasLens . genDict . constants) . H.unionWith S.union $ additions
   where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
