@@ -25,7 +25,7 @@ import Data.Bool (bool)
 import Data.Either (lefts)
 import Data.Foldable (toList)
 import Data.Map (Map, mapKeys, unionWith)
-import Data.Maybe (fromMaybe, isNothing, mapMaybe, maybeToList)
+import Data.Maybe (fromMaybe, isJust, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
@@ -180,7 +180,8 @@ callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
 callseq v w ql = do
   -- First, we figure out whether we need to execute with or without coverage optimization, and pick
   -- our execution function appropriately
-  ef <- bool execTx execTxOptC . isNothing . knownCoverage <$> view hasLens
+  coverageEnabled <- isJust . knownCoverage <$> view hasLens
+  let ef = if coverageEnabled then execTxOptC else execTx
   -- Then, we get the current campaign state
   ca <- use hasLens
   -- Then, we generate the actual transaction in the sequence
