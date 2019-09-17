@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 import Hedgehog (MonadGen, withTests, Size(unSize), property, (===), forAll)
 import Hedgehog.Gen (choice, sized, integral, list)
@@ -32,7 +33,24 @@ import qualified Data.Vector          as V
 
 main :: IO ()
 main = withCurrentDirectory "./examples/solidity" . defaultMain $
-         testGroup "Echidna" [encodingTests, compilationTests, seedTests, integrationTests]
+         testGroup "Echidna" [ configTests
+                             , encodingTests
+                             , compilationTests
+                             , seedTests
+                             , integrationTests
+                             ]
+
+configTests :: TestTree
+configTests = testGroup "Configuration tests"
+  [ testCase "parse \"coverage: true\"" $ do
+      config <- parseConfig "coverage/test.yaml"
+      assertCoverage config $ Just mempty
+  , testCase "coverage disabled by default" $
+      assertCoverage defaultConfig Nothing
+  ]
+  where assertCoverage config value = do
+          let CampaignConf{knownCoverage} = view cConf config
+          knownCoverage @?= value
 
 -- Compilation Tests
 
