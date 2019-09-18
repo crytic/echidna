@@ -454,7 +454,7 @@ abiTailSize x =
         -- encoding length, so we sum the head and tail sizes separately
         AbiTuple v -> sum (headSize <$> v) + sum (abiTailSize <$> v)
         _ -> error "impossible"
-  where headSize x = if abiKind (abiValueType x) == Static then abiValueSize x else 32
+  where headSize y = if abiKind (abiValueType y) == Static then abiValueSize y else 32
 
 abiValueSize :: AbiValue -> Int
 abiValueSize x =
