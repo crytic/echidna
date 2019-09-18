@@ -81,8 +81,8 @@ instance FromJSON EConfig2 where
     return $ EConfig2 c (fromList (keys v') `difference` ks)
     where parser v =
             let useKey k = hasLens %= insert k
-                x ..:? k = useKey k >> (lift $ x .:? k)
-                x ..!= y = (fromMaybe y) <$> x
+                x ..:? k = useKey k >> lift (x .:? k)
+                x ..!= y = fromMaybe y <$> x
                 tc = do psender <- v ..:? "psender" ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
                         fprefix <- v ..:? "prefix"  ..!= "echidna_"
                         let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
