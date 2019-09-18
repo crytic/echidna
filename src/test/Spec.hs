@@ -11,7 +11,7 @@ import Test.Tasty.Hedgehog (testProperty)
 import Echidna.ABI (SolCall, mkGenDict, genAbiValue)
 import Echidna.ABIv2 (AbiType(..), AbiValue(..), getAbi, putAbi, abiValueType)
 import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests)
-import Echidna.Config (EConfig, defaultConfig, parseConfig, sConf, cConf)
+import Echidna.Config (EConfig, _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (Tx, call)
 
@@ -206,7 +206,7 @@ integrationTests = testGroup "Solidity Integration Testing"
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg as = testCase fp $ do
-  c <- set (sConf . quiet) True <$> maybe (pure defaultConfig) parseConfig cfg
+  c <- set (sConf . quiet) True <$> maybe (pure defaultConfig) (fmap _econfig . parseConfig) cfg
   res <- runContract fp c
   mapM_ (\(t,f) -> assertBool t $ f res) as
 

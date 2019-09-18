@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -12,11 +13,16 @@ import Control.Monad (liftM2, liftM4)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)
+import Control.Monad.State (StateT(..), runStateT)
+import Control.Monad.Trans (lift)
 import Data.ByteString.Lazy.Char8 (unpack)
-import Data.Has (Has(..))
 import Data.Aeson
 import Data.Aeson.Lens
-import Data.Text (isPrefixOf)
+import Data.Has (Has(..))
+import Data.HashMap.Strict (keys)
+import Data.HashSet (HashSet, fromList, insert, difference)
+import Data.Maybe (fromMaybe)
+import Data.Text (Text, isPrefixOf)
 import EVM (result)
 import EVM.Concrete (Word(..), Whiff(..))
 
@@ -40,6 +46,11 @@ data EConfig = EConfig { _cConf :: CampaignConf
                        }
 makeLenses ''EConfig
 
+data EConfig2 = EConfig2 { _econfig :: EConfig
+                         , _badkeys :: HashSet Text
+                         }
+makeLenses ''EConfig2
+
 instance Has CampaignConf EConfig where
   hasLens = cConf
 
@@ -59,57 +70,68 @@ instance Has UIConf EConfig where
   hasLens = uConf
 
 instance FromJSON EConfig where
-  parseJSON (Object v) =
-    let tc = do psender <- v .:? "psender" .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                fprefix <- v .:? "prefix"  .!= "echidna_"
-                let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
-                return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result)
-                                  (const psender)
-        getWord s d = C Dull . fromIntegral <$> v .:? s .!= (d :: Integer)
-        xc = liftM4 TxConf (getWord "propMaxGas" 8000030) (getWord "testMaxGas" 0xffffffff)
-                           (getWord "maxTimeDelay" 604800)     (getWord "maxBlockDelay" 60480)
-        cc = CampaignConf <$> v .:? "testLimit"   .!= 50000
-                          <*> v .:? "seqLen"      .!= 100
-                          <*> v .:? "shrinkLimit" .!= 5000
-                          <*> pure Nothing
-                          <*> v .:? "seed"
-        names :: Names
-        names Sender = (" from: " ++) . show
-        names _      = const ""
-        ppc :: Y.Parser (Campaign -> Int -> String)
-        ppc = liftM2 (\cf xf c g -> runReader (ppCampaign c) (cf, xf, names) ++ "\nSeed: " ++ show g) cc xc
-        style :: Y.Parser (Campaign -> Int -> String)
-        style = v .:? "format" .!= ("text" :: String) >>=
-          \case "text"             -> ppc
-                "json"             -> pure . flip $ \g ->
-                  unpack . encode . set (_Object . at "seed") (Just . toJSON $ g) . toJSON;
-                "none"             -> pure $ \_ _ -> ""
-                _                  -> pure $ \_ _ -> M.fail
-                  "unrecognized ui type (should be text, json, or none)" in
-    EConfig <$> cc
-            <*> pure names
-            <*> (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
-                         <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                         <*> v .:? "sender"         .!= [0x10000, 0x20000, 0x00a329c0648769a73afac7f9381e08fb43dbea70]
-                         <*> v .:? "balanceAddr"    .!= 0xffffffff
-                         <*> v .:? "balanceContract".!= 0
-                         <*> v .:? "prefix"         .!= "echidna_"
-                         <*> v .:? "cryticArgs"     .!= []
-                         <*> v .:? "solcArgs"       .!= ""
-                         <*> v .:? "solcLibs"       .!= []
-                         <*> v .:? "quiet"          .!= False
-                         <*> v .:? "checkAsserts"   .!= False)
-            <*> tc
-            <*> xc
-            <*> (UIConf <$> v .:? "dashboard" .!= True <*> style)
-  parseJSON _ = parseJSON (Object mempty)
+  parseJSON = fmap _econfig . parseJSON
+
+instance FromJSON EConfig2 where
+  parseJSON o = do
+    let v' = case o of
+                  Object v -> v
+                  _        -> mempty
+    (c, ks) <- runStateT (parser v') $ fromList []
+    return $ EConfig2 c (fromList (keys v') `difference` ks)
+    where parser v =
+            let useKey k = hasLens %= insert k
+                x ..:? k = useKey k >> (lift $ x .:? k)
+                x ..!= y = (fromMaybe y) <$> x
+                tc = do psender <- v ..:? "psender" ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                        fprefix <- v ..:? "prefix"  ..!= "echidna_"
+                        let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
+                        return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result)
+                                          (const psender)
+                getWord s d = C Dull . fromIntegral <$> v ..:? s ..!= (d :: Integer)
+                xc = liftM4 TxConf (getWord "propMaxGas" 8000030) (getWord "testMaxGas" 0xffffffff)
+                                   (getWord "maxTimeDelay" 604800)     (getWord "maxBlockDelay" 60480)
+                cc = CampaignConf <$> v ..:? "testLimit"   ..!= 50000
+                                  <*> v ..:? "seqLen"      ..!= 100
+                                  <*> v ..:? "shrinkLimit" ..!= 5000
+                                  <*> pure Nothing
+                                  <*> v ..:? "seed"
+                names :: Names
+                names Sender = (" from: " ++) . show
+                names _      = const ""
+                --ppc :: Has (HashSet Text) s => StateT s Y.Parser (Campaign -> Int -> String)
+                ppc = liftM2 (\cf xf c g -> runReader (ppCampaign c) (cf, xf, names) ++ "\nSeed: " ++ show g) cc xc
+                --style :: Has (HashSet Text) s => StateT s Y.Parser (Campaign -> Int -> String)
+                style = v ..:? "format" ..!= ("text" :: String) >>=
+                  \case "text"             -> ppc
+                        "json"             -> pure . flip $ \g ->
+                          unpack . encode . set (_Object . at "seed") (Just . toJSON $ g) . toJSON
+                        "none"             -> pure $ \_ _ -> ""
+                        _                  -> pure $ \_ _ -> M.fail
+                          "unrecognized ui type (should be text, json, or none)" in
+            EConfig <$> cc
+                    <*> pure names
+                    <*> (SolConf <$> v ..:? "contractAddr"    ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
+                                 <*> v ..:? "deployer"        ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                                 <*> v ..:? "sender"          ..!= [0x10000, 0x20000, 0x00a329c0648769a73afac7f9381e08fb43dbea70]
+                                 <*> v ..:? "balanceAddr"     ..!= 0xffffffff
+                                 <*> v ..:? "balanceContract" ..!= 0
+                                 <*> v ..:? "prefix"          ..!= "echidna_"
+                                 <*> v ..:? "cryticArgs"      ..!= []
+                                 <*> v ..:? "solcArgs"        ..!= ""
+                                 <*> v ..:? "solcLibs"        ..!= []
+                                 <*> v ..:? "quiet"           ..!= False
+                                 <*> v ..:? "checkAsserts"    ..!= False)
+                    <*> tc
+                    <*> xc
+                    <*> (UIConf <$> v ..:? "dashboard" ..!= True <*> style)
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
 defaultConfig :: EConfig
 defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEither' ""
 
 -- | Try to parse an Echidna config file, throw an error if we can't.
-parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> m EConfig
+parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> m EConfig2
 parseConfig f = liftIO (BS.readFile f) >>= Y.decodeThrow
 
 -- | Run some action with the default configuration, useful in the REPL.

@@ -2,11 +2,13 @@ module Main where
 
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
-import Data.Text (pack)
+import Data.HashSet (fromList)
+import Data.Text (pack, unpack)
 import Data.Version (showVersion)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
+import System.IO (hPutStrLn, stderr)
 
 import Echidna.ABI
 import Echidna.Config
@@ -41,7 +43,8 @@ opts = info (helper <*> versionOption <*> options) $ fullDesc
 main :: IO ()
 main = do Options f c conf <- execParser opts
           g   <- getRandom
-          cfg <- maybe (pure defaultConfig) parseConfig conf
+          EConfig2 cfg ks <- maybe (pure (EConfig2 defaultConfig (fromList []))) parseConfig conf
+          mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
           cpg <- flip runReaderT cfg $ do
             cs       <- contracts f
             ads      <- addresses
