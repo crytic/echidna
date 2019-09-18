@@ -189,7 +189,6 @@ callseq v w ql = do
   coverageEnabled <- isJust . knownCoverage <$> view hasLens
   let ef = if coverageEnabled then execTxOptC else execTx
       old = v ^. env . EVM.contracts
-  --hasLens . genDict %= gaddConstants (AbiAddress . addressWord160 <$> traceShow addrs addrs)
   -- Then, we get the current campaign state
   ca <- use hasLens
   -- Then, we generate the actual transaction in the sequence
