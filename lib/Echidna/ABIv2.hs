@@ -93,7 +93,6 @@ abiTypeSolidity = \case
   AbiArrayDynamicType t -> abiTypeSolidity t <> "[]"
   AbiArrayType n t      -> abiTypeSolidity t <> "[" <> T.pack (show n) <> "]"
   AbiTupleType v        -> "(" <> (T.intercalate "," . V.toList $ abiTypeSolidity <$> v) <> ")"
-  --AbiTupleType _        -> "tuple"
 
 data AbiKind = Dynamic | Static
   deriving (Show, Read, Eq, Ord)
