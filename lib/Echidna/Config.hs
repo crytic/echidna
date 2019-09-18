@@ -69,12 +69,12 @@ instance FromJSON EConfig where
         getWord s d = C Dull . fromIntegral <$> v .:? s .!= (d :: Integer)
         xc = liftM4 TxConf (getWord "propMaxGas" 8000030) (getWord "testMaxGas" 0xffffffff)
                            (getWord "maxTimeDelay" 604800)     (getWord "maxBlockDelay" 60480)
-        coverageParser = v .:? "coverage" <&> \case Just True -> Just mempty
-                                                    _         -> Nothing
+        cov = v .:? "coverage" <&> \case Just True -> Just mempty
+                                         _         -> Nothing
         cc = CampaignConf <$> v .:? "testLimit"   .!= 50000
                           <*> v .:? "seqLen"      .!= 100
                           <*> v .:? "shrinkLimit" .!= 5000
-                          <*> coverageParser
+                          <*> cov
                           <*> v .:? "seed"
         names :: Names
         names Sender = (" from: " ++) . show
