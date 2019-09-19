@@ -223,6 +223,27 @@ randseq :: ( MonadCatch m, MonadRandom m, MonadIO m,  MonadReader x m, MonadStat
            , Has GenDict y, Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
         => Int -> Int ->  World -> m [Tx]
 
+randseq 1 p w = do  ca <- use hasLens
+                    n <- getRandomR (0, 3 :: Integer)
+                    let gts = ca ^. genTrans
+                    if (length gts > p) 
+                    then return $ gts !! p
+                    else 
+                     do 
+                      gtxs <- replicateM 1 (evalStateT genTxM (w, ca ^. genDict))
+                      case (n, gts) of
+                              -- random generation of transactions
+                       (_, []) -> return gtxs
+                              -- mutate the transaction from a rare sequence
+                       (0, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                     let rtxs = gts !! idx
+                                     sequence $ map mutTx rtxs
+                              -- shrink all elements from a rare sequence
+                       (1, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                     sequence $ map shrinkTx $ gts !! idx
+                       _       -> return gtxs
+
+
 randseq ql p w = do ca <- use hasLens
                     n <- getRandomR (0, 13 :: Integer)
                     let gts = ca ^. genTrans

@@ -79,7 +79,9 @@ withCurrentDirectory dir action =
 loadTrans :: Maybe FilePath -> IO [[Tx]]
 loadTrans (Just d) = do fs <- listDirectory d
                         xs <- mapM makeRelativeToCurrentDirectory fs
-                        withCurrentDirectory d (mapM readCall xs)
+                        txs <- withCurrentDirectory d (mapM readCall xs)
+                        putStrLn ("Loaded total of " ++ (show $ length xs) ++ " transactions from " ++ d)
+                        return txs
                      where readCall f = do !buf <- BSC8.readFile f
                                            return ( (read $ BSC8.unpack buf) :: [Tx]) 
 loadTrans Nothing  = return []
