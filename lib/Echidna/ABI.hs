@@ -246,7 +246,10 @@ shrinkAbiCall = traverse $ traverse shrinkAbiValue
 
 -- | Given an 'AbiValue', generate a random \"similar\" value of the same 'AbiType'.
 mutateAbiValue :: (MonadState x m, Has GenDict x, MonadRandom m) => AbiValue -> m AbiValue
-mutateAbiValue (AbiUInt n x)         = AbiUInt n         <$> mutateNum x
+mutateAbiValue (AbiUInt n x)         = getRandomR (0, 1 :: Int) >>=
+                                          \case  
+                                            0 -> (AbiUInt n <$> mutateNum x)
+                                            _ -> genAbiValueM (AbiUIntType n)
 mutateAbiValue (AbiInt n x)          = AbiInt n          <$> mutateNum x
 mutateAbiValue (AbiAddress _)        = genAbiValueM AbiAddressType
 mutateAbiValue (AbiBool _)           = genAbiValueM AbiBoolType
@@ -257,10 +260,20 @@ mutateAbiValue (AbiArray n t l)      = AbiArray n t      <$> traverse mutateAbiV
 mutateAbiValue (AbiArrayDynamic t l) = AbiArrayDynamic t <$> mutateV t l
 mutateAbiValue (AbiTuple v)          = AbiTuple          <$> traverse mutateAbiValue v
 
+replaceAt :: a -> [a] -> Int -> [a]
+replaceAt _ []     _ = []
+replaceAt a (_:xs) 0 = a:xs
+replaceAt a (x:xs) n =
+  if n < 0
+    then (x:xs)
+    else x: replaceAt a xs (n-1)
+
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
 mutateAbiCall :: (MonadState x m, Has GenDict x, MonadRandom m) => SolCall -> m SolCall
-mutateAbiCall = traverse $ traverse mutateAbiValue
-
+mutateAbiCall = traverse f
+                where f xs = do k <- getRandomR (0, (length xs - 1))
+                                mv <- mutateAbiValue $ xs !! k
+                                return $ replaceAt mv xs k
 -- Generation, with dictionary
 
 -- | Given a generator taking an @a@ and returning a @b@ and a way to get @b@s associated with some

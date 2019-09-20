@@ -184,14 +184,6 @@ execTxOptC t = do
   when grew $ hasLens . newCoverage .= True
   return res
 
-replaceAt :: a -> [a] -> Int -> [a]
-replaceAt _ []     _ = []
-replaceAt a (_:xs) 0 = a:xs
-replaceAt a (x:xs) n =
-  if n < 0
-    then (x:xs)
-    else x: replaceAt a xs (n-1)
-
 deleteAt :: Int -> [a] -> [a]
 deleteAt _ [] = []
 deleteAt i (a:as)
