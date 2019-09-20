@@ -197,11 +197,13 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/construct.sol"    Nothing
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
   , testContract "abiv2/Ballot.sol"       Nothing
-      [ ("echidna_test failed",                    solved      "echidna_test") ]
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Dynamic.sol"      Nothing
-      [ ("echidna_test failed",                    solved      "echidna_test") ]
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Dynamic2.sol"     Nothing
-      [ ("echidna_test failed",                    solved      "echidna_test") ]
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
+  , testContract "abiv2/MultiTuple.sol"   Nothing
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
