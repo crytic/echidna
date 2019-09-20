@@ -424,9 +424,6 @@ abiHeadSize x =
   case abiKind (abiValueType x) of
     -- even for dynamic tuples it's just a len() invocation, which is uint256
     Dynamic -> 32
-      --case x of
-      --     AbiTuple2 v -> 32 * length v
-      --     _           -> 32
     Static ->
       case x of
         AbiUInt n _  -> roundTo256Bits n
@@ -452,8 +449,11 @@ abiTailSize x =
         AbiBytesDynamic s -> 32 + roundTo256Bits (BS.length s)
         AbiArrayDynamic _ xs -> 32 + V.sum (V.map abiValueSize xs)
         AbiArray _ _ xs -> V.sum (V.map abiValueSize xs)
-        AbiTuple v -> sum (abiValueSize <$> v)
+        -- for tuples, special care must be taken to correctly calculate its
+        -- encoding length, so we sum the head and tail sizes separately
+        AbiTuple v -> sum (headSize <$> v) + sum (abiTailSize <$> v)
         _ -> error "impossible"
+  where headSize y = if abiKind (abiValueType y) == Static then abiValueSize y else 32
 
 abiValueSize :: AbiValue -> Int
 abiValueSize x =
