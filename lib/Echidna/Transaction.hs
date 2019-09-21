@@ -25,6 +25,7 @@ import Data.Has (Has(..))
 import Data.Hashable (hash)
 import Data.List (intercalate)
 import Data.Set (Set)
+import Data.Maybe (catMaybes)
 import System.Directory hiding (listDirectory, withCurrentDirectory)
 
 import EVM
@@ -172,6 +173,16 @@ shrinkTx (Tx c s d g (C _ v) (C _ t, C _ b)) = let
 mutTx :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) => Tx -> m Tx
 mutTx (Tx (Left c) a b d x y) = mutateAbiCall c >>= \c' -> return $ Tx (Left c') a b d x y
 mutTx x                       = return x
+
+spliceTx :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) => Tx -> [Tx] -> m Tx
+spliceTx  x                        []  = return x
+spliceTx  (Tx (Left c1) a b d x y) txs = let f (Tx (Left c) _ _ _ _ _ ) = if (fst c1 == fst c) then Just c else Nothing
+                                             f _                        = Nothing
+                                             cs = catMaybes $ map f txs in
+                                         do idx <- getRandomR (0, (length cs) - 1) 
+                                            c' <- spliceAbiCall c1 (cs !! idx) 
+                                            return $ Tx (Left c') a b d x y
+spliceTx x _                           = return x
 
 
 -- | Given a 'Set' of 'Transaction's, generate a similar 'Transaction' at random.

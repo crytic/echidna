@@ -232,7 +232,12 @@ randseq 1 p w = do  ca <- use hasLens
                                      sequence $ map mutTx rtxs
                               -- shrink all elements from a rare sequence
                        (1, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                     sequence $ map shrinkTx $ gts !! idx
+                                     let rtxs = gts !! idx
+                                     sequence $ map shrinkTx rtxs
+                       (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                     let rtxs = gts !! idx
+                                     tx' <- spliceTx (head rtxs) (concat gts)
+                                     return [tx'] 
                        _       -> return gtxs
 
 
@@ -242,7 +247,7 @@ randseq ql p w = do ca <- use hasLens
                     if (length gts > p) 
                     then return $ gts !! p
                     else 
-                     do 
+                      do 
                       gtxs <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
                       case (n, gts) of
                               -- random generation of transactions

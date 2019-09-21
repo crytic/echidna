@@ -271,9 +271,16 @@ replaceAt a (x:xs) n =
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
 mutateAbiCall :: (MonadState x m, Has GenDict x, MonadRandom m) => SolCall -> m SolCall
 mutateAbiCall = traverse f
-                where f xs = do k <- getRandomR (0, (length xs - 1))
-                                mv <- mutateAbiValue $ xs !! k
-                                return $ replaceAt mv xs k
+                where f  [] = return []
+                      f  xs = do k <- getRandomR (0, (length xs - 1))
+                                 mv <- mutateAbiValue $ xs !! k
+                                 return $ replaceAt mv xs k
+
+spliceAbiCall :: (MonadState x m, Has GenDict x, MonadRandom m) => SolCall -> SolCall -> m SolCall
+spliceAbiCall (t, xs) (_, ys) =  do k <- getRandomR (0, (length xs - 1))
+                                    let (xs',_  ) = splitAt k xs
+                                    let (_  ,ys') = splitAt k ys 
+                                    return (t, xs'++ys')
 -- Generation, with dictionary
 
 -- | Given a generator taking an @a@ and returning a @b@ and a way to get @b@s associated with some
