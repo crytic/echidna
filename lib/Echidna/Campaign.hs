@@ -12,8 +12,9 @@
 module Echidna.Campaign where
 
 import Control.Lens
-import Control.Monad (liftM2, replicateM, when)
+import Control.Monad (replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
+import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
@@ -29,6 +30,7 @@ import Data.Maybe (fromMaybe, isNothing, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
+import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import EVM
 import EVM.Types (W256)
 import Numeric (showHex)
@@ -85,6 +87,11 @@ instance ToJSON TestState where
                                Solved  l -> (False, Just ("callseq", toJSON l))
                                Failed  e -> (False, Just ("exception", toJSON $ show e))
 
+data CampaignStatus =
+  NotStarted
+  | Running UTCTime          -- start timestamp
+  | Finished NominalDiffTime -- time elapsed
+
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                            -- ^ Tests being evaluated
@@ -92,8 +99,8 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                            -- ^ Coverage captured (NOTE: we don't always record this)
                          , _genDict     :: GenDict
                            -- ^ Generation dictionary
-                         , _initialized :: Bool
-                           -- ^ Has the campaign started
+                         , _status :: CampaignStatus
+                           -- ^ Campaign status
                          }
 
 instance ToJSON Campaign where
@@ -109,14 +116,11 @@ instance Has GenDict Campaign where
   hasLens = genDict
 
 defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty defaultDict False
+defaultCampaign = Campaign mempty mempty defaultDict NotStarted
 
--- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
--- the limits defined in our 'CampaignConf'.
-isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
-isDone (Campaign _ _ _ False) = pure False
-isDone (Campaign ts _ _ _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
-  all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts
+isDone :: Campaign -> Bool
+isDone (Campaign _ _ _ (Finished _)) = True
+isDone _ = False
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
@@ -200,7 +204,7 @@ callseq v w ql = do
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
-campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
+campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m
             , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x)
          => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
          -> VM                  -- ^ Initial VM state
@@ -211,10 +215,16 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
 campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d' True) where
+  startedAt <- liftIO getCurrentTime
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d' (Running startedAt)) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl q sl _ _) ->
       if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c -> step
-         | otherwise                                     -> lift u
+         | otherwise {- we are done -}                   -> do
+             finishedAt <- liftIO getCurrentTime
+             (Running startedAt) <- use (hasLens . status)
+             let runtime = diffUTCTime finishedAt startedAt
+             hasLens . status .= Finished runtime
+             lift u

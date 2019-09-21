@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -33,7 +34,7 @@ import UnliftIO.Concurrent (forkIO, killThread)
 
 import qualified Data.Text as T
 
-import Echidna.Campaign
+import Echidna.Campaign hiding (status)
 import Echidna.ABI
 import Echidna.Exec
 import Echidna.Solidity
@@ -83,12 +84,12 @@ ppTS (Solved l)  = ppFail Nothing l
 ppTS Passed      = pure "passed! 🎉"
 ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _) ->
                      if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
-ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m) 
+ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m)
                                                                               else Nothing) l
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppTests (Campaign _ _ _ False) = pure "starting up, please wait  "
+ppTests (Campaign _ _ _ NotStarted) = pure "starting up, please wait  "
 ppTests (Campaign ts _ _ _) = unlines . catMaybes <$> mapM pp ts where
   pp (Left  (n, _), s)      = Just .                    ((T.unpack n ++ ": ") ++) <$> ppTS s
   pp (Right _,      Open _) = pure Nothing
@@ -96,20 +97,33 @@ ppTests (Campaign ts _ _ _) = unlines . catMaybes <$> mapM pp ts where
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: Map W256 (Set Int) -> Maybe String
-ppCoverage s | s == mempty = Nothing 
+ppCoverage s | s == mempty = Nothing
              | otherwise   = Just $ "Unique instructions: " ++ show (coveragePoints s)
                                  ++ "\nUnique codehashes: " ++ show (length s)
 
+ppRuntime :: Campaign -> String
+ppRuntime Campaign{_status} =
+  let s = case _status of
+            Finished runtime -> show runtime
+            _ -> "-"
+  in "Time elapsed: " ++ s
+
 ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppCampaign c = (++) <$> ppTests c <*> pure (maybe "" ("\n" ++) . ppCoverage $ c ^. coverage)
+ppCampaign c = do
+  testsText <- ppTests c
+  let coverageText = maybe "" ("\n" ++) . ppCoverage $ c ^. coverage
+  pure $ testsText ++ coverageText ++ "\n" ++ ppRuntime c
 
 -- | Render 'Campaign' progress as a 'Widget'.
 campaignStatus :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
                => Campaign -> m (Widget ())
-campaignStatus c = let mSection = maybe emptyWidget ((hBorder <=>) . padLeft (Pad 2) . str) in do
+campaignStatus c = do
   stats <- padLeft (Pad 2) . str <$> ppTests c <&> (<=> mSection (ppCoverage $ c ^. coverage))
-  bl <- bool emptyWidget (str "Campaign complete, C-c or esc to print report") <$> isDone c
-  pure . hCenter . hLimit 120 . joinBorders $ borderWithLabel (str "Echidna") stats <=> bl
+  let rt = bool emptyWidget (section $ ppRuntime c) (isDone c)
+  let bl = bool emptyWidget (str "Campaign complete, C-c or esc to print report") (isDone c)
+  pure . hCenter . hLimit 120 . joinBorders $ borderWithLabel (str "Echidna") (stats <=> rt) <=> bl
+  where mSection = maybe emptyWidget section
+        section = (hBorder <=>) . padLeft (Pad 2) . str
 
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
 monitor :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
@@ -118,7 +132,7 @@ monitor cleanup = let
   cs :: (CampaignConf, Names, TxConf) -> Campaign -> Widget ()
   cs s c = runReader (campaignStatus c) s
 
-  se s _ (AppEvent c') = continue c' & if runReader (isDone c') s then (liftIO cleanup >>) else id
+  se _ _ (AppEvent c') = continue c' & if isDone c' then (liftIO cleanup >>) else id
   se _ c (VtyEvent (EvKey KEsc _))                         = liftIO cleanup >> halt c
   se _ c (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = liftIO cleanup >> halt c
   se _ c _                                                 = continue c in
@@ -138,7 +152,7 @@ ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> [SolTest] -- ^ Tests to evaluate
    -> Maybe GenDict
    -> m Campaign
-ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
+ui v w ts d = let xfer e = use hasLens >>= \c -> (($ e c) . bool id forever) (isDone c) in do
   let d' = fromMaybe defaultDict d
   s <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
   g <- view (hasLens . to seed)
@@ -146,7 +160,7 @@ ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id 
   c <- if s then do bc <- liftIO $ newBChan 100
                     t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts d >> pure ()
                     a <- monitor (killThread t)
-                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty d' False)
+                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty d' NotStarted)
             else campaign (pure ()) v w ts d
   liftIO . putStrLn =<< view (hasLens . finished) <*> pure c <*> pure g'
   return c
