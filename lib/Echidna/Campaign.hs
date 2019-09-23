@@ -308,7 +308,7 @@ callseq v w ql = do
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= ca'
   let rtxs = map fst (filter (\(_, vm) -> classifyRes vm /= ResRevert) res)
-  when (ca' ^. newCoverage) $ liftIO $ putStrLn $ "new coverage:" ++ (ppTxs rtxs)
+  --when (ca' ^. newCoverage) $ liftIO $ putStrLn $ "new coverage:" ++ (ppTxs rtxs)
   when (ca' ^. newCoverage) $ hasLens . genTrans %= (rtxs:)
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   modifying (hasLens . constants) . H.unionWith (++) . parse res =<< use (hasLens . rTypes) where
