@@ -20,11 +20,10 @@ import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
 import Data.Aeson (ToJSON(..), object)
 import Data.ByteString (ByteString)
-import Data.Either (either, lefts)
+import Data.Either (either)
 import Data.Has (Has(..))
 import Data.Hashable (hash)
 import Data.List (intercalate)
-import Data.Set (Set)
 import Data.Maybe (catMaybes)
 import System.Directory hiding (listDirectory, withCurrentDirectory)
 
@@ -34,7 +33,6 @@ import EVM.Types (Addr)
 
 import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.ByteString.Char8 as BSC8
-import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
 

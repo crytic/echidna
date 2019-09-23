@@ -22,7 +22,6 @@ import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Aeson (ToJSON(..), object)
 import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
---import Data.Either (lefts)
 import Data.Foldable (toList)
 import Data.Map (Map, mapKeys, unionWith)
 import Data.Maybe (fromMaybe, isNothing, mapMaybe, maybeToList)
@@ -216,7 +215,7 @@ randseq :: ( MonadCatch m, MonadRandom m, MonadIO m,  MonadReader x m, MonadStat
         => Int -> Int ->  World -> m [Tx]
 
 randseq 1 p w = do  ca <- use hasLens
-                    n <- getRandomR (0, 3 :: Integer)
+                    n <- getRandomR (0, 6 :: Integer)
                     let gts = ca ^. genTrans
                     if (length gts > p) 
                     then return $ gts !! p
@@ -234,6 +233,7 @@ randseq 1 p w = do  ca <- use hasLens
                        (1, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                      let rtxs = gts !! idx
                                      sequence $ map shrinkTx rtxs
+                              -- generate a transaction splicing other transactions arguments
                        (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
                                      let rtxs = gts !! idx
                                      tx' <- spliceTx (head rtxs) (concat gts)
