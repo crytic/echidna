@@ -17,7 +17,7 @@ import Echidna.Solidity
 import Echidna.Transaction (Tx, call)
 
 import Control.Lens
-import Control.Monad (liftM2)
+import Control.Monad (liftM2, void)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Random (getRandom, evalRand, mkStdGen)
 import Control.Monad.Reader (runReaderT)
@@ -40,15 +40,19 @@ main = withCurrentDirectory "./examples/solidity" . defaultMain $
                              , integrationTests
                              ]
 
+-- Configuration Tests
+
 configTests :: TestTree
 configTests = testGroup "Configuration tests"
+  [ testCase file $ void $ parseConfig file | file <- files ] ++
   [ testCase "parse \"coverage: true\"" $ do
       config <- parseConfig "coverage/test.yaml"
       assertCoverage config $ Just mempty
   , testCase "coverage disabled by default" $
       assertCoverage defaultConfig Nothing
   ]
-  where assertCoverage config value = do
+  where files = ["basic/config.yaml", "basic/default.yaml"]
+        assertCoverage config value = do
           let CampaignConf{knownCoverage} = view cConf config
           knownCoverage @?= value
 
@@ -215,11 +219,13 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/construct.sol"    Nothing
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
   , testContract "abiv2/Ballot.sol"       Nothing
-      [ ("echidna_test failed",                    solved      "echidna_test") ]
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Dynamic.sol"      Nothing
-      [ ("echidna_test failed",                    solved      "echidna_test") ]
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Dynamic2.sol"     Nothing
-      [ ("echidna_test failed",                    solved      "echidna_test") ]
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
+  , testContract "abiv2/MultiTuple.sol"   Nothing
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
