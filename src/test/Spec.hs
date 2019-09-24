@@ -16,7 +16,7 @@ import Echidna.Solidity
 import Echidna.Transaction (Tx, call)
 
 import Control.Lens
-import Control.Monad (liftM2)
+import Control.Monad (liftM2, void)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Random (getRandom, evalRand, mkStdGen)
 import Control.Monad.Reader (runReaderT)
@@ -32,7 +32,20 @@ import qualified Data.Vector          as V
 
 main :: IO ()
 main = withCurrentDirectory "./examples/solidity" . defaultMain $
-         testGroup "Echidna" [encodingTests, compilationTests, seedTests, integrationTests]
+         testGroup "Echidna" [ configTests
+                             , encodingTests
+                             , compilationTests
+                             , seedTests
+                             , integrationTests
+                             ]
+
+
+-- Configuration Tests
+
+configTests :: TestTree
+configTests = testGroup "Configuration parsing"
+  [ testCase file $ void $ parseConfig file | file <- files ]
+  where files = ["basic/config.yaml", "basic/default.yaml"]
 
 -- Compilation Tests
 
