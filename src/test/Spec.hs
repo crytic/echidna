@@ -43,7 +43,7 @@ main = withCurrentDirectory "./examples/solidity" . defaultMain $
 -- Configuration Tests
 
 configTests :: TestTree
-configTests = testGroup "Configuration tests"
+configTests = testGroup "Configuration tests" $
   [ testCase file $ void $ parseConfig file | file <- files ] ++
   [ testCase "parse \"coverage: true\"" $ do
       config <- parseConfig "coverage/test.yaml"
