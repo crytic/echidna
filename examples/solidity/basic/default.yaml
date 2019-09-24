@@ -28,7 +28,7 @@ balanceContract: 0
 #solcArgs allows special Args to solc
 solcArgs: ""
 #solcLibs is solc libraries
-solcLibs: ""
+solcLibs: []
 #quiet produces (much) less verbose output
 quiet: False
 #dashboard determines if output is just text or an AFL-like display
