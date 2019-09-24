@@ -16,6 +16,7 @@ import Data.ByteString.Lazy.Char8 (unpack)
 import Data.Has (Has(..))
 import Data.Aeson
 import Data.Aeson.Lens
+import Data.Functor ((<&>))
 import Data.Text (isPrefixOf)
 import EVM (result)
 import EVM.Concrete (Word(..), Whiff(..))
@@ -68,10 +69,12 @@ instance FromJSON EConfig where
         getWord s d = C Dull . fromIntegral <$> v .:? s .!= (d :: Integer)
         xc = liftM4 TxConf (getWord "propMaxGas" 8000030) (getWord "testMaxGas" 0xffffffff)
                            (getWord "maxTimeDelay" 604800)     (getWord "maxBlockDelay" 60480)
+        cov = v .:? "coverage" <&> \case Just True -> Just mempty
+                                         _         -> Nothing
         cc = CampaignConf <$> v .:? "testLimit"   .!= 50000
                           <*> v .:? "seqLen"      .!= 100
                           <*> v .:? "shrinkLimit" .!= 5000
-                          <*> pure Nothing
+                          <*> cov
                           <*> v .:? "seed"
         names :: Names
         names Sender = (" from: " ++) . show
