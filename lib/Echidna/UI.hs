@@ -54,11 +54,12 @@ type Names = Role -> Addr -> String
 
 -- | Given rules for pretty-printing associated address, and whether to print them, pretty-print a 'Transaction'.
 ppTx :: (MonadReader x m, Has Names x, Has TxConf x) => Bool -> Tx -> m String
-ppTx pn (Tx c s r g v (t, b)) = let sOf = either ppSolCall (const "<CREATE>") in do
+ppTx pn (Tx c s r g gp v (t, b)) = let sOf = either ppSolCall (const "<CREATE>") in do
   names <- view hasLens
   tGas  <- view $ hasLens . txGas
   return $ sOf c ++ (if not pn    then "" else names Sender s ++ names Receiver r)
                  ++ (if g == tGas then "" else " Gas: "         ++ show g)
+                 ++ (if gp == 0   then "" else " Gas price: "   ++ show gp)
                  ++ (if v == 0    then "" else " Value: "       ++ show v)
                  ++ (if t == 0    then "" else " Time delay: "  ++ show t)
                  ++ (if b == 0    then "" else " Block delay: " ++ show b)
@@ -83,7 +84,7 @@ ppTS (Solved l)  = ppFail Nothing l
 ppTS Passed      = pure "passed! 🎉"
 ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _) ->
                      if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
-ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m) 
+ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m)
                                                                               else Nothing) l
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
@@ -96,7 +97,7 @@ ppTests (Campaign ts _ _ _) = unlines . catMaybes <$> mapM pp ts where
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: Map W256 (Set Int) -> Maybe String
-ppCoverage s | s == mempty = Nothing 
+ppCoverage s | s == mempty = Nothing
              | otherwise   = Just $ "Unique instructions: " ++ show (coveragePoints s)
                                  ++ "\nUnique codehashes: " ++ show (length s)
 

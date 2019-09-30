@@ -164,7 +164,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_revert_is_false didn't shrink to f(-1)",
          solvedWith ("f", [AbiInt 256 (-1)]) "echidna_fails_on_revert")
       ]
-  
+
   , testContract "basic/nearbyMining.sol" (Just "coverage/test.yaml")
       [ ("echidna_findNearby passed", solved "echidna_findNearby") ]
 
@@ -182,13 +182,13 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/contractAddr.sol" Nothing
       [ ("echidna_address failed",                 solved      "echidna_address") ]
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
-      [ ("echidna_address failed",                 passed      "echidna_address") ]      
+      [ ("echidna_address failed",                 passed      "echidna_address") ]
   , testContract "basic/constants.sol"    Nothing
       [ ("echidna_found failed",                   solved      "echidna_found") ]
   , testContract "basic/constants2.sol"   Nothing
       [ ("echidna_found32 failed",                 solved      "echidna_found32") ]
   , testContract "basic/constants3.sol"   Nothing
-      [ ("echidna_found_sender failed",            solved      "echidna_found_sender") ] 
+      [ ("echidna_found_sender failed",            solved      "echidna_found_sender") ]
   , testContract "basic/rconstants.sol"   Nothing
       [ ("echidna_found failed",                   solved      "echidna_found") ]
 -- single.sol is really slow and kind of unstable. it also messes up travis.
@@ -209,15 +209,17 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/darray.sol"       Nothing
       [ ("echidna_darray passed",                  solved      "echidna_darray")
       , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
-  , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml") 
+  , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml")
       [ ("echidna_runForever passed",              solved      "echidna_runForever") ]
-  , testContract "basic/assert.sol"       (Just "basic/assert.yaml") 
+  , testContract "basic/assert.sol"       (Just "basic/assert.yaml")
       [ ("echidna_set0 passed",                    solved      "ASSERTION set0")
       , ("echidna_set1 failed",                    passed      "ASSERTION set1") ]
   , testContract "basic/time.sol"         (Just "basic/time.yaml")
       [ ("echidna_timepassed passed",              solved      "echidna_timepassed") ]
   , testContract "basic/construct.sol"    Nothing
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
+  , testContract "basic/gasprice.sol"     Nothing
+      [ ("echidna_state passed",                   solved      "echidna_state") ]
   , testContract "abiv2/Ballot.sol"       Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Dynamic.sol"      Nothing

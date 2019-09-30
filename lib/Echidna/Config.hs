@@ -8,7 +8,7 @@
 module Echidna.Config where
 
 import Control.Lens
-import Control.Monad (liftM2, liftM4)
+import Control.Monad (liftM2)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)
@@ -67,8 +67,11 @@ instance FromJSON EConfig where
                 return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result)
                                   (const psender)
         getWord s d = C Dull . fromIntegral <$> v .:? s .!= (d :: Integer)
-        xc = liftM4 TxConf (getWord "propMaxGas" 8000030) (getWord "testMaxGas" 0xffffffff)
-                           (getWord "maxTimeDelay" 604800)     (getWord "maxBlockDelay" 60480)
+        xc = TxConf <$> getWord "propMaxGas" 8000030
+                    <*> getWord "testMaxGas" 0xffffffff
+                    <*> getWord "maxGasprice" 100000000000
+                    <*> getWord "maxTimeDelay" 604800
+                    <*> getWord "maxBlockDelay" 60480
         cov = v .:? "coverage" <&> \case Just True -> Just mempty
                                          _         -> Nothing
         cc = CampaignConf <$> v .:? "testLimit"   .!= 50000
