@@ -53,7 +53,7 @@ data TxConf = TxConf { _propGas       :: Word
                      , _txGas         :: Word
                      -- ^ Gas to use in generated transactions
                      , _maxGasprice   :: Word
-                     -- ^ Maximum gasprice to be checked for a trancation
+                     -- ^ Maximum gasprice to be checked for a transaction
                      , _maxTimeDelay  :: Word
                      -- ^ Maximum time delay between transactions (seconds)
                      , _maxBlockDelay :: Word
