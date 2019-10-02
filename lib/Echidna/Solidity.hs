@@ -33,7 +33,7 @@ import Echidna.ABI         (SolSignature)
 import Echidna.ABIv2
 import Echidna.Exec        (execTx)
 import Echidna.RPC         (loadEthenoBatch)
-import Echidna.Transaction (Tx(..), World(..))
+import Echidna.Transaction (TxConf, Tx(..), World(..))
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
@@ -44,7 +44,6 @@ import EVM.Concrete (w256)
 import qualified Data.ByteString     as BS
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text           as T
-import qualified EVM as E (contracts)
 
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
@@ -139,7 +138,7 @@ linkLibraries ls = "--libraries " ++
 -- testing and extract an ABI and list of tests. Throws exceptions if anything returned doesn't look
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
-loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x)
               => Maybe Text -> [SolcContract] -> m (VM, [SolSignature], [Text])
 loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure () in do
   -- Pick contract to load
@@ -158,7 +157,6 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
   (blank', _) <- maybe (pure (vmForEthrunCreation bc, [])) (loadEthenoBatch (fst <$> tests)) fp
-  liftIO . print $ blank' ^. env . E.contracts . to length
   let blank = populateAddresses (ads |> d) bala blank'
             & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
 
@@ -188,7 +186,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
 --loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
 --             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 --loadSolidity fp name = contracts fp >>= loadSpecified name
-loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x)
              => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 
@@ -202,7 +200,7 @@ prepareForTest (v, a, ts) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ ch)
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
-loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x)
              => FilePath -> Maybe Text -> m (VM, World, [SolTest])
 loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
 
