@@ -14,10 +14,11 @@ import Control.Lens
 import Control.Monad (foldM)
 import Control.Monad.Catch (MonadThrow, throwM)
 import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Strict (MonadState, execStateT, runStateT, get, put, runState)
 import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
 import Data.Binary.Get (runGetOrFail)
-import Data.ByteString.Char8 (ByteString, empty, pack, unpack)
+import Data.ByteString.Char8 (ByteString, empty)
 import Data.Has (Has(..))
 import Data.List (partition)
 import Data.Map (fromList)
@@ -29,15 +30,13 @@ import EVM.Types (Addr, W256)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Control.Monad.State.Strict as S (state)
-import qualified Data.ByteString.Base16 as BS16 (decode, encode)
+import qualified Data.ByteString.Base16 as BS16 (decode)
 import qualified Data.Text as T (Text, drop)
 import qualified Data.Vector as V (fromList)
 
 import Echidna.ABIv2 (AbiType(..), getAbi)
 import Echidna.Exec
 import Echidna.Transaction
-
-import Debug.Trace (traceM, traceShowM)
 
 -- | During initialization we can either call a function or create an account or contract
 data Etheno = AccountCreated Addr
@@ -80,7 +79,7 @@ instance Exception EthenoException
 
 -- | Main function: takes a filepath where the initialization sequence lives and returns
 -- | the initialized VM along with a list of Addr's to put in GenConf
-loadEthenoBatch :: (MonadThrow m, MonadIO m) => [T.Text] -> FilePath -> m (VM, [Addr])
+loadEthenoBatch :: (MonadThrow m, MonadIO m, Has TxConf y, MonadReader y m) => [T.Text] -> FilePath -> m (VM, [Addr])
 loadEthenoBatch ts fp = do
   bs <- liftIO $ eitherDecodeFileStrict fp
 
@@ -96,50 +95,39 @@ loadEthenoBatch ts fp = do
              initVM = foldM (execEthenoTxs ts) Nothing txs
 
          (addr, vm') <- runStateT initVM blank
-         liftIO $ putStrLn "done loading"
          case addr of
-              Nothing -> throwM $ EthenoException "Could not find contract with echidna tests"
+              Nothing -> throwM $ EthenoException "Could not find a contract with echidna tests"
               Just a  -> do
-                liftIO $ putStrLn $ "found echidna at " ++ show a
                 vm <- execStateT (liftSH . loadContract $ a) vm'
                 return (vm, knownAddrs)
 
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
 -- | address containing echidna tests
-execEthenoTxs :: (MonadIO m, MonadState x m, Has VM x, MonadThrow m) => [T.Text] -> Maybe Addr -> Etheno -> m (Maybe Addr)
+execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m, Has TxConf y, MonadReader y m) => [T.Text] -> Maybe Addr -> Etheno -> m (Maybe Addr)
 execEthenoTxs ts addr et = do
-  case et of
-       FunctionCall{} -> liftIO $ putStrLn "FunctionCall"
-       ContractCreated{} -> liftIO $ putStrLn "ContractCreated"
-       _ -> liftIO $ putStrLn "Wat"
   setupEthenoTx et
   res <- liftSH exec
+  g <- view (hasLens . propGas)
   case (res, et) of
        (Reversion,   _)               -> throwM $ EthenoException "Encountered reversion while setting up Etheno transactions"
        (VMFailure x, _)               -> vmExcept x >> return addr
        (VMSuccess bc,
-        ContractCreated _ ca _ _ d _) -> do
-          traceM $ "create: " ++ unpack (BS16.encode d)
-          traceM $ "addr  : " ++ show ca
-          traceM $ "result: " ++ unpack (BS16.encode bc)
+        ContractCreated _ ca _ _ _ _) -> do
           hasLens . env . contracts . at ca . _Just . contractcode .= InitCode ""
           liftSH (replaceCodeOfSelf (RuntimeCode bc) >> loadContract ca)
           og <- get
           -- See if current contract is the same as echidna test
-          liftIO $ print ts
           case addr of
                Just m  -> return $ Just m
-               Nothing -> let txs = ts <&> \t -> Tx (Left (t, [])) ca ca 0 0 (0,0)
-                              go []     = traceM "found" >> return (Just ca)
+               Nothing -> let txs = ts <&> \t -> Tx (Left (t, [])) ca ca g 0 (0,0)
+                              go []     = return (Just ca)
                               go (x:xs) = setupTx x >> liftSH exec >>= \case
                                 VMSuccess r -> do
-                                  traceM $ "echidna:" ++ unpack r
                                   put og
                                   case runGetOrFail (getAbi . AbiTupleType . V.fromList $ [AbiBoolType]) (r ^. lazy) ^? _Right . _3 of
                                        Just _  -> go xs
                                        Nothing -> return Nothing
-                                Reversion   -> liftIO (putStrLn "Reversion") >> put og >> return Nothing
-                                _           -> liftIO (putStrLn "Failure") >> put og >> return Nothing in
+                                _           -> put og >> return Nothing in
                             go txs
        _                              -> return addr
 
