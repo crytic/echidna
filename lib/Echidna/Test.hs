@@ -51,7 +51,7 @@ classifyRes _ = ResOther
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => SolTest -> m Bool
 checkETest t = asks getter >>= \(TestConf p s) -> view (hasLens . propGas) >>= \g -> do
-  og <- get 
+  og <- get
   -- To check these tests, we're going to need a couple auxilary functions:
   --   * matchR[eturn] checks if we just tried to exec 0xfe, which means we failed an assert
   --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
