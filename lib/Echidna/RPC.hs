@@ -9,8 +9,6 @@ module Echidna.RPC where
 
 import Prelude hiding (Word)
 
-import Debug.Trace (traceShow, trace)
-
 import Control.Exception (Exception)
 import Control.Lens
 import Control.Monad (foldM)
@@ -18,6 +16,7 @@ import Control.Monad.Catch (MonadThrow, throwM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.State.Strict (MonadState, execState, execStateT, runStateT, get, put, runState)
 import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
+import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Char8 (ByteString, empty, pack, unpack)
 import Data.Has (Has(..))
 import Data.List (partition)
@@ -33,9 +32,13 @@ import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.ByteString.Base16 as BS16 (decode, encode)
 import qualified Data.Text as T (Text, drop)
+import qualified Data.Vector as V (fromList)
 
+import Echidna.ABIv2 (AbiType(..), getAbi)
 import Echidna.Exec
 import Echidna.Transaction
+
+import Debug.Trace (traceM, traceShowM)
 
 -- | During initialization we can either call a function or create an account or contract
 data Etheno = AccountCreated Addr
@@ -85,22 +88,16 @@ loadEthenoBatch ts fp = do
   case bs of
        (Left e) -> throwM $ EthenoException e
        (Right ethenoInit) -> do
-         -- | Separate out account creation txns to use later for config
+         -- Separate out account creation txns to use later for config
          let (accounts, txs) = partition (\case { AccountCreated{} -> True; _ -> False; }) ethenoInit
              knownAddrs      = map (\(AccountCreated a) -> a) accounts
 
-         -- | Execute contract creations and initial transactions,
+         -- Execute contract creations and initial transactions,
          let blank  = vmForEthrunCreation empty & env . contracts .~ fromList []
-             cs     = blank ^. env . contracts
              initVM = foldM (execEthenoTxs ts) Nothing txs
 
-         liftIO $ print (length cs)
-         liftIO $ putStrLn "---"
          (addr, vm') <- runStateT initVM blank
-         let cs' = vm' ^. env . contracts
-         liftIO $ print (length cs')
          liftIO $ putStrLn "done loading"
-         liftIO $ print ts
          case addr of
               Nothing -> throwM $ EthenoException "Could not find contract with echidna tests"
               Just a  -> do
@@ -110,30 +107,41 @@ loadEthenoBatch ts fp = do
 
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
 -- | address containing echidna tests
-execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m) => [T.Text] -> Maybe Addr -> Etheno -> m (Maybe Addr)
+execEthenoTxs :: (MonadIO m, MonadState x m, Has VM x, MonadThrow m) => [T.Text] -> Maybe Addr -> Etheno -> m (Maybe Addr)
 execEthenoTxs ts addr t = do
+  case t of
+       FunctionCall{} -> liftIO $ putStrLn "FunctionCall"
+       ContractCreated{} -> liftIO $ putStrLn "ContractCreated"
+       _ -> liftIO $ putStrLn "Wat"
   setupEthenoTx t
   res <- liftSH exec
   case (res, t) of
        (Reversion,   _)               -> throwM $ EthenoException "Encountered reversion while setting up Etheno transactions"
-       (VMFailure x, _)               -> vmExcept x >> return addr
+       (VMFailure x, _)               -> traceM "failure" >> vmExcept x >> return addr
        (VMSuccess bc,
-        ContractCreated _ ca _ _ _ _) -> do
+        ContractCreated _ ca _ _ d _) -> do
+          traceM $ "create: " ++ unpack (BS16.encode d)
+          traceM $ "addr  : " ++ show ca
+          traceM $ "result: " ++ unpack (BS16.encode bc)
+          st <- get
+          put $ st & hasLens . env . contracts . at ca . _Just . contractcode .~ RuntimeCode bc
           og <- get
           -- See if current contract is the same as echidna test
+          liftIO $ print ts
           case addr of
                Just m  -> return $ Just m
-               Nothing -> let txs = ts <&> \t -> Tx (Left (t, [])) ca ca 0
-                              go []     = put og >> return (Just ca)
-                              go (x:xs) = execTx x >>= \case
-                                Reversion -> put og >> return Nothing
-                                _         -> put og >> go xs in
+               Nothing -> let txs = ts <&> \t -> Tx (Left (t, [])) ca ca 0 0 (0,0)
+                              go []     = traceM "found" >> return (Just ca)
+                              go (x:xs) = setupTx x >> liftSH exec >>= \case
+                                VMSuccess r -> do
+                                  traceM $ "echidna:" ++ unpack r
+                                  put og
+                                  case runGetOrFail (getAbi . AbiTupleType . V.fromList $ [AbiBoolType]) (r ^. lazy) ^? _Right . _3 of
+                                       Just _  -> go xs
+                                       Nothing -> return Nothing
+                                _           -> put og >> return Nothing in
                             go txs
-         -- hasLens %= execState (replaceCodeOfSelf (RuntimeCode bc) >> loadContract ca)
        _                              -> return addr
-  --if t ^. event == ContractCreated && encodeUtf8 (fromJustt (t ^. initCode)) == bs
-  --    then return (fromJust (t ^. contractAddr))
-  --    else return addr
 
 
 -- | For an etheno txn, set up VM to execute txn
@@ -142,24 +150,9 @@ setupEthenoTx (AccountCreated _) = pure ()
 setupEthenoTx (ContractCreated f c _ _ d v) = S.state . runState . zoom hasLens . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= 0xffffffff
   , tx . origin .= f, state . caller .= f, state . callvalue .= w256 v, setup]
-  where setup = assign (env . contracts . at (traceShow c c)) (Just . initialContract . RuntimeCode $ d)
-    --setup = do
-    --  env . contracts . at c .= Just . initialContract . RuntimeCode . encodeUtf8 $ d
-    --  loadContract c
+  where setup = assign (env . contracts . at c) (Just . initialContract . RuntimeCode $ d) >> loadContract c
 
 setupEthenoTx (FunctionCall f t _ _ d v) = S.state . runState . zoom hasLens . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= 0xffffffff
   , tx . origin .= f, state . caller .= f, state . callvalue .= w256 v, setup]
-  where setup = loadContract (traceShow t t) >> state . calldata .= d
---setupEthenoTx FunctionCall{} = pure ()
---setupEthenoTx (Etheno e _ f t c _ _ d v) = S.state . runState . zoom hasLens . sequence_ $
---    [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= 0xffffffff
---    , tx . origin .= fromJust f, state . caller .= fromJust f, state . callvalue .= w256 v, setup] where
---    bc = encodeUtf8 (fromJust d)
---    setup = case e of
---        AccountCreated -> pure ()
---        ContractCreated -> assign (env . contracts . at c) (Just . initialContract . RuntimeCode $ bc) >> loadContract (fromJust c)
---        FunctionCall -> loadContract (fromJust t) >> state . calldata .= bc
---
-removeConstructor :: ByteString -> ByteString
-removeConstructor = pack . (!! 1) . split (keepDelimsL $ startsWith "\x60\x80") . unpack
+  where setup = loadContract t >> state . calldata .= d
