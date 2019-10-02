@@ -14,13 +14,12 @@ import Control.Lens
 import Control.Monad (foldM)
 import Control.Monad.Catch (MonadThrow, throwM)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.State.Strict (MonadState, execState, execStateT, runStateT, get, put, runState)
+import Control.Monad.State.Strict (MonadState, execStateT, runStateT, get, put, runState)
 import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Char8 (ByteString, empty, pack, unpack)
 import Data.Has (Has(..))
 import Data.List (partition)
-import Data.List.Split (split, keepDelimsL, startsWith, chunksOf)
 import Data.Map (fromList)
 import Data.Text.Encoding (encodeUtf8)
 import EVM
@@ -108,23 +107,23 @@ loadEthenoBatch ts fp = do
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
 -- | address containing echidna tests
 execEthenoTxs :: (MonadIO m, MonadState x m, Has VM x, MonadThrow m) => [T.Text] -> Maybe Addr -> Etheno -> m (Maybe Addr)
-execEthenoTxs ts addr t = do
-  case t of
+execEthenoTxs ts addr et = do
+  case et of
        FunctionCall{} -> liftIO $ putStrLn "FunctionCall"
        ContractCreated{} -> liftIO $ putStrLn "ContractCreated"
        _ -> liftIO $ putStrLn "Wat"
-  setupEthenoTx t
+  setupEthenoTx et
   res <- liftSH exec
-  case (res, t) of
+  case (res, et) of
        (Reversion,   _)               -> throwM $ EthenoException "Encountered reversion while setting up Etheno transactions"
-       (VMFailure x, _)               -> traceM "failure" >> vmExcept x >> return addr
+       (VMFailure x, _)               -> vmExcept x >> return addr
        (VMSuccess bc,
         ContractCreated _ ca _ _ d _) -> do
           traceM $ "create: " ++ unpack (BS16.encode d)
           traceM $ "addr  : " ++ show ca
           traceM $ "result: " ++ unpack (BS16.encode bc)
-          st <- get
-          put $ st & hasLens . env . contracts . at ca . _Just . contractcode .~ RuntimeCode bc
+          hasLens . env . contracts . at ca . _Just . contractcode .= InitCode ""
+          liftSH (replaceCodeOfSelf (RuntimeCode bc) >> loadContract ca)
           og <- get
           -- See if current contract is the same as echidna test
           liftIO $ print ts
@@ -139,7 +138,8 @@ execEthenoTxs ts addr t = do
                                   case runGetOrFail (getAbi . AbiTupleType . V.fromList $ [AbiBoolType]) (r ^. lazy) ^? _Right . _3 of
                                        Just _  -> go xs
                                        Nothing -> return Nothing
-                                _           -> put og >> return Nothing in
+                                Reversion   -> liftIO (putStrLn "Reversion") >> put og >> return Nothing
+                                _           -> liftIO (putStrLn "Failure") >> put og >> return Nothing in
                             go txs
        _                              -> return addr
 
