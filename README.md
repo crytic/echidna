@@ -47,6 +47,21 @@ $ echidna-test examples/solidity/basic/flags.sol
 
 Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` and should be unable to find a falsifying input for `echidna_alwaystrue`.
 
+### Truffle integration
+
+Echidna can be used to test contracts compiled with [Truffle](https://truffleframework.com/) using [crytic-compile](https://github.com/crytic/crytic-compile). For instance,
+we can uncover an integer overflow in the [Metacoin Truffle box](https://github.com/truffle-box/metacoin-box) using a
+[contract with Echidna properties to test](examples/solidity/truffle/metacoin/contracts/MetaCoinEchidna.sol):
+
+```
+$ cd examples/solidity/truffle/metacoin
+$ echidna-test . TEST
+...
+echidna_convert: failed!💥
+  Call sequence:
+    mint(57896044618658097711785492504343953926634992332820282019728792003956564819968)
+```
+
 ### Configuration options
 
 Echidna's CLI can be used to choose the contract to test and load a configuration file.
@@ -55,7 +70,8 @@ Echidna's CLI can be used to choose the contract to test and load a configuratio
 $ echidna-test contract.sol TEST --config="config.yaml"
 ```
 
-The configuration file allows users to choose EVM and test generation parameters. An example of a complete config file with the default options can be found at [examples/solidity/basic/default.yaml](examples/solidity/basic/default.yaml). More detailed documentation on the configuration options is available in our [wiki](https://github.com/trailofbits/echidna/wiki/Config).
+The configuration file allows users to choose EVM and test generation
+parameters. An example of a complete and annotated config file with the default options can be found at [examples/solidity/basic/default.yaml](examples/solidity/basic/default.yaml). More detailed documentation on the configuration options is available in our [wiki](https://github.com/trailofbits/echidna/wiki/Config).
 
 ### Advanced usage
 
@@ -63,7 +79,7 @@ Echidna exports an API to build powerful fuzzing systems, and has a multitude of
 
 ## Installation
 
-If you want to quickly test Echidna in Linux, we offer a statically linked binary release of v1.0.0.0 to download [here](https://github.com/crytic/echidna/releases/tag/1.0.0.0). 
+If you want to quickly test Echidna in Linux, we offer a statically linked binary release of v1.1.0.0 to download [here](https://github.com/crytic/echidna/releases/tag/1.1.0.0).
 
 Otherwise, to install the latest revision of Echidna, we recommend to use [docker](https://www.docker.com/):
 

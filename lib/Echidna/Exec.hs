@@ -29,6 +29,7 @@ data ErrorClass = RevertE | IllegalE | UnknownE
 
 -- | Given an execution error, classify it. Mostly useful for nice @pattern@s ('Reversion', 'Illegal').
 classifyError :: Error -> ErrorClass
+classifyError (OutOfGas _ _)         = RevertE
 classifyError (Revert _)             = RevertE
 classifyError (UnrecognizedOpcode _) = RevertE
 classifyError (Query _)              = RevertE
@@ -66,12 +67,15 @@ execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx 
 execTxWith h m t = do og <- get
                       setupTx t
                       res <- m
+                      cd  <- use $ hasLens . state . calldata
                       case (res, isRight $ t ^. call) of
-                        (f@Reversion, _)         -> put og >> liftSH (result .= Just f)
+                        (f@Reversion, _)         -> do put og
+                                                       hasLens . state . calldata .= cd
+                                                       hasLens . result ?= f
                         (VMFailure x, _)         -> h x
                         (VMSuccess bc, True)     -> (hasLens %=) . execState $ do
                           env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
-                          replaceCodeOfSelf (RuntimeCode bc) 
+                          replaceCodeOfSelf (RuntimeCode bc)
                           loadContract (t ^. dst)
                         _                        -> pure ()
                       return res

@@ -1,3 +1,5 @@
+contract C {}
+
 contract Foo {
   bool state = true;
   function f(int256 a, int256 b, int256 c) public returns (int256) {

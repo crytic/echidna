@@ -3,7 +3,9 @@ module Main where
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
 import Data.Text (pack)
+import Data.Version (showVersion)
 import Options.Applicative
+import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 
 import Echidna.ABI
@@ -26,18 +28,23 @@ options = Options <$> argument str (metavar "FILE"
                   <*> optional (option str $ long "config"
                         <> help "Config file")
 
+versionOption :: Parser (a -> a)
+versionOption = infoOption
+                  ("Echidna " ++ showVersion version)
+                  (long "version" <> help "Show version")
+
 opts :: ParserInfo Options
-opts = info (options <**> helper) $ fullDesc
+opts = info (helper <*> versionOption <*> options) $ fullDesc
   <> progDesc "EVM property-based testing framework"
   <> header "Echidna"
 
 main :: IO ()
-
 main = do Options f c conf <- execParser opts
           g   <- getRandom
           cfg <- maybe (pure defaultConfig) parseConfig conf
           cpg <- flip runReaderT cfg $ do
             cs       <- contracts f
-            (v,w,ts) <- loadSpecified (pack . (f ++) . (':' :) <$> c) cs >>= prepareForTest
-            ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs) [] g)
+            ads      <- addresses
+            (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
+            ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads) [] g (returnTypes cs))
           if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
