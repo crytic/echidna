@@ -55,6 +55,8 @@ data TxConf = TxConf { _propGas       :: Word
                      -- ^ Maximum time delay between transactions (seconds)
                      , _maxBlockDelay :: Word
                      -- ^ Maximum block delay between transactions
+                     , _maxValue  :: Word
+                     -- ^ Maximum value per transactions (wei)
                      }
 
 makeLenses 'TxConf
@@ -109,11 +111,16 @@ genTx = use (hasLens :: Lens' y World) >>= evalStateT genTxM . (defaultDict,)
 
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
 genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has GenDict y, Has World y, MonadThrow m) => m Tx
-genTxM = view hasLens >>= \(TxConf _ g t b) -> genTxWith
+genTxM = view hasLens >>= \(TxConf _ g t b v) -> genTxWith
   (rElem "sender list") (rElem "recipient list")                             -- src and dst
   (const $ genInteractionsM . snd)                                           -- call itself
-  (pure g) (\_ _ _ -> pure 0) (level <$> liftM2 (,) (inRange t) (inRange b)) -- gas, value, delay
+  (pure g) (genValue v) (level <$> liftM2 (,) (inRange t) (inRange b)) -- gas, value, delay
      where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
+
+genValue :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m) => Word -> Addr -> ContractA -> SolCall -> m Word
+genValue v _ _ _ = w256 . fromIntegral <$> oneIn 100 (return 0) (getRandomR (0 :: Integer, toInteger v))
+                    where oneIn n x y = do r <- getRandomR (1 :: Integer, n)
+                                           if r == 1 then y else x
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool
