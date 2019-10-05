@@ -97,7 +97,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
   q  <- view (hasLens . quiet)
   ls <- view (hasLens . solcLibs)
   c  <- view (hasLens . cryticArgs)
-  let solargs = a ++ linkLibraries ls & (usual ++) .
+  let solargs = a ++ linkLibraries ls & (usual ++) . 
                   (\sa -> if null sa then [] else ["--solc-args", sa])
   maybe (throwM CompileFailure) (pure . toList . fst) =<< liftIO (do
     stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
