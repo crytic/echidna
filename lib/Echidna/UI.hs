@@ -84,7 +84,7 @@ ppTS (Solved l)  = ppFail Nothing l
 ppTS Passed      = pure "passed! 🎉"
 ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _) ->
                      if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
-ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m)
+ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m) 
                                                                               else Nothing) l
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
@@ -97,7 +97,7 @@ ppTests (Campaign ts _ _ _) = unlines . catMaybes <$> mapM pp ts where
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: Map W256 (Set Int) -> Maybe String
-ppCoverage s | s == mempty = Nothing
+ppCoverage s | s == mempty = Nothing 
              | otherwise   = Just $ "Unique instructions: " ++ show (coveragePoints s)
                                  ++ "\nUnique codehashes: " ++ show (length s)
 
