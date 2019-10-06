@@ -14,7 +14,7 @@ import Prelude hiding (Word)
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, liftM5)
 import Control.Monad.Catch (MonadThrow)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
 import Data.Aeson (ToJSON(..), object)
@@ -22,7 +22,7 @@ import Data.ByteString (ByteString)
 import Data.Either (either)
 import Data.Has (Has(..))
 import Data.List (intercalate)
-import EVM
+import EVM hiding (_value)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
@@ -129,10 +129,15 @@ canShrinkTx _                                = True
 -- | Given a 'Transaction', generate a random \"smaller\" 'Transaction', preserving origin,
 -- destination, value, and call signature.
 shrinkTx :: MonadRandom m => Tx -> m Tx
-shrinkTx (Tx c s d g gp (C _ v) (C _ t, C _ b)) = let
+shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
   c' = either (fmap Left . shrinkAbiCall) (fmap Right . pure) c
   lower x = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral x) in
-    liftM5 Tx c' (pure s) (pure d) (pure g) (lower gp) <*> lower v <*> fmap level (liftM2 (,) (lower t) (lower b))
+  sequence
+    [ (\x -> pure $ tx' { _call  = x }) =<< c'
+    , (\x -> pure $ tx' { _value = x }) =<< lower v
+    , (\x -> pure $ tx' { _gasprice' = x }) =<< lower gp
+    , (\x -> pure $ tx' { _delay = x }) =<< fmap level (liftM2 (,) (lower t) (lower b))
+    ] >>= uniform
 
 -- | Lift an action in the context of a component of some 'MonadState' to an action in the
 -- 'MonadState' itself.
