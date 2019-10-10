@@ -60,6 +60,7 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- ^ If applicable, initially known coverage. If this is 'Nothing',
                                    -- Echidna won't collect coverage information (and will go faster)
                                  , seed          :: Maybe Int
+                                 , dictFreq      :: Float
                                  }
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
@@ -215,7 +216,7 @@ campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty
   execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d' True) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl q sl _ _) ->
+    update c    = view hasLens >>= \(CampaignConf tl q sl _ _ _) ->
       if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c -> step
          | otherwise                                     -> lift u
