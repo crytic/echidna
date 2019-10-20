@@ -159,7 +159,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
       con = view constructorInputs c
       (tests, funs) = partition (isPrefixOf pref . fst) abi
 
-  when (not . null $ con) (throwM $ ConstructorArgs (show con))
+  unless (null con) (throwM $ ConstructorArgs (show con))
   -- Select libraries
   ls <- mapM (choose cs . Just . T.pack) libs
 
