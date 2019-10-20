@@ -72,6 +72,8 @@ compilationTests = testGroup "Compilation and loading tests"
                                               \case OnlyTests{}        -> True; _ -> False
   , loadFails "bad/testargs.sol"   Nothing    "failed to warn on test args found" $
                                               \case TestArgsFound{}    -> True; _ -> False
+  , loadFails "bad/consargs.sol"   Nothing    "failed to warn on cons args found" $
+                                              \case ConstructorArgs{}  -> True; _ -> False
   ]
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
