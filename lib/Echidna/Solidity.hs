@@ -170,7 +170,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
-                                      find (isSuffixOf (if (count ":" n > 0) then n else ":" `append` n) . view contractName) cs
+                                      find (isSuffixOf (if count ":" n > 0 then n else ":" `append` n) . view contractName) cs
         fallback = ("",[])
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
