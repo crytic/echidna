@@ -23,7 +23,7 @@ import Data.List                  (find, nub, partition)
 import Data.List.Lens             (prefixed, suffixed)
 import Data.Maybe                 (isNothing, catMaybes)
 import Data.Monoid                ((<>))
-import Data.Text                  (Text, isPrefixOf, isSuffixOf)
+import Data.Text                  (Text, isPrefixOf, isSuffixOf, append, count)
 import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
 import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
@@ -170,7 +170,7 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
-                                      find (isSuffixOf n . view contractName) cs
+                                      find (isSuffixOf (if (count ":" n > 0) then n else ":" `append` n) . view contractName) cs
         fallback = ("",[])
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
