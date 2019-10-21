@@ -55,6 +55,7 @@ data SolException = BadAddr Addr
                   | NoFuncs
                   | NoTests
                   | OnlyTests
+                  | ConstructorArgs String
 
 instance Show SolException where
   show = \case
@@ -67,6 +68,8 @@ instance Show SolException where
     NoFuncs              -> "ABI is empty, are you sure your constructor is right?"
     NoTests              -> "No tests found in ABI"
     OnlyTests            -> "Only tests and no public functions found in ABI"
+    (ConstructorArgs s)  -> "Constructor arguments are required: " ++ s
+
 
 instance Exception SolException
 
@@ -153,8 +156,10 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
       blank = populateAddresses (ads |> d) bala (vmForEthrunCreation bc)
             & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
+      con = view constructorInputs c
       (tests, funs) = partition (isPrefixOf pref . fst) abi
 
+  unless (null con) (throwM $ ConstructorArgs (show con))
   -- Select libraries
   ls <- mapM (choose cs . Just . T.pack) libs
 
