@@ -9,7 +9,7 @@ module Echidna.Exec where
 
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
-import Control.Monad.State.Strict (MonadState, execState, when)
+import Control.Monad.State.Strict (MonadState, execState)
 import Data.Either (isRight)
 import Data.Has (Has(..))
 import Data.Map.Strict (Map)
@@ -77,7 +77,6 @@ execTxWith h m t = do (og :: VM) <- use hasLens
                         (VMFailure x, _)         -> h x
                         (VMSuccess bc, True)     -> (hasLens %=) . execState $ do
                           env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
-                          env . contracts . at (t ^. dst) . _Just . nonce        .= 1
                           replaceCodeOfSelf (RuntimeCode bc)
                           loadContract (t ^. dst)
                         _                        -> pure ()
@@ -89,9 +88,7 @@ execTx = execTxWith vmExcept $ liftSH exec
 
 -- | Given a way of capturing coverage info, execute while doing so once per instruction.
 usingCoverage :: (MonadState x m, Has VM x) => m () -> m VMResult
-usingCoverage cov = let fixNonce = use hasLens >>= \v -> when (vmOp v == Just OpCreate) $
-                          hasLens . env . contracts . at (v ^. state . contract) . _Just . nonce += 1
-  in maybe (fixNonce >> cov >> liftSH exec1 >> usingCoverage cov) pure =<< use (hasLens . result)
+usingCoverage cov = maybe (cov >> liftSH exec1 >> usingCoverage cov) pure =<< use (hasLens . result)
 
 -- | Given good point coverage, count unique points.
 coveragePoints :: Map W256 (Set Int) -> Int
