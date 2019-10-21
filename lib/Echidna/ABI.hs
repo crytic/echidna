@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -17,16 +18,17 @@ import Data.Bool (bool)
 import Data.ByteString (ByteString)
 import Data.Foldable (toList)
 import Data.Has (Has(..))
-import Data.Hashable (Hashable)
+import Data.Hashable (Hashable(..))
 import Data.HashMap.Strict (HashMap)
 import Data.List (group, intercalate, sort)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Vector (Vector)
+import Data.Vector.Instances ()
 import Data.Word8 (Word8)
 import Numeric (showHex)
 
-import Echidna.ABIv2
+import EVM.ABI
 
 import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M

@@ -37,6 +37,7 @@ dependencies:
   - unliftio
   - unliftio-core
   - vector               >= 0.11.0 && < 0.13
+  - vector-instances
   - vty
   - wl-pprint-annotated
   - unix

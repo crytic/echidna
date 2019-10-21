@@ -16,12 +16,12 @@ import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import EVM (Error(..), VMResult(..), VM, calldata, result, state)
+import EVM.ABI (AbiValue(..), abiCalldata, encodeAbiValue)
 import EVM.Types (Addr)
 
 import qualified Data.ByteString as BS
 
 import Echidna.ABI
-import Echidna.ABIv2 (abiCalldata, AbiValue(..), encodeAbiValue)
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
