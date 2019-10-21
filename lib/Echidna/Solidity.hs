@@ -68,7 +68,7 @@ instance Show SolException where
     NoFuncs              -> "ABI is empty, are you sure your constructor is right?"
     NoTests              -> "No tests found in ABI"
     OnlyTests            -> "Only tests and no public functions found in ABI"
-    (ConstructorArgs s)  -> "Constructor arguments are requiered: " ++ s
+    (ConstructorArgs s)  -> "Constructor arguments are required: " ++ s
 
 
 instance Exception SolException
