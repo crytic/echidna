@@ -22,7 +22,7 @@ import Data.ByteString (ByteString)
 import Data.Either (either)
 import Data.Has (Has(..))
 import Data.List (intercalate)
-import EVM hiding (_value)
+import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
@@ -131,13 +131,14 @@ canShrinkTx _                                = True
 shrinkTx :: MonadRandom m => Tx -> m Tx
 shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
   c' = either (fmap Left . shrinkAbiCall) (fmap Right . pure) c
-  lower x = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral x) in
-  sequence
-    [ (\x -> pure $ tx' { _call  = x }) =<< c'
-    , (\x -> pure $ tx' { _value = x }) =<< lower v
-    , (\x -> pure $ tx' { _gasprice' = x }) =<< lower gp
-    , (\x -> pure $ tx' { _delay = x }) =<< fmap level (liftM2 (,) (lower t) (lower b))
-    ] >>= uniform
+  lower x = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral x)
+  possibilities =
+    [ set call      <$> c'
+    , set value     <$> lower v
+    , set gasprice' <$> lower gp
+    , set delay     <$> fmap level (liftM2 (,) (lower t) (lower b))
+    ]
+  in (sequence possibilities >>= uniform) <*> pure tx'
 
 -- | Lift an action in the context of a component of some 'MonadState' to an action in the
 -- 'MonadState' itself.
