@@ -41,6 +41,7 @@ data Tx = Tx { _call  :: Either SolCall ByteString -- | Either a call or code fo
              , _src   :: Addr                      -- | Origin
              , _dst   :: Addr                      -- | Destination
              , _gas'  :: Word                      -- | Gas
+             , _gasprice' :: Word                  -- | Gas price
              , _value :: Word                      -- | Value
              , _delay :: (Word, Word)              -- | (Time, # of blocks since last call)
              } deriving (Eq, Ord, Show)
@@ -51,6 +52,8 @@ data TxConf = TxConf { _propGas       :: Word
                      -- ^ Gas to use evaluating echidna properties
                      , _txGas         :: Word
                      -- ^ Gas to use in generated transactions
+                     , _maxGasprice   :: Word
+                     -- ^ Maximum gasprice to be checked for a transaction
                      , _maxTimeDelay  :: Word
                      -- ^ Maximum time delay between transactions (seconds)
                      , _maxBlockDelay :: Word
@@ -64,12 +67,13 @@ ppSolCall :: SolCall -> String
 ppSolCall (t, vs) = (if t == "" then T.unpack "*fallback*" else T.unpack t) ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
 
 instance ToJSON Tx where
-  toJSON (Tx c s d g v (t, b)) = object [ ("call",        toJSON $ either ppSolCall (const "<CREATE>") c)
+  toJSON (Tx c s d g gp v (t, b)) = object [ ("call",        toJSON $ either ppSolCall (const "<CREATE>") c)
                                         -- from/to are Strings, since JSON doesn't support hexadecimal notation
                                         , ("from",        toJSON $ show s)
                                         , ("to",          toJSON $ show d)
                                         , ("value",       toJSON $ show v)
                                         , ("gas",         toJSON $ show g)
+                                        , ("gasprice",    toJSON $ show gp)
                                         , ("time delay",  toJSON $ show t)
                                         , ("block delay", toJSON $ show b)
                                         ]
@@ -96,12 +100,13 @@ genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m)
           -> ([ContractA] -> m ContractA)             -- ^ Receiver generator
           -> (Addr -> ContractA -> m SolCall)         -- ^ Call generator
           -> m Word                                   -- ^ Gas generator
+          -> m Word                                   -- ^ Gas price generator
           -> (Addr -> ContractA -> SolCall -> m Word) -- ^ Value generator
           -> m (Word, Word)                           -- ^ Delay generator
           -> m Tx
-genTxWith s r c g v t = use hasLens >>= \(World ss rs) ->
+genTxWith s r c g gp v t = use hasLens >>= \(World ss rs) ->
   let s' = s ss; r' = r rs; c' = join $ liftM2 c s' r' in
-    (liftM5 Tx (Left <$> c') s' (fst <$> r') g =<< liftM3 v s' r' c') <*> t
+    ((liftM5 Tx (Left <$> c') s' (fst <$> r') g gp <*>) =<< liftM3 v s' r' c') <*> t
 
 -- | Synthesize a random 'Transaction', not using a dictionary.
 genTx :: forall m x y. (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m) => m Tx
@@ -109,33 +114,34 @@ genTx = use (hasLens :: Lens' y World) >>= evalStateT genTxM . (defaultDict,)
 
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
 genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has GenDict y, Has World y, MonadThrow m) => m Tx
-genTxM = view hasLens >>= \(TxConf _ g t b) -> genTxWith
+genTxM = view hasLens >>= \(TxConf _ g maxGp t b) -> genTxWith
   (rElem "sender list") (rElem "recipient list")                             -- src and dst
   (const $ genInteractionsM . snd)                                           -- call itself
-  (pure g) (\_ _ _ -> pure 0) (level <$> liftM2 (,) (inRange t) (inRange b)) -- gas, value, delay
+  (pure g) (inRange maxGp) (\_ _ _ -> pure 0)                                -- gas, gasprice, value
+  (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
      where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool
-canShrinkTx (Tx (Right _) _ _ _ 0 (0, 0))    = False
-canShrinkTx (Tx (Left (_,l)) _ _ _ 0 (0, 0)) = any canShrinkAbiValue l
+canShrinkTx (Tx (Right _) _ _ _ 0 0 (0, 0))    = False
+canShrinkTx (Tx (Left (_,l)) _ _ _ 0 0 (0, 0)) = any canShrinkAbiValue l
 canShrinkTx _                                = True
 
 -- | Given a 'Transaction', generate a random \"smaller\" 'Transaction', preserving origin,
 -- destination, value, and call signature.
 shrinkTx :: MonadRandom m => Tx -> m Tx
-shrinkTx (Tx c s d g (C _ v) (C _ t, C _ b)) = let
+shrinkTx (Tx c s d g gp (C _ v) (C _ t, C _ b)) = let
   c' = either (fmap Left . shrinkAbiCall) (fmap Right . pure) c
   lower x = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral x) in
-    liftM5 Tx c' (pure s) (pure d) (pure g) (lower v) <*> fmap level (liftM2 (,) (lower t) (lower b))
+    liftM5 Tx c' (pure s) (pure d) (pure g) (lower gp) <*> lower v <*> fmap level (liftM2 (,) (lower t) (lower b))
 
 -- | Given a 'Set' of 'Transaction's, generate a similar 'Transaction' at random.
 spliceTxs :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m) => Set Tx -> m Tx
-spliceTxs ts = let l = S.toList ts; (cs, ss) = unzip $ (\(Tx c s _ _ _ _) -> (c,s)) <$> l in
+spliceTxs ts = let l = S.toList ts; (cs, ss) = unzip $ (\(Tx c s _ _ _ _ _) -> (c,s)) <$> l in
   view (hasLens . txGas) >>= \g ->
     genTxWith (const . rElem "sender list" $ ss) (rElem "recipient list")
-              (\_ _ -> mutateAbiCall =<< rElem "past calls" (lefts cs)) (pure g)
-              (\ _ _ (n,_) -> let valOf (Tx c _ _ _ v _) = if elem n $ c ^? _Left . _1 then v else 0
+              (\_ _ -> mutateAbiCall =<< rElem "past calls" (lefts cs)) (pure g) (pure 0)
+              (\ _ _ (n,_) -> let valOf (Tx c _ _ _ _ v _) = if elem n $ c ^? _Left . _1 then v else 0
                               in rElem "values" $ valOf <$> l)
               (pure (0, 0))
 
@@ -147,9 +153,9 @@ liftSH = S.state . runState . zoom hasLens
 -- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
 -- 'Transaction's \"on-chain\".
 setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
-setupTx (Tx c s r g v (t, b)) = liftSH . sequence_ $
+setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty, state . gas .= g
-  , tx . origin .= s, state . caller .= s, state . callvalue .= v
+  , tx . gasprice .= gp, tx . origin .= s, state . caller .= s, state . callvalue .= v
   , block . timestamp += t, block . number += b, setup] where
     setup = case c of
       Left cd  -> loadContract r >> state . calldata .= encode cd

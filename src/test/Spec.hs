@@ -218,6 +218,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_timepassed passed",              solved      "echidna_timepassed") ]
   , testContract "basic/construct.sol"    Nothing
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
+  , testContract "basic/gasprice.sol"     Nothing
+      [ ("echidna_state passed",                   solved      "echidna_state") ]
   , testContract "abiv2/Ballot.sol"       Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Dynamic.sol"      Nothing
