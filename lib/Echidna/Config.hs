@@ -77,6 +77,8 @@ instance FromJSON EConfig where
                           <*> v .:? "shrinkLimit" .!= 5000
                           <*> cov
                           <*> v .:? "seed"
+                          <*> v .:? "dictFreq"    .!= 0.15
+
         names :: Names
         names Sender = (" from: " ++) . show
         names _      = const ""
