@@ -138,7 +138,7 @@ shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
     , set gasprice' <$> lower gp
     , set delay     <$> fmap level (liftM2 (,) (lower t) (lower b))
     ]
-  in (sequence possibilities >>= uniform) <*> pure tx'
+  in join (uniform possibilities) <*> pure tx'
 
 -- | Lift an action in the context of a component of some 'MonadState' to an action in the
 -- 'MonadState' itself.
