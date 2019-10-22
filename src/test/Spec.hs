@@ -2,15 +2,10 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
-import Hedgehog (MonadGen, withTests, Size(unSize), property, (===), forAll)
-import Hedgehog.Gen (choice, sized, integral, list)
-import Hedgehog.Range (constant, constantBounded)
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.Hedgehog (testProperty)
 
-import Echidna.ABI (SolCall, mkGenDict, genAbiValue)
-import Echidna.ABIv2 (AbiType(..), AbiValue(..), getAbi, putAbi, abiValueType)
+import Echidna.ABI (SolCall, mkGenDict)
 import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests)
 import Echidna.Config (EConfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
@@ -19,22 +14,17 @@ import Echidna.Transaction (Tx, call)
 import Control.Lens
 import Control.Monad (liftM2, void)
 import Control.Monad.Catch (MonadCatch(..))
-import Control.Monad.Random (getRandom, evalRand, mkStdGen)
+import Control.Monad.Random (getRandom)
 import Control.Monad.Reader (runReaderT)
-import Data.Binary.Get (runGetOrFail)
-import Data.Binary.Put (runPut)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
 import Data.List (find)
+import EVM.ABI (AbiValue(..))
 import System.Directory (withCurrentDirectory)
-
-import qualified Data.ByteString.Lazy as BSLazy
-import qualified Data.Vector          as V
 
 main :: IO ()
 main = withCurrentDirectory "./examples/solidity" . defaultMain $
          testGroup "Echidna" [ configTests
-                             , encodingTests
                              , compilationTests
                              , seedTests
                              , integrationTests
@@ -98,43 +88,6 @@ extractionTests = testGroup "Constant extraction/generation testing"
             ] $ \(t, c) -> liftIO . assertBool ("failed to extract " ++ t ++ " " ++ show (c,is)) $ elem c is
   ]
 -}
-
-abitype :: MonadGen m => m AbiType
-abitype = sized type'
-  where type' n =
-          case n of
-               0 -> pure $ AbiUIntType 256
-               _ -> let range = constant 1 (unSize n) in choice
-                 [ pure $ AbiUIntType 256
-                 , pure $ AbiIntType  256
-                 , pure AbiAddressType
-                 , pure AbiBoolType
-                 , AbiBytesType <$> integral range
-                 , pure AbiStringType
-                 , AbiArrayDynamicType <$> type' (n `div` 2)
-                 , AbiArrayType <$> integral range <*> type' (n `div` 2)
-                 , AbiTupleType . V.fromList <$> list range (type' (n `div` 2))
-                 ]
-
-encodingTests :: TestTree
-encodingTests =
-  testGroup "ABI encoding"
-    -- the Arbitrary instance can produce somewhat large test cases which take a
-    -- very long time to verify, so we only try a small number of test cases
-    -- you can try generating your own test cases with
-    -- > replicateM n (sample abitype) >>= \ts -> sequence $ genAbiValue <$> ts
-    -- if we can improve the Arbitrary instance for AbiType then we can use the
-    -- default of 100.
-    [ testProperty "decode . encode = id" $ withTests 32 $ property $ do
-        t <- forAll abitype
-        g <- forAll $ integral constantBounded
-        let v = evalRand (genAbiValue t) (mkStdGen g)
-        get (abiValueType v) (put v) === Just v
-    ]
-  where get :: AbiType -> BSLazy.ByteString -> Maybe AbiValue
-        get = (preview (_Right . _3) .) . runGetOrFail . getAbi
-        put :: AbiValue -> BSLazy.ByteString
-        put = runPut . putAbi
 
 seedTests :: TestTree
 seedTests =
