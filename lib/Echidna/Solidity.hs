@@ -30,13 +30,14 @@ import System.Process             (StdStream(..), readCreateProcess, proc, std_e
 import System.IO                  (openFile, IOMode(..))
 
 import Echidna.ABI         (SolSignature)
-import Echidna.ABIv2
 import Echidna.Exec        (execTx)
 import Echidna.Transaction (Tx(..), World(..))
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
+import EVM.ABI
 import EVM.Exec     (vmForEthrunCreation)
+import EVM.Solidity
 import EVM.Types    (Addr)
 import EVM.Concrete (w256)
 
