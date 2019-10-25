@@ -17,15 +17,17 @@ import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
-import Data.Aeson (ToJSON(..), object)
+import Data.Aeson (ToJSON(..), object, encode, encodeFile)
 import Data.ByteString (ByteString)
 import Data.Either (either)
 import Data.Has (Has(..))
+import Data.Hashable (hash)
 import Data.List (intercalate)
 import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
+import System.Directory (createDirectoryIfMissing, doesFileExist)
 
 import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.List.NonEmpty as NE
@@ -76,6 +78,16 @@ instance ToJSON Tx where
                                         , ("time delay",  toJSON $ show t)
                                         , ("block delay", toJSON $ show b)
                                         ]
+
+
+saveCorpus :: Maybe FilePath -> [[Tx]] -> IO ()
+saveCorpus Nothing  _    = return ()
+saveCorpus (Just d) txss = do createDirectoryIfMissing True d 
+                              mapM_ (\txs -> 
+                                do let fn = d ++ "/" ++ ((show . hash . encode . toJSON) txs) ++ ".json"
+                                   b <- doesFileExist fn
+                                   if (not b) then encodeFile fn txs else return ()
+                                    ) txss
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating delays, since block number
 -- only goes up with timestamp

@@ -14,6 +14,7 @@ import Echidna.Config
 import Echidna.Solidity
 import Echidna.Campaign
 import Echidna.UI
+import Echidna.Transaction
 
 import qualified Data.List.NonEmpty as NE
 
@@ -50,4 +51,5 @@ main = do Options f c conf <- execParser opts
             ads      <- addresses
             (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
             ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg) (extractConstants cs ++ NE.toList ads) [] g (returnTypes cs))
+          saveCorpus (corpusDir $ view cConf cfg) (view corpus cpg)
           if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess

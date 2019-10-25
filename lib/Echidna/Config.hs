@@ -79,6 +79,7 @@ instance FromJSON EConfig where
                           <*> cov
                           <*> v .:? "seed"
                           <*> v .:? "dictFreq"    .!= 0.15
+                          <*> v .:? "corpusDir"
 
         names :: Names
         names Sender = (" from: " ++) . show

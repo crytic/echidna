@@ -61,6 +61,7 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- Echidna won't collect coverage information (and will go faster)
                                  , seed          :: Maybe Int
                                  , dictFreq      :: Float
+                                 , corpusDir     :: Maybe FilePath
                                  }
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
@@ -95,10 +96,14 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                            -- ^ Generation dictionary
                          , _initialized :: Bool
                            -- ^ Has the campaign started
+                         , _newCoverage :: Bool
+                           -- ^ New coverage was discovered in the previous iteration
+                         , _corpus :: [[Tx]]
+                           -- ^ Corpus of list of transactions
                          }
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
+  toJSON (Campaign ts co _ _ _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
     : if co == mempty then [] else [("coverage",) . toJSON . mapKeys (`showHex` "") $ toList <$> co] where
       format (Right _,      Open _) = Nothing
       format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
@@ -110,19 +115,19 @@ instance Has GenDict Campaign where
   hasLens = genDict
 
 defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty defaultDict False
+defaultCampaign = Campaign mempty mempty defaultDict False False mempty
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
 isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
-isDone (Campaign _ _ _ False) = pure False
-isDone (Campaign ts _ _ _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
+isDone (Campaign _ _ _ False _ _) = pure False
+isDone (Campaign ts _ _ _ _ _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
   all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
 isSuccess :: Campaign -> Bool
-isSuccess (Campaign ts _ _ _) =
+isSuccess (Campaign ts _ _ _ _ _) =
   all (\case { Passed -> True; Open _ -> True; _ -> False; }) $ snd <$> ts
 
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
@@ -171,6 +176,7 @@ execTxOptC t = do
   hasLens . coverage %= unionWith union og
   grew <- (== LT) . comparing coveragePoints og <$> use (hasLens . coverage)
   when grew $ hasLens . genDict %= gaddCalls (lefts [t ^. call])
+  when grew $ hasLens . newCoverage .= True
   return res
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
@@ -179,6 +185,8 @@ callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Campaign y, Has GenDict y)
         => VM -> World -> Int -> m ()
 callseq v w ql = do
+  -- Reset the new coverage flag
+  hasLens . newCoverage .= False
   -- First, we figure out whether we need to execute with or without coverage optimization, and pick
   -- our execution function appropriately
   coverageEnabled <- isJust . knownCoverage <$> view hasLens
@@ -188,9 +196,13 @@ callseq v w ql = do
   -- Then, we generate the actual transaction in the sequence
   is <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
-  (res, s) <- runStateT (evalSeq v ef is) (v, ca)
+  (res, (_, ca')) <- runStateT (evalSeq v ef is) (v, ca)
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
-  hasLens .= snd s
+  hasLens .= ca'
+
+  -- When there is new coverage, save the complete list of transactions in the corpus
+  let rtxs = map fst (filter (\(_, vm) -> classifyRes vm /= ResRevert) res)
+  when (ca' ^. newCoverage) $ hasLens . corpus %= (rtxs:)
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   modifying (hasLens . constants) . H.unionWith (++) . parse res =<< use (hasLens . rTypes) where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
@@ -213,10 +225,10 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
 campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d' True) where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d' True False []) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl q sl _ _ _) ->
+    update c    = view hasLens >>= \(CampaignConf tl q sl _ _ _ _) ->
       if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c -> step
          | otherwise                                     -> lift u

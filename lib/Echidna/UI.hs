@@ -82,15 +82,15 @@ ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Test
 ppTS (Failed e)  = pure $ "could not evaluate ☣\n  " ++ show e
 ppTS (Solved l)  = ppFail Nothing l
 ppTS Passed      = pure "passed! 🎉"
-ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _ _) ->
+ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _ _ _) ->
                      if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
 ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m) 
                                                                               else Nothing) l
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppTests (Campaign _ _ _ False) = pure "starting up, please wait  "
-ppTests (Campaign ts _ _ _) = unlines . catMaybes <$> mapM pp ts where
+ppTests (Campaign _ _ _ False _ _) = pure "starting up, please wait  "
+ppTests (Campaign ts _ _ _ _ _) = unlines . catMaybes <$> mapM pp ts where
   pp (Left  (n, _), s)      = Just .                    ((T.unpack n ++ ": ") ++) <$> ppTS s
   pp (Right _,      Open _) = pure Nothing
   pp (Right (n, _), s)      = Just . (("assertion in " ++ T.unpack n ++ ": ") ++) <$> ppTS s
@@ -147,7 +147,7 @@ ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id 
   c <- if s then do bc <- liftIO $ newBChan 100
                     t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts d >> pure ()
                     a <- monitor (killThread t)
-                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty d' False)
+                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty d' False False mempty)
             else campaign (pure ()) v w ts d
   liftIO . putStrLn =<< view (hasLens . finished) <*> pure c <*> pure g'
   return c
