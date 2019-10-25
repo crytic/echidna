@@ -23,6 +23,7 @@ import EVM.Concrete (Word(..), Whiff(..))
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Data.ByteString as BS
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
 import Echidna.Campaign
@@ -96,7 +97,7 @@ instance FromJSON EConfig where
             <*> pure names
             <*> (SolConf <$> v .:? "contractAddr"   .!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                          <*> v .:? "deployer"       .!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                         <*> v .:? "sender"         .!= [0x10000, 0x20000, 0x00a329c0648769a73afac7f9381e08fb43dbea70]
+                         <*> v .:? "sender"         .!= NE.fromList [0x10000, 0x20000, 0x00a329c0648769a73afac7f9381e08fb43dbea70]
                          <*> v .:? "balanceAddr"    .!= 0xffffffff
                          <*> v .:? "balanceContract".!= 0
                          <*> v .:? "prefix"         .!= "echidna_"
