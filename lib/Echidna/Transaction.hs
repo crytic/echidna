@@ -14,22 +14,21 @@ import Prelude hiding (Word)
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, liftM5)
 import Control.Monad.Catch (MonadThrow)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
 import Data.Aeson (ToJSON(..), object)
 import Data.ByteString (ByteString)
-import Data.Either (either, lefts)
+import Data.Either (either)
 import Data.Has (Has(..))
 import Data.List (intercalate)
-import Data.Set (Set)
-import EVM
+import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
 
 import qualified Control.Monad.State.Strict as S (state)
-import qualified Data.Set as S
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
@@ -85,19 +84,19 @@ level (elemOf each 0 -> True) = (0,0)
 level x                       = x
 
 -- | A contract is just an address with an ABI (for our purposes).
-type ContractA = (Addr, [SolSignature])
+type ContractA = (Addr, NE.NonEmpty SolSignature)
 
 -- | The world is made our of humans with an address, and contracts with an address + ABI.
-data World = World { _senders   :: [Addr]
-                   , _receivers :: [ContractA]
+data World = World { _senders   :: NE.NonEmpty Addr
+                   , _receivers :: NE.NonEmpty ContractA
                    }
 makeLenses ''World
 
 -- | Given generators for an origin, destination, value, and function call, generate a call
 -- transaction. Note: This doesn't generate @CREATE@s because I don't know how to do that at random.
-genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m) 
-          => ([Addr] -> m Addr)                       -- ^ Sender generator
-          -> ([ContractA] -> m ContractA)             -- ^ Receiver generator
+genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m)
+          => (NE.NonEmpty Addr -> m Addr)             -- ^ Sender generator
+          -> (NE.NonEmpty ContractA -> m ContractA)   -- ^ Receiver generator
           -> (Addr -> ContractA -> m SolCall)         -- ^ Call generator
           -> m Word                                   -- ^ Gas generator
           -> m Word                                   -- ^ Gas price generator
@@ -115,7 +114,7 @@ genTx = use (hasLens :: Lens' y World) >>= evalStateT genTxM . (defaultDict,)
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
 genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has GenDict y, Has World y, MonadThrow m) => m Tx
 genTxM = view hasLens >>= \(TxConf _ g maxGp t b) -> genTxWith
-  (rElem "sender list") (rElem "recipient list")                             -- src and dst
+  rElem rElem                                                                -- src and dst
   (const $ genInteractionsM . snd)                                           -- call itself
   (pure g) (inRange maxGp) (\_ _ _ -> pure 0)                                -- gas, gasprice, value
   (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
@@ -130,20 +129,16 @@ canShrinkTx _                                = True
 -- | Given a 'Transaction', generate a random \"smaller\" 'Transaction', preserving origin,
 -- destination, value, and call signature.
 shrinkTx :: MonadRandom m => Tx -> m Tx
-shrinkTx (Tx c s d g gp (C _ v) (C _ t, C _ b)) = let
+shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
   c' = either (fmap Left . shrinkAbiCall) (fmap Right . pure) c
-  lower x = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral x) in
-    liftM5 Tx c' (pure s) (pure d) (pure g) (lower gp) <*> lower v <*> fmap level (liftM2 (,) (lower t) (lower b))
-
--- | Given a 'Set' of 'Transaction's, generate a similar 'Transaction' at random.
-spliceTxs :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m) => Set Tx -> m Tx
-spliceTxs ts = let l = S.toList ts; (cs, ss) = unzip $ (\(Tx c s _ _ _ _ _) -> (c,s)) <$> l in
-  view (hasLens . txGas) >>= \g ->
-    genTxWith (const . rElem "sender list" $ ss) (rElem "recipient list")
-              (\_ _ -> mutateAbiCall =<< rElem "past calls" (lefts cs)) (pure g) (pure 0)
-              (\ _ _ (n,_) -> let valOf (Tx c _ _ _ _ v _) = if elem n $ c ^? _Left . _1 then v else 0
-                              in rElem "values" $ valOf <$> l)
-              (pure (0, 0))
+  lower x = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral x)
+  possibilities =
+    [ set call      <$> c'
+    , set value     <$> lower v
+    , set gasprice' <$> lower gp
+    , set delay     <$> fmap level (liftM2 (,) (lower t) (lower b))
+    ]
+  in join (uniform possibilities) <*> pure tx'
 
 -- | Lift an action in the context of a component of some 'MonadState' to an action in the
 -- 'MonadState' itself.
