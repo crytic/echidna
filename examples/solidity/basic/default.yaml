@@ -38,3 +38,5 @@ maxTimeDelay: 604800
 #maximum time between generated txs; default is one week
 maxBlockDelay: 60480
 #maximum number of blocks elapsed between generated txs; default is expected increment in one week
+# timeout:
+#campaign timeout (in seconds)
