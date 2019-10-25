@@ -12,7 +12,7 @@ module Echidna.Transaction where
 import Prelude hiding (Word)
 
 import Control.Lens
-import Control.Monad (join, liftM2, liftM3, liftM5)
+import Control.Monad (join, liftM2, liftM3, liftM5, unless)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
@@ -84,9 +84,9 @@ saveCorpus :: Maybe FilePath -> [[Tx]] -> IO ()
 saveCorpus Nothing  _    = return ()
 saveCorpus (Just d) txss = do createDirectoryIfMissing True d 
                               mapM_ (\txs -> 
-                                do let fn = d ++ "/" ++ ((show . hash . encode . toJSON) txs) ++ ".json"
+                                do let fn = d ++ "/" ++ (show . hash . encode . toJSON) txs ++ ".json"
                                    b <- doesFileExist fn
-                                   if (not b) then encodeFile fn txs else return ()
+                                   unless b (encodeFile fn txs)
                                     ) txss
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating delays, since block number
@@ -165,7 +165,7 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   , tx . gasprice .= gp, tx . origin .= s, state . caller .= s, state . callvalue .= v
   , block . timestamp += t, block . number += b, setup] where
     setup = case c of
-      Left cd  -> loadContract r >> state . calldata .= encode cd
+      Left cd  -> loadContract r >> state . calldata .= encodeCalldata cd
       Right bc -> assign (env . contracts . at r) (Just $ initialContract (RuntimeCode bc) & set balance v) >> loadContract r
-    encode (n, vs) = abiCalldata
+    encodeCalldata (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
