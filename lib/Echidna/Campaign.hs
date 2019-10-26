@@ -119,7 +119,7 @@ defaultCampaign = Campaign mempty mempty defaultDict False False mempty
 
 -- | Given a 'Campaign', return the progress of it
 getProgress :: Campaign -> Int
-getProgress (Campaign ts _ _ _ _ _) = foldr1 max $ map ((\case Open i -> i; _ -> 0) . snd) ts 
+getProgress (Campaign ts _ _ _ _ _) = maximum $ map ((\case Open i -> i; _ -> 0) . snd) ts 
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
@@ -197,7 +197,7 @@ callseq v w ql tl = do
   let ef = if coverageEnabled then execTxOptC else execTx
   -- Then, we get the current campaign state
   ca <- use hasLens
-  let ql' = max 1 $ ((getProgress ca) * ql) `div` tl
+  let ql' = max 1 $ getProgress ca * ql `div` tl
   -- Then, we generate the actual transaction in the sequence
   is <- replicateM ql' (evalStateT genTxM (w, ca ^. genDict))
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
