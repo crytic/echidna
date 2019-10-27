@@ -197,7 +197,7 @@ callseq v w ql tl = do
   let ef = if coverageEnabled then execTxOptC else execTx
   -- Then, we get the current campaign state
   ca <- use hasLens
-  let ql' = max 1 $ getProgress ca * ql `div` tl
+  let ql' = sizeOverTime (getProgress ca) tl ql 
   -- Then, we generate the actual transaction in the sequence
   is <- replicateM ql' (evalStateT genTxM (w, ca ^. genDict))
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
@@ -215,6 +215,9 @@ callseq v w ql tl = do
       (Just ty, VMSuccess b) -> (ty, ) . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
       _                      -> Nothing
 
+
+sizeOverTime :: Int -> Int -> Int -> Int
+sizeOverTime p tl ql = if p >= (tl `div` 5) then ql else max 1 $ p * ql `div` (tl `div` 5)
 
 collectCorpus :: (MonadState s m, Has Campaign s) => [(Tx, VMResult)] -> m ()
 collectCorpus res = let rtxs = map fst (filter (\(_, vm) -> classifyRes vm /= ResRevert) res)
