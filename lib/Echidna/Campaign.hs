@@ -217,7 +217,7 @@ callseq v w ql tl = do
 
 
 sizeOverTime :: Int -> Int -> Int -> Int
-sizeOverTime p tl ql = if p >= (tl `div` 5) then ql else max 1 $ p * ql `div` (tl `div` 5)
+sizeOverTime p tl ql = if p >= (tl `div` 10) then ql else max 1 $ p * ql `div` (tl `div` 10)
 
 collectCorpus :: (MonadState s m, Has Campaign s) => [(Tx, VMResult)] -> m ()
 collectCorpus res = let rtxs = map fst (filter (\(_, vm) -> classifyRes vm /= ResRevert) res)
