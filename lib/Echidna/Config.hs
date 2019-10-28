@@ -108,7 +108,7 @@ instance FromJSON EConfig where
                          <*> v .:? "checkAsserts"   .!= False)
             <*> tc
             <*> xc
-            <*> (UIConf <$> v .:? "dashboard" .!= True <*> style)
+            <*> (UIConf <$> v .:? "dashboard" .!= True <*> v .:? "timeout" <*> style)
   parseJSON _ = parseJSON (Object mempty)
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
