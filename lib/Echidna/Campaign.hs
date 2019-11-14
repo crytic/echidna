@@ -51,6 +51,8 @@ instance MonadCatch m => MonadCatch (RandT g m) where
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- ^ Maximum number of function calls to execute while fuzzing
+                                 , stopOnFail    :: Bool
+                                   -- ^ Whether to stop the campaign immediately if any property fails
                                  , seqLen        :: Int
                                    -- ^ Number of calls between state resets (e.g. \"every 10 calls,
                                    -- reset the state to avoid unrecoverable states/save memory\"
@@ -114,7 +116,8 @@ defaultCampaign = Campaign mempty mempty defaultDict
 -- the limits defined in our 'CampaignConf'.
 isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
 isDone (view tests -> ts) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
-  all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts
+  (stopOnFail && all (\case Open -> False; Large i _ -> True; _ -> True) $ snd <$> ts) ||
+  (all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts)
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
