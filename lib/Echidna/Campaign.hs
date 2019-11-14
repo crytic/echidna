@@ -115,8 +115,8 @@ defaultCampaign = Campaign mempty mempty defaultDict
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
 isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
-isDone (view tests -> ts) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
-  (stopOnFail && (any (\case Solved _ -> True; Failed _ -> True; _ -> False) $ snd <$> ts)) ||
+isDone (view tests -> ts) = view (hasLens . to (liftM2 (,) testLimit stopOnFail shrinkLimit)) <&> \(tl, sof, sl) ->
+  (sof && (any (\case Solved _ -> True; Failed _ -> True; _ -> False) $ snd <$> ts)) ||
   (all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts)
 
 -- | Given a 'Campaign', check if the test results should be reported as a
@@ -216,7 +216,7 @@ campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty
   execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d') where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl q sl _ _ _) ->
+    update c    = view hasLens >>= \(CampaignConf tl _ q sl _ _ _) ->
       if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c -> step
          | otherwise                                     -> lift u
