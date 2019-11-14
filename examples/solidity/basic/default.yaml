@@ -32,7 +32,7 @@ solcArgs: ""
 #solcLibs is solc libraries
 solcLibs: []
 #quiet produces (much) less verbose output
-quiet: False
+quiet: false
 #dashboard determines if output is just text or an AFL-like display
 dashboard: true
 #seed not defined by default, is the random seed
