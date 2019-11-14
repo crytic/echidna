@@ -116,7 +116,7 @@ defaultCampaign = Campaign mempty mempty defaultDict
 -- the limits defined in our 'CampaignConf'.
 isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
 isDone (view tests -> ts) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
-  (stopOnFail && (any (\case Open -> False; Large i _ -> True; _ -> True) $ snd <$> ts)) ||
+  (stopOnFail && (any (\case Solved _ -> True; Failed _ -> True; _ -> False) $ snd <$> ts)) ||
   (all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts)
 
 -- | Given a 'Campaign', check if the test results should be reported as a
