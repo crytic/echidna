@@ -121,7 +121,7 @@ isDone (view tests -> ts) = view (hasLens . to (liftM3 (,,) testLimit shrinkLimi
                             res (Large i _) = if i >= sl then Just False else Nothing
                             res (Solved _)  = Just False
                             res (Failed _)  = Just False
-                            in res . snd <$> ts & if sof then any (== Just False) else all isJust
+                            in res . snd <$> ts & if sof then elem $ Just False else all isJust
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
