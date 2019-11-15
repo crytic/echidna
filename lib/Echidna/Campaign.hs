@@ -12,7 +12,7 @@
 module Echidna.Campaign where
 
 import Control.Lens
-import Control.Monad (liftM2, replicateM, when)
+import Control.Monad (liftM3, replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader.Class (MonadReader)
@@ -51,6 +51,8 @@ instance MonadCatch m => MonadCatch (RandT g m) where
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- ^ Maximum number of function calls to execute while fuzzing
+                                 , stopOnFail    :: Bool
+                                   -- ^ Whether to stop the campaign immediately if any property fails
                                  , seqLen        :: Int
                                    -- ^ Number of calls between state resets (e.g. \"every 10 calls,
                                    -- reset the state to avoid unrecoverable states/save memory\"
@@ -113,8 +115,13 @@ defaultCampaign = Campaign mempty mempty defaultDict
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
 isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
-isDone (view tests -> ts) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
-  all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts
+isDone (view tests -> ts) = view (hasLens . to (liftM3 (,,) testLimit shrinkLimit stopOnFail))
+  <&> \(tl, sl, sof) -> let res (Open  i)   = if i >= tl then Just True else Nothing
+                            res Passed      = Just True
+                            res (Large i _) = if i >= sl then Just False else Nothing
+                            res (Solved _)  = Just False
+                            res (Failed _)  = Just False
+                            in res . snd <$> ts & if sof then elem $ Just False else all isJust
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
@@ -213,7 +220,8 @@ campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty
   execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d') where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl q sl _ _ _) ->
-      if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
-         | any (\case Large n _ -> n < sl; _ -> False) c -> step
-         | otherwise                                     -> lift u
+    update c    = view hasLens >>= \(CampaignConf tl sof q sl _ _ _) ->
+      if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
+         | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
+         | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
+         | otherwise                                                           -> lift u
