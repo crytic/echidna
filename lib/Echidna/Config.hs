@@ -74,6 +74,7 @@ instance FromJSON EConfig where
         cov = v .:? "coverage" <&> \case Just True -> Just mempty
                                          _         -> Nothing
         cc = CampaignConf <$> v .:? "testLimit"   .!= 50000
+                          <*> v .:? "stopOnFail"  .!= False
                           <*> v .:? "seqLen"      .!= 100
                           <*> v .:? "shrinkLimit" .!= 5000
                           <*> cov
