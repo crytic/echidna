@@ -1,6 +1,5 @@
 pragma solidity 0.4.24;
 
-
 library AddressArrayUtils {
 
   /**
@@ -297,9 +296,9 @@ library AddressArrayUtils {
    * @return Returns true if duplicate, false otherwise
    */
   function hasDuplicate(address[] memory A) internal pure returns (bool) {
-    if (A.length == 0) {
-      return false;
-    }
+    //if (A.length == 0) {
+    //  return false;
+    //}
     for (uint256 i = 0; i < A.length - 1; i++) {
       for (uint256 j = i + 1; j < A.length; j++) {
         if (A[i] == A[j]) {
