@@ -357,6 +357,16 @@ contract TEST {
     return true;
   }
 
+  function echidna_revert_remove() public view returns (bool) {
+    if (!everSet) {
+      revert();
+    }
+    if (AddressArrayUtils.contains(addrs1, a)) {
+      revert();
+    }
+    AddressArrayUtils.remove(addrs1, a);
+  }
+
   function echidna_pop() public view returns (bool) {
     if (!everSet) {
       return true;
@@ -437,6 +447,16 @@ contract TEST {
     return true;
   }
 
+  function echidna_revert_sRemoveCheap() public returns (bool) {
+    if (!everSet) {
+      revert();
+    }
+    if (AddressArrayUtils.contains(addrs1, a)) {
+      revert();
+    }
+    AddressArrayUtils.sRemoveCheap(addrs1, a);
+  }
+
   function echidna_sPop() public returns (bool) {
     if (!everSet) {
       return true;
@@ -478,7 +498,15 @@ contract TEST {
       }
     }
     return true;
-  }  
+  }
+
+  function echidna_revert_sPop() public returns (bool) {
+    if (!everSet) {
+      revert();
+    }
+    uint256 index = addrs1.length;
+    AddressArrayUtils.sPop(addrs1, index);
+  }
 
   function echidna_sPopCheap() public returns (bool) {
     if (!everSet) {
@@ -523,6 +551,14 @@ contract TEST {
     return true;
   }
 
+  function echidna_revert_sPopCheap() public returns (bool) {
+    if (!everSet) {
+      revert();
+    }
+    uint256 index = addrs1.length;
+    AddressArrayUtils.sPopCheap(addrs1, index);
+  }
+  
   function echidna_argGet() public view returns (bool) {
     if (!everSet) {
       return true;
