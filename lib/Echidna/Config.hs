@@ -48,8 +48,9 @@ data EConfig = EConfig { _cConf :: CampaignConf
                        }
 makeLenses ''EConfig
 
-data EConfigWithUsage = EConfigWithUsage { _econfig :: EConfig
-                                         , _badkeys :: HashSet Text
+data EConfigWithUsage = EConfigWithUsage { _econfig   :: EConfig
+                                         , _badkeys   :: HashSet Text
+                                         , _unsetkeys :: HashSet Text
                                          }
 makeLenses ''EConfigWithUsage
 
@@ -83,7 +84,8 @@ instance FromJSON EConfigWithUsage where
                   Object v -> v
                   _        -> mempty
     (c, ks) <- runStateT (parser v') $ fromList []
-    return $ EConfigWithUsage c (fromList (keys v') `difference` ks)
+    let found = fromList (keys v')
+    return $ EConfigWithUsage c (found `difference` ks) (ks `difference` found)
     where parser v =
             let useKey k = hasLens %= insert k
                 x ..:? k = useKey k >> lift (x .:? k)

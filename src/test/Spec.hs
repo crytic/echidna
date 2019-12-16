@@ -43,8 +43,9 @@ configTests = testGroup "Configuration tests" $
   , testCase "coverage disabled by default" $
       assertCoverage defaultConfig Nothing
   , testCase "defaults.yaml" $ do
-      EConfigWithUsage _ k <- parseConfig "basic/default.yaml"
-      assertBool "unused options" $ null k
+      EConfigWithUsage _ bad unset <- parseConfig "basic/default.yaml"
+      assertBool ("unused options: " ++ show bad) $ null bad
+      assertBool ("unset options: " ++ show unset) $ null unset
   ]
   where files = ["basic/config.yaml", "basic/default.yaml"]
         assertCoverage config value = do
