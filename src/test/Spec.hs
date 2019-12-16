@@ -22,6 +22,7 @@ import Data.List (find)
 import EVM.ABI (AbiValue(..))
 import System.Directory (withCurrentDirectory)
 
+import qualified Data.HashSet         as HS
 import qualified Data.List.NonEmpty   as NE
 
 main :: IO ()
@@ -45,7 +46,8 @@ configTests = testGroup "Configuration tests" $
   , testCase "defaults.yaml" $ do
       EConfigWithUsage _ bad unset <- parseConfig "basic/default.yaml"
       assertBool ("unused options: " ++ show bad) $ null bad
-      assertBool ("unset options: " ++ show unset) $ null unset
+      let unset' = unset `HS.difference` HS.fromList ["seed"]
+      assertBool ("unset options: " ++ show unset') $ null unset'
   ]
   where files = ["basic/config.yaml", "basic/default.yaml"]
         assertCoverage config value = do
