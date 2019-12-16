@@ -9,7 +9,7 @@
 module Echidna.Config where
 
 import Control.Lens
-import Control.Monad (liftM2, liftM4)
+import Control.Monad (liftM2, liftM5)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)
@@ -18,6 +18,7 @@ import Control.Monad.Trans (lift)
 import Data.ByteString.Lazy.Char8 (unpack)
 import Data.Aeson
 import Data.Aeson.Lens
+import Data.Functor ((<&>))
 import Data.Has (Has(..))
 import Data.HashMap.Strict (keys)
 import Data.HashSet (HashSet, fromList, insert, difference)
@@ -28,6 +29,7 @@ import EVM.Concrete (Word(..), Whiff(..))
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Data.ByteString as BS
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
 import Echidna.Campaign
@@ -46,10 +48,10 @@ data EConfig = EConfig { _cConf :: CampaignConf
                        }
 makeLenses ''EConfig
 
-data EConfig2 = EConfig2 { _econfig :: EConfig
-                         , _badkeys :: HashSet Text
-                         }
-makeLenses ''EConfig2
+data EConfigWithUsage = EConfigWithUsage { _econfig :: EConfig
+                                         , _badkeys :: HashSet Text
+                                         }
+makeLenses ''EConfigWithUsage
 
 instance Has CampaignConf EConfig where
   hasLens = cConf
@@ -72,13 +74,13 @@ instance Has UIConf EConfig where
 instance FromJSON EConfig where
   parseJSON = fmap _econfig . parseJSON
 
-instance FromJSON EConfig2 where
+instance FromJSON EConfigWithUsage where
   parseJSON o = do
     let v' = case o of
                   Object v -> v
                   _        -> mempty
     (c, ks) <- runStateT (parser v') $ fromList []
-    return $ EConfig2 c (fromList (keys v') `difference` ks)
+    return $ EConfigWithUsage c (fromList (keys v') `difference` ks)
     where parser v =
             let useKey k = hasLens %= insert k
                 x ..:? k = useKey k >> lift (x .:? k)
@@ -89,13 +91,18 @@ instance FromJSON EConfig2 where
                         return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result)
                                           (const psender)
                 getWord s d = C Dull . fromIntegral <$> v ..:? s ..!= (d :: Integer)
-                xc = liftM4 TxConf (getWord "propMaxGas" 8000030) (getWord "testMaxGas" 0xffffffff)
+                xc = liftM5 TxConf (getWord "propMaxGas" 8000030) (getWord "testMaxGas" 0xffffffff)
+                                   (getWord "maxGasprice" 100000000000)
                                    (getWord "maxTimeDelay" 604800)     (getWord "maxBlockDelay" 60480)
+                cov = v ..:? "coverage" <&> \case Just True -> Just mempty
+                                                  _         -> Nothing
                 cc = CampaignConf <$> v ..:? "testLimit"   ..!= 50000
+                                  <*> v ..:? "stopOnFail"  ..!= False
                                   <*> v ..:? "seqLen"      ..!= 100
                                   <*> v ..:? "shrinkLimit" ..!= 5000
-                                  <*> pure Nothing
+                                  <*> cov
                                   <*> v ..:? "seed"
+                                  <*> v ..:? "dictFreq"    ..!= 0.40
                 names :: Names
                 names Sender = (" from: " ++) . show
                 names _      = const ""
@@ -113,7 +120,7 @@ instance FromJSON EConfig2 where
                     <*> pure names
                     <*> (SolConf <$> v ..:? "contractAddr"    ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
                                  <*> v ..:? "deployer"        ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                                 <*> v ..:? "sender"          ..!= [0x10000, 0x20000, 0x00a329c0648769a73afac7f9381e08fb43dbea70]
+                                 <*> v ..:? "sender"          ..!= (0x10000 NE.:| [0x20000, 0x00a329c0648769a73afac7f9381e08fb43dbea70])
                                  <*> v ..:? "balanceAddr"     ..!= 0xffffffff
                                  <*> v ..:? "balanceContract" ..!= 0
                                  <*> v ..:? "prefix"          ..!= "echidna_"
@@ -124,14 +131,14 @@ instance FromJSON EConfig2 where
                                  <*> v ..:? "checkAsserts"    ..!= False)
                     <*> tc
                     <*> xc
-                    <*> (UIConf <$> v ..:? "dashboard" ..!= True <*> style)
+                    <*> (UIConf <$> v ..:? "dashboard" ..!= True <*> v ..:? "timeout" <*> style)
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
 defaultConfig :: EConfig
 defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEither' ""
 
 -- | Try to parse an Echidna config file, throw an error if we can't.
-parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> m EConfig2
+parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> m EConfigWithUsage
 parseConfig f = liftIO (BS.readFile f) >>= Y.decodeThrow
 
 -- | Run some action with the default configuration, useful in the REPL.

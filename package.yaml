@@ -37,6 +37,7 @@ dependencies:
   - unliftio
   - unliftio-core
   - vector               >= 0.11.0 && < 0.13
+  - vector-instances
   - vty
   - wl-pprint-annotated
   - unix
@@ -71,8 +72,6 @@ tests:
     source-dirs: src/test
     dependencies:
       - echidna
-      - hedgehog
       - tasty
-      - tasty-hedgehog
       - tasty-hunit
       - tasty-quickcheck
