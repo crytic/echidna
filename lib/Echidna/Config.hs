@@ -53,6 +53,9 @@ data EConfigWithUsage = EConfigWithUsage { _econfig :: EConfig
                                          }
 makeLenses ''EConfigWithUsage
 
+instance Has EConfig EConfigWithUsage where
+  hasLens = econfig
+
 instance Has CampaignConf EConfig where
   hasLens = cConf
 
