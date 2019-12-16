@@ -9,6 +9,8 @@ propMaxGas: 8000030
 testMaxGas: 0xffffffff
 #testLimit is the number of test sequences to run
 testLimit: 50000
+#stopOnFail makes echidna terminate as soon as any property fails and has been shrunk
+stopOnFail: false
 #seqLen defines how many transactions are in a test sequence
 seqLen: 100
 #shrinkLimit determines how much effort is spent shrinking failing sequences
@@ -28,9 +30,9 @@ balanceContract: 0
 #solcArgs allows special Args to solc
 solcArgs: ""
 #solcLibs is solc libraries
-solcLibs: ""
+solcLibs: []
 #quiet produces (much) less verbose output
-quiet: False
+quiet: false
 #dashboard determines if output is just text or an AFL-like display
 dashboard: true
 #seed not defined by default, is the random seed
@@ -38,3 +40,5 @@ maxTimeDelay: 604800
 #maximum time between generated txs; default is one week
 maxBlockDelay: 60480
 #maximum number of blocks elapsed between generated txs; default is expected increment in one week
+# timeout:
+#campaign timeout (in seconds)

@@ -1,38 +1,52 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
-import Hedgehog (MonadGen, withTests, Size(unSize), property, (===), forAll)
-import Hedgehog.Gen (choice, sized, integral, list)
-import Hedgehog.Range (constant, constantBounded)
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.Hedgehog (testProperty)
 
-import Echidna.ABI (SolCall, mkGenDict, genAbiValue)
-import Echidna.ABIv2 (AbiType(..), AbiValue(..), getAbi, putAbi, abiValueType)
+import Echidna.ABI (SolCall, mkGenDict)
 import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests)
 import Echidna.Config (EConfig, _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (Tx, call)
 
 import Control.Lens
-import Control.Monad (liftM2)
+import Control.Monad (liftM2, void)
 import Control.Monad.Catch (MonadCatch(..))
-import Control.Monad.Random (getRandom, evalRand, mkStdGen)
+import Control.Monad.Random (getRandom)
 import Control.Monad.Reader (runReaderT)
-import Data.Binary.Get (runGetOrFail)
-import Data.Binary.Put (runPut)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
 import Data.List (find)
+import EVM.ABI (AbiValue(..))
 import System.Directory (withCurrentDirectory)
 
-import qualified Data.ByteString.Lazy as BSLazy
-import qualified Data.Vector          as V
+import qualified Data.List.NonEmpty   as NE
 
 main :: IO ()
 main = withCurrentDirectory "./examples/solidity" . defaultMain $
-         testGroup "Echidna" [encodingTests, compilationTests, seedTests, integrationTests]
+         testGroup "Echidna" [ configTests
+                             , compilationTests
+                             , seedTests
+                             , integrationTests
+                             ]
+
+-- Configuration Tests
+
+configTests :: TestTree
+configTests = testGroup "Configuration tests" $
+  [ testCase file $ void $ parseConfig file | file <- files ] ++
+  [ testCase "parse \"coverage: true\"" $ do
+      config <- parseConfig "coverage/test.yaml"
+      assertCoverage config $ Just mempty
+  , testCase "coverage disabled by default" $
+      assertCoverage defaultConfig Nothing
+  ]
+  where files = ["basic/config.yaml", "basic/default.yaml"]
+        assertCoverage config value = do
+          let CampaignConf{knownCoverage} = view cConf config
+          knownCoverage @?= value
 
 -- Compilation Tests
 
@@ -50,6 +64,8 @@ compilationTests = testGroup "Compilation and loading tests"
                                               \case OnlyTests{}        -> True; _ -> False
   , loadFails "bad/testargs.sol"   Nothing    "failed to warn on test args found" $
                                               \case TestArgsFound{}    -> True; _ -> False
+  , loadFails "bad/consargs.sol"   Nothing    "failed to warn on cons args found" $
+                                              \case ConstructorArgs{}  -> True; _ -> False
   ]
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
@@ -75,43 +91,6 @@ extractionTests = testGroup "Constant extraction/generation testing"
   ]
 -}
 
-abitype :: MonadGen m => m AbiType
-abitype = sized type'
-  where type' n =
-          case n of
-               0 -> pure $ AbiUIntType 256
-               _ -> let range = constant 1 (unSize n) in choice
-                 [ pure $ AbiUIntType 256
-                 , pure $ AbiIntType  256
-                 , pure AbiAddressType
-                 , pure AbiBoolType
-                 , AbiBytesType <$> integral range
-                 , pure AbiStringType
-                 , AbiArrayDynamicType <$> type' (n `div` 2)
-                 , AbiArrayType <$> integral range <*> type' (n `div` 2)
-                 , AbiTupleType . V.fromList <$> list range (type' (n `div` 2))
-                 ]
-
-encodingTests :: TestTree
-encodingTests =
-  testGroup "ABI encoding"
-    -- the Arbitrary instance can produce somewhat large test cases which take a
-    -- very long time to verify, so we only try a small number of test cases
-    -- you can try generating your own test cases with
-    -- > replicateM n (sample abitype) >>= \ts -> sequence $ genAbiValue <$> ts
-    -- if we can improve the Arbitrary instance for AbiType then we can use the
-    -- default of 100.
-    [ testProperty "decode . encode = id" $ withTests 32 $ property $ do
-        t <- forAll abitype
-        g <- forAll $ integral constantBounded
-        let v = evalRand (genAbiValue t) (mkStdGen g)
-        get (abiValueType v) (put v) === Just v
-    ]
-  where get :: AbiType -> BSLazy.ByteString -> Maybe AbiValue
-        get = (preview (_Right . _3) .) . runGetOrFail . getAbi
-        put :: AbiValue -> BSLazy.ByteString
-        put = runPut . putAbi
-
 seedTests :: TestTree
 seedTests =
   testGroup "Seed reproducibility testing"
@@ -119,7 +98,7 @@ seedTests =
     , testCase "same seeds" $ assertBool "results differ" =<< same 0 0
     ]
     where cfg s = defaultConfig & sConf . quiet .~ True
-                                & cConf .~ CampaignConf 600 20 0 Nothing (Just s)
+                                & cConf .~ CampaignConf 600 False 20 0 Nothing (Just s) 0.15
           gen s = view tests <$> runContract "basic/flags.sol" (cfg s)
           same s t = liftM2 (==) (gen s) (gen t)
 
@@ -142,7 +121,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_revert_is_false didn't shrink to f(-1)",
          solvedWith ("f", [AbiInt 256 (-1)]) "echidna_fails_on_revert")
       ]
-  
+
   , testContract "basic/nearbyMining.sol" (Just "coverage/test.yaml")
       [ ("echidna_findNearby passed", solved "echidna_findNearby") ]
 
@@ -160,13 +139,13 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/contractAddr.sol" Nothing
       [ ("echidna_address failed",                 solved      "echidna_address") ]
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
-      [ ("echidna_address failed",                 passed      "echidna_address") ]      
+      [ ("echidna_address failed",                 passed      "echidna_address") ]
   , testContract "basic/constants.sol"    Nothing
       [ ("echidna_found failed",                   solved      "echidna_found") ]
   , testContract "basic/constants2.sol"   Nothing
       [ ("echidna_found32 failed",                 solved      "echidna_found32") ]
   , testContract "basic/constants3.sol"   Nothing
-      [ ("echidna_found_sender failed",            solved      "echidna_found_sender") ] 
+      [ ("echidna_found_sender failed",            solved      "echidna_found_sender") ]
   , testContract "basic/rconstants.sol"   Nothing
       [ ("echidna_found failed",                   solved      "echidna_found") ]
 -- single.sol is really slow and kind of unstable. it also messes up travis.
@@ -187,21 +166,25 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/darray.sol"       Nothing
       [ ("echidna_darray passed",                  solved      "echidna_darray")
       , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
-  , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml") 
+  , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml")
       [ ("echidna_runForever passed",              solved      "echidna_runForever") ]
-  , testContract "basic/assert.sol"       (Just "basic/assert.yaml") 
+  , testContract "basic/assert.sol"       (Just "basic/assert.yaml")
       [ ("echidna_set0 passed",                    solved      "ASSERTION set0")
       , ("echidna_set1 failed",                    passed      "ASSERTION set1") ]
   , testContract "basic/time.sol"         (Just "basic/time.yaml")
       [ ("echidna_timepassed passed",              solved      "echidna_timepassed") ]
   , testContract "basic/construct.sol"    Nothing
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
+  , testContract "basic/gasprice.sol"     Nothing
+      [ ("echidna_state passed",                   solved      "echidna_state") ]
   , testContract "abiv2/Ballot.sol"       Nothing
-      [ ("echidna_test failed",                    solved      "echidna_test") ]
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Dynamic.sol"      Nothing
-      [ ("echidna_test failed",                    solved      "echidna_test") ]
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Dynamic2.sol"     Nothing
-      [ ("echidna_test failed",                    solved      "echidna_test") ]
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
+  , testContract "abiv2/MultiTuple.sol"   Nothing
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
@@ -217,7 +200,7 @@ runContract fp c =
     (v,w,ts) <- loadSolTests fp Nothing
     cs  <- contracts fp
     ads <- addresses
-    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads) [] g (returnTypes cs))
+    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ NE.toList ads) [] g (returnTypes cs))
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
