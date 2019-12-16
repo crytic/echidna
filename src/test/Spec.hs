@@ -7,7 +7,7 @@ import Test.Tasty.HUnit
 
 import Echidna.ABI (SolCall, mkGenDict)
 import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests)
-import Echidna.Config (EConfig, _econfig, defaultConfig, parseConfig, sConf, cConf)
+import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (Tx, call)
 
@@ -38,10 +38,13 @@ configTests :: TestTree
 configTests = testGroup "Configuration tests" $
   [ testCase file $ void $ parseConfig file | file <- files ] ++
   [ testCase "parse \"coverage: true\"" $ do
-      config <- parseConfig "coverage/test.yaml"
+      config <- _econfig <$> parseConfig "coverage/test.yaml"
       assertCoverage config $ Just mempty
   , testCase "coverage disabled by default" $
       assertCoverage defaultConfig Nothing
+  , testCase "defaults.yaml" $ do
+      EConfigWithUsage _ k <- parseConfig "basic/default.yaml"
+      assertBool "unused options" $ null k
   ]
   where files = ["basic/config.yaml", "basic/default.yaml"]
         assertCoverage config value = do
