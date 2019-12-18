@@ -1,7 +1,7 @@
 module Main where
 
 import Control.Lens (view, (^.))
-import Control.Monad (when)
+import Control.Monad (unless)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
 import Data.Text (pack, unpack)
@@ -47,7 +47,7 @@ main :: IO ()
 main = do Options f c conf <- execParser opts
           g   <- getRandom
           EConfigWithUsage cfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig conf
-          when (not (cfg ^. sConf . quiet)) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
+          unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
           cpg <- flip runReaderT cfg $ do
             cs       <- contracts f
             ads      <- addresses
