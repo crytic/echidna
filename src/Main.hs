@@ -47,7 +47,7 @@ main :: IO ()
 main = do Options f c conf <- execParser opts
           g   <- getRandom
           EConfigWithUsage cfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig conf
-          when (cfg ^. sConf . quiet == False) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
+          when (not (cfg ^. sConf . quiet)) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
           cpg <- flip runReaderT cfg $ do
             cs       <- contracts f
             ads      <- addresses
