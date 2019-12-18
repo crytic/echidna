@@ -1,9 +1,9 @@
 module Main where
 
-import Control.Lens (view)
+import Control.Lens (view, (^.))
+import Control.Monad (when)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
-import Data.HashSet (fromList)
 import Data.Text (pack, unpack)
 import Data.Version (showVersion)
 import Options.Applicative
@@ -46,8 +46,8 @@ opts = info (helper <*> versionOption <*> options) $ fullDesc
 main :: IO ()
 main = do Options f c conf <- execParser opts
           g   <- getRandom
-          EConfigWithUsage cfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig (fromList []) (fromList []))) parseConfig conf
-          mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
+          EConfigWithUsage cfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig conf
+          when (cfg ^. sConf . quiet == False) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
           cpg <- flip runReaderT cfg $ do
             cs       <- contracts f
             ads      <- addresses

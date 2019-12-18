@@ -76,9 +76,15 @@ instance Has UIConf EConfig where
   hasLens = uConf
 
 instance FromJSON EConfig where
+  -- retrieve the config from the key usage annotated parse
   parseJSON = fmap _econfig . parseJSON
 
 instance FromJSON EConfigWithUsage where
+  -- this runs the parser in a StateT monad which keeps track of the keys
+  -- utilized by the config parser
+  -- we can then compare the set difference between the keys found in the config
+  -- file and the keys used by the parser to comopute which keys were set in the
+  -- config and not used and which keys were unset in the config and defaulted
   parseJSON o = do
     let v' = case o of
                   Object v -> v
@@ -86,6 +92,11 @@ instance FromJSON EConfigWithUsage where
     (c, ks) <- runStateT (parser v') $ fromList []
     let found = fromList (keys v')
     return $ EConfigWithUsage c (found `difference` ks) (ks `difference` found)
+    -- this parser runs in StateT and comes equipped with the following
+    -- equivalent unary operators:
+    -- x .:? k (Parser) <==> x ..:? k (StateT)
+    -- x .!= v (Parser) <==> x ..!= v (StateT)
+    -- tl;dr use an extra initial . to lift into the StateT parser
     where parser v =
             let useKey k = hasLens %= insert k
                 x ..:? k = useKey k >> lift (x .:? k)
