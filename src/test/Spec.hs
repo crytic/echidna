@@ -7,7 +7,7 @@ import Test.Tasty.HUnit
 
 import Echidna.ABI (SolCall, mkGenDict)
 import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests)
-import Echidna.Config (EConfig, defaultConfig, parseConfig, sConf, cConf)
+import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (Tx, call)
 
@@ -38,10 +38,15 @@ configTests :: TestTree
 configTests = testGroup "Configuration tests" $
   [ testCase file $ void $ parseConfig file | file <- files ] ++
   [ testCase "parse \"coverage: true\"" $ do
-      config <- parseConfig "coverage/test.yaml"
+      config <- _econfig <$> parseConfig "coverage/test.yaml"
       assertCoverage config $ Just mempty
   , testCase "coverage disabled by default" $
       assertCoverage defaultConfig Nothing
+  , testCase "defaults.yaml" $ do
+      EConfigWithUsage _ bad unset <- parseConfig "basic/default.yaml"
+      assertBool ("unused options: " ++ show bad) $ null bad
+      let unset' = unset & sans "seed"
+      assertBool ("unset options: " ++ show unset') $ null unset'
   ]
   where files = ["basic/config.yaml", "basic/default.yaml"]
         assertCoverage config value = do
@@ -189,7 +194,7 @@ integrationTests = testGroup "Solidity Integration Testing"
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg as = testCase fp $ do
-  c <- set (sConf . quiet) True <$> maybe (pure defaultConfig) parseConfig cfg
+  c <- set (sConf . quiet) True <$> maybe (pure defaultConfig) (fmap _econfig . parseConfig) cfg
   res <- runContract fp c
   mapM_ (\(t,f) -> assertBool t $ f res) as
 
