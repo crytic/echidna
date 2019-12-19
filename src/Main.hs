@@ -1,13 +1,15 @@
 module Main where
 
-import Control.Lens (view)
+import Control.Lens (view, (^.))
+import Control.Monad (unless)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
-import Data.Text (pack)
+import Data.Text (pack, unpack)
 import Data.Version (showVersion)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
+import System.IO (hPutStrLn, stderr)
 
 import Echidna.ABI
 import Echidna.Config
@@ -44,7 +46,8 @@ opts = info (helper <*> versionOption <*> options) $ fullDesc
 main :: IO ()
 main = do Options f c conf <- execParser opts
           g   <- getRandom
-          cfg <- maybe (pure defaultConfig) parseConfig conf
+          EConfigWithUsage cfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig conf
+          unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
           cpg <- flip runReaderT cfg $ do
             cs       <- contracts f
             ads      <- addresses
