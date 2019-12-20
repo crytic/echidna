@@ -1,4 +1,4 @@
-## 1.3.0.0
+## 1.2.0.0
 
 * Warn on unused config keys (#301)
 * `default.yaml` kept up to date via CI checks (#301)
