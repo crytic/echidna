@@ -8,9 +8,9 @@
 * Timeouts (#320)
 * HEVM updated to [2cc059b49cae613025b925f0273b906e25484b68]
 * Dictionary control (#312, #321)
-* Gas price fuzzingi (#307)
+* Gas price fuzzing (#307)
 * Coverage bug fixed (#300)
-* Contract creationi bug fixed (#293)
+* Contract creation bug fixed (#293)
 * New startup message (#290)
 * Add `--version` flag (#285)
 * Support time/block delays (#282)
