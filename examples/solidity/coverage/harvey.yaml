@@ -1,4 +1,4 @@
 testLimit: 1000000
 epochs: 100
-printCoverage: true
+coverage: true
 outdir: "outdir"

@@ -24,6 +24,7 @@ import Data.List (partition)
 import Data.Map (fromList)
 import Data.Text.Encoding (encodeUtf8)
 import EVM
+import EVM.ABI (AbiType(..), getAbi)
 import EVM.Concrete (w256)
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Types (Addr, W256)
@@ -34,7 +35,6 @@ import qualified Data.ByteString.Base16 as BS16 (decode)
 import qualified Data.Text as T (Text, drop)
 import qualified Data.Vector as V (fromList)
 
-import Echidna.ABIv2 (AbiType(..), getAbi)
 import Echidna.Exec
 import Echidna.Transaction
 
@@ -119,7 +119,7 @@ execEthenoTxs ts addr et = do
           -- See if current contract is the same as echidna test
           case addr of
                Just m  -> return $ Just m
-               Nothing -> let txs = ts <&> \t -> Tx (Left (t, [])) ca ca g 0 (0,0)
+               Nothing -> let txs = ts <&> \t -> Tx (Left (t, [])) ca ca g 0 0 (0,0)
                               go []     = return (Just ca)
                               go (x:xs) = setupTx x >> liftSH exec >>= \case
                                 VMSuccess r -> do

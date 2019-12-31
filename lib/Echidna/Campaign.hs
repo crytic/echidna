@@ -12,7 +12,7 @@
 module Echidna.Campaign where
 
 import Control.Lens
-import Control.Monad (liftM2, replicateM, when)
+import Control.Monad (liftM3, replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader.Class (MonadReader)
@@ -30,6 +30,7 @@ import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
 import EVM
+import EVM.ABI (getAbi)
 import EVM.Types (W256)
 import Numeric (showHex)
 import System.Random (mkStdGen)
@@ -37,7 +38,6 @@ import System.Random (mkStdGen)
 import qualified Data.HashMap.Strict  as H
 
 import Echidna.ABI
-import Echidna.ABIv2 (getAbi)
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Test
@@ -51,6 +51,8 @@ instance MonadCatch m => MonadCatch (RandT g m) where
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- ^ Maximum number of function calls to execute while fuzzing
+                                 , stopOnFail    :: Bool
+                                   -- ^ Whether to stop the campaign immediately if any property fails
                                  , seqLen        :: Int
                                    -- ^ Number of calls between state resets (e.g. \"every 10 calls,
                                    -- reset the state to avoid unrecoverable states/save memory\"
@@ -60,6 +62,7 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- ^ If applicable, initially known coverage. If this is 'Nothing',
                                    -- Echidna won't collect coverage information (and will go faster)
                                  , seed          :: Maybe Int
+                                 , dictFreq      :: Float
                                  }
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
@@ -92,12 +95,10 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                            -- ^ Coverage captured (NOTE: we don't always record this)
                          , _genDict     :: GenDict
                            -- ^ Generation dictionary
-                         , _initialized :: Bool
-                           -- ^ Has the campaign started
                          }
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
+  toJSON (Campaign ts co _) = object $ ("tests", toJSON $ mapMaybe format ts)
     : if co == mempty then [] else [("coverage",) . toJSON . mapKeys (`showHex` "") $ toList <$> co] where
       format (Right _,      Open _) = Nothing
       format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
@@ -109,19 +110,23 @@ instance Has GenDict Campaign where
   hasLens = genDict
 
 defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty defaultDict False
+defaultCampaign = Campaign mempty mempty defaultDict
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
 isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
-isDone (Campaign _ _ _ False) = pure False
-isDone (Campaign ts _ _ _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
-  all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts
+isDone (view tests -> ts) = view (hasLens . to (liftM3 (,,) testLimit shrinkLimit stopOnFail))
+  <&> \(tl, sl, sof) -> let res (Open  i)   = if i >= tl then Just True else Nothing
+                            res Passed      = Just True
+                            res (Large i _) = if i >= sl then Just False else Nothing
+                            res (Solved _)  = Just False
+                            res (Failed _)  = Just False
+                            in res . snd <$> ts & if sof then elem $ Just False else all isJust
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
 isSuccess :: Campaign -> Bool
-isSuccess (Campaign ts _ _ _) =
+isSuccess (view tests -> ts) =
   all (\case { Passed -> True; Open _ -> True; _ -> False; }) $ snd <$> ts
 
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
@@ -212,10 +217,11 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
 campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d' True) where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d') where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl q sl _ _) ->
-      if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
-         | any (\case Large n _ -> n < sl; _ -> False) c -> step
-         | otherwise                                     -> lift u
+    update c    = view hasLens >>= \(CampaignConf tl sof q sl _ _ _) ->
+      if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
+         | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
+         | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
+         | otherwise                                                           -> lift u

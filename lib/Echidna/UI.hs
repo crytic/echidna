@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -11,12 +12,11 @@ import Brick.BChan
 import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Control.Lens
-import Control.Monad (forever, liftM3)
+import Control.Monad (liftM2, liftM3, void, when)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader, runReader)
 import Control.Monad.Random.Strict (MonadRandom)
-import Data.Bool (bool)
 import Data.Either (either)
 import Data.Has (Has(..))
 import Data.List (nub)
@@ -28,8 +28,9 @@ import EVM.Types (Addr, W256)
 import Graphics.Vty (Event(..), Key(..), Modifier(..), defaultConfig, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
+import System.Timeout (timeout)
 import UnliftIO (MonadUnliftIO)
-import UnliftIO.Concurrent (forkIO, killThread)
+import UnliftIO.Concurrent (killThread, forkIO)
 
 import qualified Data.Text as T
 
@@ -41,10 +42,13 @@ import Echidna.Test
 import Echidna.Transaction
 
 data UIConf = UIConf { _dashboard :: Bool
+                     , _maxTime   :: Maybe Int
                      , _finished  :: Campaign -> Int -> String
                      }
 
 makeLenses ''UIConf
+
+data UIState = Uninitialized | Running | Timedout
 
 -- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.
 data Role = Sender | Receiver | Ambiguous
@@ -54,11 +58,12 @@ type Names = Role -> Addr -> String
 
 -- | Given rules for pretty-printing associated address, and whether to print them, pretty-print a 'Transaction'.
 ppTx :: (MonadReader x m, Has Names x, Has TxConf x) => Bool -> Tx -> m String
-ppTx pn (Tx c s r g v (t, b)) = let sOf = either ppSolCall (const "<CREATE>") in do
+ppTx pn (Tx c s r g gp v (t, b)) = let sOf = either ppSolCall (const "<CREATE>") in do
   names <- view hasLens
   tGas  <- view $ hasLens . txGas
   return $ sOf c ++ (if not pn    then "" else names Sender s ++ names Receiver r)
                  ++ (if g == tGas then "" else " Gas: "         ++ show g)
+                 ++ (if gp == 0   then "" else " Gas price: "   ++ show gp)
                  ++ (if v == 0    then "" else " Value: "       ++ show v)
                  ++ (if t == 0    then "" else " Time delay: "  ++ show t)
                  ++ (if b == 0    then "" else " Block delay: " ++ show b)
@@ -81,15 +86,14 @@ ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Test
 ppTS (Failed e)  = pure $ "could not evaluate ☣\n  " ++ show e
 ppTS (Solved l)  = ppFail Nothing l
 ppTS Passed      = pure "passed! 🎉"
-ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _) ->
+ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _ _ _) ->
                      if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
 ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m) 
                                                                               else Nothing) l
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppTests (Campaign _ _ _ False) = pure "starting up, please wait  "
-ppTests (Campaign ts _ _ _) = unlines . catMaybes <$> mapM pp ts where
+ppTests (Campaign ts _ _) = unlines . catMaybes <$> mapM pp ts where
   pp (Left  (n, _), s)      = Just .                    ((T.unpack n ++ ": ") ++) <$> ppTS s
   pp (Right _,      Open _) = pure Nothing
   pp (Right (n, _), s)      = Just . (("assertion in " ++ T.unpack n ++ ": ") ++) <$> ppTS s
@@ -105,25 +109,31 @@ ppCampaign c = (++) <$> ppTests c <*> pure (maybe "" ("\n" ++) . ppCoverage $ c 
 
 -- | Render 'Campaign' progress as a 'Widget'.
 campaignStatus :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
-               => Campaign -> m (Widget ())
-campaignStatus c = let mSection = maybe emptyWidget ((hBorder <=>) . padLeft (Pad 2) . str) in do
-  stats <- padLeft (Pad 2) . str <$> ppTests c <&> (<=> mSection (ppCoverage $ c ^. coverage))
-  bl <- bool emptyWidget (str "Campaign complete, C-c or esc to print report") <$> isDone c
-  pure . hCenter . hLimit 120 . joinBorders $ borderWithLabel (str "Echidna") stats <=> bl
+               => (Campaign, UIState) -> m (Widget ())
+campaignStatus (c, s) = do
+  let mSection = flip (<=>) . maybe emptyWidget ((hBorder <=>) . padLeft (Pad 2))
+      mainbox = hCenter . hLimit 120 . joinBorders . borderWithLabel (str "Echidna") . padLeft (Pad 2)
+  status <- mainbox . mSection (fmap str . ppCoverage $ c ^. coverage) . str <$> ppTests c
+  let bl msg = status <=> hCenter (str msg)
+  (s,) <$> isDone c <&> \case
+    (Uninitialized, _) -> mainbox $ str "Starting up, please wait  "
+    (Timedout, _)      -> bl "Timed out, C-c or esc to print report"
+    (_, True)          -> bl "Campaign complete, C-c or esc to print report"
+    _                  -> status
 
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
 monitor :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
-        => IO a -> m (App Campaign Campaign ())
-monitor cleanup = let
-  cs :: (CampaignConf, Names, TxConf) -> Campaign -> Widget ()
+        => m (App (Campaign, UIState) Campaign ())
+monitor = let
+  cs :: (CampaignConf, Names, TxConf) -> (Campaign, UIState) -> Widget ()
   cs s c = runReader (campaignStatus c) s
 
-  se s _ (AppEvent c') = continue c' & if runReader (isDone c') s then (liftIO cleanup >>) else id
-  se _ c (VtyEvent (EvKey KEsc _))                         = liftIO cleanup >> halt c
-  se _ c (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = liftIO cleanup >> halt c
-  se _ c _                                                 = continue c in
+  se _ (AppEvent c') = continue (c', Running)
+  se c (VtyEvent (EvKey KEsc _))                         = halt c
+  se c (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = halt c
+  se c _                                                 = continue c in
     liftM3 (,,) (view hasLens) (view hasLens) (view hasLens) <&> \s ->
-      App (pure . cs s) neverShowCursor (se s) pure (const $ forceAttrMap mempty)
+      App (pure . cs s) neverShowCursor se pure (const $ forceAttrMap mempty)
 
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
 isTerminal :: MonadIO m => m Bool
@@ -138,15 +148,22 @@ ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> [SolTest] -- ^ Tests to evaluate
    -> Maybe GenDict
    -> m Campaign
-ui v w ts d = let xfer e = use hasLens >>= \c -> isDone c >>= ($ e c) . bool id forever in do
-  let d' = fromMaybe defaultDict d
-  s <- (&&) <$> isTerminal <*> view (hasLens . dashboard)
-  g <- view (hasLens . to seed)
-  let g' = fromMaybe (d' ^. defSeed) g
-  c <- if s then do bc <- liftIO $ newBChan 100
-                    t <- forkIO $ campaign (xfer $ liftIO . writeBChan bc) v w ts d >> pure ()
-                    a <- monitor (killThread t)
-                    liftIO (customMain (mkVty defaultConfig) (Just bc) a $ Campaign mempty mempty d' False)
-            else campaign (pure ()) v w ts d
-  liftIO . putStrLn =<< view (hasLens . finished) <*> pure c <*> pure g'
-  return c
+ui v w ts d = let xfer bc = use hasLens >>= liftIO . writeBChan bc
+                  d' = fromMaybe defaultDict d
+                  getSeed = view $ hasLens . to seed . non (d' ^. defSeed) in do
+  bc <- liftIO $ newBChan 100
+  t    <- forkIO (void $ campaign (xfer bc) v w ts d)
+  dash <- liftM2 (&&) isTerminal $ view (hasLens . dashboard)
+  done <- views hasLens $ \cc -> flip runReader (cc :: CampaignConf) . isDone
+  app  <- customMain (mkVty defaultConfig) (Just bc) <$> monitor
+  time <- views (hasLens . maxTime) . maybe (fmap Just) $ timeout . (* 1000000)
+  res  <-  liftIO . time $ if dash
+    then fst <$> app (defaultCampaign, Uninitialized)
+    else let go = readBChan bc >>= \c -> if done c then pure c else go in go
+  final <- maybe (do c <- liftIO (readBChan bc) 
+                     killThread t
+                     when dash . liftIO . void $ app (c, Timedout)
+                     return c)
+                 pure res
+  liftIO . putStrLn =<< view (hasLens . finished) <*> pure final <*> getSeed
+  return final
