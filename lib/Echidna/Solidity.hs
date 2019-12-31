@@ -9,7 +9,7 @@ module Echidna.Solidity where
 
 import Control.Lens
 import Control.Exception          (Exception)
-import Control.Monad              (liftM2, mapM_, when, unless)
+import Control.Monad              (liftM2, when, unless)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader)
@@ -23,25 +23,27 @@ import Data.List                  (find, nub, partition)
 import Data.List.Lens             (prefixed, suffixed)
 import Data.Maybe                 (isNothing, catMaybes)
 import Data.Monoid                ((<>))
-import Data.Text                  (Text, isPrefixOf, isSuffixOf)
+import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
 import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 
 import Echidna.ABI         (SolSignature)
-import Echidna.ABIv2
 import Echidna.Exec        (execTx)
 import Echidna.RPC         (loadEthenoBatch)
 import Echidna.Transaction (TxConf, Tx(..), World(..))
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
+import EVM.ABI
 import EVM.Exec     (vmForEthrunCreation)
+import EVM.Solidity
 import EVM.Types    (Addr)
 import EVM.Concrete (w256)
 
 import qualified Data.ByteString     as BS
+import qualified Data.List.NonEmpty  as NE
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text           as T
 
@@ -56,6 +58,7 @@ data SolException = BadAddr Addr
                   | NoFuncs
                   | NoTests
                   | OnlyTests
+                  | ConstructorArgs String
 
 instance Show SolException where
   show = \case
@@ -68,22 +71,24 @@ instance Show SolException where
     NoFuncs              -> "ABI is empty, are you sure your constructor is right?"
     NoTests              -> "No tests found in ABI"
     OnlyTests            -> "Only tests and no public functions found in ABI"
+    (ConstructorArgs s)  -> "Constructor arguments are required: " ++ s
+
 
 instance Exception SolException
 
 -- | Configuration for loading Solidity for Echidna testing.
-data SolConf = SolConf { _contractAddr    :: Addr           -- ^ Contract address to use
-                       , _deployer        :: Addr           -- ^ Contract deployer address to use
-                       , _sender          :: [Addr]         -- ^ Sender addresses to use
-                       , _balanceAddr     :: Integer        -- ^ Initial balance of deployer and senders
-                       , _balanceContract :: Integer        -- ^ Initial balance of contract to test
-                       , _prefix          :: Text           -- ^ Function name prefix used to denote tests
-                       , _cryticArgs      :: [String] -- ^ Args to pass to crytic
-                       , _solcArgs        :: String         -- ^ Args to pass to @solc@
-                       , _solcLibs        :: [String]       -- ^ List of libraries to load, in order.
-                       , _quiet           :: Bool           -- ^ Suppress @solc@ output, errors, and warnings
-                       , _initialize      :: Maybe FilePath -- ^ Initialize world with Etheno txns
-                       , _checkAsserts    :: Bool     -- ^ Test if we can cause assertions to fail
+data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract address to use
+                       , _deployer        :: Addr             -- ^ Contract deployer address to use
+                       , _sender          :: NE.NonEmpty Addr -- ^ Sender addresses to use
+                       , _balanceAddr     :: Integer          -- ^ Initial balance of deployer and senders
+                       , _balanceContract :: Integer          -- ^ Initial balance of contract to test
+                       , _prefix          :: Text             -- ^ Function name prefix used to denote tests
+                       , _cryticArgs      :: [String]         -- ^ Args to pass to crytic
+                       , _solcArgs        :: String           -- ^ Args to pass to @solc@
+                       , _solcLibs        :: [String]         -- ^ List of libraries to load, in order.
+                       , _quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
+                       , _initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
+                       , _checkAsserts    :: Bool             -- ^ Test if we can cause assertions to fail
                        }
 makeLenses ''SolConf
 
@@ -99,17 +104,17 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
   q  <- view (hasLens . quiet)
   ls <- view (hasLens . solcLibs)
   c  <- view (hasLens . cryticArgs)
-  let solargs = a ++ linkLibraries ls & (usual ++) . 
+  let solargs = a ++ linkLibraries ls & (usual ++) .
                   (\sa -> if null sa then [] else ["--solc-args", sa])
   maybe (throwM CompileFailure) (pure . toList . fst) =<< liftIO (do
     stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
     _ <- readCreateProcess (proc "crytic-compile" $ (c ++ solargs) |> fp) {std_err = stderr} ""
     readSolc "crytic-export/combined_solc.json")
 
-
-addresses :: (MonadReader x m, Has SolConf x) => m [AbiValue]
+addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
 addresses = view hasLens <&> \(SolConf ca d ads _ _ _ _ _ _ _ _ _) ->
-  AbiAddress . fromIntegral <$> nub (ads ++ [ca, d, 0x0])
+  AbiAddress . fromIntegral <$> NE.nub (join ads [ca, d, 0x0])
+  where join (first NE.:| rest) list = first NE.:| (rest ++ list)
 
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm
@@ -125,7 +130,7 @@ loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
               => [SolcContract] -> Addr -> Addr -> VM -> m VM
 loadLibraries []     _  _ vm = return vm
 loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
-  where loadRest = execStateT (execTx $ Tx (Right $ l ^. creationCode) d la 0xffffffff 0 (0,0)) vm
+  where loadRest = execStateT (execTx $ Tx (Right $ l ^. creationCode) d la 0xffffffff 0 0 (0,0)) vm
 
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
@@ -139,8 +144,8 @@ linkLibraries ls = "--libraries " ++
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
 loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x)
-              => Maybe Text -> [SolcContract] -> m (VM, [SolSignature], [Text])
-loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure () in do
+              => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text])
+loadSpecified name cs = do
   -- Pick contract to load
   c <- choose cs name
   q <- view (hasLens . quiet)
@@ -153,29 +158,35 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
   (SolConf ca d ads bala balc pref _ _ libs _ fp ch) <- view hasLens
   let bc = c ^. creationCode
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
+      con = view constructorInputs c
       (tests, funs) = partition (isPrefixOf pref . fst) abi
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
   (blank', _) <- maybe (pure (vmForEthrunCreation bc, [])) (loadEthenoBatch (fst <$> tests)) fp
-  let blank = populateAddresses (ads |> d) bala blank'
+  let blank = populateAddresses (NE.toList ads |> d) bala blank'
             & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
 
+  unless (null con) (throwM $ ConstructorArgs (show con))
   -- Select libraries
   ls <- mapM (choose cs . Just . T.pack) libs
 
   -- Make sure everything is ready to use, then ship it
-  mapM_ (uncurry ensure) $ [(abi, NoFuncs), (funs, OnlyTests)]
-                        ++ if ch then [] else [(tests, NoTests)] -- ABI checks
-  ensure bc (NoBytecode $ c ^. contractName)                     -- Bytecode check
+  when (null abi) $ throwM NoFuncs                              -- < ABI checks
+  neFuns <- maybe (throwM OnlyTests) pure (NE.nonEmpty funs)    -- <
+  when (not ch && null tests) $ throwM NoTests                  -- <
+  when (bc == mempty) $ throwM (NoBytecode $ c ^. contractName) -- Bytecode check
+
   case find (not . null . snd) tests of
-    Just (t,_) -> throwM $ TestArgsFound t                       -- Test args check
-    Nothing    -> loadLibraries ls addrLibrary d blank >>= fmap (, fallback : funs, fst <$> tests) .
-      execStateT (execTx $ Tx (Right bc) d ca 0xffffffff (w256 $ fromInteger balc) (0, 0))
+    Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
+    Nothing    -> do
+      vm <- loadLibraries ls addrLibrary d blank
+      let transaction = Tx (Right bc) d ca 0xffffffff 0 (w256 $ fromInteger balc) (0, 0)
+      (fmap (, fallback NE.<| neFuns, fst <$> tests) . execStateT (execTx transaction)) vm
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
-                                      find (isSuffixOf n . view contractName) cs
+                                      find (isSuffixOf (if T.any (== ':') n then n else ":" `append` n) . view contractName) cs
         fallback = ("",[])
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
@@ -187,16 +198,18 @@ loadSpecified name cs = let ensure l e = if l == mempty then throwM e else pure 
 --             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 --loadSolidity fp name = contracts fp >>= loadSpecified name
 loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x)
-             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
+             => FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text])
 loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
+
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
-               => (VM, [SolSignature], [Text]) -> m (VM, World, [SolTest])
+               => (VM, NE.NonEmpty SolSignature, [Text]) -> m (VM, World, [SolTest])
 prepareForTest (v, a, ts) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ ch) ->
-  (v, World s [(r, a)], fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a else []) where
+  (v, World s ((r, a) NE.:| []), fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else []) where
     r = v ^. state . contract
+    a' = NE.toList a
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
