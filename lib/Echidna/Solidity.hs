@@ -9,7 +9,7 @@ module Echidna.Solidity where
 
 import Control.Lens
 import Control.Exception          (Exception)
-import Control.Monad              (liftM2, when, unless)
+import Control.Monad              (liftM2, when, unless, void)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader)
@@ -28,6 +28,7 @@ import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
 import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
+import Debug.Trace
 
 import Echidna.ABI         (SolSignature)
 import Echidna.Exec        (execTx)
@@ -162,11 +163,11 @@ loadSpecified name cs = do
       (tests, funs) = partition (isPrefixOf pref . fst) abi
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
-  (blank', _) <- maybe (pure (vmForEthrunCreation bc, [])) (loadEthenoBatch (fst <$> tests)) fp
-  let blank = populateAddresses (NE.toList ads |> d) bala blank'
+  (blank', _, addrs) <- maybe (pure (vmForEthrunCreation bc, 0, [])) (loadEthenoBatch (fst <$> tests)) fp
+  let blank = populateAddresses ((NE.toList ads |> d) ++ addrs) bala blank'
             & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
 
-  unless (null con) (throwM $ ConstructorArgs (show con))
+  unless (null con || fp /= Nothing) (throwM $ ConstructorArgs (show con))
   -- Select libraries
   ls <- mapM (choose cs . Just . T.pack) libs
 
@@ -180,8 +181,13 @@ loadSpecified name cs = do
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
-      let transaction = Tx (Right bc) d ca 0xffffffff 0 (w256 $ fromInteger balc) (0, 0)
-      (fmap (, fallback NE.<| neFuns, fst <$> tests) . execStateT (execTx transaction)) vm
+      --traceM . show $ vm ^. env . EVM.contracts
+      traceM . show $ vm ^. state . EVM.contract
+      traceM . show $ neFuns
+      let transaction = case fp of
+                             Nothing -> void . execTx $ Tx (Right bc) d ca 0xffffffff 0 (w256 $ fromInteger balc) (0, 0)
+                             Just _  -> pure ()
+      (fmap (, fallback NE.<| neFuns, fst <$> tests) . execStateT transaction) vm
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
