@@ -28,7 +28,6 @@ import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
 import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
-import Debug.Trace
 
 import Echidna.ABI         (SolSignature)
 import Echidna.Exec        (execTx)
@@ -163,7 +162,7 @@ loadSpecified name cs = do
       (tests, funs) = partition (isPrefixOf pref . fst) abi
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
-  (blank', _, addrs) <- maybe (pure (vmForEthrunCreation bc, 0, [])) (loadEthenoBatch (fst <$> tests)) fp
+  (blank', addrs) <- maybe (pure (vmForEthrunCreation bc, [])) (loadEthenoBatch (fst <$> tests)) fp
   let blank = populateAddresses ((NE.toList ads |> d) ++ addrs) bala blank'
             & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
 
@@ -181,9 +180,6 @@ loadSpecified name cs = do
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
-      --traceM . show $ vm ^. env . EVM.contracts
-      traceM . show $ vm ^. state . EVM.contract
-      traceM . show $ neFuns
       let transaction = case fp of
                              Nothing -> void . execTx $ Tx (Right bc) d ca 0xffffffff 0 (w256 $ fromInteger balc) (0, 0)
                              Just _  -> pure ()

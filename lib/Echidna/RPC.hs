@@ -28,7 +28,6 @@ import EVM.ABI (AbiType(..), getAbi)
 import EVM.Concrete (w256)
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Types (Addr, W256)
-import Debug.Trace
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Control.Monad.State.Strict as S (state)
@@ -80,7 +79,7 @@ instance Exception EthenoException
 
 -- | Main function: takes a filepath where the initialization sequence lives and returns
 -- | the initialized VM along with a list of Addr's to put in GenConf
-loadEthenoBatch :: (MonadThrow m, MonadIO m, Has TxConf y, MonadReader y m) => [T.Text] -> FilePath -> m (VM, Addr, [Addr])
+loadEthenoBatch :: (MonadThrow m, MonadIO m, Has TxConf y, MonadReader y m) => [T.Text] -> FilePath -> m (VM, [Addr])
 loadEthenoBatch ts fp = do
   bs <- liftIO $ eitherDecodeFileStrict fp
 
@@ -100,8 +99,7 @@ loadEthenoBatch ts fp = do
               Nothing -> throwM $ EthenoException "Could not find a contract with echidna tests"
               Just a  -> do
                 vm <- execStateT (liftSH . loadContract $ a) vm'
-                traceM $ "found tests at " ++ show a
-                return (vm, a, knownAddrs)
+                return (vm, knownAddrs)
 
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
 -- | address containing echidna tests
