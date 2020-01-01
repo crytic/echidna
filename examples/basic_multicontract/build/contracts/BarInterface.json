@@ -1,46 +1,26 @@
 {
-  "contractName": "Foo",
+  "contractName": "BarInterface",
   "abi": [
-    {
-      "inputs": [
-        {
-          "name": "_bar",
-          "type": "address"
-        }
-      ],
-      "payable": false,
-      "stateMutability": "nonpayable",
-      "type": "constructor"
-    },
-    {
-      "constant": false,
-      "inputs": [],
-      "name": "callBar",
-      "outputs": [],
-      "payable": false,
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
     {
       "constant": true,
       "inputs": [],
-      "name": "echidna_test",
+      "name": "test",
       "outputs": [
         {
           "name": "",
-          "type": "bool"
+          "type": "uint256"
         }
       ],
       "payable": false,
-      "stateMutability": "view",
+      "stateMutability": "pure",
       "type": "function"
     }
   ],
-  "metadata": "{\"compiler\":{\"version\":\"0.4.25+commit.59dbf8f1\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"constant\":true,\"inputs\":[],\"name\":\"echidna_test\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[],\"name\":\"callBar\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"name\":\"_bar\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"}],\"devdoc\":{\"methods\":{}},\"userdoc\":{\"methods\":{}}},\"settings\":{\"compilationTarget\":{\"/Users/incertia/dev/git/echidna/examples/basic_multicontract/contracts/Foo.sol\":\"Foo\"},\"evmVersion\":\"byzantium\",\"libraries\":{},\"optimizer\":{\"enabled\":false,\"runs\":200},\"remappings\":[]},\"sources\":{\"/Users/incertia/dev/git/echidna/examples/basic_multicontract/contracts/Foo.sol\":{\"keccak256\":\"0xce838bf616610aae9bcacae7790cc0c4dde0a654a455c8d91a00186eb5cfa1d8\",\"urls\":[\"bzzr://1144c3c3f79318ac691868c0094ac377320c21875765703a2ebf813f5b5df191\"]}},\"version\":1}",
-  "bytecode": "0x608060405234801561001057600080fd5b5060405160208061022283398101806040528101908080519060200190929190505050806000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055506000600181905550506101978061008b6000396000f30060806040526004361061004c576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff16806317bf8bac14610051578063acffee6b14610080575b600080fd5b34801561005d57600080fd5b50610066610097565b604051808215151515815260200191505060405180910390f35b34801561008c57600080fd5b506100956100a3565b005b60008060015414905090565b6000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1663f8a8fd6d6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b15801561012857600080fd5b505af115801561013c573d6000803e3d6000fd5b505050506040513d602081101561015257600080fd5b81019080805190602001909291905050506001819055505600a165627a7a7230582023ba041cc3b46fe7d78dbb5b9f2ffbc604189d926f1b5cc0e5742a3c718ac9c10029",
-  "deployedBytecode": "0x60806040526004361061004c576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff16806317bf8bac14610051578063acffee6b14610080575b600080fd5b34801561005d57600080fd5b50610066610097565b604051808215151515815260200191505060405180910390f35b34801561008c57600080fd5b506100956100a3565b005b60008060015414905090565b6000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1663f8a8fd6d6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b15801561012857600080fd5b505af115801561013c573d6000803e3d6000fd5b505050506040513d602081101561015257600080fd5b81019080805190602001909291905050506001819055505600a165627a7a7230582023ba041cc3b46fe7d78dbb5b9f2ffbc604189d926f1b5cc0e5742a3c718ac9c10029",
-  "sourceMap": "106:263:1:-;;;155:78;8:9:-1;5:2;;;30:1;27;20:12;5:2;155:78:1;;;;;;;;;;;;;;;;;;;;;;;;;;;;;211:4;192:3;;:24;;;;;;;;;;;;;;;;;;228:1;220:5;:9;;;;155:78;106:263;;;;;;",
-  "deployedSourceMap": "106:263:1:-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;291:76;;8:9:-1;5:2;;;30:1;27;20:12;5:2;291:76:1;;;;;;;;;;;;;;;;;;;;;;;;;;;236:52;;8:9:-1;5:2;;;30:1;27;20:12;5:2;236:52:1;;;;;;291:76;336:4;362:1;353:5;;:10;346:17;;291:76;:::o;236:52::-;274:3;;;;;;;;;;;:8;;;:10;;;;;;;;;;;;;;;;;;;;;;;8:9:-1;5:2;;;30:1;27;20:12;5:2;274:10:1;;;;8:9:-1;5:2;;;45:16;42:1;39;24:38;77:16;74:1;67:27;5:2;274:10:1;;;;;;;13:2:-1;8:3;5:11;2:2;;;29:1;26;19:12;2:2;274:10:1;;;;;;;;;;;;;;;;266:5;:18;;;;236:52::o",
+  "metadata": "",
+  "bytecode": "0x",
+  "deployedBytecode": "0x",
+  "sourceMap": "",
+  "deployedSourceMap": "",
   "source": "pragma solidity >=0.4.25 <0.6.0;\n\ncontract BarInterface {\n\tfunction test() public pure returns (uint);\n}\n\ncontract Foo {\n\tBarInterface bar;\n\tuint isOne;\n\n\tconstructor(address _bar) public {\n\t\tbar = BarInterface(_bar);\n\t\tisOne = 0;\n\t}\n\n\tfunction callBar() public {\n\t\tisOne = bar.test();\n\t}\n\n\tfunction echidna_test() public view returns (bool) {\n\t\treturn isOne == 0;\n\t}\n}\n",
   "sourcePath": "/Users/incertia/dev/git/echidna/examples/basic_multicontract/contracts/Foo.sol",
   "ast": {
@@ -1249,16 +1229,9 @@
     "name": "solc",
     "version": "0.4.25+commit.59dbf8f1.Emscripten.clang"
   },
-  "networks": {
-    "5777": {
-      "events": {},
-      "links": {},
-      "address": "0x27E124eD1838a07Ba70a9Eff6020048538015048",
-      "transactionHash": "0x27d6cf7a6b63a07bddc634188399e3f92ea5978ad5d8e84847d838195b294750"
-    }
-  },
+  "networks": {},
   "schemaVersion": "3.0.16",
-  "updatedAt": "2020-01-01T01:08:16.028Z",
+  "updatedAt": "2020-01-01T01:08:13.712Z",
   "devdoc": {
     "methods": {}
   },
