@@ -1,16 +1,15 @@
 pragma solidity >=0.4.25 <0.6.0;
 
-contract Bar {
-	function test() public pure returns (uint) {}
+contract BarInterface {
+	function test() public pure returns (uint);
 }
 
 contract Foo {
-	Bar bar;
+	BarInterface bar;
 	uint isOne;
 
 	constructor(address _bar) public {
-		bar = Bar(_bar);
-		//bar = new Bar();
+		bar = BarInterface(_bar);
 		isOne = 0;
 	}
 
@@ -19,7 +18,6 @@ contract Foo {
 	}
 
 	function echidna_test() public view returns (bool) {
-    bar.test();
 		return isOne == 0;
 	}
 }
