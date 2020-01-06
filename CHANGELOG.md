@@ -1,3 +1,7 @@
+## TODO
+
+* Support testing from arbitrary blockchain state via etheno (#333)
+
 ## 1.2.0.0
 
 * Warn on unused config keys (#301)
