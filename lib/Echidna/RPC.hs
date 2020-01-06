@@ -39,9 +39,9 @@ import Echidna.Exec
 import Echidna.Transaction
 
 -- | During initialization we can either call a function or create an account or contract
-data Etheno = AccountCreated Addr
-            | ContractCreated Addr Addr Integer Integer ByteString W256
-            | FunctionCall Addr Addr Integer Integer ByteString W256
+data Etheno = AccountCreated Addr                                       -- ^ Registers an address with the echidna runtime
+            | ContractCreated Addr Addr Integer Integer ByteString W256 -- ^ A contract was constructed on the blockchain
+            | FunctionCall Addr Addr Integer Integer ByteString W256    -- ^ A contract function was executed
   deriving (Eq, Show)
 
 instance FromJSON Etheno where
@@ -75,7 +75,6 @@ instance Show EthenoException where
     show (EthenoException e) = "Error parsing Etheno initialization file: " ++ e
 
 instance Exception EthenoException
-
 
 -- | Main function: takes a filepath where the initialization sequence lives and returns
 -- | the initialized VM along with a list of Addr's to put in GenConf
@@ -118,16 +117,26 @@ execEthenoTxs ts addr et = do
           og <- get
           -- See if current contract is the same as echidna test
           case addr of
+               -- found the tests, so just return the contract
                Just m  -> return $ Just m
+               -- try to see if this is the contract we wish to test
                Nothing -> let txs = ts <&> \t -> Tx (Left (t, [])) ca ca g 0 0 (0,0)
+                              -- every test was executed successfully
                               go []     = return (Just ca)
+                              -- execute x and check if it returned something of the correct type
                               go (x:xs) = setupTx x >> liftSH exec >>= \case
+                                -- executing the test function succeeded
                                 VMSuccess r -> do
                                   put og
                                   case runGetOrFail (getAbi . AbiTupleType . V.fromList $ [AbiBoolType]) (r ^. lazy) ^? _Right . _3 of
+                                       -- correct type ==> check the rest of the tests
                                        Just _  -> go xs
+                                       -- incorrect type ==> bad ABI, this is not the contract we wish to test
                                        Nothing -> return Nothing
+                                -- some vm failure or reversion, not what we want
+                                -- TODO: this breaks any test that is supposed to revert, maybe add a check here?
                                 _           -> put og >> return Nothing in
+                            -- actually test everything
                             go txs
        _                              -> return addr
 
