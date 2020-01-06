@@ -26,8 +26,10 @@ import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
-import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
+import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
+import System.Exit                (ExitCode(..))
+import System.Directory           (findExecutable)
 
 import Echidna.ABI         (SolSignature)
 import Echidna.Exec        (execTx)
@@ -58,6 +60,7 @@ data SolException = BadAddr Addr
                   | NoTests
                   | OnlyTests
                   | ConstructorArgs String
+                  | NoCryticCompile
 
 instance Show SolException where
   show = \case
@@ -71,6 +74,7 @@ instance Show SolException where
     NoTests              -> "No tests found in ABI"
     OnlyTests            -> "Only tests and no public functions found in ABI"
     (ConstructorArgs s)  -> "Constructor arguments are required: " ++ s
+    NoCryticCompile      -> "crytic-compile not installed. To install it, run:\n   pip install crytic-compile"
 
 
 instance Exception SolException
@@ -98,6 +102,8 @@ type SolTest = Either (Text, Addr) SolSignature
 -- get a list of its contracts, throwing exceptions if necessary.
 contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
 contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"] in do
+  p  <- liftIO $ findExecutable "crytic-compile"
+  when (isNothing p) $ throwM NoCryticCompile
   a  <- view (hasLens . solcArgs)
   q  <- view (hasLens . quiet)
   ls <- view (hasLens . solcLibs)
@@ -106,8 +112,11 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
                   (\sa -> if null sa then [] else ["--solc-args", sa])
   maybe (throwM CompileFailure) (pure . toList . fst) =<< liftIO (do
     stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
-    _ <- readCreateProcess (proc "crytic-compile" $ (c ++ solargs) |> fp) {std_err = stderr} ""
-    readSolc "crytic-export/combined_solc.json")
+    (ec, _, _) <- readCreateProcessWithExitCode (proc "crytic-compile" $ (c ++ solargs) |> fp) {std_err = stderr} ""
+    case ec of
+     ExitSuccess -> readSolc "crytic-export/combined_solc.json"
+     ExitFailure _ -> throwM CompileFailure
+    )
 
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
