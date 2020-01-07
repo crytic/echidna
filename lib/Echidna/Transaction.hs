@@ -17,11 +17,8 @@ import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
-import Data.Aeson (ToJSON(..), object)
-import Data.ByteString (ByteString)
 import Data.Either (either)
 import Data.Has (Has(..))
-import Data.List (intercalate)
 import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
@@ -29,23 +26,10 @@ import EVM.Types (Addr)
 
 import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.List.NonEmpty as NE
-import qualified Data.Text as T
 import qualified Data.Vector as V
 
 import Echidna.ABI
-
--- | A transaction is either a @CREATE@ or a regular call with an origin, destination, and value.
--- Note: I currently don't model nonces or signatures here.
-data Tx = Tx { _call  :: Either SolCall ByteString -- | Either a call or code for a @CREATE@
-             , _src   :: Addr                      -- | Origin
-             , _dst   :: Addr                      -- | Destination
-             , _gas'  :: Word                      -- | Gas
-             , _gasprice' :: Word                  -- | Gas price
-             , _value :: Word                      -- | Value
-             , _delay :: (Word, Word)              -- | (Time, # of blocks since last call)
-             } deriving (Eq, Ord, Show)
-
-makeLenses ''Tx
+import Echidna.Types (SolSignature, SolCall, GenDict, Tx(Tx), defaultDict, encodeSig, call, value, gasprice', delay)
 
 data TxConf = TxConf { _propGas       :: Word
                      -- ^ Gas to use evaluating echidna properties
@@ -60,22 +44,6 @@ data TxConf = TxConf { _propGas       :: Word
                      }
 
 makeLenses 'TxConf
-
--- | Pretty-print some 'AbiCall'.
-ppSolCall :: SolCall -> String
-ppSolCall (t, vs) = (if t == "" then T.unpack "*fallback*" else T.unpack t) ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
-
-instance ToJSON Tx where
-  toJSON (Tx c s d g gp v (t, b)) = object [ ("call",        toJSON $ either ppSolCall (const "<CREATE>") c)
-                                        -- from/to are Strings, since JSON doesn't support hexadecimal notation
-                                        , ("from",        toJSON $ show s)
-                                        , ("to",          toJSON $ show d)
-                                        , ("value",       toJSON $ show v)
-                                        , ("gas",         toJSON $ show g)
-                                        , ("gasprice",    toJSON $ show gp)
-                                        , ("time delay",  toJSON $ show t)
-                                        , ("block delay", toJSON $ show b)
-                                        ]
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating delays, since block number
 -- only goes up with timestamp

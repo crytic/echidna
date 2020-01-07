@@ -19,20 +19,16 @@ import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
-import Data.Aeson (ToJSON(..), object)
 import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
 import Data.Either (lefts)
-import Data.Foldable (toList)
-import Data.Map (Map, mapKeys, unionWith)
-import Data.Maybe (fromMaybe, isJust, mapMaybe, maybeToList)
+import Data.Map (unionWith)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
-import Data.Set (Set, union)
+import Data.Set (union)
 import EVM
 import EVM.ABI (getAbi)
-import EVM.Types (W256)
-import Numeric (showHex)
 import System.Random (mkStdGen)
 
 import qualified Data.HashMap.Strict  as H
@@ -42,75 +38,12 @@ import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
+import Echidna.Types (TestState(..), Campaign(..), CampaignConf(..), SolTest, GenDict, Tx, defSeed, constants, coverage, genDict, defaultDict, tests, call, rTypes)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
 instance MonadCatch m => MonadCatch (RandT g m) where
   catch = liftCatch catch
-
--- | Configuration for running an Echidna 'Campaign'.
-data CampaignConf = CampaignConf { testLimit     :: Int
-                                   -- ^ Maximum number of function calls to execute while fuzzing
-                                 , stopOnFail    :: Bool
-                                   -- ^ Whether to stop the campaign immediately if any property fails
-                                 , seqLen        :: Int
-                                   -- ^ Number of calls between state resets (e.g. \"every 10 calls,
-                                   -- reset the state to avoid unrecoverable states/save memory\"
-                                 , shrinkLimit   :: Int
-                                   -- ^ Maximum number of candidate sequences to evaluate while shrinking
-                                 , knownCoverage :: Maybe (Map W256 (Set Int))
-                                   -- ^ If applicable, initially known coverage. If this is 'Nothing',
-                                   -- Echidna won't collect coverage information (and will go faster)
-                                 , seed          :: Maybe Int
-                                 , dictFreq      :: Float
-                                 }
-
--- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
-data TestState = Open Int             -- ^ Maybe solvable, tracking attempts already made
-               | Large Int [Tx]       -- ^ Solved, maybe shrinable, tracking shrinks tried + best solve
-               | Passed               -- ^ Presumed unsolvable
-               | Solved [Tx]          -- ^ Solved with no need for shrinking
-               | Failed ExecException -- ^ Broke the execution environment
-                 deriving Show
-
-instance Eq TestState where
-  (Open i)    == (Open j)    = i == j
-  (Large i l) == (Large j m) = i == j && l == m
-  Passed      == Passed      = True
-  (Solved l)  == (Solved m)  = l == m
-  _           == _           = False
-
-instance ToJSON TestState where
-  toJSON s = object $ ("passed", toJSON passed) : maybeToList desc where
-    (passed, desc) = case s of Open _    -> (True, Nothing)
-                               Passed    -> (True, Nothing)
-                               Large _ l -> (False, Just ("callseq", toJSON l))
-                               Solved  l -> (False, Just ("callseq", toJSON l))
-                               Failed  e -> (False, Just ("exception", toJSON $ show e))
-
--- | The state of a fuzzing campaign.
-data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
-                           -- ^ Tests being evaluated
-                         , _coverage    :: Map W256 (Set Int)
-                           -- ^ Coverage captured (NOTE: we don't always record this)
-                         , _genDict     :: GenDict
-                           -- ^ Generation dictionary
-                         }
-
-instance ToJSON Campaign where
-  toJSON (Campaign ts co _) = object $ ("tests", toJSON $ mapMaybe format ts)
-    : if co == mempty then [] else [("coverage",) . toJSON . mapKeys (`showHex` "") $ toList <$> co] where
-      format (Right _,      Open _) = Nothing
-      format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
-      format (Left (n, _),  s)      = Just (n,                    toJSON s)
-
-makeLenses ''Campaign
-
-instance Has GenDict Campaign where
-  hasLens = genDict
-
-defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty defaultDict
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.

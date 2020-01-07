@@ -8,7 +8,7 @@
 module Echidna.Exec where
 
 import Control.Lens
-import Control.Monad.Catch (Exception, MonadThrow(..))
+import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Strict (MonadState, execState)
 import Data.Either (isRight)
 import Data.Has (Has(..))
@@ -25,6 +25,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 
 import Echidna.Transaction
+import Echidna.Types (Tx, ExecException(..), call, dst)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
@@ -48,16 +49,6 @@ pattern Reversion <- VMFailure (classifyError -> RevertE)
 -- | Matches execution errors caused by illegal behavior.
 pattern Illegal :: VMResult
 pattern Illegal <- VMFailure (classifyError -> IllegalE)
-
--- | We throw this when our execution fails due to something other than reversion.
-data ExecException = IllegalExec Error | UnknownFailure Error
-
-instance Show ExecException where
-  show (IllegalExec e) = "VM attempted an illegal operation: " ++ show e
-  show (UnknownFailure e) = "VM failed for unhandled reason, " ++ show e
-    ++ ". This shouldn't happen. Please file a ticket with this error message and steps to reproduce!"
-
-instance Exception ExecException
 
 -- | Given an execution error, throw the appropriate exception.
 vmExcept :: MonadThrow m => Error -> m ()

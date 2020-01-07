@@ -16,79 +16,26 @@ import Control.Monad.Random.Strict
 import Data.Bits (Bits(..))
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
-import Data.Foldable (toList)
 import Data.Has (Has(..))
 import Data.Hashable (Hashable(..))
 import Data.HashMap.Strict (HashMap)
-import Data.List (group, intercalate, sort)
-import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
-import Data.Text (Text)
+import Data.Maybe (fromMaybe)
 import Data.Vector (Vector)
 import Data.Vector.Instances ()
 import Data.Word8 (Word8)
-import Numeric (showHex)
 
 import EVM.ABI
+
+import Echidna.Types (SolSignature, SolCall, GenDict, constants, wholeCalls, pSynthA, defaultDict, hashMapBy)
 
 import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
 import qualified Data.List.NonEmpty as NE
-import qualified Data.Text as T
 import qualified Data.Vector as V
-
--- | Pretty-print some 'AbiValue'.
-ppAbiValue :: AbiValue -> String
-ppAbiValue (AbiUInt _ n)         = show n
-ppAbiValue (AbiInt  _ n)         = show n
-ppAbiValue (AbiAddress n)        = showHex n ""
-ppAbiValue (AbiBool b)           = if b then "true" else "false"
-ppAbiValue (AbiBytes      _ b)   = show b
-ppAbiValue (AbiBytesDynamic b)   = show b
-ppAbiValue (AbiString       s)   = show s
-ppAbiValue (AbiArrayDynamic _ v) =
-  "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
-ppAbiValue (AbiArray      _ _ v) =
-  "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
-ppAbiValue (AbiTuple v) =
-  "(" ++ intercalate ", " (ppAbiValue <$> toList v) ++ ")"
 
 -- | Get a random element of a non-empty list.
 rElem :: MonadRandom m => NE.NonEmpty a -> m a
 rElem l  = (l NE.!!) <$> getRandomR (0, length l - 1)
-
--- Types
-
--- Don't construct this directly! Use mkConf.
-
--- | Represents a call to a Solidity function.
--- A tuple of 'Text' for the name of the function, and then any 'AbiValue' arguments passed (as a list).
-type SolCall     = (Text, [AbiValue])
-
--- | Represents the type of a Solidity function.
--- A tuple of 'Text' for the name of the function, and then the 'AbiType's of any arguments it expects.
-type SolSignature = (Text, [AbiType])
-
--- | Get the text signature of a solidity method (for later hashing)
-encodeSig :: SolSignature -> Text
-encodeSig (n, ts) = n <> "(" <> T.intercalate "," (abiTypeSolidity <$> ts) <> ")"
-
--- | Configuration necessary for generating new 'SolCalls'. Don't construct this by hand! Use 'mkConf'.
-data GenDict = GenDict { _pSynthA    :: Float
-                         -- ^ Fraction of time to use dictionary vs. synthesize
-                       , _constants  :: HashMap AbiType [AbiValue]
-                         -- ^ Constants to use, sorted by type
-                       , _wholeCalls :: HashMap SolSignature [SolCall]
-                         -- ^ Whole calls to use, sorted by type
-                       , _defSeed    :: Int
-                         -- ^ Default seed to use if one is not provided in EConfig
-                       , _rTypes     :: Text -> Maybe AbiType
-                         -- ^ Return types of any methods we scrape return values from
-                       }
-
-makeLenses 'GenDict
-
-hashMapBy :: (Hashable k, Eq k, Ord a) => (a -> k) -> [a] -> HashMap k [a]
-hashMapBy f = M.fromListWith (++) . mapMaybe (liftM2 fmap (\l x -> (f x, l)) listToMaybe) . group . sort
 
 gaddConstants :: [AbiValue] -> GenDict -> GenDict
 gaddConstants l = constants <>~ hashMapBy abiValueType l
@@ -96,24 +43,8 @@ gaddConstants l = constants <>~ hashMapBy abiValueType l
 gaddCalls :: [SolCall] -> GenDict -> GenDict
 gaddCalls c = wholeCalls <>~ hashMapBy (fmap $ fmap abiValueType) c
 
-defaultDict :: GenDict
-defaultDict = mkGenDict 0 [] [] 0 (const Nothing)
-
 -- This instance is the only way for mkConf to work nicely, and is well-formed.
 {-# ANN module ("HLint: ignore Unused LANGUAGE pragma" :: String) #-}
--- We need the above since hlint doesn't notice DeriveAnyClass in StandaloneDeriving.
-deriving instance Hashable AbiType
-
--- | Construct a 'GenDict' from some dictionaries, a 'Float', a default seed, and a typing rule for
--- return values
-mkGenDict :: Float      -- ^ Percentage of time to mutate instead of synthesize. Should be in [0,1]
-          -> [AbiValue] -- ^ A list of 'AbiValue' constants to use during dictionary-based generation
-          -> [SolCall]  -- ^ A list of complete 'SolCall's to mutate
-          -> Int        -- ^ A default seed
-          -> (Text -> Maybe AbiType)
-          -- ^ A return value typing rule
-          -> GenDict
-mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fmap abiValueType) cs)
 
 -- Generation (synthesis)
 

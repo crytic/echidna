@@ -21,10 +21,10 @@ import EVM.Types (Addr)
 
 import qualified Data.ByteString as BS
 
-import Echidna.ABI
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
+import Echidna.Types (SolTest, Tx(Tx), src, encodeSig)
 
 -- | Configuration for evaluating Echidna tests.
 data TestConf = TestConf { classifier :: Text -> VM -> Bool

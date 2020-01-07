@@ -29,9 +29,9 @@ import Data.Text.Read             (decimal)
 import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 
-import Echidna.ABI         (SolSignature)
 import Echidna.Exec        (execTx)
-import Echidna.Transaction (Tx(..), World(..))
+import Echidna.Transaction (World(..))
+import Echidna.Types       (Tx(..), SolSignature, SolTest)
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
@@ -89,10 +89,6 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _checkAsserts    :: Bool             -- ^ Test if we can cause assertions to fail
                        }
 makeLenses ''SolConf
-
--- | An Echidna test is either the name of the function to call and the address where its contract is,
--- or a function that could experience an exception
-type SolTest = Either (Text, Addr) SolSignature
 
 -- | Given a file, use its extenstion to check if it is a precompiled contract or try to compile it and
 -- get a list of its contracts, throwing exceptions if necessary.

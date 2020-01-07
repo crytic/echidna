@@ -11,11 +11,11 @@ import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.IO (hPutStrLn, stderr)
 
-import Echidna.ABI
 import Echidna.Config
 import Echidna.Solidity
 import Echidna.Campaign
 import Echidna.UI
+import Echidna.Types (mkGenDict, dictFreq)
 
 import qualified Data.List.NonEmpty as NE
 
