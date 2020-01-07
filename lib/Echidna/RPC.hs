@@ -43,7 +43,6 @@ data Etheno = AccountCreated Addr                                       -- ^ Reg
   deriving (Eq, Show)
 
 instance FromJSON Etheno where
-  -- parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = tail, omitNothingFields = True}
   parseJSON = withObject "Etheno" $ \v -> do
     (ev :: String) <- v .: "event"
     case ev of
