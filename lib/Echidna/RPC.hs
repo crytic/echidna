@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -69,7 +67,7 @@ instance FromJSON Etheno where
 
 
 -- | Handler for parsing errors
-data EthenoException = EthenoException String
+newtype EthenoException = EthenoException String
 
 instance Show EthenoException where
     show (EthenoException e) = "Error parsing Etheno initialization file: " ++ e
