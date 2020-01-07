@@ -101,7 +101,8 @@ loadEthenoBatch ts fp = do
 
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
 -- | address containing echidna tests
-execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m, Has TxConf y, MonadReader y m) => [T.Text] -> Maybe Addr -> Etheno -> m (Maybe Addr)
+execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m, Has TxConf y, MonadReader y m)
+              => [T.Text] -> Maybe Addr -> Etheno -> m (Maybe Addr)
 execEthenoTxs ts addr et = do
   setupEthenoTx et
   res <- liftSH exec
