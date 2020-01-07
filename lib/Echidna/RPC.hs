@@ -67,6 +67,7 @@ instance FromJSON Etheno where
 
 
 -- | Handler for parsing errors
+-- TODO: make this a better sum type
 newtype EthenoException = EthenoException String
 
 instance Show EthenoException where
