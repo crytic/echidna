@@ -74,7 +74,7 @@ instance Show SolException where
     NoTests              -> "No tests found in ABI"
     OnlyTests            -> "Only tests and no public functions found in ABI"
     (ConstructorArgs s)  -> "Constructor arguments are required: " ++ s
-    NoCryticCompile      -> "crytic-compile not installed. To install it, run:\n   pip install crytic-compile"
+    NoCryticCompile      -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
 
 
 instance Exception SolException
