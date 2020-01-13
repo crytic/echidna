@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -19,10 +20,11 @@ import Control.Monad.Reader (MonadReader, runReader)
 import Control.Monad.Random.Strict (MonadRandom)
 import Data.Either (either)
 import Data.Has (Has(..))
-import Data.List (nub)
+import Data.List (nub, intersperse)
 import Data.Map (Map)
 import Data.Maybe (catMaybes, maybe, fromMaybe)
 import Data.Set (Set)
+import Data.Version (showVersion)
 import EVM (VM)
 import EVM.Types (Addr, W256)
 import Graphics.Vty (Event(..), Key(..), Modifier(..), defaultConfig, mkVty)
@@ -31,8 +33,12 @@ import System.Posix.Types (Fd(..))
 import System.Timeout (timeout)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (killThread, forkIO)
+import Text.Printf (printf)
 
+import qualified Brick.AttrMap as A
 import qualified Data.Text as T
+import qualified Graphics.Vty as V
+import qualified Paths_echidna (version)
 
 import Echidna.Campaign
 import Echidna.ABI
@@ -88,7 +94,7 @@ ppTS (Solved l)  = ppFail Nothing l
 ppTS Passed      = pure "passed! 🎉"
 ppTS (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _ _ _) ->
                      if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
-ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m) 
+ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m)
                                                                               else Nothing) l
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
@@ -100,7 +106,7 @@ ppTests (Campaign ts _ _) = unlines . catMaybes <$> mapM pp ts where
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: Map W256 (Set Int) -> Maybe String
-ppCoverage s | s == mempty = Nothing 
+ppCoverage s | s == mempty = Nothing
              | otherwise   = Just $ "Unique instructions: " ++ show (coveragePoints s)
                                  ++ "\nUnique codehashes: " ++ show (length s)
 
@@ -110,16 +116,90 @@ ppCampaign c = (++) <$> ppTests c <*> pure (maybe "" ("\n" ++) . ppCoverage $ c 
 -- | Render 'Campaign' progress as a 'Widget'.
 campaignStatus :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
                => (Campaign, UIState) -> m (Widget ())
-campaignStatus (c, s) = do
-  let mSection = flip (<=>) . maybe emptyWidget ((hBorder <=>) . padLeft (Pad 2))
-      mainbox = hCenter . hLimit 120 . joinBorders . borderWithLabel (str "Echidna") . padLeft (Pad 2)
-  status <- mainbox . mSection (fmap str . ppCoverage $ c ^. coverage) . str <$> ppTests c
-  let bl msg = status <=> hCenter (str msg)
-  (s,) <$> isDone c <&> \case
-    (Uninitialized, _) -> mainbox $ str "Starting up, please wait  "
-    (Timedout, _)      -> bl "Timed out, C-c or esc to print report"
-    (_, True)          -> bl "Campaign complete, C-c or esc to print report"
-    _                  -> status
+campaignStatus (c@Campaign{_tests, _coverage}, uiState) = do
+  done <- isDone c
+  case (uiState, done) of
+    (Uninitialized, _) -> pure $ mainbox (padLeft (Pad 1) $ str "Starting up, please wait...") emptyWidget
+    (Timedout, _)      -> mainbox <$> testsWidget <*> pure (str "Timed out, C-c or esc to print report")
+    (_, True)          -> mainbox <$> testsWidget <*> pure (str "Campaign complete, C-c or esc to print report")
+    _                  -> mainbox <$> testsWidget <*> pure emptyWidget
+  where
+  mainbox :: Widget () -> Widget () -> Widget ()
+  mainbox inner underneath =
+    padTop (Pad 1) $ hCenter $ hLimit 120 $
+    (
+      borderWithLabel (withAttr "bold" $ str title) $
+      summaryWidget
+      <=>
+      hBorderWithLabel (str "Tests")
+      <=>
+      inner
+    )
+    <=>
+    hCenter underneath
+
+  title = "Echidna " ++ showVersion Paths_echidna.version
+
+  summaryWidget =
+    padLeft (Pad 1) (
+      str ("Tests found: " ++ show (length _tests))
+      <=>
+      maybe emptyWidget str (ppCoverage _coverage)
+    )
+
+  testsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
+              => m (Widget())
+  testsWidget = foldl (<=>) emptyWidget . intersperse hBorder <$> traverse testWidget _tests
+
+  testWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
+             => (SolTest, TestState) -> m (Widget ())
+  testWidget (test, testState) =
+    case test of
+        Left  (n, _) -> widget n ""
+        Right (n, _) -> widget n "assertion in "
+    where
+    widget n infront = do
+      (status, details) <- tsWidget testState
+      pure $ padLeft (Pad 1) $
+        str infront <+> name n <+> str ": " <+> status
+        <=> padTop (Pad 1) details
+    name n = withAttr "bold" $ str (T.unpack n)
+
+  tsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
+           => TestState -> m (Widget (), Widget ())
+  tsWidget (Failed e)  = pure (str "could not evaluate", str $ show e)
+  tsWidget (Solved l)  = failWidget Nothing l
+  tsWidget Passed      = pure (withAttr "success" $ str "PASSED!", emptyWidget)
+  tsWidget (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _ _ _) ->
+    if i >= t then
+      tsWidget Passed
+    else
+      pure (withAttr "working" $ str $ "fuzzing " ++ progress i t, emptyWidget)
+  tsWidget (Large n l) = view (hasLens . to shrinkLimit) >>= \m ->
+    failWidget (if n < m then Just (n,m) else Nothing) l
+
+  failWidget :: (MonadReader x m, Has Names x, Has TxConf x)
+             => Maybe (Int, Int) -> [Tx] -> m (Widget (), Widget ())
+  failWidget _ [] = pure (failureBadge, str "*no transactions made*")
+  failWidget b xs = do
+    s <- seqWidget
+    pure (failureBadge, titleWidget <=> s)
+    where
+    titleWidget  = str "Call sequence" <+> status <+> str ":"
+
+    status = case b of
+      Nothing    -> emptyWidget
+      Just (n,m) -> str ", " <+> withAttr "working" (str ("shrinking " ++ progress n m))
+
+    seqWidget = do
+      ppTxs <- mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs
+      let ordinals = str . printf "%d." <$> [1 :: Int ..]
+      pure $
+        foldl (<=>) emptyWidget $
+          zipWith (<+>) ordinals (withAttr "tx" . str <$> ppTxs)
+
+  failureBadge :: Widget ()
+  failureBadge = withAttr "failure" $ str "FAILED!"
 
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
 monitor :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
@@ -131,9 +211,18 @@ monitor = let
   se _ (AppEvent c') = continue (c', Running)
   se c (VtyEvent (EvKey KEsc _))                         = halt c
   se c (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = halt c
-  se c _                                                 = continue c in
+  se c _                                                 = continue c
+
+  attrs = A.attrMap (V.white `on` V.black)
+    [ ("failure", fg V.brightRed)
+    , ("bold", fg V.white `V.withStyle` V.bold)
+    , ("tx", fg V.brightWhite)
+    , ("working", fg V.brightBlue)
+    , ("success", fg V.brightGreen)
+    ]
+  in
     liftM3 (,,) (view hasLens) (view hasLens) (view hasLens) <&> \s ->
-      App (pure . cs s) neverShowCursor se pure (const $ forceAttrMap mempty)
+      App (pure . cs s) neverShowCursor se pure (const attrs)
 
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
 isTerminal :: MonadIO m => m Bool
@@ -160,7 +249,7 @@ ui v w ts d = let xfer bc = use hasLens >>= liftIO . writeBChan bc
   res  <-  liftIO . time $ if dash
     then fst <$> app (defaultCampaign, Uninitialized)
     else let go = readBChan bc >>= \c -> if done c then pure c else go in go
-  final <- maybe (do c <- liftIO (readBChan bc) 
+  final <- maybe (do c <- liftIO (readBChan bc)
                      killThread t
                      when dash . liftIO . void $ app (c, Timedout)
                      return c)
