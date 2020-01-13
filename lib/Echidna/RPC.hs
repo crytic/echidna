@@ -20,12 +20,14 @@ import Data.ByteString.Char8 (ByteString, empty)
 import Data.Has (Has(..))
 import Data.List (partition)
 import Data.Map (fromList)
+import Data.Maybe (fromMaybe)
 import Data.Text.Encoding (encodeUtf8)
 import EVM
 import EVM.ABI (AbiType(..), getAbi)
 import EVM.Concrete (w256)
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Types (Addr, W256)
+import Text.Read (readMaybe)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Control.Monad.State.Strict as S (state)
@@ -49,8 +51,8 @@ instance FromJSON Etheno where
          "AccountCreated"  -> AccountCreated  <$> v .: "address"
          "ContractCreated" -> ContractCreated <$> v .: "from"
                                               <*> v .: "contract_address"
-                                              <*> (read <$> (v .: "gas_used"))
-                                              <*> (read <$> (v .: "gas_price"))
+                                              <*> (fromMaybe 0 . readMaybe <$> (v .: "gas_used"))
+                                              <*> (fromMaybe 0 . readMaybe <$> (v .: "gas_price"))
                                               <*> (decode <$> (v .: "data"))
                                               <*> v .: "value"
          "FunctionCall"    -> FunctionCall    <$> v .: "from"
