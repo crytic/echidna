@@ -20,7 +20,7 @@ import Data.ByteString.Char8 (ByteString, empty)
 import Data.Has (Has(..))
 import Data.List (partition)
 import Data.Map (fromList)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (maybe)
 import Data.Text.Encoding (encodeUtf8)
 import EVM
 import EVM.ABI (AbiType(..), getAbi)
@@ -32,7 +32,7 @@ import Text.Read (readMaybe)
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.ByteString.Base16 as BS16 (decode)
-import qualified Data.Text as T (Text, drop)
+import qualified Data.Text as T (Text, drop, unpack)
 import qualified Data.Vector as V (fromList)
 
 import Echidna.Exec
@@ -47,24 +47,26 @@ data Etheno = AccountCreated Addr                                       -- ^ Reg
 instance FromJSON Etheno where
   parseJSON = withObject "Etheno" $ \v -> do
     (ev :: String) <- v .: "event"
+    let gu = maybe (M.fail "could not parse gas_used") pure . readMaybe =<< v .: "gas_used"
+        gp = maybe (M.fail "could not parse gas_price") pure . readMaybe =<< v .: "gas_price"
     case ev of
          "AccountCreated"  -> AccountCreated  <$> v .: "address"
          "ContractCreated" -> ContractCreated <$> v .: "from"
                                               <*> v .: "contract_address"
-                                              <*> (fromMaybe 0 . readMaybe <$> (v .: "gas_used"))
-                                              <*> (fromMaybe 0 . readMaybe <$> (v .: "gas_price"))
-                                              <*> (decode <$> (v .: "data"))
+                                              <*> gu
+                                              <*> gp
+                                              <*> (decode =<< (v .: "data"))
                                               <*> v .: "value"
          "FunctionCall"    -> FunctionCall    <$> v .: "from"
                                               <*> v .: "to"
-                                              <*> (read <$> (v .: "gas_used"))
-                                              <*> (read <$> (v .: "gas_price"))
-                                              <*> (decode <$> (v .: "data"))
+                                              <*> gu
+                                              <*> gp
+                                              <*> (decode =<< (v .: "data"))
                                               <*> v .: "value"
          _ -> M.fail "event should be one of \"AccountCreated\", \"ContractCreated\", or \"FunctionCall\""
-    where decode :: T.Text -> ByteString
-          decode = decodeHex . encodeUtf8 . T.drop 2
-          decodeHex = fst . BS16.decode
+    where decode x = case BS16.decode . encodeUtf8 . T.drop 2 $ x of
+                          (a, "") -> pure a
+                          _       -> M.fail $ "could not decode hexstring: " <> T.unpack x
 
 
 -- | Handler for parsing errors
