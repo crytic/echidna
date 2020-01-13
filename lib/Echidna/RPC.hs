@@ -112,7 +112,7 @@ execEthenoTxs ts addr et = do
   g <- view (hasLens . propGas)
   case (res, et) of
        (Reversion,   _)               -> throwM $ EthenoException "Encountered reversion while setting up Etheno transactions"
-       (VMFailure x, _)               -> vmExcept x >> return addr
+       (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
        (VMSuccess bc,
         ContractCreated _ ca _ _ _ _) -> do
           hasLens . env . contracts . at ca . _Just . contractcode .= InitCode ""
