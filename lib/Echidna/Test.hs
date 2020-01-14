@@ -25,7 +25,8 @@ import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Solidity.Types (SolTest)
 import Echidna.Transaction
-import Echidna.Types (Tx(Tx), src, encodeSig)
+import Echidna.Types (Tx(Tx), src)
+import Echidna.Util (encodeSig)
 
 -- | Configuration for evaluating Echidna tests.
 data TestConf = TestConf { classifier :: Text -> VM -> Bool

@@ -31,7 +31,8 @@ import qualified Data.Vector as V
 import Echidna.ABI
 import Echidna.Defaults (defaultDict)
 import Echidna.Solidity.Types (SolSignature, SolCall)
-import Echidna.Types (GenDict, Tx(Tx), encodeSig, call, value, gasprice', delay)
+import Echidna.Types (GenDict, Tx(Tx), call, value, gasprice', delay)
+import Echidna.Util (encodeSig)
 
 data TxConf = TxConf { _propGas       :: Word
                      -- ^ Gas to use evaluating echidna properties

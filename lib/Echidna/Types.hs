@@ -9,7 +9,6 @@ module Echidna.Types where
 import Prelude hiding (Word)
 
 import Control.Lens.TH (makeLenses)
-import Control.Monad (liftM2)
 import Control.Monad.Catch (Exception)
 import Data.Aeson (ToJSON(..), object)
 import Data.ByteString (ByteString)
@@ -17,22 +16,19 @@ import Data.Foldable (toList)
 import Data.Has (Has(..))
 import Data.Hashable (Hashable)
 import Data.HashMap.Strict (HashMap)
-import Data.List (group, sort)
 import Data.Map (Map, mapKeys)
-import Data.Maybe (mapMaybe, listToMaybe, maybeToList)
+import Data.Maybe (mapMaybe, maybeToList)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Vector.Instances ()
 import Echidna.Solidity.Types (SolSignature, SolCall, SolTest)
 import Echidna.Pretty (ppSolCall)
+import Echidna.Util (hashMapBy)
 import EVM (Error)
-import EVM.ABI (AbiType, AbiValue(..), abiTypeSolidity, abiValueType)
+import EVM.ABI (AbiType, AbiValue(..), abiValueType)
 import EVM.Concrete (Word)
 import EVM.Types (W256, Addr)
 import Numeric (showHex)
-
-import qualified Data.HashMap.Strict as M (fromListWith)
-import qualified Data.Text as T (intercalate)
 
 -- | We throw this when our execution fails due to something other than reversion.
 data ExecException = IllegalExec Error | UnknownFailure Error
@@ -156,10 +152,3 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                  , seed          :: Maybe Int
                                  , dictFreq      :: Float
                                  }
-
-hashMapBy :: (Hashable k, Eq k, Ord a) => (a -> k) -> [a] -> HashMap k [a]
-hashMapBy f = M.fromListWith (++) . mapMaybe (liftM2 fmap (\l x -> (f x, l)) listToMaybe) . group . sort
-
--- | Get the text signature of a solidity method (for later hashing)
-encodeSig :: SolSignature -> Text
-encodeSig (n, ts) = n <> "(" <> T.intercalate "," (abiTypeSolidity <$> ts) <> ")"
