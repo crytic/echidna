@@ -26,29 +26,7 @@ import qualified Data.Set as S
 
 import Echidna.Transaction
 import Echidna.Types (Tx, ExecException(..), call, dst)
-
--- | Broad categories of execution failures: reversions, illegal operations, and ???.
-data ErrorClass = RevertE | IllegalE | UnknownE
-
--- | Given an execution error, classify it. Mostly useful for nice @pattern@s ('Reversion', 'Illegal').
-classifyError :: Error -> ErrorClass
-classifyError (OutOfGas _ _)         = RevertE
-classifyError (Revert _)             = RevertE
-classifyError (UnrecognizedOpcode _) = RevertE
-classifyError (Query _)              = RevertE
-classifyError StackUnderrun          = IllegalE
-classifyError BadJumpDestination     = IllegalE
-classifyError StackLimitExceeded     = IllegalE
-classifyError IllegalOverflow        = IllegalE
-classifyError _                      = UnknownE
-
--- | Matches execution errors that just cause a reversion.
-pattern Reversion :: VMResult
-pattern Reversion <- VMFailure (classifyError -> RevertE)
-
--- | Matches execution errors caused by illegal behavior.
-pattern Illegal :: VMResult
-pattern Illegal <- VMFailure (classifyError -> IllegalE)
+import Echidna.Util (pattern Illegal, pattern Reversion)
 
 -- | Given an execution error, throw the appropriate exception.
 vmExcept :: MonadThrow m => Error -> m ()

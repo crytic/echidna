@@ -14,39 +14,16 @@ import Data.Bool (bool)
 import Data.Foldable (traverse_)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
-import Data.Text (Text)
 import EVM (Error(..), VMResult(..), VM, calldata, result, state)
-import EVM.ABI (AbiValue(..), abiCalldata, encodeAbiValue)
-import EVM.Types (Addr)
+import EVM.ABI (abiCalldata)
 
 import qualified Data.ByteString as BS
 
 import Echidna.Exec
 import Echidna.Solidity.Types (SolTest)
 import Echidna.Transaction
-import Echidna.Types (SolConf(..), Tx(Tx), src, sender)
+import Echidna.Types (SolConf(..), TestConf(..), Tx(Tx), src, sender)
 import Echidna.Util (encodeSig)
-
--- | Configuration for evaluating Echidna tests.
-data TestConf = TestConf { classifier :: Text -> VM -> Bool
-                           -- ^ Given a VM state and test name, check if a test just passed (typically
-                           -- examining '_result'.)
-                         , testSender :: Addr -> Addr
-                           -- ^ Given the address of a test, return the address to send test evaluation
-                           -- transactions from.
-                         }
-
--- | Possible responses to a call to an Echidna test: @true@, @false@, @REVERT@, and ???.
-data CallRes = ResFalse | ResTrue | ResRevert | ResOther deriving (Eq, Show)
-
--- | Given a 'VMResult', classify it assuming it was the result of a call to an Echidna test.
-classifyRes :: VMResult -> CallRes
-classifyRes (VMSuccess b) | b == encodeAbiValue (AbiBool True)  = ResTrue
-                          | b == encodeAbiValue (AbiBool False) = ResFalse
-                          | otherwise                           = ResOther
-
-classifyRes Reversion = ResRevert
-classifyRes _ = ResOther
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)

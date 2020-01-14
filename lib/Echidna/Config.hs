@@ -33,9 +33,10 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
 import Echidna.Pretty (ppCampaign)
-import Echidna.Types (CampaignConf(..), SolConf(..), UIConf(..), Role(..), Names)
-import Echidna.Test
+import Echidna.Solidity.Types (CallRes(..))
+import Echidna.Types (CampaignConf(..), SolConf(..), TestConf(..), UIConf(..), Role(..), Names)
 import Echidna.Transaction
+import Echidna.Util (classifyRes)
 
 -- | Our big glorious global config type, just a product of each local config.,
 data EConfig = EConfig { _cConf :: CampaignConf

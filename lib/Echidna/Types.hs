@@ -24,7 +24,7 @@ import Data.Vector.Instances ()
 import Echidna.Solidity.Types (SolSignature, SolCall, SolTest)
 import Echidna.Solidity.Pretty (ppSolCall)
 import Echidna.Util (hashMapBy)
-import EVM (Error)
+import EVM (Error, VM)
 import EVM.ABI (AbiType, AbiValue(..), abiValueType)
 import EVM.Concrete (Word)
 import EVM.Types (W256, Addr)
@@ -169,6 +169,15 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _checkAsserts    :: Bool             -- ^ Test if we can cause assertions to fail
                        }
 makeLenses ''SolConf
+
+-- | Configuration for evaluating Echidna tests.
+data TestConf = TestConf { classifier :: Text -> VM -> Bool
+                           -- ^ Given a VM state and test name, check if a test just passed (typically
+                           -- examining '_result'.)
+                         , testSender :: Addr -> Addr
+                           -- ^ Given the address of a test, return the address to send test evaluation
+                           -- transactions from.
+                         }
 
 -- | Configuration for the Echidna UI.
 data UIConf = UIConf { _dashboard :: Bool

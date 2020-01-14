@@ -15,3 +15,6 @@ type SolCall     = (Text, [AbiValue])
 -- | An Echidna test is either the name of the function to call and the address where its contract is,
 -- or a function that could experience an exception
 type SolTest = Either (Text, Addr) SolSignature
+
+-- | Possible responses to a call to an Echidna test: @true@, @false@, @REVERT@, and ???.
+data CallRes = ResFalse | ResTrue | ResRevert | ResOther deriving (Eq, Show)

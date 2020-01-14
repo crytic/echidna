@@ -36,9 +36,9 @@ import Echidna.ABI
 import Echidna.Defaults (defaultDict)
 import Echidna.Exec
 import Echidna.Solidity.Types (SolTest)
-import Echidna.Test
+import Echidna.Test (checkETest, shrinkSeq)
 import Echidna.Transaction
-import Echidna.Types (TestState(..), Campaign(..), CampaignConf(..), SolConf, GenDict, Tx, defSeed, constants, coverage, genDict, tests, call, rTypes)
+import Echidna.Types (TestState(..), Campaign(..), CampaignConf(..), SolConf, TestConf, GenDict, Tx, defSeed, constants, coverage, genDict, tests, call, rTypes)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
