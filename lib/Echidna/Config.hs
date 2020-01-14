@@ -32,11 +32,11 @@ import qualified Data.ByteString as BS
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
-import Echidna.Types (CampaignConf(..))
+import Echidna.Pretty (ppCampaign)
 import Echidna.Solidity
+import Echidna.Types (CampaignConf(..), UIConf(..), Role(..), Names)
 import Echidna.Test
 import Echidna.Transaction
-import Echidna.UI
 
 -- | Our big glorious global config type, just a product of each local config.,
 data EConfig = EConfig { _cConf :: CampaignConf

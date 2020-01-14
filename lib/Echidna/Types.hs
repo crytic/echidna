@@ -22,7 +22,7 @@ import Data.Set (Set)
 import Data.Text (Text)
 import Data.Vector.Instances ()
 import Echidna.Solidity.Types (SolSignature, SolCall, SolTest)
-import Echidna.Pretty (ppSolCall)
+import Echidna.Solidity.Pretty (ppSolCall)
 import Echidna.Util (hashMapBy)
 import EVM (Error)
 import EVM.ABI (AbiType, AbiValue(..), abiValueType)
@@ -152,3 +152,15 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                  , seed          :: Maybe Int
                                  , dictFreq      :: Float
                                  }
+
+-- | Configuration for the Echidna UI.
+data UIConf = UIConf { _dashboard :: Bool
+                     , _maxTime   :: Maybe Int
+                     , _finished  :: Campaign -> Int -> String
+                     }
+
+-- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.
+data Role = Sender | Receiver | Ambiguous
+
+-- | Rules for pretty-printing addresses based on their role in a transaction.
+type Names = Role -> Addr -> String
