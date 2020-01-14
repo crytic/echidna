@@ -94,9 +94,7 @@ loadEthenoBatch ts fp = do
          (addr, vm') <- runStateT initVM blank
          case addr of
               Nothing -> throwM $ EthenoException "Could not find a contract with echidna tests"
-              Just a  -> do
-                vm <- execStateT (liftSH . loadContract $ a) vm'
-                return vm
+              Just a  -> execStateT (liftSH . loadContract $ a) vm'
 
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
 -- | address containing echidna tests
