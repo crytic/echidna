@@ -18,7 +18,6 @@ import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Char8 (ByteString, empty)
 import Data.Has (Has(..))
-import Data.List (partition)
 import Data.Map (fromList)
 import Data.Maybe (maybe)
 import Data.Text.Encoding (encodeUtf8)
@@ -80,31 +79,28 @@ instance Exception EthenoException
 
 -- | Main function: takes a filepath where the initialization sequence lives and returns
 -- | the initialized VM along with a list of Addr's to put in GenConf
-loadEthenoBatch :: (MonadThrow m, MonadIO m, Has TxConf y, MonadReader y m) => [T.Text] -> FilePath -> m (VM, [Addr])
+loadEthenoBatch :: (MonadThrow m, MonadIO m, Has TxConf y, MonadReader y m, M.MonadFail m)
+                => [T.Text] -> FilePath -> m VM
 loadEthenoBatch ts fp = do
   bs <- liftIO $ eitherDecodeFileStrict fp
 
   case bs of
        (Left e) -> throwM $ EthenoException e
-       (Right ethenoInit) -> do
-         -- Separate out account creation txns to use later for config
-         let (accounts, txs) = partition (\case { AccountCreated{} -> True; _ -> False; }) ethenoInit
-             knownAddrs      = map (\(AccountCreated a) -> a) accounts
-
+       (Right (ethenoInit :: [Etheno])) -> do
          -- Execute contract creations and initial transactions,
          let blank  = vmForEthrunCreation empty & env . contracts .~ fromList []
-             initVM = foldM (execEthenoTxs ts) Nothing txs
+             initVM = foldM (execEthenoTxs ts) Nothing ethenoInit
 
          (addr, vm') <- runStateT initVM blank
          case addr of
               Nothing -> throwM $ EthenoException "Could not find a contract with echidna tests"
               Just a  -> do
                 vm <- execStateT (liftSH . loadContract $ a) vm'
-                return (vm, knownAddrs)
+                return vm
 
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
 -- | address containing echidna tests
-execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m, Has TxConf y, MonadReader y m)
+execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m, Has TxConf y, MonadReader y m, M.MonadFail m)
               => [T.Text] -> Maybe Addr -> Etheno -> m (Maybe Addr)
 execEthenoTxs ts addr et = do
   setupEthenoTx et
