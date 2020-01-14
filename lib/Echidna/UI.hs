@@ -35,11 +35,14 @@ import UnliftIO.Concurrent (killThread, forkIO)
 import qualified Data.Text as T
 
 import Echidna.Campaign
+import Echidna.Defaults (defaultCampaign, defaultDict)
 import Echidna.Exec
+import Echidna.Pretty (ppSolCall)
 import Echidna.Solidity
+import Echidna.Solidity.Types (SolTest)
 import Echidna.Test
 import Echidna.Transaction
-import Echidna.Types (TestState(..), Campaign(..), CampaignConf(..), SolTest, GenDict, Tx(Tx), defaultDict, defSeed, defaultCampaign, coverage, src, ppSolCall)
+import Echidna.Types (TestState(..), Campaign(..), CampaignConf(..), GenDict, Tx(Tx), defSeed, coverage, src)
 
 data UIConf = UIConf { _dashboard :: Bool
                      , _maxTime   :: Maybe Int

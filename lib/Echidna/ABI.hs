@@ -26,7 +26,9 @@ import Data.Word8 (Word8)
 
 import EVM.ABI
 
-import Echidna.Types (SolSignature, SolCall, GenDict, constants, wholeCalls, pSynthA, defaultDict, hashMapBy)
+import Echidna.Defaults (defaultDict)
+import Echidna.Solidity.Types (SolSignature, SolCall)
+import Echidna.Types (GenDict, constants, wholeCalls, pSynthA, hashMapBy)
 
 import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M

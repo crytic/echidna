@@ -29,9 +29,10 @@ import Data.Text.Read             (decimal)
 import System.Process             (StdStream(..), readCreateProcess, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 
-import Echidna.Exec        (execTx)
-import Echidna.Transaction (World(..))
-import Echidna.Types       (Tx(..), SolSignature, SolTest)
+import Echidna.Exec           (execTx)
+import Echidna.Solidity.Types (SolSignature, SolTest)
+import Echidna.Transaction    (World(..))
+import Echidna.Types          (Tx(..))
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)

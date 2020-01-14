@@ -11,18 +11,20 @@ import Prelude hiding (Word)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (liftM2)
 import Control.Monad.Catch (Exception)
-import Data.Aeson (FromJSON(..), ToJSON(..), object)
+import Data.Aeson (ToJSON(..), object)
 import Data.ByteString (ByteString)
 import Data.Foldable (toList)
 import Data.Has (Has(..))
 import Data.Hashable (Hashable)
 import Data.HashMap.Strict (HashMap)
-import Data.List (group, sort, intercalate)
+import Data.List (group, sort)
 import Data.Map (Map, mapKeys)
 import Data.Maybe (mapMaybe, listToMaybe, maybeToList)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Vector.Instances ()
+import Echidna.Solidity.Types (SolSignature, SolCall, SolTest)
+import Echidna.Pretty (ppSolCall)
 import EVM (Error)
 import EVM.ABI (AbiType, AbiValue(..), abiTypeSolidity, abiValueType)
 import EVM.Concrete (Word)
@@ -30,39 +32,7 @@ import EVM.Types (W256, Addr)
 import Numeric (showHex)
 
 import qualified Data.HashMap.Strict as M (fromListWith)
-import qualified Data.Text as T (intercalate, unpack)
-
--- | Represents a call to a Solidity function.
--- A tuple of 'Text' for the name of the function, and then any 'AbiValue' arguments passed (as a list).
-type SolCall     = (Text, [AbiValue])
-
--- | Pretty-print some 'AbiCall'.
-ppSolCall :: SolCall -> String
-ppSolCall (t, vs) = (if t == "" then T.unpack "*fallback*" else T.unpack t) ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
-
--- | Pretty-print some 'AbiValue'.
-ppAbiValue :: AbiValue -> String
-ppAbiValue (AbiUInt _ n)         = show n
-ppAbiValue (AbiInt  _ n)         = show n
-ppAbiValue (AbiAddress n)        = showHex n ""
-ppAbiValue (AbiBool b)           = if b then "true" else "false"
-ppAbiValue (AbiBytes      _ b)   = show b
-ppAbiValue (AbiBytesDynamic b)   = show b
-ppAbiValue (AbiString       s)   = show s
-ppAbiValue (AbiArrayDynamic _ v) =
-  "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
-ppAbiValue (AbiArray      _ _ v) =
-  "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
-ppAbiValue (AbiTuple v) =
-  "(" ++ intercalate ", " (ppAbiValue <$> toList v) ++ ")"
-
--- | Represents the type of a Solidity function.
--- A tuple of 'Text' for the name of the function, and then the 'AbiType's of any arguments it expects.
-type SolSignature = (Text, [AbiType])
-
--- | An Echidna test is either the name of the function to call and the address where its contract is,
--- or a function that could experience an exception
-type SolTest = Either (Text, Addr) SolSignature
+import qualified Data.Text as T (intercalate)
 
 -- | We throw this when our execution fails due to something other than reversion.
 data ExecException = IllegalExec Error | UnknownFailure Error
@@ -170,9 +140,6 @@ mkGenDict :: Float      -- ^ Percentage of time to mutate instead of synthesize.
           -> GenDict
 mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fmap abiValueType) cs)
 
-defaultDict :: GenDict
-defaultDict = mkGenDict 0 [] [] 0 (const Nothing)
-
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- ^ Maximum number of function calls to execute while fuzzing
@@ -189,10 +156,6 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                  , seed          :: Maybe Int
                                  , dictFreq      :: Float
                                  }
-
--- | The default value of a campaign.
-defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty defaultDict
 
 hashMapBy :: (Hashable k, Eq k, Ord a) => (a -> k) -> [a] -> HashMap k [a]
 hashMapBy f = M.fromListWith (++) . mapMaybe (liftM2 fmap (\l x -> (f x, l)) listToMaybe) . group . sort

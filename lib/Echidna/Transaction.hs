@@ -29,7 +29,9 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Vector as V
 
 import Echidna.ABI
-import Echidna.Types (SolSignature, SolCall, GenDict, Tx(Tx), defaultDict, encodeSig, call, value, gasprice', delay)
+import Echidna.Defaults (defaultDict)
+import Echidna.Solidity.Types (SolSignature, SolCall)
+import Echidna.Types (GenDict, Tx(Tx), encodeSig, call, value, gasprice', delay)
 
 data TxConf = TxConf { _propGas       :: Word
                      -- ^ Gas to use evaluating echidna properties

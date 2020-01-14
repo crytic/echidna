@@ -23,8 +23,9 @@ import qualified Data.ByteString as BS
 
 import Echidna.Exec
 import Echidna.Solidity
+import Echidna.Solidity.Types (SolTest)
 import Echidna.Transaction
-import Echidna.Types (SolTest, Tx(Tx), src, encodeSig)
+import Echidna.Types (Tx(Tx), src, encodeSig)
 
 -- | Configuration for evaluating Echidna tests.
 data TestConf = TestConf { classifier :: Text -> VM -> Bool
