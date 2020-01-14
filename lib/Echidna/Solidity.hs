@@ -12,6 +12,7 @@ import Control.Exception          (Exception)
 import Control.Monad              (liftM2, when, unless, void)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
+import Control.Monad.Fail         (MonadFail)
 import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
 import Data.Aeson                 (Value(..))
@@ -143,7 +144,7 @@ linkLibraries ls = "--libraries " ++
 -- testing and extract an ABI and list of tests. Throws exceptions if anything returned doesn't look
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
-loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x)
+loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
               => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text])
 loadSpecified name cs = do
   -- Pick contract to load
@@ -162,8 +163,8 @@ loadSpecified name cs = do
       (tests, funs) = partition (isPrefixOf pref . fst) abi
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
-  (blank', addrs) <- maybe (pure (vmForEthrunCreation bc, [])) (loadEthenoBatch (fst <$> tests)) fp
-  let blank = populateAddresses ((NE.toList ads |> d) ++ addrs) bala blank'
+  blank' <- maybe (pure (vmForEthrunCreation bc)) (loadEthenoBatch (fst <$> tests)) fp
+  let blank = populateAddresses (NE.toList ads |> d) bala blank'
             & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
 
   unless (null con || isJust fp) (throwM $ ConstructorArgs (show con))
@@ -197,7 +198,7 @@ loadSpecified name cs = do
 --loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
 --             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 --loadSolidity fp name = contracts fp >>= loadSpecified name
-loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x)
+loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
              => FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text])
 loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 
@@ -213,7 +214,7 @@ prepareForTest (v, a, ts) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ ch)
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
-loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x)
+loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
              => FilePath -> Maybe Text -> m (VM, World, [SolTest])
 loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
 
