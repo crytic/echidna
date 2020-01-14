@@ -15,7 +15,7 @@ import Echidna.Config
 import Echidna.Solidity
 import Echidna.Campaign
 import Echidna.UI
-import Echidna.Types (mkGenDict, dictFreq)
+import Echidna.Types (mkGenDict, dictFreq, quiet)
 
 import qualified Data.List.NonEmpty as NE
 

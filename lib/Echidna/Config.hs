@@ -33,8 +33,7 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
 import Echidna.Pretty (ppCampaign)
-import Echidna.Solidity
-import Echidna.Types (CampaignConf(..), UIConf(..), Role(..), Names)
+import Echidna.Types (CampaignConf(..), SolConf(..), UIConf(..), Role(..), Names)
 import Echidna.Test
 import Echidna.Transaction
 

@@ -22,10 +22,9 @@ import EVM.Types (Addr)
 import qualified Data.ByteString as BS
 
 import Echidna.Exec
-import Echidna.Solidity
 import Echidna.Solidity.Types (SolTest)
 import Echidna.Transaction
-import Echidna.Types (Tx(Tx), src)
+import Echidna.Types (SolConf(..), Tx(Tx), src, sender)
 import Echidna.Util (encodeSig)
 
 -- | Configuration for evaluating Echidna tests.

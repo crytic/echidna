@@ -30,11 +30,10 @@ import UnliftIO.Concurrent (killThread, forkIO)
 import Echidna.Campaign
 import Echidna.Defaults (defaultCampaign, defaultDict)
 import Echidna.Pretty (ppCoverage, ppTests)
-import Echidna.Solidity
 import Echidna.Solidity.Types (SolTest)
 import Echidna.Test
 import Echidna.Transaction
-import Echidna.Types (Campaign(..), CampaignConf(..), UIConf, GenDict, Names, defSeed, coverage)
+import Echidna.Types (Campaign(..), CampaignConf(..), SolConf, UIConf, GenDict, Names, defSeed, coverage)
 
 makeLenses ''UIConf
 

@@ -32,7 +32,7 @@ import System.IO                  (openFile, IOMode(..))
 import Echidna.Exec           (execTx)
 import Echidna.Solidity.Types (SolSignature, SolTest)
 import Echidna.Transaction    (World(..))
-import Echidna.Types          (Tx(..))
+import Echidna.Types          (SolConf(..), Tx(..), cryticArgs, solcArgs, solcLibs, quiet)
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
@@ -75,21 +75,6 @@ instance Show SolException where
 
 
 instance Exception SolException
-
--- | Configuration for loading Solidity for Echidna testing.
-data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract address to use
-                       , _deployer        :: Addr             -- ^ Contract deployer address to use
-                       , _sender          :: NE.NonEmpty Addr -- ^ Sender addresses to use
-                       , _balanceAddr     :: Integer          -- ^ Initial balance of deployer and senders
-                       , _balanceContract :: Integer          -- ^ Initial balance of contract to test
-                       , _prefix          :: Text             -- ^ Function name prefix used to denote tests
-                       , _cryticArgs      :: [String]         -- ^ Args to pass to crytic
-                       , _solcArgs        :: String           -- ^ Args to pass to @solc@
-                       , _solcLibs        :: [String]         -- ^ List of libraries to load, in order.
-                       , _quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
-                       , _checkAsserts    :: Bool             -- ^ Test if we can cause assertions to fail
-                       }
-makeLenses ''SolConf
 
 -- | Given a file, use its extenstion to check if it is a precompiled contract or try to compile it and
 -- get a list of its contracts, throwing exceptions if necessary.
