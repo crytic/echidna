@@ -13,10 +13,10 @@ import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.IO (hPutStrLn, stderr)
 
 import EVM (env, contracts)
+import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Types (Addr(..))
 
 import Echidna.ABI
-import Echidna.ABIv2 (AbiValue(AbiAddress))
 import Echidna.Config
 import Echidna.Solidity
 import Echidna.Campaign
@@ -57,7 +57,6 @@ main = do Options f c conf <- execParser opts
             cs       <- Echidna.Solidity.contracts f
             ads      <- addresses
             (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
-            ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg) (extractConstants cs ++ NE.toList ads) [] g (returnTypes cs))
             let ads' = AbiAddress . addressWord160 <$> v ^. env . EVM.contracts . to keys
-            ui v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads ++ ads') [] g (returnTypes cs))
+            ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg) (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs))
           if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
