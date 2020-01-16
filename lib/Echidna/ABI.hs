@@ -10,7 +10,7 @@ module Echidna.ABI where
 
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, foldM, replicateM)
-import Control.Monad.Catch (Exception, MonadThrow(..))
+import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Class (MonadState, gets)
 import Control.Monad.State (evalStateT)
 import Control.Monad.Random.Strict (MonadRandom, getRandom, getRandoms, getRandomR, uniformMay)

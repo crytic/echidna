@@ -8,7 +8,7 @@ import Test.Tasty.HUnit
 import EVM (env, contracts)
 import EVM.Types (Addr(..))
 
-import Echidna.ABI (SolCall, mkGenDict, genAbiValue)
+import Echidna.ABI (SolCall, mkGenDict)
 import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests)
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
@@ -19,13 +19,11 @@ import Control.Monad (liftM2, void)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Random (getRandom)
 import Control.Monad.Reader (runReaderT)
-import Data.Binary.Get (runGetOrFail)
-import Data.Binary.Put (runPut)
 import Data.Map.Strict (keys)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
 import Data.List (find)
-import EVM.ABI (AbiType(..), AbiValue(..), getAbi, putAbi, abiValueType)
+import EVM.ABI (AbiValue(..))
 import System.Directory (withCurrentDirectory)
 
 import qualified Data.List.NonEmpty   as NE
@@ -215,7 +213,7 @@ runContract fp n c =
     g <- getRandom
     (v,w,ts) <- loadSolTests fp n
     cs  <- Echidna.Solidity.contracts fp
-    ads <- addresses
+    ads <- NE.toList <$> addresses
     let ads' = AbiAddress . addressWord160 <$> v ^. env . EVM.contracts . to keys
     campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads ++ ads') [] g (returnTypes cs))
 
