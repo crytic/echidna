@@ -74,6 +74,7 @@ instance FromJSON EConfig where
                           <*> pure Nothing
                           <*> v .:? "seed"
                           <*> v .:? "corpusDir"
+                          <*> v .:? "mutation"    .!= False
 
         names :: Names
         names Sender = (" from: " ++) . show

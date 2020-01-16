@@ -16,7 +16,7 @@ import Control.Monad (liftM2, replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT, MonadIO)
+import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT, MonadIO, liftIO)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Aeson (ToJSON(..), object)
@@ -63,6 +63,7 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- Echidna won't collect coverage information (and will go faster)
                                  , seed          :: Maybe Int
                                  , corpusDir     :: Maybe FilePath
+                                 , mutation      :: Bool
                                  }
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
@@ -98,11 +99,12 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                          , _initialized :: Bool
                            -- ^ Has the campaign started
                          , _newCoverage :: Bool
-                         , _genTrans :: [[Tx]]
+                         , _genTrans    :: [[Tx]]
+                         , _callseqs    :: Int
                          }
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co _ _ _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
+  toJSON (Campaign ts co _ _ _ _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
     : if co == mempty then [] else [("coverage",) . toJSON . mapKeys (`showHex` "") $ toList <$> co] where
       format (Right _,      Open _) = Nothing
       format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
@@ -114,25 +116,25 @@ instance Has GenDict Campaign where
   hasLens = genDict
 
 defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty defaultDict False False mempty
+defaultCampaign = Campaign mempty mempty defaultDict False False mempty 0
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
 isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
-isDone (Campaign _ _ _ False _ _) = pure False
-isDone (Campaign ts _ _ _ _ _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
+isDone (Campaign _ _ _ False _ _ _) = pure False
+isDone (Campaign ts _ _ _ _ _ _) = view (hasLens . to (liftM2 (,) testLimit shrinkLimit)) <&> \(tl, sl) ->
   all (\case Open i -> i >= tl; Large i _ -> i >= sl; _ -> True) $ snd <$> ts
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
 isSuccess :: Campaign -> Bool
-isSuccess (Campaign ts _ _ _ _ _) =
+isSuccess (Campaign ts _ _ _ _ _ _) =
   all (\case { Passed -> True; Open _ -> True; _ -> False; }) $ snd <$> ts
 
 
 -- | Given a 'Campaign', return the progress of it
 getProgress :: Campaign -> Int
-getProgress (Campaign ts _ _ _ _ _) = foldr1 max $ map ((\case Open i -> i; _ -> 0) . snd) ts 
+getProgress (Campaign ts _ _ _ _ _ _) = foldr1 max $ map ((\case Open i -> i; _ -> 0) . snd) ts 
 
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
 -- of transactions and the state after evaluation, see if:
@@ -212,87 +214,92 @@ swapAt xs i j =  let elemI = xs !! i
 
 randseq :: ( MonadCatch m, MonadRandom m, MonadIO m,  MonadReader x m, MonadState y m
            , Has GenDict y, Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
-        => Int -> Int ->  World -> m [Tx]
+        => Int -> Int ->  World -> Bool -> m [Tx]
 
-randseq 1 p w = do  ca <- use hasLens
-                    n <- getRandomR (0, 6 :: Integer)
-                    let gts = ca ^. genTrans
-                    if (length gts > p) 
-                    then return $ gts !! p
-                    else 
-                     do 
-                      gtxs <- replicateM 1 (evalStateT genTxM (w, ca ^. genDict))
-                      case (n, gts) of
-                              -- random generation of transactions
-                       (_, []) -> return gtxs
-                              -- mutate the transaction from a rare sequence
-                       (0, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                     let rtxs = gts !! idx
-                                     sequence $ map mutTx rtxs
-                              -- shrink all elements from a rare sequence
-                       (1, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                     let rtxs = gts !! idx
-                                     sequence $ map shrinkTx rtxs
-                              -- generate a transaction splicing other transactions arguments
-                       (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                     let rtxs = gts !! idx
-                                     tx' <- spliceTx (head rtxs) (concat gts)
-                                     return [tx'] 
-                       _       -> return gtxs
-
-
-randseq ql p w = do ca <- use hasLens
-                    n <- getRandomR (0, 13 :: Integer)
-                    let gts = ca ^. genTrans
-                    if (length gts > p) 
-                    then return $ gts !! p
-                    else 
+randseq 1 p w m = do ca <- use hasLens
+                     n <- getRandomR (0, 3 :: Integer)
+                     let gts = ca ^. genTrans
+                     if (length gts > p) 
+                     then return $ gts !! p
+                     else 
                       do 
-                      gtxs <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
-                      case (n, gts) of
+                       gtxs <- replicateM 1 (evalStateT genTxM (w, ca ^. genDict))
+                       if not m then return gtxs
+                       else
+                        case (n, gts) of
                               -- random generation of transactions
-                       (_, []) -> return gtxs
-                              -- concatenate rare sequences
-                       (0, _ ) -> do idxs <- sequence $ replicate 10 (getRandomR (0, (length gts) - 1))
-                                     return $ take (10*ql) $ concatMap (gts !!) idxs
-                              -- mutate one transaction from a rare sequence
-                       (1, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                     let rtxs = gts !! idx
-                                     k <- getRandomR (0, (length rtxs - 1))
-                                     mtx <- mutTx $ rtxs !! k
-                                     return $ replaceAt mtx rtxs k
-                              -- mutate all transactions in a rare sequence
-                       (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                     let rtxs = gts !! idx
-                                     sequence $ map mutTx rtxs 
+                        (_, []) -> return gtxs
+                              -- mutate the transaction from a rare sequence
+                        (0, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                      let rtxs = gts !! idx
+                                      sequence $ map mutTx rtxs
                               -- shrink all elements from a rare sequence
-                       (3, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                     sequence $ map shrinkTx $ gts !! idx
-                              -- randomly insert transactions into a rare sequence
-                       (4, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                     k <- getRandomR (1, 10)
-                                     rtxs <- insertAtRandom (gts !! idx) (take k gtxs)
-                                     return $ take (10*ql) rtxs
-                              -- randomly remove transactions from a rare sequence
-                       (5, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                     k <- getRandomR (0, (length  (gts !! idx)) - 1 )
-                                     return $ deleteAt k (gts !! idx)
-                              -- randomly swap transactions from a rare sequence
-                       (6, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                     let rtxs = gts !! idx
-                                     k1 <- getRandomR (0, (length  rtxs) - 1 )
-                                     k2 <- getRandomR (0, (length  rtxs) - 1 )
-                                     return $ swapAt rtxs k1 k2
+                        (1, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                      let rtxs = gts !! idx
+                                      sequence $ map shrinkTx rtxs
+                              -- generate a transaction splicing other transactions arguments
+                        (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                      let rtxs = gts !! idx
+                                      tx' <- spliceTx (head rtxs) (concat gts)
+                                      return [tx'] 
+                        _       -> return gtxs
 
-                       _       -> return gtxs
-              
+
+randseq ql p w m = do ca <- use hasLens
+                      n <- getRandomR (0, 7 :: Integer)
+                      let gts = ca ^. genTrans
+                      if (length gts > p) 
+                      then do liftIO $ print ("Replaying txs[" ++ (show p) ++ "]")
+                              return $ gts !! p
+                      else
+                       do 
+                        gtxs <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
+                        if not m then return gtxs 
+                        else
+                          case (n, gts) of
+                              -- random generation of transactions
+                          (_, []) -> return gtxs
+                              -- concatenate rare sequences
+                          (0, _ ) -> do idxs <- sequence $ replicate 3 (getRandomR (0, (length gts) - 1))
+                                        return $ take (10*ql) $ concatMap (gts !!) idxs
+                              -- mutate one transaction from a rare sequence
+                          (1, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                        let rtxs = gts !! idx
+                                        k <- getRandomR (0, (length rtxs - 1))
+                                        mtx <- mutTx $ rtxs !! k
+                                        return $ replaceAt mtx rtxs k
+                              -- mutate all transactions in a rare sequence
+                          (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                        let rtxs = gts !! idx
+                                        sequence $ map mutTx rtxs 
+                              -- shrink all elements from a rare sequence
+                          (3, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                        sequence $ map shrinkTx $ gts !! idx
+                              -- randomly insert transactions into a rare sequence
+                          (4, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                        k <- getRandomR (1, 10)
+                                        rtxs <- insertAtRandom (gts !! idx) (take k gtxs)
+                                        return $ take (10*ql) rtxs
+                              -- randomly remove transactions from a rare sequence
+                          (5, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                        k <- getRandomR (0, (length  (gts !! idx)) - 1 )
+                                        return $ deleteAt k (gts !! idx)
+                              -- randomly swap transactions from a rare sequence
+                          (6, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                                        let rtxs = gts !! idx
+                                        k1 <- getRandomR (0, (length  rtxs) - 1 )
+                                        k2 <- getRandomR (0, (length  rtxs) - 1 )
+                                        return $ swapAt rtxs k1 k2
+
+                          _       -> return gtxs
+                       
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
 callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m, MonadIO m
            , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Campaign y, Has GenDict y)
-        => VM -> World -> Int -> m ()
-callseq v w ql = do
+        => VM -> World -> Int -> Bool -> m ()
+callseq v w ql m = do
   -- Reset the new coverage flag
   hasLens . newCoverage .= False
   -- First, we figure out whether we need to execute with or without coverage optimization, and pick
@@ -302,14 +309,15 @@ callseq v w ql = do
   ca <- use hasLens
   -- Then, we generate the actual transaction in the sequence
   --liftIO $ print ((getProgress ca + 1) `div` (ql+1))
-  is <- randseq ql ((getProgress ca + 1) `div` (ql+1)) w
+  is <- randseq ql (ca ^. callseqs) w m
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, (_, ca')) <- runStateT (evalSeq v ef is) (v, ca)
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= ca'
   let rtxs = map fst (filter (\(_, vm) -> classifyRes vm /= ResRevert) res)
-  --when (ca' ^. newCoverage) $ liftIO $ putStrLn $ "new coverage:" ++ (ppTxs rtxs)
+  when (ca' ^. newCoverage) $ liftIO $ putStrLn $ "new coverage:" ++ (ppTxs rtxs)
   when (ca' ^. newCoverage) $ hasLens . genTrans %= (rtxs:)
+  hasLens . callseqs %= (+1) 
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   modifying (hasLens . constants) . H.unionWith (++) . parse res =<< use (hasLens . rTypes) where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
@@ -333,11 +341,11 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m
 campaign u v w ts d txs = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d' True False txs) where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d' True False txs 0) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl q sl _ _ _) ->
-      if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q >> step
+    update c    = view hasLens >>= \(CampaignConf tl q sl _ _ _ m) ->
+      if | any (\case Open  n   -> n < tl; _ -> False) c -> callseq v w q m >> step
          | any (\case Large n _ -> n < sl; _ -> False) c -> step
          | otherwise                                     -> lift u
 
