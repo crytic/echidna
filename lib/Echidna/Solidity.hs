@@ -22,6 +22,7 @@ import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
 import Data.List                  (find, nub, partition)
 import Data.List.Lens             (prefixed, suffixed)
+import Data.Map                   (elems)
 import Data.Maybe                 (isJust, isNothing, catMaybes)
 import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
@@ -159,8 +160,12 @@ linkLibraries ls = "--libraries " ++
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
 loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-              => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text])
+              => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (M.HashMap Text [AbiType]))
 loadSpecified name cs = do
+  -- generate the complete abi mapping
+  let abiOf :: SolcContract -> M.HashMap Text [AbiType]
+      abiOf c = M.fromList $ elems (c ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2)
+      abiMapping = M.fromList $ cs <&> \c -> (c ^. runtimeCode, abiOf c)
   -- Pick contract to load
   c <- choose cs name
   q <- view (hasLens . quiet)
@@ -196,7 +201,7 @@ loadSpecified name cs = do
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
       let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca 0xffffffff 0 (w256 $ fromInteger balc) (0, 0)
-      (, fallback NE.<| neFuns, fst <$> tests) <$> execStateT transaction vm
+      (, fallback NE.<| neFuns, fst <$> tests, abiMapping) <$> execStateT transaction vm
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
@@ -213,15 +218,15 @@ loadSpecified name cs = do
 --             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 --loadSolidity fp name = contracts fp >>= loadSpecified name
 loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-                      => NE.NonEmpty FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text])
+                      => NE.NonEmpty FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (M.HashMap Text [AbiType]))
 loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
-               => (VM, NE.NonEmpty SolSignature, [Text]) -> m (VM, World, [SolTest])
-prepareForTest (v, a, ts) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ ch) ->
+               => (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (M.HashMap Text [AbiType])) -> m (VM, World, [SolTest])
+prepareForTest (v, a, ts, _) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ ch) ->
   (v, World s ((r, a) NE.:| []), fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else []) where
     r = v ^. state . contract
     a' = NE.toList a
