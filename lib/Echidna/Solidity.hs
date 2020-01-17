@@ -174,9 +174,9 @@ loadSpecified name cs = do
   (SolConf ca d ads bala balc pref _ _ libs _ fp ch) <- view hasLens
 
   -- generate the complete abi mapping
-  let abiOf :: SolcContract -> Maybe (NE.NonEmpty SolSignature)
-      abiOf cc = NE.nonEmpty . filter (not . isPrefixOf pref . fst) $ elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2)
-      abiMapping = M.fromList . catMaybes $ cs <&> \cc -> case abiOf cc of { Nothing -> Nothing; Just x -> Just (c ^. runtimeCode, x) }
+  let abiOf :: SolcContract -> NE.NonEmpty SolSignature
+      abiOf cc = fallback NE.:| (filter (not . isPrefixOf pref . fst) $ elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
+      abiMapping = M.fromList $ cs <&> \cc -> (cc ^. runtimeCode, abiOf cc)
 
   let bc = c ^. creationCode
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
