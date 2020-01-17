@@ -162,10 +162,6 @@ linkLibraries ls = "--libraries " ++
 loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
               => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature))
 loadSpecified name cs = do
-  -- generate the complete abi mapping
-  let abiOf :: SolcContract -> Maybe (NE.NonEmpty SolSignature)
-      abiOf c = NE.nonEmpty $ elems (c ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2)
-      abiMapping = M.fromList . catMaybes $ cs <&> \c -> case abiOf c of { Nothing -> Nothing; Just x -> Just (c ^. runtimeCode, x) }
   -- Pick contract to load
   c <- choose cs name
   q <- view (hasLens . quiet)
@@ -176,6 +172,12 @@ loadSpecified name cs = do
 
   -- Local variables
   (SolConf ca d ads bala balc pref _ _ libs _ fp ch) <- view hasLens
+
+  -- generate the complete abi mapping
+  let abiOf :: SolcContract -> Maybe (NE.NonEmpty SolSignature)
+      abiOf cc = NE.nonEmpty . filter (not . isPrefixOf pref . fst) $ elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2)
+      abiMapping = M.fromList . catMaybes $ cs <&> \cc -> case abiOf cc of { Nothing -> Nothing; Just x -> Just (c ^. runtimeCode, x) }
+
   let bc = c ^. creationCode
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       con = view constructorInputs c
