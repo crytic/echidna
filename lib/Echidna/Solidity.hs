@@ -175,7 +175,7 @@ loadSpecified name cs = do
 
   -- generate the complete abi mapping
   let abiOf :: SolcContract -> NE.NonEmpty SolSignature
-      abiOf cc = fallback NE.:| (filter (not . isPrefixOf pref . fst) $ elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
+      abiOf cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
       abiMapping = M.fromList $ cs <&> \cc -> (cc ^. runtimeCode, abiOf cc)
 
   let bc = c ^. creationCode
