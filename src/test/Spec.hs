@@ -79,7 +79,7 @@ compilationTests = testGroup "Compilation and loading tests"
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
-  tryLoad = runReaderT (loadWithCryticCompile fp c >> pure ()) testConfig
+  tryLoad = runReaderT (loadWithCryticCompile (fp NE.:| []) c >> pure ()) testConfig
 
 -- Extraction Tests
 
@@ -217,8 +217,8 @@ runContract :: FilePath -> Maybe Text -> EConfig -> IO Campaign
 runContract fp n c =
   flip runReaderT c $ do
     g <- getRandom
-    (v,w,ts) <- loadSolTests fp n
-    cs  <- Echidna.Solidity.contracts fp
+    (v,w,ts) <- loadSolTests (fp NE.:| []) n
+    cs  <- Echidna.Solidity.contracts (fp NE.:| [])
     ads <- NE.toList <$> addresses
     let ads' = AbiAddress . addressWord160 <$> v ^. env . EVM.contracts . to keys
     campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads ++ ads') [] g (returnTypes cs))
