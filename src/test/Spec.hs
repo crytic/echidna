@@ -190,6 +190,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_state passed",                   solved      "echidna_state") ]
   , testContract' "basic_multicontract/contracts/Foo.sol" (Just "Foo") (Just "basic_multicontract/echidna_config.yaml")
       [ ("echidna_test passed",                    solved      "echidna_test") ]
+  , testContract "basic/multi-abi.sol"    (Just "B")
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Ballot.sol"       Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Dynamic.sol"      Nothing
@@ -197,8 +199,6 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "abiv2/Dynamic2.sol"     Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/MultiTuple.sol"   Nothing
-      [ ("echidna_test passed",                    solved      "echidna_test") ]
-  , testContract "abiv2/multi-abi.sol"    Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   ]
 
