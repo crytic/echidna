@@ -196,14 +196,18 @@ callseq v w ql = do
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, s) <- runStateT (evalSeq v ef is) (v, ca)
   let new = s ^. _1 . env . EVM.contracts
+      -- compute the addresses not present in the old VM via set difference
       diff = keys $ new \\ old
+      -- and construct a set to union to the constants table
       diffs = H.fromList [(AbiAddressType, S.fromList $ AbiAddress . addressWord160 <$> diff)]
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= snd s
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   types <- use $ hasLens . rTypes
   let results = parse res types
+      -- union the return results with the new addresses
       additions = H.unionWith S.union diffs results
+  -- append to the constants dictionary
   modifying (hasLens . genDict . constants) . H.unionWith S.union $ additions
   where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
