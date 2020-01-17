@@ -160,12 +160,12 @@ linkLibraries ls = "--libraries " ++
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
 loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-              => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (M.HashMap Text [AbiType]))
+              => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature))
 loadSpecified name cs = do
   -- generate the complete abi mapping
-  let abiOf :: SolcContract -> M.HashMap Text [AbiType]
-      abiOf c = M.fromList $ elems (c ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2)
-      abiMapping = M.fromList $ cs <&> \c -> (c ^. runtimeCode, abiOf c)
+  let abiOf :: SolcContract -> Maybe (NE.NonEmpty SolSignature)
+      abiOf c = NE.nonEmpty $ elems (c ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2)
+      abiMapping = M.fromList . catMaybes $ cs <&> \c -> case abiOf c of { Nothing -> Nothing; Just x -> Just (c ^. runtimeCode, x) }
   -- Pick contract to load
   c <- choose cs name
   q <- view (hasLens . quiet)
@@ -218,16 +218,16 @@ loadSpecified name cs = do
 --             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 --loadSolidity fp name = contracts fp >>= loadSpecified name
 loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-                      => NE.NonEmpty FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (M.HashMap Text [AbiType]))
+                      => NE.NonEmpty FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature))
 loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
-               => (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (M.HashMap Text [AbiType])) -> m (VM, World, [SolTest])
-prepareForTest (v, a, ts, _) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ ch) ->
-  (v, World s ((r, a) NE.:| []), fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else []) where
+               => (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature)) -> m (VM, World, [SolTest])
+prepareForTest (v, a, ts, m) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ ch) ->
+  (v, World s m, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else []) where
     r = v ^. state . contract
     a' = NE.toList a
 
