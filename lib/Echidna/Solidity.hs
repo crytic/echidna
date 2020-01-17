@@ -103,7 +103,7 @@ type SolTest = Either (Text, Addr) SolSignature
 
 -- | Given a file, use its extenstion to check if it is a precompiled contract or try to compile it and
 -- get a list of its contracts, throwing exceptions if necessary.
-contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
+contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => NE.NonEmpty FilePath -> m [SolcContract]
 contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"] in do
   mp  <- liftIO $ findExecutable "crytic-compile"
   case mp of
@@ -115,13 +115,16 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
     c  <- view (hasLens . cryticArgs)
     let solargs = a ++ linkLibraries ls & (usual ++) .
                   (\sa -> if null sa then [] else ["--solc-args", sa])
-    maybe (throwM CompileFailure) (pure . toList . fst) =<< liftIO (do
-      stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
-      (ec, _, _) <- readCreateProcessWithExitCode (proc path $ (c ++ solargs) |> fp) {std_err = stderr} ""
-      case ec of
-       ExitSuccess -> readSolc "crytic-export/combined_solc.json"
-       ExitFailure _ -> throwM CompileFailure
-      )
+        fps = toList fp
+        compileOne :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
+        compileOne x = maybe (throwM CompileFailure) (pure . toList . fst) =<< liftIO (do
+                         stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
+                         (ec, _, _) <- readCreateProcessWithExitCode (proc path $ (c ++ solargs) |> x) {std_err = stderr} ""
+                         case ec of
+                          ExitSuccess -> readSolc "crytic-export/combined_solc.json"
+                          ExitFailure _ -> throwM CompileFailure
+                       )
+    concat <$> sequence (compileOne <$> fps)
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
 addresses = view hasLens <&> \(SolConf ca d ads _ _ _ _ _ _ _ _ _) ->
@@ -163,7 +166,7 @@ loadSpecified name cs = do
   q <- view (hasLens . quiet)
   liftIO $ do
     when (isNothing name && length cs > 1 && not q) $
-      putStrLn "Multiple contracts found in file, only analyzing the first"
+      putStrLn "Multiple contracts found, only analyzing the first"
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
@@ -210,7 +213,7 @@ loadSpecified name cs = do
 --             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 --loadSolidity fp name = contracts fp >>= loadSpecified name
 loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-             => FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text])
+                      => NE.NonEmpty FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text])
 loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 
 
@@ -226,7 +229,7 @@ prepareForTest (v, a, ts) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ ch)
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
 loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-             => FilePath -> Maybe Text -> m (VM, World, [SolTest])
+             => NE.NonEmpty FilePath -> Maybe Text -> m (VM, World, [SolTest])
 loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
 
 mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
