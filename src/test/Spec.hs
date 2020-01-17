@@ -198,6 +198,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/MultiTuple.sol"   Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
+  , testContract "abiv2/multi-abi.sol"    Nothing
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   ]
 
 testConfig :: EConfig
