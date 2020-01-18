@@ -44,6 +44,7 @@ import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
+import Echidna.Mutators
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -185,33 +186,6 @@ execTxOptC t = do
   when grew $ hasLens . newCoverage .= True
   return res
 
-deleteAt :: Int -> [a] -> [a]
-deleteAt _ [] = []
-deleteAt i (a:as)
-   | i == 0    = as
-   | otherwise = a : deleteAt (i-1) as
-
-insertAt :: a -> [a] -> Int -> [a]
-insertAt v [] _ = [v]
-insertAt v arr 1 = (v:arr)
-insertAt v (x:xs) n = (x:(insertAt v xs $ n - 1))
-
-insertAtRandom :: MonadRandom m => [a] -> [a] -> m [a]
-insertAtRandom xs [] = return xs
-insertAtRandom xs (y:ys) = do idx <- getRandomR (0, (length xs) - 1) 
-                              insertAtRandom (insertAt y xs idx) ys
-
-
--- taken from https://stackoverflow.com/questions/30551033/swap-two-elements-in-a-list-by-its-indices/30551130#30551130
-swapAt :: [a] -> Int -> Int -> [a]
-swapAt xs i j =  let elemI = xs !! i
-                     elemJ = xs !! j
-                     left = take i xs
-                     middle = take (j - i - 1) (drop (i + 1) xs)
-                     right = drop (j + 1) xs
-                 in  left ++ [elemJ] ++ middle ++ [elemI] ++ right 
-
-
 randseq :: ( MonadCatch m, MonadRandom m, MonadIO m,  MonadReader x m, MonadState y m
            , Has GenDict y, Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
         => Int -> Int ->  World -> Bool -> m [Tx]
@@ -246,7 +220,7 @@ randseq 1 p w m = do ca <- use hasLens
 
 
 randseq ql p w m = do ca <- use hasLens
-                      n <- getRandomR (0, 7 :: Integer)
+                      n <- getRandomR (0, 8 :: Integer)
                       let gts = ca ^. genTrans
                       if (length gts > p) 
                       then do liftIO $ print ("Replaying txs[" ++ (show p) ++ "]")
@@ -257,38 +231,39 @@ randseq ql p w m = do ca <- use hasLens
                         if not m then return gtxs 
                         else
                           case (n, gts) of
-                              -- random generation of transactions
+                              -- purely random generation of transactions
                           (_, []) -> return gtxs
                               -- concatenate rare sequences
                           (0, _ ) -> do idxs <- sequence $ replicate 3 (getRandomR (0, (length gts) - 1))
                                         return $ take (10*ql) $ concatMap (gts !!) idxs
                               -- mutate one transaction from a rare sequence
-                          (1, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                        let rtxs = gts !! idx
+                          (1, _ ) -> do rtxs <- rElem "" gts
                                         k <- getRandomR (0, (length rtxs - 1))
                                         mtx <- mutTx $ rtxs !! k
                                         return $ replaceAt mtx rtxs k
                               -- mutate all transactions in a rare sequence
-                          (2, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                        let rtxs = gts !! idx
+                          (2, _ ) -> do rtxs <- rElem "" gts
                                         sequence $ map mutTx rtxs 
                               -- shrink all elements from a rare sequence
-                          (3, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                        sequence $ map shrinkTx $ gts !! idx
+                          (3, _ ) -> do rtxs <- rElem "" gts
+                                        sequence $ map shrinkTx rtxs
                               -- randomly insert transactions into a rare sequence
-                          (4, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
+                          (4, _ ) -> do rtxs <- rElem "" gts
                                         k <- getRandomR (1, 10)
-                                        rtxs <- insertAtRandom (gts !! idx) (take k gtxs)
-                                        return $ take (10*ql) rtxs
+                                        rtxs' <- insertAtRandom rtxs (take k gtxs)
+                                        return $ take (10*ql) rtxs'
                               -- randomly remove transactions from a rare sequence
-                          (5, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                        k <- getRandomR (0, (length  (gts !! idx)) - 1 )
-                                        return $ deleteAt k (gts !! idx)
+                          (5, _ ) -> do rtxs <- rElem "" gts
+                                        k <- getRandomR (0, (length  rtxs) - 1 )
+                                        return $ deleteAt k rtxs
+                              -- randomly repeat transactions from a rare sequence
+                          (6, _ ) -> do rtxs <- rElem "" gts
+                                        k <- getRandomR (0, (length rtxs) - 1 )
+                                        return $ insertAt (rtxs !! k) rtxs k
                               -- randomly swap transactions from a rare sequence
-                          (6, _ ) -> do idx <- getRandomR (0, (length gts) - 1)
-                                        let rtxs = gts !! idx
-                                        k1 <- getRandomR (0, (length  rtxs) - 1 )
-                                        k2 <- getRandomR (0, (length  rtxs) - 1 )
+                          (7, _ ) -> do rtxs <- rElem "" gts
+                                        k1 <- getRandomR (0, (length rtxs) - 1 )
+                                        k2 <- getRandomR (0, (length rtxs) - 1 )
                                         return $ swapAt rtxs k1 k2
 
                           _       -> return gtxs
