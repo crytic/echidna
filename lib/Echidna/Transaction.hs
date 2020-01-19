@@ -180,7 +180,7 @@ spliceTx  (Tx (Left c1) a b d x y) txs = let f (Tx (Left c) _ _ _ _ _ ) = if (fs
                                          do idx <- getRandomR (0, (length cs) - 1) 
                                             c' <- spliceAbiCall c1 (cs !! idx) 
                                             return $ Tx (Left c') a b d x y
-spliceTx x _                           = return x
+spliceTx x _                           = return x               
 
 
 -- | Given a 'Set' of 'Transaction's, generate a similar 'Transaction' at random.

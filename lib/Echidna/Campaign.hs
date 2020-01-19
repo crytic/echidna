@@ -220,7 +220,6 @@ randseq 1 p w m = do ca <- use hasLens
 
 
 randseq ql p w m = do ca <- use hasLens
-                      n <- getRandomR (0, 8 :: Integer)
                       let gts = ca ^. genTrans
                       if (length gts > p) 
                       then do liftIO $ print ("Replaying txs[" ++ (show p) ++ "]")
@@ -230,44 +229,62 @@ randseq ql p w m = do ca <- use hasLens
                         gtxs <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
                         if not m then return gtxs 
                         else
-                          case (n, gts) of
+                          do 
+                           rtxs <- rElem "" gts
+                           times <- getRandomR (1, (length rtxs - 1) `div` 2)
+                           ms <- sequence $ replicate times (rElem "" allMutators)
+                           rtxs' <- applyMut ms rtxs
+                           n <- getRandomR (0, 3 :: Integer)
+                           case (n, gts) of
                               -- purely random generation of transactions
-                          (_, []) -> return gtxs
-                              -- concatenate rare sequences
-                          (0, _ ) -> do idxs <- sequence $ replicate 3 (getRandomR (0, (length gts) - 1))
-                                        return $ take (10*ql) $ concatMap (gts !!) idxs
-                              -- mutate one transaction from a rare sequence
-                          (1, _ ) -> do rtxs <- rElem "" gts
-                                        k <- getRandomR (0, (length rtxs - 1))
-                                        mtx <- mutTx $ rtxs !! k
-                                        return $ replaceAt mtx rtxs k
-                              -- mutate all transactions in a rare sequence
-                          (2, _ ) -> do rtxs <- rElem "" gts
-                                        sequence $ map mutTx rtxs 
-                              -- shrink all elements from a rare sequence
-                          (3, _ ) -> do rtxs <- rElem "" gts
-                                        sequence $ map shrinkTx rtxs
-                              -- randomly insert transactions into a rare sequence
-                          (4, _ ) -> do rtxs <- rElem "" gts
-                                        k <- getRandomR (1, 10)
-                                        rtxs' <- insertAtRandom rtxs (take k gtxs)
-                                        return $ take (10*ql) rtxs'
-                              -- randomly remove transactions from a rare sequence
-                          (5, _ ) -> do rtxs <- rElem "" gts
-                                        k <- getRandomR (0, (length  rtxs) - 1 )
-                                        return $ deleteAt k rtxs
-                              -- randomly repeat transactions from a rare sequence
-                          (6, _ ) -> do rtxs <- rElem "" gts
-                                        k <- getRandomR (0, (length rtxs) - 1 )
-                                        return $ insertAt (rtxs !! k) rtxs k
-                              -- randomly swap transactions from a rare sequence
-                          (7, _ ) -> do rtxs <- rElem "" gts
-                                        k1 <- getRandomR (0, (length rtxs) - 1 )
-                                        k2 <- getRandomR (0, (length rtxs) - 1 )
-                                        return $ swapAt rtxs k1 k2
+                            (_, []) -> return gtxs
+                            -- splice two rare sequences
+                            (0, _ ) -> do rtxs2 <- rElem "" gts
+                                          spliceAtRandom rtxs' rtxs2
+                            (1, _ ) -> do rtxs1 <- rElem "" gts
+                                          spliceAtRandom rtxs1 rtxs'
+                            -- append a rare sequence
+                            (2, _ ) -> do k <- getRandomR (0, (length rtxs') - 1 )
+                                          return $ take (ql*2) $ (take k rtxs') ++ gtxs
+                            -- prepend a rare sequence
+                            (3, _ ) -> do k <- getRandomR (0, (length rtxs') - 1 )
+                                          return $ take (ql*2) $ gtxs ++ (drop k rtxs')
+                            
+                            _       -> return gtxs 
 
-                          _       -> return gtxs
+applyMut :: Monad m => [t -> m t] -> t -> m t
+applyMut []     txs = return txs
+applyMut (f:fs) txs = do txs' <- f txs
+                         applyMut fs txs'
+
+
+allMutators :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) => [[Tx] -> m [Tx]]
+allMutators = [mutateRandTx, repeatRandTx, swapRandTx, deleteRandTx, shrinkRandTx]
+
+swapRandTx :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) => [Tx] -> m [Tx]
+swapRandTx rtxs = do k1 <- getRandomR (0, (length rtxs) - 1 )
+                     k2 <- getRandomR (0, (length rtxs) - 1 )
+                     return $ swapAt rtxs k1 k2
+
+deleteRandTx :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) => [Tx] -> m [Tx]
+deleteRandTx rtxs = do k <- getRandomR (0, (length rtxs - 1))
+                       return $ deleteAt k rtxs
+
+repeatRandTx :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) => [Tx] -> m [Tx]
+repeatRandTx rtxs = do k <- getRandomR (0, (length rtxs - 1))
+                       return $ insertAt (rtxs !! k) rtxs k
+
                        
+mutateRandTx :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) => [Tx] -> m [Tx]
+mutateRandTx rtxs = do k <- getRandomR (0, (length rtxs - 1))
+                       mtx <- mutTx $ rtxs !! k
+                       return $ replaceAt mtx rtxs k
+
+
+shrinkRandTx :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) => [Tx] -> m [Tx]
+shrinkRandTx rtxs = do k <- getRandomR (0, (length rtxs - 1))
+                       mtx <- shrinkTx $ rtxs !! k
+                       return $ replaceAt mtx rtxs k
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
