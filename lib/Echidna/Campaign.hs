@@ -26,7 +26,6 @@ import Data.Bool (bool)
 import Data.Either (lefts)
 import Data.Foldable (toList)
 import Data.Map (Map, mapKeys, unionWith, (\\), keys)
-import Data.IORef
 import Data.Maybe (fromMaybe, isJust, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
@@ -223,13 +222,13 @@ callseq v w ql = do
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
 campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m
             , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x)
-         => IORef Campaign -- ^ Set after each state update (for instrumentation)
-         -> VM             -- ^ Initial VM state
-         -> World          -- ^ Initial world state
-         -> [SolTest]      -- ^ Tests to evaluate
-         -> Maybe GenDict  -- ^ Optional generation dictionary
+         => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
+         -> VM                  -- ^ Initial VM state
+         -> World               -- ^ Initial world state
+         -> [SolTest]           -- ^ Tests to evaluate
+         -> Maybe GenDict       -- ^ Optional generation dictionary
          -> m Campaign
-campaign ref v w ts d = do
+campaign u v w ts d = do
   let d' = fromMaybe defaultDict d
   c <- fromMaybe mempty <$> view (hasLens . to knownCoverage)
   g <- view (hasLens . to seed)
@@ -242,4 +241,3 @@ campaign ref v w ts d = do
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
          | otherwise                                                           -> lift u
-    u = use hasLens >>= liftIO . atomicWriteIORef ref

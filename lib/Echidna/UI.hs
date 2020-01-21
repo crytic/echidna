@@ -79,15 +79,16 @@ ui v w ts d = do
   let getSeed = view $ hasLens . to seed . non (d' ^. defSeed)
   bc <- liftIO $ newBChan 100
   ref <- liftIO $ newIORef defaultCampaign
-  let pushUpdate x = readIORef ref >>= writeBChan bc . x
+  let updateRef = use hasLens >>= liftIO . atomicWriteIORef ref
+  let updateUI x = readIORef ref >>= writeBChan bc . x
   waitForMe <- liftIO newEmptyMVar
   ticker <- liftIO $ forkIO -- update UI every 100ms
-    (void $ forever $ threadDelay 100000 >> pushUpdate CampaignUpdated)
+    (void $ forever $ threadDelay 100000 >> updateUI CampaignUpdated)
   timeoutSeconds <- (* 1000000) . fromMaybe (-1) <$> view (hasLens . maxTime)
   _ <- forkFinally -- run worker
-    (void $ timeout timeoutSeconds (campaign ref v w ts d) >>= \case
-       Nothing -> liftIO $ pushUpdate CampaignTimedout
-       Just _ -> liftIO $ pushUpdate CampaignUpdated
+    (void $ timeout timeoutSeconds (campaign updateRef v w ts d) >>= \case
+       Nothing -> liftIO $ updateUI CampaignTimedout
+       Just _ -> liftIO $ updateUI CampaignUpdated
     )
     (const $ liftIO $ killThread ticker >> putMVar waitForMe ())
   dash <- liftM2 (&&) isTerminal $ view (hasLens . dashboard)
