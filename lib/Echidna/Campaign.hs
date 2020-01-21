@@ -14,6 +14,7 @@ module Echidna.Campaign where
 import Control.Lens
 import Control.Monad (liftM3, replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
+import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
@@ -25,6 +26,7 @@ import Data.Bool (bool)
 import Data.Either (lefts)
 import Data.Foldable (toList)
 import Data.Map (Map, mapKeys, unionWith, (\\), keys)
+import Data.IORef
 import Data.Maybe (fromMaybe, isJust, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
@@ -219,15 +221,17 @@ callseq v w ql = do
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
-campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
+campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m
             , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x)
-         => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
-         -> VM                  -- ^ Initial VM state
-         -> World               -- ^ Initial world state
-         -> [SolTest]           -- ^ Tests to evaluate
-         -> Maybe GenDict       -- ^ Optional generation dictionary
+         => IORef Campaign -- ^ Set after each state update (for instrumentation)
+         -> VM             -- ^ Initial VM state
+         -> World          -- ^ Initial world state
+         -> [SolTest]      -- ^ Tests to evaluate
+         -> Maybe GenDict  -- ^ Optional generation dictionary
          -> m Campaign
-campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
+campaign ref v w ts d = do
+  let d' = fromMaybe defaultDict d
+  c <- fromMaybe mempty <$> view (hasLens . to knownCoverage)
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
   execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d') where
@@ -238,3 +242,4 @@ campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
          | otherwise                                                           -> lift u
+    u = use hasLens >>= liftIO . atomicWriteIORef ref
