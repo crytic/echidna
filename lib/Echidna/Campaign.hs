@@ -14,7 +14,6 @@ module Echidna.Campaign where
 import Control.Lens
 import Control.Monad (liftM3, replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
-import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
@@ -220,7 +219,7 @@ callseq v w ql = do
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
-campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m
+campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
             , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x)
          => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
          -> VM                  -- ^ Initial VM state
