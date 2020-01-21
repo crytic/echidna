@@ -37,6 +37,7 @@ import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.UI
+import Echidna.UI.Report
 
 -- | Our big glorious global config type, just a product of each local config.,
 data EConfig = EConfig { _cConf :: CampaignConf
