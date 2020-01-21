@@ -9,21 +9,24 @@ module Echidna.UI where
 
 import Brick
 import Brick.BChan
+import Control.Concurrent (killThread, threadDelay)
+import Control.Concurrent.MVar
 import Control.Lens
-import Control.Monad (liftM2, liftM3, void, when)
+import Control.Monad (forever, liftM2, liftM3, void)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader, runReader)
 import Control.Monad.Random.Strict (MonadRandom)
 import Data.Has (Has(..))
-import Data.Maybe (maybe, fromMaybe)
+import Data.Maybe (fromMaybe)
+import Data.IORef
 import EVM (VM)
 import Graphics.Vty (Event(..), Key(..), Modifier(..), defaultConfig, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
-import System.Timeout (timeout)
 import UnliftIO (MonadUnliftIO)
-import UnliftIO.Concurrent (killThread, forkIO)
+import UnliftIO.Concurrent (forkIO, forkFinally)
+import UnliftIO.Timeout (timeout)
 
 import Echidna.Campaign
 import Echidna.ABI
@@ -40,14 +43,17 @@ data UIConf = UIConf { _dashboard :: Bool
 
 makeLenses ''UIConf
 
+data CampaignEvent = CampaignUpdated Campaign | CampaignTimedout Campaign
+
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
 monitor :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
-        => m (App (Campaign, UIState) Campaign ())
+        => m (App (Campaign, UIState) CampaignEvent ())
 monitor = let
   cs :: (CampaignConf, Names, TxConf) -> (Campaign, UIState) -> Widget ()
   cs s c = runReader (campaignStatus c) s
 
-  se _ (AppEvent c') = continue (c', Running)
+  se _ (AppEvent (CampaignUpdated c')) = continue (c', Running)
+  se _ (AppEvent (CampaignTimedout c')) = continue (c', Timedout)
   se c (VtyEvent (EvKey KEsc _))                         = halt c
   se c (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = halt c
   se c _                                                 = continue c
@@ -68,22 +74,27 @@ ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> [SolTest] -- ^ Tests to evaluate
    -> Maybe GenDict
    -> m Campaign
-ui v w ts d = let xfer bc = use hasLens >>= liftIO . writeBChan bc
-                  d' = fromMaybe defaultDict d
-                  getSeed = view $ hasLens . to seed . non (d' ^. defSeed) in do
+ui v w ts d = do
+  let d' = fromMaybe defaultDict d
+  let getSeed = view $ hasLens . to seed . non (d' ^. defSeed)
   bc <- liftIO $ newBChan 100
-  t    <- forkIO (void $ campaign (xfer bc) v w ts d)
+  ref <- liftIO $ newIORef defaultCampaign
+  let pushUpdate x = readIORef ref >>= writeBChan bc . x
+  waitForMe <- liftIO newEmptyMVar
+  ticker <- liftIO $ forkIO -- update UI every 100ms
+    (void $ forever $ threadDelay 100000 >> pushUpdate CampaignUpdated)
+  timeoutSeconds <- (* 1000000) . fromMaybe (-1) <$> view (hasLens . maxTime)
+  _ <- forkFinally -- run worker
+    (void $ timeout timeoutSeconds (campaign ref v w ts d) >>= \case
+       Nothing -> liftIO $ pushUpdate CampaignTimedout
+       Just _ -> liftIO $ pushUpdate CampaignUpdated
+    )
+    (const $ liftIO $ killThread ticker >> putMVar waitForMe ())
   dash <- liftM2 (&&) isTerminal $ view (hasLens . dashboard)
-  done <- views hasLens $ \cc -> flip runReader (cc :: CampaignConf) . isDone
-  app  <- customMain (mkVty defaultConfig) (Just bc) <$> monitor
-  time <- views (hasLens . maxTime) . maybe (fmap Just) $ timeout . (* 1000000)
-  res  <-  liftIO . time $ if dash
-    then fst <$> app (defaultCampaign, Uninitialized)
-    else let go = readBChan bc >>= \c -> if done c then pure c else go in go
-  final <- maybe (do c <- liftIO (readBChan bc)
-                     killThread t
-                     when dash . liftIO . void $ app (c, Timedout)
-                     return c)
-                 pure res
+  app <- customMain (mkVty defaultConfig) (Just bc) <$> monitor
+  liftIO $ if dash
+             then void $ app (defaultCampaign, Uninitialized)
+             else takeMVar waitForMe
+  final <- liftIO $ readIORef ref
   liftIO . putStrLn =<< view (hasLens . finished) <*> pure final <*> getSeed
   return final
