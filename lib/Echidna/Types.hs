@@ -81,6 +81,20 @@ instance ToJSON Tx where
     , ("block delay", toJSON $ show b)
     ]
 
+-- | Echidna transaction config
+data TxConf = TxConf { _propGas       :: Word
+                     -- ^ Gas to use evaluating echidna properties
+                     , _txGas         :: Word
+                     -- ^ Gas to use in generated transactions
+                     , _maxGasprice   :: Word
+                     -- ^ Maximum gasprice to be checked for a transaction
+                     , _maxTimeDelay  :: Word
+                     -- ^ Maximum time delay between transactions (seconds)
+                     , _maxBlockDelay :: Word
+                     -- ^ Maximum block delay between transactions
+                     }
+makeLenses 'TxConf
+
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
 data TestState = Open Int             -- ^ Maybe solvable, tracking attempts already made
                | Large Int [Tx]       -- ^ Solved, maybe shrinable, tracking shrinks tried + best solve

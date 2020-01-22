@@ -31,22 +31,8 @@ import qualified Data.Vector as V
 import Echidna.ABI
 import Echidna.Defaults (defaultDict)
 import Echidna.Solidity.Types (SolSignature, SolCall)
-import Echidna.Types (GenDict, Tx(Tx), call, value, gasprice', delay)
+import Echidna.Types (TxConf(..), GenDict, Tx(Tx), call, value, gasprice', delay)
 import Echidna.Util (encodeSig)
-
-data TxConf = TxConf { _propGas       :: Word
-                     -- ^ Gas to use evaluating echidna properties
-                     , _txGas         :: Word
-                     -- ^ Gas to use in generated transactions
-                     , _maxGasprice   :: Word
-                     -- ^ Maximum gasprice to be checked for a transaction
-                     , _maxTimeDelay  :: Word
-                     -- ^ Maximum time delay between transactions (seconds)
-                     , _maxBlockDelay :: Word
-                     -- ^ Maximum block delay between transactions
-                     }
-
-makeLenses 'TxConf
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating delays, since block number
 -- only goes up with timestamp

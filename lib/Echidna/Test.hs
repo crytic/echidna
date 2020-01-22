@@ -22,7 +22,7 @@ import qualified Data.ByteString as BS
 import Echidna.Exec
 import Echidna.Solidity.Types (SolTest)
 import Echidna.Transaction
-import Echidna.Types (SolConf(..), TestConf(..), Tx(Tx), src, sender)
+import Echidna.Types (TxConf, SolConf(..), TestConf(..), Tx(Tx), propGas, src, sender)
 import Echidna.Util (encodeSig)
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.

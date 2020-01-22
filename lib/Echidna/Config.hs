@@ -34,8 +34,7 @@ import qualified Data.Yaml as Y
 
 import Echidna.Pretty (ppCampaign)
 import Echidna.Solidity.Types (CallRes(..))
-import Echidna.Types (CampaignConf(..), SolConf(..), TestConf(..), UIConf(..), Role(..), Names)
-import Echidna.Transaction
+import Echidna.Types (TxConf(..), CampaignConf(..), SolConf(..), TestConf(..), UIConf(..), Role(..), Names)
 import Echidna.Util (classifyRes)
 
 -- | Our big glorious global config type, just a product of each local config.,
