@@ -1,15 +1,20 @@
 module Main where
 
-import Control.Lens (view, (^.))
+import Control.Lens (view, (^.), to)
 import Control.Monad (unless)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
+import Data.Map.Strict (keys)
 import Data.Text (pack, unpack)
 import Data.Version (showVersion)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.IO (hPutStrLn, stderr)
+
+import EVM (env, contracts)
+import EVM.ABI (AbiValue(AbiAddress))
+import EVM.Types (Addr(..))
 
 import Echidna.ABI
 import Echidna.Config
@@ -49,8 +54,9 @@ main = do Options f c conf <- execParser opts
           EConfigWithUsage cfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig conf
           unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
           cpg <- flip runReaderT cfg $ do
-            cs       <- contracts f
+            cs       <- Echidna.Solidity.contracts f
             ads      <- addresses
             (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
-            ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg) (extractConstants cs ++ NE.toList ads) [] g (returnTypes cs))
+            let ads' = AbiAddress . addressWord160 <$> v ^. env . EVM.contracts . to keys
+            ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg) (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs))
           if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
