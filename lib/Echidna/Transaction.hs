@@ -131,7 +131,9 @@ canShrinkTx _                                = True
 shrinkTx :: MonadRandom m => Tx -> m Tx
 shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
   c' = either (fmap Left . shrinkAbiCall) (fmap Right . pure) c
+  lower 0 = pure $ w256 0
   lower x = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral x)
+              >>= \r -> uniform [0, r] -- try 0 quicker
   possibilities =
     [ set call      <$> c'
     , set value     <$> lower v

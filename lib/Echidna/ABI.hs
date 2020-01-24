@@ -14,7 +14,6 @@ import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Class (MonadState, gets)
 import Control.Monad.State (evalStateT)
 import Control.Monad.Random.Strict (MonadRandom, getRandom, getRandoms, getRandomR, uniformMay)
-import Data.Bits (Bits(..))
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
 import Data.Foldable (toList)
@@ -148,7 +147,7 @@ mutateNum x = bool (x +) (x -) <$> getRandom <*> (fromIntegral <$> getRandomR (0
 -- generate between 0 and 2l 'Word8's and add insert them into b at random indices.
 addChars :: MonadRandom m => m Word8 -> ByteString -> m ByteString
 addChars c b = foldM withR b . enumFromTo 0 =<< rand where
-  rand       = getRandomR (0, BS.length b)
+  rand       = getRandomR (0, BS.length b - 1)
   withR b' n = (\x -> BS.take n b' <> BS.singleton x <> BS.drop (n + 1) b') <$> c
 
 -- | Like 'addChars', but instead of adding random chars, simply adding null bytes.
@@ -214,13 +213,8 @@ canShrinkAbiValue (AbiArrayDynamic _ l) = l /= mempty
 canShrinkAbiValue (AbiTuple v)          = any canShrinkAbiValue v
 canShrinkAbiValue _                     = True
 
-bounds :: forall a. (Bounded a, Integral a) => a -> (Integer, Integer)
-bounds = const (fromIntegral (0 :: a), fromIntegral (maxBound :: a))
-
--- | Given a bitvector representation of an integer type, randomly change bits, shrinking it towards 0
-shrinkInt :: forall a m. (Bits a, Bounded a, Integral a, MonadRandom m) => a -> m a
-shrinkInt x | x == -1   = pure 0
-            | otherwise = (if x < 0 then (.|.) else (.&.)) x . fromIntegral <$> getRandomR (bounds x)
+shrinkInt :: (Integral a, MonadRandom m) => a -> m a
+shrinkInt x = fromIntegral <$> getRandomR (0, toInteger x)
 
 -- | Given an 'AbiValue', generate a random \"smaller\" (simpler) value of the same 'AbiType'.
 shrinkAbiValue :: MonadRandom m => AbiValue -> m AbiValue
