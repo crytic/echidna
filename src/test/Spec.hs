@@ -5,6 +5,9 @@
 import Test.Tasty
 import Test.Tasty.HUnit
 
+import EVM (env, contracts)
+import EVM.Types (Addr(..))
+
 import Echidna.ABI (SolCall, mkGenDict)
 import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests)
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
@@ -16,6 +19,7 @@ import Control.Monad (liftM2, void)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Random (getRandom)
 import Control.Monad.Reader (runReaderT)
+import Data.Map.Strict (keys)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
 import Data.List (find)
@@ -104,7 +108,7 @@ seedTests =
     ]
     where cfg s = defaultConfig & sConf . quiet .~ True
                                 & cConf .~ CampaignConf 600 False 20 0 Nothing (Just s) 0.15
-          gen s = view tests <$> runContract "basic/flags.sol" (cfg s)
+          gen s = view tests <$> runContract "basic/flags.sol" Nothing (cfg s)
           same s t = liftM2 (==) (gen s) (gen t)
 
 -- Integration Tests
@@ -153,6 +157,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_found_sender failed",            solved      "echidna_found_sender") ]
   , testContract "basic/rconstants.sol"   Nothing
       [ ("echidna_found failed",                   solved      "echidna_found") ]
+  , testContract' "basic/cons-create-2.sol" (Just "C") Nothing
+      [ ("echidna_state failed",                   solved      "echidna_state") ]
 -- single.sol is really slow and kind of unstable. it also messes up travis.
 --  , testContract "coverage/single.sol"    (Just "coverage/test.yaml")
 --      [ ("echidna_state failed",                   solved      "echidna_state") ]
@@ -195,19 +201,23 @@ integrationTests = testGroup "Solidity Integration Testing"
   ]
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
-testContract fp cfg as = testCase fp $ do
+testContract = flip testContract' Nothing
+
+testContract' :: FilePath -> Maybe Text -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
+testContract' fp n cfg as = testCase fp $ do
   c <- set (sConf . quiet) True <$> maybe (pure defaultConfig) (fmap _econfig . parseConfig) cfg
-  res <- runContract fp c
+  res <- runContract fp n c
   mapM_ (\(t,f) -> assertBool t $ f res) as
 
-runContract :: FilePath -> EConfig -> IO Campaign
-runContract fp c =
+runContract :: FilePath -> Maybe Text -> EConfig -> IO Campaign
+runContract fp n c =
   flip runReaderT c $ do
     g <- getRandom
-    (v,w,ts) <- loadSolTests fp Nothing
-    cs  <- contracts fp
-    ads <- addresses
-    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ NE.toList ads) [] g (returnTypes cs))
+    (v,w,ts) <- loadSolTests fp n
+    cs  <- Echidna.Solidity.contracts fp
+    ads <- NE.toList <$> addresses
+    let ads' = AbiAddress . addressWord160 <$> v ^. env . EVM.contracts . to keys
+    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads ++ ads') [] g (returnTypes cs))
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
