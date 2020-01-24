@@ -24,18 +24,19 @@ import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
 import Data.Either (lefts)
 import Data.Foldable (toList)
-import Data.Map (Map, mapKeys, unionWith)
+import Data.Map (Map, mapKeys, unionWith, (\\), keys)
 import Data.Maybe (fromMaybe, isJust, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
 import EVM
-import EVM.ABI (getAbi)
-import EVM.Types (W256)
+import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
+import EVM.Types (W256, addressWord160)
 import Numeric (showHex)
 import System.Random (mkStdGen)
 
-import qualified Data.HashMap.Strict  as H
+import qualified Data.HashMap.Strict as H
+import qualified Data.HashSet as S
 
 import Echidna.ABI
 import Echidna.Exec
@@ -187,21 +188,33 @@ callseq v w ql = do
   -- our execution function appropriately
   coverageEnabled <- isJust . knownCoverage <$> view hasLens
   let ef = if coverageEnabled then execTxOptC else execTx
+      old = v ^. env . EVM.contracts
   -- Then, we get the current campaign state
   ca <- use hasLens
   -- Then, we generate the actual transaction in the sequence
   is <- replicateM ql (evalStateT genTxM (w, ca ^. genDict))
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, s) <- runStateT (evalSeq v ef is) (v, ca)
+  let new = s ^. _1 . env . EVM.contracts
+      -- compute the addresses not present in the old VM via set difference
+      diff = keys $ new \\ old
+      -- and construct a set to union to the constants table
+      diffs = H.fromList [(AbiAddressType, S.fromList $ AbiAddress . addressWord160 <$> diff)]
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= snd s
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
-  modifying (hasLens . constants) . H.unionWith (++) . parse res =<< use (hasLens . rTypes) where
+  types <- use $ hasLens . rTypes
+  let results = parse res types
+      -- union the return results with the new addresses
+      additions = H.unionWith S.union diffs results
+  -- append to the constants dictionary
+  modifying (hasLens . genDict . constants) . H.unionWith S.union $ additions
+  where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
     -- type for each function called, and if we do, tries to parse the return value as a value of that
     -- type. It returns a 'GenDict' style HashMap.
     parse l rt = H.fromList . flip mapMaybe l $ \(x, r) -> case (rt =<< x ^? call . _Left . _1, r) of
-      (Just ty, VMSuccess b) -> (ty, ) . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
+      (Just ty, VMSuccess b) -> (ty, ) . S.fromList . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
       _                      -> Nothing
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
