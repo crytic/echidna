@@ -39,6 +39,8 @@ solcLibs: []
 cryticArgs: []
 #quiet produces (much) less verbose output
 quiet: false
+#initialize the blockchain with some data
+initialize: null
 #checkAsserts checks assertions
 checkAsserts: false
 #dashboard determines if output is just text or an AFL-like display

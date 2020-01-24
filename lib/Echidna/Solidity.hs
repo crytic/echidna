@@ -9,9 +9,10 @@ module Echidna.Solidity where
 
 import Control.Lens
 import Control.Exception          (Exception)
-import Control.Monad              (liftM2, when, unless)
+import Control.Monad              (liftM2, when, unless, void)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
+import Control.Monad.Fail         (MonadFail)
 import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
 import Data.Aeson                 (Value(..))
@@ -21,7 +22,7 @@ import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
 import Data.List                  (find, nub, partition)
 import Data.List.Lens             (prefixed, suffixed)
-import Data.Maybe                 (isNothing, catMaybes)
+import Data.Maybe                 (isJust, isNothing, catMaybes)
 import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
@@ -33,7 +34,8 @@ import System.Directory           (findExecutable)
 
 import Echidna.ABI         (SolSignature)
 import Echidna.Exec        (execTx)
-import Echidna.Transaction (Tx(..), World(..))
+import Echidna.RPC         (loadEthenoBatch)
+import Echidna.Transaction (TxConf, Tx(..), World(..))
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
@@ -90,6 +92,7 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _solcArgs        :: String           -- ^ Args to pass to @solc@
                        , _solcLibs        :: [String]         -- ^ List of libraries to load, in order.
                        , _quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
+                       , _initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
                        , _checkAsserts    :: Bool             -- ^ Test if we can cause assertions to fail
                        }
 makeLenses ''SolConf
@@ -120,9 +123,8 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
        ExitFailure _ -> throwM CompileFailure
       )
 
-
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
-addresses = view hasLens <&> \(SolConf ca d ads _ _ _ _ _ _ _ _) ->
+addresses = view hasLens <&> \(SolConf ca d ads _ _ _ _ _ _ _ _ _) ->
   AbiAddress . fromIntegral <$> NE.nub (join ads [ca, d, 0x0])
   where join (first NE.:| rest) list = first NE.:| (rest ++ list)
 
@@ -153,7 +155,7 @@ linkLibraries ls = "--libraries " ++
 -- testing and extract an ABI and list of tests. Throws exceptions if anything returned doesn't look
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
-loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
               => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text])
 loadSpecified name cs = do
   -- Pick contract to load
@@ -165,15 +167,18 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  (SolConf ca d ads bala balc pref _ _ libs _ ch) <- view hasLens
+  (SolConf ca d ads bala balc pref _ _ libs _ fp ch) <- view hasLens
   let bc = c ^. creationCode
-      blank = populateAddresses (NE.toList ads |> d) bala (vmForEthrunCreation bc)
-            & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       con = view constructorInputs c
       (tests, funs) = partition (isPrefixOf pref . fst) abi
+  -- Set up initial VM, either with chosen contract or Etheno initialization file
+  -- need to use snd to add to ABI dict
+  blank' <- maybe (pure (vmForEthrunCreation bc)) (loadEthenoBatch (fst <$> tests)) fp
+  let blank = populateAddresses (NE.toList ads |> d) bala blank'
+            & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
 
-  unless (null con) (throwM $ ConstructorArgs (show con))
+  unless (null con || isJust fp) (throwM $ ConstructorArgs (show con))
   -- Select libraries
   ls <- mapM (choose cs . Just . T.pack) libs
 
@@ -187,8 +192,8 @@ loadSpecified name cs = do
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
-      let transaction = Tx (Right bc) d ca 0xffffffff 0 (w256 $ fromInteger balc) (0, 0)
-      (fmap (, fallback NE.<| neFuns, fst <$> tests) . execStateT (execTx transaction)) vm
+      let transaction = unless (isJust fp) $ void . execTx $ Tx (Right bc) d ca 0xffffffff 0 (w256 $ fromInteger balc) (0, 0)
+      (, fallback NE.<| neFuns, fst <$> tests) <$> execStateT transaction vm
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
@@ -204,7 +209,7 @@ loadSpecified name cs = do
 --loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
 --             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 --loadSolidity fp name = contracts fp >>= loadSpecified name
-loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
              => FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text])
 loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 
@@ -213,14 +218,14 @@ loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
                => (VM, NE.NonEmpty SolSignature, [Text]) -> m (VM, World, [SolTest])
-prepareForTest (v, a, ts) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ ch) ->
+prepareForTest (v, a, ts) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ ch) ->
   (v, World s ((r, a) NE.:| []), fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else []) where
     r = v ^. state . contract
     a' = NE.toList a
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
-loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
+loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
              => FilePath -> Maybe Text -> m (VM, World, [SolTest])
 loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
 
