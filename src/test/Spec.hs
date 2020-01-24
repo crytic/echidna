@@ -182,6 +182,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
   , testContract "basic/gasprice.sol"     Nothing
       [ ("echidna_state passed",                   solved      "echidna_state") ]
+  , testContract "basic_multicontract/contracts/Foo.sol" (Just "basic_multicontract/echidna_config.yaml")
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Ballot.sol"       Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Dynamic.sol"      Nothing
