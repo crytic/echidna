@@ -227,7 +227,9 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
          -> [SolTest]           -- ^ Tests to evaluate
          -> Maybe GenDict       -- ^ Optional generation dictionary
          -> m Campaign
-campaign u v w ts d = let d' = fromMaybe defaultDict d in fmap (fromMaybe mempty) (view (hasLens . to knownCoverage)) >>= \c -> do
+campaign u v w ts d = do
+  let d' = fromMaybe defaultDict d
+  c <- fromMaybe mempty <$> view (hasLens . to knownCoverage)
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
   execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d') where
