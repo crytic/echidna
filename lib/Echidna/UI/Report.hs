@@ -5,7 +5,6 @@ module Echidna.UI.Report where
 
 import Control.Lens
 import Control.Monad.Reader (MonadReader)
-import Data.Either (either)
 import Data.Has (Has(..))
 import Data.List (nub)
 import Data.Map (Map)
@@ -31,7 +30,7 @@ progress n m = "(" ++ show n ++ "/" ++ show m ++ ")"
 
 -- | Given rules for pretty-printing associated address, and whether to print them, pretty-print a 'Transaction'.
 ppTx :: (MonadReader x m, Has Names x, Has TxConf x) => Bool -> Tx -> m String
-ppTx pn (Tx c s r g gp v (t, b)) = let sOf = either ppSolCall (const "<CREATE>") in do
+ppTx pn (Tx c s r g gp v (t, b)) = let sOf = ppTxCall in do
   names <- view hasLens
   tGas  <- view $ hasLens . txGas
   return $ sOf c ++ (if not pn    then "" else names Sender s ++ names Receiver r)

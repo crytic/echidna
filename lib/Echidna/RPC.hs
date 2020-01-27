@@ -13,7 +13,7 @@ import Control.Monad (foldM)
 import Control.Monad.Catch (MonadThrow, throwM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader.Class (MonadReader(..))
-import Control.Monad.State.Strict (MonadState, execStateT, runStateT, get, put, runState)
+import Control.Monad.State.Strict (MonadState, execStateT, runStateT, get, put)
 import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Char8 (ByteString, empty)
@@ -29,7 +29,6 @@ import EVM.Types (Addr, W256)
 import Text.Read (readMaybe)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
-import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.ByteString.Base16 as BS16 (decode)
 import qualified Data.Text as T (Text, drop, unpack)
 import qualified Data.Vector as V (fromList)
@@ -117,7 +116,7 @@ execEthenoTxs ts addr et = do
                -- found the tests, so just return the contract
                Just m  -> return $ Just m
                -- try to see if this is the contract we wish to test
-               Nothing -> let txs = ts <&> \t -> Tx (Left (t, [])) ca ca g 0 0 (0,0)
+               Nothing -> let txs = ts <&> \t -> Tx (SolCall (t, [])) ca ca g 0 0 (0,0)
                               -- every test was executed successfully
                               go []     = return (Just ca)
                               -- execute x and check if it returned something of the correct type
@@ -141,12 +140,5 @@ execEthenoTxs ts addr et = do
 -- | For an etheno txn, set up VM to execute txn
 setupEthenoTx :: (MonadState x m, Has VM x) => Etheno -> m ()
 setupEthenoTx (AccountCreated _) = pure ()
-setupEthenoTx (ContractCreated f c _ _ d v) = S.state . runState . zoom hasLens . sequence_ $
-  [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= 0xffffffff
-  , tx . origin .= f, state . caller .= f, state . callvalue .= w256 v, setup]
-  where setup = assign (env . contracts . at c) (Just . initialContract . RuntimeCode $ d) >> loadContract c
-
-setupEthenoTx (FunctionCall f t _ _ d v) = S.state . runState . zoom hasLens . sequence_ $
-  [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . gas .= 0xffffffff
-  , tx . origin .= f, state . caller .= f, state . callvalue .= w256 v, setup]
-  where setup = loadContract t >> state . calldata .= d
+setupEthenoTx (ContractCreated f c _ _ d v) = setupTx $ Tx (SolCreate d) f c 0xffffffff 0 (w256 v) (0, 0)
+setupEthenoTx (FunctionCall f t _ _ d v) = setupTx $ Tx (SolCalldata d) f t 0xffffffff 0 (w256 v) (0, 0)

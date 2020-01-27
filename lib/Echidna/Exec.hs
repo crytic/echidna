@@ -10,7 +10,6 @@ module Echidna.Exec where
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.State.Strict (MonadState, execState)
-import Data.Either (isRight)
 import Data.Has (Has(..))
 import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
@@ -70,12 +69,12 @@ execTxWith h m t = do (og :: VM) <- use hasLens
                       setupTx t
                       res <- m
                       cd  <- use $ hasLens . state . calldata
-                      case (res, isRight $ t ^. call) of
-                        (f@Reversion, _)         -> do hasLens .= og
-                                                       hasLens . state . calldata .= cd
-                                                       hasLens . result ?= f
-                        (VMFailure x, _)         -> h x
-                        (VMSuccess bc, True)     -> (hasLens %=) . execState $ do
+                      case (res, t ^. call) of
+                        (f@Reversion, _)            -> do hasLens .= og
+                                                          hasLens . state . calldata .= cd
+                                                          hasLens . result ?= f
+                        (VMFailure x, _)            -> h x
+                        (VMSuccess bc, SolCreate _) -> (hasLens %=) . execState $ do
                           env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
                           replaceCodeOfSelf (RuntimeCode bc)
                           loadContract (t ^. dst)
