@@ -79,7 +79,7 @@ compilationTests = testGroup "Compilation and loading tests"
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
-  tryLoad = runReaderT (loadWithCryticCompile fp c >> pure ()) $ defaultConfig & sConf . quiet .~ True
+  tryLoad = runReaderT (loadWithCryticCompile fp c >> pure ()) testConfig
 
 -- Extraction Tests
 
@@ -200,12 +200,16 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   ]
 
+testConfig :: EConfig
+testConfig = defaultConfig & sConf . quiet .~ True
+                           & cConf .~ (defaultConfig ^. cConf) { testLimit = 10000, shrinkLimit = 2500 }
+
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract = flip testContract' Nothing
 
 testContract' :: FilePath -> Maybe Text -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract' fp n cfg as = testCase fp $ do
-  c <- set (sConf . quiet) True <$> maybe (pure defaultConfig) (fmap _econfig . parseConfig) cfg
+  c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
   res <- runContract fp n c
   mapM_ (\(t,f) -> assertBool t $ f res) as
 
