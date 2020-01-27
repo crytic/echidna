@@ -12,7 +12,7 @@ import Echidna.ABI (SolCall, mkGenDict)
 import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests)
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
-import Echidna.Transaction (Tx, call)
+import Echidna.Transaction (TxCall(SolCall), Tx, call)
 
 import Control.Lens
 import Control.Monad (liftM2, void)
@@ -242,4 +242,4 @@ solvedLen i t = (== Just i) . fmap length . solnFor t
 
 -- NOTE: this just verifies a call was found in the solution. Doesn't care about ordering/seq length
 solvedWith :: SolCall -> Text -> Campaign -> Bool
-solvedWith c t = maybe False (any $ (== Left c) . view call) . solnFor t
+solvedWith c t = maybe False (any $ (== SolCall c) . view call) . solnFor t
