@@ -19,7 +19,6 @@ import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
 import Data.Aeson (ToJSON(..), object)
 import Data.ByteString (ByteString)
-import Data.Either (either)
 import Data.Has (Has(..))
 import Data.List (intercalate)
 import EVM hiding (value)
@@ -28,21 +27,31 @@ import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
 
 import qualified Control.Monad.State.Strict as S (state)
+import qualified Data.ByteString.Base16 as BS16
+import qualified Data.ByteString.Char8 as BSC8
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
 import Echidna.ABI
 
+-- | A transaction call is either a @CREATE@, a fully instrumented 'SolCall', or
+-- an abstract call consisting only of calldata.
+data TxCall = SolCreate   ByteString
+            | SolCall     SolCall
+            | SolCalldata ByteString
+  deriving (Show, Ord, Eq)
+makePrisms ''TxCall
+
 -- | A transaction is either a @CREATE@ or a regular call with an origin, destination, and value.
 -- Note: I currently don't model nonces or signatures here.
-data Tx = Tx { _call  :: Either SolCall ByteString -- | Either a call or code for a @CREATE@
-             , _src   :: Addr                      -- | Origin
-             , _dst   :: Addr                      -- | Destination
-             , _gas'  :: Word                      -- | Gas
-             , _gasprice' :: Word                  -- | Gas price
-             , _value :: Word                      -- | Value
-             , _delay :: (Word, Word)              -- | (Time, # of blocks since last call)
+data Tx = Tx { _call  :: TxCall       -- | Call
+             , _src   :: Addr         -- | Origin
+             , _dst   :: Addr         -- | Destination
+             , _gas'  :: Word         -- | Gas
+             , _gasprice' :: Word     -- | Gas price
+             , _value :: Word         -- | Value
+             , _delay :: (Word, Word) -- | (Time, # of blocks since last call)
              } deriving (Eq, Ord, Show)
 
 makeLenses ''Tx
@@ -65,17 +74,25 @@ makeLenses 'TxConf
 ppSolCall :: SolCall -> String
 ppSolCall (t, vs) = (if t == "" then T.unpack "*fallback*" else T.unpack t) ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
 
+-- | Pretty-print some 'TxCall'
+ppTxCall :: TxCall -> String
+ppTxCall (SolCreate _)    = "<CREATE>"
+ppTxCall (SolCall x)      = ppSolCall x
+ppTxCall (SolCalldata x)  = BSC8.unpack $ "0x" <> BS16.encode x
+
 instance ToJSON Tx where
-  toJSON (Tx c s d g gp v (t, b)) = object [ ("call",        toJSON $ either ppSolCall (const "<CREATE>") c)
-                                        -- from/to are Strings, since JSON doesn't support hexadecimal notation
-                                        , ("from",        toJSON $ show s)
-                                        , ("to",          toJSON $ show d)
-                                        , ("value",       toJSON $ show v)
-                                        , ("gas",         toJSON $ show g)
-                                        , ("gasprice",    toJSON $ show gp)
-                                        , ("time delay",  toJSON $ show t)
-                                        , ("block delay", toJSON $ show b)
-                                        ]
+  toJSON (Tx c s d g gp v (t, b)) =
+    object
+      [ ("call",        toJSON $ ppTxCall c)
+      -- from/to are Strings, since JSON doesn't support hexadecimal notation
+      , ("from",        toJSON $ show s)
+      , ("to",          toJSON $ show d)
+      , ("value",       toJSON $ show v)
+      , ("gas",         toJSON $ show g)
+      , ("gasprice",    toJSON $ show gp)
+      , ("time delay",  toJSON $ show t)
+      , ("block delay", toJSON $ show b)
+      ]
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating delays, since block number
 -- only goes up with timestamp
@@ -105,7 +122,7 @@ genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m)
           -> m Tx
 genTxWith s r c g gp v t = use hasLens >>= \(World ss rs) ->
   let s' = s ss; r' = r rs; c' = join $ liftM2 c s' r' in
-    ((liftM5 Tx (Left <$> c') s' (fst <$> r') g gp <*>) =<< liftM3 v s' r' c') <*> t
+    ((liftM5 Tx (SolCall <$> c') s' (fst <$> r') g gp <*>) =<< liftM3 v s' r' c') <*> t
 
 -- | Synthesize a random 'Transaction', not using a dictionary.
 genTx :: forall m x y. (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m) => m Tx
@@ -122,15 +139,19 @@ genTxM = view hasLens >>= \(TxConf _ g maxGp t b) -> genTxWith
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool
-canShrinkTx (Tx (Right _) _ _ _ 0 0 (0, 0))    = False
-canShrinkTx (Tx (Left (_,l)) _ _ _ 0 0 (0, 0)) = any canShrinkAbiValue l
-canShrinkTx _                                = True
+canShrinkTx (Tx (SolCreate _) _ _ _ 0 0 (0, 0))   = False
+canShrinkTx (Tx (SolCall (_,l)) _ _ _ 0 0 (0, 0)) = any canShrinkAbiValue l
+canShrinkTx (Tx (SolCalldata _) _ _ _ 0 0 (0, 0)) = False
+canShrinkTx _                                     = True
 
 -- | Given a 'Transaction', generate a random \"smaller\" 'Transaction', preserving origin,
 -- destination, value, and call signature.
 shrinkTx :: MonadRandom m => Tx -> m Tx
 shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
-  c' = either (fmap Left . shrinkAbiCall) (fmap Right . pure) c
+  c' = case c of
+            SolCreate{}   -> pure c
+            SolCall sc    -> SolCall <$> shrinkAbiCall sc
+            SolCalldata{} -> pure c
   lower 0 = pure $ w256 0
   lower x = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral x)
               >>= \r -> uniform [0, r] -- try 0 quicker
@@ -155,7 +176,8 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   , tx . gasprice .= gp, tx . origin .= s, state . caller .= s, state . callvalue .= v
   , block . timestamp += t, block . number += b, setup] where
     setup = case c of
-      Left cd  -> loadContract r >> state . calldata .= encode cd
-      Right bc -> assign (env . contracts . at r) (Just $ initialContract (RuntimeCode bc) & set balance v) >> loadContract r
+      SolCreate bc -> assign (env . contracts . at r) (Just $ initialContract (RuntimeCode bc) & set balance v) >> loadContract r
+      SolCall cd  -> loadContract r >> state . calldata .= encode cd
+      SolCalldata cd  -> loadContract r >> state . calldata .= cd
     encode (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
