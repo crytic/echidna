@@ -294,11 +294,10 @@ genInteractionsM l = genAbiCallM =<< rElem l
 
 -- | Given a solc bytecode strip off the metadata from the end
 stripBytecodeMetadata :: ByteString -> ByteString
-stripBytecodeMetadata bc = if BS.length cl /= 2
-                           then bc
-                           else if BS.length h >= cl' && (isRight . deserialiseFromBytes decodeTerm $ fromStrict cbor)
-                                then bc'
-                                else bc
+stripBytecodeMetadata bc
+  | BS.length cl /= 2 = bc
+  | BS.length h >= cl' && (isRight . deserialiseFromBytes decodeTerm $ fromStrict cbor) = bc'
+  | otherwise = bc
   where l = BS.length bc
         (h, cl) = BS.splitAt (l - 2) bc
         cl' = fromIntegral . runGet getWord16be . fromStrict $ cl
