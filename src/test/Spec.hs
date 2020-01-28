@@ -15,16 +15,17 @@ import Echidna.Solidity
 import Echidna.Transaction (TxCall(SolCall), Tx, call)
 
 import Control.Lens
-import Control.Monad (liftM2, void)
+import Control.Monad (liftM2, void, when)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Random (getRandom)
 import Control.Monad.Reader (runReaderT)
 import Data.Map.Strict (keys)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
-import Data.List (find)
+import Data.List (find, isInfixOf)
 import EVM.ABI (AbiValue(..))
 import System.Directory (withCurrentDirectory)
+import System.Process (readProcess)
 
 import qualified Data.List.NonEmpty   as NE
 
@@ -188,8 +189,13 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
   , testContract "basic/gasprice.sol"     Nothing
       [ ("echidna_state passed",                   solved      "echidna_state") ]
-  , testContract' "basic_multicontract/contracts/Foo.sol" (Just "Foo") (Just "basic_multicontract/echidna_config.yaml")
-      [ ("echidna_test passed",                    solved      "echidna_test") ]
+  , let fp = "basic_multicontract/contracts/Foo.sol"; cfg = Just "basic_multicontract/echidna_config.yaml" in
+      testCase fp $
+        do sv <- readProcess "solc" ["--version"] ""
+           when ("Version: 0.4.25" `isInfixOf` sv) $ do
+             c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
+             res <- runContract fp (Just "Foo") c
+             assertBool "echidna_test passed" $ solved "echidna_test" res
   , testContract' "basic/multi-abi.sol" (Just "B") Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Ballot.sol"       Nothing
