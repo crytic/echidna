@@ -135,7 +135,7 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/nearbyMining.sol" (Just "coverage/test.yaml")
       [ ("echidna_findNearby passed", solved "echidna_findNearby") ]
 
-  , testContract "basic/smallValues.sol" (Just "coverage/test.yaml")
+  , testContract' "basic/smallValues.sol" Nothing (Just "coverage/test.yaml") False
       [ ("echidna_findSmall passed", solved "echidna_findSmall") ]
 
   , testContract "basic/multisender.sol" (Just "basic/multisender.yaml") $
@@ -158,7 +158,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_found_sender failed",            solved      "echidna_found_sender") ]
   , testContract "basic/rconstants.sol"   Nothing
       [ ("echidna_found failed",                   solved      "echidna_found") ]
-  , testContract' "basic/cons-create-2.sol" (Just "C") Nothing
+  , testContract' "basic/cons-create-2.sol" (Just "C") Nothing True
       [ ("echidna_state failed",                   solved      "echidna_state") ]
 -- single.sol is really slow and kind of unstable. it also messes up travis.
 --  , testContract "coverage/single.sol"    (Just "coverage/test.yaml")
@@ -196,7 +196,7 @@ integrationTests = testGroup "Solidity Integration Testing"
              c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
              res <- runContract fp (Just "Foo") c
              assertBool "echidna_test passed" $ solved "echidna_test" res
-  , testContract' "basic/multi-abi.sol" (Just "B") (Just "basic/multi-abi.yaml")
+  , testContract' "basic/multi-abi.sol" (Just "B") (Just "basic/multi-abi.yaml") True
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Ballot.sol"       Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
@@ -213,12 +213,14 @@ testConfig = defaultConfig & sConf . quiet .~ True
                            & cConf .~ (defaultConfig ^. cConf) { testLimit = 10000, shrinkLimit = 2500 }
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
-testContract = flip testContract' Nothing
+testContract fp cfg = testContract' fp Nothing cfg True
 
-testContract' :: FilePath -> Maybe Text -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
-testContract' fp n cfg as = testCase fp $ do
+testContract' :: FilePath -> Maybe Text -> Maybe FilePath -> Bool -> [(String, Campaign -> Bool)] -> TestTree
+testContract' fp n cfg s as = testCase fp $ do
   c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
-  res <- runContract fp n c
+  let c' = c & sConf . quiet .~ True
+             & if s then cConf .~ (c ^. cConf) { testLimit = 10000, shrinkLimit = 2500 } else id
+  res <- runContract fp n c'
   mapM_ (\(t,f) -> assertBool t $ f res) as
 
 runContract :: FilePath -> Maybe Text -> EConfig -> IO Campaign
