@@ -41,6 +41,8 @@ cryticArgs: []
 quiet: false
 #initialize the blockchain with some data
 initialize: null
+#whether ot not to use the multi-abi mode of testing
+multi-abi: false
 #checkAsserts checks assertions
 checkAsserts: false
 #dashboard determines if output is just text or an AFL-like display
