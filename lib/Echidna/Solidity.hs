@@ -33,7 +33,7 @@ import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
 import System.Directory           (findExecutable)
 
-import Echidna.ABI         (SolSignature)
+import Echidna.ABI         (SolSignature, stripBytecodeMetadata)
 import Echidna.Exec        (execTx)
 import Echidna.RPC         (loadEthenoBatch)
 import Echidna.Transaction (TxConf, TxCall(SolCreate), Tx(..), World(..))
@@ -42,7 +42,7 @@ import EVM hiding (contracts)
 import qualified EVM (contracts)
 import EVM.ABI
 import EVM.Exec     (vmForEthrunCreation)
-import EVM.Solidity
+import EVM.Solidity hiding (stripBytecodeMetadata)
 import EVM.Types    (Addr)
 import EVM.Concrete (w256)
 
@@ -177,7 +177,7 @@ loadSpecified name cs = do
   -- generate the complete abi mapping
   let abiOf :: SolcContract -> NE.NonEmpty SolSignature
       abiOf cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
-      abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode, abiOf cc) else M.singleton (c ^. runtimeCode) (abiOf c)
+      abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode . to stripBytecodeMetadata, abiOf cc) else M.singleton (c ^. runtimeCode . to stripBytecodeMetadata) (abiOf c)
       bc = c ^. creationCode
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       con = view constructorInputs c
