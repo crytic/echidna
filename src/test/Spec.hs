@@ -196,7 +196,7 @@ integrationTests = testGroup "Solidity Integration Testing"
              c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
              res <- runContract fp (Just "Foo") c
              assertBool "echidna_test passed" $ solved "echidna_test" res
-  , testContract' "basic/multi-abi.sol" (Just "B") Nothing
+  , testContract' "basic/multi-abi.sol" (Just "B") (Just "basic/multi-abi.yaml")
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Ballot.sol"       Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]

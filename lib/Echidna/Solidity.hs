@@ -94,6 +94,7 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _solcLibs        :: [String]         -- ^ List of libraries to load, in order.
                        , _quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
                        , _initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
+                       , _multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
                        , _checkAsserts    :: Bool             -- ^ Test if we can cause assertions to fail
                        }
 makeLenses ''SolConf
@@ -128,7 +129,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
     concat <$> sequence (compileOne <$> fps)
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
-addresses = view hasLens <&> \(SolConf ca d ads _ _ _ _ _ _ _ _ _) ->
+addresses = view hasLens <&> \(SolConf ca d ads _ _ _ _ _ _ _ _ _ _) ->
   AbiAddress . fromIntegral <$> NE.nub (join ads [ca, d, 0x0])
   where join (first NE.:| rest) list = first NE.:| (rest ++ list)
 
@@ -171,17 +172,17 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  (SolConf ca d ads bala balc pref _ _ libs _ fp ch) <- view hasLens
+  (SolConf ca d ads bala balc pref _ _ libs _ fp ma ch) <- view hasLens
 
   -- generate the complete abi mapping
   let abiOf :: SolcContract -> NE.NonEmpty SolSignature
       abiOf cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
-      abiMapping = M.fromList $ cs <&> \cc -> (cc ^. runtimeCode, abiOf cc)
-
-  let bc = c ^. creationCode
+      abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode, abiOf cc) else M.singleton (c ^. runtimeCode) (abiOf c)
+      bc = c ^. creationCode
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       con = view constructorInputs c
       (tests, funs) = partition (isPrefixOf pref . fst) abi
+
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
   blank' <- maybe (pure (vmForEthrunCreation bc)) (loadEthenoBatch (fst <$> tests)) fp
@@ -228,7 +229,7 @@ loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
                => (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature)) -> m (VM, World, [SolTest])
-prepareForTest (v, a, ts, m) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ ch) ->
+prepareForTest (v, a, ts, m) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ _ ch) ->
   (v, World s m, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else []) where
     r = v ^. state . contract
     a' = NE.toList a
