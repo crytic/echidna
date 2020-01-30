@@ -130,9 +130,7 @@ genTxWith m s r c g gp v t = use hasLens >>= \(World ss mm) ->
       r' = r rs
       c' = join $ liftM2 c s' r'
       rs = NE.fromList . catMaybes $ mkR <$> toList m
-      mkR (a, cc) = case M.lookup (cc ^. bytecode . to stripBytecodeMetadata) mm of
-                         Nothing -> Nothing
-                         Just  x -> Just (a, x)
+      mkR = _2 (flip M.lookup mm . view (bytecode . to stripBytecodeMetadata))
   in
     ((liftM5 Tx (SolCall <$> c') s' (fst <$> r') g gp <*>) =<< liftM3 v s' r' c') <*> t
 
