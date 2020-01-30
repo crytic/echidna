@@ -103,8 +103,9 @@ makeLenses ''SolConf
 -- or a function that could experience an exception
 type SolTest = Either (Text, Addr) SolSignature
 
--- | Given a file, use its extenstion to check if it is a precompiled contract or try to compile it and
--- get a list of its contracts, throwing exceptions if necessary.
+-- | Given a list of files, use its extenstion to check if it is a precompiled
+-- contract or try to compile it and get a list of its contracts, throwing
+-- exceptions if necessary.
 contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => NE.NonEmpty FilePath -> m [SolcContract]
 contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"] in do
   mp  <- liftIO $ findExecutable "crytic-compile"
