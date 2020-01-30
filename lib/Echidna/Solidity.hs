@@ -130,7 +130,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
     concat <$> sequence (compileOne <$> fps)
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
-addresses = view hasLens <&> \(SolConf ca d ads _ _ _ _ _ _ _ _ _ _) ->
+addresses = view hasLens <&> \SolConf { _contractAddr = ca, _deployer = d, _sender = ads } ->
   AbiAddress . fromIntegral <$> NE.nub (join ads [ca, d, 0x0])
   where join (first NE.:| rest) list = first NE.:| (rest ++ list)
 
