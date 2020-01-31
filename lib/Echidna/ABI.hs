@@ -8,14 +8,19 @@
 
 module Echidna.ABI where
 
+import Codec.CBOR.Read (deserialiseFromBytes)
+import Codec.CBOR.Term (decodeTerm)
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, foldM, replicateM)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Class (MonadState, gets)
 import Control.Monad.State (evalStateT)
 import Control.Monad.Random.Strict (MonadRandom, getRandom, getRandoms, getRandomR, uniformMay)
+import Data.Binary.Get (runGet, getWord16be)
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
+import Data.ByteString.Lazy (fromStrict)
+import Data.Either (isRight)
 import Data.Foldable (toList)
 import Data.Has (Has(..))
 import Data.Hashable (Hashable(..))
@@ -286,3 +291,14 @@ genAbiCallM = genWithDict (fmap toList . view wholeCalls) (traverse $ traverse g
 genInteractionsM :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m)
                  => NE.NonEmpty SolSignature -> m SolCall
 genInteractionsM l = genAbiCallM =<< rElem l
+
+-- | Given a solc bytecode strip off the metadata from the end
+stripBytecodeMetadata :: ByteString -> ByteString
+stripBytecodeMetadata bc
+  | BS.length cl /= 2 = bc
+  | BS.length h >= cl' && (isRight . deserialiseFromBytes decodeTerm $ fromStrict cbor) = bc'
+  | otherwise = bc
+  where l = BS.length bc
+        (h, cl) = BS.splitAt (l - 2) bc
+        cl' = fromIntegral . runGet getWord16be . fromStrict $ cl
+        (bc', cbor) = BS.splitAt (BS.length h - cl') h
