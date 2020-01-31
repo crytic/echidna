@@ -15,16 +15,17 @@ import Echidna.Solidity
 import Echidna.Transaction (TxCall(SolCall), Tx, call)
 
 import Control.Lens
-import Control.Monad (liftM2, void)
+import Control.Monad (liftM2, void, when)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Random (getRandom)
 import Control.Monad.Reader (runReaderT)
 import Data.Map.Strict (keys)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack)
-import Data.List (find)
+import Data.List (find, isInfixOf)
 import EVM.ABI (AbiValue(..))
 import System.Directory (withCurrentDirectory)
+import System.Process (readProcess)
 
 import qualified Data.List.NonEmpty   as NE
 
@@ -79,7 +80,7 @@ compilationTests = testGroup "Compilation and loading tests"
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
-  tryLoad = runReaderT (loadWithCryticCompile fp c >> pure ()) testConfig
+  tryLoad = runReaderT (loadWithCryticCompile (fp NE.:| []) c >> pure ()) testConfig
 
 -- Extraction Tests
 
@@ -134,7 +135,7 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/nearbyMining.sol" (Just "coverage/test.yaml")
       [ ("echidna_findNearby passed", solved "echidna_findNearby") ]
 
-  , testContract "basic/smallValues.sol" (Just "coverage/test.yaml")
+  , testContract' "basic/smallValues.sol" Nothing (Just "coverage/test.yaml") False
       [ ("echidna_findSmall passed", solved "echidna_findSmall") ]
 
   , testContract "basic/multisender.sol" (Just "basic/multisender.yaml") $
@@ -157,7 +158,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_found_sender failed",            solved      "echidna_found_sender") ]
   , testContract "basic/rconstants.sol"   Nothing
       [ ("echidna_found failed",                   solved      "echidna_found") ]
-  , testContract' "basic/cons-create-2.sol" (Just "C") Nothing
+  , testContract' "basic/cons-create-2.sol" (Just "C") Nothing True
       [ ("echidna_state failed",                   solved      "echidna_state") ]
 -- single.sol is really slow and kind of unstable. it also messes up travis.
 --  , testContract "coverage/single.sol"    (Just "coverage/test.yaml")
@@ -188,7 +189,14 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
   , testContract "basic/gasprice.sol"     Nothing
       [ ("echidna_state passed",                   solved      "echidna_state") ]
-  , testContract' "basic_multicontract/contracts/Foo.sol" (Just "Foo") (Just "basic_multicontract/echidna_config.yaml")
+  , let fp = "basic_multicontract/contracts/Foo.sol"; cfg = Just "basic_multicontract/echidna_config.yaml" in
+      testCase fp $
+        do sv <- readProcess "solc" ["--version"] ""
+           when ("Version: 0.4.25" `isInfixOf` sv) $ do
+             c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
+             res <- runContract fp (Just "Foo") c
+             assertBool "echidna_test passed" $ solved "echidna_test" res
+  , testContract' "basic/multi-abi.sol" (Just "B") (Just "basic/multi-abi.yaml") True
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Ballot.sol"       Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
@@ -205,20 +213,22 @@ testConfig = defaultConfig & sConf . quiet .~ True
                            & cConf .~ (defaultConfig ^. cConf) { testLimit = 10000, shrinkLimit = 2500 }
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
-testContract = flip testContract' Nothing
+testContract fp cfg = testContract' fp Nothing cfg True
 
-testContract' :: FilePath -> Maybe Text -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
-testContract' fp n cfg as = testCase fp $ do
+testContract' :: FilePath -> Maybe Text -> Maybe FilePath -> Bool -> [(String, Campaign -> Bool)] -> TestTree
+testContract' fp n cfg s as = testCase fp $ do
   c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
-  res <- runContract fp n c
+  let c' = c & sConf . quiet .~ True
+             & if s then cConf .~ (c ^. cConf) { testLimit = 10000, shrinkLimit = 2500 } else id
+  res <- runContract fp n c'
   mapM_ (\(t,f) -> assertBool t $ f res) as
 
 runContract :: FilePath -> Maybe Text -> EConfig -> IO Campaign
 runContract fp n c =
   flip runReaderT c $ do
     g <- getRandom
-    (v,w,ts) <- loadSolTests fp n
-    cs  <- Echidna.Solidity.contracts fp
+    (v,w,ts) <- loadSolTests (fp NE.:| []) n
+    cs  <- Echidna.Solidity.contracts (fp NE.:| [])
     ads <- NE.toList <$> addresses
     let ads' = AbiAddress . addressWord160 <$> v ^. env . EVM.contracts . to keys
     campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads ++ ads') [] g (returnTypes cs))

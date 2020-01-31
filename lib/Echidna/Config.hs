@@ -146,6 +146,7 @@ instance FromJSON EConfigWithUsage where
                                  <*> v ..:? "solcLibs"        ..!= []
                                  <*> v ..:? "quiet"           ..!= False
                                  <*> v ..:? "initialize"      ..!= Nothing
+                                 <*> v ..:? "multi-abi"       ..!= False
                                  <*> v ..:? "checkAsserts"    ..!= False)
                     <*> tc
                     <*> xc

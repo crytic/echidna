@@ -20,6 +20,8 @@ import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
 import Data.Aeson (ToJSON(..), object)
 import Data.ByteString (ByteString)
 import Data.Has (Has(..))
+import Data.Map (Map, toList)
+import Data.Maybe (catMaybes)
 import Data.List (intercalate)
 import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType)
@@ -29,6 +31,7 @@ import EVM.Types (Addr)
 import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.ByteString.Base16 as BS16
 import qualified Data.ByteString.Char8 as BSC8
+import qualified Data.HashMap.Strict as M
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
 import qualified Data.Vector as V
@@ -103,16 +106,18 @@ level x                       = x
 -- | A contract is just an address with an ABI (for our purposes).
 type ContractA = (Addr, NE.NonEmpty SolSignature)
 
--- | The world is made our of humans with an address, and contracts with an address + ABI.
-data World = World { _senders   :: NE.NonEmpty Addr
-                   , _receivers :: NE.NonEmpty ContractA
+-- | The world is made our of humans with an address, and a way to map contract
+-- bytecodes to an ABI
+data World = World { _senders         :: NE.NonEmpty Addr
+                   , _bytecodeMapping :: M.HashMap ByteString (NE.NonEmpty SolSignature)
                    }
 makeLenses ''World
 
 -- | Given generators for an origin, destination, value, and function call, generate a call
 -- transaction. Note: This doesn't generate @CREATE@s because I don't know how to do that at random.
 genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m)
-          => (NE.NonEmpty Addr -> m Addr)             -- ^ Sender generator
+          => Map Addr Contract                        -- ^ List of contracts
+          -> (NE.NonEmpty Addr -> m Addr)             -- ^ Sender generator
           -> (NE.NonEmpty ContractA -> m ContractA)   -- ^ Receiver generator
           -> (Addr -> ContractA -> m SolCall)         -- ^ Call generator
           -> m Word                                   -- ^ Gas generator
@@ -120,17 +125,27 @@ genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m)
           -> (Addr -> ContractA -> SolCall -> m Word) -- ^ Value generator
           -> m (Word, Word)                           -- ^ Delay generator
           -> m Tx
-genTxWith s r c g gp v t = use hasLens >>= \(World ss rs) ->
-  let s' = s ss; r' = r rs; c' = join $ liftM2 c s' r' in
+genTxWith m s r c g gp v t = use hasLens >>= \(World ss mm) ->
+  let s' = s ss
+      r' = r rs
+      c' = join $ liftM2 c s' r'
+      rs = NE.fromList . catMaybes $ mkR <$> toList m
+      mkR = _2 (flip M.lookup mm . view (bytecode . to stripBytecodeMetadata))
+  in
     ((liftM5 Tx (SolCall <$> c') s' (fst <$> r') g gp <*>) =<< liftM3 v s' r' c') <*> t
 
 -- | Synthesize a random 'Transaction', not using a dictionary.
-genTx :: forall m x y. (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m) => m Tx
-genTx = use (hasLens :: Lens' y World) >>= evalStateT genTxM . (defaultDict,)
+genTx :: forall m x y. (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m)
+      => Map Addr Contract
+      -> m Tx
+genTx m = use (hasLens :: Lens' y World) >>= evalStateT (genTxM m) . (defaultDict,)
 
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
-genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has GenDict y, Has World y, MonadThrow m) => m Tx
-genTxM = view hasLens >>= \(TxConf _ g maxGp t b) -> genTxWith
+genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has GenDict y, Has World y, MonadThrow m)
+  => Map Addr Contract
+  -> m Tx
+genTxM m = view hasLens >>= \(TxConf _ g maxGp t b) -> genTxWith
+  m
   rElem rElem                                                                -- src and dst
   (const $ genInteractionsM . snd)                                           -- call itself
   (pure g) (inRange maxGp) (\_ _ _ -> pure 0)                                -- gas, gasprice, value

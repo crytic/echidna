@@ -25,17 +25,19 @@ import Echidna.UI
 import qualified Data.List.NonEmpty as NE
 
 data Options = Options
-  { filePath         :: FilePath
+  { filePath         :: NE.NonEmpty FilePath
   , selectedContract :: Maybe String
   , configFilepath   :: Maybe FilePath
   }
 
 options :: Parser Options
-options = Options <$> argument str (metavar "FILE"
-                        <> help "Solidity file to analyze")
-                  <*> optional (argument str $ metavar "CONTRACT"
+options = Options <$> (NE.fromList <$> some (argument str (metavar "FILES"
+                        <> help "Solidity files to analyze")))
+                  <*> optional (option str $ long "contract"
+                        <> metavar "CONTRACT"
                         <> help "Contract to analyze")
                   <*> optional (option str $ long "config"
+                        <> metavar "CONFIG"
                         <> help "Config file")
 
 versionOption :: Parser (a -> a)
