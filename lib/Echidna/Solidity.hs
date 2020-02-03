@@ -54,7 +54,7 @@ import qualified Data.Text           as T
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
 data SolException = BadAddr Addr
-                  | CompileFailure
+                  | CompileFailure String String
                   | NoContracts
                   | TestArgsFound Text
                   | ContractNotFound Text
@@ -68,7 +68,7 @@ data SolException = BadAddr Addr
 instance Show SolException where
   show = \case
     BadAddr a            -> "No contract at " ++ show a ++ " exists"
-    CompileFailure       -> "Couldn't compile given file"
+    CompileFailure x y   -> "Couldn't compile given file\n" ++ "stdout:\n" ++ x ++ "stderr:\n" ++ y
     NoContracts          -> "No contracts found in given file"
     (ContractNotFound c) -> "Given contract " ++ show c ++ " not found in given file"
     (TestArgsFound t)    -> "Test " ++ show t ++ " has arguments, aborting"
@@ -120,12 +120,12 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
                   (\sa -> if null sa then [] else ["--solc-args", sa])
         fps = toList fp
         compileOne :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
-        compileOne x = maybe (throwM CompileFailure) (pure . toList . fst) =<< liftIO (do
+        compileOne x = maybe (throwM $ CompileFailure "" "could not read combined_solc.json") (pure . toList . fst) =<< liftIO (do
                          stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
-                         (ec, _, _) <- readCreateProcessWithExitCode (proc path $ (c ++ solargs) |> x) {std_err = stderr} ""
+                         (ec, out, err) <- readCreateProcessWithExitCode (proc path $ (c ++ solargs) |> x) {std_err = stderr} ""
                          case ec of
                           ExitSuccess -> readSolc "crytic-export/combined_solc.json"
-                          ExitFailure _ -> throwM CompileFailure
+                          ExitFailure _ -> throwM $ CompileFailure out err
                        )
     concat <$> sequence (compileOne <$> fps)
 
