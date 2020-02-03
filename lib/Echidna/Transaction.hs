@@ -17,17 +17,21 @@ import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
-import Data.Aeson (ToJSON(..), object)
+import Data.Aeson (ToJSON(..), FromJSON(..), withText, defaultOptions)
+import Data.Aeson.TH (deriveJSON)
+import Data.DoubleWord (Word256(..), Int256(..), Word160(..))
 import Data.ByteString (ByteString)
 import Data.Has (Has(..))
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
 import Data.List (intercalate)
+import Text.Read (readMaybe)
 import EVM hiding (value)
-import EVM.ABI (abiCalldata, abiValueType)
+import EVM.ABI (abiCalldata, abiValueType, AbiValue(..), AbiType(..))
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
 
+import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.ByteString.Base16 as BS16
 import qualified Data.ByteString.Char8 as BSC8
@@ -59,6 +63,44 @@ data Tx = Tx { _call  :: TxCall       -- | Call
 
 makeLenses ''Tx
 
+instance ToJSON Word256 where
+  toJSON = toJSON . show
+
+instance FromJSON Word256 where
+  parseJSON = withText "Word256" $ maybe (M.fail "could not parse Word256") pure . readMaybe . T.unpack
+
+instance ToJSON Int256 where
+  toJSON = toJSON . show
+
+instance FromJSON Int256 where
+  parseJSON = withText "Int256" $ maybe (M.fail "could not parse Int256") pure . readMaybe . T.unpack
+
+instance ToJSON Word160 where
+  toJSON = toJSON . show
+
+instance FromJSON Word160 where
+  parseJSON = withText "Int160" $ maybe (M.fail "could not parse Word160") pure . readMaybe . T.unpack
+
+instance ToJSON ByteString where
+  toJSON = toJSON . show
+
+instance FromJSON ByteString where
+  parseJSON = withText "ByteString" $ maybe (M.fail "could not parse ByteString") pure . readMaybe . T.unpack
+
+instance ToJSON Addr where
+  toJSON = toJSON . show
+
+instance ToJSON Word where
+  toJSON = toJSON . show
+
+instance FromJSON Word where
+  parseJSON = withText "Word" $ maybe (M.fail "could not parse Word") pure . readMaybe . T.unpack
+
+$(deriveJSON defaultOptions ''EVM.ABI.AbiType)
+$(deriveJSON defaultOptions ''EVM.ABI.AbiValue)
+$(deriveJSON defaultOptions ''TxCall)
+$(deriveJSON defaultOptions ''Tx)
+
 data TxConf = TxConf { _propGas       :: Word
                      -- ^ Gas to use evaluating echidna properties
                      , _txGas         :: Word
@@ -82,20 +124,6 @@ ppTxCall :: TxCall -> String
 ppTxCall (SolCreate _)    = "<CREATE>"
 ppTxCall (SolCall x)      = ppSolCall x
 ppTxCall (SolCalldata x)  = BSC8.unpack $ "0x" <> BS16.encode x
-
-instance ToJSON Tx where
-  toJSON (Tx c s d g gp v (t, b)) =
-    object
-      [ ("call",        toJSON $ ppTxCall c)
-      -- from/to are Strings, since JSON doesn't support hexadecimal notation
-      , ("from",        toJSON $ show s)
-      , ("to",          toJSON $ show d)
-      , ("value",       toJSON $ show v)
-      , ("gas",         toJSON $ show g)
-      , ("gasprice",    toJSON $ show gp)
-      , ("time delay",  toJSON $ show t)
-      , ("block delay", toJSON $ show b)
-      ]
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating delays, since block number
 -- only goes up with timestamp
