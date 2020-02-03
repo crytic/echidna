@@ -80,12 +80,12 @@ ui v w ts d = do
   bc <- liftIO $ newBChan 100
   ref <- liftIO $ newIORef defaultCampaign
   dash <- liftM2 (&&) isTerminal $ view (hasLens . dashboard)
+  timeoutSeconds <- (* 1000000) . fromMaybe (-1) <$> view (hasLens . maxTime)
   let updateRef = use hasLens >>= liftIO . atomicWriteIORef ref
   let updateUI e = when dash $ readIORef ref >>= writeBChan bc . e
   waitForMe <- liftIO newEmptyMVar
   ticker <- liftIO $ forkIO -- update UI every 100ms, instant exit when no UI
     (when dash $ forever $ threadDelay 100000 >> updateUI CampaignUpdated)
-  timeoutSeconds <- (* 1000000) . fromMaybe (-1) <$> view (hasLens . maxTime)
   _ <- forkFinally -- run worker
     (void $ timeout timeoutSeconds (campaign updateRef v w ts d) >>= \case
        Nothing -> liftIO $ updateUI CampaignTimedout
