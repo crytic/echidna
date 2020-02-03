@@ -12,7 +12,7 @@ import Brick.BChan
 import Control.Concurrent (killThread, threadDelay)
 import Control.Concurrent.MVar
 import Control.Lens
-import Control.Monad (forever, liftM2, liftM3, void)
+import Control.Monad (forever, liftM2, liftM3, void, when)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader, runReader)
@@ -79,11 +79,12 @@ ui v w ts d = do
   let getSeed = view $ hasLens . to seed . non (d' ^. defSeed)
   bc <- liftIO $ newBChan 100
   ref <- liftIO $ newIORef defaultCampaign
+  dash <- liftM2 (&&) isTerminal $ view (hasLens . dashboard)
   let updateRef = use hasLens >>= liftIO . atomicWriteIORef ref
-  let updateUI x = readIORef ref >>= writeBChan bc . x
+  let updateUI e = when dash $ readIORef ref >>= writeBChan bc . e
   waitForMe <- liftIO newEmptyMVar
-  ticker <- liftIO $ forkIO -- update UI every 100ms
-    (void $ forever $ threadDelay 100000 >> updateUI CampaignUpdated)
+  ticker <- liftIO $ forkIO -- update UI every 100ms, instant exit when no UI
+    (when dash $ forever $ threadDelay 100000 >> updateUI CampaignUpdated)
   timeoutSeconds <- (* 1000000) . fromMaybe (-1) <$> view (hasLens . maxTime)
   _ <- forkFinally -- run worker
     (void $ timeout timeoutSeconds (campaign updateRef v w ts d) >>= \case
@@ -91,7 +92,6 @@ ui v w ts d = do
        Just _ -> liftIO $ updateUI CampaignUpdated
     )
     (const $ liftIO $ killThread ticker >> putMVar waitForMe ())
-  dash <- liftM2 (&&) isTerminal $ view (hasLens . dashboard)
   app <- customMain (mkVty defaultConfig) (Just bc) <$> monitor
   liftIO $ if dash
              then void $ app (defaultCampaign, Uninitialized)
