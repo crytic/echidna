@@ -90,7 +90,7 @@ $ docker build -t echidna .
 for example
 
 ```
-$ docker run -t -v `pwd`:/src echidna echidna-test /src/examples/solidity/basic/flags.sol
+$ docker run -it -v `pwd`:/src echidna echidna-test /src/examples/solidity/basic/flags.sol
 ```
 
 
