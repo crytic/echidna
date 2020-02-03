@@ -55,6 +55,7 @@ import qualified Data.Text           as T
 -- instance for more detailed explanations.
 data SolException = BadAddr Addr
                   | CompileFailure String String
+                  | SolcReadFailure
                   | NoContracts
                   | TestArgsFound Text
                   | ContractNotFound Text
@@ -69,6 +70,7 @@ instance Show SolException where
   show = \case
     BadAddr a            -> "No contract at " ++ show a ++ " exists"
     CompileFailure x y   -> "Couldn't compile given file\n" ++ "stdout:\n" ++ x ++ "stderr:\n" ++ y
+    SolcReadFailure      -> "Could not read crytic-export/combined_solc.json"
     NoContracts          -> "No contracts found in given file"
     (ContractNotFound c) -> "Given contract " ++ show c ++ " not found in given file"
     (TestArgsFound t)    -> "Test " ++ show t ++ " has arguments, aborting"
@@ -120,7 +122,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
                   (\sa -> if null sa then [] else ["--solc-args", sa])
         fps = toList fp
         compileOne :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
-        compileOne x = maybe (throwM $ CompileFailure "" "could not read combined_solc.json") (pure . toList . fst) =<< liftIO (do
+        compileOne x = maybe (throwM SolcReadFailure) (pure . toList . fst) =<< liftIO (do
                          stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
                          (ec, out, err) <- readCreateProcessWithExitCode (proc path $ (c ++ solargs) |> x) {std_err = stderr} ""
                          case ec of
