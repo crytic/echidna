@@ -278,19 +278,19 @@ instance Arbitrary EVM.Concrete.Word where
 
 instance Arbitrary TxCall where
   arbitrary = do
-              s <- (arbitrary :: Gen String)
-              cs <- (arbitrary :: Gen [AbiValue])
+              s <- arbitrary :: Gen String
+              cs <- arbitrary :: Gen [AbiValue]
               return $ SolCall (pack s, cs)
 
 instance Arbitrary Tx where
   arbitrary = do
-               t <- (arbitrary :: Gen TxCall)
-               s <- (arbitrary :: Gen Addr)
-               d <- (arbitrary :: Gen Addr)
-               g <- (arbitrary :: Gen EVM.Concrete.Word)
-               gp <- (arbitrary :: Gen EVM.Concrete.Word)
-               v <- (arbitrary :: Gen EVM.Concrete.Word)
-               dl <- (arbitrary :: Gen (EVM.Concrete.Word, EVM.Concrete.Word))
+               t <- arbitrary :: Gen TxCall
+               s <- arbitrary :: Gen Addr
+               d <- arbitrary :: Gen Addr
+               g <- arbitrary :: Gen EVM.Concrete.Word
+               gp <- arbitrary :: Gen EVM.Concrete.Word
+               v <- arbitrary :: Gen EVM.Concrete.Word
+               dl <- arbitrary :: Gen (EVM.Concrete.Word, EVM.Concrete.Word)
                return $ Tx t s d g gp v dl
 
 encodingJSONTests :: TestTree
@@ -298,7 +298,7 @@ encodingJSONTests =
   testGroup "Tx JSON encoding"
     [ testProperty "decode . encode = id" $ property $ do
         t <- arbitrary :: Gen Tx
-        let jt = (encode t)
-        let t' = (decode jt) :: Maybe Tx
-        return $ t' === (Just t)
+        let jt = encode t
+        let t' = decode jt :: Maybe Tx
+        return $ t' === Just t
     ]
