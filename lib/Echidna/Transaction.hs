@@ -96,8 +96,8 @@ instance ToJSON Word where
 instance FromJSON Word where
   parseJSON = withText "Word" $ maybe (M.fail "could not parse Word") pure . readMaybe . T.unpack
 
-$(deriveJSON defaultOptions ''EVM.ABI.AbiType)
-$(deriveJSON defaultOptions ''EVM.ABI.AbiValue)
+$(deriveJSON defaultOptions ''AbiType)
+$(deriveJSON defaultOptions ''AbiValue)
 $(deriveJSON defaultOptions ''TxCall)
 $(deriveJSON defaultOptions ''Tx)
 
