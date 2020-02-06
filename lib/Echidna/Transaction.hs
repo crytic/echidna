@@ -13,7 +13,7 @@ module Echidna.Transaction where
 import Prelude hiding (Word)
 
 import Control.Lens
-import Control.Monad (join, liftM2, liftM3, liftM5, when)
+import Control.Monad (join, liftM2, liftM3, liftM5, unless)
 import Control.Monad.Catch (MonadThrow,  bracket)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
@@ -233,7 +233,7 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
 saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
 saveTxs (Just d) txs = mapM_ (\v -> do let fn = d ++ "/" ++ (show . hash . show) v ++ ".txt"
                                        b <- doesFileExist fn
-                                       when (not b) $ encodeFile fn (sv v)
+                                       unless b $ encodeFile fn (sv v)
                                ) txs
                              where sv = toJSON
 saveTxs Nothing  _   = return ()
