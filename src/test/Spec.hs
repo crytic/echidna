@@ -55,7 +55,7 @@ configTests = testGroup "Configuration tests" $
   , testCase "defaults.yaml" $ do
       EConfigWithUsage _ bad unset <- parseConfig "basic/default.yaml"
       assertBool ("unused options: " ++ show bad) $ null bad
-      let unset' = unset & sans "seed"
+      let unset' = unset & sans "seed" & sans "corpusDir"
       assertBool ("unset options: " ++ show unset') $ null unset'
   ]
   where files = ["basic/config.yaml", "basic/default.yaml"]
@@ -113,7 +113,7 @@ seedTests =
     , testCase "same seeds" $ assertBool "results differ" =<< same 0 0
     ]
     where cfg s = defaultConfig & sConf . quiet .~ True
-                                & cConf .~ CampaignConf 600 False 20 0 Nothing (Just s) 0.15
+                                & cConf .~ CampaignConf 600 False 20 0 Nothing (Just s) 0.15 Nothing
           gen s = view tests <$> runContract "basic/flags.sol" Nothing (cfg s)
           same s t = liftM2 (==) (gen s) (gen t)
 
@@ -236,7 +236,7 @@ runContract fp n c =
     cs  <- Echidna.Solidity.contracts (fp NE.:| [])
     ads <- NE.toList <$> addresses
     let ads' = AbiAddress . addressWord160 <$> v ^. env . EVM.contracts . to keys
-    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads ++ ads') [] g (returnTypes cs))
+    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads ++ ads') [] g (returnTypes cs)) [[]]
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
