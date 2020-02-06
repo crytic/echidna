@@ -34,7 +34,6 @@ import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
 import System.Directory hiding (listDirectory, withCurrentDirectory)
 
-
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.ByteString.Base16 as BS16
