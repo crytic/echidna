@@ -274,8 +274,8 @@ instance Arbitrary EVM.Concrete.Word where
 
 instance Arbitrary TxCall where
   arbitrary = do 
-                s <- arbitrary :: Gen String
-                cs <- arbitrary :: Gen [AbiValue]
+                s <- arbitrary
+                cs <- arbitrary
                 return $ SolCall (pack s, cs)
 
 instance Arbitrary Tx where
