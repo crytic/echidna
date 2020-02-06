@@ -4,16 +4,20 @@
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck(Arbitrary(..), Gen, (===), property, testProperty)
 
 import EVM (env, contracts)
 import EVM.Types (Addr(..))
+import EVM.ABI (AbiValue(..))
+import qualified EVM.Concrete(Word(..))
 
 import Echidna.ABI (SolCall, mkGenDict)
 import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests)
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
-import Echidna.Transaction (TxCall(SolCall), Tx, call)
+import Echidna.Transaction (TxCall(..), Tx(..), call)
 
+import Data.Aeson (encode, decode)
 import Control.Lens
 import Control.Monad (liftM2, void, when)
 import Control.Monad.Catch (MonadCatch(..))
@@ -21,9 +25,9 @@ import Control.Monad.Random (getRandom)
 import Control.Monad.Reader (runReaderT)
 import Data.Map.Strict (keys)
 import Data.Maybe (isJust, maybe)
-import Data.Text (Text, unpack)
+import Data.Text (Text, unpack, pack)
 import Data.List (find, isInfixOf)
-import EVM.ABI (AbiValue(..))
+
 import System.Directory (withCurrentDirectory)
 import System.Process (readProcess)
 
@@ -35,6 +39,7 @@ main = withCurrentDirectory "./examples/solidity" . defaultMain $
                              , compilationTests
                              , seedTests
                              , integrationTests
+                             , encodingJSONTests
                              ]
 
 -- Configuration Tests
@@ -257,3 +262,31 @@ solvedLen i t = (== Just i) . fmap length . solnFor t
 -- NOTE: this just verifies a call was found in the solution. Doesn't care about ordering/seq length
 solvedWith :: SolCall -> Text -> Campaign -> Bool
 solvedWith c t = maybe False (any $ (== SolCall c) . view call) . solnFor t
+
+
+-- Encoding JSON tests
+
+instance Arbitrary Addr where
+  arbitrary = arbitrary >>= (return . fromInteger)
+
+instance Arbitrary EVM.Concrete.Word where
+  arbitrary = arbitrary >>= (return . fromInteger)
+
+instance Arbitrary TxCall where
+  arbitrary = do 
+                s <- arbitrary
+                cs <- arbitrary
+                return $ SolCall (pack s, cs)
+
+instance Arbitrary Tx where
+  arbitrary = let a :: Arbitrary a => Gen a
+                  a = arbitrary in 
+                Tx <$> a <*> a <*> a <*> a <*> a <*> a <*> a
+
+encodingJSONTests :: TestTree
+encodingJSONTests =
+  testGroup "Tx JSON encoding"
+    [ testProperty "decode . encode = id" $ property $ do
+        t <- arbitrary :: Gen Tx
+        return $ decode (encode t) === Just t
+    ]

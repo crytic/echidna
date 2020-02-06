@@ -6,6 +6,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Echidna.Transaction where
 
@@ -13,15 +14,16 @@ import Prelude hiding (Word)
 
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, liftM5)
-import Control.Monad.Catch (MonadThrow)
+import Control.Monad.Catch (MonadThrow,  bracket)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
-import Data.Aeson (ToJSON(..), FromJSON(..), withText, defaultOptions)
+import Data.Aeson (ToJSON(..), FromJSON(..), withText, defaultOptions, decode, encodeFile)
 import Data.Aeson.TH (deriveJSON)
 import Data.DoubleWord (Word256(..), Int256(..), Word160(..))
 import Data.ByteString (ByteString)
 import Data.Has (Has(..))
+import Data.Hashable (hash)
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
 import Data.List (intercalate)
@@ -30,11 +32,15 @@ import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType, AbiValue(..), AbiType(..))
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
+import System.Directory hiding (listDirectory, withCurrentDirectory)
+
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.ByteString.Base16 as BS16
 import qualified Data.ByteString.Char8 as BSC8
+import qualified Data.ByteString.Lazy as LBS
+
 import qualified Data.HashMap.Strict as M
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
@@ -96,8 +102,8 @@ instance ToJSON Word where
 instance FromJSON Word where
   parseJSON = withText "Word" $ maybe (M.fail "could not parse Word") pure . readMaybe . T.unpack
 
-$(deriveJSON defaultOptions ''EVM.ABI.AbiType)
-$(deriveJSON defaultOptions ''EVM.ABI.AbiValue)
+$(deriveJSON defaultOptions ''AbiType)
+$(deriveJSON defaultOptions ''AbiValue)
 $(deriveJSON defaultOptions ''TxCall)
 $(deriveJSON defaultOptions ''Tx)
 
@@ -224,3 +230,35 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
       SolCalldata cd  -> loadContract r >> state . calldata .= cd
     encode (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
+
+saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
+saveTxs (Just d) txs = mapM_ (\v -> do let fn = d ++ "/" ++ ((show . hash . show) v) ++ ".txt"
+                                       b <- doesFileExist fn
+                                       if (not b) then encodeFile fn (sv v) else return ()
+                               ) txs
+                             where sv = toJSON
+saveTxs Nothing  _   = return ()
+
+listDirectory :: FilePath -> IO [FilePath]
+listDirectory path =
+  (Prelude.filter f) <$> (getDirectoryContents path)
+  where f filename = filename /= "." && filename /= ".."
+
+withCurrentDirectory :: FilePath  -- ^ Directory to execute in
+                     -> IO a      -- ^ Action to be executed
+                     -> IO a
+withCurrentDirectory dir action =
+  bracket getCurrentDirectory setCurrentDirectory $ \ _ -> do
+    setCurrentDirectory dir
+    action
+
+loadTxs :: Maybe FilePath -> IO [[Tx]]
+loadTxs (Just d) = do fs <- listDirectory d
+                      xs <- mapM makeRelativeToCurrentDirectory fs
+                      mtxs <- withCurrentDirectory d (mapM readCall xs)
+                      let txs = catMaybes mtxs
+                      putStrLn ("Loaded total of " ++ (show $ length xs) ++ " transactions from " ++ d)
+                      return txs
+                    where readCall f = do !buf <- LBS.readFile f
+                                          return (decode buf :: Maybe [Tx]) 
+loadTxs Nothing  = return [] 
