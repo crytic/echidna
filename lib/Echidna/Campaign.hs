@@ -193,16 +193,16 @@ addToCorpus :: (MonadState s m, Has Campaign s) => [(Tx, VMResult)] -> m ()
 addToCorpus res = let rtxs = map fst res --(filter (\(_, vm) -> classifyRes vm /= ResRevert) res)
                     in unless (null rtxs) $ hasLens . corpus %= (rtxs:)
 
--- | Generate a new sequences of transactions, either using the corpus or randomly
+-- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has GenDict y, Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
         => Int -> Map Addr Contract -> World -> m [Tx]
 randseq ql o w = do ca <- use hasLens
-                    let gts = ca ^. corpus
-                        p   = ca ^. ncallseqs 
-                    if (length gts > p) then 
+                    let corpus = ca ^. corpus  
+                        p      = ca ^. ncallseqs 
+                    if (length corpus > p) then -- Replay the transactions in the corpus, if we are executing the first iterations
                       return $ gts !! p
-                    else 
+                    else                        -- Randomly generate new transactions 
                       replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
