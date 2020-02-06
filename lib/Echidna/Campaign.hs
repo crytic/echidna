@@ -198,10 +198,10 @@ randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has GenDict y, Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
         => Int -> Map Addr Contract -> World -> m [Tx]
 randseq ql o w = do ca <- use hasLens
-                    let corpus = ca ^. corpus  
-                        p      = ca ^. ncallseqs 
-                    if (length corpus > p) then -- Replay the transactions in the corpus, if we are executing the first iterations
-                      return $ gts !! p
+                    let txs = ca ^. corpus  
+                        p   = ca ^. ncallseqs 
+                    if length txs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
+                      return $ txs !! p
                     else                        -- Randomly generate new transactions 
                       replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
 

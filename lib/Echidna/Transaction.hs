@@ -13,7 +13,7 @@ module Echidna.Transaction where
 import Prelude hiding (Word)
 
 import Control.Lens
-import Control.Monad (join, liftM2, liftM3, liftM5)
+import Control.Monad (join, liftM2, liftM3, liftM5, when)
 import Control.Monad.Catch (MonadThrow,  bracket)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
@@ -231,16 +231,16 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
 
 saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
-saveTxs (Just d) txs = mapM_ (\v -> do let fn = d ++ "/" ++ ((show . hash . show) v) ++ ".txt"
+saveTxs (Just d) txs = mapM_ (\v -> do let fn = d ++ "/" ++ (show . hash . show) v ++ ".txt"
                                        b <- doesFileExist fn
-                                       if (not b) then encodeFile fn (sv v) else return ()
+                                       when (not b) $ encodeFile fn (sv v)
                                ) txs
                              where sv = toJSON
 saveTxs Nothing  _   = return ()
 
 listDirectory :: FilePath -> IO [FilePath]
 listDirectory path =
-  (Prelude.filter f) <$> (getDirectoryContents path)
+  Prelude.filter f <$> getDirectoryContents path
   where f filename = filename /= "." && filename /= ".."
 
 withCurrentDirectory :: FilePath  -- ^ Directory to execute in
@@ -256,7 +256,7 @@ loadTxs (Just d) = do fs <- listDirectory d
                       xs <- mapM makeRelativeToCurrentDirectory fs
                       mtxs <- withCurrentDirectory d (mapM readCall xs)
                       let txs = catMaybes mtxs
-                      putStrLn ("Loaded total of " ++ (show $ length xs) ++ " transactions from " ++ d)
+                      putStrLn ("Loaded total of " ++ show (length xs) ++ " transactions from " ++ d)
                       return txs
                     where readCall f = do !buf <- LBS.readFile f
                                           return (decode buf :: Maybe [Tx]) 
