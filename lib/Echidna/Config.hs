@@ -115,6 +115,7 @@ instance FromJSON EConfigWithUsage where
                                                   _         -> Nothing
                 cc = CampaignConf <$> v ..:? "testLimit"   ..!= 50000
                                   <*> v ..:? "stopOnFail"  ..!= False
+                                  <*> v ..:? "estimateGas" ..!= False
                                   <*> v ..:? "seqLen"      ..!= 100
                                   <*> v ..:? "shrinkLimit" ..!= 5000
                                   <*> cov
