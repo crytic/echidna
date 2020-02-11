@@ -53,6 +53,8 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- ^ Maximum number of function calls to execute while fuzzing
                                  , stopOnFail    :: Bool
                                    -- ^ Whether to stop the campaign immediately if any property fails
+                                 , estimateGas   :: Bool
+                                   -- ^ Whether to collect gas usage statistics
                                  , seqLen        :: Int
                                    -- ^ Number of calls between state resets (e.g. \"every 10 calls,
                                    -- reset the state to avoid unrecoverable states/save memory\"
@@ -234,7 +236,7 @@ campaign u v w ts d = do
   execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d') where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl sof q sl _ _ _) ->
+    update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _) ->
       if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
