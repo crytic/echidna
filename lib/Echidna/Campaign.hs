@@ -28,6 +28,7 @@ import Data.Maybe (fromMaybe, isJust, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
+import Data.Text (Text)
 import EVM
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (W256, addressWord160)
@@ -95,16 +96,18 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                            -- ^ Tests being evaluated
                          , _coverage    :: Map W256 (Set Int)
                            -- ^ Coverage captured (NOTE: we don't always record this)
+                         , _gasInfo    :: Map Text (Int, [Tx])
+                           -- ^ Worst case gas (NOTE: we don't always record this)
                          , _genDict     :: GenDict
                            -- ^ Generation dictionary
                          }
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co _) = object $ ("tests", toJSON $ mapMaybe format ts)
+  toJSON (Campaign ts co _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
     : if co == mempty then [] else [("coverage",) . toJSON . mapKeys (`showHex` "") $ toList <$> co] where
-      format (Right _,      Open _) = Nothing
-      format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
-      format (Left (n, _),  s)      = Just (n,                    toJSON s)
+       format (Right _,      Open _) = Nothing
+       format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
+       format (Left (n, _),  s)      = Just (n,                    toJSON s)
 
 makeLenses ''Campaign
 
@@ -112,7 +115,7 @@ instance Has GenDict Campaign where
   hasLens = genDict
 
 defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty defaultDict
+defaultCampaign = Campaign mempty mempty mempty defaultDict
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
@@ -233,7 +236,7 @@ campaign u v w ts d = do
   c <- fromMaybe mempty <$> view (hasLens . to knownCoverage)
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c d') where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d') where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _) ->
