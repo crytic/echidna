@@ -7,9 +7,10 @@ import Control.Lens
 import Control.Monad.Reader (MonadReader)
 import Data.Has (Has(..))
 import Data.List (nub)
-import Data.Map (Map)
+import Data.Map (Map, toList)
 import Data.Maybe (catMaybes, maybe)
 import Data.Set (Set)
+import Data.Text (Text)
 import EVM.Types (Addr, W256)
 
 import qualified Data.Text as T
@@ -47,6 +48,11 @@ ppCoverage s | s == mempty = Nothing
              | otherwise   = Just $ "Unique instructions: " ++ show (coveragePoints s)
                                  ++ "\nUnique codehashes: " ++ show (length s)
 
+-- | Pretty-print the gas usage information a 'Campaign' has obtained.
+ppGasInfo :: Map Text (Int, [Tx]) -> Maybe String
+ppGasInfo s | s == mempty = Nothing
+            | otherwise   = Just $ foldr (\t1 t2 -> t1 ++ "\n" ++ t2) "" $ map show $ toList s
+
 -- | Pretty-print the status of a solved test.
 ppFail :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> [Tx] -> m String
 ppFail _ [] = pure "failed with no transactions made ⁉️  "
@@ -68,11 +74,10 @@ ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m th
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppTests (Campaign ts _ _) = unlines . catMaybes <$> mapM pp ts where
+ppTests (Campaign ts _ _ _) = unlines . catMaybes <$> mapM pp ts where
   pp (Left  (n, _), s)      = Just .                    ((T.unpack n ++ ": ") ++) <$> ppTS s
   pp (Right _,      Open _) = pure Nothing
   pp (Right (n, _), s)      = Just . (("assertion in " ++ T.unpack n ++ ": ") ++) <$> ppTS s
 
 ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
 ppCampaign c = (++) <$> ppTests c <*> pure (maybe "" ("\n" ++) . ppCoverage $ c ^. coverage)
-
