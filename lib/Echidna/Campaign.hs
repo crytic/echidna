@@ -173,7 +173,7 @@ evalSeq v e = go [] where
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
 -- transaction if it finds new coverage.
-execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => Tx -> m VMResult
+execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
 execTxOptC t = do
   og  <- hasLens . coverage <<.= mempty
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
@@ -208,7 +208,7 @@ callseq v w ql = do
   hasLens .= snd s
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   types <- use $ hasLens . rTypes
-  let results = parse res types
+  let results = parse (map (\x -> (fst x, fst $ snd x)) res) types
       -- union the return results with the new addresses
       additions = H.unionWith S.union diffs results
   -- append to the constants dictionary

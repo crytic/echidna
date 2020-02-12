@@ -64,7 +64,7 @@ vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> Unknow
 
 -- | Given an error handler, an execution function, and a transaction, execute that transaction
 -- using the given execution strategy, handling errors with the given handler.
-execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m VMResult
+execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Int)
 execTxWith h m t = do (og :: VM) <- use hasLens
                       setupTx t
                       res <- m
@@ -79,10 +79,10 @@ execTxWith h m t = do (og :: VM) <- use hasLens
                           replaceCodeOfSelf (RuntimeCode bc)
                           loadContract (t ^. dst)
                         _                        -> pure ()
-                      return res
+                      return (res, fromIntegral 0)
 
 -- | Execute a transaction "as normal".
-execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m VMResult
+execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
 execTx = execTxWith vmExcept $ liftSH exec
 
 -- | Given a way of capturing coverage info, execute while doing so once per instruction.
