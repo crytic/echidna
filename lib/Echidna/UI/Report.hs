@@ -80,4 +80,7 @@ ppTests (Campaign ts _ _ _) = unlines . catMaybes <$> mapM pp ts where
   pp (Right (n, _), s)      = Just . (("assertion in " ++ T.unpack n ++ ": ") ++) <$> ppTS s
 
 ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppCampaign c = (++) <$> ppTests c <*> pure (maybe "" ("\n" ++) . ppCoverage $ c ^. coverage)
+ppCampaign c = (++) <$> ppTests c <*> pure ((maybe "" ("\n" ++) . ppCoverage $ c ^. coverage) ++
+                                            (maybe "" ("\n" ++) . ppGasInfo $ c ^. gasInfo))
+
+
