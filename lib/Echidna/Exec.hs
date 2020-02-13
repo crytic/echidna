@@ -67,6 +67,7 @@ vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> Unknow
 execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Int)
 execTxWith h m t = do (og :: VM) <- use hasLens
                       setupTx t
+                      gasIn <- use $ hasLens . state . gas
                       res <- m
                       cd  <- use $ hasLens . state . calldata
                       case (res, t ^. call) of
@@ -79,7 +80,7 @@ execTxWith h m t = do (og :: VM) <- use hasLens
                           replaceCodeOfSelf (RuntimeCode bc)
                           loadContract (t ^. dst)
                         _                        -> pure ()
-                      return (res, fromIntegral 0)
+                      return (res, fromIntegral gasIn)
 
 -- | Execute a transaction "as normal".
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
