@@ -174,11 +174,11 @@ evalSeq v e = go [] where
 -- | Given current `gasInfo` and a sequence of executed transactions, updates information on highest
 -- gas usage for each call
 updateGasInfo :: [(Tx, (VMResult, Int))] -> [Tx] -> (Map Text (Int, [Tx])) -> (Map Text (Int, [Tx]))
-updateGasInfo [] _ gi = (insert "*" (1, []) gi)
+updateGasInfo [] _ gi = gi
 updateGasInfo ((t@(Tx (SolCall((f, _))) _ _ _ _ _ _), (_, used')):ts) tseq gi =
   let mused = Data.Map.lookup f gi
   in  case mused of Nothing -> updateGasInfo ts (t:tseq) (insert f (used', t:tseq) gi)
-                    Just (used, _) | used' >= used -> updateGasInfo ts (t:tseq) (insert f (used', t:tseq) gi)
+                    Just (used, _) | used' > used -> updateGasInfo ts (t:tseq) (insert f (used', t:tseq) gi)
                     _ -> updateGasInfo ts (t:tseq) gi
 updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 
@@ -211,7 +211,6 @@ callseq v w ql = do
   is <- replicateM ql (evalStateT (genTxM old) (w, ca ^. genDict))
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, s) <- runStateT (evalSeq v ef is) (v, ca)
-  when gasEnabled $ hasLens . gasInfo %= updateGasInfo res []
   let new = s ^. _1 . env . EVM.contracts
       -- compute the addresses not present in the old VM via set difference
       diff = keys $ new \\ old
@@ -219,6 +218,7 @@ callseq v w ql = do
       diffs = H.fromList [(AbiAddressType, S.fromList $ AbiAddress . addressWord160 <$> diff)]
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= snd s
+  when gasEnabled $ hasLens . gasInfo %= updateGasInfo res []
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   types <- use $ hasLens . rTypes
   let results = parse (map (\(t, (vr, _)) -> (t, vr)) res) types
@@ -250,7 +250,7 @@ campaign u v w ts d = do
   c <- fromMaybe mempty <$> view (hasLens . to knownCoverage)
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c (insert "?" (0, []) mempty) d') where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d') where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _) ->

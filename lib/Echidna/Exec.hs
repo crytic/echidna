@@ -81,7 +81,7 @@ execTxWith h m t = do (og :: VM) <- use hasLens
                           replaceCodeOfSelf (RuntimeCode bc)
                           loadContract (t ^. dst)
                         _                        -> pure ()
-                      return (res, fromIntegral (gasOut - gasIn))
+                      return (res, fromIntegral (gasIn - gasOut))
 
 -- | Execute a transaction "as normal".
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
