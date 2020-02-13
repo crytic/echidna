@@ -51,7 +51,7 @@ ppCoverage s | s == mempty = Nothing
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
 ppGasInfo :: Map Text (Int, [Tx]) -> Maybe String
 ppGasInfo s | s == mempty = Nothing
-            | otherwise   = Just $ intercalate "" $ map show $ toList s
+            | otherwise   = Just $ "Maximum gas usage:\n" ++ (intercalate "\n" $ map show $ toList s) ++ "\n"
 
 -- | Pretty-print the status of a solved test.
 ppFail :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> [Tx] -> m String
