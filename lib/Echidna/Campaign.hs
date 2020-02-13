@@ -178,7 +178,7 @@ updateGasInfo gi [] _ = gi
 updateGasInfo gi ((t@(Tx (SolCall((f, _))) _ _ _ _ _ _), (_, used')):ts) tseq =
   let mused = Data.Map.lookup f gi
   in  case mused of Nothing -> updateGasInfo (insert f (used', t:tseq) gi) ts (t:tseq)
-                    Just (used, _) | used' > used -> updateGasInfo (insert f (used', t:tseq) gi) ts (t:tseq)
+                    Just (used, _) | used' >= used -> updateGasInfo (insert f (used', t:tseq) gi) ts (t:tseq)
                     _ -> updateGasInfo gi ts (t:tseq)
 updateGasInfo gi ((t, _):ts) tseq = updateGasInfo gi ts (t:tseq)
 
@@ -212,6 +212,7 @@ callseq v w ql = do
   is <- replicateM ql (evalStateT (genTxM old) (w, ca ^. genDict))
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, s) <- runStateT (evalSeq v ef is) (v, ca)
+  hasLens . gasInfo .= if gasEnabled then updateGasInfo (ca ^. gasInfo) res [] else mempty
   let new = s ^. _1 . env . EVM.contracts
       -- compute the addresses not present in the old VM via set difference
       diff = keys $ new \\ old
@@ -258,6 +259,3 @@ campaign u v w ts d = do
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
          | otherwise                                                           -> lift u
-
-
-  updateGasInfo (ca ^. gasInfo) res []
