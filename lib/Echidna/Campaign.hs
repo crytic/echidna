@@ -174,7 +174,7 @@ evalSeq v e = go [] where
 -- | Given current `gasInfo` and a sequence of executed transactions, updates information on highest
 -- gas usage for each call
 updateGasInfo :: [(Tx, (VMResult, Int))] -> [Tx] -> (Map Text (Int, [Tx])) -> (Map Text (Int, [Tx]))
-updateGasInfo [] _ gi = gi
+updateGasInfo [] _ gi = (insert "*" (1, []) gi)
 updateGasInfo ((t@(Tx (SolCall((f, _))) _ _ _ _ _ _), (_, used')):ts) tseq gi =
   let mused = Data.Map.lookup f gi
   in  case mused of Nothing -> updateGasInfo ts (t:tseq) (insert f (used', t:tseq) gi)
@@ -250,7 +250,7 @@ campaign u v w ts d = do
   c <- fromMaybe mempty <$> view (hasLens . to knownCoverage)
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d') where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c (insert "?" (0, []) mempty) d') where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _) ->
