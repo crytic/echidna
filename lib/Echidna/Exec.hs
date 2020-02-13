@@ -69,6 +69,7 @@ execTxWith h m t = do (og :: VM) <- use hasLens
                       setupTx t
                       gasIn <- use $ hasLens . state . gas
                       res <- m
+                      gasOut <- use $ hasLens . state . gas
                       cd  <- use $ hasLens . state . calldata
                       case (res, t ^. call) of
                         (f@Reversion, _)            -> do hasLens .= og
@@ -80,7 +81,7 @@ execTxWith h m t = do (og :: VM) <- use hasLens
                           replaceCodeOfSelf (RuntimeCode bc)
                           loadContract (t ^. dst)
                         _                        -> pure ()
-                      return (res, fromIntegral gasIn)
+                      return (res, fromIntegral (gasOut - gasIn))
 
 -- | Execute a transaction "as normal".
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
