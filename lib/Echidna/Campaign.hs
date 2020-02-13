@@ -171,6 +171,17 @@ evalSeq v e = go [] where
     case xs of []     -> pure []
                (y:ys) -> e y >>= \a -> ((y, a) :) <$> go (y:r) ys
 
+-- | Given current `gasInfo` and a sequence of executed transactions, updates information on highest
+-- gas usage for each call
+updateGasInfo :: (Map Text (Int, [Tx])) -> [(Tx, (VMResult, Int))] -> [Tx] -> (Map Text (Int, [Tx]))
+updateGasInfo gi [] _ = gi
+updateGasInfo gi ((t@(Tx (SolCall((f, _))) _ _ _ _ _ _), (_, used')):ts) tseq =
+  let mused = Data.Map.lookup f gi
+  in  case mused of Nothing -> updateGasInfo (insert f (used', t:tseq) gi) ts (t:tseq)
+                    Just (used, _) | used' > used -> updateGasInfo (insert f (used', t:tseq) gi) ts (t:tseq)
+                    _ -> updateGasInfo gi ts (t:tseq)
+updateGasInfo gi ((t, _):ts) tseq = updateGasInfo gi ts (t:tseq)
+
 -- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
 -- transaction if it finds new coverage.
 execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
@@ -223,17 +234,6 @@ callseq v w ql = do
       (Just ty, VMSuccess b) -> (ty, ) . S.fromList . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
       _                      -> Nothing
 
--- | Given current `gasInfo` and a sequence of executed transactions, updates information on highest
--- gas usage for each call
-updateGasInfo :: (Map Text (Int, [Tx])) -> [(Tx, (VMResult, Int))] -> [Tx] -> (Map Text (Int, [Tx]))
-updateGasInfo gi [] _ = gi
-updateGasInfo gi ((t@(Tx (SolCall((f, _))) _ _ _ _ _ _), (_, used')):ts) tseq =
-  let mused = Data.Map.lookup f gi
-  in  case mused of Nothing -> updateGasInfo (insert f (used', t:tseq) gi) ts (t:tseq)
-                    Just (used, _) | used' > used -> updateGasInfo (insert f (used', t:tseq) gi) ts (t:tseq)
-                    _ -> updateGasInfo gi ts (t:tseq)
-updateGasInfo gi ((t, _):ts) tseq = updateGasInfo gi ts (t:tseq)
-
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
@@ -258,3 +258,6 @@ campaign u v w ts d = do
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
          | otherwise                                                           -> lift u
+
+
+  updateGasInfo (ca ^. gasInfo) res []
