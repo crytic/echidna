@@ -6,7 +6,7 @@ module Echidna.UI.Report where
 import Control.Lens
 import Control.Monad.Reader (MonadReader)
 import Data.Has (Has(..))
-import Data.List (nub)
+import Data.List (intercalate, nub)
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes, maybe)
 import Data.Set (Set)
@@ -51,7 +51,7 @@ ppCoverage s | s == mempty = Nothing
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
 ppGasInfo :: Map Text (Int, [Tx]) -> Maybe String
 ppGasInfo s | s == mempty = Nothing
-            | otherwise   = Just $ foldr (\t1 t2 -> t1 ++ "\n" ++ t2) "" $ map show $ toList s
+            | otherwise   = Just $ intercalate "" $ map show $ toList s
 
 -- | Pretty-print the status of a solved test.
 ppFail :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> [Tx] -> m String

@@ -23,7 +23,7 @@ import Data.Aeson (ToJSON(..), object)
 import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
 import Data.Foldable (toList)
-import Data.Map (Map, mapKeys, unionWith, (\\), keys)
+import Data.Map (Map, mapKeys, unionWith, (\\), keys, lookup, insert)
 import Data.Maybe (fromMaybe, isJust, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
@@ -220,6 +220,18 @@ callseq v w ql = do
     parse l rt = H.fromList . flip mapMaybe l $ \(x, r) -> case (rt =<< x ^? call . _SolCall . _1, r) of
       (Just ty, VMSuccess b) -> (ty, ) . S.fromList . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
       _                      -> Nothing
+
+-- | Given current `gasInfo` and a sequence of executed transactions, updates information on highest
+-- gas usage for each call
+updateGasInfo :: (Map Text (Int, [Tx])) -> [(Tx, (VMResult, Int))] -> [Tx] -> (Map Text (Int, [Tx]))
+updateGasInfo gi [] _ = gi
+updateGasInfo gi ((t@(Tx (SolCall((f, _))) _ _ _ _ _ _), (_, used')):ts) tseq =
+  let mused = Data.Map.lookup f gi
+  in  case mused of Nothing -> updateGasInfo (insert f (used', t:tseq) gi) ts (t:tseq)
+                    Just (used, _) | used' > used -> updateGasInfo (insert f (used', t:tseq) gi) ts (t:tseq)
+                    _ -> updateGasInfo gi ts (t:tseq)
+updateGasInfo gi ((t, _):ts) tseq = updateGasInfo gi ts (t:tseq)
+
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
