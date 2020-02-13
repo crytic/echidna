@@ -211,7 +211,7 @@ callseq v w ql = do
   is <- replicateM ql (evalStateT (genTxM old) (w, ca ^. genDict))
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, s) <- runStateT (evalSeq v ef is) (v, ca)
-  hasLens . gasInfo %= if gasEnabled then updateGasInfo res [] else (\gi -> gi)
+  when gasEnabled $ hasLens . gasInfo %= updateGasInfo res []
   let new = s ^. _1 . env . EVM.contracts
       -- compute the addresses not present in the old VM via set difference
       diff = keys $ new \\ old
