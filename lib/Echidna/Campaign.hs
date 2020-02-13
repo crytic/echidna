@@ -173,14 +173,14 @@ evalSeq v e = go [] where
 
 -- | Given current `gasInfo` and a sequence of executed transactions, updates information on highest
 -- gas usage for each call
-updateGasInfo :: (Map Text (Int, [Tx])) -> [(Tx, (VMResult, Int))] -> [Tx] -> (Map Text (Int, [Tx]))
-updateGasInfo gi [] _ = gi
-updateGasInfo gi ((t@(Tx (SolCall((f, _))) _ _ _ _ _ _), (_, used')):ts) tseq =
+updateGasInfo :: [(Tx, (VMResult, Int))] -> [Tx] -> (Map Text (Int, [Tx])) -> (Map Text (Int, [Tx]))
+updateGasInfo [] _ gi = gi
+updateGasInfo ((t@(Tx (SolCall((f, _))) _ _ _ _ _ _), (_, used')):ts) tseq gi =
   let mused = Data.Map.lookup f gi
-  in  case mused of Nothing -> updateGasInfo (insert f (used', t:tseq) gi) ts (t:tseq)
-                    Just (used, _) | used' >= used -> updateGasInfo (insert f (used', t:tseq) gi) ts (t:tseq)
-                    _ -> updateGasInfo gi ts (t:tseq)
-updateGasInfo gi ((t, _):ts) tseq = updateGasInfo gi ts (t:tseq)
+  in  case mused of Nothing -> updateGasInfo ts (t:tseq) (insert f (used', t:tseq) gi)
+                    Just (used, _) | used' >= used -> updateGasInfo ts (t:tseq) (insert f (used', t:tseq) gi)
+                    _ -> updateGasInfo ts (t:tseq) gi
+updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
 -- transaction if it finds new coverage.
@@ -199,12 +199,11 @@ callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Campaign y, Has GenDict y)
         => VM -> World -> Int -> m ()
 callseq v w ql = do
-  -- First, we figure out whether we need to execute with or without coverage optimization, and pick
-  -- our execution function appropriately
+  -- First, we figure out whether we need to execute with or without coverage optimization and gas info,
+  -- and pick our execution function appropriately
   coverageEnabled <- isJust . knownCoverage <$> view hasLens
   let ef = if coverageEnabled then execTxOptC else execTx
       old = v ^. env . EVM.contracts
-  -- Second, determine if we need to update gas information
   gasEnabled <- estimateGas <$> view hasLens
   -- Then, we get the current campaign state
   ca <- use hasLens
@@ -212,7 +211,7 @@ callseq v w ql = do
   is <- replicateM ql (evalStateT (genTxM old) (w, ca ^. genDict))
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, s) <- runStateT (evalSeq v ef is) (v, ca)
-  hasLens . gasInfo .= if gasEnabled then updateGasInfo (ca ^. gasInfo) res [] else mempty
+  hasLens . gasInfo %= if gasEnabled then updateGasInfo res [] else (\gi -> gi)
   let new = s ^. _1 . env . EVM.contracts
       -- compute the addresses not present in the old VM via set difference
       diff = keys $ new \\ old
