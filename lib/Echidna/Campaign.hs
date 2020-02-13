@@ -208,7 +208,7 @@ callseq v w ql = do
   hasLens .= snd s
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   types <- use $ hasLens . rTypes
-  let results = parse (map (\x -> (fst x, fst $ snd x)) res) types
+  let results = parse (map (\(t, (vr, _)) -> (t, vr)) res) types
       -- union the return results with the new addresses
       additions = H.unionWith S.union diffs results
   -- append to the constants dictionary
