@@ -103,11 +103,12 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                          }
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
-    : if co == mempty then [] else [("coverage",) . toJSON . mapKeys (`showHex` "") $ toList <$> co] where
-       format (Right _,      Open _) = Nothing
-       format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
-       format (Left (n, _),  s)      = Just (n,                    toJSON s)
+  toJSON (Campaign ts co gi _) = object $ ("tests", toJSON $ mapMaybe format ts)
+    : ((if co == mempty then [] else [("coverage",) . toJSON . mapKeys (`showHex` "") $ toList <$> co]) ++
+       (if gi == mempty then [] else [("maxgas",) . toJSON $ toList <$> gi])) where
+        format (Right _,      Open _) = Nothing
+        format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
+        format (Left (n, _),  s)      = Just (n,                    toJSON s)
 
 makeLenses ''Campaign
 
