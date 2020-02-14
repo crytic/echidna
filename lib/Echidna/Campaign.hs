@@ -184,26 +184,27 @@ execTxOptC t = do
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
   hasLens . coverage %= unionWith union og
   grew <- (== LT) . comparing coveragePoints og <$> use (hasLens . coverage)
-  --when grew $ hasLens . genDict %= gaddCalls ([t ^. call] ^.. traverse . _SolCall)
+  when grew $ hasLens . genDict %= gaddCalls ([t ^. call] ^.. traverse . _SolCall)
   when grew $ hasLens . newCoverage .= True
   return res
 
--- | Given save a list of transactions in the corpus, discarding reverts
+-- | Given a list of transactions in the corpus, save them discarding reverted transactions
 addToCorpus :: (MonadState s m, Has Campaign s) => [(Tx, VMResult)] -> m ()
-addToCorpus res = let rtxs = map fst res --(filter (\(_, vm) -> classifyRes vm /= ResRevert) res)
+addToCorpus res = let rtxs = map fst res
                     in unless (null rtxs) $ hasLens . corpus %= (rtxs:)
 
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has GenDict y, Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
         => Int -> Map Addr Contract -> World -> m [Tx]
-randseq ql o w = do ca <- use hasLens
-                    let txs = ca ^. corpus  
-                        p   = ca ^. ncallseqs 
-                    if length txs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
-                      return $ txs !! p
-                    else                        -- Randomly generate new transactions 
-                      replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
+randseq ql o w = do 
+  ca <- use hasLens
+  let txs = ca ^. corpus  
+      p   = ca ^. ncallseqs 
+  if length txs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
+    return $ txs !! p
+  else                   -- Randomly generate new transactions 
+    replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
@@ -233,7 +234,7 @@ callseq v w ql = do
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= snd s
   when (s ^. _2 . newCoverage) $ addToCorpus res
-  hasLens . ncallseqs %= (+1)  
+  hasLens . ncallseqs += 1  
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   types <- use $ hasLens . rTypes
   let results = parse res types

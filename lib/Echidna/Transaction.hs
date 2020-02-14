@@ -14,7 +14,7 @@ import Prelude hiding (Word)
 
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, liftM5, unless)
-import Control.Monad.Catch (MonadThrow,  bracket)
+import Control.Monad.Catch (MonadThrow, bracket)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
@@ -234,30 +234,31 @@ saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
 saveTxs (Just d) txs = mapM_ (\v -> do let fn = d ++ "/" ++ (show . hash . show) v ++ ".txt"
                                        b <- doesFileExist fn
                                        unless b $ encodeFile fn (sv v)
-                               ) txs
+                             ) txs
                              where sv = toJSON
 saveTxs Nothing  _   = return ()
 
 listDirectory :: FilePath -> IO [FilePath]
-listDirectory path =
-  Prelude.filter f <$> getDirectoryContents path
+listDirectory path = Prelude.filter f <$> getDirectoryContents path
   where f filename = filename /= "." && filename /= ".."
 
 withCurrentDirectory :: FilePath  -- ^ Directory to execute in
                      -> IO a      -- ^ Action to be executed
                      -> IO a
 withCurrentDirectory dir action =
-  bracket getCurrentDirectory setCurrentDirectory $ \ _ -> do
+  bracket getCurrentDirectory setCurrentDirectory $ \_ -> do
     setCurrentDirectory dir
     action
 
 loadTxs :: Maybe FilePath -> IO [[Tx]]
-loadTxs (Just d) = do fs <- listDirectory d
-                      xs <- mapM makeRelativeToCurrentDirectory fs
-                      mtxs <- withCurrentDirectory d (mapM readCall xs)
-                      let txs = catMaybes mtxs
-                      putStrLn ("Loaded total of " ++ show (length xs) ++ " transactions from " ++ d)
-                      return txs
-                    where readCall f = do !buf <- LBS.readFile f
-                                          return (decode buf :: Maybe [Tx]) 
+loadTxs (Just d) = do 
+  fs <- listDirectory d
+  xs <- mapM makeRelativeToCurrentDirectory fs
+  mtxs <- withCurrentDirectory d (mapM readCall xs)
+  let txs = catMaybes mtxs
+  putStrLn ("Loaded total of " ++ show (length xs) ++ " transactions from " ++ d)
+  return txs
+  where readCall f = do !buf <- LBS.readFile f
+                        return (decode buf :: Maybe [Tx]) 
+
 loadTxs Nothing  = return [] 
