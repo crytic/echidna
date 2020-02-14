@@ -4,13 +4,13 @@
 module Echidna.UI.Report where
 
 import Control.Lens
-import Control.Monad.Reader (MonadReader)
+import Control.Monad.Reader (MonadReader, liftM, liftM2)
 import Data.Has (Has(..))
 import Data.List (intercalate, nub)
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes, maybe)
 import Data.Set (Set)
-import Data.Text (Text)
+import Data.Text (Text, unpack)
 import EVM.Types (Addr, W256)
 
 import qualified Data.Text as T
@@ -41,17 +41,22 @@ ppTx pn (Tx c s r g gp v (t, b)) = let sOf = ppTxCall in do
                  ++ (if t == 0    then "" else " Time delay: "  ++ show t)
                  ++ (if b == 0    then "" else " Block delay: " ++ show b)
 
-
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: Map W256 (Set Int) -> Maybe String
 ppCoverage s | s == mempty = Nothing
              | otherwise   = Just $ "Unique instructions: " ++ show (coveragePoints s)
                                  ++ "\nUnique codehashes: " ++ show (length s)
 
+-- | Pretty-print the gas usage for a function.
+ppGasOne :: (MonadReader x m, Has Names x, Has TxConf x) => (Text, (Int, [Tx])) -> m String
+ppGasOne ("", _)      = pure ""
+ppGasOne (f, (g, xs)) = let pxs = mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs in
+ (("\n" ++ unpack f ++ " used a maximum of " ++ show g ++ " gas\n  Call sequence:\n") ++) . unlines . fmap ("    " ++) <$> pxs
+
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
-ppGasInfo :: Map Text (Int, [Tx]) -> Maybe String
-ppGasInfo s | s == mempty = Nothing
-            | otherwise   = Just $ "Maximum gas usage:\n" ++ (intercalate "\n" $ map show $ toList s) ++ "\n"
+ppGasInfo :: (MonadReader x m, Has Names x, Has TxConf x) => Campaign -> m String
+ppGasInfo (Campaign _ _ gi _) | gi == mempty = pure ""
+ppGasInfo (Campaign _ _ gi _) = (liftM $ intercalate "") (mapM ppGasOne $ toList gi)
 
 -- | Pretty-print the status of a solved test.
 ppFail :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> [Tx] -> m String
@@ -80,7 +85,6 @@ ppTests (Campaign ts _ _ _) = unlines . catMaybes <$> mapM pp ts where
   pp (Right (n, _), s)      = Just . (("assertion in " ++ T.unpack n ++ ": ") ++) <$> ppTS s
 
 ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppCampaign c = (++) <$> ppTests c <*> pure ((maybe "" ("\n" ++) . ppCoverage $ c ^. coverage) ++
-                                            (maybe "" ("\n" ++) . ppGasInfo $ c ^. gasInfo))
+ppCampaign c = (++) <$> (liftM2 (++) (ppTests c) (ppGasInfo c)) <*> pure (maybe "" ("\n" ++) . ppCoverage $ c ^. coverage)
 
 
