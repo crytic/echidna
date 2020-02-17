@@ -147,7 +147,9 @@ instance FromJSON EConfigWithUsage where
                                  <*> v ..:? "quiet"           ..!= False
                                  <*> v ..:? "initialize"      ..!= Nothing
                                  <*> v ..:? "multi-abi"       ..!= False
-                                 <*> v ..:? "checkAsserts"    ..!= False)
+                                 <*> v ..:? "checkAsserts"    ..!= False
+                                 <*> v ..:? "ignoreMethods"   ..!= []
+                                 <*> v ..:? "includeMethods"  ..!= [])
                     <*> tc
                     <*> xc
                     <*> (UIConf <$> v ..:? "dashboard" ..!= True <*> v ..:? "timeout" <*> style)
