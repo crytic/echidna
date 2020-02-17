@@ -106,7 +106,7 @@ instance ToJSON Campaign where
   toJSON (Campaign ts co gi _) = object $ ("tests", toJSON $ mapMaybe format ts)
     : ((if co == mempty then [] else [
     ("coverage",) . toJSON . mapKeys (`showHex` "") $ DF.toList <$> co]) ++
-       [(("maxgas",) . toJSON . toList) gi | not (gi == mempty)]) where
+       [(("maxgas",) . toJSON . toList) gi | gi /= mempty]) where
         format (Right _,      Open _) = Nothing
         format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
         format (Left (n, _),  s)      = Just (n,                    toJSON s)
