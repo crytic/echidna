@@ -4,7 +4,7 @@
 module Echidna.UI.Report where
 
 import Control.Lens
-import Control.Monad.Reader (MonadReader, liftM, liftM2)
+import Control.Monad.Reader (MonadReader, liftM2)
 import Data.Has (Has(..))
 import Data.List (intercalate, nub, sortOn)
 import Data.Map (Map, toList)
@@ -56,7 +56,7 @@ ppGasOne (f, (g, xs)) = let pxs = mapM (ppTx $ length (nub $ view src <$> xs) /=
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
 ppGasInfo :: (MonadReader x m, Has Names x, Has TxConf x) => Campaign -> m String
 ppGasInfo (Campaign _ _ gi _) | gi == mempty = pure ""
-ppGasInfo (Campaign _ _ gi _) = (liftM $ intercalate "") (mapM ppGasOne $ sortOn (\(_, (n, _)) -> n) $ toList gi)
+ppGasInfo (Campaign _ _ gi _) = (fmap $ intercalate "") (mapM ppGasOne $ sortOn (\(_, (n, _)) -> n) $ toList gi)
 
 -- | Pretty-print the status of a solved test.
 ppFail :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> [Tx] -> m String
