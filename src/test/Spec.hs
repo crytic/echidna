@@ -52,7 +52,7 @@ configTests = testGroup "Configuration tests" $
       assertCoverage config $ Just mempty
   , testCase "coverage disabled by default" $
       assertCoverage defaultConfig Nothing
-  , testCase "defaults.yaml" $ do
+  , testCase "default.yaml" $ do
       EConfigWithUsage _ bad unset <- parseConfig "basic/default.yaml"
       assertBool ("unused options: " ++ show bad) $ null bad
       let unset' = unset & sans "seed"
