@@ -174,13 +174,13 @@ evalSeq v e = go [] where
 
 -- | Given current `gasInfo` and a sequence of executed transactions, updates information on highest
 -- gas usage for each call
-updateGasInfo :: [(Tx, (VMResult, Int))] -> [Tx] -> (Map Text (Int, [Tx])) -> (Map Text (Int, [Tx]))
+updateGasInfo :: [(Tx, (VMResult, Int))] -> [Tx] -> Map Text (Int, [Tx]) -> Map Text (Int, [Tx])
 updateGasInfo [] _ gi = gi
-updateGasInfo ((t@(Tx (SolCall((f, _))) _ _ _ _ _ _), (_, used')):ts) tseq gi =
+updateGasInfo ((t@(Tx (SolCall(f, _)) _ _ _ _ _ _), (_, used')):ts) tseq gi =
   let mused = Data.Map.lookup f gi
   in  case mused of Nothing -> updateGasInfo ts (t:tseq) (insert f (used', t:tseq) gi)
                     Just (used, _) | used' > used -> updateGasInfo ts (t:tseq) (insert f (used', reverse (t:tseq)) gi)
-                    Just (used, otseq) | (used' == used) && ((length otseq) > (length (t:tseq))) -> updateGasInfo ts (t:tseq) (insert f (used', reverse (t:tseq)) gi)
+                    Just (used, otseq) | (used' == used) && (length otseq > length (t:tseq)) -> updateGasInfo ts (t:tseq) (insert f (used', reverse (t:tseq)) gi)
                     _ -> updateGasInfo ts (t:tseq) gi
 updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 
