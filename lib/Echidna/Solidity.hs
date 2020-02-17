@@ -162,11 +162,11 @@ linkLibraries [] = ""
 linkLibraries ls = "--libraries " ++
   iconcatMap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls
 
-filterMethods :: [String] -> [String] -> [(Text, [AbiType])] -> [(Text, [AbiType])] 
-filterMethods [] [] = id 
-filterMethods [] ic = filter (\(m, _) -> (T.unpack m) `elem` ic)
-filterMethods ig [] = filter (\(m, _) -> not $ (T.unpack m) `elem` ig)
-filterMethods _  _  = undefined InvalidMethodFilters 
+filterMethods :: MonadThrow m => [String] -> [String] -> [(Text, [AbiType])] -> m [(Text, [AbiType])]
+filterMethods [] [] ms = return ms 
+filterMethods [] ic ms = return $ filter (\(m, _) -> T.unpack m `elem` ic) ms
+filterMethods ig [] ms = return $ filter (\(m, _) -> T.unpack m `notElem` ig) ms
+filterMethods _  _  _  = throwM InvalidMethodFilters 
 
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
@@ -196,8 +196,10 @@ loadSpecified name cs = do
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       con = view constructorInputs c
       (tests, funs) = partition (isPrefixOf pref . fst) abi
-      -- Filter ABI according to the config options
-      funs' = filterMethods igm inm funs
+      
+
+  -- Filter ABI according to the config options
+  funs' <- filterMethods igm inm funs
   
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
