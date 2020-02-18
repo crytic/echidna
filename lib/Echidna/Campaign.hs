@@ -183,7 +183,7 @@ shrinkGasSeq f g xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip
   callsF f' (Tx(SolCall(f'', _)) _ _ _ _ _ _) = f' == f''
   callsF _ _                                  = False
   check xs' | callsF f $ last xs' = do {og <- get; res <- traverse execTx xs'; pure ((snd . head) res >= g) }
-  check _                         = do {pure False}
+  check _                         = pure False
   shrinkSender x = view (hasLens . sender) >>= \l -> case ifind (const (== x ^. src)) l of
     Nothing     -> pure x
     Just (i, _) -> flip (set src) x . fromMaybe (x ^. src) <$> uniformMay (l ^.. folded . indices (< i))
