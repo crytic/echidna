@@ -182,7 +182,7 @@ shrinkGasSeq :: ( MonadRandom m, MonadReader x m, MonadThrow m
 shrinkGasSeq f g xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
   callsF f' (Tx(SolCall(f'', _)) _ _ _ _ _ _) = f' == f''
   callsF _ _                                  = False
-  check xs' | callsF f $ last xs' = do {og <- get; res <- traverse execTx xs'; pure ((snd . head) res >= g) }
+  check xs' | callsF f $ last xs' = do {_ <- get; res <- traverse execTx xs'; pure ((snd . head) res >= g) }
   check _                         = pure False
   shrinkSender x = view (hasLens . sender) >>= \l -> case ifind (const (== x ^. src)) l of
     Nothing     -> pure x
