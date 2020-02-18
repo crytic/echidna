@@ -23,11 +23,11 @@ contract C {
    open2 = false;
  }
 
- function push_b(uint256 n) {
+ function push_b(uint256 n) public {
    b.push(n);
  }
 
- function g(uint256 n) {
+ function g(uint256 n) public {
    if (open1 && open2) {
      if (n < 500) {
        for (uint256 i = 0; i < n; i++) {
@@ -41,7 +41,7 @@ contract C {
    }
  }
 
- function echidna_true() returns (bool) {
+ function echidna_true() public returns (bool) {
    return true;
  }
  
