@@ -197,7 +197,7 @@ updateGasInfo [] _ gi = gi
 updateGasInfo ((t@(Tx (SolCall(f, _)) _ _ _ _ _ _), (_, used')):ts) tseq gi =
   let mused = Data.Map.lookup f gi
       tseq' = t:tseq
-  in  case mused of Nothing -> updateGasInfo ts tseq' (insert f (used', tseq') gi)
+  in  case mused of Nothing -> updateGasInfo ts tseq' (insert f (used', reverse tseq') gi)
                     Just (used, _) | used' > used -> updateGasInfo ts tseq' (insert f (used', reverse tseq') gi)
                     Just (used, otseq) | (used' == used) && (length otseq > length tseq') -> updateGasInfo ts tseq' (insert f (used', reverse tseq') gi)
                     _ -> updateGasInfo ts tseq' gi
