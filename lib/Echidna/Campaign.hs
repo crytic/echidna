@@ -12,9 +12,9 @@
 module Echidna.Campaign where
 
 import Control.Lens
-import Control.Monad (liftM3, replicateM, when)
+import Control.Monad (liftM3, replicateM, when, (<=<), ap)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
-import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
+import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR, uniform, uniformMay)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
 import Control.Monad.Trans (lift)
@@ -28,6 +28,7 @@ import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Set (Set, union)
 import Data.Text (Text)
+import Data.Traversable (traverse)
 import EVM
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (W256, addressWord160)
@@ -173,16 +174,33 @@ evalSeq v e = go [] where
     case xs of []     -> pure []
                (y:ys) -> e y >>= \a -> ((y, a) :) <$> go (y:r) ys
 
+-- | Given a call sequence that produces Tx with gas >= g for f, try to randomly generate
+-- a smaller one that achieves at least that gas usage
+shrinkGasSeq :: ( MonadRandom m, MonadReader x m, MonadThrow m
+                , Has SolConf x, Has TestConf x, Has TxConf x, MonadState y m, Has VM y)
+          => Text -> Int -> [Tx] -> m [Tx]
+shrinkGasSeq f g xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
+  callsF f' (Tx(SolCall(f'', _)) _ _ _ _ _ _) = f' == f''
+  callsF _ _                                  = False
+  check xs' | callsF f $ last xs' = do {og <- get; res <- traverse execTx xs'; pure ((snd . head) res >= g) }
+  check _                         = do {pure False}
+  shrinkSender x = view (hasLens . sender) >>= \l -> case ifind (const (== x ^. src)) l of
+    Nothing     -> pure x
+    Just (i, _) -> flip (set src) x . fromMaybe (x ^. src) <$> uniformMay (l ^.. folded . indices (< i))
+  shrunk = mapM (shrinkSender <=< shrinkTx) xs
+  shorten = (\i -> take i xs ++ drop (i + 1) xs) <$> getRandomR (0, length xs)
+
 -- | Given current `gasInfo` and a sequence of executed transactions, updates information on highest
 -- gas usage for each call
 updateGasInfo :: [(Tx, (VMResult, Int))] -> [Tx] -> Map Text (Int, [Tx]) -> Map Text (Int, [Tx])
 updateGasInfo [] _ gi = gi
 updateGasInfo ((t@(Tx (SolCall(f, _)) _ _ _ _ _ _), (_, used')):ts) tseq gi =
   let mused = Data.Map.lookup f gi
-  in  case mused of Nothing -> updateGasInfo ts (t:tseq) (insert f (used', t:tseq) gi)
-                    Just (used, _) | used' > used -> updateGasInfo ts (t:tseq) (insert f (used', reverse (t:tseq)) gi)
-                    Just (used, otseq) | (used' == used) && (length otseq > length (t:tseq)) -> updateGasInfo ts (t:tseq) (insert f (used', reverse (t:tseq)) gi)
-                    _ -> updateGasInfo ts (t:tseq) gi
+      tseq' = t:tseq
+  in  case mused of Nothing -> updateGasInfo ts tseq' (insert f (used', tseq') gi)
+                    Just (used, _) | used' > used -> updateGasInfo ts tseq' (insert f (used', reverse tseq') gi)
+                    Just (used, otseq) | (used' == used) && (length otseq > length tseq') -> updateGasInfo ts tseq' (insert f (used', reverse tseq') gi)
+                    _ -> updateGasInfo ts tseq' gi
 updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
