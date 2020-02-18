@@ -1,3 +1,2 @@
-testLimit: 50000
+testLimit: 1000
 estimateGas: true
-dashboard: false
