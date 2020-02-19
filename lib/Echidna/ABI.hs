@@ -254,7 +254,7 @@ mutateAbiValue (AbiArray n t l)      = do fs <- replicateM n $ genAbiValue t
                                           xs <- mutateV (Just n) fs (V.toList l) 
                                           return (AbiArray n t (V.fromList xs))
 
-mutateAbiValue (AbiArrayDynamic t l) = (AbiArrayDynamic t . V.fromList) <$> mutateV Nothing [] (V.toList l)
+mutateAbiValue (AbiArrayDynamic t l) = AbiArrayDynamic t . V.fromList <$> mutateV Nothing [] (V.toList l)
 mutateAbiValue (AbiTuple v)          = AbiTuple          <$> traverse mutateAbiValue v
 
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
