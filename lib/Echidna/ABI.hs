@@ -293,7 +293,7 @@ genAbiValueM = genWithDict (fmap toList . view constants) $ \case
 
 -- | Given a 'SolSignature', generate a random 'SolCalls' with that signature, possibly with a dictionary.
 genAbiCallM :: (MonadState x m, Has GenDict x, MonadRandom m) => SolSignature -> m SolCall
-genAbiCallM abi = (genWithDict (fmap toList . view wholeCalls) (traverse $ traverse genAbiValueM) abi) >>= mutateAbiCall
+genAbiCallM abi = genWithDict (fmap toList . view wholeCalls) (traverse $ traverse genAbiValueM) abi >>= mutateAbiCall
 
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one, possibly with a dictionary.
 genInteractionsM :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m)
