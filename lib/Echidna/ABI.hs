@@ -244,20 +244,17 @@ mutateAbiValue (AbiInt n x)          = getRandomR (0, 9 :: Int) >>=
 
 mutateAbiValue (AbiAddress x)        = return $ AbiAddress x
 mutateAbiValue (AbiBool _)           = genAbiValue AbiBoolType
-mutateAbiValue (AbiBytes n b)        = do fs <- replicateM n $ getRandom
+mutateAbiValue (AbiBytes n b)        = do fs <- replicateM n getRandom
                                           xs <- mutateBS (Just n) fs b 
                                           return (AbiBytes n xs)
 
 mutateAbiValue (AbiBytesDynamic b)   = mutateBS Nothing [] b >>= (return . AbiBytesDynamic)
-
 mutateAbiValue (AbiString b)         = mutateBS Nothing [] b >>= (return . AbiString)
-
 mutateAbiValue (AbiArray n t l)      = do fs <- replicateM n $ genAbiValue t
                                           xs <- mutateV (Just n) fs (V.toList l) 
                                           return (AbiArray n t (V.fromList xs))
- 
-mutateAbiValue (AbiArrayDynamic t l) = mutateV Nothing [] (V.toList l) >>= return . AbiArrayDynamic t . V.fromList  
- 
+
+mutateAbiValue (AbiArrayDynamic t l) = (AbiArrayDynamic t . V.fromList) <$> mutateV Nothing [] (V.toList l)
 mutateAbiValue (AbiTuple v)          = AbiTuple          <$> traverse mutateAbiValue v
 
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
