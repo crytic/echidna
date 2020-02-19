@@ -43,7 +43,7 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
-import Echidna.Mutator (mutateBS, replaceAt) 
+import Echidna.Mutator (mutateBS, mutateV, replaceAt) 
 
 -- | Pretty-print some 'AbiValue'.
 ppAbiValue :: AbiValue -> String
@@ -195,11 +195,6 @@ growWith m f g l t = foldM withR t =<< flip replicateM m =<< rand where
   rand       = getRandomR (0, l t)
   withR t' x = bool (f x t') (g t' x) <$> getRandom
 
--- | Given a 'Vector', add and drop some characters at random.
-mutateV :: MonadRandom m => AbiType -> Vector AbiValue -> m (Vector AbiValue)
-mutateV t v = traverse mutateAbiValue =<< changeSize where
-  changeSize = bool (shrinkV v) (growWith (genAbiValue t) V.cons V.snoc V.length v) =<< getRandom
-
 -- Mutation
 
 -- | Check if an 'AbiValue' is as \"small\" (trivial) as possible (using ad-hoc heuristics).
@@ -249,11 +244,20 @@ mutateAbiValue (AbiInt n x)          = getRandomR (0, 9 :: Int) >>=
 
 mutateAbiValue (AbiAddress x)        = return $ AbiAddress x
 mutateAbiValue (AbiBool _)           = genAbiValue AbiBoolType
-mutateAbiValue (AbiBytes n b)        = AbiBytes n        <$> mutateBS (Just n) b
-mutateAbiValue (AbiBytesDynamic b)   = AbiBytesDynamic   <$> mutateBS Nothing b
-mutateAbiValue (AbiString b)         = AbiString         <$> mutateBS Nothing b
-mutateAbiValue (AbiArray n t l)      = AbiArray n t      <$> traverse mutateAbiValue l
-mutateAbiValue (AbiArrayDynamic t l) = AbiArrayDynamic t <$> mutateV t l
+mutateAbiValue (AbiBytes n b)        = do fs <- sequence $ replicate n $ getRandom
+                                          xs <- mutateBS (Just n) fs b 
+                                          return (AbiBytes n xs)
+
+mutateAbiValue (AbiBytesDynamic b)   = mutateBS Nothing [] b >>= (return . AbiBytesDynamic)
+
+mutateAbiValue (AbiString b)         = mutateBS Nothing [] b >>= (return . AbiString)
+
+mutateAbiValue (AbiArray n t l)      = do fs <- sequence $ replicate n $ genAbiValue t
+                                          xs <- mutateV (Just n) fs (V.toList l) 
+                                          return (AbiArray n t (V.fromList xs))
+ 
+mutateAbiValue (AbiArrayDynamic t l) = mutateV Nothing [] (V.toList l) >>= return . (AbiArrayDynamic t) . V.fromList  
+ 
 mutateAbiValue (AbiTuple v)          = AbiTuple          <$> traverse mutateAbiValue v
 
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.

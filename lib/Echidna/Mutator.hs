@@ -1,22 +1,25 @@
 module Echidna.Mutator where
 
 import Control.Monad.Random.Strict (fromList, MonadRandom, getRandomR)
---import Data.Monoid (Endo(..), appEndo)
 import Data.Maybe (maybe)
 import Data.ByteString (ByteString, pack, unpack)
+import GHC.Word (Word8)
 import EVM.ABI (AbiValue(..))
 
+listMutators :: MonadRandom m => m ([a] -> m [a])
+listMutators = fromList [(return, 1), (expandRandList, 10), (deleteRandList, 10), (swapRandList, 10)] 
+ 
 mutateV :: MonadRandom m => Maybe Int -> [AbiValue] -> [AbiValue] -> m [AbiValue]
 mutateV mn fs vs = do
-  f <- fromList [(return, 1), (expandRandList, 3), (deleteRandList, 3), (swapRandList, 3)] 
+  f <- listMutators
   xs <- f vs
   return $ maybe xs (`take` (xs ++ fs)) mn
 
-mutateBS :: MonadRandom m => Maybe Int -> ByteString -> m ByteString
-mutateBS mn bs = do
-  f <- fromList [(return, 1), (expandRandList, 3), (deleteRandList, 3), (swapRandList, 3)] 
+mutateBS :: MonadRandom m => Maybe Int -> [Word8] -> ByteString -> m ByteString
+mutateBS mn fs bs = do
+  f <- listMutators
   xs <- f $ unpack bs
-  return $ pack $ maybe xs (`take` (xs ++ repeat 0)) mn
+  return $ pack $ maybe xs (`take` (xs ++ fs)) mn
 
 
 replaceAt :: a -> [a] -> Int -> [a]
@@ -31,7 +34,8 @@ replaceAt a (x:xs) n =
 expandRandList :: MonadRandom m => [a] -> m [a]
 expandRandList []   = return []
 expandRandList xs = do k <- getRandomR (0, length xs - 1)
-                       return $ insertAt (xs !! k) xs k
+                       t <- getRandomR (1, max 32 (length xs))
+                       return $ insertAt (xs !! k) xs t
 
 expandAt :: [a] -> Int -> Int -> [a]
 expandAt []     _ _ = []
@@ -80,6 +84,3 @@ spliceAtRandom :: MonadRandom m => [a] -> [a] -> m [a]
 spliceAtRandom xs1 xs2 = do idx1 <- getRandomR (0, length xs1 - 1) 
                             idx2 <- getRandomR (0, length xs2 - 1)
                             return $ take idx1 xs1 ++ drop idx2 xs2
-
---applyAll :: [a -> a] -> a -> a
---applyAll = appEndo . mconcat . map Endo

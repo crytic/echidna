@@ -213,6 +213,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "basic/array-mutation.sol"   Nothing
       [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
+  , testContract "basic/darray-mutation.sol"  Nothing
+      [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
   ]
 
 testConfig :: EConfig
