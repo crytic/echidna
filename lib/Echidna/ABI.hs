@@ -244,7 +244,7 @@ mutateAbiValue (AbiInt n x)          = getRandomR (0, 9 :: Int) >>=
 
 mutateAbiValue (AbiAddress x)        = return $ AbiAddress x
 mutateAbiValue (AbiBool _)           = genAbiValue AbiBoolType
-mutateAbiValue (AbiBytes n b)        = do fs <- sequence $ replicate n $ getRandom
+mutateAbiValue (AbiBytes n b)        = do fs <- replicateM n $ getRandom
                                           xs <- mutateBS (Just n) fs b 
                                           return (AbiBytes n xs)
 
@@ -252,11 +252,11 @@ mutateAbiValue (AbiBytesDynamic b)   = mutateBS Nothing [] b >>= (return . AbiBy
 
 mutateAbiValue (AbiString b)         = mutateBS Nothing [] b >>= (return . AbiString)
 
-mutateAbiValue (AbiArray n t l)      = do fs <- sequence $ replicate n $ genAbiValue t
+mutateAbiValue (AbiArray n t l)      = do fs <- replicateM n $ genAbiValue t
                                           xs <- mutateV (Just n) fs (V.toList l) 
                                           return (AbiArray n t (V.fromList xs))
  
-mutateAbiValue (AbiArrayDynamic t l) = mutateV Nothing [] (V.toList l) >>= return . (AbiArrayDynamic t) . V.fromList  
+mutateAbiValue (AbiArrayDynamic t l) = mutateV Nothing [] (V.toList l) >>= return . AbiArrayDynamic t . V.fromList  
  
 mutateAbiValue (AbiTuple v)          = AbiTuple          <$> traverse mutateAbiValue v
 
