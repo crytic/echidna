@@ -24,14 +24,14 @@ replaceAt _ []     _ = []
 replaceAt a (_:xs) 0 = a:xs
 replaceAt a (x:xs) n =
   if n < 0
-    then (x:xs)
-    else x: replaceAt a xs (n-1)
+  then x : xs
+  else x : replaceAt a xs (n-1)
 
 
 expandRandList :: MonadRandom m => [a] -> m [a]
 expandRandList []   = return []
-expandRandList rtxs = do k <- getRandomR (0, length rtxs - 1)
-                         return $ insertAt (rtxs !! k) rtxs k
+expandRandList xs = do k <- getRandomR (0, length xs - 1)
+                       return $ insertAt (xs !! k) xs k
 
 expandAt :: [a] -> Int -> Int -> [a]
 expandAt []     _ _ = []
@@ -41,8 +41,8 @@ expandAt (x:xs) i n = case i of
 
 deleteRandList :: MonadRandom m => [a] -> m [a]
 deleteRandList []   = return []
-deleteRandList rtxs = do k <- getRandomR (0, length rtxs - 1)
-                         return $ deleteAt k rtxs
+deleteRandList xs = do k <- getRandomR (0, length xs - 1)
+                       return $ deleteAt k xs
 
 deleteAt :: Int -> [a] -> [a]
 deleteAt _ [] = []
@@ -57,15 +57,15 @@ insertAt v (x:xs) n = x : insertAt v xs (n - 1)
 
 insertRandList :: MonadRandom m => [a] -> [a] -> m [a]
 insertRandList xs [] = return xs
-insertRandList xs (y:ys) = do idx <- getRandomR (0, (length xs) - 1) 
+insertRandList xs (y:ys) = do idx <- getRandomR (0, length xs - 1) 
                               insertRandList (insertAt y xs idx) ys
 
 
 swapRandList :: MonadRandom m => [a] -> m [a]
 swapRandList []   = return []
-swapRandList rtxs = do k1 <- getRandomR (0, (length rtxs) - 1 )
-                       k2 <- getRandomR (0, (length rtxs) - 1 )
-                       return $ swapAt rtxs k1 k2
+swapRandList xs = do k1 <- getRandomR (0, length xs - 1 )
+                     k2 <- getRandomR (0, length xs - 1 )
+                     return $ swapAt xs k1 k2
 
 -- taken from https://stackoverflow.com/questions/30551033/swap-two-elements-in-a-list-by-its-indices/30551130#30551130
 swapAt :: [a] -> Int -> Int -> [a]
@@ -77,8 +77,8 @@ swapAt xs i j =  let elemI = xs !! i
                  in  left ++ [elemJ] ++ middle ++ [elemI] ++ right 
 
 spliceAtRandom :: MonadRandom m => [a] -> [a] -> m [a]
-spliceAtRandom xs1 xs2 = do idx1 <- getRandomR (0, (length xs1) - 1) 
-                            idx2 <- getRandomR (0, (length xs2) - 1)
+spliceAtRandom xs1 xs2 = do idx1 <- getRandomR (0, length xs1 - 1) 
+                            idx2 <- getRandomR (0, length xs2 - 1)
                             return $ take idx1 xs1 ++ drop idx2 xs2
 
 --applyAll :: [a -> a] -> a -> a

@@ -260,7 +260,7 @@ mutateAbiValue (AbiTuple v)          = AbiTuple          <$> traverse mutateAbiV
 mutateAbiCall :: (MonadState x m, Has GenDict x, MonadRandom m) => SolCall -> m SolCall
 mutateAbiCall = traverse f
                 where f  [] = return []
-                      f  xs = do k <- getRandomR (0, (length xs - 1))
+                      f  xs = do k <- getRandomR (0, length xs - 1)
                                  mv <- mutateAbiValue $ xs !! k
                                  return $ replaceAt mv xs k
 
