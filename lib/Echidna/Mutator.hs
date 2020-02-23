@@ -35,7 +35,7 @@ expandRandList :: MonadRandom m => [a] -> m [a]
 expandRandList []   = return []
 expandRandList xs = do k <- getRandomR (0, length xs - 1)
                        t <- getRandomR (1, max 32 (length xs))
-                       return $ insertAt (xs !! k) xs t
+                       return $ expandAt xs k t
 
 expandAt :: [a] -> Int -> Int -> [a]
 expandAt []     _ _ = []

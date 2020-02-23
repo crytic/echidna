@@ -233,11 +233,11 @@ shrinkAbiCall = traverse $ traverse shrinkAbiValue
 
 -- | Given an 'AbiValue', generate a random \"similar\" value of the same 'AbiType'.
 mutateAbiValue :: MonadRandom m => AbiValue -> m AbiValue
-mutateAbiValue (AbiUInt n x)         = getRandomR (0, 9 :: Int) >>=
+mutateAbiValue (AbiUInt n x)         = getRandomR (0, 9 :: Int) >>= -- 10% of chance of mutation
                                           \case  
                                             0 -> (AbiUInt n <$> mutateNum x)
                                             _ -> return $ AbiUInt n x
-mutateAbiValue (AbiInt n x)          = getRandomR (0, 9 :: Int) >>=
+mutateAbiValue (AbiInt n x)          = getRandomR (0, 9 :: Int) >>= -- 10% of chance of mutation
                                           \case  
                                             0 -> (AbiInt n <$> mutateNum x)
                                             _ -> return $ AbiInt n x 
@@ -258,7 +258,7 @@ mutateAbiValue (AbiArrayDynamic t l) = AbiArrayDynamic t . V.fromList <$> mutate
 mutateAbiValue (AbiTuple v)          = AbiTuple          <$> traverse mutateAbiValue v
 
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
-mutateAbiCall :: (MonadState x m, Has GenDict x, MonadRandom m) => SolCall -> m SolCall
+mutateAbiCall :: (MonadRandom m) => SolCall -> m SolCall
 mutateAbiCall = traverse f
                 where f  [] = return []
                       f  xs = do k <- getRandomR (0, length xs - 1)
