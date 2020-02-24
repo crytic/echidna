@@ -1,6 +1,7 @@
 name: echidna
 
-author: JP Smith
+author: Trail of Bits <echidna-dev@trailofbits.com>
+maintainer: Trail of Bits <echidna-dev@trailofbits.com>
 
 version: 1.3.0.0
 
