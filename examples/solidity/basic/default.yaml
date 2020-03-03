@@ -61,4 +61,4 @@ maxBlockDelay: 60480
 # timeout:
 #campaign timeout (in seconds)
 #directory to save the corpus; by default is disabled  
-corpusDir: nill
+corpusDir: null

@@ -18,7 +18,7 @@ import Control.Monad.Catch (MonadThrow, bracket)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
-import Data.Aeson (ToJSON(..), FromJSON(..), withText, defaultOptions, decode, encodeFile)
+import Data.Aeson (ToJSON(..), FromJSON(..), withText, defaultOptions, decodeStrict, encodeFile)
 import Data.Aeson.TH (deriveJSON)
 import Data.DoubleWord (Word256(..), Int256(..), Word160(..))
 import Data.ByteString (ByteString)
@@ -38,7 +38,7 @@ import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.ByteString.Base16 as BS16
 import qualified Data.ByteString.Char8 as BSC8
-import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString as BS
 
 import qualified Data.HashMap.Strict as M
 import qualified Data.List.NonEmpty as NE
@@ -231,15 +231,14 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
 
 saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
-saveTxs (Just d) txs = mapM_ (\v -> do let fn = d ++ "/" ++ (show . hash . show) v ++ ".txt"
-                                       b <- doesFileExist fn
-                                       unless b $ encodeFile fn (sv v)
-                             ) txs
-                             where sv = toJSON
-saveTxs Nothing  _   = return ()
+saveTxs (Just d) txs = mapM_ saveTx txs
+                       where saveTx v = do let fn = d ++ "/" ++ (show . hash . show) v ++ ".txt"
+                                           b <- doesFileExist fn
+                                           unless b $ encodeFile fn (toJSON v)
+saveTxs Nothing  _   = pure ()
 
 listDirectory :: FilePath -> IO [FilePath]
-listDirectory path = Prelude.filter f <$> getDirectoryContents path
+listDirectory path = filter f <$> getDirectoryContents path
   where f filename = filename /= "." && filename /= ".."
 
 withCurrentDirectory :: FilePath  -- ^ Directory to execute in
@@ -258,7 +257,6 @@ loadTxs (Just d) = do
   let txs = catMaybes mtxs
   putStrLn ("Loaded total of " ++ show (length xs) ++ " transactions from " ++ d)
   return txs
-  where readCall f = do !buf <- LBS.readFile f
-                        return (decode buf :: Maybe [Tx]) 
+  where readCall f = (BS.readFile f) >>= return . decodeStrict -- :: Maybe [Tx] 
 
-loadTxs Nothing  = return [] 
+loadTxs Nothing  = pure [] 
