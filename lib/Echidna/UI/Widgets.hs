@@ -96,7 +96,7 @@ tsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
 tsWidget (Failed e)  = pure (str "could not evaluate", str $ show e)
 tsWidget (Solved l)  = failWidget Nothing l
 tsWidget Passed      = pure (withAttr "success" $ str "PASSED!", emptyWidget)
-tsWidget (Open i)    = view hasLens >>= \(CampaignConf t _ _ _ _ _ _ _) ->
+tsWidget (Open i)    = view hasLens >>= \(CampaignConf {testLimit = t}) ->
   if i >= t then
     tsWidget Passed
   else
