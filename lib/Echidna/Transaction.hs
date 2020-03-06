@@ -6,7 +6,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE BangPatterns #-}
 
 module Echidna.Transaction where
 
@@ -32,14 +31,13 @@ import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType, AbiValue(..), AbiType(..))
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
-import System.Directory hiding (listDirectory, withCurrentDirectory)
 
+import qualified System.Directory as SD
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.ByteString.Base16 as BS16
 import qualified Data.ByteString.Char8 as BSC8
 import qualified Data.ByteString as BS
-
 import qualified Data.HashMap.Strict as M
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
@@ -231,32 +229,31 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
 
 saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
-saveTxs (Just d) txs = mapM_ saveTx txs
-                       where saveTx v = do let fn = d ++ "/" ++ (show . hash . show) v ++ ".txt"
-                                           b <- doesFileExist fn
-                                           unless b $ encodeFile fn (toJSON v)
+saveTxs (Just d) txs = mapM_ saveTx txs where 
+  saveTx v = do let fn = d ++ "/" ++ (show . hash . show) v ++ ".txt"
+                b <- SD.doesFileExist fn
+                unless b $ encodeFile fn (toJSON v)
 saveTxs Nothing  _   = pure ()
 
 listDirectory :: FilePath -> IO [FilePath]
-listDirectory path = filter f <$> getDirectoryContents path
+listDirectory path = filter f <$> SD.getDirectoryContents path
   where f filename = filename /= "." && filename /= ".."
 
 withCurrentDirectory :: FilePath  -- ^ Directory to execute in
                      -> IO a      -- ^ Action to be executed
                      -> IO a
 withCurrentDirectory dir action =
-  bracket getCurrentDirectory setCurrentDirectory $ \_ -> do
-    setCurrentDirectory dir
+  bracket SD.getCurrentDirectory SD.setCurrentDirectory $ \_ -> do
+    SD.setCurrentDirectory dir
     action
 
 loadTxs :: Maybe FilePath -> IO [[Tx]]
 loadTxs (Just d) = do 
   fs <- listDirectory d
-  xs <- mapM makeRelativeToCurrentDirectory fs
-  mtxs <- withCurrentDirectory d (mapM readCall xs)
-  let txs = catMaybes mtxs
-  putStrLn ("Loaded total of " ++ show (length xs) ++ " transactions from " ++ d)
+  css <- mapM readCall <$> mapM SD.makeRelativeToCurrentDirectory fs
+  txs <- catMaybes <$> withCurrentDirectory d css
+  putStrLn ("Loaded total of " ++ show (length txs) ++ " transactions from " ++ d)
   return txs
-  where readCall f = (BS.readFile f) >>= return . decodeStrict -- :: Maybe [Tx] 
+  where readCall f = (BS.readFile f) >>= return . decodeStrict
 
 loadTxs Nothing  = pure [] 

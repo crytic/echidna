@@ -184,14 +184,15 @@ execTxOptC t = do
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
   hasLens . coverage %= unionWith union og
   grew <- (== LT) . comparing coveragePoints og <$> use (hasLens . coverage)
-  when grew $ hasLens . genDict %= gaddCalls ([t ^. call] ^.. traverse . _SolCall)
-  when grew $ hasLens . newCoverage .= True
+  when grew $ do
+    hasLens . genDict %= gaddCalls ([t ^. call] ^.. traverse . _SolCall)
+    hasLens . newCoverage .= True
   return res
 
 -- | Given a list of transactions in the corpus, save them discarding reverted transactions
 addToCorpus :: (MonadState s m, Has Campaign s) => [(Tx, VMResult)] -> m ()
-addToCorpus res = let rtxs = map fst res
-                    in unless (null rtxs) $ hasLens . corpus %= (rtxs:)
+addToCorpus res = unless (null rtxs) $ hasLens . corpus %= (rtxs:) where
+  rtxs = map fst res
 
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
