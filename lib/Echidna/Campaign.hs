@@ -218,8 +218,6 @@ callseq v w ql = do
   coverageEnabled <- isJust . knownCoverage <$> view hasLens
   let ef = if coverageEnabled then execTxOptC else execTx
       old = v ^. env . EVM.contracts
-  -- Reset the new coverage flag
-  hasLens . newCoverage .= False
   -- Then, we get the current campaign state
   ca <- use hasLens
   -- Then, we generate the actual transaction in the sequence
@@ -234,6 +232,9 @@ callseq v w ql = do
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= snd s
   when (s ^. _2 . newCoverage) $ addToCorpus res
+  -- Reset the new coverage flag
+  hasLens . newCoverage .= False
+  -- Keep track of the number of calls to `callseq`
   hasLens . ncallseqs += 1  
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   types <- use $ hasLens . rTypes
