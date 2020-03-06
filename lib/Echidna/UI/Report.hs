@@ -4,12 +4,13 @@
 module Echidna.UI.Report where
 
 import Control.Lens
-import Control.Monad.Reader (MonadReader)
+import Control.Monad.Reader (MonadReader, liftM2)
 import Data.Has (Has(..))
-import Data.List (nub)
-import Data.Map (Map)
+import Data.List (intercalate, nub, sortOn)
+import Data.Map (Map, toList)
 import Data.Maybe (catMaybes, maybe)
 import Data.Set (Set)
+import Data.Text (Text, unpack)
 import EVM.Types (Addr, W256)
 
 import qualified Data.Text as T
@@ -40,12 +41,22 @@ ppTx pn (Tx c s r g gp v (t, b)) = let sOf = ppTxCall in do
                  ++ (if t == 0    then "" else " Time delay: "  ++ show t)
                  ++ (if b == 0    then "" else " Block delay: " ++ show b)
 
-
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: Map W256 (Set Int) -> Maybe String
 ppCoverage s | s == mempty = Nothing
              | otherwise   = Just $ "Unique instructions: " ++ show (coveragePoints s)
                                  ++ "\nUnique codehashes: " ++ show (length s)
+
+-- | Pretty-print the gas usage for a function.
+ppGasOne :: (MonadReader x m, Has Names x, Has TxConf x) => (Text, (Int, [Tx])) -> m String
+ppGasOne ("", _)      = pure ""
+ppGasOne (f, (g, xs)) = let pxs = mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs in
+ (("\n" ++ unpack f ++ " used a maximum of " ++ show g ++ " gas\n  Call sequence:\n") ++) . unlines . fmap ("    " ++) <$> pxs
+
+-- | Pretty-print the gas usage information a 'Campaign' has obtained.
+ppGasInfo :: (MonadReader x m, Has Names x, Has TxConf x) => Campaign -> m String
+ppGasInfo (Campaign { _gasInfo = gi } ) | gi == mempty = pure ""
+ppGasInfo (Campaign { _gasInfo = gi } ) = (fmap $ intercalate "") (mapM ppGasOne $ sortOn (\(_, (n, _)) -> n) $ toList gi)
 
 -- | Pretty-print the status of a solved test.
 ppFail :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> [Tx] -> m String
@@ -74,5 +85,6 @@ ppTests (Campaign { _tests = ts }) = unlines . catMaybes <$> mapM pp ts where
   pp (Right (n, _), s)      = Just . (("assertion in " ++ T.unpack n ++ ": ") ++) <$> ppTS s
 
 ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppCampaign c = (++) <$> ppTests c <*> pure (maybe "" ("\n" ++) . ppCoverage $ c ^. coverage)
+ppCampaign c = (++) <$> liftM2 (++) (ppTests c) (ppGasInfo c) <*> pure (maybe "" ("\n" ++) . ppCoverage $ c ^. coverage)
+
 
