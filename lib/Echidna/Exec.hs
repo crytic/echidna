@@ -71,7 +71,10 @@ execTxWith h m t = do (og :: VM) <- use hasLens
                       res <- m
                       gasOut <- use $ hasLens . state . gas
                       cd  <- use $ hasLens . state . calldata
-                      case (res, t ^. call) of
+                      sd  <- use $ hasLens . tx . substate . selfdestructs
+                      if (t ^. dst) `elem` sd
+                      then h SelfDestruction
+                      else case (res, t ^. call) of
                         (f@Reversion, _)            -> do hasLens .= og
                                                           hasLens . state . calldata .= cd
                                                           hasLens . result ?= f
