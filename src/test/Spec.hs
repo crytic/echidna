@@ -283,10 +283,10 @@ solvedWith c t = maybe False (any $ (== SolCall c) . view call) . solnFor t
 -- Encoding JSON tests
 
 instance Arbitrary Addr where
-  arbitrary = arbitrary >>= (return . fromInteger)
+  arbitrary = fromInteger <$> arbitrary
 
 instance Arbitrary EVM.Concrete.Word where
-  arbitrary = arbitrary >>= (return . fromInteger)
+  arbitrary = fromInteger <$> arbitrary
 
 instance Arbitrary TxCall where
   arbitrary = do 

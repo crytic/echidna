@@ -254,6 +254,6 @@ loadTxs (Just d) = do
   txs <- catMaybes <$> withCurrentDirectory d css
   putStrLn ("Loaded total of " ++ show (length txs) ++ " transactions from " ++ d)
   return txs
-  where readCall f = (BS.readFile f) >>= return . decodeStrict
+  where readCall f = decodeStrict <$> BS.readFile f
 
 loadTxs Nothing  = pure [] 
