@@ -9,9 +9,8 @@ import Data.Has (Has(..))
 import Data.List (intercalate, nub, sortOn)
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes, maybe)
-import Data.Set (Set)
 import Data.Text (Text, unpack)
-import EVM.Types (Addr, W256)
+import EVM.Types (Addr)
 
 import qualified Data.Text as T
 
@@ -42,7 +41,7 @@ ppTx pn (Tx c s r g gp v (t, b)) = let sOf = ppTxCall in do
                  ++ (if b == 0    then "" else " Block delay: " ++ show b)
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
-ppCoverage :: Map W256 (Set Int) -> Maybe String
+ppCoverage :: CoverageMap -> Maybe String
 ppCoverage s | s == mempty = Nothing
              | otherwise   = Just $ "Unique instructions: " ++ show (coveragePoints s)
                                  ++ "\nUnique codehashes: " ++ show (length s)

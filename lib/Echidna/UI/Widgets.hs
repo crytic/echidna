@@ -11,11 +11,8 @@ import Control.Lens
 import Control.Monad.Reader (MonadReader)
 import Data.Has (Has(..))
 import Data.List (nub, intersperse)
-import Data.Map (Map)
 import Data.Maybe (maybe)
-import Data.Set (Set)
 import Data.Version (showVersion)
-import EVM.Types (W256)
 import Text.Printf (printf)
 
 import qualified Brick.AttrMap as A
@@ -23,6 +20,7 @@ import qualified Data.Text as T
 import qualified Graphics.Vty as V
 import qualified Paths_echidna (version)
 
+import Echidna.Exec
 import Echidna.Campaign
 import Echidna.Solidity
 import Echidna.Transaction
@@ -65,7 +63,7 @@ campaignStatus (c@Campaign{_tests, _coverage}, uiState) = do
       inner
     title = "Echidna " ++ showVersion Paths_echidna.version
 
-summaryWidget :: [(SolTest, TestState)] -> Map W256 (Set Int) -> Widget ()
+summaryWidget :: [(SolTest, TestState)] -> CoverageMap -> Widget ()
 summaryWidget tests' coverage' =
   padLeft (Pad 1) (
     str ("Tests found: " ++ show (length tests'))
