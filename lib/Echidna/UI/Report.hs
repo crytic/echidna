@@ -7,7 +7,7 @@ import Control.Lens
 import Control.Monad.Reader (MonadReader, liftM2)
 import Data.Has (Has(..))
 import Data.List (intercalate, nub, sortOn)
-import Data.Map (Map, toList)
+import Data.Map (toList)
 import Data.Maybe (catMaybes, maybe)
 import Data.Text (Text, unpack)
 import EVM.Types (Addr)
