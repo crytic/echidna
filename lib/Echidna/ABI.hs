@@ -248,8 +248,8 @@ mutateAbiValue (AbiBytes n b)        = do fs <- replicateM n getRandom
                                           xs <- mutateLL (Just n) (BS.pack fs) b 
                                           return (AbiBytes n xs)
 
-mutateAbiValue (AbiBytesDynamic b)   = mutateLL Nothing mempty b >>= (return . AbiBytesDynamic)
-mutateAbiValue (AbiString b)         = mutateLL Nothing mempty b >>= (return . AbiString)
+mutateAbiValue (AbiBytesDynamic b)   = AbiBytesDynamic <$> mutateLL Nothing mempty b
+mutateAbiValue (AbiString b)         = AbiString <$> mutateLL Nothing mempty b
 mutateAbiValue (AbiArray n t l)      = do fs <- replicateM n $ genAbiValue t
                                           xs <- mutateLL (Just n) (V.fromList fs) l 
                                           return (AbiArray n t xs)
