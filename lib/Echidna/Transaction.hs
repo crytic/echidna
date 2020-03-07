@@ -12,16 +12,17 @@ module Echidna.Transaction where
 import Prelude hiding (Word)
 
 import Control.Lens
-import Control.Monad (join, liftM2, liftM3, liftM5)
-import Control.Monad.Catch (MonadThrow)
+import Control.Monad (join, liftM2, liftM3, liftM5, unless)
+import Control.Monad.Catch (MonadThrow, bracket)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
-import Data.Aeson (ToJSON(..), FromJSON(..), withText, defaultOptions)
+import Data.Aeson (ToJSON(..), FromJSON(..), withText, defaultOptions, decodeStrict, encodeFile)
 import Data.Aeson.TH (deriveJSON)
 import Data.DoubleWord (Word256(..), Int256(..), Word160(..))
 import Data.ByteString (ByteString)
 import Data.Has (Has(..))
+import Data.Hashable (hash)
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
 import Data.List (intercalate)
@@ -31,10 +32,12 @@ import EVM.ABI (abiCalldata, abiValueType, AbiValue(..), AbiType(..))
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
 
+import qualified System.Directory as SD
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.ByteString.Base16 as BS16
 import qualified Data.ByteString.Char8 as BSC8
+import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
@@ -224,3 +227,33 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
       SolCalldata cd  -> loadContract r >> state . calldata .= cd
     encode (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
+
+saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
+saveTxs (Just d) txs = mapM_ saveTx txs where 
+  saveTx v = do let fn = d ++ "/" ++ (show . hash . show) v ++ ".txt"
+                b <- SD.doesFileExist fn
+                unless b $ encodeFile fn (toJSON v)
+saveTxs Nothing  _   = pure ()
+
+listDirectory :: FilePath -> IO [FilePath]
+listDirectory path = filter f <$> SD.getDirectoryContents path
+  where f filename = filename /= "." && filename /= ".."
+
+withCurrentDirectory :: FilePath  -- ^ Directory to execute in
+                     -> IO a      -- ^ Action to be executed
+                     -> IO a
+withCurrentDirectory dir action =
+  bracket SD.getCurrentDirectory SD.setCurrentDirectory $ \_ -> do
+    SD.setCurrentDirectory dir
+    action
+
+loadTxs :: Maybe FilePath -> IO [[Tx]]
+loadTxs (Just d) = do 
+  fs <- listDirectory d
+  css <- mapM readCall <$> mapM SD.makeRelativeToCurrentDirectory fs
+  txs <- catMaybes <$> withCurrentDirectory d css
+  putStrLn ("Loaded total of " ++ show (length txs) ++ " transactions from " ++ d)
+  return txs
+  where readCall f = decodeStrict <$> BS.readFile f
+
+loadTxs Nothing  = pure [] 

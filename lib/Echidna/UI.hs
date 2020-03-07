@@ -73,8 +73,9 @@ ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> World     -- ^ Initial world state
    -> [SolTest] -- ^ Tests to evaluate
    -> Maybe GenDict
+   -> [[Tx]]
    -> m Campaign
-ui v w ts d = do
+ui v w ts d txs = do
   let d' = fromMaybe defaultDict d
   let getSeed = view $ hasLens . to seed . non (d' ^. defSeed)
   bc <- liftIO $ newBChan 100
@@ -87,7 +88,7 @@ ui v w ts d = do
   ticker <- liftIO $ forkIO -- update UI every 100ms, instant exit when no UI
     (when dash $ forever $ threadDelay 100000 >> updateUI CampaignUpdated)
   _ <- forkFinally -- run worker
-    (void $ timeout timeoutSeconds (campaign updateRef v w ts d) >>= \case
+    (void $ timeout timeoutSeconds (campaign updateRef v w ts d txs) >>= \case
        Nothing -> liftIO $ updateUI CampaignTimedout
        Just _ -> liftIO $ updateUI CampaignUpdated
     )
