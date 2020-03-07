@@ -62,3 +62,5 @@ maxBlockDelay: 60480
 #maximum number of blocks elapsed between generated txs; default is expected increment in one week
 # timeout:
 #campaign timeout (in seconds)
+#directory to save the corpus; by default is disabled  
+corpusDir: null

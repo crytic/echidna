@@ -12,7 +12,7 @@
 module Echidna.Campaign where
 
 import Control.Lens
-import Control.Monad (liftM3, replicateM, when, (<=<), ap)
+import Control.Monad (liftM3, replicateM, when, (<=<), ap, unless)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR, uniform, uniformMay)
 import Control.Monad.Reader.Class (MonadReader)
@@ -31,7 +31,7 @@ import Data.Text (Text)
 import Data.Traversable (traverse)
 import EVM
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
-import EVM.Types (W256, addressWord160)
+import EVM.Types (Addr, W256, addressWord160)
 import Numeric (showHex)
 import System.Random (mkStdGen)
 
@@ -66,7 +66,11 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- ^ If applicable, initially known coverage. If this is 'Nothing',
                                    -- Echidna won't collect coverage information (and will go faster)
                                  , seed          :: Maybe Int
+                                   -- ^ Seed used for the generation of random transactions
                                  , dictFreq      :: Float
+                                   -- ^ Frequency for the use of dictionary values in the random transactions
+                                 , corpusDir     :: Maybe FilePath
+                                   -- ^ Directory to load and save lists of transactions
                                  }
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
@@ -97,14 +101,20 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                            -- ^ Tests being evaluated
                          , _coverage    :: Map W256 (Set Int)
                            -- ^ Coverage captured (NOTE: we don't always record this)
-                         , _gasInfo    :: Map Text (Int, [Tx])
+                         , _gasInfo     :: Map Text (Int, [Tx])
                            -- ^ Worst case gas (NOTE: we don't always record this)
                          , _genDict     :: GenDict
                            -- ^ Generation dictionary
+                         , _newCoverage :: Bool
+                           -- ^ Flag to indicate new coverage found
+                         , _corpus      :: [[Tx]]
+                           -- ^ List of transactions with maximum coverage
+                         , _ncallseqs    :: Int
+                           -- ^ Number of times the callseq is called                         
                          }
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co gi _) = object $ ("tests", toJSON $ mapMaybe format ts)
+  toJSON (Campaign ts co gi _ _ _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
     : ((if co == mempty then [] else [
     ("coverage",) . toJSON . mapKeys (`showHex` "") $ DF.toList <$> co]) ++
        [(("maxgas",) . toJSON . toList) gi | gi /= mempty]) where
@@ -118,7 +128,7 @@ instance Has GenDict Campaign where
   hasLens = genDict
 
 defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty mempty defaultDict
+defaultCampaign = Campaign mempty mempty mempty defaultDict False mempty 0
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
@@ -211,8 +221,28 @@ execTxOptC t = do
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
   hasLens . coverage %= unionWith union og
   grew <- (== LT) . comparing coveragePoints og <$> use (hasLens . coverage)
-  when grew $ hasLens . genDict %= gaddCalls ([t ^. call] ^.. traverse . _SolCall)
+  when grew $ do
+    hasLens . genDict %= gaddCalls ([t ^. call] ^.. traverse . _SolCall)
+    hasLens . newCoverage .= True
   return res
+
+-- | Given a list of transactions in the corpus, save them discarding reverted transactions
+addToCorpus :: (MonadState s m, Has Campaign s) => [(Tx, (VMResult, Int))] -> m ()
+addToCorpus res = unless (null rtxs) $ hasLens . corpus %= (rtxs:) where
+  rtxs = map fst res
+
+-- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
+randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
+           , Has GenDict y, Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
+        => Int -> Map Addr Contract -> World -> m [Tx]
+randseq ql o w = do 
+  ca <- use hasLens
+  let txs = ca ^. corpus  
+      p   = ca ^. ncallseqs 
+  if length txs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
+    return $ txs !! p
+  else                   -- Randomly generate new transactions 
+    replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
@@ -229,7 +259,7 @@ callseq v w ql = do
   -- Then, we get the current campaign state
   ca <- use hasLens
   -- Then, we generate the actual transaction in the sequence
-  is <- replicateM ql (evalStateT (genTxM old) (w, ca ^. genDict))
+  is <- randseq ql old w
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, s) <- runStateT (evalSeq v ef is) (v, ca)
   let new = s ^. _1 . env . EVM.contracts
@@ -239,7 +269,14 @@ callseq v w ql = do
       diffs = H.fromList [(AbiAddressType, S.fromList $ AbiAddress . addressWord160 <$> diff)]
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= snd s
+  -- Update the gas estimation
   when gasEnabled $ hasLens . gasInfo %= updateGasInfo res []
+  -- If there is new coverage, add the transaction list to the corpus
+  when (s ^. _2 . newCoverage) $ addToCorpus res
+  -- Reset the new coverage flag
+  hasLens . newCoverage .= False
+  -- Keep track of the number of calls to `callseq`
+  hasLens . ncallseqs += 1  
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   types <- use $ hasLens . rTypes
   let results = parse (map (\(t, (vr, _)) -> (t, vr)) res) types
@@ -265,16 +302,17 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
          -> World               -- ^ Initial world state
          -> [SolTest]           -- ^ Tests to evaluate
          -> Maybe GenDict       -- ^ Optional generation dictionary
+         -> [[Tx]]              -- ^ Initial corpus of transactions
          -> m Campaign
-campaign u v w ts d = do
+campaign u v w ts d txs = do
   let d' = fromMaybe defaultDict d
   c <- fromMaybe mempty <$> view (hasLens . to knownCoverage)
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d') where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d' False txs 0) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _) ->
+    update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _ _) ->
       if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
