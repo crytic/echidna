@@ -42,7 +42,7 @@ attrs = A.attrMap (V.white `on` V.black)
 -- | Render 'Campaign' progress as a 'Widget'.
 campaignStatus :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
                => (Campaign, UIState) -> m (Widget ())
-campaignStatus (c@Campaign{_tests, _coverage}, uiState) = do
+campaignStatus (c@Campaign{_tests, _coverage_nr}, uiState) = do
   done <- isDone c
   case (uiState, done) of
     (Uninitialized, _) -> pure $ mainbox (padLeft (Pad 1) $ str "Starting up, please wait...") emptyWidget
@@ -58,7 +58,7 @@ campaignStatus (c@Campaign{_tests, _coverage}, uiState) = do
       hCenter underneath
     wrapInner inner =
       borderWithLabel (withAttr "bold" $ str title) $
-      summaryWidget _tests _coverage
+      summaryWidget _tests _coverage_nr
       <=>
       hBorderWithLabel (str "Tests")
       <=>

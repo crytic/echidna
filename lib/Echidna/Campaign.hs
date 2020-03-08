@@ -99,7 +99,9 @@ instance ToJSON TestState where
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                            -- ^ Tests being evaluated
-                         , _coverage    :: Map W256 (Set Int)
+                         , _coverage_acc:: Map W256 (Set Int)
+                         , _coverage_nr :: Map W256 (Set Int)
+                         , _coverage_r  :: Map W256 (Set Int)
                            -- ^ Coverage captured (NOTE: we don't always record this)
                          , _gasInfo     :: Map Text (Int, [Tx])
                            -- ^ Worst case gas (NOTE: we don't always record this)
@@ -114,9 +116,9 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                          }
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co gi _ _ _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
-    : ((if co == mempty then [] else [
-    ("coverage",) . toJSON . mapKeys (`showHex` "") $ DF.toList <$> co]) ++
+  toJSON (Campaign ts _ co_nr co_r gi _ _ _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
+    : ((if co_nr == mempty then [] else [
+    ("coverage",) . toJSON . mapKeys (`showHex` "") $ DF.toList <$> co_nr]) ++
        [(("maxgas",) . toJSON . toList) gi | gi /= mempty]) where
         format (Right _,      Open _) = Nothing
         format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
@@ -128,7 +130,7 @@ instance Has GenDict Campaign where
   hasLens = genDict
 
 defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty mempty defaultDict False mempty 0
+defaultCampaign = Campaign mempty mempty mempty mempty mempty defaultDict False mempty 0
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
@@ -217,14 +219,23 @@ updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 -- transaction if it finds new coverage.
 execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
 execTxOptC t = do
-  og  <- hasLens . coverage <<.= mempty
-  res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
-  hasLens . coverage %= unionWith union og
-  grew <- (== LT) . comparing coveragePoints og <$> use (hasLens . coverage)
+  hasLens . coverage_acc .= mempty
+  res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage_acc)) t
+  og <- use (hasLens . coverage_acc)
+  grew <- if (isRevert $ fst res) 
+          then do hasLens . coverage_r %= unionWith union og
+                  (== LT) . comparing coveragePoints og <$> use (hasLens . coverage_r)
+ 
+          else do hasLens . coverage_nr %= unionWith union og
+                  (== LT) . comparing coveragePoints og <$> use (hasLens . coverage_nr)
   when grew $ do
     hasLens . genDict %= gaddCalls ([t ^. call] ^.. traverse . _SolCall)
     hasLens . newCoverage .= True
   return res
+  where isRevert (VMFailure _) = True
+        isRevert _             = False
+
+ 
 
 -- | Given a list of transactions in the corpus, save them discarding reverted transactions
 addToCorpus :: (MonadState s m, Has Campaign s) => [(Tx, (VMResult, Int))] -> m ()
@@ -306,10 +317,11 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
          -> m Campaign
 campaign u v w ts d txs = do
   let d' = fromMaybe defaultDict d
-  c <- fromMaybe mempty <$> view (hasLens . to knownCoverage)
+  c1 <- fromMaybe mempty <$> view (hasLens . to knownCoverage)
+  c2 <- fromMaybe mempty <$> view (hasLens . to knownCoverage) 
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d' False txs 0) where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) mempty c1 c2 mempty d' False txs 0) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _ _) ->
