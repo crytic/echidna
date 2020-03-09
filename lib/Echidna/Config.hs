@@ -116,11 +116,13 @@ instance FromJSON EConfigWithUsage where
                                                   _         -> Nothing
                 cc = CampaignConf <$> v ..:? "testLimit"   ..!= 50000
                                   <*> v ..:? "stopOnFail"  ..!= False
+                                  <*> v ..:? "estimateGas" ..!= False
                                   <*> v ..:? "seqLen"      ..!= 100
                                   <*> v ..:? "shrinkLimit" ..!= 5000
                                   <*> cov
                                   <*> v ..:? "seed"
                                   <*> v ..:? "dictFreq"    ..!= 0.40
+                                  <*> v ..:? "corpusDir"   ..!= Nothing
                 names :: Names
                 names Sender = (" from: " ++) . show
                 names _      = const ""

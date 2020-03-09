@@ -12,7 +12,7 @@ import EVM.ABI (AbiValue(..))
 import qualified EVM.Concrete(Word(..))
 
 import Echidna.ABI (SolCall, mkGenDict)
-import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests)
+import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests, gasInfo)
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (TxCall(..), Tx(..), call)
@@ -23,6 +23,7 @@ import Control.Monad (liftM2, void, when)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Random (getRandom)
 import Control.Monad.Reader (runReaderT)
+import Data.Map (lookup)
 import Data.Map.Strict (keys)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack, pack)
@@ -52,7 +53,7 @@ configTests = testGroup "Configuration tests" $
       assertCoverage config $ Just mempty
   , testCase "coverage disabled by default" $
       assertCoverage defaultConfig Nothing
-  , testCase "defaults.yaml" $ do
+  , testCase "default.yaml" $ do
       EConfigWithUsage _ bad unset <- parseConfig "basic/default.yaml"
       assertBool ("unused options: " ++ show bad) $ null bad
       let unset' = unset & sans "seed"
@@ -113,7 +114,7 @@ seedTests =
     , testCase "same seeds" $ assertBool "results differ" =<< same 0 0
     ]
     where cfg s = defaultConfig & sConf . quiet .~ True
-                                & cConf .~ CampaignConf 600 False 20 0 Nothing (Just s) 0.15
+                                & cConf .~ CampaignConf 600 False False 20 0 Nothing (Just s) 0.15 Nothing
           gen s = view tests <$> runContract "basic/flags.sol" Nothing (cfg s)
           same s t = liftM2 (==) (gen s) (gen t)
 
@@ -211,6 +212,13 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/MultiTuple.sol"   Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
+  , testContract "basic/gasuse.sol"       (Just "basic/gasuse.yaml")
+      [ ("echidna_true failed",                    passed     "echidna_true")
+      , ("g gas estimate wrong",                   gasInRange "g" 12000000 80000000)
+      , ("f_close1 gas estimate wrong",            gasInRange "f_close1" 5000 7000)
+      , ("f_open1 gas estimate wrong",             gasInRange "f_open1"  18000 23000)
+      , ("push_b gas estimate wrong",              gasInRange "push_b"   39000 45000)
+      ]
   ]
 
 testConfig :: EConfig
@@ -236,10 +244,18 @@ runContract fp n c =
     cs  <- Echidna.Solidity.contracts (fp NE.:| [])
     ads <- NE.toList <$> addresses
     let ads' = AbiAddress . addressWord160 <$> v ^. env . EVM.contracts . to keys
-    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads ++ ads') [] g (returnTypes cs))
+    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads ++ ads') [] g (returnTypes cs)) []
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
+
+getGas :: Text -> Campaign -> Maybe (Int, [Tx])
+getGas t = Data.Map.lookup t . view gasInfo
+
+gasInRange :: Text -> Int -> Int -> Campaign -> Bool
+gasInRange t l h c = case getGas t c of
+  Just (g, _) -> g >= l && g <= h
+  _           -> False
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor t c = case getResult t c of
