@@ -26,7 +26,6 @@ import Data.Map (Map, mapWithKey, mapKeys, unionWith, toList, (\\), keys, lookup
 import Data.Maybe (fromMaybe, isJust, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
---import Data.Set (union, map)
 import Data.Text (Text)
 import Data.Traversable (traverse)
 import EVM
