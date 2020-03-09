@@ -26,12 +26,12 @@ import Data.Map (Map, mapKeys, unionWith, toList, (\\), keys, lookup, insert)
 import Data.Maybe (fromMaybe, isJust, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
-import Data.Set (Set, union)
+import Data.Set (union)
 import Data.Text (Text)
 import Data.Traversable (traverse)
 import EVM
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
-import EVM.Types (Addr, W256, addressWord160)
+import EVM.Types (Addr, addressWord160)
 import Numeric (showHex)
 import System.Random (mkStdGen)
 
@@ -62,7 +62,7 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- reset the state to avoid unrecoverable states/save memory\"
                                  , shrinkLimit   :: Int
                                    -- ^ Maximum number of candidate sequences to evaluate while shrinking
-                                 , knownCoverage :: Maybe (Map W256 (Set Int))
+                                 , knownCoverage :: Maybe CoverageMap
                                    -- ^ If applicable, initially known coverage. If this is 'Nothing',
                                    -- Echidna won't collect coverage information (and will go faster)
                                  , seed          :: Maybe Int
@@ -99,7 +99,7 @@ instance ToJSON TestState where
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                            -- ^ Tests being evaluated
-                         , _coverage    :: Map W256 (Set Int)
+                         , _coverage    :: CoverageMap
                            -- ^ Coverage captured (NOTE: we don't always record this)
                          , _gasInfo     :: Map Text (Int, [Tx])
                            -- ^ Worst case gas (NOTE: we don't always record this)
