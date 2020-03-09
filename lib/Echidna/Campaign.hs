@@ -22,11 +22,11 @@ import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Aeson (ToJSON(..), object)
 import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
-import Data.Map (Map, mapKeys, unionWith, toList, (\\), keys, lookup, insert)
+import Data.Map (Map, mapWithKey, mapKeys, unionWith, toList, (\\), keys, lookup, insert)
 import Data.Maybe (fromMaybe, isJust, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
-import Data.Set (union)
+--import Data.Set (union, map)
 import Data.Text (Text)
 import Data.Traversable (traverse)
 import EVM
@@ -38,6 +38,7 @@ import System.Random (mkStdGen)
 import qualified Data.HashMap.Strict as H
 import qualified Data.HashSet as S
 import qualified Data.Foldable as DF
+import qualified Data.Set as DS
 
 import Echidna.ABI
 import Echidna.Exec
@@ -219,13 +220,18 @@ execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => Tx -> 
 execTxOptC t = do
   og  <- hasLens . coverage <<.= mempty
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
-  hasLens . coverage %= unionWith union og
+  let vmr = isRevert $ fst res
+  -- Update the coverage map with the proper binary according to the vm result 
+  hasLens . coverage %= mapWithKey (\ _ s -> DS.map (\(i,_) -> (i, vmr)) s)
+  -- Update the global coverage map with the union of the result just obtained 
+  hasLens . coverage %= unionWith DS.union og
   grew <- (== LT) . comparing coveragePoints og <$> use (hasLens . coverage)
   when grew $ do
     hasLens . genDict %= gaddCalls ([t ^. call] ^.. traverse . _SolCall)
     hasLens . newCoverage .= True
   return res
-
+  where isRevert (VMFailure _) = True
+        isRevert _             = False
 -- | Given a list of transactions in the corpus, save them discarding reverted transactions
 addToCorpus :: (MonadState s m, Has Campaign s) => [(Tx, (VMResult, Int))] -> m ()
 addToCorpus res = unless (null rtxs) $ hasLens . corpus %= (rtxs:) where

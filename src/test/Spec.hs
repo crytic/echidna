@@ -12,7 +12,7 @@ import EVM.ABI (AbiValue(..))
 import qualified EVM.Concrete(Word(..))
 
 import Echidna.ABI (SolCall, mkGenDict)
-import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests, gasInfo)
+import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests, corpus, gasInfo)
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (TxCall(..), Tx(..), call)
@@ -122,7 +122,8 @@ seedTests =
 
 integrationTests :: TestTree
 integrationTests = testGroup "Solidity Integration Testing"
-  [ testContract "basic/true.sol" Nothing
+  [ 
+    testContract "basic/true.sol" Nothing
       [ ("echidna_true failed", passed "echidna_true") ]
   , testContract "basic/flags.sol" Nothing
       [ ("echidna_alwaystrue failed",                      passed      "echidna_alwaystrue")
@@ -219,6 +220,9 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("f_open1 gas estimate wrong",             gasInRange "f_open1"  18000 23000)
       , ("push_b gas estimate wrong",              gasInRange "push_b"   39000 45000)
       ]
+  ,  testContract "coverage/boolean.sol"       (Just "coverage/boolean.yaml")
+      [ ("echidna_true failed",                    passed     "echidna_true")
+      , ("unexpected corpus count ",               countCorpus 5)]
   ]
 
 testConfig :: EConfig
@@ -256,6 +260,9 @@ gasInRange :: Text -> Int -> Int -> Campaign -> Bool
 gasInRange t l h c = case getGas t c of
   Just (g, _) -> g >= l && g <= h
   _           -> False
+
+countCorpus :: Int -> Campaign -> Bool
+countCorpus n c = length (view corpus c) == n
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor t c = case getResult t c of
