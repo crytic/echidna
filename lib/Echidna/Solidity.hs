@@ -81,10 +81,12 @@ instance Show SolException where
     OnlyTests            -> "Only tests and no public functions found in ABI"
     (ConstructorArgs s)  -> "Constructor arguments are required: " ++ s
     NoCryticCompile      -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
-    InvalidMethodFilters -> "Methods to include and ignore cannot be filtered at the same time. Select only one of them"
+    InvalidMethodFilters -> "List of whitelist methods cannot be empty"
 
 
 instance Exception SolException
+
+data Filter = Blacklist [String] | Whitelist [String]
 
 -- | Configuration for loading Solidity for Echidna testing.
 data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract address to use
@@ -100,8 +102,7 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
                        , _multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
                        , _checkAsserts    :: Bool             -- ^ Test if we can cause assertions to fail
-                       , _ignoreMethods   :: [String]         -- ^ List of method to avoid calling during a campaign
-                       , _includeMethods  :: [String]         -- ^ List of methods to include calling during a campaign 
+                       , _methodFilter    :: Filter           -- ^ List of methods to avoid or include calling during a campaign
                        }
 makeLenses ''SolConf
 
@@ -162,12 +163,10 @@ linkLibraries [] = ""
 linkLibraries ls = "--libraries " ++
   iconcatMap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls
 
-filterMethods :: MonadThrow m => [String] -> [String] -> [(Text, [AbiType])] -> m [(Text, [AbiType])]
-filterMethods [] [] ms = return ms 
-filterMethods [] ic ms = return $ filter (\(m, _) -> T.unpack m `elem` ic) ms
-filterMethods ig [] ms = return $ filter (\(m, _) -> T.unpack m `notElem` ig) ms
-filterMethods _  _  _  = throwM InvalidMethodFilters 
-
+filterMethods :: MonadThrow m => Filter -> [(Text, [AbiType])] -> m [(Text, [AbiType])]
+filterMethods (Whitelist [])  _ = throwM InvalidMethodFilters 
+filterMethods (Whitelist ic) ms = return $ filter (\(m, _) -> T.unpack m `elem` ic) ms
+filterMethods (Blacklist ig) ms = return $ filter (\(m, _) -> T.unpack m `notElem` ig) ms
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -186,7 +185,7 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  (SolConf ca d ads bala balc pref _ _ libs _ fp ma ch igm inm) <- view hasLens
+  (SolConf ca d ads bala balc pref _ _ libs _ fp ma ch fs) <- view hasLens
 
   -- generate the complete abi mapping
   let abiOf :: SolcContract -> NE.NonEmpty SolSignature
@@ -199,7 +198,7 @@ loadSpecified name cs = do
       
 
   -- Filter ABI according to the config options
-  funs' <- filterMethods igm inm funs
+  funs' <- filterMethods fs funs
   
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
@@ -247,7 +246,7 @@ loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
                => (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature)) -> m (VM, World, [SolTest])
-prepareForTest (v, a, ts, m) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ _ ch _ _) ->
+prepareForTest (v, a, ts, m) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ _ ch _ ) ->
   (v, World s m, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else []) where
     r = v ^. state . contract
     a' = NE.toList a

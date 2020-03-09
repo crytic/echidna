@@ -60,5 +60,7 @@ maxBlockDelay: 60480
 #maximum number of blocks elapsed between generated txs; default is expected increment in one week
 # timeout:
 #campaign timeout (in seconds)
-ignoreMethods: []
-includeMethods: []
+# list of methods to filter
+filterFunctions: []
+# by default, blacklist methods in filterFunctions
+filterBlacklist: true
