@@ -7,10 +7,16 @@ import Data.Maybe (maybe)
 
 import qualified Data.ListLike as LL
 
+-- | A list of mutators to randomly select to perform a mutation of list-like values
 listMutators :: (LL.ListLike f i, MonadRandom m) => m (f -> m f)
 listMutators = fromList [(return, 1), (expandRandList, 10), (deleteRandList, 10), (swapRandList, 10)] 
 
-mutateLL :: (LL.ListLike f i, MonadRandom m) => Maybe Int -> f -> f -> m f
+-- | Mutate a list-like data structure using a list of mutators 
+mutateLL :: (LL.ListLike f i, MonadRandom m)
+         => Maybe Int -- ^ Required size for the mutated list-like value (or Nothing if there are no constrains)
+         -> f         -- ^ Randomly generated list-like value to complement the mutated list, if it is shorter than the requested size
+         -> f         -- ^ List-like value to mutate
+         -> m f
 mutateLL mn fs vs = do
   f <- listMutators
   xs <- f vs
