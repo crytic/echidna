@@ -122,8 +122,7 @@ seedTests =
 
 integrationTests :: TestTree
 integrationTests = testGroup "Solidity Integration Testing"
-  [ 
-    testContract "basic/true.sol" Nothing
+  [ testContract "basic/true.sol" Nothing
       [ ("echidna_true failed", passed "echidna_true") ]
   , testContract "basic/flags.sol" Nothing
       [ ("echidna_alwaystrue failed",                      passed      "echidna_alwaystrue")
