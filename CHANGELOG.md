@@ -1,6 +1,21 @@
 ## TODO
 
+## 1.3.0.0
+
+* Gaining knowledge of contract-created contract addresses (#295)
+* Improved `crytic-compile` error handling when missing (#335)
 * Support testing from arbitrary blockchain state via etheno (#333)
+* Some shrinking improvements (#336)
+* UI improvements (#339)
+* UI updates are now threaded separately from fuzzing campaign (#345)
+* `Tx` rework to unify `Echidna.RPC` and `Transaction` (#346)
+* Adjustment of testsuite parameters (#347)
+* Multi-ABI support by fuzzing all known ABIs (#344)
+* Fix indefinite `MVar` blocking (#350)
+* AddressArrayExample (#348)
+* `Tx` JSON conversions (#352)
+* Smaller docker container, multi-stage build (#349)
+* Gas worst case estimation (#355)
 
 ## 1.2.0.0
 

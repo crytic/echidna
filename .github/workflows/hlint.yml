@@ -1,0 +1,21 @@
+name: HLint
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  hlint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Packages
+        uses: mstksg/get-package@v1
+        with:
+          apt-get: hlint
+
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: HLint
+        run: |
+          hlint lib src
