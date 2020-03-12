@@ -163,10 +163,16 @@ linkLibraries [] = ""
 linkLibraries ls = "--libraries " ++
   iconcatMap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls
 
-filterMethods :: MonadThrow m => Filter -> [(Text, [AbiType])] -> m [(Text, [AbiType])]
+filterMethods :: MonadThrow m => Filter -> NE.NonEmpty SolSignature -> m (NE.NonEmpty SolSignature)
 filterMethods (Whitelist [])  _ = throwM InvalidMethodFilters 
-filterMethods (Whitelist ic) ms = return $ filter (\(m, _) -> T.unpack m `elem` ic) ms
-filterMethods (Blacklist ig) ms = return $ filter (\(m, _) -> T.unpack m `notElem` ig) ms
+filterMethods (Whitelist ic) ms = return $ NE.fromList $ NE.filter (\(m, _) -> T.unpack m `elem` ic) ms
+filterMethods (Blacklist ig) ms = return $ NE.fromList $ NE.filter (\(m, _) -> T.unpack m `notElem` ig) ms
+
+fallback :: SolSignature
+fallback = ("",[])
+
+abiOf :: Text -> SolcContract -> NE.NonEmpty SolSignature
+abiOf pref cc = NE.fromList $ fallback : filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -188,17 +194,18 @@ loadSpecified name cs = do
   (SolConf ca d ads bala balc pref _ _ libs _ fp ma ch fs) <- view hasLens
 
   -- generate the complete abi mapping
-  let abiOf :: SolcContract -> NE.NonEmpty SolSignature
-      abiOf cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
-      abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode . to stripBytecodeMetadata, abiOf cc) else M.singleton (c ^. runtimeCode . to stripBytecodeMetadata) (abiOf c)
-      bc = c ^. creationCode
+  let bc = c ^. creationCode
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       con = view constructorInputs c
       (tests, funs) = partition (isPrefixOf pref . fst) abi
       
 
   -- Filter ABI according to the config options
-  funs' <- filterMethods fs funs
+  fabiOfc <- filterMethods fs $ abiOf pref c
+  -- Filter again for assertions checking if enabled
+  neFuns <- filterMethods fs (NE.fromList $ fallback : funs)
+  -- Construct ABI mapping for World
+  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode . to stripBytecodeMetadata, abiOf pref cc) else M.singleton (c ^. runtimeCode . to stripBytecodeMetadata) fabiOfc
   
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
@@ -212,7 +219,6 @@ loadSpecified name cs = do
 
   -- Make sure everything is ready to use, then ship it
   when (null abi) $ throwM NoFuncs                              -- < ABI checks
-  neFuns <- maybe (throwM OnlyTests) pure (NE.nonEmpty funs')   -- <
   when (not ch && null tests) $ throwM NoTests                  -- <
   when (bc == mempty) $ throwM (NoBytecode $ c ^. contractName) -- Bytecode check
 
@@ -221,13 +227,12 @@ loadSpecified name cs = do
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
       let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca 0xffffffff 0 (w256 $ fromInteger balc) (0, 0)
-      (, fallback NE.<| neFuns, fst <$> tests, abiMapping) <$> execStateT transaction vm
+      (, neFuns, fst <$> tests, abiMapping) <$> execStateT transaction vm
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
                                       find (isSuffixOf (if T.any (== ':') n then n else ":" `append` n) . view contractName) cs
-        fallback = ("",[])
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
 -- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
