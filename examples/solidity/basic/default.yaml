@@ -68,3 +68,4 @@ filterFunctions: []
 filterBlacklist: true
 #directory to save the corpus; by default is disabled  
 corpusDir: null
+
