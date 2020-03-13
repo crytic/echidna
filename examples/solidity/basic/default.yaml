@@ -62,5 +62,10 @@ maxBlockDelay: 60480
 #maximum number of blocks elapsed between generated txs; default is expected increment in one week
 # timeout:
 #campaign timeout (in seconds)
+# list of methods to filter
+filterFunctions: []
+# by default, blacklist methods in filterFunctions
+filterBlacklist: true
 #directory to save the corpus; by default is disabled  
 corpusDir: null
+

@@ -130,6 +130,21 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_sometimesfalse passed",                  solved      "echidna_sometimesfalse")
       , ("echidna_sometimesfalse didn't shrink optimally", solvedLen 2 "echidna_sometimesfalse")
       ]
+  , testContract "basic/flags.sol" (Just "basic/whitelist.yaml")
+      [ ("echidna_alwaystrue failed",                      passed      "echidna_alwaystrue")
+      , ("echidna_revert_always failed",                   passed      "echidna_revert_always")
+      , ("echidna_sometimesfalse passed",                  passed      "echidna_sometimesfalse")
+      ]
+  , testContract "basic/flags.sol" (Just "basic/whitelist_all.yaml")
+      [ ("echidna_alwaystrue failed",                      passed      "echidna_alwaystrue")
+      , ("echidna_revert_always failed",                   passed      "echidna_revert_always")
+      , ("echidna_sometimesfalse passed",                  solved      "echidna_sometimesfalse")
+      ]
+  , testContract "basic/flags.sol" (Just "basic/blacklist.yaml")
+      [ ("echidna_alwaystrue failed",                      passed      "echidna_alwaystrue")
+      , ("echidna_revert_always failed",                   passed      "echidna_revert_always")
+      , ("echidna_sometimesfalse passed",                  passed      "echidna_sometimesfalse")
+      ]
   , testContract "basic/revert.sol" Nothing
       [ ("echidna_fails_on_revert passed", solved "echidna_fails_on_revert")
       , ("echidna_fails_on_revert didn't shrink to one transaction",
