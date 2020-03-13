@@ -33,7 +33,7 @@ import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
 import System.Directory           (findExecutable)
 
-import Echidna.ABI         (SolSignature, stripBytecodeMetadata)
+import Echidna.ABI         (SolSignature, stripBytecodeMetadata, fallback)
 import Echidna.Exec        (execTx)
 import Echidna.RPC         (loadEthenoBatch)
 import Echidna.Transaction (TxConf, TxCall(SolCreate), Tx(..), World(..))
@@ -165,14 +165,15 @@ linkLibraries ls = "--libraries " ++
 
 filterMethods :: MonadThrow m => Filter -> NE.NonEmpty SolSignature -> m (NE.NonEmpty SolSignature)
 filterMethods (Whitelist [])  _ = throwM InvalidMethodFilters 
-filterMethods (Whitelist ic) ms = return $ NE.fromList $ NE.filter (\(m, _) -> T.unpack m `elem` ic) ms
-filterMethods (Blacklist ig) ms = return $ NE.fromList $ NE.filter (\(m, _) -> T.unpack m `notElem` ig) ms
-
-fallback :: SolSignature
-fallback = ("",[])
+filterMethods (Whitelist ic) ms = case NE.filter (\(m, _) -> T.unpack m `elem` ic) ms of
+                                       [] -> throwM InvalidMethodFilters
+                                       fs -> return $ NE.fromList fs
+filterMethods (Blacklist ig) ms = case NE.filter (\(m, _) -> T.unpack m `notElem` ig) ms of
+                                       [] -> throwM InvalidMethodFilters
+                                       fs -> return $ NE.fromList fs
 
 abiOf :: Text -> SolcContract -> NE.NonEmpty SolSignature
-abiOf pref cc = NE.fromList $ fallback : filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
+abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna

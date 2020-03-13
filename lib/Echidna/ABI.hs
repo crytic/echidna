@@ -43,6 +43,11 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
+
+-- | Fallback function is the null string
+fallback :: SolSignature
+fallback = ("",[])
+
 -- | Pretty-print some 'AbiValue'.
 ppAbiValue :: AbiValue -> String
 ppAbiValue (AbiUInt _ n)         = show n
