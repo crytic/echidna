@@ -235,15 +235,17 @@ addToCorpus res = unless (null rtxs) $ hasLens . corpus %= (rtxs:) where
 seqMutators :: (MonadRandom m) => m (Int -> [[Tx]] -> [Tx] -> m [Tx])
 seqMutators = fromList [(cnm, 1), (apm, 1), (prm, 1)]
   where -- Use the generated random transactions
-        cnm _  _         = return
+        cnm _ _          = return
         -- Append a sequence from the corpus with random ones
-        apm ql ctxs gtxs = do rtxs <- rElem $ NE.fromList ctxs
-                              k <- getRandomR (0, length rtxs - 1 )
-                              return $ take ql $ take k rtxs ++ gtxs
+        apm ql ctxs gtxs = do 
+          rtxs <- (rElem . NE.fromList) ctxs
+          k <- getRandomR (0, length rtxs - 1)
+          return . take ql . take k $ rtxs ++ gtxs
         -- Prepend a sequence from the corpus with random ones
-        prm ql ctxs gtxs = do rtxs <- rElem $ NE.fromList ctxs
-                              k <- getRandomR (0, length rtxs - 1 )
-                              return $ take ql $ take k gtxs ++ rtxs
+        prm ql ctxs gtxs = do 
+          rtxs <- (rElem . NE.fromList) ctxs
+          k <- getRandomR (0, length rtxs - 1)
+          return . take ql . take k $ gtxs ++ rtxs
 
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
