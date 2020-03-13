@@ -252,7 +252,7 @@ loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
                => (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature)) -> m (VM, World, [SolTest])
-prepareForTest (v, a, ts, m) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ _ ch _ ) ->
+prepareForTest (v, a, ts, m) = view hasLens <&> \SolConf { _sender = s, _checkAsserts = ch } ->
   (v, World s m, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else []) where
     r = v ^. state . contract
     a' = NE.toList a
