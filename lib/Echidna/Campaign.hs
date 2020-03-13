@@ -14,7 +14,7 @@ module Echidna.Campaign where
 import Control.Lens
 import Control.Monad (liftM3, replicateM, when, (<=<), ap, unless)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
-import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR, uniform, uniformMay)
+import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR, uniform, uniformMay, fromList)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
 import Control.Monad.Trans (lift)
@@ -232,6 +232,19 @@ addToCorpus :: (MonadState s m, Has Campaign s) => [(Tx, (VMResult, Int))] -> m 
 addToCorpus res = unless (null rtxs) $ hasLens . corpus %= (rtxs:) where
   rtxs = map fst res
 
+seqMutators :: (MonadRandom m) => m (Int -> [[Tx]] -> [Tx] -> m [Tx])
+seqMutators = fromList [(cnm, 1), (apm, 1), (prm, 1)]
+  where -- Use the generated random transactions
+        cnm _  _         = return
+        -- Append a sequence from the corpus with random ones
+        apm ql ctxs gtxs = do rtxs <- rElem $ NE.fromList ctxs
+                              k <- getRandomR (0, length rtxs - 1 )
+                              return $ take ql $ take k rtxs ++ gtxs
+        -- Prepend a sequence from the corpus with random ones
+        prm ql ctxs gtxs = do rtxs <- rElem $ NE.fromList ctxs
+                              k <- getRandomR (0, length rtxs - 1 )
+                              return $ take ql $ take k gtxs ++ rtxs
+
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has GenDict y, Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
@@ -246,20 +259,13 @@ randseq ql o w = do
     do
       -- Randomly generate new random transactions
       gtxs <- replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
-      n <- getRandomR (0, 2 :: Integer)
-      case (n, ctxs) of
+      -- Select a random mutator
+      mut <- seqMutators
+      case ctxs of
         -- Use the generated random transactions
-        (_, []) -> return gtxs
-        (0, _ ) -> return gtxs
-        -- Append a sequence from the corpus with random ones
-        (1, _ ) -> do rtxs <- rElem $ NE.fromList ctxs
-                      k <- getRandomR (0, length rtxs - 1 )
-                      return $ take ql $ take k rtxs ++ gtxs
-        -- Prepend a sequence from the corpus with random ones
-        (2, _ ) -> do rtxs <- rElem $ NE.fromList ctxs
-                      k <- getRandomR (0, length rtxs - 1 )
-                      return $ take ql $ take k gtxs ++ rtxs
-        _       -> error "invalid pattern in randseq"
+        [] -> return gtxs
+        -- Apply the mutator
+        _  -> mut ql ctxs gtxs
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
