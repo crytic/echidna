@@ -81,12 +81,12 @@ instance Show SolException where
     OnlyTests            -> "Only tests and no public functions found in ABI"
     (ConstructorArgs s)  -> "Constructor arguments are required: " ++ s
     NoCryticCompile      -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
-    InvalidMethodFilters -> "List of whitelist methods cannot be empty"
+    InvalidMethodFilters -> "Filtering methods whitelisting or blacklisting cannot result empty"
 
 
 instance Exception SolException
 
-data Filter = Blacklist [String] | Whitelist [String]
+data Filter = Blacklist [Text] | Whitelist [Text]
 
 -- | Configuration for loading Solidity for Echidna testing.
 data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract address to use
@@ -165,10 +165,10 @@ linkLibraries ls = "--libraries " ++
 
 filterMethods :: MonadThrow m => Filter -> NE.NonEmpty SolSignature -> m (NE.NonEmpty SolSignature)
 filterMethods (Whitelist [])  _ = throwM InvalidMethodFilters 
-filterMethods (Whitelist ic) ms = case NE.filter (\(m, _) -> T.unpack m `elem` ic) ms of
+filterMethods (Whitelist ic) ms = case NE.filter (\(m, _) -> m `elem` ic) ms of
                                        [] -> throwM InvalidMethodFilters
                                        fs -> return $ NE.fromList fs
-filterMethods (Blacklist ig) ms = case NE.filter (\(m, _) -> T.unpack m `notElem` ig) ms of
+filterMethods (Blacklist ig) ms = case NE.filter (\(m, _) -> m `notElem` ig) ms of
                                        [] -> throwM InvalidMethodFilters
                                        fs -> return $ NE.fromList fs
 
