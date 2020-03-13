@@ -33,7 +33,7 @@ import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
 import System.Directory           (findExecutable)
 
-import Echidna.ABI         (SolSignature, stripBytecodeMetadata)
+import Echidna.ABI         (SolSignature, stripBytecodeMetadata, fallback)
 import Echidna.Exec        (execTx)
 import Echidna.RPC         (loadEthenoBatch)
 import Echidna.Transaction (TxConf, TxCall(SolCreate), Tx(..), World(..))
@@ -65,24 +65,28 @@ data SolException = BadAddr Addr
                   | OnlyTests
                   | ConstructorArgs String
                   | NoCryticCompile
+                  | InvalidMethodFilters Filter
 
 instance Show SolException where
   show = \case
-    BadAddr a            -> "No contract at " ++ show a ++ " exists"
-    CompileFailure x y   -> "Couldn't compile given file\n" ++ "stdout:\n" ++ x ++ "stderr:\n" ++ y
-    SolcReadFailure      -> "Could not read crytic-export/combined_solc.json"
-    NoContracts          -> "No contracts found in given file"
-    (ContractNotFound c) -> "Given contract " ++ show c ++ " not found in given file"
-    (TestArgsFound t)    -> "Test " ++ show t ++ " has arguments, aborting"
-    (NoBytecode t)       -> "No bytecode found for contract " ++ show t
-    NoFuncs              -> "ABI is empty, are you sure your constructor is right?"
-    NoTests              -> "No tests found in ABI"
-    OnlyTests            -> "Only tests and no public functions found in ABI"
-    (ConstructorArgs s)  -> "Constructor arguments are required: " ++ s
-    NoCryticCompile      -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
+    BadAddr a                -> "No contract at " ++ show a ++ " exists"
+    CompileFailure x y       -> "Couldn't compile given file\n" ++ "stdout:\n" ++ x ++ "stderr:\n" ++ y
+    SolcReadFailure          -> "Could not read crytic-export/combined_solc.json"
+    NoContracts              -> "No contracts found in given file"
+    (ContractNotFound c)     -> "Given contract " ++ show c ++ " not found in given file"
+    (TestArgsFound t)        -> "Test " ++ show t ++ " has arguments, aborting"
+    (NoBytecode t)           -> "No bytecode found for contract " ++ show t
+    NoFuncs                  -> "ABI is empty, are you sure your constructor is right?"
+    NoTests                  -> "No tests found in ABI"
+    OnlyTests                -> "Only tests and no public functions found in ABI"
+    (ConstructorArgs s)      -> "Constructor arguments are required: " ++ s
+    NoCryticCompile          -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
+    (InvalidMethodFilters f) -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
 
 
 instance Exception SolException
+
+data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
 
 -- | Configuration for loading Solidity for Echidna testing.
 data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract address to use
@@ -98,6 +102,7 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
                        , _multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
                        , _checkAsserts    :: Bool             -- ^ Test if we can cause assertions to fail
+                       , _methodFilter    :: Filter           -- ^ List of methods to avoid or include calling during a campaign
                        }
 makeLenses ''SolConf
 
@@ -158,6 +163,18 @@ linkLibraries [] = ""
 linkLibraries ls = "--libraries " ++
   iconcatMap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls
 
+filterMethods :: MonadThrow m => Filter -> NE.NonEmpty SolSignature -> m (NE.NonEmpty SolSignature)
+filterMethods f@(Whitelist [])  _ = throwM $ InvalidMethodFilters f 
+filterMethods f@(Whitelist ic) ms = case NE.filter (\(m, _) -> m `elem` ic) ms of
+                                         [] -> throwM $ InvalidMethodFilters f
+                                         fs -> return $ NE.fromList fs
+filterMethods f@(Blacklist ig) ms = case NE.filter (\(m, _) -> m `notElem` ig) ms of
+                                         [] -> throwM $ InvalidMethodFilters f
+                                         fs -> return $ NE.fromList fs
+
+abiOf :: Text -> SolcContract -> NE.NonEmpty SolSignature
+abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
+
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
 -- testing and extract an ABI and list of tests. Throws exceptions if anything returned doesn't look
@@ -175,17 +192,22 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  (SolConf ca d ads bala balc pref _ _ libs _ fp ma ch) <- view hasLens
+  (SolConf ca d ads bala balc pref _ _ libs _ fp ma ch fs) <- view hasLens
 
   -- generate the complete abi mapping
-  let abiOf :: SolcContract -> NE.NonEmpty SolSignature
-      abiOf cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
-      abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode . to stripBytecodeMetadata, abiOf cc) else M.singleton (c ^. runtimeCode . to stripBytecodeMetadata) (abiOf c)
-      bc = c ^. creationCode
+  let bc = c ^. creationCode
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       con = view constructorInputs c
       (tests, funs) = partition (isPrefixOf pref . fst) abi
+      
 
+  -- Filter ABI according to the config options
+  fabiOfc <- filterMethods fs $ abiOf pref c
+  -- Filter again for assertions checking if enabled
+  neFuns <- filterMethods fs (NE.fromList $ fallback : funs)
+  -- Construct ABI mapping for World
+  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode . to stripBytecodeMetadata, abiOf pref cc) else M.singleton (c ^. runtimeCode . to stripBytecodeMetadata) fabiOfc
+  
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
   blank' <- maybe (pure (vmForEthrunCreation bc)) (loadEthenoBatch (fst <$> tests)) fp
@@ -198,7 +220,6 @@ loadSpecified name cs = do
 
   -- Make sure everything is ready to use, then ship it
   when (null abi) $ throwM NoFuncs                              -- < ABI checks
-  neFuns <- maybe (throwM OnlyTests) pure (NE.nonEmpty funs)    -- <
   when (not ch && null tests) $ throwM NoTests                  -- <
   when (bc == mempty) $ throwM (NoBytecode $ c ^. contractName) -- Bytecode check
 
@@ -207,13 +228,12 @@ loadSpecified name cs = do
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
       let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca 0xffffffff 0 (w256 $ fromInteger balc) (0, 0)
-      (, fallback NE.<| neFuns, fst <$> tests, abiMapping) <$> execStateT transaction vm
+      (, neFuns, fst <$> tests, abiMapping) <$> execStateT transaction vm
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
                                       find (isSuffixOf (if T.any (== ':') n then n else ":" `append` n) . view contractName) cs
-        fallback = ("",[])
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
 -- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
@@ -232,7 +252,7 @@ loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
                => (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature)) -> m (VM, World, [SolTest])
-prepareForTest (v, a, ts, m) = view hasLens <&> \(SolConf _ _ s _ _ _ _ _ _ _ _ _ ch) ->
+prepareForTest (v, a, ts, m) = view hasLens <&> \SolConf { _sender = s, _checkAsserts = ch } ->
   (v, World s m, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else []) where
     r = v ^. state . contract
     a' = NE.toList a
