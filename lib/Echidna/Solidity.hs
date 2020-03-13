@@ -65,28 +65,28 @@ data SolException = BadAddr Addr
                   | OnlyTests
                   | ConstructorArgs String
                   | NoCryticCompile
-                  | InvalidMethodFilters
+                  | InvalidMethodFilters Filter
 
 instance Show SolException where
   show = \case
-    BadAddr a            -> "No contract at " ++ show a ++ " exists"
-    CompileFailure x y   -> "Couldn't compile given file\n" ++ "stdout:\n" ++ x ++ "stderr:\n" ++ y
-    SolcReadFailure      -> "Could not read crytic-export/combined_solc.json"
-    NoContracts          -> "No contracts found in given file"
-    (ContractNotFound c) -> "Given contract " ++ show c ++ " not found in given file"
-    (TestArgsFound t)    -> "Test " ++ show t ++ " has arguments, aborting"
-    (NoBytecode t)       -> "No bytecode found for contract " ++ show t
-    NoFuncs              -> "ABI is empty, are you sure your constructor is right?"
-    NoTests              -> "No tests found in ABI"
-    OnlyTests            -> "Only tests and no public functions found in ABI"
-    (ConstructorArgs s)  -> "Constructor arguments are required: " ++ s
-    NoCryticCompile      -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
-    InvalidMethodFilters -> "Filtering methods whitelisting or blacklisting cannot result empty"
+    BadAddr a                -> "No contract at " ++ show a ++ " exists"
+    CompileFailure x y       -> "Couldn't compile given file\n" ++ "stdout:\n" ++ x ++ "stderr:\n" ++ y
+    SolcReadFailure          -> "Could not read crytic-export/combined_solc.json"
+    NoContracts              -> "No contracts found in given file"
+    (ContractNotFound c)     -> "Given contract " ++ show c ++ " not found in given file"
+    (TestArgsFound t)        -> "Test " ++ show t ++ " has arguments, aborting"
+    (NoBytecode t)           -> "No bytecode found for contract " ++ show t
+    NoFuncs                  -> "ABI is empty, are you sure your constructor is right?"
+    NoTests                  -> "No tests found in ABI"
+    OnlyTests                -> "Only tests and no public functions found in ABI"
+    (ConstructorArgs s)      -> "Constructor arguments are required: " ++ s
+    NoCryticCompile          -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
+    (InvalidMethodFilters f) -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
 
 
 instance Exception SolException
 
-data Filter = Blacklist [Text] | Whitelist [Text]
+data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
 
 -- | Configuration for loading Solidity for Echidna testing.
 data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract address to use
@@ -164,13 +164,13 @@ linkLibraries ls = "--libraries " ++
   iconcatMap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls
 
 filterMethods :: MonadThrow m => Filter -> NE.NonEmpty SolSignature -> m (NE.NonEmpty SolSignature)
-filterMethods (Whitelist [])  _ = throwM InvalidMethodFilters 
-filterMethods (Whitelist ic) ms = case NE.filter (\(m, _) -> m `elem` ic) ms of
-                                       [] -> throwM InvalidMethodFilters
-                                       fs -> return $ NE.fromList fs
-filterMethods (Blacklist ig) ms = case NE.filter (\(m, _) -> m `notElem` ig) ms of
-                                       [] -> throwM InvalidMethodFilters
-                                       fs -> return $ NE.fromList fs
+filterMethods f@(Whitelist [])  _ = throwM $ InvalidMethodFilters f 
+filterMethods f@(Whitelist ic) ms = case NE.filter (\(m, _) -> m `elem` ic) ms of
+                                         [] -> throwM $ InvalidMethodFilters f
+                                         fs -> return $ NE.fromList fs
+filterMethods f@(Blacklist ig) ms = case NE.filter (\(m, _) -> m `notElem` ig) ms of
+                                         [] -> throwM $ InvalidMethodFilters f
+                                         fs -> return $ NE.fromList fs
 
 abiOf :: Text -> SolcContract -> NE.NonEmpty SolSignature
 abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
