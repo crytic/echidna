@@ -232,20 +232,25 @@ addToCorpus :: (MonadState s m, Has Campaign s) => [(Tx, (VMResult, Int))] -> m 
 addToCorpus res = unless (null rtxs) $ hasLens . corpus %= (rtxs:) where
   rtxs = map fst res
 
-seqMutators :: (MonadRandom m) => m (Int -> [[Tx]] -> [Tx] -> m [Tx])
-seqMutators = fromList [(cnm, 1), (apm, 1), (prm, 1)]
+seqMutators :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) 
+  => m (Int -> [[Tx]] -> [Tx] -> m [Tx])
+seqMutators = fromList [(cnm, 1), (apm return, 1), (prm return, 1), (apm shrinkTx, 1), (prm shrinkTx, 1), (apm mutateTx, 1), (prm mutateTx, 1) ]
   where -- Use the generated random transactions
         cnm _ _          = return
         -- Append a sequence from the corpus with random ones
-        apm ql ctxs gtxs = do 
+        apm f ql ctxs gtxs = do 
           rtxs <- (rElem . NE.fromList) ctxs
+          rtxs' <- mapM f rtxs
           k <- getRandomR (0, length rtxs - 1)
-          return . take ql . take k $ rtxs ++ gtxs
+          return . take ql . take k $ rtxs' ++ gtxs
         -- Prepend a sequence from the corpus with random ones
-        prm ql ctxs gtxs = do 
+        prm f ql ctxs gtxs = do 
           rtxs <- (rElem . NE.fromList) ctxs
+          rtxs' <- mapM f rtxs
           k <- getRandomR (0, length rtxs - 1)
-          return . take ql . take k $ gtxs ++ rtxs
+          return . take ql . take k $ gtxs ++ rtxs'
+
+
 
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m

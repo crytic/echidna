@@ -209,6 +209,10 @@ shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
     ]
   in join (uniform possibilities) <*> pure tx'
 
+mutateTx :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) => Tx -> m Tx
+mutateTx (Tx (SolCall c) a b d w x y) = mutateAbiCall c >>= \c' -> return $ Tx (SolCall c') a b d w x y
+mutateTx x                            = return x
+
 -- | Lift an action in the context of a component of some 'MonadState' to an action in the
 -- 'MonadState' itself.
 liftSH :: (MonadState a m, Has b a) => State b x -> m x
