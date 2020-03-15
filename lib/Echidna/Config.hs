@@ -15,6 +15,7 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Control.Monad.State (StateT(..), runStateT)
 import Control.Monad.Trans (lift)
+import Data.Bool (bool)
 import Data.ByteString.Lazy.Char8 (unpack)
 import Data.Aeson
 import Data.Aeson.Lens
@@ -149,7 +150,8 @@ instance FromJSON EConfigWithUsage where
                                  <*> v ..:? "quiet"           ..!= False
                                  <*> v ..:? "initialize"      ..!= Nothing
                                  <*> v ..:? "multi-abi"       ..!= False
-                                 <*> v ..:? "checkAsserts"    ..!= False)
+                                 <*> v ..:? "checkAsserts"    ..!= False
+                                 <*> (bool Whitelist Blacklist <$> v ..:? "filterBlacklist" ..!= True <*> v ..:? "filterFunctions" ..!= []))
                     <*> tc
                     <*> xc
                     <*> (UIConf <$> v ..:? "dashboard" ..!= True <*> v ..:? "timeout" <*> style)
