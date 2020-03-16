@@ -1,3 +1,3 @@
 coverage: true
 seqLen: 1
-testLimit: 100
+testLimit: 1000
