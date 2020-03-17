@@ -95,7 +95,11 @@ usingCoverage cov = maybe (cov >> liftSH exec1 >> usingCoverage cov) pure =<< us
 
 -- | Given good point coverage, count unique points.
 coveragePoints :: CoverageMap -> Int
-coveragePoints = sum . fmap (S.size . S.map fst)
+coveragePoints = sum . fmap S.size
+
+-- | Given good point coverage, count simplified unique points (to report).
+scoveragePoints :: CoverageMap -> Int
+scoveragePoints = sum . fmap (S.size . S.map fst)
 
 -- | Capture the current PC and codehash. This should identify instructions uniquely (maybe? EVM is weird).
 pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
