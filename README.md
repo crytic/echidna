@@ -55,7 +55,7 @@ we can uncover an integer overflow in the [Metacoin Truffle box](https://github.
 
 ```
 $ cd examples/solidity/truffle/metacoin
-$ echidna-test . TEST
+$ echidna-test . --contract TEST
 ...
 echidna_convert: failed!💥
   Call sequence:
