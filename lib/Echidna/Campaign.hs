@@ -220,7 +220,7 @@ execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => Tx -> 
 execTxOptC t = do
   og  <- hasLens . coverage <<.= mempty
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
-  let vmr = isRevert $ fst res
+  let vmr = getResult $ fst res
   -- Update the coverage map with the proper binary according to the vm result 
   hasLens . coverage %= mapWithKey (\ _ s -> DS.map (\(i,_) -> (i, vmr)) s)
   -- Update the global coverage map with the union of the result just obtained 
@@ -230,8 +230,7 @@ execTxOptC t = do
     hasLens . genDict %= gaddCalls ([t ^. call] ^.. traverse . _SolCall)
     hasLens . newCoverage .= True
   return res
-  where isRevert (VMFailure _) = True
-        isRevert _             = False
+
 -- | Given a list of transactions in the corpus, save them discarding reverted transactions
 addToCorpus :: (MonadState s m, Has Campaign s) => [(Tx, (VMResult, Int))] -> m ()
 addToCorpus res = unless (null rtxs) $ hasLens . corpus %= (rtxs:) where
