@@ -11,6 +11,7 @@
 
 module Echidna.Campaign where
 
+import Control.Arrow (second)
 import Control.Lens
 import Control.Monad (liftM3, replicateM, when, (<=<), ap, unless)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
@@ -38,7 +39,7 @@ import System.Random (mkStdGen)
 import qualified Data.HashMap.Strict as H
 import qualified Data.HashSet as S
 import qualified Data.Foldable as DF
-import qualified Data.List.NonEmpty as NE
+import qualified Data.Set as DS
 
 import Echidna.ABI
 import Echidna.Exec
@@ -97,6 +98,8 @@ instance ToJSON TestState where
                                Solved  l -> (False, Just ("callseq", toJSON l))
                                Failed  e -> (False, Just ("exception", toJSON $ show e))
 
+type Corpus = DS.Set([Tx], Integer)
+
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                            -- ^ Tests being evaluated
@@ -108,9 +111,9 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                            -- ^ Generation dictionary
                          , _newCoverage :: Bool
                            -- ^ Flag to indicate new coverage found
-                         , _corpus      :: [[Tx]]
-                           -- ^ List of transactions with maximum coverage
-                         , _ncallseqs    :: Int
+                         , _corpus      :: Corpus
+                           -- ^ Set of transactions with maximum coverage
+                         , _ncallseqs   :: Integer
                            -- ^ Number of times the callseq is called                         
                          }
 
@@ -228,22 +231,22 @@ execTxOptC t = do
   return res
 
 -- | Given a list of transactions in the corpus, save them discarding reverted transactions
-addToCorpus :: (MonadState s m, Has Campaign s) => [(Tx, (VMResult, Int))] -> m ()
-addToCorpus res = unless (null rtxs) $ hasLens . corpus %= (rtxs:) where
+addToCorpus :: (MonadState s m, Has Campaign s) => Integer -> [(Tx, (VMResult, Int))] -> m ()
+addToCorpus n res = unless (null rtxs) $ hasLens . corpus %= DS.insert (rtxs, n) where
   rtxs = map fst res
 
-seqMutators :: (MonadRandom m) => m (Int -> [[Tx]] -> [Tx] -> m [Tx])
+seqMutators :: (MonadRandom m) => m (Int -> Corpus -> [Tx] -> m [Tx])
 seqMutators = fromList [(cnm, 1), (apm, 1), (prm, 1)]
   where -- Use the generated random transactions
         cnm _ _          = return
         -- Append a sequence from the corpus with random ones
         apm ql ctxs gtxs = do 
-          rtxs <- (rElem . NE.fromList) ctxs
+          rtxs <- fromList $ map (second fromInteger) $ take 10 $ DS.toDescList ctxs
           k <- getRandomR (0, length rtxs - 1)
           return . take ql . take k $ rtxs ++ gtxs
         -- Prepend a sequence from the corpus with random ones
         prm ql ctxs gtxs = do 
-          rtxs <- (rElem . NE.fromList) ctxs
+          rtxs <- fromList $ map (second fromInteger) $ take 10 $ DS.toDescList ctxs
           k <- getRandomR (0, length rtxs - 1)
           return . take ql . take k $ gtxs ++ rtxs
 
@@ -254,20 +257,18 @@ randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
 randseq ql o w = do
   ca <- use hasLens
   let ctxs = ca ^. corpus
-      p    = ca ^. ncallseqs
+      p    = fromInteger $ ca ^. ncallseqs
   if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
-    return $ ctxs !! p
+    return $ fst $ DS.elemAt p ctxs
   else
     do
       -- Randomly generate new random transactions
       gtxs <- replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
       -- Select a random mutator
       mut <- seqMutators
-      case ctxs of
-        -- Use the generated random transactions
-        [] -> return gtxs
-        -- Apply the mutator
-        _  -> mut ql ctxs gtxs
+      if DS.null ctxs
+      then return gtxs      -- Use the generated random transactions
+      else mut ql ctxs gtxs -- Apply the mutator
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
@@ -297,7 +298,7 @@ callseq v w ql = do
   -- Update the gas estimation
   when gasEnabled $ hasLens . gasInfo %= updateGasInfo res []
   -- If there is new coverage, add the transaction list to the corpus
-  when (s ^. _2 . newCoverage) $ addToCorpus res
+  when (s ^. _2 . newCoverage) $ addToCorpus (s ^. _2 . ncallseqs) res
   -- Reset the new coverage flag
   hasLens . newCoverage .= False
   -- Keep track of the number of calls to `callseq`
@@ -334,7 +335,7 @@ campaign u v w ts d txs = do
   c <- fromMaybe mempty <$> view (hasLens . to knownCoverage)
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d' False txs 0) where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d' False (DS.fromList $ map (,1) txs) 0) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _ _) ->
