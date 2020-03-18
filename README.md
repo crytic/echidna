@@ -29,7 +29,7 @@ The core Echidna functionality is an executable called `echidna-test`. `echidna-
 Invariants are expressed as Solidity functions with names that begin with `echidna_`, have no arguments, and return a boolean. For example, if you have some `balance` variable that should never go below `20`, you can write an extra function in your contract like this one:
 
 ```solidity
-function echidna_check_balance() { 
+function echidna_check_balance() public returns (bool) {
     return(balance >= 20); 
 }
 ```
@@ -67,7 +67,7 @@ echidna_convert: failed!💥
 Echidna's CLI can be used to choose the contract to test and load a configuration file.
 
 ```
-$ echidna-test contract.sol TEST --config="config.yaml"
+$ echidna-test contract.sol --contract TEST --config="config.yaml"
 ```
 
 The configuration file allows users to choose EVM and test generation
@@ -109,4 +109,4 @@ Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://emp
 
 * Review the [Solidity examples](examples/solidity) directory for more extensive Echidna use cases
 
-* Considering [emailing](mailto:jp@trailofbits.com) the Echidna development team directly for more detailed questions
+* Considering [emailing](mailto:echidna-dev@trailofbits.com) the Echidna development team directly for more detailed questions
