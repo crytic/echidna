@@ -1,4 +1,9 @@
-## TODO
+## 1.4.0.0
+
+* Filtering functions either blacklisting or whitelisting functions to call during a fuzzing campaign (#341)
+* Support to collect, save and load a corpus of transactions in JSON (#352, #353)
+* Basic mutations based on collected corpus (#370)
+* Use of `hlint` as Github action to verify new PR (#366)
 
 ## 1.3.0.0
 
