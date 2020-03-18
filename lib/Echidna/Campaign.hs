@@ -298,7 +298,7 @@ callseq v w ql = do
   -- Update the gas estimation
   when gasEnabled $ hasLens . gasInfo %= updateGasInfo res []
   -- If there is new coverage, add the transaction list to the corpus
-  when (s ^. _2 . newCoverage) $ addToCorpus (s ^. _2 . ncallseqs) res
+  when (s ^. _2 . newCoverage) $ addToCorpus (s ^. _2 . ncallseqs + 1) res
   -- Reset the new coverage flag
   hasLens . newCoverage .= False
   -- Keep track of the number of calls to `callseq`
