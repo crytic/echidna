@@ -241,12 +241,14 @@ seqMutators = fromList [(cnm, 1), (apm, 1), (prm, 1)]
         cnm _ _          = return
         -- Append a sequence from the corpus with random ones
         apm ql ctxs gtxs = do 
-          rtxs <- fromList $ map (second fromInteger) $ take 10 $ DS.toDescList ctxs
+          let ten_percent = 1 + (DS.size ctxs `div` 10)
+          rtxs <- fromList $ map (second fromInteger) $ take ten_percent $ DS.toDescList ctxs
           k <- getRandomR (0, length rtxs - 1)
           return . take ql . take k $ rtxs ++ gtxs
         -- Prepend a sequence from the corpus with random ones
         prm ql ctxs gtxs = do 
-          rtxs <- fromList $ map (second fromInteger) $ take 10 $ DS.toDescList ctxs
+          let ten_percent = 1 + (DS.size ctxs `div` 10)
+          rtxs <- fromList $ map (second fromInteger) $ take ten_percent $ DS.toDescList ctxs
           k <- getRandomR (0, length rtxs - 1)
           return . take ql . take k $ gtxs ++ rtxs
 
