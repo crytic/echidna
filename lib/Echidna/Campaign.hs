@@ -236,21 +236,17 @@ addToCorpus n res = unless (null rtxs) $ hasLens . corpus %= DS.insert (rtxs, n)
   rtxs = map fst res
 
 seqMutators :: (MonadRandom m) => m (Int -> Corpus -> [Tx] -> m [Tx])
-seqMutators = fromList [(cnm, 1), (apm, 1), (prm, 1)]
+seqMutators = fromList [(cnm, 100),
+                        (mut       (++) , 1), -- Append a sequence from the corpus with random ones
+                        (mut (flip (++)), 1)  -- Prepend a sequence from the corpus with random ones
+                       ]
   where -- Use the generated random transactions
         cnm _ _          = return
-        -- Append a sequence from the corpus with random ones
-        apm ql ctxs gtxs = do 
-          let ten_percent = 1 + (DS.size ctxs `div` 10)
-          rtxs <- fromList $ map (second fromInteger) $ take ten_percent $ DS.toDescList ctxs
+        mut f ql ctxs gtxs = do
+          let five_percent = 1 + (DS.size ctxs `div` 20)
+          rtxs <- fromList $ map (second fromInteger) $ take five_percent $ DS.toDescList ctxs
           k <- getRandomR (0, length rtxs - 1)
-          return . take ql . take k $ rtxs ++ gtxs
-        -- Prepend a sequence from the corpus with random ones
-        prm ql ctxs gtxs = do 
-          let ten_percent = 1 + (DS.size ctxs `div` 10)
-          rtxs <- fromList $ map (second fromInteger) $ take ten_percent $ DS.toDescList ctxs
-          k <- getRandomR (0, length rtxs - 1)
-          return . take ql . take k $ gtxs ++ rtxs
+          return . take ql . take k $ f rtxs gtxs
 
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
