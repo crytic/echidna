@@ -7,8 +7,8 @@ import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck(Arbitrary(..), Gen, (===), property, testProperty)
 
 import EVM (env, contracts)
-import EVM.Types (Addr(..))
 import EVM.ABI (AbiValue(..))
+import EVM.Types (Addr)
 import qualified EVM.Concrete(Word(..))
 
 import Echidna.ABI (SolCall, mkGenDict)
@@ -258,7 +258,7 @@ runContract fp n c =
     (v,w,ts) <- loadSolTests (fp NE.:| []) n
     cs  <- Echidna.Solidity.contracts (fp NE.:| [])
     ads <- NE.toList <$> addresses
-    let ads' = AbiAddress . addressWord160 <$> v ^. env . EVM.contracts . to keys
+    let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
     campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads ++ ads') [] g (returnTypes cs)) []
 
 getResult :: Text -> Campaign -> Maybe TestState
