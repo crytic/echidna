@@ -40,6 +40,7 @@ main = withCurrentDirectory "./examples/solidity" . defaultMain $
                              , compilationTests
                              , seedTests
                              , integrationTests
+                             , researchTests
                              , encodingJSONTests
                              ]
 
@@ -190,10 +191,6 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_balance failed",                 passed      "echidna_balance") ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
       [ ("echidna_library_call failed",            solved      "echidna_library_call") ]
-  , testContract "harvey/foo.sol"         Nothing
-      [ ("echidna_assert failed",                  solved      "echidna_assert") ]
-  , testContract "harvey/baz.sol"         Nothing
-      [ ("echidna_all_states failed",              solved      "echidna_all_states") ]
   , testContract "basic/fallback.sol"     Nothing
       [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
   , testContract "basic/darray.sol"       Nothing
@@ -234,6 +231,14 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("f_open1 gas estimate wrong",             gasInRange "f_open1"  18000 23000)
       , ("push_b gas estimate wrong",              gasInRange "push_b"   39000 45000)
       ]
+  ]
+
+researchTests :: TestTree
+researchTests = testGroup "Research-based Integration Testing"
+  [ testContract "research/harvey_foo.sol" Nothing
+      [ ("echidna_assert failed",                  solved      "echidna_assert") ]
+  , testContract "research/harvey_baz.sol" Nothing
+      [ ("echidna_all_states failed",              solved      "echidna_all_states") ]
   ]
 
 testConfig :: EConfig
