@@ -71,9 +71,9 @@ checkETest t = asks getter >>= \(TestConf p s) -> view (hasLens . propGas) >>= \
 -- still solves that test.
 shrinkSeq :: ( MonadRandom m, MonadReader x m, MonadThrow m
              , Has SolConf x, Has TestConf x, Has TxConf x, MonadState y m, Has VM y)
-          => SolTest -> [Tx] -> m [Tx]
-shrinkSeq t xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
-  check xs' = do {og <- get; res <- traverse_ execTx xs' >> checkETest t; put og; pure res}
+          => m Bool -> [Tx] -> m [Tx]
+shrinkSeq f xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
+  check xs' = do {og <- get; res <- traverse_ execTx xs' >> f; put og; pure res}
   shrinkSender x = view (hasLens . sender) >>= \l -> case ifind (const (== x ^. src)) l of
     Nothing     -> pure x
     Just (i, _) -> flip (set src) x . fromMaybe (x ^. src) <$> uniformMay (l ^.. folded . indices (< i))
