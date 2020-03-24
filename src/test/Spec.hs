@@ -4,7 +4,7 @@
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.QuickCheck(Arbitrary(..), Gen, (===), property, testProperty)
+import Test.Tasty.QuickCheck(Arbitrary(..), Gen, (===), property, testProperty, resize)
 
 import EVM (env, contracts)
 import EVM.ABI (AbiValue(..))
@@ -304,14 +304,14 @@ instance Arbitrary EVM.Concrete.Word where
   arbitrary = fromInteger <$> arbitrary
 
 instance Arbitrary TxCall where
-  arbitrary = do 
+  arbitrary = do
                 s <- arbitrary
-                cs <- arbitrary
+                cs <- resize 32 arbitrary
                 return $ SolCall (pack s, cs)
 
 instance Arbitrary Tx where
   arbitrary = let a :: Arbitrary a => Gen a
-                  a = arbitrary in 
+                  a = arbitrary in
                 Tx <$> a <*> a <*> a <*> a <*> a <*> a <*> a
 
 encodingJSONTests :: TestTree
