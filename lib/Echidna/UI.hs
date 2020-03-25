@@ -28,8 +28,9 @@ import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (forkIO, forkFinally)
 import UnliftIO.Timeout (timeout)
 
+import Echidna.Types.Campaign
+import Echidna.Campaign (campaign)
 import Echidna.ABI
-import Echidna.Campaign
 import qualified Echidna.Output.JSON
 import Echidna.Solidity
 import Echidna.Test
@@ -85,7 +86,7 @@ ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> m Campaign
 ui v w ts d txs = do
   let d' = fromMaybe defaultDict d
-  let getSeed = view $ hasLens . to seed . non (d' ^. defSeed)
+  let getSeed = view $ hasLens . seed . non (d' ^. defSeed)
   ref <- liftIO $ newIORef defaultCampaign
   let updateRef = use hasLens >>= liftIO . atomicWriteIORef ref
   let secToUsec = (* 1000000)

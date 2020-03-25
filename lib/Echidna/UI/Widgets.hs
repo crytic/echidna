@@ -21,7 +21,8 @@ import qualified Graphics.Vty as V
 import qualified Paths_echidna (version)
 
 import Echidna.Exec
-import Echidna.Campaign
+import Echidna.Types.Campaign
+import Echidna.Campaign (isDone)
 import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.UI.Report
@@ -97,12 +98,12 @@ tsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
 tsWidget (Failed e)  = pure (str "could not evaluate", str $ show e)
 tsWidget (Solved l)  = failWidget Nothing l
 tsWidget Passed      = pure (withAttr "success" $ str "PASSED!", emptyWidget)
-tsWidget (Open i)    = view hasLens >>= \CampaignConf { testLimit = t } ->
+tsWidget (Open i)    = view hasLens >>= \cc -> let t = cc ^. testLimit in
   if i >= t then
     tsWidget Passed
   else
     pure (withAttr "working" $ str $ "fuzzing " ++ progress i t, emptyWidget)
-tsWidget (Large n l) = view (hasLens . to shrinkLimit) >>= \m ->
+tsWidget (Large n l) = view (hasLens . shrinkLimit) >>= \m ->
   failWidget (if n < m then Just (n,m) else Nothing) l
 
 failWidget :: (MonadReader x m, Has Names x, Has TxConf x)
