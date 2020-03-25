@@ -157,7 +157,7 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/nearbyMining.sol" (Just "coverage/test.yaml")
       [ ("echidna_findNearby passed", solved "echidna_findNearby") ]
 
-  , testContract' "basic/smallValues.sol" Nothing (Just "coverage/test.yaml") False
+  , testContract' "basic/smallValues.sol" Nothing (Just "coverage/test.yaml") False Nothing
       [ ("echidna_findSmall passed", solved "echidna_findSmall") ]
 
   , testContract "basic/multisender.sol" (Just "basic/multisender.yaml") $
@@ -180,7 +180,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_found_sender failed",            solved      "echidna_found_sender") ]
   , testContract "basic/rconstants.sol"   Nothing
       [ ("echidna_found failed",                   solved      "echidna_found") ]
-  , testContract' "basic/cons-create-2.sol" (Just "C") Nothing True
+  , testContract' "basic/cons-create-2.sol" (Just "C") Nothing True Nothing
       [ ("echidna_state failed",                   solved      "echidna_state") ]
 -- single.sol is really slow and kind of unstable. it also messes up travis.
 --  , testContract "coverage/single.sol"    (Just "coverage/test.yaml")
@@ -191,8 +191,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_balance failed",                 passed      "echidna_balance") ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
       [ ("echidna_library_call failed",            solved      "echidna_library_call") ]
---  , testContract "basic/fallback.sol"     Nothing
---      [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
+  , testContract' "basic/fallback.sol" Nothing Nothing True (Just ["0.4.25", "0.5.7"])
+      [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
   , testContract "basic/darray.sol"       Nothing
       [ ("echidna_darray passed",                  solved      "echidna_darray")
       , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
@@ -207,14 +207,9 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
   , testContract "basic/gasprice.sol"     Nothing
       [ ("echidna_state passed",                   solved      "echidna_state") ]
-  , let fp = "basic_multicontract/contracts/Foo.sol"; cfg = Just "basic_multicontract/echidna_config.yaml" in
-      testCase fp $
-        do sv <- readProcess "solc" ["--version"] ""
-           when ("Version: 0.4.25" `isInfixOf` sv) $ do
-             c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
-             res <- runContract fp (Just "Foo") c
-             assertBool "echidna_test passed" $ solved "echidna_test" res
-  , testContract' "basic/multi-abi.sol" (Just "B") (Just "basic/multi-abi.yaml") True
+  , testContract' "basic_multicontract/contracts/Foo.sol" Nothing (Just "basic_multicontract/echidna_config.yaml") True (Just ["0.4.25"])
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
+  , testContract' "basic/multi-abi.sol" (Just "B") (Just "basic/multi-abi.yaml") True Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Ballot.sol"       Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
@@ -246,15 +241,22 @@ testConfig = defaultConfig & sConf . quiet .~ True
                            & cConf .~ (defaultConfig ^. cConf) { testLimit = 10000, shrinkLimit = 2500 }
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
-testContract fp cfg = testContract' fp Nothing cfg True
+testContract fp cfg =
+  testContract' fp Nothing cfg True Nothing
 
-testContract' :: FilePath -> Maybe Text -> Maybe FilePath -> Bool -> [(String, Campaign -> Bool)] -> TestTree
-testContract' fp n cfg s as = testCase fp $ do
-  c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
-  let c' = c & sConf . quiet .~ True
-             & if s then cConf .~ (c ^. cConf) { testLimit = 10000, shrinkLimit = 2500 } else id
-  res <- runContract fp n c'
-  mapM_ (\(t,f) -> assertBool t $ f res) as
+testContract' :: FilePath -> Maybe Text -> Maybe FilePath -> Bool -> Maybe [String] -> [(String, Campaign -> Bool)] -> TestTree
+testContract' fp n cfg s vs as = testCase fp $
+  case vs of
+       Just vs' -> do
+         sv <- readProcess "solc" ["--version"] ""
+         when (any (`isInfixOf` sv) (("Version: "<>) <$> vs')) doTest
+       Nothing  -> doTest
+  where doTest = do
+          c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
+          let c' = c & sConf . quiet .~ True
+                     & if s then cConf .~ (c ^. cConf) { testLimit = 10000, shrinkLimit = 2500 } else id
+          res <- runContract fp n c'
+          mapM_ (\(t,f) -> assertBool t $ f res) as
 
 runContract :: FilePath -> Maybe Text -> EConfig -> IO Campaign
 runContract fp n c =
@@ -298,7 +300,6 @@ solvedLen i t = (== Just i) . fmap length . solnFor t
 -- NOTE: this just verifies a call was found in the solution. Doesn't care about ordering/seq length
 solvedWith :: SolCall -> Text -> Campaign -> Bool
 solvedWith c t = maybe False (any $ (== SolCall c) . view call) . solnFor t
-
 
 -- Encoding JSON tests
 
