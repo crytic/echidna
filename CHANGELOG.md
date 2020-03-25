@@ -1,3 +1,8 @@
+## TODO
+
+## 1.4.0.1
+* HEVM updated to [af84e2ee0a0654fdaa91186384233cf1731ee7ce]
+
 ## 1.4.0.0
 
 * Filtering functions either blacklisting or whitelisting functions to call during a fuzzing campaign (#341)
@@ -48,3 +53,4 @@
 * Initial stable release
 
 [2cc059b49cae613025b925f0273b906e25484b68]: https://github.com/dapphub/dapptools/tree/2cc059b49cae613025b925f0273b906e25484b68
+[af84e2ee0a0654fdaa91186384233cf1731ee7ce]: https://github.com/dapphub/dapptools/tree/af84e2ee0a0654fdaa91186384233cf1731ee7ce
