@@ -223,6 +223,7 @@ canShrinkAbiValue (AbiString "")        = False
 canShrinkAbiValue (AbiArray _ _ l)      = any canShrinkAbiValue l
 canShrinkAbiValue (AbiArrayDynamic _ l) = l /= mempty
 canShrinkAbiValue (AbiTuple v)          = any canShrinkAbiValue v
+canShrinkAbiValue (AbiAddress 0)        = False
 canShrinkAbiValue _                     = True
 
 shrinkInt :: (Integral a, MonadRandom m) => a -> m a
@@ -232,7 +233,9 @@ shrinkInt x = fromIntegral <$> getRandomR (0, toInteger x)
 shrinkAbiValue :: MonadRandom m => AbiValue -> m AbiValue
 shrinkAbiValue (AbiUInt n m)         = AbiUInt n <$> shrinkInt m
 shrinkAbiValue (AbiInt n m)          = AbiInt n  <$> shrinkInt m
-shrinkAbiValue x@AbiAddress{}        = pure x
+shrinkAbiValue x@AbiAddress{}        = case x of
+                                        AbiAddress 0 -> pure x
+                                        _            -> rElem $ NE.fromList [AbiAddress 0, AbiAddress 0xdeadbeef, x]
 shrinkAbiValue (AbiBool _)           = pure $ AbiBool False
 shrinkAbiValue (AbiBytes n b)        = AbiBytes n <$> addNulls b
 shrinkAbiValue (AbiBytesDynamic b)   = fmap AbiBytesDynamic $ addNulls =<< shrinkBS b
