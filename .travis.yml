@@ -50,8 +50,9 @@ script:
      stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
    }
 
-   run_tests_using "solc-0.4.25"
+   #run_tests_using "solc-0.4.25"
    run_tests_using "solc-0.5.7"
+   run_tests_using "solc-0.6.2"
    set +ex
 
 notifications:
