@@ -54,13 +54,5 @@ script:
    run_tests_using "solc-0.5.7"
    set +ex
 
-
-after_success:
- - |
-   # Build and ship binary
-   export BUILD_BINARY=true
-   export TRAVIS_TAG=$(git rev-parse HEAD)
-   ./.travis/attach-binary.sh
-
 notifications:
   email: false
