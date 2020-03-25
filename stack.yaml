@@ -1,14 +1,15 @@
-resolver: lts-12.10
+resolver: lts-14.27
 
 packages:
 - '.'
 
 extra-deps:
 - git: https://github.com/dapphub/dapptools.git
-  commit: 2cc059b49cae613025b925f0273b906e25484b68
+  commit: af84e2ee0a0654fdaa91186384233cf1731ee7ce
   subdirs:
   - src/hevm
 
+- brick-0.46
 - ghci-pretty-0.0.2
 - multiset-0.3.4.1
 - restless-git-0.7
@@ -20,6 +21,8 @@ extra-deps:
 - ipprint-0.6
 - sr-extra-1.46.3.2
 - Unixutils-1.54.1
+- witherable-0.3.5
+- witherable-class-0
 - github: dmjio/semver-range
   commit: d8d9db892ddb6ae267c9bcbc4f6602668433f12a
 
