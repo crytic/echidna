@@ -229,7 +229,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "basic/gasuse.sol"       (Just "basic/gasuse.yaml")
       [ ("echidna_true failed",                    passed     "echidna_true")
-      , ("g gas estimate wrong",                   gasInRange "g" 10000000 20000000)
+      , ("g gas estimate wrong",                   gasInRange "g" 15000000 40000000)
       , ("f_close1 gas estimate wrong",            gasInRange "f_close1" 1800 2000)
       , ("f_open1 gas estimate wrong",             gasInRange "f_open1"  18000 23000)
       , ("push_b gas estimate wrong",              gasInRange "push_b"   39000 45000)
