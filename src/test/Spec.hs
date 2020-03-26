@@ -150,8 +150,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_fails_on_revert passed", solved "echidna_fails_on_revert")
       , ("echidna_fails_on_revert didn't shrink to one transaction",
          solvedLen 1 "echidna_fails_on_revert")
-      , ("echidna_revert_is_false didn't shrink to f(-1)",
-         solvedWith ("f", [AbiInt 256 (-1)]) "echidna_fails_on_revert")
+      , ("echidna_revert_is_false didn't shrink to f(-1, 0x0, 0xdeadbeef)",
+         solvedWith ("f", [AbiInt 256 (-1), AbiAddress 0, AbiAddress 0xdeadbeef]) "echidna_fails_on_revert")
       ]
 
   , testContract "basic/nearbyMining.sol" (Just "coverage/test.yaml")
