@@ -53,7 +53,7 @@ fallback = ("",[])
 ppAbiValue :: AbiValue -> String
 ppAbiValue (AbiUInt _ n)         = show n
 ppAbiValue (AbiInt  _ n)         = show n
-ppAbiValue (AbiAddress n)        = showHex n ""
+ppAbiValue (AbiAddress n)        = "0x" ++ showHex n ""
 ppAbiValue (AbiBool b)           = if b then "true" else "false"
 ppAbiValue (AbiBytes      _ b)   = show b
 ppAbiValue (AbiBytesDynamic b)   = show b
