@@ -1,0 +1,2 @@
+filterBlacklist: false
+filterFunctions: ["set0", "set1"] 

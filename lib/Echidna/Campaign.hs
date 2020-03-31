@@ -14,7 +14,7 @@ module Echidna.Campaign where
 import Control.Lens
 import Control.Monad (liftM3, replicateM, when, (<=<), ap, unless)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
-import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR, uniform, uniformMay)
+import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR, uniform, uniformMay, fromList)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
 import Control.Monad.Trans (lift)
@@ -26,18 +26,19 @@ import Data.Map (Map, mapKeys, unionWith, toList, (\\), keys, lookup, insert)
 import Data.Maybe (fromMaybe, isJust, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
-import Data.Set (Set, union)
+import Data.Set (union)
 import Data.Text (Text)
 import Data.Traversable (traverse)
 import EVM
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
-import EVM.Types (Addr, W256, addressWord160)
+import EVM.Types (Addr)
 import Numeric (showHex)
 import System.Random (mkStdGen)
 
 import qualified Data.HashMap.Strict as H
 import qualified Data.HashSet as S
 import qualified Data.Foldable as DF
+import qualified Data.List.NonEmpty as NE
 
 import Echidna.ABI
 import Echidna.Exec
@@ -62,7 +63,7 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- reset the state to avoid unrecoverable states/save memory\"
                                  , shrinkLimit   :: Int
                                    -- ^ Maximum number of candidate sequences to evaluate while shrinking
-                                 , knownCoverage :: Maybe (Map W256 (Set Int))
+                                 , knownCoverage :: Maybe CoverageMap
                                    -- ^ If applicable, initially known coverage. If this is 'Nothing',
                                    -- Echidna won't collect coverage information (and will go faster)
                                  , seed          :: Maybe Int
@@ -99,7 +100,7 @@ instance ToJSON TestState where
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                            -- ^ Tests being evaluated
-                         , _coverage    :: Map W256 (Set Int)
+                         , _coverage    :: CoverageMap
                            -- ^ Coverage captured (NOTE: we don't always record this)
                          , _gasInfo     :: Map Text (Int, [Tx])
                            -- ^ Worst case gas (NOTE: we don't always record this)
@@ -165,7 +166,7 @@ updateTest v (Just (v', xs)) (n, t) = view (hasLens . to testLimit) >>= \tl -> (
 updateTest v Nothing (n, t) = view (hasLens . to shrinkLimit) >>= \sl -> (n,) <$> case t of
   Large i x | i >= sl -> pure $ Solved x
   Large i x           -> if length x > 1 || any canShrinkTx x
-                           then Large (i + 1) <$> evalStateT (shrinkSeq n x) v
+                           then Large (i + 1) <$> evalStateT (shrinkSeq (checkETest n) x) v
                            else pure $ Solved x
   _                   -> pure t
 
@@ -231,18 +232,42 @@ addToCorpus :: (MonadState s m, Has Campaign s) => [(Tx, (VMResult, Int))] -> m 
 addToCorpus res = unless (null rtxs) $ hasLens . corpus %= (rtxs:) where
   rtxs = map fst res
 
+seqMutators :: (MonadRandom m) => m (Int -> [[Tx]] -> [Tx] -> m [Tx])
+seqMutators = fromList [(cnm, 1), (apm, 1), (prm, 1)]
+  where -- Use the generated random transactions
+        cnm _ _          = return
+        -- Append a sequence from the corpus with random ones
+        apm ql ctxs gtxs = do 
+          rtxs <- (rElem . NE.fromList) ctxs
+          k <- getRandomR (0, length rtxs - 1)
+          return . take ql . take k $ rtxs ++ gtxs
+        -- Prepend a sequence from the corpus with random ones
+        prm ql ctxs gtxs = do 
+          rtxs <- (rElem . NE.fromList) ctxs
+          k <- getRandomR (0, length rtxs - 1)
+          return . take ql . take k $ gtxs ++ rtxs
+
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has GenDict y, Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
         => Int -> Map Addr Contract -> World -> m [Tx]
-randseq ql o w = do 
+randseq ql o w = do
   ca <- use hasLens
-  let txs = ca ^. corpus  
-      p   = ca ^. ncallseqs 
-  if length txs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
-    return $ txs !! p
-  else                   -- Randomly generate new transactions 
-    replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
+  let ctxs = ca ^. corpus
+      p    = ca ^. ncallseqs
+  if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
+    return $ ctxs !! p
+  else
+    do
+      -- Randomly generate new random transactions
+      gtxs <- replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
+      -- Select a random mutator
+      mut <- seqMutators
+      case ctxs of
+        -- Use the generated random transactions
+        [] -> return gtxs
+        -- Apply the mutator
+        _  -> mut ql ctxs gtxs
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
@@ -266,7 +291,7 @@ callseq v w ql = do
       -- compute the addresses not present in the old VM via set difference
       diff = keys $ new \\ old
       -- and construct a set to union to the constants table
-      diffs = H.fromList [(AbiAddressType, S.fromList $ AbiAddress . addressWord160 <$> diff)]
+      diffs = H.fromList [(AbiAddressType, S.fromList $ AbiAddress <$> diff)]
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= snd s
   -- Update the gas estimation
