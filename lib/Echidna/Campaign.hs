@@ -98,7 +98,7 @@ instance ToJSON TestState where
                                Solved  l -> (False, Just ("callseq", toJSON l))
                                Failed  e -> (False, Just ("exception", toJSON $ show e))
 
-type Corpus = DS.Set([Tx], Integer)
+type Corpus = DS.Set ([Tx], Integer)
 
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
