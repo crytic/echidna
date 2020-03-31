@@ -243,7 +243,7 @@ researchTests = testGroup "Research-based Integration Testing"
 
 testConfig :: EConfig
 testConfig = defaultConfig & sConf . quiet .~ True
-                           & cConf .~ (defaultConfig ^. cConf) { testLimit = 10000, shrinkLimit = 2500 }
+                           & cConf .~ (defaultConfig ^. cConf) { testLimit = 10000, shrinkLimit = 4000 }
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg = testContract' fp Nothing cfg True
@@ -252,7 +252,7 @@ testContract' :: FilePath -> Maybe Text -> Maybe FilePath -> Bool -> [(String, C
 testContract' fp n cfg s as = testCase fp $ do
   c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
   let c' = c & sConf . quiet .~ True
-             & if s then cConf .~ (c ^. cConf) { testLimit = 10000, shrinkLimit = 2500 } else id
+             & if s then cConf .~ (c ^. cConf) { testLimit = 10000, shrinkLimit = 4000 } else id
   res <- runContract fp n c'
   mapM_ (\(t,f) -> assertBool t $ f res) as
 
