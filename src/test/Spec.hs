@@ -249,7 +249,7 @@ testContract' fp n cfg s vs as = testCase fp $
   case vs of
        Just vs' -> do
          sv <- readProcess "solc" ["--version"] ""
-         when (any (`isInfixOf` sv) (("Version: "<>) <$> vs')) doTest
+         when (any (`isInfixOf` sv) (("Version: " <>) <$> vs')) doTest
        Nothing  -> doTest
   where doTest = do
           c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
