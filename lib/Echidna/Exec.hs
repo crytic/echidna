@@ -97,7 +97,9 @@ usingCoverage cov = maybe (cov >> liftSH exec1 >> usingCoverage cov) pure =<< us
 coveragePoints :: CoverageMap -> Int
 coveragePoints = sum . fmap S.size
 
--- | Given good point coverage, count simplified unique points (to report).
+-- | Given good point coverage, count the number of unique points but
+-- only considering the different instruction PCs (discarding the TxResult). 
+-- This is useful to report a coverage measure to the user
 scoveragePoints :: CoverageMap -> Int
 scoveragePoints = sum . fmap (S.size . S.map fst)
 
