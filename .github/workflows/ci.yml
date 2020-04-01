@@ -105,6 +105,6 @@ jobs:
     steps:
       - name: Test
         run: |
-          cp $HOME/.local/bin/${{ matrix.solc }} $HOME/.local/bin/solc
+          cp $HOME/.local/bin/solc-${{ matrix.solc }} $HOME/.local/bin/solc
           stack --no-terminal test --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
 
