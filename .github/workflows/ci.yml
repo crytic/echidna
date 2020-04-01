@@ -34,47 +34,19 @@ jobs:
       - name: Setup Stack
         uses: mstksg/setup-stack@v1
 
-      - name: Cache Binaries
-        id: cache-bins
+      - name: Cache Local
+        id: cache-local
         uses: actions/cache@v1
         with:
-          path: ~/.local/bin
-          key: ${{ runner.os }}-bins
+          path: ~/.local/
+          key: ${{ runner.os }}-local
 
-      - name: Cache Libraries
-        id: cache-libs
+      - name: Cache Stack
+        id: cache-stack
         uses: actions/cache@v1
         with:
-          path: ~/.local/lib
-          key: ${{ runner.os }}-libs
-
-      - name: Cache Includes
-        id: cache-includes
-        uses: actions/cache@v1
-        with:
-          path: ~/.local/include
-          key: ${{ runner.os }}-includes
-
-      - name: Cache GHC
-        id: cache-ghc
-        uses: actions/cache@v1
-        with:
-          path: ~/.stack/programs
-          key: ${{ runner.os }}-ghc
-
-      - name: Cache Index
-        id: cache-index
-        uses: actions/cache@v1
-        with:
-          path: ~/.stack/indices
-          key: ${{ runner.os }}-index
-
-      - name: Cache Snapshots
-        id: cache-snapshots
-        uses: actions/cache@v1
-        with:
-          path: ~/.stack/snapshots
-          key: ${{ runner.os }}-snapshots
+          path: ~/.stack
+          key: ${{ runner.os }}-stack
 
       - name: Build Binaries
         run: |
