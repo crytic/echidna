@@ -46,6 +46,7 @@ jobs:
         with:
           path: ~/.local/
           key: ${{ runner.os }}-local
+          restore-key: ${{ runner.os }}-local
 
       - name: Cache Stack
         id: cache-stack
@@ -53,6 +54,7 @@ jobs:
         with:
           path: ~/.stack
           key: ${{ runner.os }}-stack
+          restore-key: ${{ runner.os }}-stack
 
       - name: Cache Cabal
         id: cache-cabal
@@ -60,6 +62,7 @@ jobs:
         with:
           path: ~/.cabal
           key: ${{ runner.os }}-cabal
+          restore-key: ${{ runner.os }}-cabal
 
       - name: Build Binaries
         run: |
