@@ -15,12 +15,12 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - macOS-latest
+          #- macOS-latest
         include:
           - os: ubuntu-latest
             apt-get: autoconf automake libtool
-          - os: macOS-latest
-            brew: autoconf automake libtool
+          #- os: macOS-latest
+          #  brew: autoconf automake libtool
     steps:
       - name: Get Packages
         uses: mstksg/get-package@v1
@@ -39,14 +39,14 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.local/bin
-          key: ${{ runner.os }}-bins-asdfoiergoweing
+          key: ${{ runner.os }}-bins
 
       - name: Cache Libraries
         id: cache-libs
         uses: actions/cache@v1
         with:
           path: ~/.local/lib
-          key: ${{ runner.os }}-libs-aoigneowignwoignweoin
+          key: ${{ runner.os }}-libs
 
       - name: Cache Includes
         id: cache-includes
