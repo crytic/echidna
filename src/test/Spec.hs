@@ -12,7 +12,7 @@ import EVM.Types (Addr)
 import qualified EVM.Concrete(Word(..))
 
 import Echidna.ABI (SolCall, mkGenDict)
-import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests, gasInfo)
+import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests, corpus, gasInfo)
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (TxCall(..), Tx(..), call)
@@ -115,7 +115,7 @@ seedTests =
     , testCase "same seeds" $ assertBool "results differ" =<< same 0 0
     ]
     where cfg s = defaultConfig & sConf . quiet .~ True
-                                & cConf .~ CampaignConf 600 False False 20 0 Nothing (Just s) 0.15 Nothing
+                                & cConf .~ CampaignConf 600 False False 20 0 Nothing (Just s) 0.15 Nothing (1,1,1)
           gen s = view tests <$> runContract "basic/flags.sol" Nothing (cfg s)
           same s t = liftM2 (==) (gen s) (gen t)
 
@@ -219,6 +219,10 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/MultiTuple.sol"   Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
+  , testContract "basic/array-mutation.sol"   Nothing
+      [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
+  , testContract "basic/darray-mutation.sol"  Nothing
+      [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
   , testContract "basic/gasuse.sol"       (Just "basic/gasuse.yaml")
       [ ("echidna_true failed",                    passed     "echidna_true")
       , ("g gas estimate wrong",                   gasInRange "g" 15000000 40000000)
@@ -226,6 +230,9 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("f_open1 gas estimate wrong",             gasInRange "f_open1"  18000 23000)
       , ("push_b gas estimate wrong",              gasInRange "push_b"   39000 45000)
       ]
+  ,  testContract "coverage/boolean.sol"       (Just "coverage/boolean.yaml")
+      [ ("echidna_true failed",                    passed     "echidna_true")
+      , ("unexpected corpus count ",               countCorpus 5)]
   ]
 
 researchTests :: TestTree
@@ -278,6 +285,9 @@ gasInRange :: Text -> Int -> Int -> Campaign -> Bool
 gasInRange t l h c = case getGas t c of
   Just (g, _) -> g >= l && g <= h
   _           -> False
+
+countCorpus :: Int -> Campaign -> Bool
+countCorpus n c = length (view corpus c) == n
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor t c = case getResult t c of

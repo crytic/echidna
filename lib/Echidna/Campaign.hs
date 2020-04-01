@@ -22,11 +22,10 @@ import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Aeson (ToJSON(..), object)
 import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
-import Data.Map (Map, mapKeys, unionWith, toList, (\\), keys, lookup, insert)
+import Data.Map (Map, mapWithKey, mapKeys, unionWith, toList, (\\), keys, lookup, insert)
 import Data.Maybe (fromMaybe, isJust, mapMaybe, maybeToList)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
-import Data.Set (union)
 import Data.Text (Text)
 import Data.Traversable (traverse)
 import EVM
@@ -38,6 +37,7 @@ import System.Random (mkStdGen)
 import qualified Data.HashMap.Strict as H
 import qualified Data.HashSet as S
 import qualified Data.Foldable as DF
+import qualified Data.Set as DS
 import qualified Data.List.NonEmpty as NE
 
 import Echidna.ABI
@@ -50,6 +50,8 @@ instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
 instance MonadCatch m => MonadCatch (RandT g m) where
   catch = liftCatch catch
+
+type MutationConsts = (Integer, Integer, Integer)
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { testLimit     :: Int
@@ -72,6 +74,7 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- ^ Frequency for the use of dictionary values in the random transactions
                                  , corpusDir     :: Maybe FilePath
                                    -- ^ Directory to load and save lists of transactions
+                                 , mutConsts     :: MutationConsts
                                  }
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
@@ -220,7 +223,11 @@ execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => Tx -> 
 execTxOptC t = do
   og  <- hasLens . coverage <<.= mempty
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
-  hasLens . coverage %= unionWith union og
+  let vmr = getResult $ fst res
+  -- Update the coverage map with the proper binary according to the vm result 
+  hasLens . coverage %= mapWithKey (\ _ s -> DS.map (\(i,_) -> (i, vmr)) s)
+  -- Update the global coverage map with the union of the result just obtained 
+  hasLens . coverage %= unionWith DS.union og
   grew <- (== LT) . comparing coveragePoints og <$> use (hasLens . coverage)
   when grew $ do
     hasLens . genDict %= gaddCalls ([t ^. call] ^.. traverse . _SolCall)
@@ -232,8 +239,8 @@ addToCorpus :: (MonadState s m, Has Campaign s) => [(Tx, (VMResult, Int))] -> m 
 addToCorpus res = unless (null rtxs) $ hasLens . corpus %= (rtxs:) where
   rtxs = map fst res
 
-seqMutators :: (MonadRandom m) => m (Int -> [[Tx]] -> [Tx] -> m [Tx])
-seqMutators = fromList [(cnm, 1), (apm, 1), (prm, 1)]
+seqMutators :: (MonadRandom m) => MutationConsts -> m (Int -> [[Tx]] -> [Tx] -> m [Tx])
+seqMutators (c1, c2, c3) = fromList [(cnm, fromInteger c1), (apm, fromInteger c2), (prm, fromInteger c3)]
   where -- Use the generated random transactions
         cnm _ _          = return
         -- Append a sequence from the corpus with random ones
@@ -253,6 +260,7 @@ randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
         => Int -> Map Addr Contract -> World -> m [Tx]
 randseq ql o w = do
   ca <- use hasLens
+  cs <- mutConsts <$> view hasLens
   let ctxs = ca ^. corpus
       p    = ca ^. ncallseqs
   if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
@@ -262,7 +270,7 @@ randseq ql o w = do
       -- Randomly generate new random transactions
       gtxs <- replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
       -- Select a random mutator
-      mut <- seqMutators
+      mut <- seqMutators cs
       case ctxs of
         -- Use the generated random transactions
         [] -> return gtxs
@@ -337,7 +345,7 @@ campaign u v w ts d txs = do
   execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d' False txs 0) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _ _) ->
+    update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _ _ _) ->
       if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step

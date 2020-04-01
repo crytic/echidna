@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          #- macOS-latest
+        include:
+          - os: ubuntu-latest
+            apt-get: autoconf automake libtool
+          #- os: macOS-latest
+          #  brew: autoconf automake libtool
+
+    steps:
+      - name: Get Packages
+        uses: mstksg/get-package@v1
+        with:
+          brew: ${{ matrix.brew }}
+          apt-get: ${{ matrix.apt-get }}
+
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup Stack
+        uses: mstksg/setup-stack@v1
+
+      - name: Setup Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: '3.6'
+
+      - name: Cache Local
+        id: cache-local
+        uses: actions/cache@v1
+        with:
+          path: ~/.local/
+          key: ${{ runner.os }}-local
+
+      - name: Cache Stack
+        id: cache-stack
+        uses: actions/cache@v1
+        with:
+          path: ~/.stack
+          key: ${{ runner.os }}-stack
+
+      - name: Cache Cabal
+        id: cache-cabal
+        uses: actions/cache@v1
+        with:
+          path: ~/.cabal
+          key: ${{ runner.os }}-cabal
+
+      - name: Build Binaries
+        run: |
+          .github/scripts/install-solc.sh
+          .github/scripts/install-crytic-compile.sh
+        env:
+          HOST_OS: ${{ runner.os }}
+
+      - name: Build Libraries
+        run: |
+          .github/scripts/install-libsecp256k1.sh
+          .github/scripts/install-libff.sh
+        env:
+          HOST_OS: ${{ runner.os }}
+
+      - name: Test
+        run: |
+          export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:$HOME/.local/lib"
+          export LIBRARY_PATH="${LIBRARY_PATH}:$HOME/.local/lib"
+          export PATH="${PATH}:$HOME/.local/bin"
+
+          if [ "${{ runner.os }}" == "Linux" ]; then
+            for VER in "0.4.25" "0.5.7" "0.6.2" ; do
+              cp "$HOME/.local/bin/solc-$VER" "$HOME/.local/bin/solc"
+              stack test --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+            done
+          else
+            stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+          fi

@@ -87,7 +87,7 @@ execTxWith h m t = do (og :: VM) <- use hasLens
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
 execTx = execTxWith vmExcept $ liftSH exec
 
-type CoverageMap = Map W256 (Set Int)
+type CoverageMap = Map W256 (Set (Int, TxResult))
 
 -- | Given a way of capturing coverage info, execute while doing so once per instruction.
 usingCoverage :: (MonadState x m, Has VM x) => m () -> m VMResult
@@ -97,10 +97,16 @@ usingCoverage cov = maybe (cov >> liftSH exec1 >> usingCoverage cov) pure =<< us
 coveragePoints :: CoverageMap -> Int
 coveragePoints = sum . fmap S.size
 
+-- | Given good point coverage, count the number of unique points but
+-- only considering the different instruction PCs (discarding the TxResult). 
+-- This is useful to report a coverage measure to the user
+scoveragePoints :: CoverageMap -> Int
+scoveragePoints = sum . fmap (S.size . S.map fst)
+
 -- | Capture the current PC and codehash. This should identify instructions uniquely (maybe? EVM is weird).
 pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
 pointCoverage l = use hasLens >>= \v ->
-  l %= M.insertWith (const . S.insert $ v ^. state . pc) (fromMaybe (W256 maxBound) $ h v) mempty where
+  l %= M.insertWith (const . S.insert $ (v ^. state . pc, Success)) (fromMaybe (W256 maxBound) $ h v) mempty where
     h v = v ^? env . contracts . at (v ^. state . contract) . _Just . codehash
 
 traceCoverage :: (MonadState x m, Has VM x, Has [Op] x) => m ()
