@@ -65,4 +65,5 @@ jobs:
       - name: Test
         run: |
           cp $HOME/.local/bin/solc-${{ matrix.solc }} $HOME/.local/bin/solc
+          export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:$HOME/.local/lib"
           stack test --no-terminal --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
