@@ -34,6 +34,11 @@ jobs:
       - name: Setup Stack
         uses: mstksg/setup-stack@v1
 
+      - name: Setup Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: '3.6'
+
       - name: Cache Local
         id: cache-local
         uses: actions/cache@v1
