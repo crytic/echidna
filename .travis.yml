@@ -31,7 +31,6 @@ install:
  - export PATH=$HOME/.local/bin:$PATH
  - ./.travis/install-libsecp256k1.sh
  - ./.travis/install-libff.sh
- - ./.travis/install-ghr.sh
  - ./.travis/install-stack.sh
  - ./.travis/install-solc.sh
  - ./.travis/install-crytic-compile.sh
@@ -44,7 +43,7 @@ script:
  - |
    set -ex
    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
-   
+
    run_tests_using () {
      cp ~/.local/bin/$1 ~/.local/bin/solc || true
      stack --no-terminal test --ghc-options="$GHC_OPTIONS" $STACK_OPTS
