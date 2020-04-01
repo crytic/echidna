@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    #branches:
+    #  - master
+  pull_request:
+    #branches:
+    #  - master
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macOS-latest
+        include:
+          - os: ubuntu-latest
+            apt-get: autoconf automake libtool
+          - os: macOS-latest
+            brew: autoconf automake libtool
+    steps:
+      - name: Get Packages
+        uses: mstksg/get-package@v1
+        with:
+          brew: ${{ matrix.brew }}
+          apt-get: ${{ matrix.apt-get }}
+
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup Stack
+        uses: mstksg/setup-stack@v1
+
+      - name: Cache Binaries
+        id: cache-bins
+        uses: actions/cache@v1
+        with:
+          path: ~/.local/bin
+          key: ${{ runner.os }}-bins-asdfoiergoweing
+
+      - name: Cache Libraries
+        id: cache-libs
+        uses: actions/cache@v1
+        with:
+          path: ~/.local/lib
+          key: ${{ runner.os }}-libs-aoigneowignwoignweoin
+
+      - name: Cache Includes
+        id: cache-includes
+        uses: actions/cache@v1
+        with:
+          path: ~/.local/include
+          key: ${{ runner.os }}-includes
+
+      - name: Cache GHC
+        id: cache-ghc
+        uses: actions/cache@v1
+        with:
+          path: ~/.stack/programs
+          key: ${{ runner.os }}-ghc
+
+      - name: Cache Index
+        id: cache-index
+        uses: actions/cache@v1
+        with:
+          path: ~/.stack/indices
+          key: ${{ runner.os }}-index
+
+      - name: Cache Snapshots
+        id: cache-snapshots
+        uses: actions/cache@v1
+        with:
+          path: ~/.stack/snapshots
+          key: ${{ runner.os }}-snapshots
+
+      - name: Build Binaries
+        run: |
+          .github/scripts/install-ghr.sh
+          .github/scripts/install-solc.sh
+        env:
+          HOST_OS: ${{ runner.os }}
+
+      - name: Build Libraries
+        run: |
+          .github/scripts/install-libsecp256k1.sh
+          .github/scripts/install-libff.sh
+        env:
+          HOST_OS: ${{ runner.os }}
+
+      - name: Build
+        run: |
+          # patch stack.yaml .github/stack.yaml.patch
+          stack build --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+#  tests:
+#    runs-on: ${{ matrix.os }}
+#    strategy:
+#      matrix:
+#        os:
+#          - ubuntu-latest
+#        solc:
+#          - 0.4.25
+#          - 0.5.10
