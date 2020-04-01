@@ -28,6 +28,7 @@ dependencies:
   - hevm
   - lens
   - lens-aeson
+  - ListLike
   - megaparsec
   - MonadRandom
   - mtl                  >= 2.2.1  && < 2.3

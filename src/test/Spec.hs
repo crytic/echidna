@@ -224,6 +224,10 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/MultiTuple.sol"   Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
+  , testContract "basic/array-mutation.sol"   Nothing
+      [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
+  , testContract "basic/darray-mutation.sol"  Nothing
+      [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
   , testContract "basic/gasuse.sol"       (Just "basic/gasuse.yaml")
       [ ("echidna_true failed",                    passed     "echidna_true")
       , ("g gas estimate wrong",                   gasInRange "g" 15000000 40000000)
