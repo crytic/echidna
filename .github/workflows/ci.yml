@@ -52,6 +52,7 @@ jobs:
         run: |
           .github/scripts/install-ghr.sh
           .github/scripts/install-solc.sh
+          .github/scripts/install-crytic-compile.sh
         env:
           HOST_OS: ${{ runner.os }}
 
