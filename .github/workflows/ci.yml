@@ -92,14 +92,19 @@ jobs:
 
       - name: Build
         run: |
-          # patch stack.yaml .github/stack.yaml.patch
-          stack build --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
-#  tests:
-#    runs-on: ${{ matrix.os }}
-#    strategy:
-#      matrix:
-#        os:
-#          - ubuntu-latest
-#        solc:
-#          - 0.4.25
-#          - 0.5.10
+          stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+  tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+        solc:
+          - 0.4.25
+          - 0.5.7
+    steps:
+      - name: Test
+        run: |
+          cp $HOME/.local/bin/${{ runner.solc }} $HOME/.local/bin/solc
+          stack --no-terminal test --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+
