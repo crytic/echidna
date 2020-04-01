@@ -34,7 +34,8 @@ import Data.Vector.Instances ()
 import Data.Word8 (Word8)
 import Numeric (showHex)
 
-import EVM.ABI
+import EVM.ABI hiding (genAbiValue)
+import EVM.Types (Addr)
 
 import qualified Control.Monad.Random.Strict as R
 import qualified Data.ByteString as BS
@@ -52,7 +53,7 @@ fallback = ("",[])
 ppAbiValue :: AbiValue -> String
 ppAbiValue (AbiUInt _ n)         = show n
 ppAbiValue (AbiInt  _ n)         = show n
-ppAbiValue (AbiAddress n)        = showHex n ""
+ppAbiValue (AbiAddress n)        = "0x" ++ showHex n ""
 ppAbiValue (AbiBool b)           = if b then "true" else "false"
 ppAbiValue (AbiBytes      _ b)   = show b
 ppAbiValue (AbiBytesDynamic b)   = show b
@@ -116,6 +117,7 @@ defaultDict = mkGenDict 0 [] [] 0 (const Nothing)
 -- We need the above since hlint doesn't notice DeriveAnyClass in StandaloneDeriving.
 deriving instance Hashable AbiType
 deriving instance Hashable AbiValue
+deriving instance Hashable Addr
 
 -- | Construct a 'GenDict' from some dictionaries, a 'Float', a default seed, and a typing rule for
 -- return values

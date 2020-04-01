@@ -32,7 +32,7 @@ import Data.Text (Text)
 import Data.Traversable (traverse)
 import EVM
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
-import EVM.Types (Addr, addressWord160)
+import EVM.Types (Addr)
 import Numeric (showHex)
 import System.Random (mkStdGen)
 
@@ -51,6 +51,8 @@ instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
 instance MonadCatch m => MonadCatch (RandT g m) where
   catch = liftCatch catch
+
+type MutationConsts = (Integer, Integer, Integer)
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { testLimit     :: Int
@@ -73,6 +75,7 @@ data CampaignConf = CampaignConf { testLimit     :: Int
                                    -- ^ Frequency for the use of dictionary values in the random transactions
                                  , corpusDir     :: Maybe FilePath
                                    -- ^ Directory to load and save lists of transactions
+                                 , mutConsts     :: MutationConsts
                                  }
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
@@ -169,7 +172,7 @@ updateTest v (Just (v', xs)) (n, t) = view (hasLens . to testLimit) >>= \tl -> (
 updateTest v Nothing (n, t) = view (hasLens . to shrinkLimit) >>= \sl -> (n,) <$> case t of
   Large i x | i >= sl -> pure $ Solved x
   Large i x           -> if length x > 1 || any canShrinkTx x
-                           then Large (i + 1) <$> evalStateT (shrinkSeq n x) v
+                           then Large (i + 1) <$> evalStateT (shrinkSeq (checkETest n) x) v
                            else pure $ Solved x
   _                   -> pure t
 
@@ -235,11 +238,11 @@ addToCorpus :: (MonadState s m, Has Campaign s) => Integer -> [(Tx, (VMResult, I
 addToCorpus n res = unless (null rtxs) $ hasLens . corpus %= DS.insert (rtxs, n) where
   rtxs = map fst res
 
-seqMutators :: (MonadRandom m) => m (Int -> Corpus -> [Tx] -> m [Tx])
-seqMutators = fromList [(cnm, 100),
-                        (mut       (++) , 1), -- Append a sequence from the corpus with random ones
-                        (mut (flip (++)), 1)  -- Prepend a sequence from the corpus with random ones
-                       ]
+seqMutators :: (MonadRandom m) => MutationConsts -> m (Int -> Corpus -> [Tx] -> m [Tx])
+seqMutators (c1, c2, c3) = fromList 
+                            [(cnm            , fromInteger c1), 
+                             (mut       (++) , fromInteger c2), 
+                             (mut (flip (++)), fromInteger c3)]
   where -- Use the generated random transactions
         cnm _ _          = return
         mut f ql ctxs gtxs = do
@@ -254,6 +257,7 @@ randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
         => Int -> Map Addr Contract -> World -> m [Tx]
 randseq ql o w = do
   ca <- use hasLens
+  cs <- mutConsts <$> view hasLens
   let ctxs = ca ^. corpus
       p    = fromInteger $ ca ^. ncallseqs
   if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
@@ -263,7 +267,7 @@ randseq ql o w = do
       -- Randomly generate new random transactions
       gtxs <- replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
       -- Select a random mutator
-      mut <- seqMutators
+      mut <- seqMutators cs
       if DS.null ctxs
       then return gtxs      -- Use the generated random transactions
       else mut ql ctxs gtxs -- Apply the mutator
@@ -290,7 +294,7 @@ callseq v w ql = do
       -- compute the addresses not present in the old VM via set difference
       diff = keys $ new \\ old
       -- and construct a set to union to the constants table
-      diffs = H.fromList [(AbiAddressType, S.fromList $ AbiAddress . addressWord160 <$> diff)]
+      diffs = H.fromList [(AbiAddressType, S.fromList $ AbiAddress <$> diff)]
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
   hasLens .= snd s
   -- Update the gas estimation
@@ -336,7 +340,7 @@ campaign u v w ts d txs = do
   execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d' False (DS.fromList $ map (,1) txs) 0) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _ _) ->
+    update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _ _ _) ->
       if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
