@@ -68,4 +68,5 @@ filterFunctions: []
 filterBlacklist: true
 #directory to save the corpus; by default is disabled  
 corpusDir: null
-
+# constants for corpus mutations (for experimentation only)
+mutConsts: [1, 1, 1]

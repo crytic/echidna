@@ -1,0 +1,2 @@
+checkAsserts: true
+cryticArgs: ["--solc", "solc-0.4.25"]

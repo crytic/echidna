@@ -4,11 +4,11 @@
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.QuickCheck(Arbitrary(..), Gen, (===), property, testProperty)
+import Test.Tasty.QuickCheck(Arbitrary(..), Gen, (===), property, testProperty, resize)
 
 import EVM (env, contracts)
-import EVM.Types (Addr(..))
 import EVM.ABI (AbiValue(..))
+import EVM.Types (Addr)
 import qualified EVM.Concrete(Word(..))
 
 import Echidna.ABI (SolCall, mkGenDict)
@@ -40,6 +40,7 @@ main = withCurrentDirectory "./examples/solidity" . defaultMain $
                              , compilationTests
                              , seedTests
                              , integrationTests
+                             , researchTests
                              , encodingJSONTests
                              ]
 
@@ -114,7 +115,7 @@ seedTests =
     , testCase "same seeds" $ assertBool "results differ" =<< same 0 0
     ]
     where cfg s = defaultConfig & sConf . quiet .~ True
-                                & cConf .~ CampaignConf 600 False False 20 0 Nothing (Just s) 0.15 Nothing
+                                & cConf .~ CampaignConf 600 False False 20 0 Nothing (Just s) 0.15 Nothing (1,1,1)
           gen s = view tests <$> runContract "basic/flags.sol" Nothing (cfg s)
           same s t = liftM2 (==) (gen s) (gen t)
 
@@ -190,10 +191,6 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_balance failed",                 passed      "echidna_balance") ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
       [ ("echidna_library_call failed",            solved      "echidna_library_call") ]
-  , testContract "harvey/foo.sol"         Nothing
-      [ ("echidna_assert failed",                  solved      "echidna_assert") ]
-  , testContract "harvey/baz.sol"         Nothing
-      [ ("echidna_all_states failed",              solved      "echidna_all_states") ]
   , testContract "basic/fallback.sol"     Nothing
       [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
   , testContract "basic/darray.sol"       Nothing
@@ -229,14 +226,22 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "basic/gasuse.sol"       (Just "basic/gasuse.yaml")
       [ ("echidna_true failed",                    passed     "echidna_true")
-      , ("g gas estimate wrong",                   gasInRange "g" 12000000 80000000)
-      , ("f_close1 gas estimate wrong",            gasInRange "f_close1" 5000 7000)
+      , ("g gas estimate wrong",                   gasInRange "g" 15000000 40000000)
+      , ("f_close1 gas estimate wrong",            gasInRange "f_close1" 1800 2000)
       , ("f_open1 gas estimate wrong",             gasInRange "f_open1"  18000 23000)
       , ("push_b gas estimate wrong",              gasInRange "push_b"   39000 45000)
       ]
   ,  testContract "coverage/boolean.sol"       (Just "coverage/boolean.yaml")
       [ ("echidna_true failed",                    passed     "echidna_true")
       , ("unexpected corpus count ",               countCorpus 5)]
+  ]
+
+researchTests :: TestTree
+researchTests = testGroup "Research-based Integration Testing"
+  [ testContract "research/harvey_foo.sol" Nothing
+      [ ("echidna_assert failed",                  solved      "echidna_assert") ]
+  , testContract "research/harvey_baz.sol" Nothing
+      [ ("echidna_all_states failed",              solved      "echidna_all_states") ]
   ]
 
 testConfig :: EConfig
@@ -261,7 +266,7 @@ runContract fp n c =
     (v,w,ts) <- loadSolTests (fp NE.:| []) n
     cs  <- Echidna.Solidity.contracts (fp NE.:| [])
     ads <- NE.toList <$> addresses
-    let ads' = AbiAddress . addressWord160 <$> v ^. env . EVM.contracts . to keys
+    let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
     campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads ++ ads') [] g (returnTypes cs)) []
 
 getResult :: Text -> Campaign -> Maybe TestState
@@ -310,14 +315,14 @@ instance Arbitrary EVM.Concrete.Word where
   arbitrary = fromInteger <$> arbitrary
 
 instance Arbitrary TxCall where
-  arbitrary = do 
+  arbitrary = do
                 s <- arbitrary
-                cs <- arbitrary
+                cs <- resize 32 arbitrary
                 return $ SolCall (pack s, cs)
 
 instance Arbitrary Tx where
   arbitrary = let a :: Arbitrary a => Gen a
-                  a = arbitrary in 
+                  a = arbitrary in
                 Tx <$> a <*> a <*> a <*> a <*> a <*> a <*> a
 
 encodingJSONTests :: TestTree
