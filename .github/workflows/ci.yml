@@ -11,12 +11,12 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          #- macOS-latest
+          - macOS-latest
         include:
           - os: ubuntu-latest
             apt-get: autoconf automake libtool
-          #- os: macOS-latest
-          #  brew: autoconf automake libtool
+          - os: macOS-latest
+            brew: autoconf automake libtool
         solc:
           - 0.4.25
           - 0.5.7
@@ -69,7 +69,12 @@ jobs:
 
       - name: Test
         run: |
-          cp $HOME/.local/bin/solc-${{ matrix.solc }} $HOME/.local/bin/solc
           export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:$HOME/.local/lib"
           export PATH="${PATH}:$HOME/.local/bin"
-          stack test --no-terminal --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+
+          if [ "${{ runner.os }}" == "Linux" ]; then
+            cp $HOME/.local/bin/solc-${{ matrix.solc }} $HOME/.local/bin/solc
+            stack test --no-terminal --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+          else
+            stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+          fi
