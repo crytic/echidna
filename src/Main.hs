@@ -23,6 +23,7 @@ import Echidna.UI
 import Echidna.Transaction
 
 import qualified Data.List.NonEmpty as NE
+import qualified Data.Set as DS
 
 data Options = Options
   { filePath         :: NE.NonEmpty FilePath
@@ -63,5 +64,5 @@ main = do Options f c conf <- execParser opts
             (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
             let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
             ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg) (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs)) txs
-          saveTxs cd (view corpus cpg)
+          saveTxs cd (map fst $ DS.toList $ view corpus cpg)
           if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
