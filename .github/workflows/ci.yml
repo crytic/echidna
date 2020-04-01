@@ -17,10 +17,7 @@ jobs:
             apt-get: autoconf automake libtool
           - os: macOS-latest
             brew: autoconf automake libtool
-        solc:
-          - 0.4.25
-          - 0.5.7
- 
+
     steps:
       - name: Get Packages
         uses: mstksg/get-package@v1
@@ -73,8 +70,10 @@ jobs:
           export PATH="${PATH}:$HOME/.local/bin"
 
           if [ "${{ runner.os }}" == "Linux" ]; then
-            cp $HOME/.local/bin/solc-${{ matrix.solc }} $HOME/.local/bin/solc
-            stack test --no-terminal --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+            for SOLCV in "0.4.25 0.5.7" ; do 
+              cp $HOME/.local/bin/solc-$SOLCV $HOME/.local/bin/solc
+              stack test --no-terminal --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+            done
           else
             stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
           fi
