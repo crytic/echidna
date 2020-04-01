@@ -2,7 +2,11 @@ name: CI
 
 on:
   push:
+    branches:
+    - master
   pull_request:
+    branches:
+    - master
 
 jobs:
   test:
@@ -70,8 +74,8 @@ jobs:
           export PATH="${PATH}:$HOME/.local/bin"
 
           if [ "${{ runner.os }}" == "Linux" ]; then
-            for SOLCV in "0.4.25 0.5.7" ; do 
-              cp $HOME/.local/bin/solc-$SOLCV $HOME/.local/bin/solc
+            for VER in "0.4.25 0.5.7" ; do 
+              cp "$HOME/.local/bin/solc-$VER" "$HOME/.local/bin/solc"
               stack test --no-terminal --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
             done
           else
