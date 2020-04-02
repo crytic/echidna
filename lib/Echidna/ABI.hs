@@ -34,7 +34,8 @@ import Data.Vector.Instances ()
 import Data.Word8 (Word8)
 import Numeric (showHex)
 
-import EVM.ABI
+import EVM.ABI hiding (genAbiValue)
+import EVM.Types (Addr)
 
 import qualified Control.Monad.Random.Strict as R
 import qualified Data.ByteString as BS
@@ -43,6 +44,7 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
+import Echidna.Mutator (mutateLL, replaceAt) 
 
 -- | Fallback function is the null string
 fallback :: SolSignature
@@ -52,7 +54,7 @@ fallback = ("",[])
 ppAbiValue :: AbiValue -> String
 ppAbiValue (AbiUInt _ n)         = show n
 ppAbiValue (AbiInt  _ n)         = show n
-ppAbiValue (AbiAddress n)        = showHex n ""
+ppAbiValue (AbiAddress n)        = "0x" ++ showHex n ""
 ppAbiValue (AbiBool b)           = if b then "true" else "false"
 ppAbiValue (AbiBytes      _ b)   = show b
 ppAbiValue (AbiBytesDynamic b)   = show b
@@ -116,6 +118,7 @@ defaultDict = mkGenDict 0 [] [] 0 (const Nothing)
 -- We need the above since hlint doesn't notice DeriveAnyClass in StandaloneDeriving.
 deriving instance Hashable AbiType
 deriving instance Hashable AbiValue
+deriving instance Hashable Addr
 
 -- | Construct a 'GenDict' from some dictionaries, a 'Float', a default seed, and a typing rule for
 -- return values
@@ -198,16 +201,6 @@ growWith m f g l t = foldM withR t =<< flip replicateM m =<< rand where
   rand       = getRandomR (0, l t)
   withR t' x = bool (f x t') (g t' x) <$> getRandom
 
--- | Given a 'ByteString', add and drop some characters at random.
-mutateBS :: MonadRandom m => ByteString -> m ByteString
-mutateBS b = addChars getRandom =<< changeSize where
-  changeSize = bool (shrinkBS b) (growWith getRandom BS.cons BS.snoc BS.length b) =<< getRandom
-
--- | Given a 'Vector', add and drop some characters at random.
-mutateV :: MonadRandom m => AbiType -> Vector AbiValue -> m (Vector AbiValue)
-mutateV t v = traverse mutateAbiValue =<< changeSize where
-  changeSize = bool (shrinkV v) (growWith (genAbiValue t) V.cons V.snoc V.length v) =<< getRandom
-
 -- Mutation
 
 -- | Check if an 'AbiValue' is as \"small\" (trivial) as possible (using ad-hoc heuristics).
@@ -246,20 +239,37 @@ shrinkAbiCall = traverse $ traverse shrinkAbiValue
 
 -- | Given an 'AbiValue', generate a random \"similar\" value of the same 'AbiType'.
 mutateAbiValue :: MonadRandom m => AbiValue -> m AbiValue
-mutateAbiValue (AbiUInt n x)         = AbiUInt n         <$> mutateNum x
-mutateAbiValue (AbiInt n x)          = AbiInt n          <$> mutateNum x
-mutateAbiValue (AbiAddress _)        = genAbiValue AbiAddressType
+mutateAbiValue (AbiUInt n x)         = getRandomR (0, 9 :: Int) >>= -- 10% of chance of mutation
+                                          \case  
+                                            0 -> (AbiUInt n <$> mutateNum x)
+                                            _ -> return $ AbiUInt n x
+mutateAbiValue (AbiInt n x)          = getRandomR (0, 9 :: Int) >>= -- 10% of chance of mutation
+                                          \case  
+                                            0 -> (AbiInt n <$> mutateNum x)
+                                            _ -> return $ AbiInt n x 
+
+mutateAbiValue (AbiAddress x)        = return $ AbiAddress x
 mutateAbiValue (AbiBool _)           = genAbiValue AbiBoolType
-mutateAbiValue (AbiBytes n b)        = AbiBytes n        <$> addChars getRandom b
-mutateAbiValue (AbiBytesDynamic b)   = AbiBytesDynamic   <$> mutateBS b
-mutateAbiValue (AbiString b)         = AbiString         <$> mutateBS b
-mutateAbiValue (AbiArray n t l)      = AbiArray n t      <$> traverse mutateAbiValue l
-mutateAbiValue (AbiArrayDynamic t l) = AbiArrayDynamic t <$> mutateV t l
+mutateAbiValue (AbiBytes n b)        = do fs <- replicateM n getRandom
+                                          xs <- mutateLL (Just n) (BS.pack fs) b 
+                                          return (AbiBytes n xs)
+
+mutateAbiValue (AbiBytesDynamic b)   = AbiBytesDynamic <$> mutateLL Nothing mempty b
+mutateAbiValue (AbiString b)         = AbiString <$> mutateLL Nothing mempty b
+mutateAbiValue (AbiArray n t l)      = do fs <- replicateM n $ genAbiValue t
+                                          xs <- mutateLL (Just n) (V.fromList fs) l 
+                                          return (AbiArray n t xs)
+
+mutateAbiValue (AbiArrayDynamic t l) = AbiArrayDynamic t <$> mutateLL Nothing mempty l
 mutateAbiValue (AbiTuple v)          = AbiTuple          <$> traverse mutateAbiValue v
 
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
-mutateAbiCall :: MonadRandom m => SolCall -> m SolCall
-mutateAbiCall = traverse $ traverse mutateAbiValue
+mutateAbiCall :: (MonadRandom m) => SolCall -> m SolCall
+mutateAbiCall = traverse f
+                where f  [] = return []
+                      f  xs = do k <- getRandomR (0, length xs - 1)
+                                 mv <- mutateAbiValue $ xs !! k
+                                 return $ replaceAt mv xs k
 
 -- Generation, with dictionary
 
@@ -290,7 +300,7 @@ genAbiValueM = genWithDict (fmap toList . view constants) $ \case
 
 -- | Given a 'SolSignature', generate a random 'SolCalls' with that signature, possibly with a dictionary.
 genAbiCallM :: (MonadState x m, Has GenDict x, MonadRandom m) => SolSignature -> m SolCall
-genAbiCallM = genWithDict (fmap toList . view wholeCalls) (traverse $ traverse genAbiValueM)
+genAbiCallM abi = genWithDict (fmap toList . view wholeCalls) (traverse $ traverse genAbiValueM) abi >>= mutateAbiCall
 
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one, possibly with a dictionary.
 genInteractionsM :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m)

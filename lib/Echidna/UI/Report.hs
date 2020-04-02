@@ -43,7 +43,7 @@ ppTx pn (Tx c s r g gp v (t, b)) = let sOf = ppTxCall in do
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: CoverageMap -> Maybe String
 ppCoverage s | s == mempty = Nothing
-             | otherwise   = Just $ "Unique instructions: " ++ show (coveragePoints s)
+             | otherwise   = Just $ "Unique instructions: " ++ show (scoveragePoints s)
                                  ++ "\nUnique codehashes: " ++ show (length s)
 
 -- | Pretty-print the gas usage for a function.

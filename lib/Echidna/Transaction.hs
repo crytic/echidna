@@ -66,6 +66,47 @@ data Tx = Tx { _call  :: TxCall       -- | Call
 
 makeLenses ''Tx
 
+data TxResult = Success
+              | ErrorBalanceTooLow 
+              | ErrorUnrecognizedOpcode
+              | ErrorSelfDestruction
+              | ErrorStackUnderrun
+              | ErrorBadJumpDestination
+              | ErrorRevert
+              | ErrorNoSuchContract
+              | ErrorOutOfGas
+              | ErrorBadCheatCode
+              | ErrorStackLimitExceeded
+              | ErrorIllegalOverflow
+              | ErrorQuery
+              | ErrorStateChangeWhileStatic
+              | ErrorInvalidMemoryAccess
+              | ErrorCallDepthLimitReached
+              | ErrorMaxCodeSizeExceeded
+              | ErrorPrecompileFailure      deriving (Eq, Ord, Show)
+
+$(deriveJSON defaultOptions ''TxResult)
+
+getResult :: VMResult -> TxResult
+getResult (VMSuccess _)                      = Success
+getResult (VMFailure (BalanceTooLow _ _ ))   = ErrorBalanceTooLow
+getResult (VMFailure (UnrecognizedOpcode _)) = ErrorUnrecognizedOpcode
+getResult (VMFailure SelfDestruction )       = ErrorSelfDestruction
+getResult (VMFailure StackUnderrun )         = ErrorStackUnderrun
+getResult (VMFailure BadJumpDestination )    = ErrorBadJumpDestination
+getResult (VMFailure (Revert _))             = ErrorRevert
+getResult (VMFailure (NoSuchContract _))     = ErrorNoSuchContract
+getResult (VMFailure (OutOfGas _ _))         = ErrorOutOfGas
+getResult (VMFailure (BadCheatCode _))       = ErrorBadCheatCode
+getResult (VMFailure StackLimitExceeded)     = ErrorStackLimitExceeded
+getResult (VMFailure IllegalOverflow)        = ErrorIllegalOverflow
+getResult (VMFailure (Query _))              = ErrorQuery
+getResult (VMFailure StateChangeWhileStatic) = ErrorStateChangeWhileStatic
+getResult (VMFailure InvalidMemoryAccess)    = ErrorInvalidMemoryAccess
+getResult (VMFailure CallDepthLimitReached)  = ErrorCallDepthLimitReached
+getResult (VMFailure (MaxCodeSizeExceeded _ _)) = ErrorMaxCodeSizeExceeded
+getResult (VMFailure PrecompileFailure)      = ErrorPrecompileFailure
+
 instance ToJSON Word256 where
   toJSON = toJSON . show
 

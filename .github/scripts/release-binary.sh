@@ -1,0 +1,12 @@
+TAG="$1"
+OS="$(lsb_release -is)-$(lsb_release -rs)"
+echo "Building binary..."
+echo "Compressing binary.."
+REPO="echidna-test"
+BIN="$(stack path --local-install-root)/bin/$REPO"
+echo $BIN
+BUNDLE_NAME="$REPO-$TAG-$OS.tar.gz"
+cp "$BIN" "./$REPO"
+chmod +x "./$REPO"
+env GZIP=-9 tar -czf "$BUNDLE_NAME" "$REPO"
+shasum -a 256 "$BUNDLE_NAME" > "$BUNDLE_NAME.sha256"
