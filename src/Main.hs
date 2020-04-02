@@ -21,6 +21,7 @@ import Echidna.Solidity
 import Echidna.Campaign
 import Echidna.UI
 import Echidna.Transaction
+import Echidna.Processor
 
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as DS
@@ -55,10 +56,11 @@ main :: IO ()
 main = do Options f c conf <- execParser opts
           g   <- getRandom
           EConfigWithUsage cfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig conf
+          cfg' <- process (NE.head f) c cfg
           unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
           let cd = corpusDir $ view cConf cfg
           txs <- loadTxs cd
-          cpg <- flip runReaderT cfg $ do
+          cpg <- flip runReaderT cfg' $ do
             cs       <- Echidna.Solidity.contracts f
             ads      <- addresses
             (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
