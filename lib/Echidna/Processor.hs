@@ -11,6 +11,7 @@ import Data.Aeson                 (decode, Value(..))
 import System.Directory           (findExecutable)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit                (ExitCode(..))
+import GHC.Word                   (Word32)
 
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import qualified Data.HashMap.Strict as M
@@ -34,16 +35,39 @@ instance Show ProcException where
 instance Exception ProcException
 
 process :: (MonadIO m, MonadThrow m) => FilePath -> Maybe String -> EConfig -> m EConfig
-process f _ e = do 
-                 rs <- runSlither f (e ^. sConf ^. cryticArgs)
-                 let ps = concatMap (map hashSig . snd) rs
-                 return $ e & xConf . payableSigs .~ ps
+process f c e = do 
+                 r <- runSlither f (e ^. sConf ^. cryticArgs)
+                 --liftIO $ print c
+                 --liftIO $ print $ filterResults c $ filterPayable x
+                 --liftIO $ print $ filterResults c $ filterConstantFunction x
+                 --let ps = concatMap (map hashSig . snd) rs
+                 return $ e & xConf . payableSigs .~ filterResults c (filterPayable r)
 
-type SlitherInfo = PayableInfo
-type PayableInfo = [(T.Text, [T.Text])]
+filterResults :: Maybe String -> [(T.Text, [T.Text])] -> [Word32] 
+filterResults (Just c) rs = case lookup (T.pack c) rs of
+                             Nothing -> filterResults Nothing rs
+                             Just s -> map hashSig s 
+filterResults Nothing rs = concatMap (map hashSig . snd) rs
+
+data SlitherInfo = PayableInfo (T.Text, [T.Text]) 
+                 | ConstantFunctionInfo (T.Text, [T.Text]) deriving (Show)
+
+filterPayable :: [SlitherInfo] -> [(T.Text, [T.Text])]
+filterPayable = map g . filter f
+                 where f (PayableInfo _) = True
+                       f _               = False
+                       g (PayableInfo i) = i
+                       g _               = error "fail in filterPayable"
+
+filterConstantFunction :: [SlitherInfo] -> [(T.Text, [T.Text])]
+filterConstantFunction = map g . filter f 
+                 where f (ConstantFunctionInfo _) = True
+                       f _               = False
+                       g (ConstantFunctionInfo i) = i
+                       g _               = error "fail in filterPayable"
 
 -- Slither processing
-runSlither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m SlitherInfo
+runSlither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m [SlitherInfo]
 runSlither fp aa = let args = ["--print", "echidna", "--json", "-"] ++ aa in do
   mp  <- liftIO $ findExecutable "slither"
   case mp of
@@ -53,28 +77,38 @@ runSlither fp aa = let args = ["--print", "echidna", "--json", "-"] ++ aa in do
                               ExitSuccess -> return $ procSlither out
                               ExitFailure _ -> throwM $ ProcessorFailure "slither" err
 
-procSlither :: String -> SlitherInfo
+procSlither :: String -> [SlitherInfo]
 procSlither r = case (decode . BSL.pack) r of
                  Nothing -> []
-                 Just v  -> mresult "" v  
+                 Just v  -> mresult "" v
 
 -- parse result json
-mresult :: T.Text -> Value -> PayableInfo
+mresult :: T.Text -> Value -> [SlitherInfo]
 mresult "description" (String x)  = case (decode . BSL.pack . T.unpack) x of
                                       Nothing -> []
-                                      Just v  -> mpayable "" v  
+                                      Just v  -> mpayable "" v ++ mcfuncs "" v
 
 mresult _ (Object o) = concatMap (uncurry mresult) $ M.toList o
-mresult _ (Array  a) = concatMap (mresult "")    a
+mresult _ (Array  a) = concatMap (mresult "") a
 mresult _  _         = []
 
 -- parse actual payable information
-mpayable :: T.Text -> Value -> PayableInfo
-mpayable "payable" (Object o)  = map (second f) $ M.toList o
+mpayable :: T.Text -> Value -> [SlitherInfo]
+mpayable "payable" (Object o)  = map ( PayableInfo . second f) $ M.toList o
                                  where f (Array xs)            = concatMap f xs
                                        f (String "fallback()") = ["()"]
                                        f (String s)            = [s]
                                        f _                     = []
-mpayable _ (Object o) = concatMap (uncurry mpayable) $ M.toList o
-mpayable _ (Array  a) = concatMap (mpayable "")    a
+mpayable _ (Object o) = concatMap (uncurry mcfuncs) $ M.toList o
+mpayable _ (Array  a) = concatMap (mcfuncs "") a
 mpayable _  _         = []
+
+-- parse actual constant functions information
+mcfuncs :: T.Text -> Value -> [SlitherInfo]
+mcfuncs "constant_functions" (Object o)  = map ( ConstantFunctionInfo . second f) $ M.toList o
+                                 where f (Array xs)            = concatMap f xs
+                                       f (String s)            = [s]
+                                       f _                     = []
+mcfuncs _ (Object o) = concatMap (uncurry mcfuncs) $ M.toList o
+mcfuncs _ (Array  a) = concatMap (mcfuncs "") a
+mcfuncs _  _         = []
