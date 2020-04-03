@@ -71,9 +71,10 @@ mresult _  _         = []
 -- parse actual payable information
 mpayable :: T.Text -> Value -> PayableInfo
 mpayable "payable" (Object o)  = map (second f) $ M.toList o
-                                 where f (Array xs) = concatMap f xs
-                                       f (String s) = [s]
-                                       f _          = []
+                                 where f (Array xs)            = concatMap f xs
+                                       f (String "fallback()") = ["()"]
+                                       f (String s)            = [s]
+                                       f _                     = []
 mpayable _ (Object o) = concatMap (uncurry mpayable) $ M.toList o
 mpayable _ (Array  a) = concatMap (mpayable "")    a
 mpayable _  _         = []

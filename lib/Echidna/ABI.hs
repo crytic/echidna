@@ -85,6 +85,7 @@ type SolCall     = (Text, [AbiValue])
 -- A tuple of 'Text' for the name of the function, and then the 'AbiType's of any arguments it expects.
 type SolSignature = (Text, [AbiType])
 
+-- | Get the signature from a Solidity function.
 signatureCall :: SolCall -> SolSignature
 signatureCall (t, vs) = (t, map abiValueType vs)
 
