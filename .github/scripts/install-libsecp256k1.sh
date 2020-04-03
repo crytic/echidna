@@ -2,6 +2,8 @@
 
 set -eux
 
+source .github/scripts/host.sh
+
 if [ -f $HOME/.local/lib/libsecp256k1.a ]; then
   echo "libsecp256k1 exists, exiting..."
   exit 0
@@ -16,6 +18,6 @@ cd "secp256k1-$gitRef"
 ./autogen.sh
 # hevm needs reecovery module
 # enable pic so static library can link against dynamic correctly
-./configure --prefix=$HOME/.local --enable-module-recovery --with-pic
+./configure --prefix=$PREFIX --enable-module-recovery --with-pic
 
 make install
