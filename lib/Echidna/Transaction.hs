@@ -31,6 +31,7 @@ import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType, AbiValue(..), AbiType(..))
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
+import GHC.Word (Word32)
 
 import qualified System.Directory as SD
 import qualified Control.Monad.Fail as M (MonadFail(..))
@@ -155,6 +156,10 @@ data TxConf = TxConf { _propGas       :: Word
                      -- ^ Maximum time delay between transactions (seconds)
                      , _maxBlockDelay :: Word
                      -- ^ Maximum block delay between transactions
+                     , _maxValue      :: Word
+                     -- ^ Maximum value to use in transactions  
+                     , _payableSigs   :: [Word32]
+                     -- ^ List of signatures of payable functions 
                      }
 
 makeLenses 'TxConf
@@ -216,13 +221,18 @@ genTx m = use (hasLens :: Lens' y World) >>= evalStateT (genTxM m) . (defaultDic
 genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has GenDict y, Has World y, MonadThrow m)
   => Map Addr Contract
   -> m Tx
-genTxM m = view hasLens >>= \(TxConf _ g maxGp t b) -> genTxWith
+genTxM m = view hasLens >>= \(TxConf _ g maxGp t b mv ps) -> genTxWith
   m
   rElem rElem                                                                -- src and dst
   (const $ genInteractionsM . snd)                                           -- call itself
-  (pure g) (inRange maxGp) (\_ _ _ -> pure 0)                                -- gas, gasprice, value
+  (pure g) (inRange maxGp) (genValue ps mv)                                  -- gas, gasprice, value
   (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
      where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
+
+--genValue :: (MonadRandom m) => Addr -> ContractA -> SolCall -> m Word
+genValue :: (MonadRandom f) => [Word32] -> Word -> Addr -> ContractA -> SolCall -> f Word
+genValue ps mv _ _ sc = let sig = hashSig $ encodeSig $ signatureCall sc in
+  if (sig `elem` ps) then fromIntegral <$> getRandomR (0 :: Integer, fromIntegral mv) else pure (0 :: Word)
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool

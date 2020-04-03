@@ -109,9 +109,15 @@ instance FromJSON EConfigWithUsage where
                         return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result)
                                           (const psender)
                 getWord s d = C Dull . fromIntegral <$> v ..:? s ..!= (d :: Integer)
-                xc = liftM5 TxConf (getWord "propMaxGas" 8000030) (getWord "testMaxGas" 0xffffffff)
-                                   (getWord "maxGasprice" 100000000000)
-                                   (getWord "maxTimeDelay" 604800)     (getWord "maxBlockDelay" 60480)
+                xc = TxConf <$> (getWord "propMaxGas" 8000030) 
+                            <*> (getWord "testMaxGas" 0xffffffff)
+                            <*> (getWord "maxGasprice" 100000000000)
+                            <*> (getWord "maxTimeDelay" 604800)     
+                            <*> (getWord "maxBlockDelay" 60480)
+                            <*> (getWord "maxValue" 100000000000000000000) -- 100 eth
+                            -- <*> v ..:? "maxValue" ..!= 100000000000000000000 -- 100 eth
+                            <*> (pure [])
+
                 cov = v ..:? "coverage" <&> \case Just True -> Just mempty
                                                   _         -> Nothing
                 cc = CampaignConf <$> v ..:? "testLimit"   ..!= 50000

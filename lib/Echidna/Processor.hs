@@ -16,6 +16,9 @@ import qualified Data.HashMap.Strict as M
 import qualified Data.Text           as T
 
 import Echidna.Config
+import Echidna.Solidity
+import Echidna.Transaction
+import Echidna.ABI (hashSig)
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
 -- instance for more detailed explanations.
@@ -31,13 +34,16 @@ instance Exception ProcException
 
 process :: (MonadIO m, MonadThrow m) => FilePath -> Maybe String -> EConfig -> m EConfig
 process f _ e = do 
-                 p <- run_slither f 
-                 liftIO $ print p
-                 return e
+                 rs <- run_slither f (e ^. sConf ^. cryticArgs)
+                 let ps = concatMap (map hashSig . snd) rs
+                 return $ e & xConf . payableSigs .~ ps
+
+type SlitherInfo = PayableInfo
+type PayableInfo = [(T.Text, [T.Text])]
 
 -- Slither processing
-run_slither :: (MonadIO m, MonadThrow m) => FilePath -> m PayableInfo
-run_slither fp = let args = ["--print", "echidna", "--json", "-"] in do
+run_slither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m SlitherInfo
+run_slither fp aa = let args = ["--print", "echidna", "--json", "-"] ++ aa in do
   mp  <- liftIO $ findExecutable "slither"
   case mp of
    Nothing -> return [] --throwM $ ProcessorNotFound "slither" 
@@ -46,7 +52,7 @@ run_slither fp = let args = ["--print", "echidna", "--json", "-"] in do
                               ExitSuccess -> return $ proc_slither out
                               ExitFailure _ -> throwM $ ProcessorFailure "slither" err
 
-proc_slither :: String -> PayableInfo
+proc_slither :: String -> SlitherInfo
 proc_slither r = case (decode  $ BSL.pack r) of
                  Nothing -> []
                  Just v  -> mresult "" v  
@@ -60,8 +66,6 @@ mresult "description" (String x)  = case (decode $ BSL.pack $ T.unpack x) :: May
 mresult _ (Object o) = concatMap (uncurry mresult) $ M.toList o
 mresult _ (Array  a) = concatMap (mresult "")    a
 mresult _  _         = []
-
-type PayableInfo = [(T.Text, [T.Text])]
 
 -- parse actual payable information
 mpayable :: T.Text -> Value -> PayableInfo

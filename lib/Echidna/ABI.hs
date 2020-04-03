@@ -32,9 +32,11 @@ import Data.Text (Text)
 import Data.Vector (Vector)
 import Data.Vector.Instances ()
 import Data.Word8 (Word8)
+import GHC.Word (Word32)
 import Numeric (showHex)
 
 import EVM.ABI hiding (genAbiValue)
+import EVM.Keccak (abiKeccak)
 import EVM.Types (Addr)
 
 import qualified Control.Monad.Random.Strict as R
@@ -42,6 +44,7 @@ import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
+import qualified Data.Text.Encoding  as TE 
 import qualified Data.Vector as V
 
 import Echidna.Mutator (mutateLL, replaceAt) 
@@ -82,9 +85,16 @@ type SolCall     = (Text, [AbiValue])
 -- A tuple of 'Text' for the name of the function, and then the 'AbiType's of any arguments it expects.
 type SolSignature = (Text, [AbiType])
 
+signatureCall :: SolCall -> SolSignature
+signatureCall (t, vs) = (t, map abiValueType vs)
+
 -- | Get the text signature of a solidity method (for later hashing)
 encodeSig :: SolSignature -> Text
 encodeSig (n, ts) = n <> "(" <> T.intercalate "," (abiTypeSolidity <$> ts) <> ")"
+
+-- | Get the signature of a solidity method
+hashSig :: Text -> Word32 
+hashSig = abiKeccak . TE.encodeUtf8
 
 -- | Configuration necessary for generating new 'SolCalls'. Don't construct this by hand! Use 'mkConf'.
 data GenDict = GenDict { _pSynthA    :: Float
