@@ -1,5 +1,5 @@
 FROM ubuntu:bionic AS builder
-ENV LD_LIBRARY_PATH=/usr/local/lib PREFIX=/usr/local
+ENV LD_LIBRARY_PATH=/usr/local/lib PREFIX=/usr/local HOST_OS=Linux
 RUN apt-get update && apt-get -y upgrade && apt-get install -y sudo cmake curl libgmp-dev libssl-dev libbz2-dev libreadline-dev software-properties-common libsecp256k1-dev
 RUN apt-get update
 RUN curl -sSL https://get.haskellstack.org/ | sh
@@ -9,7 +9,7 @@ RUN .github/scripts/install-libff.sh
 RUN stack upgrade && stack setup && stack install --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
 
 FROM ubuntu:bionic AS final
-ENV PREFIX=/usr/local
+ENV PREFIX=/usr/local HOST_OS=Linux
 WORKDIR /root
 COPY --from=builder /root/.local/bin/echidna-test /root/.local/bin/echidna-test
 COPY .github/scripts/install-crytic-compile.sh .github/scripts/install-crytic-compile.sh
