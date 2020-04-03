@@ -231,8 +231,8 @@ genTxM m = view hasLens >>= \(TxConf _ g maxGp t b mv ps) -> genTxWith
 
 --genValue :: (MonadRandom m) => Addr -> ContractA -> SolCall -> m Word
 genValue :: (MonadRandom f) => [Word32] -> Word -> Addr -> ContractA -> SolCall -> f Word
-genValue ps mv _ _ sc = let sig = hashSig $ encodeSig $ signatureCall sc in
-  if (sig `elem` ps) then fromIntegral <$> getRandomR (0 :: Integer, fromIntegral mv) else pure (0 :: Word)
+genValue ps mv _ _ sc = let sig = (hashSig . encodeSig . signatureCall) sc in
+  if sig `elem` ps then fromIntegral <$> getRandomR (0 :: Integer, fromIntegral mv) else pure (0 :: Word)
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool

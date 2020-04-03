@@ -2,6 +2,7 @@
 
 module Echidna.Processor where
 
+import Control.Arrow              (second)
 import Control.Lens
 import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Exception          (Exception)
@@ -34,7 +35,7 @@ instance Exception ProcException
 
 process :: (MonadIO m, MonadThrow m) => FilePath -> Maybe String -> EConfig -> m EConfig
 process f _ e = do 
-                 rs <- run_slither f (e ^. sConf ^. cryticArgs)
+                 rs <- runSlither f (e ^. sConf ^. cryticArgs)
                  let ps = concatMap (map hashSig . snd) rs
                  return $ e & xConf . payableSigs .~ ps
 
@@ -42,24 +43,24 @@ type SlitherInfo = PayableInfo
 type PayableInfo = [(T.Text, [T.Text])]
 
 -- Slither processing
-run_slither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m SlitherInfo
-run_slither fp aa = let args = ["--print", "echidna", "--json", "-"] ++ aa in do
+runSlither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m SlitherInfo
+runSlither fp aa = let args = ["--print", "echidna", "--json", "-"] ++ aa in do
   mp  <- liftIO $ findExecutable "slither"
   case mp of
-   Nothing -> return [] --throwM $ ProcessorNotFound "slither" 
+   Nothing -> return [] 
    Just path -> liftIO $ do (ec, out, err) <- readCreateProcessWithExitCode (proc path $ args |> fp) {std_err = Inherit} ""
                             case ec of
-                              ExitSuccess -> return $ proc_slither out
+                              ExitSuccess -> return $ procSlither out
                               ExitFailure _ -> throwM $ ProcessorFailure "slither" err
 
-proc_slither :: String -> SlitherInfo
-proc_slither r = case (decode  $ BSL.pack r) of
+procSlither :: String -> SlitherInfo
+procSlither r = case (decode . BSL.pack) r of
                  Nothing -> []
                  Just v  -> mresult "" v  
 
 -- parse result json
 mresult :: T.Text -> Value -> PayableInfo
-mresult "description" (String x)  = case (decode $ BSL.pack $ T.unpack x) :: Maybe Value of
+mresult "description" (String x)  = case (decode . BSL.pack . T.unpack) x of
                                       Nothing -> []
                                       Just v  -> mpayable "" v  
 
@@ -69,7 +70,7 @@ mresult _  _         = []
 
 -- parse actual payable information
 mpayable :: T.Text -> Value -> PayableInfo
-mpayable "payable" (Object o)  = map (\(x,y) -> (x, f y)) $ M.toList o
+mpayable "payable" (Object o)  = map (second f) $ M.toList o
                                  where f (Array xs) = concatMap f xs
                                        f (String s) = [s]
                                        f _          = []
