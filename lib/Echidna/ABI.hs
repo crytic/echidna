@@ -233,9 +233,8 @@ shrinkInt x = fromIntegral <$> getRandomR (0, toInteger x)
 shrinkAbiValue :: MonadRandom m => AbiValue -> m AbiValue
 shrinkAbiValue (AbiUInt n m)         = AbiUInt n <$> shrinkInt m
 shrinkAbiValue (AbiInt n m)          = AbiInt n  <$> shrinkInt m
-shrinkAbiValue x@AbiAddress{}        = case x of
-                                        AbiAddress 0 -> pure x
-                                        _            -> rElem $ NE.fromList [AbiAddress 0, AbiAddress 0xdeadbeef, x]
+shrinkAbiValue (AbiAddress 0)        = pure $ AbiAddress 0
+shrinkAbiValue (AbiAddress _)        = rElem $ NE.fromList [AbiAddress 0, AbiAddress 0xdeadbeef]
 shrinkAbiValue (AbiBool _)           = pure $ AbiBool False
 shrinkAbiValue (AbiBytes n b)        = AbiBytes n <$> addNulls b
 shrinkAbiValue (AbiBytesDynamic b)   = fmap AbiBytesDynamic $ addNulls =<< shrinkBS b
