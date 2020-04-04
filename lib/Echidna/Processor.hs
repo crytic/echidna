@@ -37,8 +37,8 @@ instance Exception ProcException
 process :: (MonadIO m, MonadThrow m) => FilePath -> Maybe String -> EConfig -> m EConfig
 process f c e = do 
                  r <- runSlither f (e ^. sConf ^. cryticArgs)
-                 --liftIO $ print c
-                 --liftIO $ print $ filterResults c $ filterPayable x
+                 --liftIO $ print $ r
+                 --liftIO $ print $ filterResults c $ filterPayable r
                  --liftIO $ print $ filterResults c $ filterConstantFunction x
                  --let ps = concatMap (map hashSig . snd) rs
                  return $ e & xConf . payableSigs .~ filterResults c (filterPayable r)
@@ -99,8 +99,8 @@ mpayable "payable" (Object o)  = map ( PayableInfo . second f) $ M.toList o
                                        f (String "fallback()") = ["()"]
                                        f (String s)            = [s]
                                        f _                     = []
-mpayable _ (Object o) = concatMap (uncurry mcfuncs) $ M.toList o
-mpayable _ (Array  a) = concatMap (mcfuncs "") a
+mpayable _ (Object o) = concatMap (uncurry mpayable) $ M.toList o
+mpayable _ (Array  a) = concatMap (mpayable "") a
 mpayable _  _         = []
 
 -- parse actual constant functions information
