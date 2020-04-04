@@ -33,10 +33,11 @@ import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
 import System.Directory           (findExecutable)
 
-import Echidna.ABI         (SolSignature, stripBytecodeMetadata, fallback)
+import Echidna.ABI         (SolSignature, encodeSig, hashSig, stripBytecodeMetadata, fallback)
 import Echidna.Exec        (execTx)
 import Echidna.RPC         (loadEthenoBatch)
 import Echidna.Transaction (TxConf, TxCall(SolCreate), Tx(..), World(..))
+import Echidna.Processor 
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
@@ -251,17 +252,25 @@ loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
-               => (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature)) -> m (VM, World, [SolTest])
-prepareForTest (v, a, ts, m) = view hasLens <&> \SolConf { _sender = s, _checkAsserts = ch } ->
-  (v, World s m, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else []) where
+               => (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature)) 
+               -> Maybe String
+               -> [SlitherInfo]
+               -> m (VM, World, [SolTest])
+prepareForTest (v, a, ts, m) c si = view hasLens <&> \SolConf { _sender = s, _checkAsserts = ch } -> 
+  (v, World s hm lm ps, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else []) where
     r = v ^. state . contract
     a' = NE.toList a
+    ps = filterResults c $ filterPayable si
+    cs = filterResults c $ filterConstantFunction si
+    hm = filterHashMap not cs m  -- non-pure and non-view functions 
+    lm = filterHashMap id  cs m  -- pure and view functions
+    filterHashMap f xs = M.mapMaybe (NE.nonEmpty . NE.filter (\s -> f $ (hashSig . encodeSig $ s) `elem` xs)) 
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
 loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
              => NE.NonEmpty FilePath -> Maybe Text -> m (VM, World, [SolTest])
-loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
+loadSolTests fp name = loadWithCryticCompile fp name >>= (\t -> prepareForTest t Nothing [])
 
 mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
 mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Nothing

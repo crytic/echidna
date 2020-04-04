@@ -1,8 +1,9 @@
 module Main where
 
 import Control.Lens (view, (^.), to)
+import Data.Has                   (Has(..))
 import Control.Monad (unless)
-import Control.Monad.Reader (runReaderT)
+import Control.Monad.Reader (runReaderT, liftIO)
 import Control.Monad.Random (getRandom)
 import Data.Map.Strict (keys)
 import Data.Text (pack, unpack)
@@ -56,14 +57,19 @@ main :: IO ()
 main = do Options f c conf <- execParser opts
           g   <- getRandom
           EConfigWithUsage cfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig conf
-          cfg' <- process (NE.head f) c cfg
           unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
           let cd = corpusDir $ view cConf cfg
           txs <- loadTxs cd
-          cpg <- flip runReaderT cfg' $ do
+          cpg <- flip runReaderT cfg $ do
             cs       <- Echidna.Solidity.contracts f
             ads      <- addresses
-            (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
+            p <- loadSpecified (pack <$> c) cs
+
+            ca <- view (hasLens . cryticArgs) 
+            si <- runSlither (NE.head f) ca
+            liftIO $ print si
+
+            (v,w,ts) <- prepareForTest p c si
             let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
             ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg) (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs)) txs
           saveTxs cd (map fst $ DS.toList $ view corpus cpg)

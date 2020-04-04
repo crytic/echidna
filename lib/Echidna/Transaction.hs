@@ -14,7 +14,7 @@ import Prelude hiding (Word)
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, liftM5, unless)
 import Control.Monad.Catch (MonadThrow, bracket)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR, weighted, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
 import Data.Aeson (ToJSON(..), FromJSON(..), withText, defaultOptions, decodeStrict, encodeFile)
@@ -158,8 +158,6 @@ data TxConf = TxConf { _propGas       :: Word
                      -- ^ Maximum block delay between transactions
                      , _maxValue      :: Word
                      -- ^ Maximum value to use in transactions  
-                     , _payableSigs   :: [Word32]
-                     -- ^ List of signatures of payable functions 
                      }
 
 makeLenses 'TxConf
@@ -185,8 +183,10 @@ type ContractA = (Addr, NE.NonEmpty SolSignature)
 
 -- | The world is made our of humans with an address, and a way to map contract
 -- bytecodes to an ABI
-data World = World { _senders         :: NE.NonEmpty Addr
-                   , _bytecodeMapping :: M.HashMap ByteString (NE.NonEmpty SolSignature)
+data World = World { _senders          :: NE.NonEmpty Addr
+                   , _highSignatureMap :: M.HashMap ByteString (NE.NonEmpty SolSignature)
+                   , _lowSignatureMap  :: M.HashMap ByteString (NE.NonEmpty SolSignature)
+                   , _payableSigs      :: [Word32]
                    }
 makeLenses ''World
 
@@ -199,17 +199,20 @@ genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m)
           -> (Addr -> ContractA -> m SolCall)         -- ^ Call generator
           -> m Word                                   -- ^ Gas generator
           -> m Word                                   -- ^ Gas price generator
-          -> (Addr -> ContractA -> SolCall -> m Word) -- ^ Value generator
+          -> Word                                     -- ^ Max value generator
           -> m (Word, Word)                           -- ^ Delay generator
           -> m Tx
-genTxWith m s r c g gp v t = use hasLens >>= \(World ss mm) ->
+genTxWith m s r c g gp mv t = use hasLens >>= \(World ss hmm lmm ps) ->
+  weighted [(hmm, 1000), (lmm, 1)] >>= \mm ->
   let s' = s ss
       r' = r rs
       c' = join $ liftM2 c s' r'
+      v' = genValue ps mv
       rs = NE.fromList . catMaybes $ mkR <$> toList m
       mkR = _2 (flip M.lookup mm . view (bytecode . to stripBytecodeMetadata))
   in
-    ((liftM5 Tx (SolCall <$> c') s' (fst <$> r') g gp <*>) =<< liftM3 v s' r' c') <*> t
+    ((liftM5 Tx (SolCall <$> c') s' (fst <$> r') g gp <*>) =<< liftM3 v' s' r' c') <*> t
+
 
 -- | Synthesize a random 'Transaction', not using a dictionary.
 genTx :: forall m x y. (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m)
@@ -221,16 +224,15 @@ genTx m = use (hasLens :: Lens' y World) >>= evalStateT (genTxM m) . (defaultDic
 genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has GenDict y, Has World y, MonadThrow m)
   => Map Addr Contract
   -> m Tx
-genTxM m = view hasLens >>= \(TxConf _ g maxGp t b mv ps) -> genTxWith
+genTxM m = view hasLens >>= \(TxConf _ g maxGp t b mv) -> genTxWith
   m
   rElem rElem                                                                -- src and dst
   (const $ genInteractionsM . snd)                                           -- call itself
-  (pure g) (inRange maxGp) (genValue ps mv)                                  -- gas, gasprice, value
+  (pure g) (inRange maxGp) mv                                                -- gas, gasprice, value
   (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
      where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
 
---genValue :: (MonadRandom m) => Addr -> ContractA -> SolCall -> m Word
-genValue :: (MonadRandom f) => [Word32] -> Word -> Addr -> ContractA -> SolCall -> f Word
+genValue :: (MonadRandom m) => [Word32] -> Word -> Addr -> ContractA -> SolCall -> m Word
 genValue ps mv _ _ sc = let sig = (hashSig . encodeSig . signatureCall) sc in
   if sig `elem` ps then fromIntegral <$> getRandomR (0 :: Integer, fromIntegral mv) else pure (0 :: Word)
 

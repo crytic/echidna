@@ -17,9 +17,6 @@ import qualified Data.ByteString.Lazy.Char8 as BSL
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text           as T
 
-import Echidna.Config
-import Echidna.Solidity
-import Echidna.Transaction
 import Echidna.ABI (hashSig)
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
@@ -34,6 +31,7 @@ instance Show ProcException where
 
 instance Exception ProcException
 
+{-
 process :: (MonadIO m, MonadThrow m) => FilePath -> Maybe String -> EConfig -> m EConfig
 process f c e = do 
                  r <- runSlither f (e ^. sConf ^. cryticArgs)
@@ -42,6 +40,7 @@ process f c e = do
                  --liftIO $ print $ filterResults c $ filterConstantFunction x
                  --let ps = concatMap (map hashSig . snd) rs
                  return $ e & xConf . payableSigs .~ filterResults c (filterPayable r)
+-}
 
 filterResults :: Maybe String -> [(T.Text, [T.Text])] -> [Word32] 
 filterResults (Just c) rs = case lookup (T.pack c) rs of

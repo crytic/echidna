@@ -115,7 +115,6 @@ instance FromJSON EConfigWithUsage where
                             <*> getWord "maxTimeDelay" 604800     
                             <*> getWord "maxBlockDelay" 60480
                             <*> getWord "maxValue" 100000000000000000000 -- 100 eth
-                            <*> pure []
 
                 cov = v ..:? "coverage" <&> \case Just True -> Just mempty
                                                   _         -> Nothing
