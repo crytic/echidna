@@ -36,7 +36,7 @@ import System.Directory           (findExecutable)
 import Echidna.ABI         (SolSignature, encodeSig, hashSig, stripBytecodeMetadata, fallback)
 import Echidna.Exec        (execTx)
 import Echidna.RPC         (loadEthenoBatch)
-import Echidna.Transaction (TxConf, TxCall(SolCreate), Tx(..), World(..))
+import Echidna.Transaction (TxConf, TxCall(SolCreate), Tx(..), World(..), SignatureMap)
 import Echidna.Processor 
 
 import EVM hiding (contracts)
@@ -245,14 +245,14 @@ loadSpecified name cs = do
 --             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 --loadSolidity fp name = contracts fp >>= loadSpecified name
 loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-                      => NE.NonEmpty FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature))
+                      => NE.NonEmpty FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text], SignatureMap)
 loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
-               => (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature)) 
+               => (VM, NE.NonEmpty SolSignature, [Text], SignatureMap) 
                -> Maybe String
                -> [SlitherInfo]
                -> m (VM, World, [SolTest])
@@ -262,8 +262,8 @@ prepareForTest (v, a, ts, m) c si = view hasLens <&> \SolConf { _sender = s, _ch
     a' = NE.toList a
     ps = filterResults c $ filterPayable si
     cs = filterResults c $ filterConstantFunction si
-    hm = filterHashMap not cs m  -- non-pure and non-view functions 
-    lm = filterHashMap id  cs m  -- pure and view functions
+    hm = filterHashMap not cs m                                     -- non-pure and non-view functions 
+    lm = if null cs then Nothing else Just $ filterHashMap id cs m  -- pure and view functions
     filterHashMap f xs = M.mapMaybe (NE.nonEmpty . NE.filter (\s -> f $ (hashSig . encodeSig $ s) `elem` xs)) 
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into

@@ -181,11 +181,12 @@ level x                       = x
 -- | A contract is just an address with an ABI (for our purposes).
 type ContractA = (Addr, NE.NonEmpty SolSignature)
 
+type SignatureMap = M.HashMap ByteString (NE.NonEmpty SolSignature)
 -- | The world is made our of humans with an address, and a way to map contract
 -- bytecodes to an ABI
 data World = World { _senders          :: NE.NonEmpty Addr
-                   , _highSignatureMap :: M.HashMap ByteString (NE.NonEmpty SolSignature)
-                   , _lowSignatureMap  :: M.HashMap ByteString (NE.NonEmpty SolSignature)
+                   , _highSignatureMap :: SignatureMap
+                   , _lowSignatureMap  :: Maybe SignatureMap
                    , _payableSigs      :: [Word32]
                    }
 makeLenses ''World
@@ -203,7 +204,7 @@ genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m)
           -> m (Word, Word)                           -- ^ Delay generator
           -> m Tx
 genTxWith m s r c g gp mv t = use hasLens >>= \(World ss hmm lmm ps) ->
-  weighted [(hmm, 1000), (lmm, 1)] >>= \mm ->
+  getSignatures hmm lmm >>= \mm ->
   let s' = s ss
       r' = r rs
       c' = join $ liftM2 c s' r'
@@ -213,6 +214,9 @@ genTxWith m s r c g gp mv t = use hasLens >>= \(World ss hmm lmm ps) ->
   in
     ((liftM5 Tx (SolCall <$> c') s' (fst <$> r') g gp <*>) =<< liftM3 v' s' r' c') <*> t
 
+getSignatures :: MonadRandom m => SignatureMap -> Maybe SignatureMap -> m SignatureMap
+getSignatures hmm Nothing = return hmm
+getSignatures hmm (Just lmm) = weighted [(hmm, 1000), (lmm, 1)]
 
 -- | Synthesize a random 'Transaction', not using a dictionary.
 genTx :: forall m x y. (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m)
