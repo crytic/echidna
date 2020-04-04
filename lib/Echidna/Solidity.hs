@@ -182,7 +182,7 @@ abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
 loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-              => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature))
+              => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text], SignatureMap)
 loadSpecified name cs = do
   -- Pick contract to load
   c <- choose cs name
