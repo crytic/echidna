@@ -45,13 +45,16 @@ import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
+import Echidna.Mutator
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
 instance MonadCatch m => MonadCatch (RandT g m) where
   catch = liftCatch catch
 
-type MutationConsts = (Integer, Integer, Integer, Integer, Integer, Integer, Integer)
+type MutationConsts = (Integer, Integer, Integer, Integer, Integer)
+defaultMutationConsts :: MutationConsts 
+defaultMutationConsts = (10,1,1,1,1)
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { testLimit     :: Int
@@ -243,14 +246,21 @@ addToCorpus n res = unless (null rtxs) $ hasLens . corpus %= DS.insert (rtxs, n)
 
 seqMutators :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) 
             => MutationConsts -> m (Int -> Corpus -> [Tx] -> m [Tx])
-seqMutators (c1, c2, c3, c4, c5, c6, c7) = fromList 
-  [(cnm                      , fromInteger c1),
-   (mut False return         , fromInteger c2),
-   (mut True  return         , fromInteger c3),
-   (mut False (mapM shrinkTx), fromInteger c4),
-   (mut True  (mapM shrinkTx), fromInteger c5),
-   (mut False (mapM mutateTx), fromInteger c6),
-   (mut True  (mapM mutateTx), fromInteger c7)
+seqMutators (c1, c2, c3, c4, c5) = fromList 
+  [(cnm                      , 1000),
+   (mut False return         , fromInteger c1),
+   (mut True  return         , fromInteger c1),
+   (mut False (mapM shrinkTx), fromInteger c2),
+   (mut True  (mapM shrinkTx), fromInteger c2),
+   (mut False (mapM mutateTx), fromInteger c3),
+   (mut True  (mapM mutateTx), fromInteger c3),
+   (mut False expandRandList , fromInteger c4),
+   (mut True  expandRandList , fromInteger c4),
+   (mut False swapRandList   , fromInteger c4),
+   (mut True  swapRandList   , fromInteger c4),
+   (mut False deleteRandList , fromInteger c4),
+   (mut True  deleteRandList , fromInteger c4),
+   (com       spliceAtRandom , fromInteger c5)
  ]
 
   where -- Use the generated random transactions
@@ -265,6 +275,12 @@ seqMutators (c1, c2, c3, c4, c5, c6, c7) = fromList
           else 
            do rtxs' <- f $ take k rtxs
               return . take ql $ rtxs' ++ gtxs
+
+        com f ql ctxs gtxs = do
+          rtxs1 <- fromList $ map (second fromInteger) $ DS.toDescList ctxs
+          rtxs2 <- fromList $ map (second fromInteger) $ DS.toDescList ctxs 
+          txs <- f rtxs1 rtxs2
+          return . take ql $ txs ++ gtxs
 
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
