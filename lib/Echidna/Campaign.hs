@@ -244,43 +244,81 @@ addToCorpus :: (MonadState s m, Has Campaign s) => Integer -> [(Tx, (VMResult, I
 addToCorpus n res = unless (null rtxs) $ hasLens . corpus %= DS.insert (rtxs, n) where
   rtxs = map fst res
 
-seqMutators :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) 
-            => MutationConsts -> m (Int -> Corpus -> [Tx] -> m [Tx])
-seqMutators (c1, c2, c3, c4, c5) = fromList 
-  [(cnm                      , 1000),
-   (mut False return         , fromInteger c1),
-   (mut True  return         , fromInteger c1),
-   (mut False (mapM shrinkTx), fromInteger c2),
-   (mut True  (mapM shrinkTx), fromInteger c2),
-   (mut False (mapM mutateTx), fromInteger c3),
-   (mut True  (mapM mutateTx), fromInteger c3),
-   (mut False expandRandList , fromInteger c4),
-   (mut True  expandRandList , fromInteger c4),
-   (mut False swapRandList   , fromInteger c4),
-   (mut True  swapRandList   , fromInteger c4),
-   (mut False deleteRandList , fromInteger c4),
-   (mut True  deleteRandList , fromInteger c4),
-   (com       spliceAtRandom , fromInteger c5)
- ]
+data TxsMutation = TxIdentity
+                 | Shrinking
+                 | Mutation
+                 | Expansion
+                 | Swapping
+                 | Deletion
 
-  where -- Use the generated random transactions
-        cnm _ _          = return
-        mut flp f ql ctxs gtxs = do
-          let five_percent = 1 + (DS.size ctxs `div` 20)
-          rtxs <- fromList $ map (second fromInteger) $ take five_percent $ DS.toDescList ctxs
-          k <- getRandomR (0, length rtxs - 1)
-          if flp then 
-           do rtxs' <- f $ take (ql - k) rtxs 
-              return . take ql $ take k gtxs ++ rtxs' 
-          else 
-           do rtxs' <- f $ take k rtxs
-              return . take ql $ rtxs' ++ gtxs
+data CorpusMutation = Skip
+                    | RandomAppend TxsMutation 
+                    | RandomPrepend TxsMutation
+                    | RandomSplice
 
-        com f ql ctxs gtxs = do
+selectAndMutate :: MonadRandom m 
+                => ([Tx] -> m [Tx]) -> Corpus -> m [Tx]
+selectAndMutate f ctxs = do
+  let five_percent = 1 + (DS.size ctxs `div` 20)
+  rtxs <- fromList $ map (second fromInteger) $ take five_percent $ DS.toDescList ctxs
+  k <- getRandomR (0, length rtxs - 1)
+  f $ take k rtxs
+
+getCorpusMutation :: (MonadThrow m, MonadRandom m, Has GenDict x, MonadState x m) 
+                  => CorpusMutation -> Int -> Corpus -> [Tx] -> m [Tx]
+getCorpusMutation Skip = \_ _ -> return
+getCorpusMutation (RandomAppend m) = 
+  case m of
+    TxIdentity -> mut return
+    Shrinking  -> mut (mapM shrinkTx)
+    Mutation   -> mut (mapM mutateTx)
+    Expansion  -> mut expandRandList
+    Swapping   -> mut swapRandList
+    Deletion   -> mut deleteRandList
+ where mut f ql ctxs gtxs = do
+          rtxs' <- selectAndMutate f ctxs
+          return . take ql $ rtxs' ++ gtxs  
+
+getCorpusMutation (RandomPrepend m) = 
+  case m of
+    TxIdentity -> mut return
+    Shrinking  -> mut $ mapM shrinkTx
+    Mutation   -> mut $ mapM mutateTx
+    Expansion  -> mut expandRandList
+    Swapping   -> mut swapRandList
+    Deletion   -> mut deleteRandList
+ where mut f ql ctxs gtxs = do
+          rtxs' <- selectAndMutate f ctxs
+          return . take ql $ gtxs ++ rtxs'
+
+getCorpusMutation RandomSplice = com spliceAtRandom
+ where com f ql ctxs gtxs = do
           rtxs1 <- fromList $ map (second fromInteger) $ DS.toDescList ctxs
           rtxs2 <- fromList $ map (second fromInteger) $ DS.toDescList ctxs 
           txs <- f rtxs1 rtxs2
           return . take ql $ txs ++ gtxs
+
+seqMutators :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) 
+            => MutationConsts -> m CorpusMutation
+seqMutators (c1, c2, c3, c4, c5) = fromList 
+  [(Skip,                     1000),
+
+   (RandomAppend TxIdentity,  fromInteger c1),
+   (RandomAppend Shrinking,   fromInteger c2),
+   (RandomAppend Mutation,    fromInteger c3),
+   (RandomAppend Expansion,   fromInteger c4),
+   (RandomAppend Swapping,    fromInteger c4),
+   (RandomAppend Deletion,    fromInteger c4),
+
+   (RandomPrepend TxIdentity, fromInteger c1),
+   (RandomPrepend Shrinking,  fromInteger c2),
+   (RandomPrepend Mutation,   fromInteger c3),
+   (RandomPrepend Expansion,  fromInteger c4),
+   (RandomPrepend Swapping,   fromInteger c4),
+   (RandomPrepend Deletion,   fromInteger c4),
+
+   (RandomSplice,             fromInteger c5)
+ ]
 
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
@@ -298,7 +336,8 @@ randseq ql o w = do
       -- Randomly generate new random transactions
       gtxs <- replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
       -- Select a random mutator
-      mut <- seqMutators cs
+      cmut <- seqMutators cs
+      let mut = getCorpusMutation cmut
       if DS.null ctxs
       then return gtxs      -- Use the generated random transactions
       else mut ql ctxs gtxs -- Apply the mutator
