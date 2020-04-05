@@ -89,3 +89,12 @@ jobs:
           else
             stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
           fi
+          stack install --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+      
+      - name: Compress binary
+        run: GZIP=-9 tar -czf echidna-test.tar.gz $HOME/.local/bin/echidna-test
+      - name: Upload artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: echidna-test
+          path: echidna-test.tar.gz
