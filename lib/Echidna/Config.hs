@@ -123,7 +123,7 @@ instance FromJSON EConfigWithUsage where
                                   <*> v ..:? "seed"
                                   <*> v ..:? "dictFreq"    ..!= 0.40
                                   <*> v ..:? "corpusDir"   ..!= Nothing
-                                  <*> v ..:? "mutConsts"   ..!= (1,1,1)
+                                  <*> v ..:? "mutConsts"   ..!= (100,1,1)
 
                 names :: Names
                 names Sender = (" from: " ++) . show
