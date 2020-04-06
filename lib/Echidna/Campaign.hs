@@ -262,7 +262,6 @@ selectAndMutate f ctxs = do
                     then 1 + (DS.size ctxs `div` 20) -- then take 5% of its size
                     else DS.size ctxs                -- otherwise, take all of it
   rtxs <- fromList $ map (\(i, txs) -> (txs, fromInteger i)) $ take somePercent $ DS.toDescList ctxs
-  --rtxs <- fromList $ map (second fromInteger) $ take five_percent $ DS.toDescList ctxs
   k <- getRandomR (0, length rtxs - 1)
   f $ take k rtxs
 
@@ -291,7 +290,8 @@ getCorpusMutation (RandomPrepend m) =
     Deletion   -> mut deleteRandList
  where mut f ql ctxs gtxs = do
           rtxs' <- selectAndMutate f ctxs
-          return . take ql $ gtxs ++ rtxs'
+          k <- getRandomR (0, ql - 1)
+          return . take ql $ take k gtxs ++ rtxs'
 
 getCorpusMutation RandomSplice = com spliceAtRandom
  where com f ql ctxs gtxs = do
@@ -321,23 +321,6 @@ seqMutators (c1, c2, c3, c4, c5) = fromList
 
    (RandomSplice,             fromInteger c5)
  ]
-
-{-
-seqMutators :: (MonadRandom m) => MutationConsts -> m (Int -> Corpus -> [Tx] -> m [Tx])
-seqMutators (c1, c2, c3) = fromList 
-                            [(cnm      , fromInteger c1),
-                             (mut False, fromInteger c2),
-                             (mut True , fromInteger c3)]
-  where -- Use the generated random transactions
-        cnm _ _          = return
-        mut flp ql ctxs gtxs = do
-          let somePercent = if (fst . DS.findMax) ctxs > 1    -- if the corpus already contains new elements 
-                             then 1 + (DS.size ctxs `div` 20) -- then take 5% of its size
-                             else DS.size ctxs                -- otherwise, take all of it
-          rtxs <- fromList $ map (\(i, txs) -> (txs, fromInteger i)) $ take somePercent $ DS.toDescList ctxs
-          k <- getRandomR (0, length rtxs - 1)
-          return . take ql $ if flp then take k gtxs ++ rtxs else take k rtxs ++ gtxs
--}
 
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
