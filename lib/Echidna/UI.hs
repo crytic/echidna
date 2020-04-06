@@ -10,13 +10,13 @@ module Echidna.UI where
 import Brick
 import Brick.BChan
 import Control.Concurrent (killThread, threadDelay)
-import Control.Concurrent.MVar
 import Control.Lens
-import Control.Monad (forever, liftM2, liftM3, void, when)
+import Control.Monad (forever, liftM3, void, when)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader, runReader)
 import Control.Monad.Random.Strict (MonadRandom)
+import qualified Data.ByteString.Lazy as BS
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.IORef
@@ -28,18 +28,20 @@ import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (forkIO, forkFinally)
 import UnliftIO.Timeout (timeout)
 
-import Echidna.Campaign
 import Echidna.ABI
+import Echidna.Campaign
+import qualified Echidna.Output.JSON
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.UI.Report
 import Echidna.UI.Widgets
 
-data UIConf = UIConf { _dashboard :: Bool
-                     , _maxTime   :: Maybe Int
-                     , _finished  :: Campaign -> Int -> String
+data UIConf = UIConf { _maxTime       :: Maybe Int
+                     , _operationMode :: OperationMode
                      }
+data OperationMode = Interactive | NonInteractive OutputFormat deriving Show
+data OutputFormat = Text | JSON | None deriving Show
 
 makeLenses ''UIConf
 
@@ -65,8 +67,8 @@ monitor = let
 isTerminal :: MonadIO m => m Bool
 isTerminal = liftIO $ (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 
--- | Set up and run an Echidna 'Campaign' while drawing the dashboard, then print 'Campaign' status
--- once done.
+-- | Set up and run an Echidna 'Campaign' and display interactive UI or
+-- print non-interactive output in desired format at the end
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
       , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Names x, Has TxConf x, Has UIConf x)
    => VM        -- ^ Initial VM state
@@ -78,25 +80,46 @@ ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
 ui v w ts d txs = do
   let d' = fromMaybe defaultDict d
   let getSeed = view $ hasLens . to seed . non (d' ^. defSeed)
-  bc <- liftIO $ newBChan 100
   ref <- liftIO $ newIORef defaultCampaign
-  dash <- liftM2 (&&) isTerminal $ view (hasLens . dashboard)
-  timeoutSeconds <- (* 1000000) . fromMaybe (-1) <$> view (hasLens . maxTime)
   let updateRef = use hasLens >>= liftIO . atomicWriteIORef ref
-  let updateUI e = when dash $ readIORef ref >>= writeBChan bc . e
-  waitForMe <- liftIO newEmptyMVar
-  ticker <- liftIO $ forkIO -- update UI every 100ms, instant exit when no UI
-    (when dash $ forever $ threadDelay 100000 >> updateUI CampaignUpdated)
-  _ <- forkFinally -- run worker
-    (void $ timeout timeoutSeconds (campaign updateRef v w ts d txs) >>= \case
-       Nothing -> liftIO $ updateUI CampaignTimedout
-       Just _ -> liftIO $ updateUI CampaignUpdated
-    )
-    (const $ liftIO $ killThread ticker >> putMVar waitForMe ())
-  app <- customMain (mkVty defaultConfig) (Just bc) <$> monitor
-  liftIO $ if dash
-             then void $ app (defaultCampaign, Uninitialized)
-             else takeMVar waitForMe
-  final <- liftIO $ readIORef ref
-  liftIO . putStrLn =<< view (hasLens . finished) <*> pure final <*> getSeed
-  return final
+  timeoutSeconds <- (* 1000000) . fromMaybe (-1) <$> view (hasLens . maxTime)
+  terminalPresent <- isTerminal
+  effectiveMode <- view (hasLens . operationMode) <&> \case
+    Interactive | not terminalPresent -> NonInteractive Text
+    other -> other
+  case effectiveMode of
+    Interactive -> do
+      bc <- liftIO $ newBChan 100
+      let updateUI e = readIORef ref >>= writeBChan bc . e
+      ticker <- liftIO $ forkIO $
+        forever $ threadDelay 100000 >> updateUI CampaignUpdated
+      _ <- forkFinally -- run worker
+        (void $ timeout timeoutSeconds (campaign updateRef v w ts d txs) >>= \case
+          Nothing -> liftIO $ updateUI CampaignTimedout
+          Just _ -> liftIO $ updateUI CampaignUpdated
+        )
+        (const $ liftIO $ killThread ticker)
+      app <- customMain (mkVty defaultConfig) (Just bc) <$> monitor
+      liftIO $ void $ app (defaultCampaign, Uninitialized)
+      -- TODO: this is temporary, show seed in the UI
+      liftIO . putStrLn =<< ("Seed: " ++) . show <$> getSeed
+      liftIO $ readIORef ref
+
+    NonInteractive outputFormat -> do
+      result <- timeout timeoutSeconds (campaign updateRef v w ts d txs)
+      (final, timedout) <- case result of
+        Nothing -> do
+          final <- liftIO $ readIORef ref
+          pure (final, True)
+        Just final ->
+          pure (final, False)
+      case outputFormat of
+        JSON ->
+          liftIO . BS.putStr =<< Echidna.Output.JSON.encodeCampaign final <$> getSeed
+        Text -> do
+          liftIO . putStrLn =<< ppCampaign final
+          liftIO . putStrLn =<< ("Seed: " ++) . show <$> getSeed
+          when timedout $ liftIO $ putStrLn "TIMEOUT!"
+        None ->
+          pure ()
+      pure final
