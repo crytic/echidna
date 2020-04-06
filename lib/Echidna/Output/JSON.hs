@@ -82,7 +82,7 @@ instance ToJSON Transaction where
     ]
 
 encodeCampaign :: C.Campaign -> Int -> ByteString
-encodeCampaign C.Campaign{_tests} seed = encode $
+encodeCampaign C.Campaign{_tests} seed = encode
   -- TODO: success and error are hardcoded, add after reworking error reporting
   Top { _success = True
       , _error = Nothing
