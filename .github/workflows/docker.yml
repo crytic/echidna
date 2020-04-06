@@ -1,0 +1,47 @@
+name: Docker
+
+on:
+  push:
+    branches:
+      - master
+      - github-docker
+    tags:
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Docker Login
+        uses: azure/docker-login@v1
+        with:
+          login-server: docker.pkg.github.com
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker Build and Push
+        run: |
+          set +e
+          _=$(echo "$GITHUB_REF" | grep "^refs/heads/")
+          if [ $? -eq 0 ]; then
+            # branch
+            if [ "$GITHUB_REF" = "refs/heads/master" ]; then
+              VER=latest
+              PKG=echidna
+            else
+              VER=testing
+              PKG=testing
+            fi
+          fi
+          _=$(echo "$GITHUB_REF" | grep "^refs/tags/")
+          if [ $? -eq 0 ]; then
+            # tag
+            # refs/tags/v1.X => v1.X
+            VER=$(echo "$GITHUB_REF" | sed -e 's/.*\///')
+            PKG=echidna
+          fi
+          set -e
+          docker build -t docker.pkg.github.com/crytic/echidna/$PKG:$VER .
+          docker push docker.pkg.github.com/crytic/echidna/$PKG:$VER

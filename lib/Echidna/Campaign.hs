@@ -11,7 +11,6 @@
 
 module Echidna.Campaign where
 
-import Control.Arrow (second)
 import Control.Lens
 import Control.Monad (liftM3, replicateM, when, (<=<), ap, unless)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
@@ -100,7 +99,7 @@ instance ToJSON TestState where
                                Solved  l -> (False, Just ("callseq", toJSON l))
                                Failed  e -> (False, Just ("exception", toJSON $ show e))
 
-type Corpus = DS.Set ([Tx], Integer)
+type Corpus = DS.Set (Integer, [Tx])
 
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
@@ -238,7 +237,7 @@ execTxOptC t = do
 
 -- | Given a list of transactions in the corpus, save them discarding reverted transactions
 addToCorpus :: (MonadState s m, Has Campaign s) => Integer -> [(Tx, (VMResult, Int))] -> m ()
-addToCorpus n res = unless (null rtxs) $ hasLens . corpus %= DS.insert (rtxs, n) where
+addToCorpus n res = unless (null rtxs) $ hasLens . corpus %= DS.insert (n, rtxs) where
   rtxs = map fst res
 
 seqMutators :: (MonadRandom m) => MutationConsts -> m (Int -> Corpus -> [Tx] -> m [Tx])
@@ -249,8 +248,10 @@ seqMutators (c1, c2, c3) = fromList
   where -- Use the generated random transactions
         cnm _ _          = return
         mut flp ql ctxs gtxs = do
-          let five_percent = 1 + (DS.size ctxs `div` 20)
-          rtxs <- fromList $ map (second fromInteger) $ take five_percent $ DS.toDescList ctxs
+          let somePercent = if (fst . DS.findMax) ctxs > 1    -- if the corpus already contains new elements 
+                             then 1 + (DS.size ctxs `div` 20) -- then take 5% of its size
+                             else DS.size ctxs                -- otherwise, take all of it
+          rtxs <- fromList $ map (\(i, txs) -> (txs, fromInteger i)) $ take somePercent $ DS.toDescList ctxs
           k <- getRandomR (0, length rtxs - 1)
           return . take ql $ if flp then take k gtxs ++ rtxs else take k rtxs ++ gtxs
 
@@ -264,7 +265,7 @@ randseq ql o w = do
   let ctxs = ca ^. corpus
       p    = fromInteger $ ca ^. ncallseqs
   if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
-    return $ fst $ DS.elemAt p ctxs
+    return $ snd $ DS.elemAt p ctxs
   else
     do
       -- Randomly generate new random transactions
@@ -340,7 +341,7 @@ campaign u v w ts d txs = do
   c <- fromMaybe mempty <$> view (hasLens . to knownCoverage)
   g <- view (hasLens . to seed)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d' False (DS.fromList $ map (,1) txs) 0) where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d' False (DS.fromList $ map (1,) txs) 0) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _ _ _) ->
