@@ -1,7 +1,6 @@
 # echidna
 
-[![Build Status](https://travis-ci.org/crytic/echidna.svg?branch=master)](https://travis-ci.org/crytic/echidna)
-
+![Build Status](https://github.com/crytic/echidna/workflows/CI/badge.svg)
 ![echidna logo](echidna.png)
 
 Echidna is a weird creature that eats bugs and is highly electrosensitive (with apologies to Jacob Stanley)
@@ -15,7 +14,6 @@ More seriously, Echidna is a Haskell library designed for fuzzing/property-based
 * Automatic testcase minimization for quick triage
 * Seamless integration into the development workflow
 * Fast
-* Powerful API for advanced usage
 * Beautiful logo
 
 ## Usage
@@ -73,13 +71,9 @@ $ echidna-test contract.sol --contract TEST --config="config.yaml"
 The configuration file allows users to choose EVM and test generation
 parameters. An example of a complete and annotated config file with the default options can be found at [examples/solidity/basic/default.yaml](examples/solidity/basic/default.yaml). More detailed documentation on the configuration options is available in our [wiki](https://github.com/trailofbits/echidna/wiki/Config).
 
-### Advanced usage
-
-Echidna exports an API to build powerful fuzzing systems, and has a multitude of configuration options. Unfortunately, these parts of the codebase change quickly and are thus poorly documented. The [examples/api directory](examples/api) or [Trail of Bits blog](https://blog.trailofbits.com/2018/05/03/state-machine-testing-with-echidna/) are excellent references, or use the references below to get in touch with us directly.
-
 ## Installation
 
-If you want to quickly test Echidna in Linux, we offer a statically linked binary release of v1.1.0.0 to download [here](https://github.com/crytic/echidna/releases/tag/1.1.0.0).
+If you want to quickly test Echidna in Linux, we offer a statically linked binary release of v1.4.0.1 to download [here](https://github.com/crytic/echidna/releases/tag/v1.4.0.1).
 
 Otherwise, to install the latest revision of Echidna, we recommend to use [docker](https://www.docker.com/):
 
@@ -96,7 +90,7 @@ $ docker run -it -v `pwd`:/src echidna echidna-test /src/examples/solidity/basic
 If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/README/).
 `stack install` should build and compile `echidna-test` in `~/.local/bin`.
 You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choosing.
-Additionally, you need to install the latest release of [libff](https://github.com/scipr-lab/libff) (you can take a look to [this script](.travis/install-libff.sh) used in our CI tests).
+Additionally, you need to install the latest release of [libff](https://github.com/scipr-lab/libff), you can take a look to [this script](.github/scripts/install-libff.sh) used in our CI tests.
 Some linux distributions do not ship static libraries for certain things that Haskell needs, e.g. archlinux, which will cause `stack build` to fail with linking errors because we use the `-static` flag. Removing these from `package.yaml` should get everything to build if you are not looking for a static build.
 
 If you're getting errors building related to linking, try tinkering with `--extra-include-dirs` and `--extra-lib-dirs`.
