@@ -254,6 +254,7 @@ data CorpusMutation = Skip
                     | RandomAppend TxsMutation 
                     | RandomPrepend TxsMutation
                     | RandomSplice
+                    | RandomInterleave
 
 selectAndMutate :: MonadRandom m 
                 => ([Tx] -> m [Tx]) -> Corpus -> m [Tx]
@@ -264,6 +265,15 @@ selectAndMutate f ctxs = do
   rtxs <- fromList $ map (\(i, txs) -> (txs, fromInteger i)) $ take somePercent $ DS.toDescList ctxs
   k <- getRandomR (0, length rtxs - 1)
   f $ take k rtxs
+
+
+selectAndCombine ::  MonadRandom m
+                 => ([Tx] -> [Tx] -> m [Tx]) -> Int -> Corpus -> [Tx] -> m [Tx]
+selectAndCombine f ql ctxs gtxs = do
+          rtxs1 <- fromList $ map (\(i, txs) -> (txs, fromInteger i)) $ DS.toDescList ctxs
+          rtxs2 <- fromList $ map (\(i, txs) -> (txs, fromInteger i)) $ DS.toDescList ctxs 
+          txs <- f rtxs1 rtxs2
+          return . take ql $ txs ++ gtxs
 
 getCorpusMutation :: (MonadThrow m, MonadRandom m, Has GenDict x, MonadState x m) 
                   => CorpusMutation -> Int -> Corpus -> [Tx] -> m [Tx]
@@ -293,12 +303,8 @@ getCorpusMutation (RandomPrepend m) =
           k <- getRandomR (0, ql - 1)
           return . take ql $ take k gtxs ++ rtxs'
 
-getCorpusMutation RandomSplice = com spliceAtRandom
- where com f ql ctxs gtxs = do
-          rtxs1 <- fromList $ map (\(i, txs) -> (txs, fromInteger i)) $ DS.toDescList ctxs
-          rtxs2 <- fromList $ map (\(i, txs) -> (txs, fromInteger i)) $ DS.toDescList ctxs 
-          txs <- f rtxs1 rtxs2
-          return . take ql $ txs ++ gtxs
+getCorpusMutation RandomSplice = selectAndCombine spliceAtRandom
+getCorpusMutation RandomInterleave = selectAndCombine interleaveAtRandom
 
 seqMutators :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) 
             => MutationConsts -> m CorpusMutation
@@ -319,7 +325,8 @@ seqMutators (c1, c2, c3, c4, c5) = fromList
    (RandomPrepend Swapping,   fromInteger c4),
    (RandomPrepend Deletion,   fromInteger c4),
 
-   (RandomSplice,             fromInteger c5)
+   (RandomSplice,             fromInteger c5),
+   (RandomInterleave,         fromInteger c5)
  ]
 
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
