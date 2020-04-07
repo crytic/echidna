@@ -348,4 +348,5 @@ campaign u v w ts d txs = do
       if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
+         | null c                                                              -> callseq v w q >> lift u
          | otherwise                                                           -> lift u
