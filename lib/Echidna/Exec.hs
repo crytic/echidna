@@ -107,7 +107,7 @@ scoveragePoints = sum . fmap (S.size . S.map fst)
 -- | Capture the current PC and codehash. This should identify instructions uniquely (maybe? EVM is weird).
 pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
 pointCoverage l = use hasLens >>= \v ->
-  l %= M.insertWith (const . S.insert $ (v ^. state . pc, Success)) (fromMaybe (BS.empty) $ h v) mempty where
+  l %= M.insertWith (const . S.insert $ (v ^. state . pc, Success)) (fromMaybe BS.empty $ h v) mempty where
     h v = stripBytecodeMetadata <$> v ^? env . contracts . at (v ^. state . contract) . _Just . bytecode
 
 traceCoverage :: (MonadState x m, Has VM x, Has [Op] x) => m ()
