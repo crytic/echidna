@@ -17,7 +17,6 @@ import Data.Set (Set)
 import EVM
 import EVM.Op (Op(..))
 import EVM.Exec (exec)
-import EVM.Types (W256(..))
 
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
