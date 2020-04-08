@@ -100,5 +100,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v1
         with:
-          name: echidna-test
+          name: echidna-test-${{ runner.os }}
           path: echidna-test.tar.gz
