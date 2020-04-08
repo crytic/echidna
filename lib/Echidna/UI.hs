@@ -43,6 +43,12 @@ data UIConf = UIConf { _maxTime       :: Maybe Int
 data OperationMode = Interactive | NonInteractive OutputFormat deriving Show
 data OutputFormat = Text | JSON | None deriving Show
 
+instance Read OutputFormat where
+  readsPrec _ = \case 't':'e':'x':'t':r -> [(Text, r)]
+                      'j':'s':'o':'n':r -> [(JSON, r)]
+                      'n':'o':'n':'e':r -> [(None, r)]
+                      _ -> []
+
 makeLenses ''UIConf
 
 data CampaignEvent = CampaignUpdated Campaign | CampaignTimedout Campaign

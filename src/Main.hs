@@ -1,6 +1,8 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Main where
 
-import Control.Lens (view, (^.), to)
+import Control.Lens (view, (^.), to, (.~), (&))
 import Control.Monad (unless)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
@@ -29,6 +31,7 @@ data Options = Options
   { filePath         :: NE.NonEmpty FilePath
   , selectedContract :: Maybe String
   , configFilepath   :: Maybe FilePath
+  , outputFormat     :: Maybe OutputFormat
   }
 
 options :: Parser Options
@@ -40,6 +43,9 @@ options = Options <$> (NE.fromList <$> some (argument str (metavar "FILES"
                   <*> optional (option str $ long "config"
                         <> metavar "CONFIG"
                         <> help "Config file")
+                  <*> optional (option auto $ long "format"
+                        <> metavar "FORMAT"
+                        <> help "Output format: json, text, none. Disables interactive UI")
 
 versionOption :: Parser (a -> a)
 versionOption = infoOption
@@ -52,17 +58,23 @@ opts = info (helper <*> versionOption <*> options) $ fullDesc
   <> header "Echidna"
 
 main :: IO ()
-main = do Options f c conf <- execParser opts
-          g   <- getRandom
-          EConfigWithUsage cfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig conf
-          unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
-          let cd = corpusDir $ view cConf cfg
-          txs <- loadTxs cd
-          cpg <- flip runReaderT cfg $ do
-            cs       <- Echidna.Solidity.contracts f
-            ads      <- addresses
-            (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
-            let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
-            ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg) (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs)) txs
-          saveTxs cd (map snd $ DS.toList $ view corpus cpg)
-          if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
+main = do
+  Options{..} <- execParser opts
+  g <- getRandom
+  EConfigWithUsage loadedCfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig configFilepath
+  let cfg = case maybe (loadedCfg ^. uConf . operationMode) NonInteractive outputFormat of
+              Interactive -> loadedCfg
+              nonInteractive ->
+                loadedCfg & sConf . quiet .~ True
+                          & uConf . operationMode .~ nonInteractive
+  unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
+  let cd = corpusDir $ view cConf cfg
+  txs <- loadTxs cd
+  cpg <- flip runReaderT cfg $ do
+    cs       <- Echidna.Solidity.contracts filePath
+    ads      <- addresses
+    (v,w,ts) <- loadSpecified (pack <$> selectedContract) cs >>= prepareForTest
+    let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
+    ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg) (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs)) txs
+  saveTxs cd (map snd $ DS.toList $ view corpus cpg)
+  if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
