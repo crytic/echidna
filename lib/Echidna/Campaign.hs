@@ -31,6 +31,7 @@ import Data.Traversable (traverse)
 import EVM
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (Addr)
+import EVM.Keccak (keccak)
 import Numeric (showHex)
 import System.Random (mkStdGen)
 
@@ -121,7 +122,7 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
 instance ToJSON Campaign where
   toJSON (Campaign ts co gi _ _ _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
     : ((if co == mempty then [] else [
-    ("coverage",) . toJSON . mapKeys (`showHex` "") $ DF.toList <$> co]) ++
+    ("coverage",) . toJSON . mapKeys (("0x" ++) . (`showHex` "") . keccak) $ DF.toList <$> co]) ++
        [(("maxgas",) . toJSON . toList) gi | gi /= mempty]) where
         format (Right _,      Open _) = Nothing
         format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
