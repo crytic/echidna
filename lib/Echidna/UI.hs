@@ -82,7 +82,8 @@ ui v w ts d txs = do
   let getSeed = view $ hasLens . to seed . non (d' ^. defSeed)
   ref <- liftIO $ newIORef defaultCampaign
   let updateRef = use hasLens >>= liftIO . atomicWriteIORef ref
-  timeoutSeconds <- (* 1000000) . fromMaybe (-1) <$> view (hasLens . maxTime)
+  let secToUsec = (* 1000000)
+  timeoutUsec <- secToUsec . fromMaybe (-1) <$> view (hasLens . maxTime)
   terminalPresent <- isTerminal
   effectiveMode <- view (hasLens . operationMode) <&> \case
     Interactive | not terminalPresent -> NonInteractive Text
@@ -91,10 +92,10 @@ ui v w ts d txs = do
     Interactive -> do
       bc <- liftIO $ newBChan 100
       let updateUI e = readIORef ref >>= writeBChan bc . e
-      ticker <- liftIO $ forkIO $
+      ticker <- liftIO $ forkIO $ -- run UI update every 100ms
         forever $ threadDelay 100000 >> updateUI CampaignUpdated
       _ <- forkFinally -- run worker
-        (void $ timeout timeoutSeconds (campaign updateRef v w ts d txs) >>= \case
+        (void $ timeout timeoutUsec (campaign updateRef v w ts d txs) >>= \case
           Nothing -> liftIO $ updateUI CampaignTimedout
           Just _ -> liftIO $ updateUI CampaignUpdated
         )
@@ -106,7 +107,7 @@ ui v w ts d txs = do
       liftIO $ readIORef ref
 
     NonInteractive outputFormat -> do
-      result <- timeout timeoutSeconds (campaign updateRef v w ts d txs)
+      result <- timeout timeoutUsec (campaign updateRef v w ts d txs)
       (final, timedout) <- case result of
         Nothing -> do
           final <- liftIO $ readIORef ref
