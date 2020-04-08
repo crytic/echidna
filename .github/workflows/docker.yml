@@ -43,5 +43,5 @@ jobs:
             PKG=echidna
           fi
           set -e
-          docker build -t docker.pkg.github.com/crytic/echidna/$PKG:$VER .
-          docker push docker.pkg.github.com/crytic/echidna/$PKG:$VER
+          docker build -t docker.pkg.github.com/$GITHUB_REPOSITORY/$PKG:$VER .
+          docker push docker.pkg.github.com/$GITHUB_REPOSITORY/$PKG:$VER
