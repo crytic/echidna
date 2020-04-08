@@ -1,5 +1,4 @@
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Echidna.Output.JSON where
@@ -7,26 +6,34 @@ module Echidna.Output.JSON where
 import Echidna.ABI (ppAbiValue)
 import qualified Echidna.Campaign as C
 import Echidna.Solidity (SolTest)
-import Echidna.Transaction (Tx(..), TxCall(..))
+import Echidna.Transaction (Tx(..), TxCall(..), TxResult)
 import Data.Aeson hiding (Error)
 import qualified Data.ByteString.Base16 as BS16
 import Data.ByteString.Lazy (ByteString)
 import Data.Text
 import Data.Text.Encoding (decodeUtf8)
+import Data.Map
+import EVM.Keccak (keccak)
+import qualified Data.Foldable as DF
+import Numeric (showHex)
 
-data Top = Top
+data Campaign = Campaign
   { _success :: Bool
   , _error :: Maybe String
   , _tests :: [Test]
   , seed :: Int
+  , coverage :: Map String [(Int, TxResult)]
+  , gasInfo :: [(Text, (Int, [Tx]))]
   }
 
-instance ToJSON Top where
-  toJSON Top{..} = object
+instance ToJSON Campaign where
+  toJSON Campaign{..} = object
     [ "success" .= _success
     , "error" .= _error
     , "tests" .= _tests
     , "seed" .= seed
+    , "coverage" .= coverage
+    , "gas_info" .= gasInfo
     ]
 
 data Test = Test
@@ -82,18 +89,19 @@ instance ToJSON Transaction where
     ]
 
 encodeCampaign :: C.Campaign -> Int -> ByteString
-encodeCampaign C.Campaign{_tests} seed = encode
-  -- TODO: success and error are hardcoded, add after reworking error reporting
-  Top { _success = True
-      , _error = Nothing
-      , _tests = mapTest <$> _tests
-      , seed = seed
-      }
+encodeCampaign C.Campaign{..} seed = encode
+  Campaign { _success = True
+           , _error = Nothing
+           , _tests = mapTest <$> _tests
+           , seed = seed
+           , coverage = mapKeys (("0x" ++) . (`showHex` "") . keccak) $ DF.toList <$> _coverage
+           , gasInfo = toList _gasInfo
+           }
 
 mapTest :: (SolTest, C.TestState) -> Test
 mapTest (solTest, testState) =
   let (status, transactions, err) = mapTestState testState in
-  Test { contract = "" -- TODO add when mapping is available
+  Test { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
        , name = case solTest of Left (n, _) -> n; Right (n, _) -> n
        , status = status
        , _error = err
@@ -109,7 +117,7 @@ mapTest (solTest, testState) =
 
   mapTx Tx{..} =
     let (function, args) = mapCall _call in
-    Transaction { contract = "" -- TODO add when mapping is available
+    Transaction { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
                 , function = function
                 , arguments = args
                 , gas = toInteger _gas'
