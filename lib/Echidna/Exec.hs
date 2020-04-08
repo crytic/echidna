@@ -17,13 +17,13 @@ import Data.Set (Set)
 import EVM
 import EVM.Op (Op(..))
 import EVM.Exec (exec)
-import EVM.Types (W256(..))
 
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
 import qualified Data.Set as S
 
 import Echidna.Transaction
+import Echidna.ABI (stripBytecodeMetadata)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
@@ -87,7 +87,7 @@ execTxWith h m t = do (og :: VM) <- use hasLens
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
 execTx = execTxWith vmExcept $ liftSH exec
 
-type CoverageMap = Map W256 (Set (Int, TxResult))
+type CoverageMap = Map BS.ByteString (Set (Int, TxResult))
 
 -- | Given a way of capturing coverage info, execute while doing so once per instruction.
 usingCoverage :: (MonadState x m, Has VM x) => m () -> m VMResult
@@ -103,11 +103,11 @@ coveragePoints = sum . fmap S.size
 scoveragePoints :: CoverageMap -> Int
 scoveragePoints = sum . fmap (S.size . S.map fst)
 
--- | Capture the current PC and codehash. This should identify instructions uniquely (maybe? EVM is weird).
+-- | Capture the current PC and bytecode (without metadata). This should identify instructions uniquely.
 pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
 pointCoverage l = use hasLens >>= \v ->
-  l %= M.insertWith (const . S.insert $ (v ^. state . pc, Success)) (fromMaybe (W256 maxBound) $ h v) mempty where
-    h v = v ^? env . contracts . at (v ^. state . contract) . _Just . codehash
+  l %= M.insertWith (const . S.insert $ (v ^. state . pc, Success)) (fromMaybe (error "no contract information on coverage") $ h v) mempty where
+    h v = stripBytecodeMetadata <$> v ^? env . contracts . at (v ^. state . contract) . _Just . bytecode
 
 traceCoverage :: (MonadState x m, Has VM x, Has [Op] x) => m ()
 traceCoverage = use hasLens >>= \v -> let c = v ^. state . code in hasLens <>= [readOp (BS.index c $ v ^. state . pc) c]
