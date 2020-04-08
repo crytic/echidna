@@ -38,7 +38,11 @@ let
           tasty tasty-hunit tasty-quickcheck
         ];
         executableSystemDepends = [ crytic-compile pkgs.solc-versions.solc_0_5_15 ];
-        preConfigure = "hpack";
+        preConfigure = ''
+          hpack
+          # re-enable dynamic build for Linux
+          sed -i -e 's/os(linux)/false/' echidna.cabal
+        '';
         license = stdenv.lib.licenses.agpl3;
         doHaddock = false;
         doCheck = false;
