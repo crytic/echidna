@@ -52,21 +52,17 @@ versionOption = infoOption
                   ("Echidna " ++ showVersion version)
                   (long "version" <> help "Show version")
 
-opts :: ParserInfo Options
-opts = info (helper <*> versionOption <*> options) $ fullDesc
+optsParser :: ParserInfo Options
+optsParser = info (helper <*> versionOption <*> options) $ fullDesc
   <> progDesc "EVM property-based testing framework"
   <> header "Echidna"
 
 main :: IO ()
 main = do
-  Options{..} <- execParser opts
+  opts@Options{..} <- execParser optsParser
   g <- getRandom
   EConfigWithUsage loadedCfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig configFilepath
-  let cfg = case maybe (loadedCfg ^. uConf . operationMode) NonInteractive outputFormat of
-              Interactive -> loadedCfg
-              nonInteractive ->
-                loadedCfg & sConf . quiet .~ True
-                          & uConf . operationMode .~ nonInteractive
+  let cfg = overrideConfig loadedCfg opts
   unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
   let cd = corpusDir $ view cConf cfg
   txs <- loadTxs cd
@@ -78,3 +74,12 @@ main = do
     ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg) (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs)) txs
   saveTxs cd (map snd $ DS.toList $ view corpus cpg)
   if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
+  where
+  overrideConfig cfg Options{..} =
+    case maybe (cfg ^. uConf . operationMode) NonInteractive outputFormat of
+      Interactive -> cfg
+      NonInteractive Text ->
+        cfg & uConf . operationMode .~ NonInteractive Text
+      nonInteractive ->
+        cfg & sConf . quiet .~ True
+            & uConf . operationMode .~ nonInteractive
