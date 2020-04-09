@@ -1,20 +1,26 @@
-# echidna
+# Echidna: A Fast Smart Contract Fuzzer <a href="https://raw.githubusercontent.com/crytic/echidna/master/echidna.png"><img src="https://raw.githubusercontent.com/crytic/echidna/master/echidna.png" width="75"/></a>
 
 ![Build Status](https://github.com/crytic/echidna/workflows/CI/badge.svg)
-![echidna logo](echidna.png)
 
 Echidna is a weird creature that eats bugs and is highly electrosensitive (with apologies to Jacob Stanley)
 
-More seriously, Echidna is a Haskell library designed for fuzzing/property-based testing of EVM code. It supports relatively sophisticated grammar-based fuzzing campaigns to falsify a variety of predicates.
+More seriously, Echidna is a Haskell package designed for fuzzing/property-based testing of Ethereum smarts contracts. It uses a relatively sophisticated grammar-based fuzzing campaigns based on a contract abi to falsify Solidity assertions or user-defined predicates.
 
 ## Features
 
 * Generates inputs tailored to your actual code
-* Optional coverage guidance to find deeper bugs
+* Optional corpus collection, mutation and coverage guidance to find deeper bugs
+* Curses-based retro UI, text only or JSON output
 * Automatic testcase minimization for quick triage
 * Seamless integration into the development workflow
-* Fast
-* Beautiful logo
+* Automatic detection of transactions with high-gas consumption
+* Extended testing of complex contracts using Etheno and Truffle
+
+.. and [a beautiful high-resolution handcrafted logo](https://raw.githubusercontent.com/crytic/echidna/master/echidna.png).
+
+## Screenshot
+
+<a href="https://trailofbits.files.wordpress.com/2020/03/image5.png"><img src="https://trailofbits.files.wordpress.com/2020/03/image5.png" width="800"/></a>
 
 ## Usage
 
@@ -45,9 +51,14 @@ $ echidna-test examples/solidity/basic/flags.sol
 
 Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` and should be unable to find a falsifying input for `echidna_alwaystrue`.
 
-### Truffle integration
+### Crash course on Echidna
 
-Echidna can be used to test contracts compiled with [Truffle](https://truffleframework.com/) using [crytic-compile](https://github.com/crytic/crytic-compile). For instance,
+Our [Builiding Secure Smart Contracts](https://github.com/crytic/building-secure-contracts) repository contains a crash course on Echidna, including examples, lessons and exercises. You should [start here](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial).
+
+
+### Smart contract build systems support
+
+Echidna can be used to test contracts compiled with different smart contract build systems such as [Truffle](https://truffleframework.com/), [Embark](https://framework.embarklabs.io/) or even [Vyper](https://vyper.readthedocs.io) using [crytic-compile](https://github.com/crytic/crytic-compile). For instance,
 we can uncover an integer overflow in the [Metacoin Truffle box](https://github.com/truffle-box/metacoin-box) using a
 [contract with Echidna properties to test](examples/solidity/truffle/metacoin/contracts/MetaCoinEchidna.sol):
 
@@ -60,12 +71,14 @@ echidna_convert: failed!💥
     mint(57896044618658097711785492504343953926634992332820282019728792003956564819968)
 ```
 
+Echidna also improved the testing of complex contracts with two cool features. First, it [allows initializing a fuzzing campaign with arbitrary transactions using Etheno and Truffle](https://github.com/crytic/echidna/wiki/Deployment-of-a-contract-using-Truffle,-Ganache-and-Etheno-to-test-with-Echidna). Second, it can test more than one contract at the same time, calling any public or external function of any tested contract. Use `multi-abi: true` in your configuration file to allow Echidna to test more than one contract at the same time.
+
 ### Configuration options
 
 Echidna's CLI can be used to choose the contract to test and load a configuration file.
 
 ```
-$ echidna-test contract.sol --contract TEST --config="config.yaml"
+$ echidna-test contract.sol --contract TEST --config config.yaml
 ```
 
 The configuration file allows users to choose EVM and test generation
@@ -73,7 +86,7 @@ parameters. An example of a complete and annotated config file with the default 
 
 ## Installation
 
-If you want to quickly test Echidna in Linux, we offer a statically linked binary release of v1.4.0.1 to download [here](https://github.com/crytic/echidna/releases/tag/v1.4.0.1).
+If you want to quickly test Echidna in Linux, we offer a statically linked binary release of v1.4.0.1 to download [here](https://github.com/crytic/echidna/releases/tag/v1.4.0.1). Additionally, Github Actions provide pre-compiled binaries from all our `master` commits [here](https://github.com/crytic/echidna/actions?query=workflow%3ACI+branch%3Amaster+event%3Apush) (just click in the commit and download a precompiled binary for Linux or MacOS).
 
 Otherwise, to install the latest revision of Echidna, we recommend to use [docker](https://www.docker.com/):
 
@@ -91,7 +104,7 @@ If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/
 `stack install` should build and compile `echidna-test` in `~/.local/bin`.
 You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choosing.
 Additionally, you need to install the latest release of [libff](https://github.com/scipr-lab/libff), you can take a look to [this script](.github/scripts/install-libff.sh) used in our CI tests.
-Some linux distributions do not ship static libraries for certain things that Haskell needs, e.g. archlinux, which will cause `stack build` to fail with linking errors because we use the `-static` flag. Removing these from `package.yaml` should get everything to build if you are not looking for a static build.
+Some linux distributions do not ship static libraries for certain things that Haskell needs, e.g. ArchLinux, which will cause `stack build` to fail with linking errors because we use the `-static` flag. Removing these from `package.yaml` should get everything to build if you are not looking for a static build.
 
 If you're getting errors building related to linking, try tinkering with `--extra-include-dirs` and `--extra-lib-dirs`.
 
