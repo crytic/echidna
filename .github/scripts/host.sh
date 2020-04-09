@@ -1,6 +1,6 @@
 #! /bin/bash
 
-if [ ! -v PREFIX ]; then
+if [ -z ${PREFIX+x} ]; then
   export PREFIX="$HOME/.local"
 fi
 
