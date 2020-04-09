@@ -340,6 +340,8 @@ campaign u v w ts d txs = do
   let d' = fromMaybe defaultDict d
   c <- fromMaybe mempty <$> view (hasLens . to knownCoverage)
   g <- view (hasLens . to seed)
+  b <- view (hasLens . to _benchmarkMode)
+  ts <- if b then return [] else return ts
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
   execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d' False (DS.fromList $ map (1,) txs) 0) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
