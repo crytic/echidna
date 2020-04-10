@@ -47,8 +47,8 @@ initialize: null
 multi-abi: false
 #checkAsserts checks assertions
 checkAsserts: false
-#dashboard determines if output is just text or an AFL-like display
-dashboard: true
+#benchmarkMode enables benchmark mode
+benchmarkMode: false
 #timeout controls test timeout settings
 timeout: null
 #seed not defined by default, is the random seed
@@ -66,7 +66,7 @@ maxBlockDelay: 60480
 filterFunctions: []
 # by default, blacklist methods in filterFunctions
 filterBlacklist: true
-#directory to save the corpus; by default is disabled  
+#directory to save the corpus; by default is disabled
 corpusDir: null
 # constants for corpus mutations (for experimentation only)
 mutConsts: [10, 1, 1, 1, 1]

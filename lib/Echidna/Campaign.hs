@@ -31,6 +31,7 @@ import Data.Traversable (traverse)
 import EVM
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (Addr)
+import EVM.Keccak (keccak)
 import Numeric (showHex)
 import System.Random (mkStdGen)
 
@@ -124,7 +125,7 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
 instance ToJSON Campaign where
   toJSON (Campaign ts co gi _ _ _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
     : ((if co == mempty then [] else [
-    ("coverage",) . toJSON . mapKeys (`showHex` "") $ DF.toList <$> co]) ++
+    ("coverage",) . toJSON . mapKeys (("0x" ++) . (`showHex` "") . keccak) $ DF.toList <$> co]) ++
        [(("maxgas",) . toJSON . toList) gi | gi /= mempty]) where
         format (Right _,      Open _) = Nothing
         format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
@@ -415,12 +416,14 @@ campaign u v w ts d txs = do
   let d' = fromMaybe defaultDict d
   c <- fromMaybe mempty <$> view (hasLens . to knownCoverage)
   g <- view (hasLens . to seed)
+  b <- view (hasLens . to _benchmarkMode)
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> ts) c mempty d' False (DS.fromList $ map (1,) txs) 0) where
+  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> if b then [] else ts) c mempty d' False (DS.fromList $ map (1,) txs) 0) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _ _ _) ->
       if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
+         | null c                                                              -> callseq v w q >> lift u
          | otherwise                                                           -> lift u
