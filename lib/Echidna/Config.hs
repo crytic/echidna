@@ -147,6 +147,7 @@ instance FromJSON EConfigWithUsage where
                                  <*> v ..:? "initialize"      ..!= Nothing
                                  <*> v ..:? "multi-abi"       ..!= False
                                  <*> v ..:? "checkAsserts"    ..!= False
+                                 <*> v ..:? "benchmarkMode"   ..!= False
                                  <*> (bool Whitelist Blacklist <$> v ..:? "filterBlacklist" ..!= True <*> v ..:? "filterFunctions" ..!= []))
                     <*> tc
                     <*> xc
