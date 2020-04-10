@@ -28,7 +28,7 @@ Invariants are expressed as Solidity functions with names that begin with `echid
 
 ```solidity
 function echidna_check_balance() public returns (bool) {
-    return(balance >= 20); 
+    return(balance >= 20);
 }
 ```
 
@@ -38,7 +38,7 @@ To check these invariants, run:
 $ echidna-test myContract.sol
 ```
 
-An example contract with tests can be found [examples/solidity/basic/flags.sol](examples/solidity/basic/flags.sol). To run it, you should execute: 
+An example contract with tests can be found [examples/solidity/basic/flags.sol](examples/solidity/basic/flags.sol). To run it, you should execute:
 ```
 $ echidna-test examples/solidity/basic/flags.sol
 ```
@@ -87,6 +87,11 @@ for example
 $ docker run -it -v `pwd`:/src echidna echidna-test /src/examples/solidity/basic/flags.sol
 ```
 
+Nix users can install the lastest Echidna with:
+```
+nix-env -i -f https://github.com/crytic/echidna/tarball/master
+```
+
 If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/README/).
 `stack install` should build and compile `echidna-test` in `~/.local/bin`.
 You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choosing.
@@ -94,6 +99,18 @@ Additionally, you need to install the latest release of [libff](https://github.c
 Some linux distributions do not ship static libraries for certain things that Haskell needs, e.g. archlinux, which will cause `stack build` to fail with linking errors because we use the `-static` flag. Removing these from `package.yaml` should get everything to build if you are not looking for a static build.
 
 If you're getting errors building related to linking, try tinkering with `--extra-include-dirs` and `--extra-lib-dirs`.
+
+## Development
+
+It is possible to devlop Echidna with Cabal inside `nix-shell`. Nix will automatically
+install all the dependencies required for development including `crytic-compile` and `solc`.
+A quick way to get GHCi with Echidna ready for work:
+```
+$ git clone https://github.com/crytic/echidna
+$ cd echidna
+$ nix-shell
+[nix-shell]$ cabal new-repl
+```
 
 ## Getting help
 
