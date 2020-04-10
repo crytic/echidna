@@ -71,3 +71,15 @@ spliceAtRandom :: (LL.ListLike f i, MonadRandom m) => f -> f -> m f
 spliceAtRandom xs1 xs2 = do idx1 <- getRandomR (0, LL.length xs1 - 1) 
                             idx2 <- getRandomR (0, LL.length xs2 - 1)
                             return $ LL.take idx1 xs1 `LL.append` LL.drop idx2 xs2
+
+interleaveAtRandom :: (LL.ListLike f i, MonadRandom m) => f -> f -> m f
+interleaveAtRandom xs1 xs2 = do idx1 <- getRandomR (0, LL.length xs1 - 1) 
+                                idx2 <- getRandomR (0, LL.length xs2 - 1)
+                                return $ LL.take idx1 xs1 `interleaveLL` LL.take idx2 xs2
+
+{- | Takes two lists and combines them interleaving its elements -}
+interleaveLL :: (LL.ListLike f i) => f -> f -> f
+interleaveLL a b
+    | LL.null a = b
+    | LL.null b = a
+    | otherwise = LL.cons (LL.head a) $ LL.cons (LL.head b) (interleaveLL (LL.tail a) (LL.tail b)) 

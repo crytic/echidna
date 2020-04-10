@@ -67,6 +67,6 @@ filterBlacklist: true
 #directory to save the corpus; by default is disabled
 corpusDir: null
 # constants for corpus mutations (for experimentation only)
-mutConsts: [100, 1, 1]
 # maximum value to send to payable functions
 maxValue: 100000000000000000000 # 100 eth
+mutConsts: [10, 1, 1, 1, 1]

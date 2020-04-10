@@ -14,7 +14,7 @@ import Prelude hiding (Word)
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, liftM5, unless)
 import Control.Monad.Catch (MonadThrow, bracket)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, weighted, uniform)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform, weighted)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
 import Data.Aeson (ToJSON(..), FromJSON(..), withText, defaultOptions, decodeStrict, encodeFile)
@@ -271,6 +271,13 @@ shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
     , set delay     <$> fmap level (liftM2 (,) (lower t) (lower b))
     ]
   in join (uniform possibilities) <*> pure tx'
+
+mutateTx :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) => Tx -> m Tx
+mutateTx (Tx (SolCall c) a b d w x y) = do f <- weighted [(mutate, 10), (skip, 90)] --FIXME: make a parameter for this?
+                                           f c
+                                         where mutate  z = mutateAbiCall z >>= \c' -> return $ Tx (SolCall c') a b d w x y
+                                               skip    _ = return $ Tx (SolCall c) a b d w x y
+mutateTx x                            = return x
 
 -- | Lift an action in the context of a component of some 'MonadState' to an action in the
 -- 'MonadState' itself.

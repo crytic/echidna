@@ -12,7 +12,7 @@ import EVM.Types (Addr)
 import qualified EVM.Concrete(Word(..))
 
 import Echidna.ABI (SolCall, mkGenDict)
-import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests, corpus, gasInfo)
+import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests, corpus, gasInfo, defaultMutationConsts)
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (TxCall(..), Tx(..), call)
@@ -115,7 +115,7 @@ seedTests =
     , testCase "same seeds" $ assertBool "results differ" =<< same 0 0
     ]
     where cfg s = defaultConfig & sConf . quiet .~ True
-                                & cConf .~ CampaignConf 600 False False 20 0 Nothing (Just s) 0.15 Nothing (1,1,1)
+                                & cConf .~ CampaignConf 600 False False 20 0 Nothing (Just s) 0.15 Nothing defaultMutationConsts
           gen s = view tests <$> runContract "basic/flags.sol" Nothing (cfg s)
           same s t = liftM2 (==) (gen s) (gen t)
 
