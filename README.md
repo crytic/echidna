@@ -102,7 +102,7 @@ If you're getting errors building related to linking, try tinkering with `--extr
 
 ## Development
 
-It is possible to devlop Echidna with Cabal inside `nix-shell`. Nix will automatically
+It is possible to develop Echidna with Cabal inside `nix-shell`. Nix will automatically
 install all the dependencies required for development including `crytic-compile` and `solc`.
 A quick way to get GHCi with Echidna ready for work:
 ```
