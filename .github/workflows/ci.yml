@@ -15,12 +15,12 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          #- macOS-latest
+          - macos-latest
         include:
           - os: ubuntu-latest
             apt-get: autoconf automake libtool
-          #- os: macOS-latest
-          #  brew: autoconf automake libtool
+          - os: macos-latest
+            brew: autoconf automake libtool
 
     steps:
       - name: Get Packages
@@ -45,21 +45,21 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.local/
-          key: ${{ runner.os }}-local
+          key: ${{ runner.os }}-local-v1
 
       - name: Cache Stack
         id: cache-stack
         uses: actions/cache@v1
         with:
           path: ~/.stack
-          key: ${{ runner.os }}-stack
+          key: ${{ runner.os }}-stack-v1
 
       - name: Cache Cabal
         id: cache-cabal
         uses: actions/cache@v1
         with:
           path: ~/.cabal
-          key: ${{ runner.os }}-cabal
+          key: ${{ runner.os }}-cabal-v1
 
       - name: Build Binaries
         run: |
@@ -75,17 +75,30 @@ jobs:
         env:
           HOST_OS: ${{ runner.os }}
 
+      - name: Build Dependencies
+        run: |
+          stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib --only-dependencies
+
+      - name: Build and install echidna
+        run: |
+          stack install --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+
       - name: Test
+        if: runner.os == 'Linux'
         run: |
           export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:$HOME/.local/lib"
-          export LIBRARY_PATH="${LIBRARY_PATH}:$HOME/.local/lib"
           export PATH="${PATH}:$HOME/.local/bin"
 
-          if [ "${{ runner.os }}" == "Linux" ]; then
-            for VER in "0.4.25" "0.5.7" ; do
-              cp "$HOME/.local/bin/solc-$VER" "$HOME/.local/bin/solc"
-              stack test --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
-            done
-          else
-            stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
-          fi
+          for VER in "0.4.25" "0.5.7" ; do
+            cp "$HOME/.local/bin/solc-$VER" "$HOME/.local/bin/solc"
+            stack test --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+          done
+
+      - name: Compress binary
+        run: GZIP=-9 tar -czf echidna-test.tar.gz $HOME/.local/bin/echidna-test
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: echidna-test-${{ runner.os }}
+          path: echidna-test.tar.gz

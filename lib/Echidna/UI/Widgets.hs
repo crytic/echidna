@@ -44,8 +44,8 @@ campaignStatus (c@Campaign{_tests, _coverage}, uiState) = do
   done <- isDone c
   case (uiState, done) of
     (Uninitialized, _) -> pure $ mainbox (padLeft (Pad 1) $ str "Starting up, please wait...") emptyWidget
-    (Timedout, _)      -> mainbox <$> testsWidget _tests <*> pure (str "Timed out, C-c or esc to print report")
-    (_, True)          -> mainbox <$> testsWidget _tests <*> pure (str "Campaign complete, C-c or esc to print report")
+    (Timedout, _)      -> mainbox <$> testsWidget _tests <*> pure (str "Timed out, C-c or esc to exit")
+    (_, True)          -> mainbox <$> testsWidget _tests <*> pure (str "Campaign complete, C-c or esc to exit")
     _                  -> mainbox <$> testsWidget _tests <*> pure emptyWidget
   where
     mainbox :: Widget () -> Widget () -> Widget ()
