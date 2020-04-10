@@ -47,6 +47,8 @@ initialize: null
 multi-abi: false
 #checkAsserts checks assertions
 checkAsserts: false
+#benchmarkMode enables benchmark mode
+benchmarkMode: false
 #timeout controls test timeout settings
 timeout: null
 #seed not defined by default, is the random seed

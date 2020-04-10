@@ -103,6 +103,7 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
                        , _multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
                        , _checkAsserts    :: Bool             -- ^ Test if we can cause assertions to fail
+                       , _benchmarkMode   :: Bool             -- ^ Benchmark mode allows to generate coverage
                        , _methodFilter    :: Filter           -- ^ List of methods to avoid or include calling during a campaign
                        }
 makeLenses ''SolConf
@@ -193,7 +194,7 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  (SolConf ca d ads bala balc pref _ _ libs _ fp ma ch fs) <- view hasLens
+  (SolConf ca d ads bala balc pref _ _ libs _ fp ma ch bm fs) <- view hasLens
 
   -- generate the complete abi mapping
   let bc = c ^. creationCode
@@ -221,7 +222,7 @@ loadSpecified name cs = do
 
   -- Make sure everything is ready to use, then ship it
   when (null abi) $ throwM NoFuncs                              -- < ABI checks
-  when (not ch && null tests) $ throwM NoTests                  -- <
+  when (not ch && null tests && not bm) $ throwM NoTests        -- <
   when (bc == mempty) $ throwM (NoBytecode $ c ^. contractName) -- Bytecode check
 
   case find (not . null . snd) tests of
