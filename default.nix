@@ -43,6 +43,7 @@ let
           # re-enable dynamic build for Linux
           sed -i -e 's/os(linux)/false/' echidna.cabal
         '';
+        shellHook = "hpack";
         license = stdenv.lib.licenses.agpl3;
         doHaddock = false;
         doCheck = false;
