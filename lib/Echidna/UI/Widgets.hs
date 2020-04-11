@@ -40,7 +40,7 @@ attrs = A.attrMap (V.white `on` V.black)
 -- | Render 'Campaign' progress as a 'Widget'.
 campaignStatus :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
                => (Campaign, UIState) -> m (Widget ())
-campaignStatus (c@Campaign{_tests, _coverage}, uiState) = do
+campaignStatus (c@Campaign{_tests, _coverage, _ncallseqs}, uiState) = do
   done <- isDone c
   case (uiState, done) of
     (Uninitialized, _) -> pure $ mainbox (padLeft (Pad 1) $ str "Starting up, please wait...") emptyWidget
@@ -56,17 +56,20 @@ campaignStatus (c@Campaign{_tests, _coverage}, uiState) = do
       hCenter underneath
     wrapInner inner =
       borderWithLabel (withAttr "bold" $ str title) $
-      summaryWidget _tests _coverage
+      summaryWidget _tests _coverage _ncallseqs
       <=>
       hBorderWithLabel (str "Tests")
       <=>
       inner
     title = "Echidna " ++ showVersion Paths_echidna.version
 
-summaryWidget :: [(SolTest, TestState)] -> CoverageMap -> Widget ()
-summaryWidget tests' coverage' =
+summaryWidget :: [(SolTest, TestState)] -> CoverageMap -> Int -> Widget ()
+summaryWidget tests' coverage' ncallseqs' =
   padLeft (Pad 1) (
-    str ("Tests found: " ++ show (length tests'))
+    (if null tests' then
+      str ("No tests, benchmark mode. Number of call sequences: " ++ show ncallseqs')
+    else
+      str ("Tests found: " ++ show (length tests')))
     <=>
     maybe emptyWidget str (ppCoverage coverage')
   )

@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -118,7 +119,7 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
                            -- ^ Flag to indicate new coverage found
                          , _corpus      :: Corpus
                            -- ^ Set of transactions with maximum coverage
-                         , _ncallseqs   :: Integer
+                         , _ncallseqs   :: Int
                            -- ^ Number of times the callseq is called                         
                          }
 
@@ -142,6 +143,9 @@ defaultCampaign = Campaign mempty mempty mempty defaultDict False mempty 0
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
 isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
+isDone c | null (view tests c) = do tl <- view (hasLens . to testLimit)
+                                    q <- view (hasLens . to seqLen)
+                                    return $ view ncallseqs c * q >= tl
 isDone (view tests -> ts) = view (hasLens . to (liftM3 (,,) testLimit shrinkLimit stopOnFail))
   <&> \(tl, sl, sof) -> let res (Open  i)   = if i >= tl then Just True else Nothing
                             res Passed      = Just True
@@ -240,8 +244,8 @@ execTxOptC t = do
   return res
 
 -- | Given a list of transactions in the corpus, save them discarding reverted transactions
-addToCorpus :: (MonadState s m, Has Campaign s) => Integer -> [(Tx, (VMResult, Int))] -> m ()
-addToCorpus n res = unless (null rtxs) $ hasLens . corpus %= DS.insert (n, rtxs) where
+addToCorpus :: (MonadState s m, Has Campaign s) => Int -> [(Tx, (VMResult, Int))] -> m ()
+addToCorpus n res = unless (null rtxs) $ hasLens . corpus %= DS.insert (toInteger n, rtxs) where
   rtxs = map fst res
 
 data TxsMutation = TxIdentity
@@ -338,7 +342,7 @@ randseq ql o w = do
   ca <- use hasLens
   cs <- mutConsts <$> view hasLens
   let ctxs = ca ^. corpus
-      p    = fromInteger $ ca ^. ncallseqs
+      p    = ca ^. ncallseqs
   if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
     return $ snd $ DS.elemAt p ctxs
   else
@@ -400,7 +404,6 @@ callseq v w ql = do
       (Just ty, VMSuccess b) -> (ty, ) . S.fromList . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
       _                      -> Nothing
 
-
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
 campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
@@ -421,9 +424,10 @@ campaign u v w ts d txs = do
   execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> if b then [] else ts) c mempty d' False (DS.fromList $ map (1,) txs) 0) where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _ _ _) ->
+    update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _ _ _) -> get >>=
+                                   \(view hasLens -> Campaign { _ncallseqs }) ->
       if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
-         | null c                                                              -> callseq v w q >> lift u
+         | null c && (q * _ncallseqs) < tl                                     -> callseq v w q >> step
          | otherwise                                                           -> lift u
