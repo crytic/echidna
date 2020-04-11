@@ -139,9 +139,9 @@ defaultCampaign = Campaign mempty mempty mempty defaultDict False mempty 0
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
 isDone :: (MonadReader x m, Has CampaignConf x) => Campaign -> m Bool
-isDone c | view tests c == [] = do tl <- view (hasLens . to testLimit)
-                                   q <- view (hasLens . to seqLen)
-                                   return $ view ncallseqs c * q > tl
+isDone c | null (view tests c) = do tl <- view (hasLens . to testLimit)
+                                    q <- view (hasLens . to seqLen)
+                                    return $ view ncallseqs c * q >= tl
 isDone (view tests -> ts) = view (hasLens . to (liftM3 (,,) testLimit shrinkLimit stopOnFail))
   <&> \(tl, sl, sof) -> let res (Open  i)   = if i >= tl then Just True else Nothing
                             res Passed      = Just True
@@ -352,5 +352,5 @@ campaign u v w ts d txs = do
       if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
-         | null c && (q * sq) <= tl                                            -> callseq v w q >> step
+         | null c && (q * sq) < tl                                             -> callseq v w q >> step
          | otherwise                                                           -> lift u

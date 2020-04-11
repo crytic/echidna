@@ -66,9 +66,10 @@ campaignStatus (c@Campaign{_tests, _coverage, _ncallseqs}, uiState) = do
 summaryWidget :: [(SolTest, TestState)] -> CoverageMap -> Int -> Widget ()
 summaryWidget tests' coverage' ncallseqs' =
   padLeft (Pad 1) (
-    str ("Tests found: " ++ show (length tests'))
-    <=>
-    str ("Number of call sequences: " ++ show ncallseqs')
+    if null tests' then
+      str ("No tests, benchmark mode. Number of call sequences: " ++ show ncallseqs')
+    else
+      str ("Tests found: " ++ show (length tests'))
     <=>
     maybe emptyWidget str (ppCoverage coverage')
   )
