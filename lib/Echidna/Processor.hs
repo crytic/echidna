@@ -31,17 +31,6 @@ instance Show ProcException where
 
 instance Exception ProcException
 
-{-
-process :: (MonadIO m, MonadThrow m) => FilePath -> Maybe String -> EConfig -> m EConfig
-process f c e = do 
-                 r <- runSlither f (e ^. sConf ^. cryticArgs)
-                 --liftIO $ print $ r
-                 --liftIO $ print $ filterResults c $ filterPayable r
-                 --liftIO $ print $ filterResults c $ filterConstantFunction x
-                 --let ps = concatMap (map hashSig . snd) rs
-                 return $ e & xConf . payableSigs .~ filterResults c (filterPayable r)
--}
-
 filterResults :: Maybe String -> [(T.Text, [T.Text])] -> [Word32] 
 filterResults (Just c) rs = case lookup (T.pack c) rs of
                              Nothing -> filterResults Nothing rs
@@ -67,7 +56,7 @@ filterConstantFunction = map g . filter f
 
 -- Slither processing
 runSlither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m [SlitherInfo]
-runSlither fp aa = let args = ["--print", "echidna", "--json", "-"] ++ aa in do
+runSlither fp aa = let args = ["--ignore-compile", "--print", "echidna", "--json", "-"] ++ aa in do
   mp  <- liftIO $ findExecutable "slither"
   case mp of
    Nothing -> return [] 

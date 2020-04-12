@@ -241,7 +241,7 @@ genValue ps mv _ _ sc = let sig = (hashSig . encodeSig . signatureCall) sc in
   if sig `elem` ps
   then fromIntegral <$> randValue
   else do
-    g <- weighted [(pure 0, 1000), (randValue, 1)]  -- once in a while, this will generate value in a payable function
+    g <- weighted [(pure 0, 1000), (randValue, 1)]  -- once in a while, this will generate value in a non-payable function
     v <- g
     return $ fromIntegral v
   where randValue = getRandomR (1 :: Integer, fromIntegral mv)
