@@ -9,11 +9,6 @@
 module Echidna.Config where
 
 import Control.Lens
--- <<<<<<< HEAD
--- import Control.Monad (liftM2)
--- =======
--- import Control.Monad (liftM5)
--- >>>>>>> origin/master
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)

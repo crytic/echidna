@@ -14,7 +14,7 @@ import Prelude hiding (Word)
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, liftM5, unless)
 import Control.Monad.Catch (MonadThrow, bracket)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, weighted, uniform)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform, weighted)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
 import Data.Aeson (ToJSON(..), FromJSON(..), withText, defaultOptions, decodeStrict, encodeFile)
@@ -241,7 +241,7 @@ genValue ps mv _ _ sc = let sig = (hashSig . encodeSig . signatureCall) sc in
   if sig `elem` ps
   then fromIntegral <$> randValue
   else do
-    g <- weighted [(pure 0, 1000), (randValue, 1)]  -- once in a while, this will generate value in a payable function
+    g <- weighted [(pure 0, 1000), (randValue, 1)]  -- once in a while, this will generate value in a non-payable function
     v <- g
     return $ fromIntegral v
   where randValue = getRandomR (1 :: Integer, fromIntegral mv)
