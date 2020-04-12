@@ -9,7 +9,7 @@ import qualified Data.ListLike as LL
 
 -- | A list of mutators to randomly select to perform a mutation of list-like values
 listMutators :: (LL.ListLike f i, MonadRandom m) => m (f -> m f)
-listMutators = fromList [(return, 1), (expandRandList, 10), (deleteRandList, 10), (swapRandList, 10)] 
+listMutators = fromList [(return, 1), (expandRandList, 10),  (deleteRandList, 10), (swapRandList, 10)]
 
 -- | Mutate a list-like data structure using a list of mutators 
 mutateLL :: (LL.ListLike f i, MonadRandom m)
@@ -26,19 +26,22 @@ replaceAt :: LL.ListLike f i => i -> f -> Int -> f
 replaceAt i f n = LL.take n f `LL.append` LL.cons i (LL.drop (n+1) f)
 
 expandAt :: LL.ListLike f i => f -> Int -> Int -> f
-expandAt xs i n = case LL.uncons xs of 
+expandAt xs k t = case LL.uncons xs of
                        Nothing     -> xs
-                       Just (y,ys) -> if i == 0
-                                      then LL.replicate n y `LL.append` ys
-                                      else LL.cons y (expandAt ys (i-1) n)
+                       Just (y,ys) -> if k == 0
+                                      then LL.replicate t y `LL.append` ys
+                                      else LL.cons y (expandAt ys (k-1) t)
 
 
 expandRandList :: (LL.ListLike f i, MonadRandom m) => f -> m f
-expandRandList xs = if LL.null xs 
-                    then return xs
-                    else do k <- getRandomR (0, LL.length xs - 1)
-                            t <- getRandomR (1, max 32 (LL.length xs))
-                            return $ expandAt xs k t
+expandRandList xs
+              | l == 0    = return xs
+              | l >= 32   = return xs
+              | otherwise = do
+                             k <- getRandomR (0, l - 1)
+                             t <- getRandomR (1, min 32 l)
+                             return $ expandAt xs k t
+              where l = LL.length xs
 
 
 deleteAt :: LL.ListLike f i => Int -> f -> f
@@ -63,11 +66,14 @@ swapAt xs i j =  let elemI = xs `LL.index` i
 swapRandList :: (LL.ListLike f i, MonadRandom m) => f -> m f
 swapRandList xs = if LL.null xs
                   then return xs
-                  else do k1 <- getRandomR (0, LL.length xs - 1 )
-                          k2 <- getRandomR (0, LL.length xs - 1 )
-                          return $ swapAt xs k1 k2
+                  else do i <- getRandomR (0, LL.length xs - 1 )
+                          j <- getRandomR (0, LL.length xs - 1 )
+                          return $ case i `compare` j of
+                            EQ -> xs
+                            LT -> swapAt xs i j
+                            GT -> swapAt xs j i
 
 spliceAtRandom :: (LL.ListLike f i, MonadRandom m) => f -> f -> m f
-spliceAtRandom xs1 xs2 = do idx1 <- getRandomR (0, LL.length xs1 - 1) 
+spliceAtRandom xs1 xs2 = do idx1 <- getRandomR (0, LL.length xs1 - 1)
                             idx2 <- getRandomR (0, LL.length xs2 - 1)
                             return $ LL.take idx1 xs1 `LL.append` LL.drop idx2 xs2
