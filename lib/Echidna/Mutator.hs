@@ -38,10 +38,10 @@ expandRandList xs
   | l == 0    = return xs
   | l >= 32   = return xs
   | otherwise = do
-                  k <- getRandomR (0, l - 1)
-                  t <- getRandomR (1, min 32 l)
-                  return $ expandAt xs k t
-                where l = LL.length xs
+    k <- getRandomR (0, l - 1)
+    t <- getRandomR (1, min 32 l)
+    return $ expandAt xs k t
+  where l = LL.length xs
 
 
 deleteAt :: LL.ListLike f i => Int -> f -> f
