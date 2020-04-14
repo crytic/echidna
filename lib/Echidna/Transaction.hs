@@ -254,11 +254,11 @@ shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
 liftSH :: (MonadState a m, Has b a) => State b x -> m x
 liftSH = stateST . runState . zoom hasLens
   -- This is the default state function written in terms of get and set:
-  where stateST :: MonadState s m => (s -> (a, s)) -> m a
-        stateST f = do s <- get
-                       let ~(a, s') = f s
-                       put s'
-                       return a
+  where stateST f = do
+          s <- get
+          let ~(a, s') = f s
+          put s'
+          return a
 
 -- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
 -- 'Transaction's \"on-chain\".
