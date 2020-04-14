@@ -4,7 +4,7 @@
 
 Echidna is a weird creature that eats bugs and is highly electrosensitive (with apologies to Jacob Stanley)
 
-More seriously, Echidna is a Haskell package designed for fuzzing/property-based testing of Ethereum smarts contracts. It uses a relatively sophisticated grammar-based fuzzing campaigns based on a contract abi to falsify Solidity assertions or user-defined predicates.
+More seriously, Echidna is a Haskell program designed for fuzzing/property-based testing of Ethereum smarts contracts. It uses a relatively sophisticated grammar-based fuzzing campaigns based on a contract ABI to falsify Solidity assertions or user-defined predicates. We designed Echidna with modularity in mind, so it can be easily extended to include new mutations or test specific contracts in specific cases.
 
 ## Features
 
@@ -55,7 +55,6 @@ Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` an
 
 Our [Builiding Secure Smart Contracts](https://github.com/crytic/building-secure-contracts) repository contains a crash course on Echidna, including examples, lessons and exercises. You should [start here](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial).
 
-
 ### Smart contract build systems support
 
 Echidna can be used to test contracts compiled with different smart contract build systems such as [Truffle](https://truffleframework.com/), [Embark](https://framework.embarklabs.io/) or even [Vyper](https://vyper.readthedocs.io) using [crytic-compile](https://github.com/crytic/crytic-compile). For instance,
@@ -71,7 +70,7 @@ echidna_convert: failed!💥
     mint(57896044618658097711785492504343953926634992332820282019728792003956564819968)
 ```
 
-Echidna also improved the testing of complex contracts with two cool features. First, it [allows initializing a fuzzing campaign with arbitrary transactions using Etheno and Truffle](https://github.com/crytic/echidna/wiki/Deployment-of-a-contract-using-Truffle,-Ganache-and-Etheno-to-test-with-Echidna). Second, it can test more than one contract at the same time, calling any public or external function of any tested contract. Use `multi-abi: true` in your configuration file to allow Echidna to test more than one contract at the same time.
+Echidna also improved the testing of complex contracts with two cool features. First, it [allows initializing a fuzzing campaign with arbitrary transactions using Etheno and Truffle](https://github.com/crytic/echidna/wiki/Deployment-of-a-contract-using-Truffle,-Ganache-and-Etheno-to-test-with-Echidna). Second, it can test more than one contract at the same time, calling any public or external function of any tested contract. Use `multi-abi: true` in your configuration file to allow Echidna to generate transactions to call more than one contract at the same time.
 
 ### Configuration options
 
