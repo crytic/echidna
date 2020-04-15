@@ -1,8 +1,6 @@
-{-# LANGUAGE RecordWildCards #-}
-
 module Main where
 
-import Control.Lens (view, (^.), to, (.~), (&))
+import Control.Lens ((^.), to, (.~), (&))
 import Control.Monad (unless)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
@@ -20,7 +18,8 @@ import EVM.ABI (AbiValue(AbiAddress))
 import Echidna.ABI
 import Echidna.Config
 import Echidna.Solidity
-import Echidna.Campaign
+import Echidna.Types.Campaign
+import Echidna.Campaign (isSuccess)
 import Echidna.UI
 import Echidna.Transaction
 
@@ -59,27 +58,25 @@ optsParser = info (helper <*> versionOption <*> options) $ fullDesc
 
 main :: IO ()
 main = do
-  opts@Options{..} <- execParser optsParser
+  opts@(Options f c conf _) <- execParser optsParser
   g <- getRandom
-  EConfigWithUsage loadedCfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig configFilepath
+  EConfigWithUsage loadedCfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig conf
   let cfg = overrideConfig loadedCfg opts
   unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
-  let cd = corpusDir $ view cConf cfg
+  let cd = cfg ^. cConf . corpusDir
+      df = cfg ^. cConf . dictFreq
   txs <- loadTxs cd
   cpg <- flip runReaderT cfg $ do
-    cs       <- Echidna.Solidity.contracts filePath
+    cs       <- Echidna.Solidity.contracts f
     ads      <- addresses
-    (v,w,ts) <- loadSpecified (pack <$> selectedContract) cs >>= prepareForTest
+    (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
     let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
-    ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg) (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs)) txs
-  saveTxs cd (map snd $ DS.toList $ view corpus cpg)
+    ui v w ts (Just $ mkGenDict df (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs)) txs
+  saveTxs cd (snd <$> DS.toList (cpg ^. corpus))
   if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
-  where
-  overrideConfig cfg Options{..} =
-    case maybe (cfg ^. uConf . operationMode) NonInteractive outputFormat of
-      Interactive -> cfg
-      NonInteractive Text ->
-        cfg & uConf . operationMode .~ NonInteractive Text
-      nonInteractive ->
-        cfg & sConf . quiet .~ True
-            & uConf . operationMode .~ nonInteractive
+  where overrideConfig cfg (Options _ _ _ fmt) =
+          case maybe (cfg ^. uConf . operationMode) NonInteractive fmt of
+               Interactive -> cfg
+               NonInteractive Text -> cfg & uConf . operationMode .~ NonInteractive Text
+               nonInteractive -> cfg & uConf . operationMode .~ nonInteractive
+                                     & sConf . quiet .~ True
