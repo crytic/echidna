@@ -85,7 +85,7 @@ parameters. An example of a complete and annotated config file with the default 
 
 ## Installation
 
-If you want to quickly test Echidna in Linux, we offer a statically linked binary release of v1.4.0.1 to download [here](https://github.com/crytic/echidna/releases/tag/v1.4.0.1). Additionally, Github Actions provide pre-compiled binaries from all our `master` commits [here](https://github.com/crytic/echidna/actions?query=workflow%3ACI+branch%3Amaster+event%3Apush) (just click in the commit and download a precompiled binary for Linux or MacOS).
+If you want to quickly test Echidna in Linux, we offer a statically linked binary release of v1.4.0.1 to download [here](https://github.com/crytic/echidna/releases/tag/v1.4.0.1). Additionally, GitHub Actions provide pre-compiled binaries from all our `master` commits [here](https://github.com/crytic/echidna/actions?query=workflow%3ACI+branch%3Amaster+event%3Apush) (just click in the commit and download a precompiled binary for Linux or MacOS).
 
 Otherwise, to install the latest revision of Echidna, we recommend to use [docker](https://www.docker.com/):
 
@@ -103,7 +103,7 @@ If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/
 `stack install` should build and compile `echidna-test` in `~/.local/bin`.
 You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choosing.
 Additionally, you need to install the latest release of [libff](https://github.com/scipr-lab/libff), you can take a look to [this script](.github/scripts/install-libff.sh) used in our CI tests.
-Some linux distributions do not ship static libraries for certain things that Haskell needs, e.g. ArchLinux, which will cause `stack build` to fail with linking errors because we use the `-static` flag. Removing these from `package.yaml` should get everything to build if you are not looking for a static build.
+Some Linux distributions do not ship static libraries for certain things that Haskell needs, e.g. Arch Linux, which will cause `stack build` to fail with linking errors because we use the `-static` flag. Removing these from `package.yaml` should get everything to build if you are not looking for a static build.
 
 If you're getting errors building related to linking, try tinkering with `--extra-include-dirs` and `--extra-lib-dirs`.
 
