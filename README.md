@@ -85,7 +85,7 @@ parameters. An example of a complete and annotated config file with the default 
 
 ## Installation
 
-If you want to quickly test Echidna in Linux or MacOS, download a [statically-linked binary release] (https://github.com/crytic/echidna/releases). GitHub Actions also [compiles binaries](https://github.com/crytic/echidna/actions?query=workflow%3ACI+branch%3Amaster+event%3Apush) from every commit to `master`, just click the commit to find binaries for Linux or MacOS.
+If you want to quickly test Echidna in Linux or MacOS, we provide statically linked Linux binaries built on Ubuntu and mostly static MacOS binaries on our [releases page](https://github.com/crytic/echidna/releases). You can also grab the same type of binaries from our [CI pipeline](https://github.com/crytic/echidna/actions?query=workflow%3ACI+branch%3Amaster+event%3Apush), just click the commit to find binaries for Linux or MacOS. If you are logged into Github on your local `docker` client, you can check out our [docker package](https://github.com/crytic/echidna/packages/136575), which are also auto-built via Github Actions.
 If you want to install the latest released version of Echidna, we recommend using docker:
 
 ```
