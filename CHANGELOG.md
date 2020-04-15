@@ -2,6 +2,7 @@
 
 ## 1.5.0.0
 
+* Refactor campaign-related code (#384)
 * Fixed hevm-related memory leak (#423) 
 * Fixed array mutation memory leak (#442)
 * Benchmark mode to run without tests (#420, #409)
