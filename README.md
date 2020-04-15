@@ -4,7 +4,7 @@
 
 Echidna is a weird creature that eats bugs and is highly electrosensitive (with apologies to Jacob Stanley)
 
-More seriously, Echidna is a Haskell program designed for fuzzing/property-based testing of Ethereum smarts contracts. It uses sophisticated grammar-based fuzzing campaigns based on a [contract ABI](https://solidity.readthedocs.io/en/develop/abi-spec.html) to falsify [Solidity assertions](https://solidity.readthedocs.io/en/develop/control-structures.html#id4) or user-defined predicates. We designed Echidna with modularity in mind, so it can be easily extended to include new mutations or test specific contracts in specific cases.
+More seriously, Echidna is a Haskell program designed for fuzzing/property-based testing of Ethereum smarts contracts. It uses sophisticated grammar-based fuzzing campaigns based on a [contract ABI](https://solidity.readthedocs.io/en/develop/abi-spec.html) to falsify user-defined predicates or [Solidity assertions](https://solidity.readthedocs.io/en/develop/control-structures.html#id4). We designed Echidna with modularity in mind, so it can be easily extended to include new mutations or test specific contracts in specific cases.
 
 ## Features
 
@@ -13,8 +13,8 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 * Curses-based retro UI, text-only or JSON output
 * Automatic testcase minimization for quick triage
 * Seamless integration into the development workflow
-* Automatic detection of transactions with high-gas consumption
-* Extended testing of complex contracts using [Etheno](https://github.com/crytic/etheno) and Truffle
+* Maximum gas usage reporting of the fuzzing campaign
+* Support for a complex contract initialization with [Etheno](https://github.com/crytic/etheno) and Truffle
 
 .. and [a beautiful high-resolution handcrafted logo](https://raw.githubusercontent.com/crytic/echidna/master/echidna.png).
 
