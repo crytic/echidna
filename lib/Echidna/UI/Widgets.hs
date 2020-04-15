@@ -21,7 +21,8 @@ import qualified Graphics.Vty as V
 import qualified Paths_echidna (version)
 
 import Echidna.Exec
-import Echidna.Campaign
+import Echidna.Types.Campaign
+import Echidna.Campaign (isDone)
 import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.UI.Report
@@ -40,7 +41,7 @@ attrs = A.attrMap (V.white `on` V.black)
 -- | Render 'Campaign' progress as a 'Widget'.
 campaignStatus :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
                => (Campaign, UIState) -> m (Widget ())
-campaignStatus (c@Campaign{_tests, _coverage}, uiState) = do
+campaignStatus (c@Campaign{_tests, _coverage, _ncallseqs}, uiState) = do
   done <- isDone c
   case (uiState, done) of
     (Uninitialized, _) -> pure $ mainbox (padLeft (Pad 1) $ str "Starting up, please wait...") emptyWidget
@@ -56,17 +57,20 @@ campaignStatus (c@Campaign{_tests, _coverage}, uiState) = do
       hCenter underneath
     wrapInner inner =
       borderWithLabel (withAttr "bold" $ str title) $
-      summaryWidget _tests _coverage
+      summaryWidget _tests _coverage _ncallseqs
       <=>
       hBorderWithLabel (str "Tests")
       <=>
       inner
     title = "Echidna " ++ showVersion Paths_echidna.version
 
-summaryWidget :: [(SolTest, TestState)] -> CoverageMap -> Widget ()
-summaryWidget tests' coverage' =
+summaryWidget :: [(SolTest, TestState)] -> CoverageMap -> Int -> Widget ()
+summaryWidget tests' coverage' ncallseqs' =
   padLeft (Pad 1) (
-    str ("Tests found: " ++ show (length tests'))
+    (if null tests' then
+      str ("No tests, benchmark mode. Number of call sequences: " ++ show ncallseqs')
+    else
+      str ("Tests found: " ++ show (length tests')))
     <=>
     maybe emptyWidget str (ppCoverage coverage')
   )
@@ -94,12 +98,12 @@ tsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
 tsWidget (Failed e)  = pure (str "could not evaluate", str $ show e)
 tsWidget (Solved l)  = failWidget Nothing l
 tsWidget Passed      = pure (withAttr "success" $ str "PASSED!", emptyWidget)
-tsWidget (Open i)    = view hasLens >>= \CampaignConf { testLimit = t } ->
+tsWidget (Open i)    = view hasLens >>= \cc -> let t = cc ^. testLimit in
   if i >= t then
     tsWidget Passed
   else
     pure (withAttr "working" $ str $ "fuzzing " ++ progress i t, emptyWidget)
-tsWidget (Large n l) = view (hasLens . to shrinkLimit) >>= \m ->
+tsWidget (Large n l) = view (hasLens . shrinkLimit) >>= \m ->
   failWidget (if n < m then Just (n,m) else Nothing) l
 
 failWidget :: (MonadReader x m, Has Names x, Has TxConf x)
