@@ -156,7 +156,7 @@ loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
               => [SolcContract] -> Addr -> Addr -> VM -> m VM
 loadLibraries []     _  _ vm = return vm
 loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
-  where loadRest = execStateT (execTx $ Tx (SolCreate $ l ^. creationCode) d la 0xffffffff 0 0 (0,0)) vm
+  where loadRest = execStateT (execTx $ Tx (SolCreate $ l ^. creationCode) d la 8000030 0 0 (0,0)) vm
 
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
@@ -228,7 +228,7 @@ loadSpecified name cs = do
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
-      let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca 0xffffffff 0 (w256 $ fromInteger balc) (0, 0)
+      let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca 8000030 0 (w256 $ fromInteger balc) (0, 0)
       (, neFuns, fst <$> tests, abiMapping) <$> execStateT transaction vm
 
   where choose []    _        = throwM NoContracts
