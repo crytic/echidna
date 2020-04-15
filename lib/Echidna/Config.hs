@@ -31,7 +31,7 @@ import qualified Data.ByteString as BS
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
-import Echidna.Campaign
+import Echidna.Types.Campaign
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
