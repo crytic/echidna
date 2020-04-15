@@ -70,7 +70,7 @@ echidna_convert: failed!💥
     mint(57896044618658097711785492504343953926634992332820282019728792003956564819968)
 ```
 
-Echidna supports testing complex contracts with two features. First, it [allows initializing a fuzzing campaign with arbitrary transactions using Etheno and Truffle](https://github.com/crytic/echidna/wiki/Deployment-of-a-contract-using-Truffle,-Ganache-and-Etheno-to-test-with-Echidna). Second, it can test more than one contract at the same time, calling any public or external function of any tested contract. Use `multi-abi: true` in your configuration file to allow Echidna to generate transactions to call more than one contract at the same time.
+Echidna supports two modes of testing complex contracts. Firstly, one can [describe an initialization procedure with Truffle and Etheno](https://github.com/crytic/echidna/wiki/Deployment-of-a-contract-using-Truffle,-Ganache-and-Etheno-to-test-with-Echidna) and use that as the base state for Echidna. Secondly, echidna can call into any contract with a known ABI by passing in the corresponding solidity source in the CLI. Use `multi-abi: true` in your config to turn this on.
 
 ### Configuration options
 
