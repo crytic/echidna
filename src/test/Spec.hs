@@ -12,7 +12,8 @@ import EVM.Types (Addr)
 import qualified EVM.Concrete(Word(..))
 
 import Echidna.ABI (SolCall, mkGenDict)
-import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests, corpus, gasInfo)
+import Echidna.Types.Campaign (Campaign, CampaignConf(..), TestState(..), tests, gasInfo, testLimit, shrinkLimit, knownCoverage, corpus, coverage)
+import Echidna.Campaign (campaign)
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (TxCall(..), Tx(..), call)
@@ -23,7 +24,7 @@ import Control.Monad (liftM2, void, when)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Random (getRandom)
 import Control.Monad.Reader (runReaderT)
-import Data.Map (lookup)
+import Data.Map (lookup, empty)
 import Data.Map.Strict (keys)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack, pack)
@@ -61,9 +62,7 @@ configTests = testGroup "Configuration tests" $
       assertBool ("unset options: " ++ show unset') $ null unset'
   ]
   where files = ["basic/config.yaml", "basic/default.yaml"]
-        assertCoverage config value = do
-          let CampaignConf{knownCoverage} = view cConf config
-          knownCoverage @?= value
+        assertCoverage config value = (config ^. cConf . knownCoverage) @?= value
 
 -- Compilation Tests
 
@@ -201,6 +200,12 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/assert.sol"       (Just "basic/assert.yaml")
       [ ("echidna_set0 passed",                    solved      "ASSERTION set0")
       , ("echidna_set1 failed",                    passed      "ASSERTION set1") ]
+  , testContract "basic/assert.sol"       (Just "basic/benchmark.yaml")
+      [ ("coverage is empty",                      not . coverageEmpty         )
+      , ("tests are not empty",                    testsEmpty                  ) ]
+  , testContract "basic/constants.sol"    (Just "basic/benchmark.yaml")
+      [ ("coverage is empty",                      not . coverageEmpty         )
+      , ("tests are not empty",                    testsEmpty                  ) ]
   , testContract "basic/time.sol"         (Just "basic/time.yaml")
       [ ("echidna_timepassed passed",              solved      "echidna_timepassed") ]
   , testContract "basic/construct.sol"    Nothing
@@ -250,7 +255,8 @@ researchTests = testGroup "Research-based Integration Testing"
 
 testConfig :: EConfig
 testConfig = defaultConfig & sConf . quiet .~ True
-                           & cConf .~ (defaultConfig ^. cConf) { testLimit = 10000, shrinkLimit = 4000 }
+                           & cConf . testLimit .~ 10000
+                           & cConf . shrinkLimit .~ 4000
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg = testContract' fp Nothing cfg True
@@ -259,7 +265,8 @@ testContract' :: FilePath -> Maybe Text -> Maybe FilePath -> Bool -> [(String, C
 testContract' fp n cfg s as = testCase fp $ do
   c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
   let c' = c & sConf . quiet .~ True
-             & if s then cConf .~ (c ^. cConf) { testLimit = 10000, shrinkLimit = 4000 } else id
+             & (if s then cConf . testLimit .~ 10000 else id)
+             & (if s then cConf . shrinkLimit .~ 4000 else id)
   res <- runContract fp n c'
   mapM_ (\(t,f) -> assertBool t $ f res) as
 
@@ -286,6 +293,12 @@ gasInRange t l h c = case getGas t c of
 
 countCorpus :: Int -> Campaign -> Bool
 countCorpus n c = length (view corpus c) == n
+
+testsEmpty :: Campaign -> Bool
+testsEmpty c = null (view tests c)
+
+coverageEmpty :: Campaign -> Bool
+coverageEmpty c = view coverage c == empty
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor t c = case getResult t c of

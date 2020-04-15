@@ -73,7 +73,7 @@ parameters. An example of a complete and annotated config file with the default 
 
 ## Installation
 
-If you want to quickly test Echidna in Linux, we offer a statically linked binary release of v1.4.0.1 to download [here](https://github.com/crytic/echidna/releases/tag/v1.4.0.1).
+If you want to quickly test Echidna in Linux, we offer a statically linked binary release of v1.5.0.0 to download [here](https://github.com/crytic/echidna/releases/tag/v1.5.0.0).
 
 Otherwise, to install the latest revision of Echidna, we recommend to use [docker](https://www.docker.com/):
 

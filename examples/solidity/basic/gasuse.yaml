@@ -1,2 +1,3 @@
 testLimit: 1000
+testMaxGas: 4294967295
 estimateGas: true

@@ -1,9 +1,7 @@
-{-# LANGUAGE RecordWildCards #-}
-
 module Main where
 
 import Control.Lens (view, (^.), to, (.~), (&))
-import Data.Has                   (Has(..))
+import Data.Has (Has(..))
 import Control.Monad (unless)
 import Control.Monad.Reader (runReaderT, liftIO)
 import Control.Monad.Random (getRandom)
@@ -21,7 +19,8 @@ import EVM.ABI (AbiValue(AbiAddress))
 import Echidna.ABI
 import Echidna.Config
 import Echidna.Solidity
-import Echidna.Campaign
+import Echidna.Types.Campaign
+import Echidna.Campaign (isSuccess)
 import Echidna.UI
 import Echidna.Transaction
 import Echidna.Processor
@@ -62,42 +61,42 @@ optsParser = info (helper <*> versionOption <*> options) $ fullDesc
 main :: IO ()
 
 main = do
-  opts@Options{..} <- execParser optsParser
+  opts@(Options f c conf _) <- execParser optsParser
   g <- getRandom
-  EConfigWithUsage loadedCfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig configFilepath
+  EConfigWithUsage loadedCfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig conf
   let cfg = overrideConfig loadedCfg opts
   unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
-  let cd = corpusDir $ view cConf cfg
+  let cd = cfg ^. cConf . corpusDir
+      df = cfg ^. cConf . dictFreq
 
   -- load corpus (if any)
   txs <- loadTxs cd
   cpg <- flip runReaderT cfg $ do
 
     -- compile and load contracts
-    cs <- Echidna.Solidity.contracts filePath
+    cs <- Echidna.Solidity.contracts f
     ads <- addresses
-    p <- loadSpecified (pack <$> selectedContract) cs
+    p <- loadSpecified (pack <$> c) cs
 
     -- run processors
     ca <- view (hasLens . cryticArgs)
-    si <- runSlither (NE.head filePath) ca
+    si <- runSlither (NE.head f) ca
+
+    -- print some debug information
     liftIO $ print si
   
     -- load tests
-    (v,w,ts) <- prepareForTest p selectedContract si
+    (v,w,ts) <- prepareForTest p c si
     let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
     -- start ui and run tests
-    ui v w ts (Just $ mkGenDict (dictFreq $ view cConf cfg) (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs)) txs
+    ui v w ts (Just $ mkGenDict df (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs)) txs
 
   -- save corpus
-  saveTxs cd (map snd $ DS.toList $ view corpus cpg)
+  saveTxs cd (snd <$> DS.toList (cpg ^. corpus))
   if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
-  where
-  overrideConfig cfg Options{..} =
-    case maybe (cfg ^. uConf . operationMode) NonInteractive outputFormat of
-      Interactive -> cfg
-      NonInteractive Text ->
-        cfg & uConf . operationMode .~ NonInteractive Text
-      nonInteractive ->
-        cfg & sConf . quiet .~ True
-            & uConf . operationMode .~ nonInteractive
+  where overrideConfig cfg (Options _ _ _ fmt) =
+          case maybe (cfg ^. uConf . operationMode) NonInteractive fmt of
+               Interactive -> cfg
+               NonInteractive Text -> cfg & uConf . operationMode .~ NonInteractive Text
+               nonInteractive -> cfg & uConf . operationMode .~ nonInteractive
+                                     & sConf . quiet .~ True
