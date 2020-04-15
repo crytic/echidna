@@ -12,8 +12,12 @@ import EVM.Types (Addr)
 import qualified EVM.Concrete(Word(..))
 
 import Echidna.ABI (SolCall, mkGenDict)
+-- <<<<<<< HEAD
 import Echidna.Types.Campaign (Campaign, CampaignConf(..), TestState(..), tests, corpus, gasInfo, defaultMutationConsts, testLimit, shrinkLimit, knownCoverage, coverage)
 import Echidna.Campaign (campaign)
+-- =======
+--import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests, corpus, gasInfo, coverage, defaultMutationConsts)
+-- >>>>>>> 7d62bdb650398ea6cef2603c9d7ab5db9c640678
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (TxCall(..), Tx(..), call)
