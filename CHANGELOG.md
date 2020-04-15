@@ -1,4 +1,4 @@
-## Change Log
+## TODO
 
 ## 1.5.0.0
 
@@ -11,7 +11,7 @@
 * Improved JSON output and reworked UI handling to better handle interactive and non-interactive mode (#405)
 * Use safe mutation parameters to favor purely random generation (#393)
 * Show address in hex using "0x" (#386)
-* Enable addresses shrinking  (#385)
+* Enable addresses shrinking (#385)
 * Fixed coverage counting when a contract is deployed multiple times (#410)
 * Prioritization to mutate each list of transactions from the corpus (#376, #395)
 * Improved array generation using generic mutations (#357)
