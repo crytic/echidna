@@ -1,9 +1,10 @@
 ## TODO
 
-## 1.5.0.0
+## 1.5.0
 
+* Switch to x.y.z versioning scheme
 * Refactor campaign-related code (#384)
-* Fixed hevm-related memory leak (#423) 
+* Fixed hevm-related memory leak (#423)
 * Fixed array mutation memory leak (#442)
 * Benchmark mode to run without tests (#420, #409)
 * Migrated to GitHub actions (#414, #402)
