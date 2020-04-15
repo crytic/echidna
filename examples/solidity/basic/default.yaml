@@ -6,7 +6,7 @@ prefix: "echidna_"
 #propMaxGas defines gas cost at which a property fails
 propMaxGas: 8000030
 #testMaxGas is a gas limit; does not cause failure, but terminates sequence
-testMaxGas: 0xffffffff
+testMaxGas: 8000030
 #maxGasprice is the maximum gas price
 maxGasprice: 100000000000
 #testLimit is the number of test sequences to run

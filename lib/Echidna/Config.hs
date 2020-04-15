@@ -30,7 +30,7 @@ import qualified Data.ByteString as BS
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
-import Echidna.Campaign
+import Echidna.Types.Campaign
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
@@ -107,7 +107,7 @@ instance FromJSON EConfigWithUsage where
                                           (const psender)
                 getWord s d = C Dull . fromIntegral <$> v ..:? s ..!= (d :: Integer)
                 xc = TxConf <$> getWord "propMaxGas" 8000030
-                            <*> getWord "testMaxGas" 0xffffffff
+                            <*> getWord "testMaxGas" 8000030
                             <*> getWord "maxGasprice" 100000000000
                             <*> getWord "maxTimeDelay" 604800     
                             <*> getWord "maxBlockDelay" 60480

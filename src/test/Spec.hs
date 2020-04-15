@@ -12,7 +12,8 @@ import EVM.Types (Addr)
 import qualified EVM.Concrete(Word(..))
 
 import Echidna.ABI (SolCall, mkGenDict)
-import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests, corpus, gasInfo, coverage, defaultMutationConsts)
+import Echidna.Types.Campaign (Campaign, CampaignConf(..), TestState(..), tests, gasInfo, testLimit, shrinkLimit, knownCoverage, corpus, coverage, defaultMutationConsts)
+import Echidna.Campaign (campaign)
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
 import Echidna.Transaction (TxCall(..), Tx(..), call)
@@ -61,9 +62,7 @@ configTests = testGroup "Configuration tests" $
       assertBool ("unset options: " ++ show unset') $ null unset'
   ]
   where files = ["basic/config.yaml", "basic/default.yaml"]
-        assertCoverage config value = do
-          let CampaignConf{knownCoverage} = view cConf config
-          knownCoverage @?= value
+        assertCoverage config value = (config ^. cConf . knownCoverage) @?= value
 
 -- Compilation Tests
 
@@ -256,7 +255,8 @@ researchTests = testGroup "Research-based Integration Testing"
 
 testConfig :: EConfig
 testConfig = defaultConfig & sConf . quiet .~ True
-                           & cConf .~ (defaultConfig ^. cConf) { testLimit = 10000, shrinkLimit = 4000 }
+                           & cConf . testLimit .~ 10000
+                           & cConf . shrinkLimit .~ 4000
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg = testContract' fp Nothing cfg True
@@ -265,7 +265,8 @@ testContract' :: FilePath -> Maybe Text -> Maybe FilePath -> Bool -> [(String, C
 testContract' fp n cfg s as = testCase fp $ do
   c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
   let c' = c & sConf . quiet .~ True
-             & if s then cConf .~ (c ^. cConf) { testLimit = 10000, shrinkLimit = 4000 } else id
+             & (if s then cConf . testLimit .~ 10000 else id)
+             & (if s then cConf . shrinkLimit .~ 4000 else id)
   res <- runContract fp n c'
   mapM_ (\(t,f) -> assertBool t $ f res) as
 

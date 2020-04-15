@@ -38,7 +38,8 @@ filterResults (Just c) rs = case lookup (T.pack c) rs of
 filterResults Nothing rs = concatMap (map hashSig . snd) rs
 
 data SlitherInfo = PayableInfo (T.Text, [T.Text]) 
-                 | ConstantFunctionInfo (T.Text, [T.Text]) deriving (Show)
+                 | ConstantFunctionInfo (T.Text, [T.Text])
+                 | GenerationGraph (T.Text, T.Text, [T.Text]) deriving (Show)
 
 filterPayable :: [SlitherInfo] -> [(T.Text, [T.Text])]
 filterPayable = map g . filter f
@@ -52,7 +53,15 @@ filterConstantFunction = map g . filter f
                  where f (ConstantFunctionInfo _) = True
                        f _               = False
                        g (ConstantFunctionInfo i) = i
-                       g _               = error "fail in filterPayable"
+                       g _               = error "fail in filterConstantFunction"
+
+
+filterGenerationGraph :: [SlitherInfo] -> [(T.Text, T.Text, [T.Text])]
+filterGenerationGraph = map g . filter f
+                 where f (GenerationGraph _) = True
+                       f _                   = False
+                       g (GenerationGraph i) = i
+                       g _                   = error "fail in filterGenerationGraph"
 
 -- Slither processing
 runSlither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m [SlitherInfo]
@@ -74,7 +83,7 @@ procSlither r = case (decode . BSL.pack) r of
 mresult :: T.Text -> Value -> [SlitherInfo]
 mresult "description" (String x)  = case (decode . BSL.pack . T.unpack) x of
                                       Nothing -> []
-                                      Just v  -> mpayable "" v ++ mcfuncs "" v
+                                      Just v  -> mpayable "" v ++ mcfuncs "" v ++ mggraph "" v
 
 mresult _ (Object o) = concatMap (uncurry mresult) $ M.toList o
 mresult _ (Array  a) = concatMap (mresult "") a
@@ -100,3 +109,25 @@ mcfuncs "constant_functions" (Object o)  = map ( ConstantFunctionInfo . second f
 mcfuncs _ (Object o) = concatMap (uncurry mcfuncs) $ M.toList o
 mcfuncs _ (Array  a) = concatMap (mcfuncs "") a
 mcfuncs _  _         = []
+
+
+-- parse actual generation graph
+mggraph :: T.Text -> Value -> [SlitherInfo]
+mggraph "functions_relations" (Object o)  = concatMap f $ M.toList o
+                                 where f (c, Object o1) = map (\(m,v) -> GenerationGraph (c, m, mggraph' "" v)) $ M.toList o1
+                                       f _              = []
+
+mggraph _ (Object o) = concatMap (uncurry mggraph) $ M.toList o
+mggraph _ (Array  a) = concatMap (mggraph "") a
+mggraph _  _         = []
+
+mggraph' :: T.Text -> Value -> [T.Text]
+mggraph' "impacts" (Array a) = concatMap f a
+                          where f (Array xs)            = concatMap f xs
+                                f (String "fallback()") = ["()"]
+                                f (String s)            = [s]
+                                f _                     = []
+
+mggraph' _ (Object o) = concatMap (uncurry mggraph') $ M.toList o
+mggraph' _ (Array  a) = concatMap (mggraph' "") a
+mggraph' _  _         = []
