@@ -1,5 +1,24 @@
 ## TODO
 
+## 1.5.0
+
+* Switch to x.y.z versioning scheme
+* Refactor campaign-related code (#384)
+* Fixed hevm-related memory leak (#423)
+* Fixed array mutation memory leak (#442)
+* Benchmark mode to run without tests (#420, #409)
+* Migrated to GitHub actions (#414, #402)
+* Corpus mutation handling fixes (#395, #403)
+* Improved JSON output and reworked UI handling to better handle interactive and non-interactive mode (#405)
+* Use safe mutation parameters to favor purely random generation (#393)
+* Show address in hex using "0x" (#386)
+* Enable addresses shrinking (#385)
+* Fixed coverage counting when a contract is deployed multiple times (#410)
+* Prioritization to mutate each list of transactions from the corpus (#376, #395)
+* Improved array generation using generic mutations (#357)
+* Multiple coverage tracking according to the result of a transaction (#369)
+* Allow to control corpus mutation constans using a configuration file (#373)
+
 ## 1.4.0.1
 * HEVM updated to [af84e2ee0a0654fdaa91186384233cf1731ee7ce]
 

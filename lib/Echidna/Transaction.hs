@@ -16,7 +16,7 @@ import Control.Monad (join, liftM2, liftM3, liftM5, unless)
 import Control.Monad.Catch (MonadThrow, bracket)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform, weighted)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.State.Strict (MonadState, State, evalStateT, runState)
+import Control.Monad.State.Strict (MonadState, State, evalStateT, runState, get, put)
 import Data.Aeson (ToJSON(..), FromJSON(..), withText, defaultOptions, decodeStrict, encodeFile)
 import Data.Aeson.TH (deriveJSON)
 import Data.DoubleWord (Word256(..), Int256(..), Word160(..))
@@ -34,7 +34,6 @@ import EVM.Types (Addr)
 
 import qualified System.Directory as SD
 import qualified Control.Monad.Fail as M (MonadFail(..))
-import qualified Control.Monad.State.Strict as S (state)
 import qualified Data.ByteString.Base16 as BS16
 import qualified Data.ByteString.Char8 as BSC8
 import qualified Data.ByteString as BS
@@ -260,7 +259,13 @@ mutateTx x                            = return x
 -- | Lift an action in the context of a component of some 'MonadState' to an action in the
 -- 'MonadState' itself.
 liftSH :: (MonadState a m, Has b a) => State b x -> m x
-liftSH = S.state . runState . zoom hasLens
+liftSH = stateST . runState . zoom hasLens
+  -- This is the default state function written in terms of get and set:
+  where stateST f = do
+          s <- get
+          let ~(a, s') = f s
+          put s'
+          return a
 
 -- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
 -- 'Transaction's \"on-chain\".

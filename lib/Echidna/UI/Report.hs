@@ -14,7 +14,7 @@ import EVM.Types (Addr)
 
 import qualified Data.Text as T
 
-import Echidna.Campaign
+import Echidna.Types.Campaign
 import Echidna.Exec
 import Echidna.Transaction
 
@@ -71,9 +71,9 @@ ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Test
 ppTS (Failed e)  = pure $ "could not evaluate ☣\n  " ++ show e
 ppTS (Solved l)  = ppFail Nothing l
 ppTS Passed      = pure "passed! 🎉"
-ppTS (Open i)    = view hasLens >>= \CampaignConf { testLimit = t } ->
+ppTS (Open i)    = view hasLens >>= \cc -> let t = cc ^. testLimit in
                      if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
-ppTS (Large n l) = view (hasLens . to shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m)
+ppTS (Large n l) = view (hasLens . shrinkLimit) >>= \m -> ppFail (if n < m then Just (n,m)
                                                                               else Nothing) l
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.

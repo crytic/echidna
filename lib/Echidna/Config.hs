@@ -9,16 +9,14 @@
 module Echidna.Config where
 
 import Control.Lens
-import Control.Monad (liftM2, liftM5)
+import Control.Monad (liftM5)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Control.Monad.State (StateT(..), runStateT)
 import Control.Monad.Trans (lift)
 import Data.Bool (bool)
-import Data.ByteString.Lazy.Char8 (unpack)
 import Data.Aeson
-import Data.Aeson.Lens
 import Data.Functor ((<&>))
 import Data.Has (Has(..))
 import Data.HashMap.Strict (keys)
@@ -33,7 +31,7 @@ import qualified Data.ByteString as BS
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
-import Echidna.Campaign
+import Echidna.Types.Campaign
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
@@ -109,7 +107,7 @@ instance FromJSON EConfigWithUsage where
                         return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result)
                                           (const psender)
                 getWord s d = C Dull . fromIntegral <$> v ..:? s ..!= (d :: Integer)
-                xc = liftM5 TxConf (getWord "propMaxGas" 8000030) (getWord "testMaxGas" 0xffffffff)
+                xc = liftM5 TxConf (getWord "propMaxGas" 8000030) (getWord "testMaxGas" 8000030)
                                    (getWord "maxGasprice" 100000000000)
                                    (getWord "maxTimeDelay" 604800)     (getWord "maxBlockDelay" 60480)
                 cov = v ..:? "coverage" <&> \case Just True -> Just mempty
@@ -128,16 +126,12 @@ instance FromJSON EConfigWithUsage where
                 names :: Names
                 names Sender = (" from: " ++) . show
                 names _      = const ""
-                --ppc :: Has (HashSet Text) s => StateT s Y.Parser (Campaign -> Int -> String)
-                ppc = liftM2 (\cf xf c g -> runReader (ppCampaign c) (cf, xf, names) ++ "\nSeed: " ++ show g) cc xc
-                --style :: Has (HashSet Text) s => StateT s Y.Parser (Campaign -> Int -> String)
-                style = v ..:? "format" ..!= ("text" :: String) >>=
-                  \case "text"             -> ppc
-                        "json"             -> pure . flip $ \g ->
-                          unpack . encode . set (_Object . at "seed") (Just . toJSON $ g) . toJSON
-                        "none"             -> pure $ \_ _ -> ""
-                        _                  -> pure $ \_ _ -> M.fail
-                          "unrecognized ui type (should be text, json, or none)" in
+                mode = fromMaybe Interactive <$> (v ..:? "format" >>= \case
+                  Just ("text" :: String) -> pure $ Just $ NonInteractive Text
+                  Just "json" -> pure $ Just $ NonInteractive JSON
+                  Just "none" -> pure $ Just $ NonInteractive None
+                  Nothing -> pure Nothing
+                  _ -> M.fail "unrecognized format type (should be text, json, or none)") in
             EConfig <$> cc
                     <*> pure names
                     <*> (SolConf <$> v ..:? "contractAddr"    ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
@@ -153,10 +147,11 @@ instance FromJSON EConfigWithUsage where
                                  <*> v ..:? "initialize"      ..!= Nothing
                                  <*> v ..:? "multi-abi"       ..!= False
                                  <*> v ..:? "checkAsserts"    ..!= False
+                                 <*> v ..:? "benchmarkMode"   ..!= False
                                  <*> (bool Whitelist Blacklist <$> v ..:? "filterBlacklist" ..!= True <*> v ..:? "filterFunctions" ..!= []))
                     <*> tc
                     <*> xc
-                    <*> (UIConf <$> v ..:? "dashboard" ..!= True <*> v ..:? "timeout" <*> style)
+                    <*> (UIConf <$> v ..:? "timeout" <*> mode)
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
 defaultConfig :: EConfig
