@@ -20,7 +20,7 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 
 ## Screenshot
 
-<a href="https://trailofbits.files.wordpress.com/2020/03/image5.png"><img src="https://trailofbits.files.wordpress.com/2020/03/image5.png" width="800"/></a>
+<a href="https://trailofbits.files.wordpress.com/2020/03/image5.png"><img src="https://trailofbits.files.wordpress.com/2020/03/image5.png" width="650"/></a>
 
 ## Usage
 
