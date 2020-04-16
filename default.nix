@@ -3,7 +3,7 @@
 let
   inherit (nixpkgs) pkgs;
 
-  v = "1.4.0.1";
+  v = "1.5.0";
 
   crytic-compile = pkgs.python3Packages.callPackage (import ./nix/crytic-compile.nix) {};
 
