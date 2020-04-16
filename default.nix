@@ -61,7 +61,7 @@ in
     then drv.env
     else pkgs.symlinkJoin {
       name = "echidna-${v}-with-deps";
-      paths = [ drv ];
+      paths = [ (pkgs.haskell.lib.justStaticExecutables drv) ];
       buildInputs = [ pkgs.makeWrapper ];
       postBuild = ''
         wrapProgram $out/bin/echidna-test \
