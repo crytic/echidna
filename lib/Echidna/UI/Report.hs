@@ -14,9 +14,10 @@ import EVM.Types (Addr)
 
 import qualified Data.Text as T
 
-import Echidna.Types.Campaign
 import Echidna.Exec
-import Echidna.Transaction
+import Echidna.Pretty (ppTxCall)
+import Echidna.Types.Campaign
+import Echidna.Types.Tx (Tx(Tx), TxConf, txGas, src)
 
 -- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.
 data Role = Sender | Receiver | Ambiguous

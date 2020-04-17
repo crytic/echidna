@@ -42,6 +42,8 @@ import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types.Campaign
+import Echidna.Types.Tx (TxCall(SolCall), Tx(Tx), TxConf, getResult, src, call, _SolCall)
+import Echidna.Types.World (World)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM

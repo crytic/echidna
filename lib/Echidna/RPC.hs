@@ -35,6 +35,7 @@ import qualified Data.Vector as V (fromList)
 
 import Echidna.Exec
 import Echidna.Transaction
+import Echidna.Types.Tx (TxCall(..), Tx(Tx), TxConf, propGas)
 
 -- | During initialization we can either call a function or create an account or contract
 data Etheno = AccountCreated Addr                                       -- ^ Registers an address with the echidna runtime

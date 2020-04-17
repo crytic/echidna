@@ -21,10 +21,10 @@ import qualified Graphics.Vty as V
 import qualified Paths_echidna (version)
 
 import Echidna.Exec
-import Echidna.Types.Campaign
 import Echidna.Campaign (isDone)
 import Echidna.Solidity
-import Echidna.Transaction
+import Echidna.Types.Campaign
+import Echidna.Types.Tx (Tx, TxConf, src)
 import Echidna.UI.Report
 
 data UIState = Uninitialized | Running | Timedout

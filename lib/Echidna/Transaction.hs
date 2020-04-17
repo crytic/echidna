@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -17,172 +16,33 @@ import Control.Monad.Catch (MonadThrow, bracket)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState, get, put)
-import Data.Aeson (ToJSON(..), FromJSON(..), withText, defaultOptions, decodeStrict, encodeFile)
-import Data.Aeson.TH (deriveJSON)
-import Data.DoubleWord (Word256(..), Int256(..), Word160(..))
-import Data.ByteString (ByteString)
+import Data.Aeson (ToJSON(..), decodeStrict, encodeFile)
 import Data.Has (Has(..))
 import Data.Hashable (hash)
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
-import Data.List (intercalate)
-import Text.Read (readMaybe)
 import EVM hiding (value)
-import EVM.ABI (abiCalldata, abiValueType, AbiValue(..), AbiType(..))
+import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
 
 import qualified System.Directory as SD
-import qualified Control.Monad.Fail as M (MonadFail(..))
-import qualified Data.ByteString.Base16 as BS16
-import qualified Data.ByteString.Char8 as BSC8
 import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
 import qualified Data.List.NonEmpty as NE
-import qualified Data.Text as T
 import qualified Data.Vector as V
 
 import Echidna.ABI
-
--- | A transaction call is either a @CREATE@, a fully instrumented 'SolCall', or
--- an abstract call consisting only of calldata.
-data TxCall = SolCreate   ByteString
-            | SolCall     SolCall
-            | SolCalldata ByteString
-  deriving (Show, Ord, Eq)
-makePrisms ''TxCall
-
--- | A transaction is either a @CREATE@ or a regular call with an origin, destination, and value.
--- Note: I currently don't model nonces or signatures here.
-data Tx = Tx { _call  :: TxCall       -- | Call
-             , _src   :: Addr         -- | Origin
-             , _dst   :: Addr         -- | Destination
-             , _gas'  :: Word         -- | Gas
-             , _gasprice' :: Word     -- | Gas price
-             , _value :: Word         -- | Value
-             , _delay :: (Word, Word) -- | (Time, # of blocks since last call)
-             } deriving (Eq, Ord, Show)
-
-makeLenses ''Tx
-
-data TxResult = Success
-              | ErrorBalanceTooLow 
-              | ErrorUnrecognizedOpcode
-              | ErrorSelfDestruction
-              | ErrorStackUnderrun
-              | ErrorBadJumpDestination
-              | ErrorRevert
-              | ErrorNoSuchContract
-              | ErrorOutOfGas
-              | ErrorBadCheatCode
-              | ErrorStackLimitExceeded
-              | ErrorIllegalOverflow
-              | ErrorQuery
-              | ErrorStateChangeWhileStatic
-              | ErrorInvalidMemoryAccess
-              | ErrorCallDepthLimitReached
-              | ErrorMaxCodeSizeExceeded
-              | ErrorPrecompileFailure      deriving (Eq, Ord, Show)
-
-$(deriveJSON defaultOptions ''TxResult)
-
-getResult :: VMResult -> TxResult
-getResult (VMSuccess _)                      = Success
-getResult (VMFailure (BalanceTooLow _ _ ))   = ErrorBalanceTooLow
-getResult (VMFailure (UnrecognizedOpcode _)) = ErrorUnrecognizedOpcode
-getResult (VMFailure SelfDestruction )       = ErrorSelfDestruction
-getResult (VMFailure StackUnderrun )         = ErrorStackUnderrun
-getResult (VMFailure BadJumpDestination )    = ErrorBadJumpDestination
-getResult (VMFailure (Revert _))             = ErrorRevert
-getResult (VMFailure (NoSuchContract _))     = ErrorNoSuchContract
-getResult (VMFailure (OutOfGas _ _))         = ErrorOutOfGas
-getResult (VMFailure (BadCheatCode _))       = ErrorBadCheatCode
-getResult (VMFailure StackLimitExceeded)     = ErrorStackLimitExceeded
-getResult (VMFailure IllegalOverflow)        = ErrorIllegalOverflow
-getResult (VMFailure (Query _))              = ErrorQuery
-getResult (VMFailure StateChangeWhileStatic) = ErrorStateChangeWhileStatic
-getResult (VMFailure InvalidMemoryAccess)    = ErrorInvalidMemoryAccess
-getResult (VMFailure CallDepthLimitReached)  = ErrorCallDepthLimitReached
-getResult (VMFailure (MaxCodeSizeExceeded _ _)) = ErrorMaxCodeSizeExceeded
-getResult (VMFailure PrecompileFailure)      = ErrorPrecompileFailure
-
-instance ToJSON Word256 where
-  toJSON = toJSON . show
-
-instance FromJSON Word256 where
-  parseJSON = withText "Word256" $ maybe (M.fail "could not parse Word256") pure . readMaybe . T.unpack
-
-instance ToJSON Int256 where
-  toJSON = toJSON . show
-
-instance FromJSON Int256 where
-  parseJSON = withText "Int256" $ maybe (M.fail "could not parse Int256") pure . readMaybe . T.unpack
-
-instance ToJSON Word160 where
-  toJSON = toJSON . show
-
-instance FromJSON Word160 where
-  parseJSON = withText "Int160" $ maybe (M.fail "could not parse Word160") pure . readMaybe . T.unpack
-
-instance ToJSON ByteString where
-  toJSON = toJSON . show
-
-instance FromJSON ByteString where
-  parseJSON = withText "ByteString" $ maybe (M.fail "could not parse ByteString") pure . readMaybe . T.unpack
-
-instance ToJSON Addr where
-  toJSON = toJSON . show
-
-instance ToJSON Word where
-  toJSON = toJSON . show
-
-instance FromJSON Word where
-  parseJSON = withText "Word" $ maybe (M.fail "could not parse Word") pure . readMaybe . T.unpack
-
-$(deriveJSON defaultOptions ''AbiType)
-$(deriveJSON defaultOptions ''AbiValue)
-$(deriveJSON defaultOptions ''TxCall)
-$(deriveJSON defaultOptions ''Tx)
-
-data TxConf = TxConf { _propGas       :: Word
-                     -- ^ Gas to use evaluating echidna properties
-                     , _txGas         :: Word
-                     -- ^ Gas to use in generated transactions
-                     , _maxGasprice   :: Word
-                     -- ^ Maximum gasprice to be checked for a transaction
-                     , _maxTimeDelay  :: Word
-                     -- ^ Maximum time delay between transactions (seconds)
-                     , _maxBlockDelay :: Word
-                     -- ^ Maximum block delay between transactions
-                     }
-
-makeLenses 'TxConf
-
--- | Pretty-print some 'AbiCall'.
-ppSolCall :: SolCall -> String
-ppSolCall (t, vs) = (if t == "" then T.unpack "*fallback*" else T.unpack t) ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
-
--- | Pretty-print some 'TxCall'
-ppTxCall :: TxCall -> String
-ppTxCall (SolCreate _)    = "<CREATE>"
-ppTxCall (SolCall x)      = ppSolCall x
-ppTxCall (SolCalldata x)  = BSC8.unpack $ "0x" <> BS16.encode x
+import Echidna.Orphans.JSON ()
+import Echidna.Types.Signature (SolCall, ContractA)
+import Echidna.Types.Tx
+import Echidna.Types.World (World(..))
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating delays, since block number
 -- only goes up with timestamp
 level :: (Num a, Eq a) => (a, a) -> (a, a)
 level (elemOf each 0 -> True) = (0,0)
 level x                       = x
-
--- | A contract is just an address with an ABI (for our purposes).
-type ContractA = (Addr, NE.NonEmpty SolSignature)
-
--- | The world is made our of humans with an address, and a way to map contract
--- bytecodes to an ABI
-data World = World { _senders         :: NE.NonEmpty Addr
-                   , _bytecodeMapping :: M.HashMap ByteString (NE.NonEmpty SolSignature)
-                   }
-makeLenses ''World
 
 -- | Given generators for an origin, destination, value, and function call, generate a call
 -- transaction. Note: This doesn't generate @CREATE@s because I don't know how to do that at random.
