@@ -39,6 +39,7 @@ filterResults Nothing rs = concatMap (map hashSig . snd) rs
 
 data SlitherInfo = PayableInfo (T.Text, [T.Text]) 
                  | ConstantFunctionInfo (T.Text, [T.Text])
+                 | ConstantValue (T.Text, T.Text)
                  | GenerationGraph (T.Text, T.Text, [T.Text]) deriving (Show)
 
 filterPayable :: [SlitherInfo] -> [(T.Text, [T.Text])]
@@ -83,7 +84,7 @@ procSlither r = case (decode . BSL.pack) r of
 mresult :: T.Text -> Value -> [SlitherInfo]
 mresult "description" (String x)  = case (decode . BSL.pack . T.unpack) x of
                                       Nothing -> []
-                                      Just v  -> mpayable "" v ++ mcfuncs "" v ++ mggraph "" v
+                                      Just v  -> mpayable "" v ++ mcfuncs "" v ++ mggraph "" v ++ mconsts "" v
 
 mresult _ (Object o) = concatMap (uncurry mresult) $ M.toList o
 mresult _ (Array  a) = concatMap (mresult "") a
@@ -109,6 +110,22 @@ mcfuncs "constant_functions" (Object o)  = map ( ConstantFunctionInfo . second f
 mcfuncs _ (Object o) = concatMap (uncurry mcfuncs) $ M.toList o
 mcfuncs _ (Array  a) = concatMap (mcfuncs "") a
 mcfuncs _  _         = []
+
+-- parse actual constant functions information
+mconsts :: T.Text -> Value -> [SlitherInfo]
+mconsts "constants_used" (Object o) = concatMap (uncurry mconsts') $ M.toList o
+mconsts _ (Object o) = concatMap (uncurry mconsts) $ M.toList o
+mconsts _ (Array  a) = concatMap (mconsts "") a
+mconsts _  _         = []
+
+mconsts' :: T.Text -> Value -> [SlitherInfo]
+mconsts' _ (Object o) = case (M.lookup "value" o, M.lookup "type" o) of
+                         (Just v, Just (String t)) -> [ConstantValue (T.pack $ show v, t)]
+                         (Nothing, Nothing)        -> concatMap (uncurry mconsts') $ M.toList o
+                         _                         -> error "invalid JSON formatting parsing constants"
+
+mconsts' _ (Array  a) = concatMap (mconsts' "") a
+mconsts' _  _         = []
 
 
 -- parse actual generation graph
