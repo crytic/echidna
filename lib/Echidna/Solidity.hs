@@ -50,6 +50,7 @@ import EVM.Concrete (w256)
 
 import qualified Data.ByteString     as BS
 import qualified Data.List.NonEmpty  as NE
+import qualified Data.List.NonEmpty.Extra as NEE
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text           as T
 
@@ -263,19 +264,19 @@ prepareForTest (v, a, ts, m) c si = view hasLens <&> \SolConf { _sender = s, _ch
     r = v ^. state . contract
     a' = NE.toList a
     ps = filterResults c $ filterPayable si
+    as = filterResults c $ filterAssert si -- TODO: avoid adding these if we are not checking assertions
     cs = filterResults c $ filterConstantFunction si
-    (hm, lm) = prepareHashMaps cs m
+    (hm, lm) = prepareHashMaps cs as m
 
-prepareHashMaps :: [Word32] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
-prepareHashMaps [] m = (m, Nothing)                                   -- No constant functions detected
-prepareHashMaps cs m = 
-  (\case (hm, lm) | M.size hm > 0  && M.size lm > 0  -> (hm, Just lm) -- Some constants functions detected  
-                  | M.size hm > 0  && M.size lm == 0 -> (hm, Nothing) -- No constant functions detected 
-                  | M.size hm == 0 && M.size lm > 0  -> (m,  Nothing) -- No functions mutating the state
+prepareHashMaps :: [Word32] -> [Word32] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
+prepareHashMaps [] _  m = (m, Nothing)                                -- No constant functions detected
+prepareHashMaps cs as m = 
+  (\case (hm, lm) | M.size hm > 0  && M.size lm > 0  -> (hm, Just lm) -- Usual case 
+                  | M.size hm > 0  && M.size lm == 0 -> (hm, Nothing) -- No low-priority functions detected 
+                  | M.size hm == 0 && M.size lm > 0  -> (m,  Nothing) -- No high-priority functions detected
                   | otherwise                        -> error "Error processing function hashmaps"
-  ) (filterHashMap not cs m, filterHashMap id cs m)
+  ) (M.unionWith NEE.union (filterHashMap not cs m) (filterHashMap id as m), filterHashMap id cs m)
   where filterHashMap f xs = M.mapMaybe (NE.nonEmpty . NE.filter (\s -> f $ (hashSig . encodeSig $ s) `elem` xs))
-
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.

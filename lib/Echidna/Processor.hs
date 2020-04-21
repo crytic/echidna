@@ -41,6 +41,7 @@ filterResults Nothing rs = concatMap (map hashSig . snd) rs
 
 data SlitherInfo = PayableInfo (Text, [Text]) 
                  | ConstantFunctionInfo (Text, [Text])
+                 | AssertFunction (Text, [Text])
                  | ConstantValue (Text, Text)
                  | GenerationGraph (Text, Text, [Text]) deriving (Show)
 
@@ -50,6 +51,13 @@ filterPayable = map g . filter f
         f _               = False
         g (PayableInfo i) = i
         g _               = error "fail in filterPayable"
+
+filterAssert :: [SlitherInfo] -> [(Text, [Text])]
+filterAssert = map g . filter f
+  where f (AssertFunction _) = True
+        f _               = False
+        g (AssertFunction i) = i
+        g _               = error "fail in filterAssert"
 
 filterConstantFunction :: [SlitherInfo] -> [(Text, [Text])]
 filterConstantFunction = map g . filter f 
@@ -86,7 +94,7 @@ procSlither r = case (decode . BSL.pack) r of
 mresult :: Text -> Value -> [SlitherInfo]
 mresult "description" (String x)  = case (decode . BSL.pack . unpack) x of
                                       Nothing -> []
-                                      Just v  -> mpayable "" v ++ mcfuncs "" v ++ mggraph "" v ++ mconsts "" v
+                                      Just v  -> mpayable "" v ++ mcfuncs "" v ++ mggraph "" v ++ mconsts "" v ++ massert "" v
 
 mresult _ (Object o) = concatMap (uncurry mresult) $ M.toList o
 mresult _ (Array  a) = concatMap (mresult "") a
@@ -103,6 +111,18 @@ mpayable "payable" (Object o) = map ( PayableInfo . second f) $ M.toList o
 mpayable _ (Object o) = concatMap (uncurry mpayable) $ M.toList o
 mpayable _ (Array  a) = concatMap (mpayable "") a
 mpayable _  _         = []
+
+-- parse actual assert information
+massert :: Text -> Value -> [SlitherInfo]
+massert "assert" (Object o) = map ( AssertFunction . second f) $ M.toList o
+  where f (Array xs)            = concatMap f xs
+        f (String "fallback()") = ["()"]
+        f (String s)            = [s]
+        f _                     = []
+
+massert _ (Object o) = concatMap (uncurry massert) $ M.toList o
+massert _ (Array  a) = concatMap (massert "") a
+massert _  _         = []
 
 -- parse actual constant functions information
 mcfuncs :: Text -> Value -> [SlitherInfo]

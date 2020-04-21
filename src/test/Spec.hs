@@ -243,6 +243,8 @@ integrationTests = testGroup "Solidity Integration Testing"
   ,  testContract "coverage/boolean.sol"       (Just "coverage/boolean.yaml")
       [ ("echidna_true failed",                    passed     "echidna_true")
       , ("unexpected corpus count ",               countCorpus 6)]
+  ,  testContract "basic/payable.sol"   Nothing
+      [ ("echidna_payable failed",                         solved      "echidna_payable") ]
   ]
 
 researchTests :: TestTree

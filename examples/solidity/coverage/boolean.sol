@@ -1,6 +1,8 @@
 contract C {
+  uint state = 0;
 
   function f(bool sel, bool b) public {
+    state = 1;
     if (sel)
       sel = false;
     else 
