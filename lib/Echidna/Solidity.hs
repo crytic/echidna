@@ -28,6 +28,7 @@ import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
+import GHC.Word                   (Word32)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
@@ -263,9 +264,18 @@ prepareForTest (v, a, ts, m) c si = view hasLens <&> \SolConf { _sender = s, _ch
     a' = NE.toList a
     ps = filterResults c $ filterPayable si
     cs = filterResults c $ filterConstantFunction si
-    hm = filterHashMap not cs m                                     -- non-pure and non-view functions 
-    lm = if null cs then Nothing else Just $ filterHashMap id cs m  -- pure and view functions
-    filterHashMap f xs = M.mapMaybe (NE.nonEmpty . NE.filter (\s -> f $ (hashSig . encodeSig $ s) `elem` xs)) 
+    (hm, lm) = prepareHashMaps cs m
+
+prepareHashMaps :: [Word32] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
+prepareHashMaps [] m = (m, Nothing)                                   -- No constant functions detected
+prepareHashMaps cs m = 
+  (\case (hm, lm) | M.size hm > 0  && M.size lm > 0  -> (hm, Just lm) -- Some constants functions detected  
+                  | M.size hm > 0  && M.size lm == 0 -> (hm, Nothing) -- No constant functions detected 
+                  | M.size hm == 0 && M.size lm > 0  -> (m,  Nothing) -- No functions mutating the state
+                  | otherwise                        -> error "Error processing function hashmaps"
+  ) (filterHashMap not cs m, filterHashMap id cs m)
+  where filterHashMap f xs = M.mapMaybe (NE.nonEmpty . NE.filter (\s -> f $ (hashSig . encodeSig $ s) `elem` xs))
+
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
