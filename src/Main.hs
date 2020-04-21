@@ -1,29 +1,23 @@
 module Main where
 
-import Control.Lens (view, (^.), to, (.~), (&))
-import Data.Has (Has(..))
+import Control.Lens ((^.), (.~), (&))
 import Control.Monad (unless)
-import Control.Monad.Reader (runReaderT, liftIO)
+import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
-import Data.Map.Strict (keys)
-import Data.Text (pack, unpack)
+import Data.Text (unpack)
 import Data.Version (showVersion)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.IO (hPutStrLn, stderr)
 
-import EVM (env, contracts)
-import EVM.ABI (AbiValue(AbiAddress))
-
-import Echidna.ABI
+import Echidna.Top
 import Echidna.Config
 import Echidna.Solidity
 import Echidna.Types.Campaign
 import Echidna.Campaign (isSuccess)
 import Echidna.UI
 import Echidna.Transaction
-import Echidna.Processor
 
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as DS
@@ -67,29 +61,11 @@ main = do
   let cfg = overrideConfig loadedCfg opts
   unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
   let cd = cfg ^. cConf . corpusDir
-      df = cfg ^. cConf . dictFreq
 
-  -- load corpus (if any)
-  txs <- loadTxs cd
   cpg <- flip runReaderT cfg $ do
-
-    -- compile and load contracts
-    cs <- Echidna.Solidity.contracts f
-    ads <- addresses
-    p <- loadSpecified (pack <$> c) cs
-
-    -- run processors
-    ca <- view (hasLens . cryticArgs)
-    si <- runSlither (NE.head f) ca
-
-    -- print some debug information
-    liftIO $ print si
-  
-    -- load tests
-    (v,w,ts) <- prepareForTest p c si
-    let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
+    (v, w, ts, d, txs) <- prepareContract cfg f c g
     -- start ui and run tests
-    ui v w ts (Just $ mkGenDict df (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs)) txs
+    ui v w ts d txs
 
   -- save corpus
   saveTxs cd (snd <$> DS.toList (cpg ^. corpus))

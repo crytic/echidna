@@ -14,7 +14,7 @@ import Prelude hiding (Word)
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, liftM5, unless)
 import Control.Monad.Catch (MonadThrow, bracket)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform, weighted)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState, get, put)
 import Data.Aeson (ToJSON(..), FromJSON(..), withText, defaultOptions, decodeStrict, encodeFile)
@@ -44,6 +44,7 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 
 import Echidna.ABI
+import Echidna.Types.Random
 
 -- | A transaction call is either a @CREATE@, a fully instrumented 'SolCall', or
 -- an abstract call consisting only of calldata.
@@ -215,7 +216,7 @@ genTxWith m s r c g gp mv t = use hasLens >>= \(World ss hmm lmm ps) ->
 
 getSignatures :: MonadRandom m => SignatureMap -> Maybe SignatureMap -> m SignatureMap
 getSignatures hmm Nothing = return hmm
-getSignatures hmm (Just lmm) = weighted [(hmm, 1000), (lmm, 1)]
+getSignatures hmm (Just lmm) = usuallyRarely hmm lmm -- once in a while, this will use the low-priority signature for the input generation
 
 -- | Synthesize a random 'Transaction', not using a dictionary.
 genTx :: forall m x y. (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m)
@@ -240,7 +241,7 @@ genValue ps mv _ _ sc =
   if sig `elem` ps
   then fromIntegral <$> randValue
   else do
-    g <- weighted [(pure 0, 1000), (randValue, 1)]  -- once in a while, this will generate value in a non-payable function
+    g <- usuallyRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
     v <- g
     return $ fromIntegral v
   where randValue = getRandomR (1 :: Integer, fromIntegral mv)

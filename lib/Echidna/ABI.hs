@@ -48,6 +48,7 @@ import qualified Data.Text.Encoding  as TE
 import qualified Data.Vector as V
 
 import Echidna.Mutator (mutateLL, replaceAt) 
+import Echidna.Types.Random
 
 -- | Fallback function is the null string
 fallback :: SolSignature
@@ -68,10 +69,6 @@ ppAbiValue (AbiArray      _ _ v) =
   "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
 ppAbiValue (AbiTuple v) =
   "(" ++ intercalate ", " (ppAbiValue <$> toList v) ++ ")"
-
--- | Get a random element of a non-empty list.
-rElem :: MonadRandom m => NE.NonEmpty a -> m a
-rElem l  = (l NE.!!) <$> getRandomR (0, length l - 1)
 
 -- Types
 
