@@ -6,12 +6,12 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck(Arbitrary(..), Gen, (===), property, testProperty, resize)
 
-import EVM (env, contracts)
 import EVM.ABI (AbiValue(..))
 import EVM.Types (Addr)
 import qualified EVM.Concrete(Word(..))
 
-import Echidna.ABI (SolCall, mkGenDict)
+import Echidna.Top
+import Echidna.ABI (SolCall)
 import Echidna.Types.Campaign (Campaign, CampaignConf(..), TestState(..), tests, gasInfo, testLimit, shrinkLimit, knownCoverage, corpus, coverage, defaultMutationConsts)
 import Echidna.Campaign (campaign)
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
@@ -25,7 +25,6 @@ import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Random (getRandom)
 import Control.Monad.Reader (runReaderT)
 import Data.Map (lookup, empty)
-import Data.Map.Strict (keys)
 import Data.Maybe (isJust, maybe)
 import Data.Text (Text, unpack, pack)
 import Data.List (find, isInfixOf)
@@ -243,6 +242,8 @@ integrationTests = testGroup "Solidity Integration Testing"
   ,  testContract "coverage/boolean.sol"       (Just "coverage/boolean.yaml")
       [ ("echidna_true failed",                    passed     "echidna_true")
       , ("unexpected corpus count ",               countCorpus 6)]
+  ,  testContract "basic/payable.sol"   Nothing
+      [ ("echidna_payable failed",                         solved      "echidna_payable") ]
   ]
 
 researchTests :: TestTree
@@ -261,7 +262,7 @@ testConfig = defaultConfig & sConf . quiet .~ True
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg = testContract' fp Nothing cfg True
 
-testContract' :: FilePath -> Maybe Text -> Maybe FilePath -> Bool -> [(String, Campaign -> Bool)] -> TestTree
+testContract' :: FilePath -> Maybe String -> Maybe FilePath -> Bool -> [(String, Campaign -> Bool)] -> TestTree
 testContract' fp n cfg s as = testCase fp $ do
   c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
   let c' = c & sConf . quiet .~ True
@@ -270,15 +271,13 @@ testContract' fp n cfg s as = testCase fp $ do
   res <- runContract fp n c'
   mapM_ (\(t,f) -> assertBool t $ f res) as
 
-runContract :: FilePath -> Maybe Text -> EConfig -> IO Campaign
-runContract fp n c =
-  flip runReaderT c $ do
+runContract :: FilePath -> Maybe String -> EConfig -> IO Campaign
+runContract f c cfg =
+  flip runReaderT cfg $ do
     g <- getRandom
-    (v,w,ts) <- loadSolTests (fp NE.:| []) n
-    cs  <- Echidna.Solidity.contracts (fp NE.:| [])
-    ads <- NE.toList <$> addresses
-    let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
-    campaign (pure ()) v w ts (Just $ mkGenDict 0.15 (extractConstants cs ++ ads ++ ads') [] g (returnTypes cs)) []
+    (v, w, ts, d, txs) <- prepareContract cfg (f NE.:| []) c g
+    -- start ui and run tests
+    campaign (pure ()) v w ts d txs
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
