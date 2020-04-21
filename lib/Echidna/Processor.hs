@@ -80,10 +80,10 @@ runSlither fp aa = let args = ["--ignore-compile", "--print", "echidna", "--json
   case mp of
     Nothing -> return [] 
     Just path -> liftIO $ do 
-                             (ec, out, err) <- readCreateProcessWithExitCode (proc path $ args |> fp) {std_err = Inherit} ""
+                             (ec, out, _) <- readCreateProcessWithExitCode (proc path $ args |> fp) {std_err = Inherit} ""
                              case ec of
                                ExitSuccess -> return $ procSlither out
-                               ExitFailure _ -> throwM $ ProcessorFailure "slither" err
+                               ExitFailure _ -> return [] --throwM $ ProcessorFailure "slither" err
 
 procSlither :: String -> [SlitherInfo]
 procSlither r = case (decode . BSL.pack) r of
