@@ -249,12 +249,12 @@ shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
     ]
   in join (uniform possibilities) <*> pure tx'
 
-mutateTx :: (MonadRandom m, Has GenDict x, MonadState x m, MonadThrow m) => Tx -> m Tx
-mutateTx (Tx (SolCall c) a b d w x y) = do f <- weighted [(mutate, 10), (skip, 90)] --FIXME: make a parameter for this?
-                                           f c
-                                         where mutate  z = mutateAbiCall z >>= \c' -> return $ Tx (SolCall c') a b d w x y
-                                               skip    _ = return $ Tx (SolCall c) a b d w x y
-mutateTx x                            = return x
+mutateTx :: (MonadRandom m) => Tx -> m Tx
+mutateTx t@(Tx (SolCall c) _ _ _ _ _ _) = do f <- weighted [(mutate, 10), (skip, 90)] --FIXME: make a parameter for this?
+                                             f c
+                                           where mutate  z = mutateAbiCall z >>= \c' -> pure $ t { _call = SolCall c' }
+                                                 skip    _ = pure t
+mutateTx t                              = pure t
 
 -- | Lift an action in the context of a component of some 'MonadState' to an action in the
 -- 'MonadState' itself.
