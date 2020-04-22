@@ -9,4 +9,8 @@ contract C {
       return address(msg.sender) == address(0x42) && msg.sender.balance == (42+123) && address(this).balance == 0;
   }
 
+  function echidna_balance_new() public returns (bool) { 
+      return address(0xcafe).balance == 0;
+  }
+
 }

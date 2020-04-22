@@ -17,6 +17,7 @@ import Data.Set (Set)
 import EVM
 import EVM.Op (Op(..))
 import EVM.Exec (exec)
+import EVM.Types (Addr)
 
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
@@ -33,12 +34,15 @@ classifyError :: Error -> ErrorClass
 classifyError (OutOfGas _ _)         = RevertE
 classifyError (Revert _)             = RevertE
 classifyError (UnrecognizedOpcode _) = RevertE
-classifyError (Query _)              = RevertE
 classifyError StackUnderrun          = IllegalE
 classifyError BadJumpDestination     = IllegalE
 classifyError StackLimitExceeded     = IllegalE
 classifyError IllegalOverflow        = IllegalE
 classifyError _                      = UnknownE
+
+getQueryAddress :: VMResult -> Maybe Addr
+getQueryAddress (VMFailure (Query (PleaseFetchContract a _))) = Just a
+getQueryAddress _                                             = Nothing 
 
 -- | Matches execution errors that just cause a reversion.
 pattern Reversion :: VMResult
@@ -62,6 +66,9 @@ instance Exception ExecException
 vmExcept :: MonadThrow m => Error -> m ()
 vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e}
 
+emptyAccount :: Contract
+emptyAccount = initialContract (RuntimeCode mempty)
+
 -- | Given an error handler, an execution function, and a transaction, execute that transaction
 -- using the given execution strategy, handling errors with the given handler.
 execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Int)
@@ -71,17 +78,22 @@ execTxWith h m t = do (og :: VM) <- use hasLens
                       res <- m
                       gasOut <- use $ hasLens . state . gas
                       cd  <- use $ hasLens . state . calldata
-                      case (res, t ^. call) of
-                        (f@Reversion, _)            -> do hasLens .= og
-                                                          hasLens . state . calldata .= cd
-                                                          hasLens . result ?= f
-                        (VMFailure x, _)            -> h x
-                        (VMSuccess bc, SolCreate _) -> (hasLens %=) . execState $ do
-                          env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
-                          replaceCodeOfSelf (RuntimeCode bc)
-                          loadContract (t ^. dst)
-                        _                        -> pure ()
-                      return (res, fromIntegral (gasIn - gasOut))
+                      case getQueryAddress res of  
+                        Just a -> do 
+                          hasLens . env . contracts . at a .= Just emptyAccount
+                          execTxWith h m t
+                        _      -> do
+                          case (res, t ^. call) of
+                           (f@Reversion, _)            -> do hasLens .= og
+                                                             hasLens . state . calldata .= cd
+                                                             hasLens . result ?= f
+                           (VMFailure x, _)            -> h x
+                           (VMSuccess bc, SolCreate _) -> (hasLens %=) . execState $ do
+                             env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
+                             replaceCodeOfSelf (RuntimeCode bc)
+                             loadContract (t ^. dst)
+                           _                        -> pure ()
+                          return (res, fromIntegral (gasIn - gasOut))
 
 -- | Execute a transaction "as normal".
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
