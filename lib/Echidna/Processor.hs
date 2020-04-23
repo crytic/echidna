@@ -17,6 +17,7 @@ import GHC.Word                   (Word32)
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import qualified Data.HashMap.Strict as M
 
+import Echidna.Types.Signature (ContractName, FunctionName)
 import Echidna.ABI (hashSig)
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
@@ -39,34 +40,34 @@ filterResults (Just c) rs =
 
 filterResults Nothing rs = concatMap (map hashSig . snd) rs
 
-data SlitherInfo = PayableInfo (Text, [Text]) 
-                 | ConstantFunctionInfo (Text, [Text])
-                 | AssertFunction (Text, [Text])
-                 | ConstantValue (Text, Text)
-                 | GenerationGraph (Text, Text, [Text]) deriving (Show)
+data SlitherInfo = PayableInfo (ContractName, [FunctionName]) 
+                 | ConstantFunctionInfo (ContractName, [FunctionName])
+                 | AssertFunction (ContractName, [FunctionName])
+                 | ConstantValue (ContractName, Text) -- Not used right now, it will change soon
+                 | GenerationGraph (ContractName, FunctionName, [FunctionName]) deriving (Show)
 
-filterPayable :: [SlitherInfo] -> [(Text, [Text])]
+filterPayable :: [SlitherInfo] -> [(ContractName, [FunctionName])]
 filterPayable = map g . filter f
   where f (PayableInfo _) = True
         f _               = False
         g (PayableInfo i) = i
         g _               = error "fail in filterPayable"
 
-filterAssert :: [SlitherInfo] -> [(Text, [Text])]
+filterAssert :: [SlitherInfo] -> [(ContractName, [FunctionName])]
 filterAssert = map g . filter f
   where f (AssertFunction _) = True
         f _               = False
         g (AssertFunction i) = i
         g _               = error "fail in filterAssert"
 
-filterConstantFunction :: [SlitherInfo] -> [(Text, [Text])]
+filterConstantFunction :: [SlitherInfo] -> [(ContractName, [FunctionName])]
 filterConstantFunction = map g . filter f 
   where f (ConstantFunctionInfo _) = True
         f _               = False
         g (ConstantFunctionInfo i) = i
         g _               = error "fail in filterConstantFunction"
 
-filterGenerationGraph :: [SlitherInfo] -> [(Text, Text, [Text])]
+filterGenerationGraph :: [SlitherInfo] -> [(ContractName, FunctionName, [FunctionName])]
 filterGenerationGraph = map g . filter f
   where f (GenerationGraph _) = True
         f _                   = False

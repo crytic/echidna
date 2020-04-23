@@ -96,8 +96,7 @@ genValue ps mv _ _ sc =
   then fromIntegral <$> randValue
   else do
     g <- usuallyRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
-    v <- g
-    return $ fromIntegral v
+    fromIntegral <$> g
   where randValue = getRandomR (1 :: Integer, fromIntegral mv)
         sig = (hashSig . encodeSig . signatureCall) sc 
 
