@@ -37,7 +37,7 @@ import Echidna.ABI             (stripBytecodeMetadata, fallback)
 import Echidna.Exec            (execTx)
 import Echidna.RPC             (loadEthenoBatch)
 import Echidna.Types.Signature (SolSignature)
-import Echidna.Types.Tx        (TxConf, TxCall(SolCreate), Tx(..))
+import Echidna.Types.Tx        (TxConf, TxCall(..), Tx(..))
 import Echidna.Types.World     (World(..))
 
 import EVM hiding (contracts)
