@@ -45,6 +45,7 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 
 import Echidna.Mutator (mutateLL, replaceAt) 
+import Echidna.Types.Signature
 
 -- | Fallback function is the null string
 fallback :: SolSignature
@@ -73,14 +74,6 @@ rElem l  = (l NE.!!) <$> getRandomR (0, length l - 1)
 -- Types
 
 -- Don't construct this directly! Use mkConf.
-
--- | Represents a call to a Solidity function.
--- A tuple of 'Text' for the name of the function, and then any 'AbiValue' arguments passed (as a list).
-type SolCall     = (Text, [AbiValue])
-
--- | Represents the type of a Solidity function.
--- A tuple of 'Text' for the name of the function, and then the 'AbiType's of any arguments it expects.
-type SolSignature = (Text, [AbiType])
 
 -- | Get the text signature of a solidity method (for later hashing)
 encodeSig :: SolSignature -> Text
