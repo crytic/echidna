@@ -28,13 +28,14 @@ import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (forkIO, forkFinally)
 import UnliftIO.Timeout (timeout)
 
-import Echidna.Types.Campaign
 import Echidna.Campaign (campaign)
 import Echidna.ABI
 import qualified Echidna.Output.JSON
 import Echidna.Solidity
 import Echidna.Test
-import Echidna.Transaction
+import Echidna.Types.Campaign
+import Echidna.Types.Tx (Tx, TxConf)
+import Echidna.Types.World (World)
 import Echidna.UI.Report
 import Echidna.UI.Widgets
 

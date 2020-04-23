@@ -25,6 +25,7 @@ import Echidna.ABI
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
+import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, propGas, src)
 
 -- | Configuration for evaluating Echidna tests.
 data TestConf = TestConf { classifier :: Text -> VM -> Bool

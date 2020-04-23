@@ -19,7 +19,7 @@ import Numeric (showHex)
 import Echidna.ABI (GenDict, defaultDict)
 import Echidna.Exec (CoverageMap, ExecException)
 import Echidna.Solidity (SolTest)
-import Echidna.Transaction (Tx)
+import Echidna.Types.Tx (Tx)
 
 type MutationConsts = (Integer, Integer, Integer)
 
