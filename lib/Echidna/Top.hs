@@ -19,6 +19,8 @@ import Echidna.Config
 import Echidna.Solidity
 import Echidna.Types.Campaign
 import Echidna.Types.Random
+import Echidna.Types.Tx
+import Echidna.Types.World
 import Echidna.Transaction
 import Echidna.Processor
 

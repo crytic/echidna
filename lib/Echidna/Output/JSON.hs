@@ -6,7 +6,7 @@ module Echidna.Output.JSON where
 import Echidna.ABI (ppAbiValue)
 import qualified Echidna.Types.Campaign as C
 import Echidna.Solidity (SolTest)
-import Echidna.Transaction (Tx(..), TxCall(..), TxResult)
+import Echidna.Types.Tx (Tx(..), TxCall(..), TxResult)
 import Data.Aeson hiding (Error)
 import qualified Data.ByteString.Base16 as BS16
 import Data.ByteString.Lazy (ByteString)

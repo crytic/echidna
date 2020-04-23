@@ -33,11 +33,12 @@ import System.Process             (StdStream(..), readCreateProcessWithExitCode,
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
 import System.Directory           (findExecutable)
-
-import Echidna.ABI         (SolSignature, encodeSig, hashSig, stripBytecodeMetadata, fallback)
-import Echidna.Exec        (execTx)
-import Echidna.RPC         (loadEthenoBatch)
-import Echidna.Transaction (TxConf, TxCall(SolCreate), Tx(..), World(..), SignatureMap)
+import Echidna.ABI                (encodeSig, hashSig, stripBytecodeMetadata, fallback)
+import Echidna.Exec               (execTx)
+import Echidna.RPC                (loadEthenoBatch)
+import Echidna.Types.Signature    (SolSignature, SignatureMap)
+import Echidna.Types.Tx           (TxConf, TxCall(..), Tx(..))
+import Echidna.Types.World        (World(..))
 import Echidna.Processor 
 
 import EVM hiding (contracts)
