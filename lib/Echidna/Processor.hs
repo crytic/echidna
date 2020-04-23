@@ -12,12 +12,11 @@ import Data.Text                  (Text, pack, unpack)
 import System.Directory           (findExecutable)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit                (ExitCode(..))
-import GHC.Word                   (Word32)
 
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import qualified Data.HashMap.Strict as M
 
-import Echidna.Types.Signature (ContractName, FunctionName)
+import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
 import Echidna.ABI (hashSig)
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
@@ -32,7 +31,9 @@ instance Show ProcException where
 
 instance Exception ProcException
 
-filterResults :: Maybe String -> [(Text, [Text])] -> [Word32] 
+-- | This function is used to filter the lists of function names according to the supplied
+-- contract name (if any) and returns a list of hashes 
+filterResults :: Maybe String -> [(ContractName, [FunctionName])] -> [FunctionHash] 
 filterResults (Just c) rs = 
   case lookup (pack c) rs of
     Nothing -> filterResults Nothing rs

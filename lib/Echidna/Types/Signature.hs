@@ -1,17 +1,20 @@
 module Echidna.Types.Signature where
 
+import Data.HashMap.Strict (HashMap)
+import Data.ByteString (ByteString)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
 import EVM.ABI (AbiType, AbiValue)
 import EVM.Types (Addr)
-import Data.HashMap.Strict (HashMap)
-import Data.ByteString (ByteString)
+import GHC.Word (Word32)
 
 -- Name of the contract
 type ContractName = Text
 
 -- Name of a function
 type FunctionName = Text
+
+type FunctionHash = Word32 
 
 -- | Represents the type of a Solidity function.
 -- A tuple for the name of the function and the 'AbiType's of any arguments it expects.

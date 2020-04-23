@@ -24,7 +24,6 @@ import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
 import EVM.Types (Addr)
-import GHC.Word (Word32)
 
 import qualified System.Directory as SD
 import qualified Data.ByteString as BS
@@ -35,7 +34,7 @@ import qualified Data.Vector as V
 import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
-import Echidna.Types.Signature (SignatureMap, SolCall, ContractA)
+import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 
@@ -90,7 +89,7 @@ genTxM m = view hasLens >>= \(TxConf _ g maxGp t b mv) -> genTxWith
   (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
      where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
 
-genValue :: (MonadRandom m) => [Word32] -> Word -> Addr -> ContractA -> SolCall -> m Word
+genValue :: (MonadRandom m) => [FunctionHash] -> Word -> Addr -> ContractA -> SolCall -> m Word
 genValue ps mv _ _ sc = 
   if sig `elem` ps
   then fromIntegral <$> randValue
