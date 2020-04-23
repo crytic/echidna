@@ -28,7 +28,6 @@ import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
-import GHC.Word                   (Word32)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
@@ -36,7 +35,7 @@ import System.Directory           (findExecutable)
 import Echidna.ABI                (encodeSig, hashSig, stripBytecodeMetadata, fallback)
 import Echidna.Exec               (execTx)
 import Echidna.RPC                (loadEthenoBatch)
-import Echidna.Types.Signature    (SolSignature, SignatureMap)
+import Echidna.Types.Signature    (FunctionHash, SolSignature, SignatureMap)
 import Echidna.Types.Tx           (TxConf, TxCall(..), Tx(..))
 import Echidna.Types.World        (World(..))
 import Echidna.Processor 
@@ -269,7 +268,7 @@ prepareForTest (v, a, ts, m) c si = view hasLens <&> \SolConf { _sender = s, _ch
     cs = filterResults c $ filterConstantFunction si
     (hm, lm) = prepareHashMaps cs as m
 
-prepareHashMaps :: [Word32] -> [Word32] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
+prepareHashMaps :: [FunctionHash] -> [FunctionHash] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
 prepareHashMaps [] _  m = (m, Nothing)                                -- No constant functions detected
 prepareHashMaps cs as m = 
   (\case (hm, lm) | M.size hm > 0  && M.size lm > 0  -> (hm, Just lm) -- Usual case 

@@ -32,7 +32,6 @@ import Data.Text (Text)
 import Data.Vector (Vector)
 import Data.Vector.Instances ()
 import Data.Word8 (Word8)
-import GHC.Word (Word32)
 import Numeric (showHex)
 
 import EVM.ABI hiding (genAbiValue)
@@ -84,7 +83,7 @@ encodeSig :: SolSignature -> Text
 encodeSig (n, ts) = n <> "(" <> T.intercalate "," (abiTypeSolidity <$> ts) <> ")"
 
 -- | Get the signature of a solidity method
-hashSig :: Text -> Word32 
+hashSig :: Text -> FunctionHash 
 hashSig = abiKeccak . TE.encodeUtf8
 
 -- | Configuration necessary for generating new 'SolCalls'. Don't construct this by hand! Use 'mkConf'.
