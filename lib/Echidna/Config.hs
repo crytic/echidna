@@ -31,10 +31,10 @@ import qualified Data.ByteString as BS
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
-import Echidna.Types.Campaign
 import Echidna.Solidity
 import Echidna.Test
-import Echidna.Transaction
+import Echidna.Types.Campaign (CampaignConf(CampaignConf), defaultMutationConsts)
+import Echidna.Types.Tx (TxConf(TxConf))
 import Echidna.UI
 import Echidna.UI.Report
 

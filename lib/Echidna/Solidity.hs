@@ -33,10 +33,12 @@ import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
 import System.Directory           (findExecutable)
 
-import Echidna.ABI         (SolSignature, stripBytecodeMetadata, fallback)
-import Echidna.Exec        (execTx)
-import Echidna.RPC         (loadEthenoBatch)
-import Echidna.Transaction (TxConf, TxCall(SolCreate), Tx(..), World(..))
+import Echidna.ABI             (stripBytecodeMetadata, fallback)
+import Echidna.Exec            (execTx)
+import Echidna.RPC             (loadEthenoBatch)
+import Echidna.Types.Signature (SolSignature)
+import Echidna.Types.Tx        (TxConf, TxCall(..), Tx(..))
+import Echidna.Types.World     (World(..))
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
@@ -64,6 +66,7 @@ data SolException = BadAddr Addr
                   | NoTests
                   | OnlyTests
                   | ConstructorArgs String
+                  | DeploymentFailed
                   | NoCryticCompile
                   | InvalidMethodFilters Filter
 
@@ -82,7 +85,7 @@ instance Show SolException where
     (ConstructorArgs s)      -> "Constructor arguments are required: " ++ s
     NoCryticCompile          -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
     (InvalidMethodFilters f) -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
-
+    DeploymentFailed         -> "Deploying the contract failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
 
 instance Exception SolException
 
@@ -223,13 +226,15 @@ loadSpecified name cs = do
   when (null abi) $ throwM NoFuncs                              -- < ABI checks
   when (not ch && null tests && not bm) $ throwM NoTests        -- <
   when (bc == mempty) $ throwM (NoBytecode $ c ^. contractName) -- Bytecode check
-
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
       let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca 8000030 0 (w256 $ fromInteger balc) (0, 0)
-      (, neFuns, fst <$> tests, abiMapping) <$> execStateT transaction vm
+      vm' <- execStateT transaction vm
+      case currentContract vm' of 
+        Just _  -> return (vm', neFuns, fst <$> tests, abiMapping)
+        Nothing -> throwM DeploymentFailed 
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c

@@ -11,16 +11,13 @@ import EVM.ABI (AbiValue(..))
 import EVM.Types (Addr)
 import qualified EVM.Concrete(Word(..))
 
-import Echidna.ABI (SolCall, mkGenDict)
--- <<<<<<< HEAD
-import Echidna.Types.Campaign (Campaign, CampaignConf(..), TestState(..), tests, corpus, gasInfo, defaultMutationConsts, testLimit, shrinkLimit, knownCoverage, coverage)
+import Echidna.ABI (mkGenDict)
+import Echidna.Types.Campaign (Campaign, CampaignConf(..), TestState(..), tests, gasInfo, defaultMutationConsts, testLimit, shrinkLimit, knownCoverage, corpus, coverage)
 import Echidna.Campaign (campaign)
--- =======
---import Echidna.Campaign (Campaign(..), CampaignConf(..), TestState(..), campaign, tests, corpus, gasInfo, coverage, defaultMutationConsts)
--- >>>>>>> 7d62bdb650398ea6cef2603c9d7ab5db9c640678
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
-import Echidna.Transaction (TxCall(..), Tx(..), call)
+import Echidna.Types.Signature (SolCall)
+import Echidna.Types.Tx (TxCall(..), Tx(..), call)
 
 import Data.Aeson (encode, decode)
 import Control.Lens
@@ -86,6 +83,8 @@ compilationTests = testGroup "Compilation and loading tests"
                                               \case TestArgsFound{}    -> True; _ -> False
   , loadFails "bad/consargs.sol"   Nothing    "failed to warn on cons args found" $
                                               \case ConstructorArgs{}  -> True; _ -> False
+  , loadFails "bad/revert.sol"     Nothing    "failed to warn on a failed deployment" $
+                                              \case DeploymentFailed{} -> True; _ -> False 
   ]
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree

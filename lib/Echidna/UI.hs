@@ -28,13 +28,14 @@ import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (forkIO, forkFinally)
 import UnliftIO.Timeout (timeout)
 
-import Echidna.Types.Campaign
 import Echidna.Campaign (campaign)
 import Echidna.ABI
 import qualified Echidna.Output.JSON
 import Echidna.Solidity
 import Echidna.Test
-import Echidna.Transaction
+import Echidna.Types.Campaign
+import Echidna.Types.Tx (Tx, TxConf)
+import Echidna.Types.World (World)
 import Echidna.UI.Report
 import Echidna.UI.Widgets
 
@@ -109,9 +110,10 @@ ui v w ts d txs = do
         (const $ liftIO $ killThread ticker)
       app <- customMain (mkVty defaultConfig) (Just bc) <$> monitor
       liftIO $ void $ app (defaultCampaign, Uninitialized)
-      -- TODO: this is temporary, show seed in the UI
+      final <- liftIO $ readIORef ref
+      liftIO . putStrLn =<< ppCampaign final
       liftIO . putStrLn =<< ("Seed: " ++) . show <$> getSeed
-      liftIO $ readIORef ref
+      pure final
 
     NonInteractive outputFormat -> do
       result <- timeout timeoutUsec (campaign updateRef v w ts d txs)

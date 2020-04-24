@@ -22,8 +22,9 @@ import qualified Data.ByteString as BS
 import qualified Data.Map as M
 import qualified Data.Set as S
 
-import Echidna.Transaction
 import Echidna.ABI (stripBytecodeMetadata)
+import Echidna.Transaction
+import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
