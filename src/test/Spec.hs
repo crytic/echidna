@@ -10,7 +10,7 @@ import EVM.ABI (AbiValue(..))
 import EVM.Types (Addr)
 import qualified EVM.Concrete(Word(..))
 
-import Echidna.Top
+import Echidna
 import Echidna.Types.Campaign (Campaign, CampaignConf(..), TestState(..), tests, gasInfo, testLimit, shrinkLimit, knownCoverage, corpus, coverage)
 import Echidna.Campaign (campaign)
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)

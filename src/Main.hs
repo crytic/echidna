@@ -11,7 +11,7 @@ import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.IO (hPutStrLn, stderr)
 
-import Echidna.Top
+import Echidna
 import Echidna.Config
 import Echidna.Solidity
 import Echidna.Types.Campaign
