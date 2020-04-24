@@ -260,13 +260,13 @@ prepareForTest :: (MonadReader x m, Has SolConf x)
                -> [SlitherInfo]
                -> m (VM, World, [SolTest])
 prepareForTest (v, a, ts, m) c si = view hasLens <&> \SolConf { _sender = s, _checkAsserts = ch } -> 
-  (v, World s hm lm ps, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else []) where
-    r = v ^. state . contract
-    a' = NE.toList a
-    ps = filterResults c $ filterPayable si
-    as = filterResults c $ filterAssert si -- TODO: avoid adding these if we are not checking assertions
-    cs = filterResults c $ filterConstantFunction si
-    (hm, lm) = prepareHashMaps cs as m
+  let r = v ^. state . contract
+      a' = NE.toList a
+      ps = filterResults c $ filterPayable si
+      as = if ch then filterResults c $ filterAssert si else []
+      cs = filterResults c $ filterConstantFunction si
+      (hm, lm) = prepareHashMaps cs as m
+  in (v, World s hm lm ps, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else [])
 
 prepareHashMaps :: [FunctionHash] -> [FunctionHash] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
 prepareHashMaps [] _  m = (m, Nothing)                                -- No constant functions detected
