@@ -77,15 +77,15 @@ filterGenerationGraph = map g . filter f
 
 -- Slither processing
 runSlither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m [SlitherInfo]
-runSlither fp aa = let args = ["--ignore-compile", "--print", "echidna", "--json", "-"] ++ aa in do
+runSlither fp args = let args' = ["--ignore-compile", "--print", "echidna", "--json", "-"] ++ args in do
   mp <- liftIO $ findExecutable "slither"
   case mp of
     Nothing -> return [] 
     Just path -> liftIO $ do 
-                             (ec, out, _) <- readCreateProcessWithExitCode (proc path $ args |> fp) {std_err = Inherit} ""
-                             case ec of
-                               ExitSuccess -> return $ procSlither out
-                               ExitFailure _ -> return [] --throwM $ ProcessorFailure "slither" err
+      (ec, out, _) <- readCreateProcessWithExitCode (proc path $ args' |> fp) {std_err = Inherit} ""
+      case ec of
+        ExitSuccess -> return $ procSlither out
+        ExitFailure _ -> return [] --we can make slither mandatory using: throwM $ ProcessorFailure "slither" err
 
 procSlither :: String -> [SlitherInfo]
 procSlither r = case (decode . BSL.pack) r of
