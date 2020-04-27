@@ -273,7 +273,7 @@ prepareForTest (v, a, ts, m) c si = do
       as = if ch then filterResults c $ filterAssert si else []
       cs = filterResults c $ filterConstantFunction si
       (hm, lm) = prepareHashMaps cs as m
-  pure $ (v, World s hm lm ps, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else [])
+  pure (v, World s hm lm ps, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else [])
 
 prepareHashMaps :: [FunctionHash] -> [FunctionHash] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
 prepareHashMaps [] _  m = (m, Nothing)                                -- No constant functions detected
