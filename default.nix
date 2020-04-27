@@ -15,7 +15,7 @@ let
       , tasty-hunit, tasty-quickcheck, temporary, text, transformers
       , unix, unliftio, unliftio-core, unordered-containers, vector
       , vector-instances, vty, wl-pprint-annotated, word8, yaml
-      , cabal-install
+      , cabal-install, extra
       }:
       mkDerivation rec {
         pname = "echidna";
@@ -30,7 +30,7 @@ let
           optparse-applicative process random stm temporary text transformers
           unix unliftio unliftio-core unordered-containers vector
           vector-instances vty wl-pprint-annotated word8 yaml
-          tasty tasty-hunit tasty-quickcheck
+          extra
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
         libraryToolDepends = [ hpack cabal-install ];
         executableHaskellDepends = libraryHaskellDepends;

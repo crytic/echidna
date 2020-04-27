@@ -66,23 +66,26 @@ vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> Unknow
 -- | Given an error handler, an execution function, and a transaction, execute that transaction
 -- using the given execution strategy, handling errors with the given handler.
 execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Int)
-execTxWith h m t = do (og :: VM) <- use hasLens
-                      setupTx t
-                      gasIn <- use $ hasLens . state . gas
-                      res <- m
-                      gasOut <- use $ hasLens . state . gas
-                      cd  <- use $ hasLens . state . calldata
-                      case (res, t ^. call) of
-                        (f@Reversion, _)            -> do hasLens .= og
-                                                          hasLens . state . calldata .= cd
-                                                          hasLens . result ?= f
-                        (VMFailure x, _)            -> h x
-                        (VMSuccess bc, SolCreate _) -> (hasLens %=) . execState $ do
-                          env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
-                          replaceCodeOfSelf (RuntimeCode bc)
-                          loadContract (t ^. dst)
-                        _                        -> pure ()
-                      return (res, fromIntegral (gasIn - gasOut))
+execTxWith h m t = do
+  (og :: VM) <- use hasLens
+  setupTx t
+  gasIn <- use $ hasLens . state . gas
+  res <- m
+  gasOut <- use $ hasLens . state . gas
+  cd  <- use $ hasLens . state . calldata
+  case (res, t ^. call) of
+    (f@Reversion, _) -> do
+      hasLens .= og
+      hasLens . state . calldata .= cd
+      hasLens . result ?= f
+    (VMFailure x, _) -> h x
+    (VMSuccess bc, SolCreate _) ->
+      (hasLens %=) . execState $ do
+        env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
+        replaceCodeOfSelf (RuntimeCode bc)
+        loadContract (t ^. dst)
+    _ -> pure ()
+  pure (res, fromIntegral (gasIn - gasOut))
 
 -- | Execute a transaction "as normal".
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
@@ -99,16 +102,24 @@ coveragePoints :: CoverageMap -> Int
 coveragePoints = sum . fmap S.size
 
 -- | Given good point coverage, count the number of unique points but
--- only considering the different instruction PCs (discarding the TxResult). 
+-- only considering the different instruction PCs (discarding the TxResult).
 -- This is useful to report a coverage measure to the user
 scoveragePoints :: CoverageMap -> Int
 scoveragePoints = sum . fmap (S.size . S.map fst)
 
 -- | Capture the current PC and bytecode (without metadata). This should identify instructions uniquely.
 pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
-pointCoverage l = use hasLens >>= \v ->
-  l %= M.insertWith (const . S.insert $ (v ^. state . pc, Success)) (fromMaybe (error "no contract information on coverage") $ h v) mempty where
-    h v = stripBytecodeMetadata <$> v ^? env . contracts . at (v ^. state . contract) . _Just . bytecode
+pointCoverage l = do
+  v <- use hasLens
+  l %= M.insertWith (const . S.insert $ (v ^. state . pc, Success))
+                    (fromMaybe (error "no contract information on coverage") $ h v)
+                    mempty
+  where
+    h v = stripBytecodeMetadata <$>
+            v ^? env . contracts . at (v ^. state . contract) . _Just . bytecode
 
 traceCoverage :: (MonadState x m, Has VM x, Has [Op] x) => m ()
-traceCoverage = use hasLens >>= \v -> let c = v ^. state . code in hasLens <>= [readOp (BS.index c $ v ^. state . pc) c]
+traceCoverage = do
+  v <- use hasLens
+  let c = v ^. state . code
+  hasLens <>= [readOp (BS.index c $ v ^. state . pc) c]

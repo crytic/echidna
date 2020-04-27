@@ -11,7 +11,7 @@ import Brick
 import Brick.BChan
 import Control.Concurrent (killThread, threadDelay)
 import Control.Lens
-import Control.Monad (forever, liftM3, void, when)
+import Control.Monad (forever, void, when)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader, runReader)
@@ -58,18 +58,17 @@ data CampaignEvent = CampaignUpdated Campaign | CampaignTimedout Campaign
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
 monitor :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
         => m (App (Campaign, UIState) CampaignEvent ())
-monitor = let
-  cs :: (CampaignConf, Names, TxConf) -> (Campaign, UIState) -> Widget ()
-  cs s c = runReader (campaignStatus c) s
+monitor = do
+  let cs :: (CampaignConf, Names, TxConf) -> (Campaign, UIState) -> Widget ()
+      cs s c = runReader (campaignStatus c) s
 
-  se _ (AppEvent (CampaignUpdated c')) = continue (c', Running)
-  se _ (AppEvent (CampaignTimedout c')) = continue (c', Timedout)
-  se c (VtyEvent (EvKey KEsc _))                         = halt c
-  se c (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = halt c
-  se c _                                                 = continue c
-  in
-    liftM3 (,,) (view hasLens) (view hasLens) (view hasLens) <&> \s ->
-      App (pure . cs s) neverShowCursor se pure (const attrs)
+      se _ (AppEvent (CampaignUpdated c')) = continue (c', Running)
+      se _ (AppEvent (CampaignTimedout c')) = continue (c', Timedout)
+      se c (VtyEvent (EvKey KEsc _))                         = halt c
+      se c (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = halt c
+      se c _                                                 = continue c
+  s <- (,,) <$> view hasLens <*> view hasLens <*> view hasLens
+  pure $ App (pure . cs s) neverShowCursor se pure (const attrs)
 
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
 isTerminal :: MonadIO m => m Bool
