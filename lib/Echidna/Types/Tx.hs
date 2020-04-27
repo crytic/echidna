@@ -66,6 +66,8 @@ data TxConf = TxConf { _propGas       :: Word
                      -- ^ Maximum time delay between transactions (seconds)
                      , _maxBlockDelay :: Word
                      -- ^ Maximum block delay between transactions
+                     , _maxValue      :: Word
+                     -- ^ Maximum value to use in transactions  
                      }
 makeLenses 'TxConf
 

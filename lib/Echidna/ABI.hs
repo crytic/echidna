@@ -35,6 +35,7 @@ import Data.Word8 (Word8)
 import Numeric (showHex)
 
 import EVM.ABI hiding (genAbiValue)
+import EVM.Keccak (abiKeccak)
 import EVM.Types (Addr)
 
 import qualified Control.Monad.Random.Strict as R
@@ -42,9 +43,11 @@ import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
+import qualified Data.Text.Encoding  as TE 
 import qualified Data.Vector as V
 
 import Echidna.Mutator (mutateLL, replaceAt) 
+import Echidna.Types.Random
 import Echidna.Types.Signature
 
 -- | Fallback function is the null string
@@ -67,17 +70,21 @@ ppAbiValue (AbiArray      _ _ v) =
 ppAbiValue (AbiTuple v) =
   "(" ++ intercalate ", " (ppAbiValue <$> toList v) ++ ")"
 
--- | Get a random element of a non-empty list.
-rElem :: MonadRandom m => NE.NonEmpty a -> m a
-rElem l  = (l NE.!!) <$> getRandomR (0, length l - 1)
-
 -- Types
 
 -- Don't construct this directly! Use mkConf.
 
+-- | Get the signature from a Solidity function.
+signatureCall :: SolCall -> SolSignature
+signatureCall (t, vs) = (t, map abiValueType vs)
+
 -- | Get the text signature of a solidity method (for later hashing)
 encodeSig :: SolSignature -> Text
 encodeSig (n, ts) = n <> "(" <> T.intercalate "," (abiTypeSolidity <$> ts) <> ")"
+
+-- | Get the signature of a solidity method
+hashSig :: Text -> FunctionHash 
+hashSig = abiKeccak . TE.encodeUtf8
 
 -- | Configuration necessary for generating new 'SolCalls'. Don't construct this by hand! Use 'mkConf'.
 data GenDict = GenDict { _pSynthA    :: Float
