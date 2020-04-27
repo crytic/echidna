@@ -80,7 +80,7 @@ execTxWith h m t = do (og :: VM) <- use hasLens
                       gasOut <- use $ hasLens . state . gas
                       let gUsed = gasIn - gasOut 
                       cd  <- use $ hasLens . state . calldata
-                      case (getQuery res) of
+                      case getQuery res of
                         -- A previously unknown contract is required 
                         Just (PleaseFetchContract _ cont) -> do
                           -- Use the empty contract
