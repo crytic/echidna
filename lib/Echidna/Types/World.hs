@@ -3,16 +3,18 @@
 module Echidna.Types.World where
 
 import Control.Lens.TH (makeLenses)
-import Data.ByteString (ByteString)
 import Data.List.NonEmpty (NonEmpty)
-import Data.HashMap.Strict (HashMap)
 import EVM.Types (Addr)
+import Echidna.Types.Signature (FunctionHash, SignatureMap)
 
-import Echidna.Types.Signature (SolSignature)
-
--- | The world is made our of humans with an address, and a way to map contract
--- bytecodes to an ABI
-data World = World { _senders         :: NonEmpty Addr
-                   , _bytecodeMapping :: HashMap ByteString (NonEmpty SolSignature)
+-- | The world is composed by: 
+--    * A list of "human" addresses 
+--    * A high-priority map of signatures from every contract
+--    * A low-priority map of signatures from every contract
+--    * A list of function hashes from payable functions
+data World = World { _senders          :: NonEmpty Addr
+                   , _highSignatureMap :: SignatureMap
+                   , _lowSignatureMap  :: Maybe SignatureMap
+                   , _payableSigs      :: [FunctionHash]
                    }
 makeLenses ''World

@@ -1,21 +1,17 @@
 module Main where
 
-import Control.Lens ((^.), to, (.~), (&))
+import Control.Lens ((^.), (.~), (&))
 import Control.Monad (unless)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
-import Data.Map.Strict (keys)
-import Data.Text (pack, unpack)
+import Data.Text (unpack)
 import Data.Version (showVersion)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.IO (hPutStrLn, stderr)
 
-import EVM (env, contracts)
-import EVM.ABI (AbiValue(AbiAddress))
-
-import Echidna.ABI
+import Echidna
 import Echidna.Config
 import Echidna.Solidity
 import Echidna.Types.Campaign
@@ -57,6 +53,7 @@ optsParser = info (helper <*> versionOption <*> options) $ fullDesc
   <> header "Echidna"
 
 main :: IO ()
+
 main = do
   opts@(Options f c conf _) <- execParser optsParser
   g <- getRandom
@@ -64,14 +61,13 @@ main = do
   let cfg = overrideConfig loadedCfg opts
   unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
   let cd = cfg ^. cConf . corpusDir
-      df = cfg ^. cConf . dictFreq
-  txs <- loadTxs cd
+
   cpg <- flip runReaderT cfg $ do
-    cs       <- Echidna.Solidity.contracts f
-    ads      <- addresses
-    (v,w,ts) <- loadSpecified (pack <$> c) cs >>= prepareForTest
-    let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
-    ui v w ts (Just $ mkGenDict df (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs)) txs
+    (v, w, ts, d, txs) <- prepareContract cfg f c g
+    -- start ui and run tests
+    ui v w ts d txs
+
+  -- save corpus
   saveTxs cd (snd <$> DS.toList (cpg ^. corpus))
   if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
   where overrideConfig cfg (Options _ _ _ fmt) =

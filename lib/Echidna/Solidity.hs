@@ -32,13 +32,13 @@ import System.Process             (StdStream(..), readCreateProcessWithExitCode,
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
 import System.Directory           (findExecutable)
-
-import Echidna.ABI             (stripBytecodeMetadata, fallback)
-import Echidna.Exec            (execTx)
-import Echidna.RPC             (loadEthenoBatch)
-import Echidna.Types.Signature (SolSignature)
-import Echidna.Types.Tx        (TxConf, TxCall(..), Tx(..))
-import Echidna.Types.World     (World(..))
+import Echidna.ABI                (encodeSig, hashSig, stripBytecodeMetadata, fallback)
+import Echidna.Exec               (execTx)
+import Echidna.RPC                (loadEthenoBatch)
+import Echidna.Types.Signature    (FunctionHash, SolSignature, SignatureMap)
+import Echidna.Types.Tx           (TxConf, TxCall(..), Tx(..))
+import Echidna.Types.World        (World(..))
+import Echidna.Processor 
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
@@ -50,6 +50,7 @@ import EVM.Concrete (w256)
 
 import qualified Data.ByteString     as BS
 import qualified Data.List.NonEmpty  as NE
+import qualified Data.List.NonEmpty.Extra as NEE
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text           as T
 
@@ -185,7 +186,7 @@ abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
 loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-              => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature))
+              => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text], SignatureMap)
 loadSpecified name cs = do
   -- Pick contract to load
   c <- choose cs name
@@ -250,24 +251,41 @@ loadSpecified name cs = do
 --             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 --loadSolidity fp name = contracts fp >>= loadSpecified name
 loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-                      => NE.NonEmpty FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature))
+                      => NE.NonEmpty FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text], SignatureMap)
 loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
-               => (VM, NE.NonEmpty SolSignature, [Text], M.HashMap BS.ByteString (NE.NonEmpty SolSignature)) -> m (VM, World, [SolTest])
-prepareForTest (v, a, ts, m) = view hasLens <&> \SolConf { _sender = s, _checkAsserts = ch } ->
-  (v, World s m, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else []) where
-    r = v ^. state . contract
-    a' = NE.toList a
+               => (VM, NE.NonEmpty SolSignature, [Text], SignatureMap) 
+               -> Maybe String
+               -> [SlitherInfo]
+               -> m (VM, World, [SolTest])
+prepareForTest (v, a, ts, m) c si = view hasLens <&> \SolConf { _sender = s, _checkAsserts = ch } -> 
+  let r = v ^. state . contract
+      a' = NE.toList a
+      ps = filterResults c $ filterPayable si
+      as = if ch then filterResults c $ filterAssert si else []
+      cs = filterResults c $ filterConstantFunction si
+      (hm, lm) = prepareHashMaps cs as m
+  in (v, World s hm lm ps, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else [])
+
+prepareHashMaps :: [FunctionHash] -> [FunctionHash] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
+prepareHashMaps [] _  m = (m, Nothing)                                -- No constant functions detected
+prepareHashMaps cs as m = 
+  (\case (hm, lm) | M.size hm > 0  && M.size lm > 0  -> (hm, Just lm) -- Usual case 
+                  | M.size hm > 0  && M.size lm == 0 -> (hm, Nothing) -- No low-priority functions detected 
+                  | M.size hm == 0 && M.size lm > 0  -> (m,  Nothing) -- No high-priority functions detected
+                  | otherwise                        -> error "Error processing function hashmaps"
+  ) (M.unionWith NEE.union (filterHashMap not cs m) (filterHashMap id as m), filterHashMap id cs m)
+  where filterHashMap f xs = M.mapMaybe (NE.nonEmpty . NE.filter (\s -> f $ (hashSig . encodeSig $ s) `elem` xs))
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
 loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
              => NE.NonEmpty FilePath -> Maybe Text -> m (VM, World, [SolTest])
-loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest
+loadSolTests fp name = loadWithCryticCompile fp name >>= (\t -> prepareForTest t Nothing [])
 
 mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
 mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Nothing
