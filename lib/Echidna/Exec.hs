@@ -85,26 +85,25 @@ execTxWith h m t = do (og :: VM) <- use hasLens
                         Just (PleaseFetchContract _ cont) -> do
                           -- Use the empty contract
                           (hasLens %=) . execState $ cont emptyAccount 
-                          -- Run remaining effects
-                          res' <- m
-                          -- Correct gas usage
-                          gasOut' <- use $ hasLens . state . gas
-                          let gUsed' = gasIn - gasOut' 
-                          getExecResult h res' og cd gUsed' t
-
+                          reExec gasIn og cd
+                         
                         -- A previously unknown slot is required
                         Just (PleaseFetchSlot _ _ cont) -> do
-                          -- Use zero
+                          -- Use the zero slot
                           (hasLens %=) . execState $ cont 0 
-                          -- Run remaining effects
-                          res' <- m
-                          -- Correct gas usage
-                          gasOut' <- use $ hasLens . state . gas
-                          let gUsed' = gasIn - gasOut' 
-                          getExecResult h res' og cd gUsed' t
-
+                          reExec gasIn og cd
+                          
                         -- No queries to answer
                         _      -> getExecResult h res og cd gUsed t
+
+  where reExec gasIn og cd = do
+                   -- Run remaining effects
+                   res' <- m
+                   -- Correct gas usage
+                   gasOut' <- use $ hasLens . state . gas
+                   let gUsed' = gasIn - gasOut' 
+                   getExecResult h res' og cd gUsed' t
+
 
 getExecResult :: (MonadState x m, Has VM x) => (Error -> m ()) -> VMResult -> VM -> BS.ByteString -> Word -> Tx -> m (VMResult, Int)
 getExecResult h res og cd g t = do
