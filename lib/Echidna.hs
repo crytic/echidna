@@ -38,25 +38,25 @@ import qualified Data.List.NonEmpty as NE
 -- * A list of Echidna tests to check
 -- * A prepopulated dictionary (if any)
 -- * A list of transaction sequences to initialize the corpus
-prepareContract :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, MonadFail m
-                   , Has TxConf x, Has SolConf x)
-                => EConfig -> NE.NonEmpty FilePath -> Maybe String -> Seed -> m (VM, World, [SolTest], Maybe GenDict, [[Tx]]) 
-prepareContract cfg fs c g = 
-  let cd = cfg ^. cConf . corpusDir
-      df = cfg ^. cConf . dictFreq in 
-  do
-    txs <- liftIO $ loadTxs cd 
-    -- compile and load contracts
-    cs <- Echidna.Solidity.contracts fs
-    ads <- addresses
-    p <- loadSpecified (pack <$> c) cs
+prepareContract :: (MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, MonadFail m,
+                    Has TxConf x, Has SolConf x)
+                => EConfig -> NE.NonEmpty FilePath -> Maybe String -> Seed -> m (VM, World, [SolTest], Maybe GenDict, [[Tx]])
+prepareContract cfg fs c g = do
+  txs <- liftIO $ loadTxs cd
 
-    -- run processors
-    ca <- view (hasLens . cryticArgs)
-    si <- runSlither (NE.head fs) ca
+  -- compile and load contracts
+  cs <- Echidna.Solidity.contracts fs
+  ads <- addresses
+  p <- loadSpecified (pack <$> c) cs
 
-    -- load tests
-    (v,w,ts) <- prepareForTest p c si
-    let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
-    -- start ui and run tests
-    return (v,w, ts, Just $ mkGenDict df (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs), txs)
+  -- run processors
+  ca <- view (hasLens . cryticArgs)
+  si <- runSlither (NE.head fs) ca
+
+  -- load tests
+  (v, w, ts) <- prepareForTest p c si
+  let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
+  -- start ui and run tests
+  return (v, w, ts, Just $ mkGenDict df (extractConstants cs ++ NE.toList ads ++ ads') [] g (returnTypes cs), txs)
+  where cd = cfg ^. cConf . corpusDir
+        df = cfg ^. cConf . dictFreq
