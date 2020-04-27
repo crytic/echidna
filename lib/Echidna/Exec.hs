@@ -15,9 +15,10 @@ import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import EVM
+import EVM.Concrete (Word)
 import EVM.Op (Op(..))
 import EVM.Exec (exec)
-import EVM.Types (Addr)
+import Prelude hiding (Word)
 
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
@@ -40,9 +41,9 @@ classifyError StackLimitExceeded     = IllegalE
 classifyError IllegalOverflow        = IllegalE
 classifyError _                      = UnknownE
 
-getQueryAddress :: VMResult -> Maybe Addr
-getQueryAddress (VMFailure (Query (PleaseFetchContract a _))) = Just a
-getQueryAddress _                                             = Nothing 
+getQuery :: VMResult -> Maybe Query
+getQuery (VMFailure (Query q)) = Just q
+getQuery _                     = Nothing
 
 -- | Matches execution errors that just cause a reversion.
 pattern Reversion :: VMResult
@@ -77,23 +78,47 @@ execTxWith h m t = do (og :: VM) <- use hasLens
                       gasIn <- use $ hasLens . state . gas
                       res <- m
                       gasOut <- use $ hasLens . state . gas
+                      let gUsed = gasIn - gasOut 
                       cd  <- use $ hasLens . state . calldata
-                      case getQueryAddress res of  
-                        Just a -> do 
-                          hasLens . env . contracts . at a .= Just emptyAccount
-                          execTxWith h m t
-                        _      -> do
-                          case (res, t ^. call) of
-                           (f@Reversion, _)            -> do hasLens .= og
-                                                             hasLens . state . calldata .= cd
-                                                             hasLens . result ?= f
-                           (VMFailure x, _)            -> h x
-                           (VMSuccess bc, SolCreate _) -> (hasLens %=) . execState $ do
-                             env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
-                             replaceCodeOfSelf (RuntimeCode bc)
-                             loadContract (t ^. dst)
-                           _                        -> pure ()
-                          return (res, fromIntegral (gasIn - gasOut))
+                      case (getQuery res) of
+                        -- A previously unknown contract is required 
+                        Just (PleaseFetchContract _ cont) -> do
+                          -- Use the empty contract
+                          (hasLens %=) . execState $ cont emptyAccount 
+                          -- Run remaining effects
+                          res' <- m
+                          -- Correct gas usage
+                          gasOut' <- use $ hasLens . state . gas
+                          let gUsed' = gasIn - gasOut' 
+                          getExecResult h res' og cd gUsed' t
+
+                        -- A previously unknown slot is required
+                        Just (PleaseFetchSlot _ _ cont) -> do
+                          -- Use zero
+                          (hasLens %=) . execState $ cont 0 
+                          -- Run remaining effects
+                          res' <- m
+                          -- Correct gas usage
+                          gasOut' <- use $ hasLens . state . gas
+                          let gUsed' = gasIn - gasOut' 
+                          getExecResult h res' og cd gUsed' t
+
+                        -- No queries to answer
+                        _      -> getExecResult h res og cd gUsed t
+
+getExecResult :: (MonadState x m, Has VM x) => (Error -> m ()) -> VMResult -> VM -> BS.ByteString -> Word -> Tx -> m (VMResult, Int)
+getExecResult h res og cd g t = do
+  case (res, t ^. call) of
+    (f@Reversion, _)            -> do hasLens .= og
+                                      hasLens . state . calldata .= cd
+                                      hasLens . result ?= f
+    (VMFailure x, _)            -> h x
+    (VMSuccess bc, SolCreate _) -> (hasLens %=) . execState $ do
+                                     env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
+                                     replaceCodeOfSelf (RuntimeCode bc)
+                                     loadContract (t ^. dst)
+    _                        -> pure ()
+  return (res, fromIntegral g)
 
 -- | Execute a transaction "as normal".
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)

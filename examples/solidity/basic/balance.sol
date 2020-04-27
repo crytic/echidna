@@ -1,4 +1,6 @@
 contract C {
+  bool value_found = false;
+
   constructor() payable public {
       msg.sender.transfer(0);
       msg.sender.transfer(123);
@@ -13,4 +15,12 @@ contract C {
       return address(0xcafe).balance == 0;
   }
 
+  function echidna_no_magic() public returns (bool) {
+    if (value_found)
+      return false;
+
+    value_found = true;
+    uint x = address(0x123).balance;
+    return true;
+  }
 }
