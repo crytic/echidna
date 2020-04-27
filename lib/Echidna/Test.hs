@@ -54,7 +54,7 @@ checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Ha
 checkETest t = do
   TestConf p s <- asks getter
   g <- view (hasLens . propGas)
-  og <- get
+  vm <- get -- save EVM state
   -- To check these tests, we're going to need a couple auxilary functions:
   --   * matchR[eturn] checks if we just tried to exec 0xfe, which means we failed an assert
   --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
@@ -67,7 +67,7 @@ checkETest t = do
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
     Right sig    -> (||) <$> fmap matchR       (use $ hasLens . result)
                          <*> fmap (matchC sig) (use $ hasLens . state . calldata)
-  put og
+  put vm -- restore EVM state
   pure res
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
