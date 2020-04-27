@@ -32,8 +32,9 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Vector as V
 
 import Echidna.ABI
+import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
-import Echidna.Types.Signature (SolCall, ContractA)
+import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 
@@ -52,17 +53,23 @@ genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m)
           -> (Addr -> ContractA -> m SolCall)         -- ^ Call generator
           -> m Word                                   -- ^ Gas generator
           -> m Word                                   -- ^ Gas price generator
-          -> (Addr -> ContractA -> SolCall -> m Word) -- ^ Value generator
+          -> Word                                     -- ^ Max value generator
           -> m (Word, Word)                           -- ^ Delay generator
           -> m Tx
-genTxWith m s r c g gp v t = use hasLens >>= \(World ss mm) ->
+genTxWith m s r c g gp mv t = use hasLens >>= \(World ss hmm lmm ps) ->
+  getSignatures hmm lmm >>= \mm ->
   let s' = s ss
       r' = r rs
       c' = join $ liftM2 c s' r'
+      v' = genValue ps mv
       rs = NE.fromList . catMaybes $ mkR <$> toList m
       mkR = _2 (flip M.lookup mm . view (bytecode . to stripBytecodeMetadata))
   in
-    ((liftM5 Tx (SolCall <$> c') s' (fst <$> r') g gp <*>) =<< liftM3 v s' r' c') <*> t
+    ((liftM5 Tx (SolCall <$> c') s' (fst <$> r') g gp <*>) =<< liftM3 v' s' r' c') <*> t
+
+getSignatures :: MonadRandom m => SignatureMap -> Maybe SignatureMap -> m SignatureMap
+getSignatures hmm Nothing = return hmm
+getSignatures hmm (Just lmm) = usuallyRarely hmm lmm -- once in a while, this will use the low-priority signature for the input generation
 
 -- | Synthesize a random 'Transaction', not using a dictionary.
 genTx :: forall m x y. (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m)
@@ -74,13 +81,23 @@ genTx m = use (hasLens :: Lens' y World) >>= evalStateT (genTxM m) . (defaultDic
 genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has GenDict y, Has World y, MonadThrow m)
   => Map Addr Contract
   -> m Tx
-genTxM m = view hasLens >>= \(TxConf _ g maxGp t b) -> genTxWith
+genTxM m = view hasLens >>= \(TxConf _ g maxGp t b mv) -> genTxWith
   m
   rElem rElem                                                                -- src and dst
   (const $ genInteractionsM . snd)                                           -- call itself
-  (pure g) (inRange maxGp) (\_ _ _ -> pure 0)                                -- gas, gasprice, value
+  (pure g) (inRange maxGp) mv                                                -- gas, gasprice, value
   (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
      where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
+
+genValue :: (MonadRandom m) => [FunctionHash] -> Word -> Addr -> ContractA -> SolCall -> m Word
+genValue ps mv _ _ sc = 
+  if sig `elem` ps
+  then fromIntegral <$> randValue
+  else do
+    g <- usuallyRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
+    fromIntegral <$> g
+  where randValue = getRandomR (1 :: Integer, fromIntegral mv)
+        sig = (hashSig . encodeSig . signatureCall) sc 
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool
@@ -134,9 +151,10 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   , tx . gasprice .= gp, tx . origin .= s, state . caller .= s, state . callvalue .= v
   , block . timestamp += t, block . number += b, setup] where
     setup = case c of
-      SolCreate bc -> assign (env . contracts . at r) (Just $ initialContract (RuntimeCode bc) & set balance v) >> loadContract r
-      SolCall cd  -> loadContract r >> state . calldata .= encode cd
-      SolCalldata cd  -> loadContract r >> state . calldata .= cd
+      SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (RuntimeCode bc) & set balance v) >> loadContract r
+      SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= encode cd
+      SolCalldata cd -> incrementBalance >> loadContract r >> state . calldata .= cd
+    incrementBalance = (env . contracts . ix r . balance) += v
     encode (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
 
