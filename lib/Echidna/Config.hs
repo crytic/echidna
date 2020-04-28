@@ -32,7 +32,8 @@ import qualified Data.Yaml as Y
 
 import Echidna.Solidity
 import Echidna.Test
-import Echidna.Types.Campaign (CampaignConf(CampaignConf), defaultMutationConsts)
+import Echidna.Types.Campaign (CampaignConf(CampaignConf))
+import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Types.Tx (TxConf(TxConf))
 import Echidna.UI
 import Echidna.UI.Report

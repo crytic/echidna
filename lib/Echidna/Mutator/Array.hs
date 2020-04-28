@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Echidna.Mutator where
+module Echidna.Mutator.Array where
 
 import Control.Monad.Random.Strict (fromList, MonadRandom, getRandomR)
 import Data.Maybe (maybe)

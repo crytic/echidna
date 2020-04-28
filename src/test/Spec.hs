@@ -10,14 +10,9 @@ import EVM.ABI (AbiValue(..))
 import EVM.Types (Addr)
 import qualified EVM.Concrete(Word(..))
 
--- <<<<<<< HEAD
--- import Echidna.ABI (mkGenDict)
 import Echidna
-import Echidna.Types.Campaign (Campaign, CampaignConf(..), TestState(..), tests, gasInfo, defaultMutationConsts, testLimit, shrinkLimit, knownCoverage, corpus, coverage)
--- =======
---import Echidna
---import Echidna.Types.Campaign (Campaign, CampaignConf(..), TestState(..), tests, gasInfo, testLimit, shrinkLimit, knownCoverage, corpus, coverage)
--- >>>>>>> origin/master
+import Echidna.Types.Campaign (Campaign, CampaignConf(..), TestState(..), tests, gasInfo, testLimit, shrinkLimit, knownCoverage, corpus, coverage)
+import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Campaign (campaign)
 import Echidna.Config (EConfig, EConfigWithUsage(..), _econfig, defaultConfig, parseConfig, sConf, cConf)
 import Echidna.Solidity
