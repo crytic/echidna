@@ -11,14 +11,19 @@ import Control.Exception          (Exception)
 import Control.Monad.Catch        (MonadThrow(..))
 import Data.Aeson                 (decode, Value(..))
 import Data.Text                  (Text, pack, unpack)
+import Data.Maybe                 (catMaybes)
+import Text.Read                  (readMaybe)
 import System.Directory           (findExecutable)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit                (ExitCode(..))
+import Numeric                    (showHex)
 
 import qualified Data.ByteString.Lazy.Char8 as BSL
+import qualified Data.ByteString.UTF8 as BSU
 import qualified Data.HashMap.Strict as M
 
 import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
+import EVM.ABI 
 import Echidna.ABI (hashSig)
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
@@ -46,7 +51,7 @@ filterResults Nothing rs = concatMap (fmap hashSig . snd) rs
 data SlitherInfo = PayableInfo (ContractName, [FunctionName])
                  | ConstantFunctionInfo (ContractName, [FunctionName])
                  | AssertFunction (ContractName, [FunctionName])
-                 | ConstantValue (ContractName, Text) -- Not used right now, it will change soon
+                 | ConstantValue AbiValue
                  | GenerationGraph (ContractName, FunctionName, [FunctionName])
   deriving (Show)
 makePrisms ''SlitherInfo
@@ -65,6 +70,9 @@ filterConstantFunction = slitherFilter _ConstantFunctionInfo
 
 filterGenerationGraph :: [SlitherInfo] -> [(ContractName, FunctionName, [FunctionName])]
 filterGenerationGraph = slitherFilter _GenerationGraph
+
+filterConstantValue :: [SlitherInfo] -> [AbiValue]
+filterConstantValue = slitherFilter _ConstantValue
 
 -- Slither processing
 runSlither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m [SlitherInfo]
@@ -139,12 +147,27 @@ mconsts _  _         = []
 
 mconsts' :: Text -> Value -> [SlitherInfo]
 mconsts' _ (Object o) = case (M.lookup "value" o, M.lookup "type" o) of
-                         (Just v, Just (String t)) -> [ConstantValue (pack $ show v, t)]
-                         (Nothing, Nothing)        -> concatMap (uncurry mconsts') $ M.toList o
-                         _                         -> error "invalid JSON formatting parsing constants"
+                         (Just (String s), Just (String t)) -> map ConstantValue $ catMaybes [parseAbiValue (unpack s, unpack t)]
+                         (Nothing, Nothing)                 -> concatMap (uncurry mconsts') $ M.toList o
+                         _                                  -> error "invalid JSON formatting parsing constants"
 
 mconsts' _ (Array  a) = concatMap (mconsts' "") a
 mconsts' _  _         = []
+
+parseAbiValue :: (String, String) -> Maybe AbiValue
+parseAbiValue (v, 'u':'i':'n':'t':s)       = case (readMaybe s, readMaybe v) of 
+                                               (Just n, Just m) -> Just (AbiUInt n m)
+                                               _                -> Nothing
+
+parseAbiValue (v, 'i':'n':'t':s)           = case (readMaybe s, readMaybe v) of 
+                                               (Just n, Just m) -> Just (AbiInt n m)
+                                               _                -> Nothing
+
+parseAbiValue (v, ['s','t','r','i','n','g'])     = Just $ AbiString $ BSU.fromString v
+parseAbiValue (v, ['a','d','d','r','e','s','s']) = case readMaybe v :: Maybe Int of
+                                                          Just n -> fmap AbiAddress (readMaybe ("0x" ++ showHex n ""))
+                                                          _      -> Nothing
+parseAbiValue _                               = Nothing 
 
 
 -- parse actual generation graph

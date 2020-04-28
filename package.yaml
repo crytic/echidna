@@ -41,6 +41,7 @@ dependencies:
   - transformers
   - unliftio
   - unliftio-core
+  - utf8-string
   - vector               >= 0.11.0 && < 0.13
   - vector-instances
   - vty

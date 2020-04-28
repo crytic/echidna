@@ -15,19 +15,14 @@ import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Fail         (MonadFail)
 import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
-import Data.Aeson                 (Value(..))
-import Data.ByteString.Lens       (packedChars)
-import Data.DoubleWord            (Int256, Word256)
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
-import Data.List                  (find, nub, partition)
-import Data.List.Lens             (prefixed, suffixed)
+import Data.List                  (find, partition)
 import Data.Map                   (elems)
-import Data.Maybe                 (isJust, isNothing, catMaybes)
+import Data.Maybe                 (isJust, isNothing)
 import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
-import Data.Text.Read             (decimal)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
@@ -48,7 +43,6 @@ import EVM.Solidity hiding (stripBytecodeMetadata)
 import EVM.Types    (Addr)
 import EVM.Concrete (w256)
 
-import qualified Data.ByteString     as BS
 import qualified Data.List.NonEmpty  as NE
 import qualified Data.List.NonEmpty.Extra as NEE
 import qualified Data.HashMap.Strict as M
@@ -286,42 +280,6 @@ prepareHashMaps cs as m =
 loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
              => NE.NonEmpty FilePath -> Maybe Text -> m (VM, World, [SolTest])
 loadSolTests fp name = loadWithCryticCompile fp name >>= (\t -> prepareForTest t Nothing [])
-
-mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
-mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Nothing
-
-mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue
-mkValidAbiUInt i x = if x <= 2 ^ i - 1 then Just $ AbiUInt i x else Nothing
-
--- | Given a list of 'SolcContract's, try to parse out string and integer literals
-extractConstants :: [SolcContract] -> [AbiValue]
-extractConstants = nub . concatMap (constants "" . view contractAst) where
-  -- Tools for parsing numbers and quoted strings from 'Text'
-  asDecimal = preview $ to decimal . _Right . _1
-  asQuoted  = preview $ unpacked . prefixed "\"" . suffixed "\"" . packedChars
-  -- We need this because sometimes @solc@ emits a json string with a type, then a string
-  -- representation of some value of that type. Why is this? Unclear. Anyway, this lets us match
-  -- those cases like regular strings
-  literal t f (String (T.words -> ((^? only t) -> m) : y : _)) = m *> f y
-  literal _ _ _                                                = Nothing
-  -- When we get a number, it could be an address, uint, or int. We'll try everything.
-  dec i = let l f = f <$> [8,16..256] <*> fmap fromIntegral [i-1..i+1] in
-    AbiAddress i : catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
-  -- 'constants' takes a property name and its 'Value', then tries to find solidity literals
-  -- CASE ONE: we're looking at a big object with a bunch of little objects, recurse
-  constants _ (Object o) = concatMap (uncurry constants) $ M.toList o
-  constants _ (Array  a) = concatMap (constants "")        a
-  -- CASE TWO: we're looking at a @type@, try to parse it
-  -- 2.1: We're looking at a @int_const@ with a decimal number inside, could be an address, int, or uint
-  --      @type: "int_const 0x12"@ ==> @[AbiAddress 18, AbiUInt 8 18,..., AbiUInt 256 18, AbiInt 8 18,...]@
-  constants "typeString" (literal "int_const" asDecimal -> Just i) = dec i
-  -- 2.2: We're looking at something of the form @type: literal_string "[...]"@, a string literal
-  --      @type: "literal_string \"123\""@ ==> @[AbiString "123", AbiBytes 3 "123"...]@
-  constants "typeString" (literal "literal_string" asQuoted -> Just b) =
-    let size = BS.length b in [AbiString b, AbiBytesDynamic b] ++
-      fmap (\n -> AbiBytes n . BS.append b $ BS.replicate (n - size) 0) [size..32]
-  -- CASE THREE: we're at a leaf node with no constants
-  constants _  _ = []
 
 returnTypes :: [SolcContract] -> Text -> Maybe AbiType
 returnTypes cs t = preview (_Just . methodOutput . _Just . _2) .
