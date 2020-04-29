@@ -1,0 +1,30 @@
+- extensions:
+  - default: false
+  # mostly safe extensions
+  - name: [TemplateHaskell, LambdaCase, NoMonomorphismRestriction, ViewPatterns]
+  - name: [TupleSections, OverloadedStrings, RecordWildCards, NamedFieldPuns]
+  - name: [MultiWayIf, StandaloneDeriving, DeriveAnyClass, DeriveGeneric]
+  - name: [PatternSynonyms]
+  # somewhat spicier extensions
+  - name: [MultiParamTypeClasses, FlexibleContexts, FlexibleInstances]
+  - name: [Rank2Types, RankNTypes, ScopedTypeVariables, DuplicateRecordFields]
+  # extra spicy extensions
+  - name: [DataKinds]
+
+# ban unsafePerformIO
+- functions:
+    name: unsafePerformIO
+    within: []
+
+# replace a $ b $ c with a . b $ c
+- group:
+    name: dollar
+    enabled: true
+
+- warn:
+    lhs: concat (map f x)
+    rhs: concatMap f x
+
+- warn:
+    lhs: map
+    rhs: fmap

@@ -150,7 +150,7 @@ mconsts' _  _         = []
 -- parse actual generation graph
 mggraph :: Text -> Value -> [SlitherInfo]
 mggraph "functions_relations" (Object o) = concatMap f $ M.toList o
-  where f (c, Object o1) = map (\(m,v) -> GenerationGraph (c, m, mggraph' "" v)) $ M.toList o1
+  where f (c, Object o1) = (\(m,v) -> GenerationGraph (c, m, mggraph' "" v)) <$> M.toList o1
         f _              = []
 
 mggraph _ (Object o) = concatMap (uncurry mggraph) $ M.toList o

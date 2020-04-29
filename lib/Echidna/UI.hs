@@ -99,16 +99,16 @@ ui v w ts d txs = do
     Interactive -> do
       bc <- liftIO $ newBChan 100
       let updateUI e = readIORef ref >>= writeBChan bc . e
-      ticker <- liftIO $ forkIO $ -- run UI update every 100ms
+      ticker <- liftIO . forkIO . -- run UI update every 100ms
         forever $ threadDelay 100000 >> updateUI CampaignUpdated
       _ <- forkFinally -- run worker
         (void $ timeout timeoutUsec (campaign updateRef v w ts d txs) >>= \case
           Nothing -> liftIO $ updateUI CampaignTimedout
           Just _ -> liftIO $ updateUI CampaignUpdated
         )
-        (const $ liftIO $ killThread ticker)
+        (const . liftIO $ killThread ticker)
       app <- customMain (mkVty defaultConfig) (Just bc) <$> monitor
-      liftIO $ void $ app (defaultCampaign, Uninitialized)
+      liftIO . void $ app (defaultCampaign, Uninitialized)
       final <- liftIO $ readIORef ref
       liftIO . putStrLn =<< ppCampaign final
       liftIO . putStrLn =<< ("Seed: " ++) . show <$> getSeed
@@ -128,7 +128,7 @@ ui v w ts d txs = do
         Text -> do
           liftIO . putStrLn =<< ppCampaign final
           liftIO . putStrLn =<< ("Seed: " ++) . show <$> getSeed
-          when timedout $ liftIO $ putStrLn "TIMEOUT!"
+          when timedout . liftIO $ putStrLn "TIMEOUT!"
         None ->
           pure ()
       pure final

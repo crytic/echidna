@@ -51,7 +51,7 @@ campaignStatus (c@Campaign{_tests, _coverage, _ncallseqs}, uiState) = do
   where
     mainbox :: Widget () -> Widget () -> Widget ()
     mainbox inner underneath =
-      padTop (Pad 1) $ hCenter $ hLimit 120 $
+      padTop (Pad 1) . hCenter . hLimit 120 $
       wrapInner inner
       <=>
       hCenter underneath
@@ -83,15 +83,15 @@ testWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
            => (SolTest, TestState) -> m (Widget ())
 testWidget (test, testState) =
   case test of
-      Left  (n, _) -> widget n ""
-      Right (n, _) -> widget n "assertion in "
+    Left  (n, _) -> widget n ""
+    Right (n, _) -> widget n "assertion in "
   where
-  widget n infront = do
-    (status, details) <- tsWidget testState
-    pure $ padLeft (Pad 1) $
-      str infront <+> name n <+> str ": " <+> status
-      <=> padTop (Pad 1) details
-  name n = withAttr "bold" $ str (T.unpack n)
+    widget n infront = do
+      (status, details) <- tsWidget testState
+      pure . padLeft (Pad 1) $
+        str infront <+> name n <+> str ": " <+> status
+        <=> padTop (Pad 1) details
+    name n = withAttr "bold" $ str (T.unpack n)
 
 tsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
          => TestState -> m (Widget (), Widget ())
@@ -103,7 +103,7 @@ tsWidget (Open i)    = do
   if i >= t then
     tsWidget Passed
   else
-    pure (withAttr "working" $ str $ "fuzzing " ++ progress i t, emptyWidget)
+    pure (withAttr "working" . str $ "fuzzing " ++ progress i t, emptyWidget)
 tsWidget (Large n l) = do
   m <- view (hasLens . shrinkLimit)
   failWidget (if n < m then Just (n,m) else Nothing) l
@@ -115,17 +115,17 @@ failWidget b xs = do
   s <- seqWidget
   pure (failureBadge, titleWidget <=> s)
   where
-  titleWidget  = str "Call sequence" <+> status <+> str ":"
+    titleWidget  = str "Call sequence" <+> status <+> str ":"
 
-  status = case b of
-    Nothing    -> emptyWidget
-    Just (n,m) -> str ", " <+> withAttr "working" (str ("shrinking " ++ progress n m))
+    status =
+      case b of
+        Nothing    -> emptyWidget
+        Just (n,m) -> str ", " <+> withAttr "working" (str ("shrinking " ++ progress n m))
 
-  seqWidget = do
-    ppTxs <- mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs
-    let ordinals = str . printf "%d." <$> [1 :: Int ..]
-    pure $
-      foldl (<=>) emptyWidget $
+    seqWidget = do
+      ppTxs <- mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs
+      let ordinals = str . printf "%d." <$> [1 :: Int ..]
+      pure . foldl (<=>) emptyWidget $
         zipWith (<+>) ordinals (withAttr "tx" . str <$> ppTxs)
 
 failureBadge :: Widget ()

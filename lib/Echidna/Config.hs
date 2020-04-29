@@ -130,9 +130,9 @@ instance FromJSON EConfigWithUsage where
                 names Sender = (" from: " ++) . show
                 names _      = const ""
                 mode = fromMaybe Interactive <$> (v ..:? "format" >>= \case
-                  Just ("text" :: String) -> pure $ Just $ NonInteractive Text
-                  Just "json" -> pure $ Just $ NonInteractive JSON
-                  Just "none" -> pure $ Just $ NonInteractive None
+                  Just ("text" :: String) -> pure . Just $ NonInteractive Text
+                  Just "json" -> pure . Just $ NonInteractive JSON
+                  Just "none" -> pure . Just $ NonInteractive None
                   Nothing -> pure Nothing
                   _ -> M.fail "unrecognized format type (should be text, json, or none)") in
             EConfig <$> cc

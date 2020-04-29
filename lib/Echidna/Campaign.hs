@@ -179,7 +179,7 @@ seqMutators (c1, c2, c3) = fromList
           let somePercent = if (fst . DS.findMax) ctxs > 1    -- if the corpus already contains new elements
                              then 1 + (DS.size ctxs `div` 20) -- then take 5% of its size
                              else DS.size ctxs                -- otherwise, take all of it
-          rtxs <- fromList $ map (\(i, txs) -> (txs, fromInteger i)) $ take somePercent $ DS.toDescList ctxs
+          rtxs <- fromList . fmap (\(i, txs) -> (txs, fromInteger i)) . take somePercent $ DS.toDescList ctxs
           k <- getRandomR (0, length rtxs - 1)
           return . take ql $ if flp then take k gtxs ++ rtxs else take k rtxs ++ gtxs
 
@@ -193,16 +193,15 @@ randseq ql o w = do
   let ctxs = ca ^. corpus
       p    = ca ^. ncallseqs
   if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
-    return $ snd $ DS.elemAt p ctxs
-  else
-    do
-      -- Randomly generate new random transactions
-      gtxs <- replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
-      -- Select a random mutator
-      mut <- seqMutators cs
-      if DS.null ctxs
-      then return gtxs      -- Use the generated random transactions
-      else mut ql ctxs gtxs -- Apply the mutator
+    return . snd $ DS.elemAt p ctxs
+  else do
+    -- Randomly generate new random transactions
+    gtxs <- replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
+    -- Select a random mutator
+    mut <- seqMutators cs
+    if DS.null ctxs
+    then return gtxs      -- Use the generated random transactions
+    else mut ql ctxs gtxs -- Apply the mutator
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
@@ -238,7 +237,7 @@ callseq v w ql = do
   hasLens . ncallseqs += 1
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
   types <- use $ hasLens . rTypes
-  let results = parse (map (\(t, (vr, _)) -> (t, vr)) res) types
+  let results = parse (fmap (\(t, (vr, _)) -> (t, vr)) res) types
       -- union the return results with the new addresses
       additions = H.unionWith S.union diffs results
   -- append to the constants dictionary
@@ -270,7 +269,7 @@ campaign u v w ts d txs = do
   let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
   execStateT
     (evalRandT runCampaign g')
-    (Campaign ((,Open (-1)) <$> if b then [] else ts) c mempty d' False (DS.fromList $ map (1,) txs) 0)
+    (Campaign ((,Open (-1)) <$> if b then [] else ts) c mempty d' False (DS.fromList $ fmap (1,) txs) 0)
   where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update

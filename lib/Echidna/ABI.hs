@@ -76,7 +76,7 @@ ppAbiValue (AbiTuple v) =
 
 -- | Get the signature from a Solidity function.
 signatureCall :: SolCall -> SolSignature
-signatureCall (t, vs) = (t, map abiValueType vs)
+signatureCall (t, vs) = (t, abiValueType <$> vs)
 
 -- | Get the text signature of a solidity method (for later hashing)
 encodeSig :: SolSignature -> Text

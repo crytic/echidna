@@ -48,7 +48,7 @@ main = withCurrentDirectory "./examples/solidity" . defaultMain $
 
 configTests :: TestTree
 configTests = testGroup "Configuration tests" $
-  [ testCase file $ void $ parseConfig file | file <- files ] ++
+  [ testCase file . void $ parseConfig file | file <- files ] ++
   [ testCase "parse \"coverage: true\"" $ do
       config <- _econfig <$> parseConfig "coverage/test.yaml"
       assertCoverage config $ Just mempty
@@ -339,14 +339,14 @@ instance Arbitrary TxCall where
                 return $ SolCall (pack s, cs)
 
 instance Arbitrary Tx where
-  arbitrary = let a :: Arbitrary a => Gen a
-                  a = arbitrary in
-                Tx <$> a <*> a <*> a <*> a <*> a <*> a <*> a
+  arbitrary = Tx <$> a <*> a <*> a <*> a <*> a <*> a <*> a
+    where a :: Arbitrary a => Gen a
+          a = arbitrary
 
 encodingJSONTests :: TestTree
 encodingJSONTests =
   testGroup "Tx JSON encoding"
-    [ testProperty "decode . encode = id" $ property $ do
+    [ testProperty "decode . encode = id" . property $ do
         t <- arbitrary :: Gen Tx
         return $ decode (encode t) === Just t
     ]

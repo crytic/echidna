@@ -56,7 +56,7 @@ ppGasOne (f, (g, xs)) = let pxs = mapM (ppTx $ length (nub $ view src <$> xs) /=
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
 ppGasInfo :: (MonadReader x m, Has Names x, Has TxConf x) => Campaign -> m String
 ppGasInfo Campaign { _gasInfo = gi } | gi == mempty = pure ""
-ppGasInfo Campaign { _gasInfo = gi } = (fmap $ intercalate "") (mapM ppGasOne $ sortOn (\(_, (n, _)) -> n) $ toList gi)
+ppGasInfo Campaign { _gasInfo = gi } = (fmap $ intercalate "") (mapM ppGasOne . sortOn (\(_, (n, _)) -> n) $ toList gi)
 
 -- | Pretty-print the status of a solved test.
 ppFail :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> [Tx] -> m String
