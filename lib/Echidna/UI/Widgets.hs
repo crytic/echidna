@@ -98,12 +98,14 @@ tsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
 tsWidget (Failed e)  = pure (str "could not evaluate", str $ show e)
 tsWidget (Solved l)  = failWidget Nothing l
 tsWidget Passed      = pure (withAttr "success" $ str "PASSED!", emptyWidget)
-tsWidget (Open i)    = view hasLens >>= \cc -> let t = cc ^. testLimit in
+tsWidget (Open i)    = do
+  t <- view (hasLens . testLimit)
   if i >= t then
     tsWidget Passed
   else
     pure (withAttr "working" $ str $ "fuzzing " ++ progress i t, emptyWidget)
-tsWidget (Large n l) = view (hasLens . shrinkLimit) >>= \m ->
+tsWidget (Large n l) = do
+  m <- view (hasLens . shrinkLimit)
   failWidget (if n < m then Just (n,m) else Nothing) l
 
 failWidget :: (MonadReader x m, Has Names x, Has TxConf x)

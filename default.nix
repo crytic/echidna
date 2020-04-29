@@ -15,7 +15,7 @@ let
       , tasty-hunit, tasty-quickcheck, temporary, text, transformers
       , unix, unliftio, unliftio-core, unordered-containers, vector
       , vector-instances, vty, wl-pprint-annotated, word8, yaml
-      , cabal-install
+      , cabal-install, extra
       }:
       mkDerivation rec {
         pname = "echidna";
@@ -29,8 +29,7 @@ let
           hashable hevm lens lens-aeson megaparsec MonadRandom mtl
           optparse-applicative process random stm temporary text transformers
           unix unliftio unliftio-core unordered-containers vector
-          vector-instances vty wl-pprint-annotated word8 yaml
-          tasty tasty-hunit tasty-quickcheck
+          vector-instances vty wl-pprint-annotated word8 yaml extra
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
         libraryToolDepends = [ hpack cabal-install ];
         executableHaskellDepends = libraryHaskellDepends;
@@ -53,9 +52,17 @@ let
                        then pkgs.haskellPackages
                        else pkgs.haskell.packages.${compiler};
 
+  # extra from dapptools is outdated, override
+  extra = pkgs.haskellPackages.callCabal2nix "extra" (builtins.fetchGit {
+    url = "https://github.com/ndmitchell/extra";
+    rev = "24dd03b2073860553cd37ac3064cf7e95c7feff9"; # 1.17.1
+  }) {};
+
+  haskellPackages' = haskellPackages.extend (self: super: { inherit extra; } );
+
   variant = if doBenchmark then pkgs.haskell.lib.doBenchmark else pkgs.lib.id;
 
-  drv = variant (haskellPackages.callPackage f {});
+  drv = variant (haskellPackages'.callPackage f {});
 in
   if pkgs.lib.inNixShell
     then drv.env

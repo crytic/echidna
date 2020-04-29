@@ -38,7 +38,7 @@ import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (FunctionHash, SolSignature, SignatureMap)
 import Echidna.Types.Tx           (TxConf, TxCall(..), Tx(..))
 import Echidna.Types.World        (World(..))
-import Echidna.Processor 
+import Echidna.Processor
 
 import EVM hiding (contracts)
 import qualified EVM (contracts)
@@ -132,18 +132,20 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
                   (\sa -> if null sa then [] else ["--solc-args", sa])
         fps = toList fp
         compileOne :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
-        compileOne x = maybe (throwM SolcReadFailure) (pure . toList . fst) =<< liftIO (do
-                         stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
-                         (ec, out, err) <- readCreateProcessWithExitCode (proc path $ (c ++ solargs) |> x) {std_err = stderr} ""
-                         case ec of
-                          ExitSuccess -> readSolc "crytic-export/combined_solc.json"
-                          ExitFailure _ -> throwM $ CompileFailure out err
-                       )
+        compileOne x = do
+          mSolc <- liftIO $ do
+            stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
+            (ec, out, err) <- readCreateProcessWithExitCode (proc path $ (c ++ solargs) |> x) {std_err = stderr} ""
+            case ec of
+              ExitSuccess -> readSolc "crytic-export/combined_solc.json"
+              ExitFailure _ -> throwM $ CompileFailure out err
+          maybe (throwM SolcReadFailure) (pure . toList . fst) mSolc
     concat <$> sequence (compileOne <$> fps)
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
-addresses = view hasLens <&> \SolConf { _contractAddr = ca, _deployer = d, _sender = ads } ->
-  AbiAddress . fromIntegral <$> NE.nub (join ads [ca, d, 0x0])
+addresses = do
+  SolConf{_contractAddr = ca, _deployer = d, _sender = ads} <- view hasLens
+  pure $ AbiAddress . fromIntegral <$> NE.nub (join ads [ca, d, 0x0])
   where join (first NE.:| rest) list = first NE.:| (rest ++ list)
 
 populateAddresses :: [Addr] -> Integer -> VM -> VM
@@ -169,7 +171,7 @@ linkLibraries ls = "--libraries " ++
   iconcatMap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls
 
 filterMethods :: MonadThrow m => Filter -> NE.NonEmpty SolSignature -> m (NE.NonEmpty SolSignature)
-filterMethods f@(Whitelist [])  _ = throwM $ InvalidMethodFilters f 
+filterMethods f@(Whitelist [])  _ = throwM $ InvalidMethodFilters f
 filterMethods f@(Whitelist ic) ms = case NE.filter (\(m, _) -> m `elem` ic) ms of
                                          [] -> throwM $ InvalidMethodFilters f
                                          fs -> return $ NE.fromList fs
@@ -204,15 +206,16 @@ loadSpecified name cs = do
       abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c ^. abiMap)
       con = view constructorInputs c
       (tests, funs) = partition (isPrefixOf pref . fst) abi
-      
+
 
   -- Filter ABI according to the config options
   fabiOfc <- filterMethods fs $ abiOf pref c
   -- Filter again for assertions checking if enabled
   neFuns <- filterMethods fs (NE.fromList $ fallback : funs)
   -- Construct ABI mapping for World
-  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode . to stripBytecodeMetadata, abiOf pref cc) else M.singleton (c ^. runtimeCode . to stripBytecodeMetadata) fabiOfc
-  
+  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode . to stripBytecodeMetadata, abiOf pref cc)
+                         else M.singleton (c ^. runtimeCode . to stripBytecodeMetadata) fabiOfc
+
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
   blank' <- maybe (pure (vmForEthrunCreation bc)) (loadEthenoBatch (fst <$> tests)) fp
@@ -233,9 +236,9 @@ loadSpecified name cs = do
       vm <- loadLibraries ls addrLibrary d blank
       let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca 8000030 0 (w256 $ fromInteger balc) (0, 0)
       vm' <- execStateT transaction vm
-      case currentContract vm' of 
+      case currentContract vm' of
         Just _  -> return (vm', neFuns, fst <$> tests, abiMapping)
-        Nothing -> throwM DeploymentFailed 
+        Nothing -> throwM DeploymentFailed
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
@@ -258,24 +261,25 @@ loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
-               => (VM, NE.NonEmpty SolSignature, [Text], SignatureMap) 
+               => (VM, NE.NonEmpty SolSignature, [Text], SignatureMap)
                -> Maybe String
                -> [SlitherInfo]
                -> m (VM, World, [SolTest])
-prepareForTest (v, a, ts, m) c si = view hasLens <&> \SolConf { _sender = s, _checkAsserts = ch } -> 
+prepareForTest (v, a, ts, m) c si = do
+  SolConf{ _sender = s, _checkAsserts = ch } <- view hasLens
   let r = v ^. state . contract
       a' = NE.toList a
       ps = filterResults c $ filterPayable si
       as = if ch then filterResults c $ filterAssert si else []
       cs = filterResults c $ filterConstantFunction si
       (hm, lm) = prepareHashMaps cs as m
-  in (v, World s hm lm ps, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else [])
+  pure (v, World s hm lm ps, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else [])
 
 prepareHashMaps :: [FunctionHash] -> [FunctionHash] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
 prepareHashMaps [] _  m = (m, Nothing)                                -- No constant functions detected
-prepareHashMaps cs as m = 
-  (\case (hm, lm) | M.size hm > 0  && M.size lm > 0  -> (hm, Just lm) -- Usual case 
-                  | M.size hm > 0  && M.size lm == 0 -> (hm, Nothing) -- No low-priority functions detected 
+prepareHashMaps cs as m =
+  (\case (hm, lm) | M.size hm > 0  && M.size lm > 0  -> (hm, Just lm) -- Usual case
+                  | M.size hm > 0  && M.size lm == 0 -> (hm, Nothing) -- No low-priority functions detected
                   | M.size hm == 0 && M.size lm > 0  -> (m,  Nothing) -- No high-priority functions detected
                   | otherwise                        -> error "Error processing function hashmaps"
   ) (M.unionWith NEE.union (filterHashMap not cs m) (filterHashMap id as m), filterHashMap id cs m)
