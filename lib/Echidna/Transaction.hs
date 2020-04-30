@@ -147,7 +147,7 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   , tx . gasprice .= gp, tx . origin .= s, state . caller .= s, state . callvalue .= v
   , block . timestamp += t, block . number += b, setup] where
     setup = case c of
-      SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (RuntimeCode bc) & set balance v) >> loadContract r
+      SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (InitCode bc) & set balance v) >> loadContract r >> state . code .= bc
       SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= encode cd
       SolCalldata cd -> incrementBalance >> loadContract r >> state . calldata .= cd
     incrementBalance = (env . contracts . ix r . balance) += v
