@@ -20,7 +20,7 @@ import qualified Data.Text as T
 import qualified Graphics.Vty as V
 import qualified Paths_echidna (version)
 
-import Echidna.Exec
+import Echidna.ABI (GenDict(..))
 import Echidna.Campaign (isDone)
 import Echidna.Solidity
 import Echidna.Types.Campaign
@@ -57,22 +57,24 @@ campaignStatus (c@Campaign{_tests, _coverage, _ncallseqs}, uiState) = do
       hCenter underneath
     wrapInner inner =
       borderWithLabel (withAttr "bold" $ str title) $
-      summaryWidget _tests _coverage _ncallseqs
+      summaryWidget c
       <=>
       hBorderWithLabel (str "Tests")
       <=>
       inner
     title = "Echidna " ++ showVersion Paths_echidna.version
 
-summaryWidget :: [(SolTest, TestState)] -> CoverageMap -> Int -> Widget ()
-summaryWidget tests' coverage' ncallseqs' =
+summaryWidget :: Campaign -> Widget ()
+summaryWidget Campaign{_tests, _coverage, _ncallseqs, _genDict} =
   padLeft (Pad 1) (
-    (if null tests' then
-      str ("No tests, benchmark mode. Number of call sequences: " ++ show ncallseqs')
+    (if null _tests then
+      str ("No tests, benchmark mode. Number of call sequences: " ++ show _ncallseqs)
     else
-      str ("Tests found: " ++ show (length tests')))
+      str ("Tests found: " ++ show (length _tests)) <=>
+      str ("Seed: " ++ show (_defSeed _genDict))
+    )
     <=>
-    maybe emptyWidget str (ppCoverage coverage')
+    maybe emptyWidget str (ppCoverage _coverage)
   )
 
 testsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
