@@ -23,6 +23,11 @@ data TxCall = SolCreate   ByteString
 makePrisms ''TxCall
 $(deriveJSON defaultOptions ''TxCall)
 
+initialTimestamp :: Word
+initialTimestamp = 4370000      -- Initial byzantium block 
+initialBlockNumber :: Word
+initialBlockNumber = 1524785992 -- Thu Apr 26 23:39:52 UTC 2018
+
 -- | A transaction is either a @CREATE@ or a regular call with an origin, destination, and value.
 -- Note: I currently don't model nonces or signatures here.
 data Tx = Tx { _call  :: TxCall       -- | Call
