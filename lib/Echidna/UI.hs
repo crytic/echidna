@@ -85,8 +85,6 @@ ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> [[Tx]]
    -> m Campaign
 ui v w ts d txs = do
-  let d' = fromMaybe defaultDict d
-  let getSeed = view $ hasLens . seed . non (d' ^. defSeed)
   ref <- liftIO $ newIORef defaultCampaign
   let updateRef = use hasLens >>= liftIO . atomicWriteIORef ref
   let secToUsec = (* 1000000)
@@ -111,7 +109,6 @@ ui v w ts d txs = do
       liftIO $ void $ app (defaultCampaign, Uninitialized)
       final <- liftIO $ readIORef ref
       liftIO . putStrLn =<< ppCampaign final
-      liftIO . putStrLn =<< ("Seed: " ++) . show <$> getSeed
       pure final
 
     NonInteractive outputFormat -> do
@@ -124,10 +121,9 @@ ui v w ts d txs = do
           pure (final, False)
       case outputFormat of
         JSON ->
-          liftIO . BS.putStr =<< Echidna.Output.JSON.encodeCampaign final <$> getSeed
+          liftIO . BS.putStr $ Echidna.Output.JSON.encodeCampaign final
         Text -> do
           liftIO . putStrLn =<< ppCampaign final
-          liftIO . putStrLn =<< ("Seed: " ++) . show <$> getSeed
           when timedout $ liftIO $ putStrLn "TIMEOUT!"
         None ->
           pure ()
