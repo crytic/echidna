@@ -24,9 +24,10 @@ makePrisms ''TxCall
 $(deriveJSON defaultOptions ''TxCall)
 
 initialTimestamp :: Word
-initialTimestamp = 4370000      -- Initial byzantium block 
+initialTimestamp = 1524785992 -- Thu Apr 26 23:39:52 UTC 2018
+
 initialBlockNumber :: Word
-initialBlockNumber = 1524785992 -- Thu Apr 26 23:39:52 UTC 2018
+initialBlockNumber = 4370000  -- Initial byzantium block
 
 -- | A transaction is either a @CREATE@ or a regular call with an origin, destination, and value.
 -- Note: I currently don't model nonces or signatures here.
