@@ -54,6 +54,8 @@ import qualified Data.List.NonEmpty.Extra as NEE
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text           as T
 
+data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
+
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
 data SolException = BadAddr Addr
@@ -70,6 +72,7 @@ data SolException = BadAddr Addr
                   | DeploymentFailed
                   | NoCryticCompile
                   | InvalidMethodFilters Filter
+makePrisms ''SolException
 
 instance Show SolException where
   show = \case
@@ -89,8 +92,6 @@ instance Show SolException where
     DeploymentFailed         -> "Deploying the contract failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
 
 instance Exception SolException
-
-data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
 
 -- | Configuration for loading Solidity for Echidna testing.
 data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract address to use
