@@ -15,8 +15,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: GitHub Login
-        uses: azure/docker-login@v1
+      - name: GitHub Login uses: azure/docker-login@v1
         with:
           login-server: docker.pkg.github.com
           username: ${{ github.actor }}
@@ -63,5 +62,6 @@ jobs:
           password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
 
       - name: Push to DockerHub
+        run: |
           docker tag $PKG:$VER registry.hub.docker.com/trailofbits/echidna:$VER
           docker push registry.hub.docker.com/trailofbits/echidna:$VER
