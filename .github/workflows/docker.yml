@@ -15,14 +15,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Docker Login
+      - name: GitHub Login
         uses: azure/docker-login@v1
         with:
           login-server: docker.pkg.github.com
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker Build and Push
+      - name: Set Docker Package and Version
         run: |
           set +e
           _=$(echo "$GITHUB_REF" | grep "^refs/heads/")
@@ -44,5 +44,24 @@ jobs:
             PKG=echidna
           fi
           set -e
-          docker build -t docker.pkg.github.com/$GITHUB_REPOSITORY/$PKG:$VER .
+          echo "::set-env name=PKG::$PKG"
+          echo "::set-env name=VER::$VER"
+
+      - name: Docker Build
+        run: docker build -t $PKG:$VER .
+
+      - name: Push to GitHub Packages
+        run: |
+          docker tag $PKG:$VER docker.pkg.github.com/$GITHUB_REPOSITORY/$PKG:$VER
           docker push docker.pkg.github.com/$GITHUB_REPOSITORY/$PKG:$VER
+
+      - name: DockerHub Login
+        uses: azure/docker-login@v1
+        with:
+          login-server: registry.hub.docker.com
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
+
+      - name: Push to DockerHub
+          docker tag $PKG:$VER registry.hub.docker.com/trailofbits/echidna:$VER
+          docker push registry.hub.docker.com/trailofbits/echidna:$VER
