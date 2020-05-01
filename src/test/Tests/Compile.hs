@@ -6,7 +6,7 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool)
 
 import Common (testConfig)
-import Control.Lens (Prism', (^?))
+import Control.Lens (Prism', preview)
 import Control.Monad.Catch (catch)
 import Control.Monad.Reader (runReaderT)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -39,4 +39,4 @@ loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
   tryLoad = runReaderT (loadWithCryticCompile (fp :| []) c >> pure ()) testConfig
 
 pmatch :: Prism' s a -> s -> Bool
-pmatch p s = isJust $ s ^? p
+pmatch p = isJust . preview p
