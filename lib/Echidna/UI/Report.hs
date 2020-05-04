@@ -92,9 +92,8 @@ ppCampaign c = do
   testsPrinted <- ppTests c
   gasInfoPrinted <- ppGasInfo c
   let coveragePrinted = maybe "" ("\n" ++) . ppCoverage $ c ^. coverage
-  let seedPrinted = "Seed: " ++ show (c ^. genDict . defSeed)
   pure $
     testsPrinted
     ++ gasInfoPrinted
     ++ coveragePrinted
-    ++ seedPrinted
+    ++ "Seed: " ++ show (c ^. genDict . defSeed)
