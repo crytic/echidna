@@ -43,7 +43,7 @@ import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types.Campaign
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
-import Echidna.Types.World (World)
+import Echidna.Types.World (World(..))
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -81,20 +81,22 @@ isSuccess (view tests -> ts) =
 -- Then update accordingly, keeping track of how many times we've tried to solve or shrink.
 updateTest :: ( MonadCatch m, MonadRandom m, MonadReader x m
               , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x)
-           => VM -> Maybe (VM, [Tx]) -> (SolTest, TestState) -> m (SolTest, TestState)
-updateTest v (Just (v', xs)) (n, t) = do
+           => World -> VM -> Maybe (VM, [Tx]) -> (SolTest, TestState) -> m (SolTest, TestState)
+updateTest w v (Just (v', xs)) (n, t) = do
   tl <- view (hasLens . testLimit)
+  let (World _ _ _ _ em) = w
   (n,) <$> case t of
     Open i | i >= tl -> pure Passed
-    Open i           -> catch (evalStateT (checkETest n) v' <&> bool (Large (-1) xs) (Open (i + 1)))
+    Open i           -> catch (evalStateT (checkETest em n) v' <&> bool (Large (-1) xs) (Open (i + 1)))
                               (pure . Failed)
-    _                -> snd <$> updateTest v Nothing (n,t)
-updateTest v Nothing (n, t) = do
+    _                -> snd <$> updateTest w v Nothing (n,t)
+updateTest w v Nothing (n, t) = do
   sl <- view (hasLens . shrinkLimit)
+  let (World _ _ _ _ em) = w
   (n,) <$> case t of
     Large i x | i >= sl -> pure $ Solved x
     Large i x           -> if length x > 1 || any canShrinkTx x
-                             then Large (i + 1) <$> evalStateT (shrinkSeq (checkETest n) x) v
+                             then Large (i + 1) <$> evalStateT (shrinkSeq (checkETest em n) x) v
                              else pure $ Solved x
     _                   -> pure t
 
@@ -107,11 +109,11 @@ runUpdate f = use (hasLens . tests) >>= mapM f >>= (hasLens . tests .=)
 -- checking if we've solved any tests or can shrink known solves.
 evalSeq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Campaign y, Has VM y)
-        => VM -> (Tx -> m a) -> [Tx] -> m [(Tx, a)]
-evalSeq v e = go [] where
+        => World -> VM -> (Tx -> m a) -> [Tx] -> m [(Tx, a)]
+evalSeq w v e = go [] where
   go r xs = do
     v' <- use hasLens
-    runUpdate (updateTest v $ Just (v',reverse r))
+    runUpdate (updateTest w v $ Just (v',reverse r))
     case xs of []     -> pure []
                (y:ys) -> e y >>= \a -> ((y, a) :) <$> go (y:r) ys
 
@@ -221,7 +223,7 @@ callseq v w ql = do
   -- Then, we generate the actual transaction in the sequence
   is <- randseq ql old w
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
-  (res, s) <- runStateT (evalSeq v ef is) (v, ca)
+  (res, s) <- runStateT (evalSeq w v ef is) (v, ca)
   let new = s ^. _1 . env . EVM.contracts
       -- compute the addresses not present in the old VM via set difference
       diff = keys $ new \\ old
@@ -272,7 +274,7 @@ campaign u v w ts d txs = do
     (evalRandT runCampaign g')
     (Campaign ((,Open (-1)) <$> if b then [] else ts) c mempty d' False (DS.fromList $ map (1,) txs) 0)
   where
-    step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
+    step        = runUpdate (updateTest w v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = do
       CampaignConf tl sof _ q sl _ _ _ _ _ <- view hasLens

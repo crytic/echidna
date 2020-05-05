@@ -15,17 +15,20 @@ import Data.Foldable (traverse_)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import EVM (Error(..), VMResult(..), VM, calldata, result, state)
+--import EVM (Error(..), VMResult(..), VM, calldata, result, state)
+import EVM
 import EVM.ABI (AbiValue(..), abiCalldata, encodeAbiValue)
 import EVM.Types (Addr)
 
 import qualified Data.ByteString as BS
+import qualified Data.Text as T
 
 import Echidna.ABI
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, propGas, src)
+import Echidna.Events   (EventMap, extractEvents)
 
 -- | Configuration for evaluating Echidna tests.
 data TestConf = TestConf { classifier :: Text -> VM -> Bool
@@ -50,11 +53,11 @@ classifyRes _ = ResOther
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
-           => SolTest -> m Bool
-checkETest t = do
+           => EventMap -> SolTest -> m Bool
+checkETest em t = do
   TestConf p s <- asks getter
   g <- view (hasLens . propGas)
-  vm <- get -- save EVM state
+  st <- get -- save EVM state
   -- To check these tests, we're going to need a couple auxilary functions:
   --   * matchR[eturn] checks if we just tried to exec 0xfe, which means we failed an assert
   --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
@@ -63,12 +66,28 @@ checkETest t = do
       matchC sig = not . (BS.isPrefixOf . BS.take 4 $ abiCalldata (encodeSig sig) mempty)
   res <- case t of
     -- If our test is a regular user-defined test, we exec it and check the result
-    Left  (f, a) -> execTx (Tx (SolCall (f, [])) (s a) a g 0 0 (0, 0)) >> gets (p f . getter)
+    Left  (f, a) -> do
+      sd <- hasSelfdestructed a
+      _  <- execTx (Tx (SolCall (f, [])) (s a) a g 0 0 (0, 0)) 
+      b  <- gets (p f . getter)
+      return $ (not sd) || b
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
-    Right sig    -> (||) <$> fmap matchR       (use $ hasLens . result)
-                         <*> fmap (matchC sig) (use $ hasLens . state . calldata)
-  put vm -- restore EVM state
+    Right sig    -> do
+      vm' <- use $ hasLens
+      b1 <- fmap matchR       (use $ hasLens . result)
+      b2 <- fmap (matchC sig) (use $ hasLens . state . calldata)
+      let es = extractEvents em vm'
+      let b3 = (null es) || (not $ (any (T.isPrefixOf "AssertionFailed(") es))
+      return $ b2 || (b1 && b3)
+  put st -- restore EVM state
   pure res
+
+
+hasSelfdestructed :: (MonadState y m, Has VM y) => Addr -> m Bool
+hasSelfdestructed a = do
+  sd <- use $ hasLens . tx . substate . selfdestructs
+  return (a `elem` sd)
+
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
 -- still solves that test.

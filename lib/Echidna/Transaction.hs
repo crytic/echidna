@@ -57,7 +57,7 @@ genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m)
           -> m (Word, Word)                           -- ^ Delay generator
           -> m Tx
 genTxWith m s r c g gp mv t = do
-  World ss hmm lmm ps <- use hasLens
+  World ss hmm lmm ps _ <- use hasLens
   mm <- getSignatures hmm lmm
   let s' = s ss
       r' = r rs
