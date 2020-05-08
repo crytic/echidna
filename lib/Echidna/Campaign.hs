@@ -268,7 +268,7 @@ campaign u v w ts d txs = do
   g <- view (hasLens . seed)
   b <- view (hasLens . benchmarkMode)
   let effectiveSeed = fromMaybe (d' ^. defSeed) g
-  let effectiveGenDict = d' { _defSeed = effectiveSeed }
+      effectiveGenDict = d' { _defSeed = effectiveSeed }
   execStateT
     (evalRandT runCampaign (mkStdGen effectiveSeed))
     (Campaign

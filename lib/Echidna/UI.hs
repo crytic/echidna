@@ -87,7 +87,7 @@ ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
 ui v w ts d txs = do
   ref <- liftIO $ newIORef defaultCampaign
   let updateRef = use hasLens >>= liftIO . atomicWriteIORef ref
-  let secToUsec = (* 1000000)
+      secToUsec = (* 1000000)
   timeoutUsec <- secToUsec . fromMaybe (-1) <$> view (hasLens . maxTime)
   terminalPresent <- isTerminal
   effectiveMode <- view (hasLens . operationMode) <&> \case
