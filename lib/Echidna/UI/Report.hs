@@ -4,7 +4,7 @@
 module Echidna.UI.Report where
 
 import Control.Lens
-import Control.Monad.Reader (MonadReader, liftM2)
+import Control.Monad.Reader (MonadReader)
 import Data.Has (Has(..))
 import Data.List (intercalate, nub, sortOn)
 import Data.Map (toList)
@@ -14,6 +14,7 @@ import EVM.Types (Addr)
 
 import qualified Data.Text as T
 
+import Echidna.ABI (defSeed)
 import Echidna.Exec
 import Echidna.Pretty (ppTxCall)
 import Echidna.Types.Campaign
@@ -87,6 +88,13 @@ ppTests Campaign { _tests = ts } = unlines . catMaybes <$> mapM pp ts where
   pp (Right (n, _), s)      = Just . (("assertion in " ++ T.unpack n ++ ": ") ++) <$> ppTS s
 
 ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppCampaign c = (++) <$> liftM2 (++) (ppTests c) (ppGasInfo c) <*> pure (maybe "" ("\n" ++) . ppCoverage $ c ^. coverage)
-
-
+ppCampaign c = do
+  testsPrinted <- ppTests c
+  gasInfoPrinted <- ppGasInfo c
+  let coveragePrinted = maybe "" ("\n" ++) . ppCoverage $ c ^. coverage
+      seedPrinted = "Seed: " ++ show (c ^. genDict . defSeed)
+  pure $
+    testsPrinted
+    ++ gasInfoPrinted
+    ++ coveragePrinted
+    ++ seedPrinted

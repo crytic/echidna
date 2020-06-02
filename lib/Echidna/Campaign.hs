@@ -267,10 +267,19 @@ campaign u v w ts d txs = do
   c <- fromMaybe mempty <$> view (hasLens . knownCoverage)
   g <- view (hasLens . seed)
   b <- view (hasLens . benchmarkMode)
-  let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
+  let effectiveSeed = fromMaybe (d' ^. defSeed) g
+      effectiveGenDict = d' { _defSeed = effectiveSeed }
   execStateT
-    (evalRandT runCampaign g')
-    (Campaign ((,Open (-1)) <$> if b then [] else ts) c mempty d' False (DS.fromList $ map (1,) txs) 0)
+    (evalRandT runCampaign (mkStdGen effectiveSeed))
+    (Campaign
+      ((,Open (-1)) <$> if b then [] else ts)
+      c
+      mempty
+      effectiveGenDict
+      False
+      (DS.fromList $ map (1,) txs)
+      0
+    )
   where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
