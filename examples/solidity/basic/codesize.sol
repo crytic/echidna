@@ -8,7 +8,7 @@ contract C {
     sz = x;
   }
 
-  function echidna_sz_nonzero() public returns (bool) {
-    return sz != 0;
+  function echidna_sz_zero() public returns (bool) {
+    return sz == 0;
   }
 }
