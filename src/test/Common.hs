@@ -3,6 +3,7 @@ module Common
   , runContract
   , testContract
   , testContract'
+  , checkConstructorConditions
   , solnFor
   , solved
   , passed
@@ -23,6 +24,7 @@ import Test.Tasty.HUnit (testCase, assertBool)
 import Control.Lens (view, set, (.~))
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
+import Control.Monad.State.Strict (evalStateT)
 import Data.Function ((&))
 import Data.List (find)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -32,7 +34,8 @@ import Data.Text (Text)
 import Echidna (prepareContract)
 import Echidna.Campaign (campaign)
 import Echidna.Config (EConfig, _econfig, parseConfig, defaultConfig, sConf, cConf)
-import Echidna.Solidity (quiet)
+import Echidna.Solidity (loadSolTests, quiet)
+import Echidna.Test (checkETest)
 import Echidna.Types.Campaign (Campaign, TestState(..), testLimit, shrinkLimit, tests, gasInfo, corpus, coverage)
 import Echidna.Types.Signature (SolCall)
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
@@ -61,6 +64,13 @@ testContract' fp n cfg s as = testCase fp $ do
              & (if s then cConf . shrinkLimit .~ 4000 else id)
   res <- runContract fp n c'
   mapM_ (\(t,f) -> assertBool t $ f res) as
+
+checkConstructorConditions :: FilePath -> String -> TestTree
+checkConstructorConditions fp as = testCase fp $ do
+  r <- flip runReaderT testConfig $ do
+    (v, _, t) <- loadSolTests (fp :| []) Nothing
+    mapM (\u -> evalStateT (checkETest u) v) t
+  mapM_ (assertBool as) r
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests

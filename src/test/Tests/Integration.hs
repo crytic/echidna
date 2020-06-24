@@ -3,7 +3,7 @@ module Tests.Integration (integrationTests) where
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool)
 
-import Common (runContract, testContract, testContract', testConfig, passed, solved, solvedLen, solvedWith, coverageEmpty, testsEmpty, gasInRange, countCorpus)
+import Common (runContract, testContract, testContract', checkConstructorConditions, testConfig, passed, solved, solvedLen, solvedWith, coverageEmpty, testsEmpty, gasInRange, countCorpus)
 import Control.Lens (set)
 import Control.Monad (when)
 import Data.Functor ((<&>))
@@ -135,4 +135,6 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("unexpected corpus count ",               countCorpus 6)]
   ,  testContract "basic/payable.sol"     Nothing
       [ ("echidna_payable failed",                 solved      "echidna_payable") ]
+  ,  checkConstructorConditions "basic/codesize.sol"
+      "invalid codesize"
   ]
