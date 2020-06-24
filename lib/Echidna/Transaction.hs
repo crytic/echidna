@@ -65,10 +65,8 @@ genTxWith m s r c g gp mv t = do
       v' = genValue ps mv
       rs = NE.fromList . catMaybes $ mkR <$> toList m
       mkR = _2 (flip M.lookup mm . view (bytecode . to stripBytecodeMetadata))
-  (tt,tn) <- t
-  let t' = return (initialTimestamp + tt, initialBlockNumber + tn)
   v'' <- v' <$> s' <*> r' <*> c'
-  Tx <$> (SolCall <$> c') <*> s' <*> (fst <$> r') <*> g <*> gp <*> v'' <*> t'
+  Tx <$> (SolCall <$> c') <*> s' <*> (fst <$> r') <*> g <*> gp <*> v'' <*> t
 
 getSignatures :: MonadRandom m => SignatureMap -> Maybe SignatureMap -> m SignatureMap
 getSignatures hmm Nothing = return hmm

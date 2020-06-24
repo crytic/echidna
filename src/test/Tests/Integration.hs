@@ -98,6 +98,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("tests are not empty",                    testsEmpty                  ) ]
   , testContract "basic/time.sol"         (Just "basic/time.yaml")
       [ ("echidna_timepassed passed",              solved      "echidna_timepassed") ]
+  , testContract "basic/now.sol"         Nothing
+      [ ("echidna_now passed",                     solved      "echidna_now") ]
   , testContract "basic/construct.sol"    Nothing
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
   , testContract "basic/gasprice.sol"     Nothing
