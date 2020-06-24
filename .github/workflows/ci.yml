@@ -20,7 +20,7 @@ jobs:
           - os: ubuntu-latest
             apt-get: autoconf automake libtool
           - os: macos-latest
-            brew: autoconf automake libtool
+            brew: automake
 
     steps:
       - name: Get Packages
