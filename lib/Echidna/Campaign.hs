@@ -59,13 +59,14 @@ isDone c | null (view tests c) = do
   tl <- view (hasLens . testLimit)
   q <- view (hasLens . seqLen)
   return $ view ncallseqs c * q >= tl
-isDone (view tests -> ts) = view (hasLens . to (liftM3 (,,) _testLimit _shrinkLimit _stopOnFail))
-  <&> \(tl, sl, sof) -> let res (Open  i)   = if i >= tl then Just True else Nothing
-                            res Passed      = Just True
-                            res (Large i _) = if i >= sl then Just False else Nothing
-                            res (Solved _)  = Just False
-                            res (Failed _)  = Just False
-                            in res . snd <$> ts & if sof then elem $ Just False else all isJust
+isDone (view tests -> ts) = do
+  (tl, sl, sof) <- view (hasLens . to (liftM3 (,,) _testLimit _shrinkLimit _stopOnFail))
+  let res (Open  i)   = if i >= tl then Just True else Nothing
+      res Passed      = Just True
+      res (Large i _) = if i >= sl then Just False else Nothing
+      res (Solved _)  = Just False
+      res (Failed _)  = Just False
+  pure $ res . snd <$> ts & if sof then elem $ Just False else all isJust
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
@@ -83,17 +84,21 @@ isSuccess (view tests -> ts) =
 updateTest :: ( MonadCatch m, MonadRandom m, MonadReader x m
               , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x)
            => VM -> Maybe (VM, [Tx]) -> (SolTest, TestState) -> m (SolTest, TestState)
-updateTest v (Just (v', xs)) (n, t) = view (hasLens . testLimit) >>= \tl -> (n,) <$> case t of
-  Open i    | i >= tl -> pure Passed
-  Open i              -> catch (evalStateT (checkETest n) v' <&> bool (Large (-1) xs) (Open (i + 1)))
-                               (pure . Failed)
-  _                   -> snd <$> updateTest v Nothing (n,t)
-updateTest v Nothing (n, t) = view (hasLens . shrinkLimit) >>= \sl -> (n,) <$> case t of
-  Large i x | i >= sl -> pure $ Solved x
-  Large i x           -> if length x > 1 || any canShrinkTx x
-                           then Large (i + 1) <$> evalStateT (shrinkSeq (checkETest n) x) v
-                           else pure $ Solved x
-  _                   -> pure t
+updateTest v (Just (v', xs)) (n, t) = do
+  tl <- view (hasLens . testLimit)
+  (n,) <$> case t of
+    Open i | i >= tl -> pure Passed
+    Open i           -> catch (evalStateT (checkETest n) v' <&> bool (Large (-1) xs) (Open (i + 1)))
+                              (pure . Failed)
+    _                -> snd <$> updateTest v Nothing (n,t)
+updateTest v Nothing (n, t) = do
+  sl <- view (hasLens . shrinkLimit)
+  (n,) <$> case t of
+    Large i x | i >= sl -> pure $ Solved x
+    Large i x           -> if length x > 1 || any canShrinkTx x
+                             then Large (i + 1) <$> evalStateT (shrinkSeq (checkETest n) x) v
+                             else pure $ Solved x
+    _                   -> pure t
 
 -- | Given a rule for updating a particular test's state, apply it to each test in a 'Campaign'.
 runUpdate :: (MonadReader x m, Has TxConf x, MonadState y m, Has Campaign y)
@@ -106,7 +111,9 @@ evalSeq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Campaign y, Has VM y)
         => VM -> (Tx -> m a) -> [Tx] -> m [(Tx, a)]
 evalSeq v e = go [] where
-  go r xs = use hasLens >>= \v' -> runUpdate (updateTest v $ Just (v',reverse r)) >>
+  go r xs = do
+    v' <- use hasLens
+    runUpdate (updateTest v $ Just (v',reverse r))
     case xs of []     -> pure []
                (y:ys) -> e y >>= \a -> ((y, a) :) <$> go (y:r) ys
 
@@ -120,9 +127,11 @@ shrinkGasSeq f g xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip
   callsF _ _                                  = False
   check xs' | callsF f $ last xs' = do {_ <- get; res <- traverse execTx xs'; pure ((snd . head) res >= g) }
   check _                         = pure False
-  shrinkSender x = view (hasLens . sender) >>= \l -> case ifind (const (== x ^. src)) l of
-    Nothing     -> pure x
-    Just (i, _) -> flip (set src) x . fromMaybe (x ^. src) <$> uniformMay (l ^.. folded . indices (< i))
+  shrinkSender x = do
+    l <- view (hasLens . sender)
+    case ifind (const (== x ^. src)) l of
+      Nothing     -> pure x
+      Just (i, _) -> flip (set src) x . fromMaybe (x ^. src) <$> uniformMay (l ^.. folded . indices (< i))
   shrunk = mapM (shrinkSender <=< shrinkTx) xs
   shorten = (\i -> take i xs ++ drop (i + 1) xs) <$> getRandomR (0, length xs)
 
@@ -246,12 +255,25 @@ campaign u v w ts d txs = do
   c <- fromMaybe mempty <$> view (hasLens . knownCoverage)
   g <- view (hasLens . seed)
   b <- view (hasLens . benchmarkMode)
-  let g' = mkStdGen $ fromMaybe (d' ^. defSeed) g
-  execStateT (evalRandT runCampaign g') (Campaign ((,Open (-1)) <$> if b then [] else ts) c mempty d' False (DS.fromList $ map (1,) txs) 0) where
+  let effectiveSeed = fromMaybe (d' ^. defSeed) g
+      effectiveGenDict = d' { _defSeed = effectiveSeed }
+  execStateT
+    (evalRandT runCampaign (mkStdGen effectiveSeed))
+    (Campaign
+      ((,Open (-1)) <$> if b then [] else ts)
+      c
+      mempty
+      effectiveGenDict
+      False
+      (DS.fromList $ map (1,) txs)
+      0
+    )
+  where
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    update c    = view hasLens >>= \(CampaignConf tl sof _ q sl _ _ _ _ _) -> get >>=
-                                   \(view hasLens -> Campaign { _ncallseqs }) ->
+    update c    = do
+      CampaignConf tl sof _ q sl _ _ _ _ _ <- view hasLens
+      Campaign { _ncallseqs } <- view hasLens <$> get
       if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
