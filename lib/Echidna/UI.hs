@@ -21,7 +21,7 @@ import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.IORef
 import EVM (VM)
-import Graphics.Vty (Event(..), Key(..), Modifier(..), defaultConfig, mkVty)
+import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
 import UnliftIO (MonadUnliftIO)
@@ -54,6 +54,12 @@ instance Read OutputFormat where
 makeLenses ''UIConf
 
 data CampaignEvent = CampaignUpdated Campaign | CampaignTimedout Campaign
+
+vtyConfig :: Config
+vtyConfig = defaultConfig { inputMap = (Nothing, "\ESC[6;2~", EvKey KPageDown [MShift]) :
+                                       (Nothing, "\ESC[5;2~", EvKey KPageUp [MShift]) :
+                                       (inputMap defaultConfig)
+                          }
 
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
 monitor :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
@@ -105,7 +111,7 @@ ui v w ts d txs = do
           Just _ -> liftIO $ updateUI CampaignUpdated
         )
         (const $ liftIO $ killThread ticker)
-      app <- customMain (mkVty defaultConfig) (Just bc) <$> monitor
+      app <- customMain (mkVty vtyConfig) (Just bc) <$> monitor
       liftIO $ void $ app (defaultCampaign, Uninitialized)
       final <- liftIO $ readIORef ref
       liftIO . putStrLn =<< ppCampaign final
