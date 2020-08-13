@@ -58,7 +58,7 @@ data CampaignEvent = CampaignUpdated Campaign | CampaignTimedout Campaign
 vtyConfig :: Config
 vtyConfig = defaultConfig { inputMap = (Nothing, "\ESC[6;2~", EvKey KPageDown [MShift]) :
                                        (Nothing, "\ESC[5;2~", EvKey KPageUp [MShift]) :
-                                       (inputMap defaultConfig)
+                                       inputMap defaultConfig
                           }
 
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
