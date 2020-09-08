@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -20,9 +21,12 @@ import Data.Has (Has(..))
 import Data.Hashable (hash)
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
+import Data.SBV (SWord, literal)
 import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
+import EVM.Solidity (stripBytecodeMetadata)
+import EVM.Symbolic (Buffer(..), litWord, litAddr)
 import EVM.Types (Addr)
 
 import qualified System.Directory as SD
@@ -144,15 +148,19 @@ liftSH = stateST . runState . zoom hasLens
 setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
 setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty, state . gas .= g
-  , tx . gasprice .= gp, tx . origin .= s, state . caller .= s, state . callvalue .= v
+  , tx . gasprice .= gp, tx . origin .= s, state . caller .= litAddr s, state . callvalue .= litWord v
   , block . timestamp += t, block . number += b, setup] where
     setup = case c of
       SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (InitCode bc) & set balance v) >> loadContract r >> state . code .= bc
-      SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= encode cd
-      SolCalldata cd -> incrementBalance >> loadContract r >> state . calldata .= cd
+      SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata (encode cd)
+      SolCalldata cd -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata cd
     incrementBalance = (env . contracts . ix r . balance) += v
     encode (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
+
+
+concreteCalldata :: BS.ByteString -> (Buffer, SWord 32)
+concreteCalldata cd = (ConcreteBuffer cd, literal . fromIntegral . BS.length $ cd)
 
 saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
 saveTxs (Just d) txs = mapM_ saveTx txs where

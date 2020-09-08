@@ -17,12 +17,13 @@ import Data.Set (Set)
 import EVM
 import EVM.Op (Op(..))
 import EVM.Exec (exec)
+import EVM.Solidity (stripBytecodeMetadata)
+import EVM.Symbolic (Buffer(..))
 
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
 import qualified Data.Set as S
 
-import Echidna.ABI (stripBytecodeMetadata)
 import Echidna.Transaction
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst)
 
@@ -79,7 +80,7 @@ execTxWith h m t = do
       hasLens . state . calldata .= cd
       hasLens . result ?= f
     (VMFailure x, _) -> h x
-    (VMSuccess bc, SolCreate _) ->
+    (VMSuccess (ConcreteBuffer bc), SolCreate _) ->
       (hasLens %=) . execState $ do
         env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
         replaceCodeOfSelf (RuntimeCode bc)

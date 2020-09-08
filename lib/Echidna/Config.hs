@@ -16,7 +16,6 @@ import Control.Monad.State (StateT(..), runStateT)
 import Control.Monad.Trans (lift)
 import Data.Bool (bool)
 import Data.Aeson
-import Data.Functor ((<&>))
 import Data.Has (Has(..))
 import Data.HashMap.Strict (keys)
 import Data.HashSet (HashSet, fromList, insert, difference)

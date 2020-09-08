@@ -13,10 +13,9 @@ dependencies:
   - ansi-terminal
   - base16-bytestring
   - binary
-  - brick                <= 0.46
+  - brick
   - base16-bytestring
   - bytestring
-  - cborg
   - containers
   - data-dword
   - data-has
@@ -36,6 +35,7 @@ dependencies:
   - optparse-applicative
   - process
   - random
+  - sbv
   - stm
   - temporary
   - text

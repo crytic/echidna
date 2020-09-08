@@ -5,7 +5,6 @@ module Echidna where
 import Control.Lens (view, (^.), to)
 import Data.Has (Has(..))
 import Control.Monad.Catch (MonadCatch(..))
-import Control.Monad.Fail  (MonadFail(..))
 import Control.Monad.Reader (MonadReader, MonadIO, liftIO)
 import Control.Monad.Random (MonadRandom)
 import Data.Map.Strict (keys)

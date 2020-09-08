@@ -19,13 +19,13 @@ import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Char8 (ByteString, empty)
 import Data.Has (Has(..))
 import Data.Map (fromList)
-import Data.Maybe (maybe)
 import Data.Text.Encoding (encodeUtf8)
 import EVM
 import EVM.ABI (AbiType(..), getAbi)
 import EVM.Concrete (w256)
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Types (Addr, W256)
+import EVM.Symbolic (Buffer(..))
 import Text.Read (readMaybe)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
@@ -107,7 +107,7 @@ execEthenoTxs ts addr et = do
   case (res, et) of
        (Reversion,   _)               -> throwM $ EthenoException "Encountered reversion while setting up Etheno transactions"
        (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
-       (VMSuccess bc,
+       (VMSuccess (ConcreteBuffer bc),
         ContractCreated _ ca _ _ _ _) -> do
           hasLens . env . contracts . at ca . _Just . contractcode .= InitCode ""
           liftSH (replaceCodeOfSelf (RuntimeCode bc) >> loadContract ca)
@@ -123,7 +123,7 @@ execEthenoTxs ts addr et = do
                               -- execute x and check if it returned something of the correct type
                               go (x:xs) = setupTx x >> liftSH exec >>= \case
                                 -- executing the test function succeeded
-                                VMSuccess r -> do
+                                VMSuccess (ConcreteBuffer r) -> do
                                   put og
                                   case runGetOrFail (getAbi . AbiTupleType . V.fromList $ [AbiBoolType]) (r ^. lazy) ^? _Right . _3 of
                                        -- correct type ==> check the rest of the tests

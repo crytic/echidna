@@ -18,6 +18,7 @@ import Data.Text (Text)
 import EVM (Error(..), VMResult(..), VM, calldata, result, state)
 import EVM.ABI (AbiValue(..), abiCalldata, encodeAbiValue)
 import EVM.Types (Addr)
+import EVM.Symbolic (Buffer(..))
 
 import qualified Data.ByteString as BS
 
@@ -41,9 +42,9 @@ data CallRes = ResFalse | ResTrue | ResRevert | ResOther deriving (Eq, Show)
 
 -- | Given a 'VMResult', classify it assuming it was the result of a call to an Echidna test.
 classifyRes :: VMResult -> CallRes
-classifyRes (VMSuccess b) | b == encodeAbiValue (AbiBool True)  = ResTrue
-                          | b == encodeAbiValue (AbiBool False) = ResFalse
-                          | otherwise                           = ResOther
+classifyRes (VMSuccess (ConcreteBuffer b)) | b == encodeAbiValue (AbiBool True)  = ResTrue
+                                           | b == encodeAbiValue (AbiBool False) = ResFalse
+                                           | otherwise                           = ResOther
 
 classifyRes Reversion = ResRevert
 classifyRes _ = ResOther
@@ -60,13 +61,13 @@ checkETest t = do
   --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
   let matchR (Just (VMFailure (UnrecognizedOpcode 0xfe))) = False
       matchR _                                            = True
-      matchC sig = not . (BS.isPrefixOf . BS.take 4 $ abiCalldata (encodeSig sig) mempty)
+      matchC sig (ConcreteBuffer cd) = not . BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) $ cd
   res <- case t of
     -- If our test is a regular user-defined test, we exec it and check the result
     Left  (f, a) -> execTx (Tx (SolCall (f, [])) (s a) a g 0 0 (0, 0)) >> gets (p f . getter)
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
     Right sig    -> (||) <$> fmap matchR       (use $ hasLens . result)
-                         <*> fmap (matchC sig) (use $ hasLens . state . calldata)
+                         <*> fmap (matchC sig) (use $ hasLens . state . calldata . _1)
   put vm -- restore EVM state
   pure res
 
