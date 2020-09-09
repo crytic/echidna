@@ -38,7 +38,7 @@ import Echidna.Types.Tx           (TxConf, TxCall(..), Tx(..), initialTimestamp,
 import Echidna.Types.World        (World(..))
 import Echidna.Processor
 
-import EVM hiding (contracts)
+import EVM hiding (contracts, path)
 import qualified EVM (contracts)
 import EVM.ABI
 import EVM.Exec     (vmForEthrunCreation)
