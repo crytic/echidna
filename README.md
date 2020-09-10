@@ -75,14 +75,57 @@ Echidna supports two modes of testing complex contracts. Firstly, one can [descr
 
 ### Configuration options
 
-Echidna's CLI can be used to choose the contract to test and load a configuration file.
+Echidna's CLI can be used to choose the contract to test and load a
+configuration file.
 
 ```
 $ echidna-test contract.sol --contract TEST --config config.yaml
 ```
 
 The configuration file allows users to choose EVM and test generation
-parameters. An example of a complete and annotated config file with the default options can be found at [examples/solidity/basic/default.yaml](examples/solidity/basic/default.yaml). More detailed documentation on the configuration options is available in our [wiki](https://github.com/trailofbits/echidna/wiki/Config).
+parameters. An example of a complete and annotated config file with the default
+options can be found at
+[examples/solidity/basic/default.yaml](examples/solidity/basic/default.yaml).
+More detailed documentation on the configuration options is available in our
+[wiki](https://github.com/trailofbits/echidna/wiki/Config).
+
+Echidna supports three different output drivers. There is the default `text`
+driver, a `json` driver, and a `none` driver, which should suppress all
+`stdout` output. The JSON driver reports the overall campaign as follows.
+
+
+```json
+Campaign = {
+  "success"      : bool,
+  "error"        : string?,
+  "tests"        : [Test],
+  "seed"         : number,
+  "coverage"     : Coverage,
+  "gas_info"     : [GasInfo]
+}
+Test = {
+  "contract"     : string,
+  "name"         : string,
+  "status"       : string,
+  "error"        : string?,
+  "testType"     : string,
+  "transactions" : [Transaction]?
+}
+Transaction = {
+  "contract"     : string,
+  "function"     : string,
+  "arguments"    : [string]?,
+  "gas"          : number,
+  "gasprice"     : number
+}
+```
+
+`Coverage` is a dict describing certain coverage increasing calls, and not to
+wholly important. Each `GasInfo` entry is a tuple that describes how maximal
+gas usage was achieved, and also not too important. These interfaces are
+subject to change to be slightly more user friendly at a later date. `testType`
+will either be `property` or `assertion`, and `status` always takes on either
+`fuzzing`, `shrinking`, `solved`, `passed`, or `error`.
 
 ## Installation
 
