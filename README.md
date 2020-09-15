@@ -120,8 +120,8 @@ Transaction = {
 }
 ```
 
-`Coverage` is a dict describing certain coverage increasing calls, and not to
-wholly important. Each `GasInfo` entry is a tuple that describes how maximal
+`Coverage` is a dict describing certain coverage increasing calls.
+Each `GasInfo` entry is a tuple that describes how maximal
 gas usage was achieved, and also not too important. These interfaces are
 subject to change to be slightly more user friendly at a later date. `testType`
 will either be `property` or `assertion`, and `status` always takes on either
