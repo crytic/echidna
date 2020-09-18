@@ -25,7 +25,7 @@ extractEvents em vm =
             case topics of
                  [] -> []
                  (topic:_) ->
-                   case (Data.Map.lookup (wordValue topic) em) of
+                   case Data.Map.lookup (wordValue topic) em of
                      Just (Event name _ types) -> [name `append` showValues [t | (t, NotIndexed) <- types] bytes ]
                      Nothing -> []
           _ -> []

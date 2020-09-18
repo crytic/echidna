@@ -70,14 +70,14 @@ checkETest em t = do
       sd <- hasSelfdestructed a
       _  <- execTx (Tx (SolCall (f, [])) (s a) a g 0 0 (0, 0)) 
       b  <- gets (p f . getter)
-      return $ (not sd) && b
+      return $ not sd && b
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
     Right sig    -> do
-      vm' <- use $ hasLens
+      vm' <- use hasLens
       b1 <- fmap matchR       (use $ hasLens . result)
       b2 <- fmap (matchC sig) (use $ hasLens . state . calldata)
       let es = extractEvents em vm'
-      let b3 = (null es) || (not $ (any (T.isPrefixOf "AssertionFailed(") es))
+      let b3 = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
       return $ b2 || (b1 && b3)
   put st -- restore EVM state
   pure res
