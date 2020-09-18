@@ -70,7 +70,7 @@ checkETest em t = do
       sd <- hasSelfdestructed a
       _  <- execTx (Tx (SolCall (f, [])) (s a) a g 0 0 (0, 0)) 
       b  <- gets (p f . getter)
-      return $ (not sd) || b
+      return $ (not sd) && b
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
     Right sig    -> do
       vm' <- use $ hasLens

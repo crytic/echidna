@@ -141,6 +141,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("unexpected corpus count ",               countCorpus 6)]
   ,  testContract "basic/payable.sol"     Nothing
       [ ("echidna_payable failed",                 solved      "echidna_payable") ]
+  ,  testContract "basic/killed.sol"      Nothing
+      [ ("echidna_still_alive failed",                 solved      "echidna_still_alive") ]
   ,  checkConstructorConditions "basic/codesize.sol"
       "invalid codesize"
   ]
