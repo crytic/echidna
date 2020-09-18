@@ -56,6 +56,8 @@ import qualified Data.List.NonEmpty.Extra as NEE
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text           as T
 
+data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
+
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
 data SolException = BadAddr Addr
@@ -72,6 +74,7 @@ data SolException = BadAddr Addr
                   | DeploymentFailed
                   | NoCryticCompile
                   | InvalidMethodFilters Filter
+makePrisms ''SolException
 
 instance Show SolException where
   show = \case
@@ -91,8 +94,6 @@ instance Show SolException where
     DeploymentFailed         -> "Deploying the contract failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
 
 instance Exception SolException
-
-data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
 
 -- | Configuration for loading Solidity for Echidna testing.
 data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract address to use
@@ -236,7 +237,7 @@ loadSpecified name cs = do
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
-      let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca 8000030 0 (w256 $ fromInteger balc) (initialTimestamp,initialBlockNumber)
+      let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca 8000030 0 (w256 $ fromInteger balc) (initialTimestamp, initialBlockNumber)
       vm' <- execStateT transaction vm
       case currentContract vm' of
         Just _  -> return (vm', c ^. eventMap, neFuns, fst <$> tests, abiMapping)
@@ -298,6 +299,11 @@ mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Noth
 
 mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue
 mkValidAbiUInt i x = if x <= 2 ^ i - 1 then Just $ AbiUInt i x else Nothing
+
+timeConstants :: [AbiValue]
+timeConstants = concatMap dec [initialTimestamp, initialBlockNumber]
+  where dec i = let l f = f <$> [8,16..256] <*> fmap fromIntegral [i-1..i+1] in
+                catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
 
 -- | Given a list of 'SolcContract's, try to parse out string and integer literals
 extractConstants :: [SolcContract] -> [AbiValue]

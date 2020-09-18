@@ -21,7 +21,7 @@ import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.IORef
 import EVM (VM)
-import Graphics.Vty (Event(..), Key(..), Modifier(..), defaultConfig, mkVty)
+import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
 import UnliftIO (MonadUnliftIO)
@@ -55,6 +55,12 @@ makeLenses ''UIConf
 
 data CampaignEvent = CampaignUpdated Campaign | CampaignTimedout Campaign
 
+vtyConfig :: Config
+vtyConfig = defaultConfig { inputMap = (Nothing, "\ESC[6;2~", EvKey KPageDown [MShift]) :
+                                       (Nothing, "\ESC[5;2~", EvKey KPageUp [MShift]) :
+                                       inputMap defaultConfig
+                          }
+
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
 monitor :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
         => m (App (Campaign, UIState) CampaignEvent ())
@@ -85,11 +91,9 @@ ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
    -> [[Tx]]
    -> m Campaign
 ui v w ts d txs = do
-  let d' = fromMaybe defaultDict d
-  let getSeed = view $ hasLens . seed . non (d' ^. defSeed)
   ref <- liftIO $ newIORef defaultCampaign
   let updateRef = use hasLens >>= liftIO . atomicWriteIORef ref
-  let secToUsec = (* 1000000)
+      secToUsec = (* 1000000)
   timeoutUsec <- secToUsec . fromMaybe (-1) <$> view (hasLens . maxTime)
   terminalPresent <- isTerminal
   effectiveMode <- view (hasLens . operationMode) <&> \case
@@ -107,11 +111,10 @@ ui v w ts d txs = do
           Just _ -> liftIO $ updateUI CampaignUpdated
         )
         (const $ liftIO $ killThread ticker)
-      app <- customMain (mkVty defaultConfig) (Just bc) <$> monitor
+      app <- customMain (mkVty vtyConfig) (Just bc) <$> monitor
       liftIO $ void $ app (defaultCampaign, Uninitialized)
       final <- liftIO $ readIORef ref
       liftIO . putStrLn =<< ppCampaign final
-      liftIO . putStrLn =<< ("Seed: " ++) . show <$> getSeed
       pure final
 
     NonInteractive outputFormat -> do
@@ -124,10 +127,9 @@ ui v w ts d txs = do
           pure (final, False)
       case outputFormat of
         JSON ->
-          liftIO . BS.putStr =<< Echidna.Output.JSON.encodeCampaign final <$> getSeed
+          liftIO . BS.putStr $ Echidna.Output.JSON.encodeCampaign final
         Text -> do
           liftIO . putStrLn =<< ppCampaign final
-          liftIO . putStrLn =<< ("Seed: " ++) . show <$> getSeed
           when timedout $ liftIO $ putStrLn "TIMEOUT!"
         None ->
           pure ()

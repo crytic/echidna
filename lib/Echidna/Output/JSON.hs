@@ -3,7 +3,7 @@
 
 module Echidna.Output.JSON where
 
-import Echidna.ABI (ppAbiValue)
+import Echidna.ABI (ppAbiValue, GenDict(..))
 import qualified Echidna.Types.Campaign as C
 import Echidna.Solidity (SolTest)
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxResult)
@@ -88,12 +88,12 @@ instance ToJSON Transaction where
     , "gasprice" .= gasprice
     ]
 
-encodeCampaign :: C.Campaign -> Int -> ByteString
-encodeCampaign C.Campaign{..} seed = encode
+encodeCampaign :: C.Campaign -> ByteString
+encodeCampaign C.Campaign{..} = encode
   Campaign { _success = True
            , _error = Nothing
            , _tests = mapTest <$> _tests
-           , seed = seed
+           , seed = _defSeed _genDict
            , coverage = mapKeys (("0x" ++) . (`showHex` "") . keccak) $ DF.toList <$> _coverage
            , gasInfo = toList _gasInfo
            }

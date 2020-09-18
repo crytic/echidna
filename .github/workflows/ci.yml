@@ -20,7 +20,7 @@ jobs:
           - os: ubuntu-latest
             apt-get: autoconf automake libtool
           - os: macos-latest
-            brew: autoconf automake libtool
+            brew: automake
 
     steps:
       - name: Get Packages
@@ -31,9 +31,6 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v2
-
-      - name: Setup Stack
-        uses: mstksg/setup-stack@v1
 
       - name: Setup Python
         uses: actions/setup-python@v1
