@@ -39,6 +39,7 @@ import Echidna.Test (checkETest)
 import Echidna.Types.Campaign (Campaign, TestState(..), testLimit, shrinkLimit, tests, gasInfo, corpus, coverage)
 import Echidna.Types.Signature (SolCall)
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
+import Echidna.Types.World (World(..))
 
 testConfig :: EConfig
 testConfig = defaultConfig & sConf . quiet .~ True
@@ -68,8 +69,9 @@ testContract' fp n cfg s as = testCase fp $ do
 checkConstructorConditions :: FilePath -> String -> TestTree
 checkConstructorConditions fp as = testCase fp $ do
   r <- flip runReaderT testConfig $ do
-    (v, _, t) <- loadSolTests (fp :| []) Nothing
-    mapM (\u -> evalStateT (checkETest u) v) t
+    (v, w, t) <- loadSolTests (fp :| []) Nothing
+    let (World _ _ _ _ em) = w
+    mapM (\u -> evalStateT (checkETest em u) v) t
   mapM_ (assertBool as) r
 
 getResult :: Text -> Campaign -> Maybe TestState

@@ -25,6 +25,7 @@ import qualified Data.Set as S
 import Echidna.ABI (stripBytecodeMetadata)
 import Echidna.Transaction
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst)
+import Echidna.Events (emptyEvents)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
@@ -67,6 +68,7 @@ vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> Unknow
 -- using the given execution strategy, handling errors with the given handler.
 execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Int)
 execTxWith h m t = do
+  hasLens . traces .= emptyEvents 
   (og :: VM) <- use hasLens
   setupTx t
   gasIn <- use $ hasLens . state . gas

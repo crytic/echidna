@@ -1,20 +1,41 @@
 contract Test {
+  TestAssert ta;
   event AssertionFailed(string message);
+  constructor() public {
+    ta = new TestAssert();
+  }
+
   function set0(int val) public returns (bool){
     assert(val % 100 != 0);
   }
 
-  function f(uint val) public {
-    require(msg.sender == address(this));
-    
-    if(val > 125)
+  function internal_func(uint val) internal {
+    if(val > 128)
       emit AssertionFailed("error");
   }
 
-  function g(uint val) public {
+  function set1(uint val) public {}
+
+  function f() public {
+    emit AssertionFailed("error");
+    revert();
   }
 
-  function set1(uint val) public returns (bool){
-    this.f(val);
+  function internal_assert(uint val) public returns (bool){
+    internal_func(val);
   }
+
+  function external_assert(uint val) public returns (bool){
+    ta.fail(val);
+  }
+
+}
+
+contract TestAssert { 
+  event AssertionFailed(string message);
+  function fail(uint val) public {
+    if(val > 128)
+      emit AssertionFailed("error");
+  }
+
 }

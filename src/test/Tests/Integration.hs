@@ -88,8 +88,12 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml")
       [ ("echidna_runForever passed",              solved      "echidna_runForever") ]
   , testContract "basic/assert.sol"       (Just "basic/assert.yaml")
-      [ ("echidna_set0 passed",                    solved      "ASSERTION set0")
-      , ("echidna_set1 failed",                    passed      "ASSERTION set1") ]
+      [ ("set0 passed",                    solved      "ASSERTION set0")
+      , ("set1 failed",                    passed      "ASSERTION set1")
+      , ("internal_assert passed",         solved      "ASSERTION internal_assert")
+      , ("external_assert passed",         solved      "ASSERTION external_assert")
+      , ("f failed",                       passed      "ASSERTION f")
+ ]
   , testContract "basic/assert.sol"       (Just "basic/benchmark.yaml")
       [ ("coverage is empty",                      not . coverageEmpty         )
       , ("tests are not empty",                    testsEmpty                  ) ]
