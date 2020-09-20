@@ -87,12 +87,12 @@ genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has Gen
   => Map Addr Contract
   -> m Tx
 genTxM m = do
-  TxConf _ g maxGp t b mv <- view hasLens
+  TxConf _ g _ t b mv <- view hasLens
   genTxWith
     m
     rElem rElem                                                                -- src and dst
     (const $ genInteractionsM . snd)                                           -- call itself
-    (pure g) (inRange maxGp) mv                                                -- gas, gasprice, value
+    (pure g) (pure 0) mv                                                       -- gas, gasprice, value
     (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
   where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
 

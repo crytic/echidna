@@ -102,8 +102,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_now passed",                     solved      "echidna_now") ]
   , testContract "basic/construct.sol"    Nothing
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
-  , testContract "basic/gasprice.sol"     Nothing
-      [ ("echidna_state passed",                   solved      "echidna_state") ]
+  --, testContract "basic/gasprice.sol"     Nothing
+  --    [ ("echidna_state passed",                   solved      "echidna_state") ]
   , let fp = "basic_multicontract/contracts/Foo.sol"; cfg = Just "basic_multicontract/echidna_config.yaml" in
       testCase fp $
         do sv <- readProcess "solc" ["--version"] ""
