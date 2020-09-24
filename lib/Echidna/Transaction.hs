@@ -23,6 +23,7 @@ import Data.Maybe (catMaybes)
 import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
+import EVM.Solidity (stripBytecodeMetadata)
 import EVM.Types (Addr)
 
 import qualified System.Directory as SD
