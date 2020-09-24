@@ -80,6 +80,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_balance failed",                 passed      "echidna_balance") ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
       [ ("echidna_library_call failed",            solved      "echidna_library_call") ]
+  , testContract "basic/library.sol"      (Just "basic/library.yaml")
+      [ ("echidna_valid_timestamp failed",         passed      "echidna_valid_timestamp") ]
   , testContract "basic/fallback.sol"     Nothing
       [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
   , testContract "basic/darray.sol"       Nothing
