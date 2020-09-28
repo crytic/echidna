@@ -12,6 +12,7 @@ import Data.Text (pack)
 
 import EVM (env, contracts, VM)
 import EVM.ABI (AbiValue(AbiAddress))
+import EVM.Solidity (SourceCache, SolcContract)
 
 import Echidna.ABI
 import Echidna.Config
@@ -39,23 +40,23 @@ import qualified Data.List.NonEmpty as NE
 -- * A list of transaction sequences to initialize the corpus
 prepareContract :: (MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, MonadFail m,
                     Has TxConf x, Has SolConf x)
-                => EConfig -> NE.NonEmpty FilePath -> Maybe String -> Seed -> m (VM, World, [SolTest], Maybe GenDict, [[Tx]])
+                => EConfig -> NE.NonEmpty FilePath -> Maybe String -> Seed -> m (VM, SourceCache, [SolcContract], World, [SolTest], Maybe GenDict, [[Tx]])
 prepareContract cfg fs c g = do
   txs <- liftIO $ loadTxs cd
 
   -- compile and load contracts
-  cs <- Echidna.Solidity.contracts fs
+  (cs, sc) <- Echidna.Solidity.contracts fs
   ads <- addresses
-  p <- loadSpecified (pack <$> c) cs
+  p <- loadSpecified (pack <$> c) (cs, sc)
 
   -- run processors
   ca <- view (hasLens . cryticArgs)
-  si <- runSlither (NE.head fs) ca
+  si <- return []--runSlither (NE.head fs) ca
 
   -- load tests
   (v, w, ts) <- prepareForTest p c si
   let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
   -- start ui and run tests
-  return (v, w, ts, Just $ mkGenDict df (extractConstants cs ++ timeConstants ++ NE.toList ads ++ ads') [] g (returnTypes cs), txs)
+  return (v, sc, cs, w, ts, Just $ mkGenDict df (extractConstants cs ++ timeConstants ++ NE.toList ads ++ ads') [] g (returnTypes cs), txs)
   where cd = cfg ^. cConf . corpusDir
         df = cfg ^. cConf . dictFreq

@@ -53,7 +53,6 @@ optsParser = info (helper <*> versionOption <*> options) $ fullDesc
   <> header "Echidna"
 
 main :: IO ()
-
 main = do
   opts@(Options f c conf _) <- execParser optsParser
   g <- getRandom
@@ -63,12 +62,13 @@ main = do
   let cd = cfg ^. cConf . corpusDir
 
   cpg <- flip runReaderT cfg $ do
-    (v, w, ts, d, txs) <- prepareContract cfg f c g
+    (v, sc, cs, w, ts, d, txs) <- prepareContract cfg f c g
     -- start ui and run tests
-    ui v w ts d txs
+    ui v sc cs w ts d txs
 
   -- save corpus
   saveTxs cd (snd <$> DS.toList (cpg ^. corpus))
+
   if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
   where overrideConfig cfg (Options _ _ _ fmt) =
           case maybe (cfg ^. uConf . operationMode) NonInteractive fmt of

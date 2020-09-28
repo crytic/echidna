@@ -117,7 +117,7 @@ type SolTest = Either (Text, Addr) SolSignature
 -- | Given a list of files, use its extenstion to check if it is a precompiled
 -- contract or try to compile it and get a list of its contracts, throwing
 -- exceptions if necessary.
-contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => NE.NonEmpty FilePath -> m [SolcContract]
+contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => NE.NonEmpty FilePath -> m ([SolcContract], SourceCache)
 contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"] in do
   mp  <- liftIO $ findExecutable "crytic-compile"
   case mp of
@@ -130,7 +130,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
     let solargs = a ++ linkLibraries ls & (usual ++) .
                   (\sa -> if null sa then [] else ["--solc-args", sa])
         fps = toList fp
-        compileOne :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
+        compileOne :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m ([SolcContract], SourceCache)
         compileOne x = do
           mSolc <- liftIO $ do
             stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
@@ -138,8 +138,17 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
             case ec of
               ExitSuccess -> readSolc "crytic-export/combined_solc.json"
               ExitFailure _ -> throwM $ CompileFailure out err
-          maybe (throwM SolcReadFailure) (pure . toList . fst) mSolc
-    concat <$> sequence (compileOne <$> fps)
+            
+          maybe (throwM SolcReadFailure) (pure . (\(a,b) -> (toList a , b))) mSolc
+    cps <- mapM compileOne fps
+    let (cs, ss) = unzip cps
+    liftIO $ print $ length ss
+    return $ (concat cs, head ss)
+    --concat <$> sequence (compileOne <$> fps)
+    --error $ show $ map (view sourceFiles) $ ss
+ 
+    --concat <$> f (compileOne <$> fps)
+    --mapM f (compileOne <$> fps)
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
 addresses = do
@@ -187,8 +196,8 @@ abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
 loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-              => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text], SignatureMap)
-loadSpecified name cs = do
+              => Maybe Text -> ([SolcContract], SourceCache) -> m (VM, NE.NonEmpty SolSignature, [Text], SignatureMap)
+loadSpecified name (cs,_) = do
   -- Pick contract to load
   c <- choose cs name
   q <- view (hasLens . quiet)

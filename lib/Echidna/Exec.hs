@@ -4,26 +4,37 @@
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TupleSections #-}
 
 module Echidna.Exec where
 
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.State.Strict (MonadState, execState)
+import Data.Foldable      (toList)
 import Data.Has (Has(..))
 import Data.Map.Strict (Map)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, fromJust, mapMaybe)
 import Data.Set (Set)
+import Data.Text (Text, append, pack, splitOn, unlines)
+import Data.Text.Encoding (decodeUtf8)
+import Data.List (sort, nub)
 import EVM
 import EVM.Op (Op(..))
 import EVM.Exec (exec)
-import EVM.Solidity (stripBytecodeMetadata)
+import EVM.Solidity --(SourceCache, SrcMap, SolcContract, contractName, sourceLines, sourceFiles, runtimeCode, runtimeSrcmap, creationSrcmap)
 import EVM.Symbolic (Buffer(..))
+import EVM.Debug (srcMapCodePos, srcMapCode)
+import Prelude hiding (unlines)
+
+import qualified Data.Vector.Storable as VS
+import qualified Data.Vector as V
 
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
 import qualified Data.Set as S
 
+--import Echidna.ABI (stripBytecodeMetadata)
 import Echidna.Transaction
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst)
 
@@ -108,11 +119,68 @@ coveragePoints = sum . fmap S.size
 scoveragePoints :: CoverageMap -> Int
 scoveragePoints = sum . fmap (S.size . S.map fst)
 
+-- | Pretty-print the covered code
+ppCoveredCode :: SourceCache -> [SolcContract] -> CoverageMap -> Text
+ppCoveredCode sc cs s | s == mempty = ""
+                      | otherwise   = append "covered code:\n\n" $
+                                      unlines $ map snd $ concat $ map (\(f,vls) -> 
+                                                                           (mempty, (findFile f)) : 
+                                                                           (filterLines covLines $ map ((findFile f,) . decodeUtf8) $ V.toList vls)
+                                                                       ) allLines 
+                                      where 
+                                       allLines = M.toList $ view sourceLines sc
+                                       findFile k = fst $ M.findWithDefault ("<no source code>", mempty) k (view sourceFiles sc)
+                                       covLines = concat $ map (srcMapCov sc s) cs
+
+type Filename = Text
+
+markLine :: Int -> Filename -> [(Filename, Text)] -> [(Filename, Text)] 
+markLine n f ls = case splitAt (n-1) ls of
+                     (xs, (f',y):ys) -> xs ++ [(f, if (f == f') then  append "|" y else y)] ++ ys
+                     _               -> error $ "invalid line " ++ (show n) ++ " to mark"
+
+
+filterLines :: [Maybe (Filename, Int)] -> [(Filename, Text)] -> [(Filename, Text)]
+filterLines []                   ls  = ls
+filterLines (Nothing       : ns) ls  = filterLines ns ls
+filterLines ((Just (f',n)) : ns) ls  = filterLines ns (markLine n f' ls)
+
+
+{-
+allPositions :: Map k SolcContract -> SourceCache -> Set (Text, Int)
+allPositions solcByName sources =
+      ( S.fromList
+      . mapMaybe (srcMapCodePos sources)
+      . toList
+      $ mconcat
+        ( solcByName
+        & M.elems
+        & map (\x -> view runtimeSrcmap x <> view creationSrcmap x)
+        )
+      )
+-}
+
+srcMapCov :: SourceCache -> Map BS.ByteString (Set (Int, b)) -> SolcContract -> [Maybe (Text, Int)]
+srcMapCov sc s c = nub $ sort $ map (srcMapCodePos sc) $ mapMaybe (srcMapForOpLocation c) $ S.toList $ maybe S.empty (S.map fst) $ M.lookup (stripBytecodeMetadata $ view runtimeCode c) s
+
+srcMapForOpLocation :: SolcContract -> Int -> Maybe SrcMap
+srcMapForOpLocation c n = preview (ix n) (view runtimeSrcmap c)
+
+linesByName :: SourceCache -> Map Text (V.Vector BS.ByteString)
+linesByName sources =
+      ( M.fromList
+      . map
+          (\(k, v) ->
+             (fst (fromJust (M.lookup k (view sourceFiles sources))), v))
+      . M.toList
+      $ view sourceLines sources
+      ) 
+
 -- | Capture the current PC and bytecode (without metadata). This should identify instructions uniquely.
 pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
 pointCoverage l = do
   v <- use hasLens
-  l %= M.insertWith (const . S.insert $ (v ^. state . pc, Success))
+  l %= M.insertWith (const . S.insert $ ( fromJust $ vmOpIx v, Success))
                     (fromMaybe (error "no contract information on coverage") $ h v)
                     mempty
   where
