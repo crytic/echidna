@@ -139,16 +139,12 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
               ExitSuccess -> readSolc "crytic-export/combined_solc.json"
               ExitFailure _ -> throwM $ CompileFailure out err
             
-          maybe (throwM SolcReadFailure) (pure . (\(a,b) -> (toList a , b))) mSolc
+          maybe (throwM SolcReadFailure) (pure . (\(i,j) -> (toList i , j))) mSolc
     cps <- mapM compileOne fps
     let (cs, ss) = unzip cps
-    liftIO $ print $ length ss
+    let lss = length ss
+    when (lss > 1) $ liftIO $ putStrLn "WARNING: more than one SourceCache was found after compile. Only the first one will be used."
     return $ (concat cs, head ss)
-    --concat <$> sequence (compileOne <$> fps)
-    --error $ show $ map (view sourceFiles) $ ss
- 
-    --concat <$> f (compileOne <$> fps)
-    --mapM f (compileOne <$> fps)
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
 addresses = do

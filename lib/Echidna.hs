@@ -51,7 +51,7 @@ prepareContract cfg fs c g = do
 
   -- run processors
   ca <- view (hasLens . cryticArgs)
-  si <- return []--runSlither (NE.head fs) ca
+  si <- runSlither (NE.head fs) ca
 
   -- load tests
   (v, w, ts) <- prepareForTest p c si

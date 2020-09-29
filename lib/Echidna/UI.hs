@@ -141,8 +141,5 @@ ui v sc cs w ts d txs = do
         None ->
           pure ()
 
-      liftIO $ Data.Text.IO.putStrLn $ ppCoveredCode sc cs (final ^. coverage)
+      liftIO $ T.putStrLn $ ppCoveredCode sc cs (final ^. coverage)
       pure final
-
-
---showCoverage = undefined
