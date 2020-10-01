@@ -32,8 +32,8 @@ import System.Process             (StdStream(..), readCreateProcessWithExitCode,
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
 import System.Directory           (findExecutable)
-import Echidna.ABI                (encodeSig, hashSig, stripBytecodeMetadata, fallback)
-import Echidna.Exec               (execTx)
+import Echidna.ABI                (encodeSig, hashSig, fallback)
+import Echidna.Exec               (execTx, initialVM)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (FunctionHash, SolSignature, SignatureMap)
 import Echidna.Types.Tx           (TxConf, TxCall(..), Tx(..), initialTimestamp, initialBlockNumber)
@@ -43,8 +43,7 @@ import Echidna.Processor
 import EVM hiding (contracts)
 import qualified EVM (contracts)
 import EVM.ABI
-import EVM.Exec     (vmForEthrunCreation)
-import EVM.Solidity hiding (stripBytecodeMetadata)
+import EVM.Solidity
 import EVM.Types    (Addr)
 import EVM.Concrete (w256)
 
@@ -163,7 +162,7 @@ loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
               => [SolcContract] -> Addr -> Addr -> VM -> m VM
 loadLibraries []     _  _ vm = return vm
 loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
-  where loadRest = execStateT (execTx $ Tx (SolCreate $ l ^. creationCode) d la 8000030 0 0 (initialTimestamp, initialBlockNumber)) vm
+  where loadRest = execStateT (execTx $ Tx (SolCreate $ l ^. creationCode) d la 8000030 0 0 (0, 0)) vm
 
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
@@ -200,7 +199,7 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  (SolConf ca d ads bala balc pref _ _ libs _ fp ma ch bm fs) <- view hasLens
+  SolConf ca d ads bala balc pref _ _ libs _ fp ma ch bm fs <- view hasLens
 
   -- generate the complete abi mapping
   let bc = c ^. creationCode
@@ -219,7 +218,9 @@ loadSpecified name cs = do
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
-  blank' <- maybe (pure (vmForEthrunCreation bc)) (loadEthenoBatch (fst <$> tests)) fp
+  blank' <- maybe (pure initialVM)
+                  (loadEthenoBatch $ fst <$> tests)
+                  fp
   let blank = populateAddresses (NE.toList ads |> d) bala blank'
             & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
 
@@ -235,7 +236,7 @@ loadSpecified name cs = do
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
-      let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca 8000030 0 (w256 $ fromInteger balc) (initialTimestamp, initialBlockNumber)
+      let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca 8000030 0 (w256 $ fromInteger balc) (0, 0)
       vm' <- execStateT transaction vm
       case currentContract vm' of
         Just _  -> return (vm', neFuns, fst <$> tests, abiMapping)
