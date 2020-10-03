@@ -71,7 +71,7 @@ genTxWith m s r c g gp mv t = do
 
 getSignatures :: MonadRandom m => SignatureMap -> Maybe SignatureMap -> m SignatureMap
 getSignatures hmm Nothing = return hmm
-getSignatures hmm (Just lmm) = usuallyRarely hmm lmm -- once in a while, this will use the low-priority signature for the input generation
+getSignatures hmm (Just lmm) = usuallyVeryRarely hmm lmm -- once in a while, this will use the low-priority signature for the input generation
 
 -- | Synthesize a random 'Transaction', not using a dictionary.
 genTx :: forall m x y. (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m)
@@ -108,7 +108,11 @@ canShrinkTx :: Tx -> Bool
 canShrinkTx (Tx (SolCreate _) _ _ _ 0 0 (0, 0))   = False
 canShrinkTx (Tx (SolCall (_,l)) _ _ _ 0 0 (0, 0)) = any canShrinkAbiValue l
 canShrinkTx (Tx (SolCalldata _) _ _ _ 0 0 (0, 0)) = False
+canShrinkTx (Tx NoCall _ _ _ _ _ (0, 0))          = False
 canShrinkTx _                                     = True
+
+removeCallTx :: Tx -> Tx
+removeCallTx (Tx _ _ r _ _ _ d) = Tx NoCall 0 r 0 0 0 d
 
 -- | Given a 'Transaction', generate a random \"smaller\" 'Transaction', preserving origin,
 -- destination, value, and call signature.
@@ -118,6 +122,7 @@ shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
             SolCreate{}   -> pure c
             SolCall sc    -> SolCall <$> shrinkAbiCall sc
             SolCalldata{} -> pure c
+            NoCall        -> pure c
   lower 0 = pure $ w256 0
   lower x = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral x)
               >>= \r -> uniform [0, r] -- try 0 quicker
@@ -127,7 +132,7 @@ shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
     , set gasprice' <$> lower gp
     , set delay     <$> fmap level (liftM2 (,) (lower t) (lower b))
     ]
-  in join (uniform possibilities) <*> pure tx'
+  in join $ usuallyRarely (join (uniform possibilities) <*> pure tx') (pure $ removeCallTx tx')
 
 -- | Lift an action in the context of a component of some 'MonadState' to an action in the
 -- 'MonadState' itself.
@@ -143,6 +148,10 @@ liftSH = stateST . runState . zoom hasLens
 -- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
 -- 'Transaction's \"on-chain\".
 setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
+setupTx (Tx NoCall _ r _ _ _ (t, b)) = liftSH . sequence_ $
+  [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty
+  , block . timestamp += t, block . number += b, loadContract r] 
+
 setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty, state . gas .= g
   , tx . gasprice .= gp, tx . origin .= s, state . caller .= s, state . callvalue .= v
@@ -151,6 +160,7 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
       SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (InitCode bc) & set balance v) >> loadContract r >> state . code .= bc
       SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= encode cd
       SolCalldata cd -> incrementBalance >> loadContract r >> state . calldata .= cd
+      _              -> error "NoCall"
     incrementBalance = (env . contracts . ix r . balance) += v
     encode (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
