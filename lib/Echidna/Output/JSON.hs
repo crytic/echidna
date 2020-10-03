@@ -126,4 +126,5 @@ mapTest (solTest, testState) =
 
   mapCall (SolCreate _) = ("<CREATE>", Nothing)
   mapCall (SolCall (name, args)) = (name, Just $ ppAbiValue <$> args)
+  mapCall NoCall                 = ("*delay*", Nothing)
   mapCall (SolCalldata x) = (decodeUtf8 $ "0x" <> BS16.encode x, Nothing)
