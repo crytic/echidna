@@ -14,9 +14,9 @@ import Control.Monad.State.Strict (MonadState, execState)
 import Data.Foldable      (toList)
 import Data.Has (Has(..))
 import Data.Map.Strict (Map)
-import Data.Maybe (fromMaybe, fromJust, mapMaybe)
+import Data.Maybe (fromMaybe, fromJust, catMaybes, mapMaybe)
 import Data.Set (Set)
-import Data.Text (Text, append, pack, splitOn, unlines)
+import Data.Text (Text, head, append, pack, splitOn, unlines)
 import Data.Text.Encoding (decodeUtf8)
 import Data.List (sort, nub)
 import EVM
@@ -123,10 +123,11 @@ scoveragePoints = sum . fmap (S.size . S.map fst)
 ppCoveredCode :: SourceCache -> [SolcContract] -> CoverageMap -> Text
 ppCoveredCode sc cs s | s == mempty = ""
                       | otherwise   = append "covered code:\n\n" $
-                                      unlines $ map snd $ concat $ map (\(f,vls) -> 
+                                       unlines $ map snd $ concat $ map (\(f,vls) -> 
                                                                            (mempty, (findFile f)) : 
                                                                            (filterLines covLines $ map ((findFile f,) . decodeUtf8) $ V.toList vls)
-                                                                       ) allLines 
+                                                                       ) allLines  
+--map (pack . show) $ S.toList $ allPositions (M.fromList $ map (\c -> (view contractName c,c)) cs) sc  --Lines
                                       where 
                                        allLines = M.toList $ view sourceLines sc
                                        findFile k = fst $ M.findWithDefault ("<no source code>", mempty) k (view sourceFiles sc)
@@ -135,17 +136,18 @@ ppCoveredCode sc cs s | s == mempty = ""
 type Filename = Text
 
 markLine :: Int -> Filename -> [(Filename, Text)] -> [(Filename, Text)] 
-markLine n f ls = case splitAt (n-1) ls of
-                     (xs, (f',y):ys) -> xs ++ [(f, if (f == f') then  append "|" y else y)] ++ ys
-                     _               -> error $ "invalid line " ++ (show n) ++ " to mark"
+markLine n cf ls = case splitAt (n-1) ls of
+                     (xs, (f,y):ys) | f == cf -> xs ++ [(cf, append "|" y)] ++ ys
+                     _                        -> ls
 
 
 filterLines :: [Maybe (Filename, Int)] -> [(Filename, Text)] -> [(Filename, Text)]
-filterLines []                   ls  = ls
-filterLines (Nothing       : ns) ls  = filterLines ns ls
-filterLines ((Just (f',n)) : ns) ls  = filterLines ns (markLine n f' ls)
+filterLines []                  ls  = ls
+filterLines (Nothing      : ns) ls  = filterLines ns ls
+filterLines ((Just (f,n)) : ns) ls  = filterLines ns (markLine n f ls)
 
 
+-- map (pack . show) $ S.toList $ allPositions (M.fromList $ map (\c -> (view contractName c,c)) cs) sc
 {-
 allPositions :: Map k SolcContract -> SourceCache -> Set (Text, Int)
 allPositions solcByName sources =
@@ -162,9 +164,10 @@ allPositions solcByName sources =
 
 srcMapCov :: SourceCache -> Map BS.ByteString (Set (Int, b)) -> SolcContract -> [Maybe (Text, Int)]
 srcMapCov sc s c = nub $ sort $ map (srcMapCodePos sc) $ mapMaybe (srcMapForOpLocation c) $ S.toList $ maybe S.empty (S.map fst) $ M.lookup (stripBytecodeMetadata $ view runtimeCode c) s
+                   --catMaybes $ S.toList $ maybe S.empty (S.map (srcMapForOpLocation c . fst)) $ M.lookup (stripBytecodeMetadata $ view runtimeCode c) s
 
 srcMapForOpLocation :: SolcContract -> Int -> Maybe SrcMap
-srcMapForOpLocation c n = preview (ix n) (view runtimeSrcmap c)
+srcMapForOpLocation c n = preview (ix n) (view runtimeSrcmap c <> view creationSrcmap c)
 
 linesByName :: SourceCache -> Map Text (V.Vector BS.ByteString)
 linesByName sources =

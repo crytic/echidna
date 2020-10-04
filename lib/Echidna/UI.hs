@@ -20,7 +20,7 @@ import qualified Data.ByteString.Lazy as BS
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.IORef
-import qualified Data.Text.IO (putStrLn)
+import qualified Data.Text.IO as T (putStrLn)
 import EVM (VM)
 import EVM.Solidity (SourceCache, SolcContract)
 import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
