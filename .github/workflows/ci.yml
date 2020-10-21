@@ -23,6 +23,12 @@ jobs:
             brew: automake
 
     steps:
+      - name: Workaround for actions/virtual-environments#1811
+        if: runner.os == 'macOS'
+        run: |
+          brew untap local/homebrew-openssl
+          brew untap local/homebrew-python2
+
       - name: Get Packages
         uses: mstksg/get-package@v1
         with:
