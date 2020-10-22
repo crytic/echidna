@@ -103,7 +103,12 @@ jobs:
             stack test --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
           done
 
-      - name: Compress binary
+      - name: Amend and compress binaries (macOS)
+        if: runner.os == 'macOS'
+        run: .github/scripts/build-macos-release.sh
+
+      - name: Compress binary (Linux)
+        if: runner.os == 'Linux'
         run: GZIP=-9 tar -czf echidna-test.tar.gz $HOME/.local/bin/echidna-test
 
       - name: Upload artifact
