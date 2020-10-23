@@ -23,6 +23,18 @@ data TxCall = SolCreate   ByteString
 makePrisms ''TxCall
 $(deriveJSON defaultOptions ''TxCall)
 
+maxGasPerBlock :: Integer
+maxGasPerBlock = 12500000 
+
+unlimitedGasPerBlock :: Word
+unlimitedGasPerBlock = 0xffffffff
+
+defaultTimeDelay :: Integer
+defaultTimeDelay = 604800
+
+defaultBlockDelay :: Integer
+defaultBlockDelay = 60480
+
 initialTimestamp :: Word
 initialTimestamp = 1524785992 -- Thu Apr 26 23:39:52 UTC 2018
 
