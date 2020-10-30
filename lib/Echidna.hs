@@ -57,6 +57,6 @@ prepareContract cfg fs c g = do
   (v, w, ts) <- prepareForTest p c si
   let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
   -- start ui and run tests
-  return (v, w, ts, Just $ mkGenDict df (extractConstants cs ++ timeConstants ++ NE.toList ads ++ ads') [] g (returnTypes cs), txs)
+  return (v, w, ts, Just $ mkGenDict df (extractConstants cs ++ timeConstants ++ largeConstants ++ NE.toList ads ++ ads') [] g (returnTypes cs), txs)
   where cd = cfg ^. cConf . corpusDir
         df = cfg ^. cConf . dictFreq
