@@ -24,7 +24,7 @@ makePrisms ''TxCall
 $(deriveJSON defaultOptions ''TxCall)
 
 maxGasPerBlock :: Integer
-maxGasPerBlock = 12500000 
+maxGasPerBlock = 12500000 -- https://cointelegraph.com/news/ethereum-miners-vote-to-increase-gas-limit-causing-community-debate
 
 unlimitedGasPerBlock :: Word
 unlimitedGasPerBlock = 0xffffffff
