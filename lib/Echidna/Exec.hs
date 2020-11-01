@@ -11,20 +11,20 @@ import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.State.Strict (MonadState, execState)
 import Data.Has (Has(..))
-import Data.Map.Strict (Map)
+import Data.Map.Strict (Map, fromList)
 import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import EVM
 import EVM.Op (Op(..))
-import EVM.Exec (exec)
+import EVM.Exec (exec, vmForEthrunCreation)
+import EVM.Solidity (stripBytecodeMetadata)
 
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
 import qualified Data.Set as S
 
-import Echidna.ABI (stripBytecodeMetadata)
 import Echidna.Transaction
-import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst)
+import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
 import Echidna.Events (emptyEvents)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
@@ -36,9 +36,9 @@ classifyError (OutOfGas _ _)         = RevertE
 classifyError (Revert _)             = RevertE
 classifyError (UnrecognizedOpcode _) = RevertE
 classifyError (Query _)              = RevertE
+classifyError StackLimitExceeded     = RevertE
 classifyError StackUnderrun          = IllegalE
 classifyError BadJumpDestination     = IllegalE
-classifyError StackLimitExceeded     = IllegalE
 classifyError IllegalOverflow        = IllegalE
 classifyError _                      = UnknownE
 
@@ -125,3 +125,8 @@ traceCoverage = do
   v <- use hasLens
   let c = v ^. state . code
   hasLens <>= [readOp (BS.index c $ v ^. state . pc) c]
+
+initialVM :: VM
+initialVM = vmForEthrunCreation mempty & block . timestamp .~ initialTimestamp
+                                       & block . number .~ initialBlockNumber
+                                       & env . contracts .~ fromList []       -- fixes weird nonce issues

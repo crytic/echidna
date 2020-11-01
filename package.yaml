@@ -16,7 +16,6 @@ dependencies:
   - brick                <= 0.46
   - base16-bytestring
   - bytestring
-  - cborg
   - containers
   - data-dword
   - data-has
