@@ -184,7 +184,7 @@ parseAbiValue (v, 'i':'n':'t':_)           = case readMaybe v of
                                                Just m -> makeNumAbiValues m
                                                _                -> []
 
-parseAbiValue (v, ['s','t','r','i','n','g'])     = makeArrayAbiValues $ BSU.fromString v --[AbiString $ BSU.fromString v]
+parseAbiValue (v, ['s','t','r','i','n','g'])     = makeArrayAbiValues $ BSU.fromString v
 parseAbiValue (v, ['a','d','d','r','e','s','s']) = case readMaybe v :: Maybe Int of
                                                           Just n -> case readMaybe ("0x" ++ showHex n "") of
                                                                       Just a  -> [AbiAddress a]
