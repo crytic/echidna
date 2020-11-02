@@ -167,7 +167,7 @@ mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Noth
 mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue
 mkValidAbiUInt i x = if x <= 2 ^ i - 1 then Just $ AbiUInt i x else Nothing
 
-makeNumAbiValues :: Int -> [AbiValue]
+makeNumAbiValues :: Integer -> [AbiValue]
 makeNumAbiValues i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral [i-1..i+1] in
     catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt) 
 
