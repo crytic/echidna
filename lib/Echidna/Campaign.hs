@@ -28,8 +28,7 @@ import Data.Has (Has(..))
 import Data.Text (Text)
 import EVM
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
-import EVM.Symbolic (Buffer(..))
-import EVM.Types (Addr)
+import EVM.Types (Addr, Buffer(..))
 import System.Random (mkStdGen)
 
 import qualified Data.HashMap.Strict as H

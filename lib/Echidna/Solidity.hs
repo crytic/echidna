@@ -41,7 +41,6 @@ import Echidna.Processor
 import EVM hiding (contracts, path)
 import qualified EVM (contracts)
 import EVM.ABI
---import EVM.Exec     (vmForEthrunCreation)
 import EVM.Solidity
 import EVM.Types    (Addr)
 import EVM.Concrete (w256)

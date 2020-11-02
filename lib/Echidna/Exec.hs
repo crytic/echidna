@@ -18,7 +18,8 @@ import EVM
 import EVM.Op (Op(..))
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Solidity (stripBytecodeMetadata)
-import EVM.Symbolic (Buffer(..))
+import EVM.Types (Buffer(..))
+import EVM.Symbolic (litWord)
 
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
@@ -126,6 +127,6 @@ traceCoverage = do
   hasLens <>= [readOp (BS.index c $ v ^. state . pc) c]
 
 initialVM :: VM
-initialVM = vmForEthrunCreation mempty & block . timestamp .~ initialTimestamp
+initialVM = vmForEthrunCreation mempty & block . timestamp .~ litWord initialTimestamp
                                        & block . number .~ initialBlockNumber
                                        & env . contracts .~ fromList []       -- fixes weird nonce issues
