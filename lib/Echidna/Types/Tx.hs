@@ -23,6 +23,24 @@ data TxCall = SolCreate   ByteString
 makePrisms ''TxCall
 $(deriveJSON defaultOptions ''TxCall)
 
+maxGasPerBlock :: Integer
+maxGasPerBlock = 12500000 -- https://cointelegraph.com/news/ethereum-miners-vote-to-increase-gas-limit-causing-community-debate
+
+unlimitedGasPerBlock :: Word
+unlimitedGasPerBlock = 0xffffffff
+
+defaultTimeDelay :: Integer
+defaultTimeDelay = 604800
+
+defaultBlockDelay :: Integer
+defaultBlockDelay = 60480
+
+initialTimestamp :: Word
+initialTimestamp = 1524785992 -- Thu Apr 26 23:39:52 UTC 2018
+
+initialBlockNumber :: Word
+initialBlockNumber = 4370000  -- Initial byzantium block
+
 -- | A transaction is either a @CREATE@ or a regular call with an origin, destination, and value.
 -- Note: I currently don't model nonces or signatures here.
 data Tx = Tx { _call  :: TxCall       -- | Call

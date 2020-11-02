@@ -1,5 +1,21 @@
 ## TODO
 
+## 1.5.1
+
+* Fix timestamp and block delays having the initial timestamp/block added to them (#460, #469)
+* Fix GitHub actions due to new macOS image (#468)
+* Relax `package.yaml` constraints (#466)
+* Fix `extcodesize` by creating contracts correctly (#453, #454, #465)
+* Refactor unit tests (#457)
+* Add seed to UI (#456)
+* Set an initial timestamp and block number (#455)
+* Better README (#450)
+* Code simplifications (#448)
+* Detect contract deployment failures (#447)
+* DockerHub containers in addition to GitHub (#445)
+* Brought back print reporting after exiting the UI (#441)
+* Refactor `Tx` (#437)
+
 ## 1.5.0
 
 * Switch to x.y.z versioning scheme

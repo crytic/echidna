@@ -10,7 +10,7 @@ module Echidna.Transaction where
 import Prelude hiding (Word)
 
 import Control.Lens
-import Control.Monad (join, liftM2, liftM3, liftM5, unless)
+import Control.Monad (join, liftM2, unless)
 import Control.Monad.Catch (MonadThrow, bracket)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
@@ -23,6 +23,7 @@ import Data.Maybe (catMaybes)
 import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
+import EVM.Solidity (stripBytecodeMetadata)
 import EVM.Types (Addr)
 
 import qualified System.Directory as SD
@@ -56,16 +57,17 @@ genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m)
           -> Word                                     -- ^ Max value generator
           -> m (Word, Word)                           -- ^ Delay generator
           -> m Tx
-genTxWith m s r c g gp mv t = use hasLens >>= \(World ss hmm lmm ps) ->
-  getSignatures hmm lmm >>= \mm ->
+genTxWith m s r c g gp mv t = do
+  World ss hmm lmm ps <- use hasLens
+  mm <- getSignatures hmm lmm
   let s' = s ss
       r' = r rs
       c' = join $ liftM2 c s' r'
       v' = genValue ps mv
       rs = NE.fromList . catMaybes $ mkR <$> toList m
       mkR = _2 (flip M.lookup mm . view (bytecode . to stripBytecodeMetadata))
-  in
-    ((liftM5 Tx (SolCall <$> c') s' (fst <$> r') g gp <*>) =<< liftM3 v' s' r' c') <*> t
+  v'' <- v' <$> s' <*> r' <*> c'
+  Tx <$> (SolCall <$> c') <*> s' <*> (fst <$> r') <*> g <*> gp <*> v'' <*> t
 
 getSignatures :: MonadRandom m => SignatureMap -> Maybe SignatureMap -> m SignatureMap
 getSignatures hmm Nothing = return hmm
@@ -81,23 +83,25 @@ genTx m = use (hasLens :: Lens' y World) >>= evalStateT (genTxM m) . (defaultDic
 genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has GenDict y, Has World y, MonadThrow m)
   => Map Addr Contract
   -> m Tx
-genTxM m = view hasLens >>= \(TxConf _ g maxGp t b mv) -> genTxWith
-  m
-  rElem rElem                                                                -- src and dst
-  (const $ genInteractionsM . snd)                                           -- call itself
-  (pure g) (inRange maxGp) mv                                                -- gas, gasprice, value
-  (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
-     where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
+genTxM m = do
+  TxConf _ g maxGp t b mv <- view hasLens
+  genTxWith
+    m
+    rElem rElem                                                                -- src and dst
+    (const $ genInteractionsM . snd)                                           -- call itself
+    (pure g) (inRange maxGp) mv                                                -- gas, gasprice, value
+    (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
+  where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
 
 genValue :: (MonadRandom m) => [FunctionHash] -> Word -> Addr -> ContractA -> SolCall -> m Word
-genValue ps mv _ _ sc = 
+genValue ps mv _ _ sc =
   if sig `elem` ps
   then fromIntegral <$> randValue
   else do
     g <- usuallyRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
     fromIntegral <$> g
   where randValue = getRandomR (1 :: Integer, fromIntegral mv)
-        sig = (hashSig . encodeSig . signatureCall) sc 
+        sig = (hashSig . encodeSig . signatureCall) sc
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool
@@ -144,7 +148,7 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   , tx . gasprice .= gp, tx . origin .= s, state . caller .= s, state . callvalue .= v
   , block . timestamp += t, block . number += b, setup] where
     setup = case c of
-      SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (RuntimeCode bc) & set balance v) >> loadContract r
+      SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (InitCode bc) & set balance v) >> loadContract r >> state . code .= bc
       SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= encode cd
       SolCalldata cd -> incrementBalance >> loadContract r >> state . calldata .= cd
     incrementBalance = (env . contracts . ix r . balance) += v
@@ -152,7 +156,7 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
 
 saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
-saveTxs (Just d) txs = mapM_ saveTx txs where 
+saveTxs (Just d) txs = mapM_ saveTx txs where
   saveTx v = do let fn = d ++ "/" ++ (show . hash . show) v ++ ".txt"
                 b <- SD.doesFileExist fn
                 unless b $ encodeFile fn (toJSON v)
@@ -171,7 +175,7 @@ withCurrentDirectory dir action =
     action
 
 loadTxs :: Maybe FilePath -> IO [[Tx]]
-loadTxs (Just d) = do 
+loadTxs (Just d) = do
   fs <- listDirectory d
   css <- mapM readCall <$> mapM SD.makeRelativeToCurrentDirectory fs
   txs <- catMaybes <$> withCurrentDirectory d css
@@ -179,4 +183,4 @@ loadTxs (Just d) = do
   return txs
   where readCall f = decodeStrict <$> BS.readFile f
 
-loadTxs Nothing  = pure [] 
+loadTxs Nothing  = pure []

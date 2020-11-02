@@ -51,8 +51,10 @@ classifyRes _ = ResOther
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => SolTest -> m Bool
-checkETest t = asks getter >>= \(TestConf p s) -> view (hasLens . propGas) >>= \g -> do
-  og <- get
+checkETest t = do
+  TestConf p s <- asks getter
+  g <- view (hasLens . propGas)
+  vm <- get -- save EVM state
   -- To check these tests, we're going to need a couple auxilary functions:
   --   * matchR[eturn] checks if we just tried to exec 0xfe, which means we failed an assert
   --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
@@ -65,7 +67,7 @@ checkETest t = asks getter >>= \(TestConf p s) -> view (hasLens . propGas) >>= \
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
     Right sig    -> (||) <$> fmap matchR       (use $ hasLens . result)
                          <*> fmap (matchC sig) (use $ hasLens . state . calldata)
-  put og
+  put vm -- restore EVM state
   pure res
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
@@ -75,8 +77,10 @@ shrinkSeq :: ( MonadRandom m, MonadReader x m, MonadThrow m
           => m Bool -> [Tx] -> m [Tx]
 shrinkSeq f xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
   check xs' = do {og <- get; res <- traverse_ execTx xs' >> f; put og; pure res}
-  shrinkSender x = view (hasLens . sender) >>= \l -> case ifind (const (== x ^. src)) l of
-    Nothing     -> pure x
-    Just (i, _) -> flip (set src) x . fromMaybe (x ^. src) <$> uniformMay (l ^.. folded . indices (< i))
+  shrinkSender x = do
+    l <- view (hasLens . sender)
+    case ifind (const (== x ^. src)) l of
+      Nothing     -> pure x
+      Just (i, _) -> flip (set src) x . fromMaybe (x ^. src) <$> uniformMay (l ^.. folded . indices (< i))
   shrunk = mapM (shrinkSender <=< shrinkTx) xs
   shorten = (\i -> take i xs ++ drop (i + 1) xs) <$> getRandomR (0, length xs)

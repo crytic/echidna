@@ -11,7 +11,6 @@ import Control.Exception          (Exception)
 import Control.Monad.Catch        (MonadThrow(..))
 import Data.Aeson                 (decode, Value(..))
 import Data.Text                  (Text, pack, unpack)
-import Data.Maybe                 (catMaybes)
 import Text.Read                  (readMaybe)
 import System.Directory           (findExecutable)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
@@ -147,27 +146,32 @@ mconsts _  _         = []
 
 mconsts' :: Text -> Value -> [SlitherInfo]
 mconsts' _ (Object o) = case (M.lookup "value" o, M.lookup "type" o) of
-                         (Just (String s), Just (String t)) -> map ConstantValue $ catMaybes [parseAbiValue (unpack s, unpack t)]
+                         (Just (String s), Just (String t)) -> map ConstantValue $ parseAbiValue (unpack s, unpack t)
                          (Nothing, Nothing)                 -> concatMap (uncurry mconsts') $ M.toList o
                          _                                  -> error "invalid JSON formatting parsing constants"
 
 mconsts' _ (Array  a) = concatMap (mconsts' "") a
 mconsts' _  _         = []
 
-parseAbiValue :: (String, String) -> Maybe AbiValue
+--dec i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral [i-1..i+1] in
+--    AbiAddress i : catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt) 
+
+parseAbiValue :: (String, String) -> [AbiValue]
 parseAbiValue (v, 'u':'i':'n':'t':s)       = case (readMaybe s, readMaybe v) of 
-                                               (Just n, Just m) -> Just (AbiUInt n m)
-                                               _                -> Nothing
+                                               (Just n, Just m) -> [AbiInt n m, AbiUInt n (fromInteger . toInteger $ m)] 
+                                               _                -> []
 
 parseAbiValue (v, 'i':'n':'t':s)           = case (readMaybe s, readMaybe v) of 
-                                               (Just n, Just m) -> Just (AbiInt n m)
-                                               _                -> Nothing
+                                               (Just n, Just m) -> if m >= 0 then [AbiInt n m, AbiUInt n (fromInteger . toInteger $ m)]  else [AbiInt n m]
+                                               _                -> []
 
-parseAbiValue (v, ['s','t','r','i','n','g'])     = Just $ AbiString $ BSU.fromString v
+parseAbiValue (v, ['s','t','r','i','n','g'])     = [AbiString $ BSU.fromString v]
 parseAbiValue (v, ['a','d','d','r','e','s','s']) = case readMaybe v :: Maybe Int of
-                                                          Just n -> fmap AbiAddress (readMaybe ("0x" ++ showHex n ""))
-                                                          _      -> Nothing
-parseAbiValue _                               = Nothing 
+                                                          Just n -> case readMaybe ("0x" ++ showHex n "") of
+                                                                      Just a  -> [AbiAddress a]
+                                                                      Nothing -> []
+                                                          _      -> []
+parseAbiValue _                               = []
 
 
 -- parse actual generation graph
