@@ -288,20 +288,11 @@ loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has Tx
              => NE.NonEmpty FilePath -> Maybe Text -> m (VM, World, [SolTest])
 loadSolTests fp name = loadWithCryticCompile fp name >>= (\t -> prepareForTest t Nothing [])
 
-commonTypeSizes :: [Int]
-commonTypeSizes = [8,16..256]
-
-mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
-mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Nothing
-
 mkLargeAbiInt :: Int -> AbiValue
 mkLargeAbiInt i = AbiInt i $ 2 ^ (i - 1) - 1
 
 mkLargeAbiUInt :: Int -> AbiValue
 mkLargeAbiUInt i = AbiUInt i $ 2 ^ i - 1
-
-mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue
-mkValidAbiUInt i x = if x <= 2 ^ i - 1 then Just $ AbiUInt i x else Nothing
 
 timeConstants :: [AbiValue]
 timeConstants = concatMap dec [initialTimestamp, initialBlockNumber]

@@ -10,7 +10,10 @@ import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Exception          (Exception)
 import Control.Monad.Catch        (MonadThrow(..))
 import Data.Aeson                 (decode, Value(..))
+import Data.DoubleWord            (Int256, Word256)
+import Data.Maybe                 (catMaybes)
 import Data.Text                  (Text, pack, unpack)
+import Data.List                  (nub)
 import Text.Read                  (readMaybe)
 import System.Directory           (findExecutable)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
@@ -20,10 +23,12 @@ import Numeric                    (showHex)
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import qualified Data.ByteString.UTF8 as BSU
 import qualified Data.HashMap.Strict as M
+import qualified Data.ByteString     as BS
 
 import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
 import EVM.ABI 
 import Echidna.ABI (hashSig)
+
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
 -- instance for more detailed explanations.
@@ -146,26 +151,40 @@ mconsts _  _         = []
 
 mconsts' :: Text -> Value -> [SlitherInfo]
 mconsts' _ (Object o) = case (M.lookup "value" o, M.lookup "type" o) of
-                         (Just (String s), Just (String t)) -> map ConstantValue $ parseAbiValue (unpack s, unpack t)
+                         (Just (String s), Just (String t)) -> map ConstantValue $ nub $ parseAbiValue (unpack s, unpack t)
                          (Nothing, Nothing)                 -> concatMap (uncurry mconsts') $ M.toList o
                          _                                  -> error "invalid JSON formatting parsing constants"
 
 mconsts' _ (Array  a) = concatMap (mconsts' "") a
 mconsts' _  _         = []
 
---dec i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral [i-1..i+1] in
---    AbiAddress i : catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt) 
+commonTypeSizes :: [Int]
+commonTypeSizes = [8,16..256]
+
+mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
+mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Nothing
+
+mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue
+mkValidAbiUInt i x = if x <= 2 ^ i - 1 then Just $ AbiUInt i x else Nothing
+
+makeNumAbiValues :: Int -> [AbiValue]
+makeNumAbiValues i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral [i-1..i+1] in
+    catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt) 
+
+makeArrayAbiValues :: BS.ByteString -> [AbiValue]
+makeArrayAbiValues b = let size = BS.length b in [AbiString b, AbiBytesDynamic b] ++
+ fmap (\n -> AbiBytes n . BS.append b $ BS.replicate (n - size) 0) [size..32]
 
 parseAbiValue :: (String, String) -> [AbiValue]
-parseAbiValue (v, 'u':'i':'n':'t':s)       = case (readMaybe s, readMaybe v) of 
-                                               (Just n, Just m) -> [AbiInt n m, AbiUInt n (fromInteger . toInteger $ m)] 
+parseAbiValue (v, 'u':'i':'n':'t':_)       = case readMaybe v of 
+                                               (Just m) -> makeNumAbiValues m
+                                               _        -> []
+
+parseAbiValue (v, 'i':'n':'t':_)           = case readMaybe v of 
+                                               Just m -> makeNumAbiValues m
                                                _                -> []
 
-parseAbiValue (v, 'i':'n':'t':s)           = case (readMaybe s, readMaybe v) of 
-                                               (Just n, Just m) -> if m >= 0 then [AbiInt n m, AbiUInt n (fromInteger . toInteger $ m)]  else [AbiInt n m]
-                                               _                -> []
-
-parseAbiValue (v, ['s','t','r','i','n','g'])     = [AbiString $ BSU.fromString v]
+parseAbiValue (v, ['s','t','r','i','n','g'])     = makeArrayAbiValues $ BSU.fromString v --[AbiString $ BSU.fromString v]
 parseAbiValue (v, ['a','d','d','r','e','s','s']) = case readMaybe v :: Maybe Int of
                                                           Just n -> case readMaybe ("0x" ++ showHex n "") of
                                                                       Just a  -> [AbiAddress a]
