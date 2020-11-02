@@ -12,6 +12,7 @@ fi
 git clone https://github.com/scipr-lab/libff --recursive
 cd libff
 git submodule init && git submodule update
+git checkout v1.0.0
 
 ARGS="-DCMAKE_INSTALL_PREFIX=$PREFIX -DWITH_PROCPS=OFF"
 CXXFLAGS=""

@@ -26,8 +26,8 @@ import EVM hiding (value, path)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
 import EVM.Solidity (stripBytecodeMetadata)
-import EVM.Symbolic (Buffer(..), litWord, litAddr)
-import EVM.Types (Addr)
+import EVM.Symbolic ( litWord, litAddr)
+import EVM.Types (Addr, Buffer(..))
 
 import qualified System.Directory as SD
 import qualified Data.ByteString as BS
@@ -87,12 +87,12 @@ genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has Gen
   => Map Addr Contract
   -> m Tx
 genTxM m = do
-  TxConf _ g _ t b mv <- view hasLens
+  TxConf _ g gp t b mv <- view hasLens
   genTxWith
     m
     rElem rElem                                                                -- src and dst
     (const $ genInteractionsM . snd)                                           -- call itself
-    (pure g) (pure 0) mv                                                       -- gas, gasprice, value
+    (pure g) (pure gp) mv                                                      -- gas, gasprice, value
     (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
   where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
 
@@ -149,7 +149,7 @@ setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
 setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty, state . gas .= g
   , tx . gasprice .= gp, tx . origin .= s, state . caller .= litAddr s, state . callvalue .= litWord v
-  , block . timestamp += t, block . number += b, setup] where
+  , block . timestamp += litWord t, block . number += b, setup] where
     setup = case c of
       SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (InitCode bc) & set balance v) >> loadContract r >> state . code .= bc
       SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata (encode cd)

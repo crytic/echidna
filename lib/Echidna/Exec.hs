@@ -11,24 +11,26 @@ module Echidna.Exec where
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.State.Strict (MonadState, execState)
-import Data.Foldable      (toList)
 import Data.Has (Has(..))
-import Data.Map.Strict (Map)
-import Data.Maybe (fromMaybe, fromJust, catMaybes, mapMaybe)
+import Data.Maybe (fromMaybe, fromJust, mapMaybe)
+import Data.Map.Strict (Map, fromList)
 import Data.Set (Set)
-import Data.Text (Text, head, append, pack, splitOn, unlines)
+import Data.Text (Text, append, unlines)
 import Data.Text.Encoding (decodeUtf8)
 import Data.List (sort, nub)
 import EVM
 import EVM.Op (Op(..))
+
+
 import EVM.Exec (exec)
 import EVM.Solidity --(SourceCache, SrcMap, SolcContract, contractName, sourceLines, sourceFiles, runtimeCode, runtimeSrcmap, creationSrcmap)
-import EVM.Symbolic (Buffer(..))
-import EVM.Debug (srcMapCodePos, srcMapCode)
+import EVM.Debug (srcMapCodePos) --, srcMapCode)
 import Prelude hiding (unlines)
 
-import qualified Data.Vector.Storable as VS
 import qualified Data.Vector as V
+import EVM.Exec (vmForEthrunCreation)
+import EVM.Types (Buffer(..))
+import EVM.Symbolic (litWord)
 
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
@@ -36,7 +38,7 @@ import qualified Data.Set as S
 
 --import Echidna.ABI (stripBytecodeMetadata)
 import Echidna.Transaction
-import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst)
+import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
@@ -47,9 +49,9 @@ classifyError (OutOfGas _ _)         = RevertE
 classifyError (Revert _)             = RevertE
 classifyError (UnrecognizedOpcode _) = RevertE
 classifyError (Query _)              = RevertE
+classifyError StackLimitExceeded     = RevertE
 classifyError StackUnderrun          = IllegalE
 classifyError BadJumpDestination     = IllegalE
-classifyError StackLimitExceeded     = IllegalE
 classifyError IllegalOverflow        = IllegalE
 classifyError _                      = UnknownE
 
@@ -195,3 +197,8 @@ traceCoverage = do
   v <- use hasLens
   let c = v ^. state . code
   hasLens <>= [readOp (BS.index c $ v ^. state . pc) c]
+
+initialVM :: VM
+initialVM = vmForEthrunCreation mempty & block . timestamp .~ litWord initialTimestamp
+                                       & block . number .~ initialBlockNumber
+                                       & env . contracts .~ fromList []       -- fixes weird nonce issues
