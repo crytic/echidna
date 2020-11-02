@@ -2,14 +2,16 @@ module Main where
 
 import Control.Lens ((^.), (.~), (&))
 import Control.Monad (unless)
-import Control.Monad.Reader (runReaderT)
+import Control.Monad.Reader (runReaderT, when)
 import Control.Monad.Random (getRandom)
+import Data.Maybe (isJust, fromJust)
 import Data.Text (unpack)
 import Data.Version (showVersion)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.IO (hPutStrLn, stderr)
+import System.Directory (createDirectoryIfMissing)
 
 import Echidna
 import Echidna.Config
@@ -18,6 +20,7 @@ import Echidna.Types.Campaign
 import Echidna.Campaign (isSuccess)
 import Echidna.UI
 import Echidna.Transaction
+import Echidna.Output.Source
 
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as DS
@@ -61,13 +64,19 @@ main = do
   unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
   let cd = cfg ^. cConf . corpusDir
 
-  cpg <- flip runReaderT cfg $ do
+  when (isJust cd) $ createDirectoryIfMissing True (fromJust cd <> "/coverage")
+
+  (sc, cs, cpg) <- flip runReaderT cfg $ do
     (v, sc, cs, w, ts, d, txs) <- prepareContract cfg f c g
     -- start ui and run tests
-    ui v sc cs w ts d txs
+    r <- ui v w ts d txs
+    return (sc, cs, r)
 
   -- save corpus
   saveTxs cd (snd <$> DS.toList (cpg ^. corpus))
+
+  -- save source coverage
+  saveCoveredCode cd sc cs (cpg ^. coverage) 
 
   if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
   where overrideConfig cfg (Options _ _ _ fmt) =

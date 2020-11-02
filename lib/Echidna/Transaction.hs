@@ -164,7 +164,7 @@ concreteCalldata cd = (ConcreteBuffer cd, literal . fromIntegral . BS.length $ c
 
 saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
 saveTxs (Just d) txs = mapM_ saveTx txs where
-  saveTx v = do let fn = d ++ "/" ++ (show . hash . show) v ++ ".txt"
+  saveTx v = do let fn = d ++ "/coverage/" ++ (show . hash . show) v ++ ".txt"
                 b <- SD.doesFileExist fn
                 unless b $ encodeFile fn (toJSON v)
 saveTxs Nothing  _   = pure ()
@@ -183,7 +183,7 @@ withCurrentDirectory dir action =
 
 loadTxs :: Maybe FilePath -> IO [[Tx]]
 loadTxs (Just d) = do
-  fs <- listDirectory d
+  fs <- listDirectory (d ++ "/coverage")
   css <- mapM readCall <$> mapM SD.makeRelativeToCurrentDirectory fs
   txs <- catMaybes <$> withCurrentDirectory d css
   putStrLn ("Loaded total of " ++ show (length txs) ++ " transactions from " ++ d)

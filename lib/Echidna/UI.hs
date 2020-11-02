@@ -20,7 +20,6 @@ import qualified Data.ByteString.Lazy as BS
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.IORef
-import qualified Data.Text.IO as T (putStrLn)
 import EVM (VM)
 import EVM.Solidity (SourceCache, SolcContract)
 import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
@@ -33,7 +32,6 @@ import UnliftIO.Timeout (timeout)
 import Echidna.Campaign (campaign)
 import Echidna.ABI
 import qualified Echidna.Output.JSON
-import Echidna.Exec (ppCoveredCode)
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Types.Campaign
@@ -88,14 +86,12 @@ isTerminal = liftIO $ (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
       , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Names x, Has TxConf x, Has UIConf x)
    => VM             -- ^ Initial VM state
-   -> SourceCache
-   -> [SolcContract] --
    -> World          -- ^ Initial world state
    -> [SolTest]      -- ^ Tests to evaluate
    -> Maybe GenDict
    -> [[Tx]]
    -> m Campaign
-ui v sc cs w ts d txs = do
+ui v w ts d txs = do
   ref <- liftIO $ newIORef defaultCampaign
   let updateRef = use hasLens >>= liftIO . atomicWriteIORef ref
       secToUsec = (* 1000000)
@@ -141,5 +137,4 @@ ui v sc cs w ts d txs = do
         None ->
           pure ()
 
-      liftIO $ T.putStrLn $ ppCoveredCode sc cs (final ^. coverage)
       pure final

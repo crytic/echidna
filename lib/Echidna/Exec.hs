@@ -36,7 +36,6 @@ import qualified Data.ByteString as BS
 import qualified Data.Map as M
 import qualified Data.Set as S
 
---import Echidna.ABI (stripBytecodeMetadata)
 import Echidna.Transaction
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
 
@@ -120,66 +119,6 @@ coveragePoints = sum . fmap S.size
 -- This is useful to report a coverage measure to the user
 scoveragePoints :: CoverageMap -> Int
 scoveragePoints = sum . fmap (S.size . S.map fst)
-
--- | Pretty-print the covered code
-ppCoveredCode :: SourceCache -> [SolcContract] -> CoverageMap -> Text
-ppCoveredCode sc cs s | s == mempty = ""
-                      | otherwise   = append "covered code:\n\n" $
-                                       unlines $ map snd $ concat $ map (\(f,vls) -> 
-                                                                           (mempty, (findFile f)) : 
-                                                                           (filterLines covLines $ map ((findFile f,) . decodeUtf8) $ V.toList vls)
-                                                                       ) allLines  
---map (pack . show) $ S.toList $ allPositions (M.fromList $ map (\c -> (view contractName c,c)) cs) sc  --Lines
-                                      where 
-                                       allLines = M.toList $ view sourceLines sc
-                                       findFile k = fst $ M.findWithDefault ("<no source code>", mempty) k (view sourceFiles sc)
-                                       covLines = concat $ map (srcMapCov sc s) cs
-
-type Filename = Text
-
-markLine :: Int -> Filename -> [(Filename, Text)] -> [(Filename, Text)] 
-markLine n cf ls = case splitAt (n-1) ls of
-                     (xs, (f,y):ys) | f == cf -> xs ++ [(cf, append "|" y)] ++ ys
-                     _                        -> ls
-
-
-filterLines :: [Maybe (Filename, Int)] -> [(Filename, Text)] -> [(Filename, Text)]
-filterLines []                  ls  = ls
-filterLines (Nothing      : ns) ls  = filterLines ns ls
-filterLines ((Just (f,n)) : ns) ls  = filterLines ns (markLine n f ls)
-
-
--- map (pack . show) $ S.toList $ allPositions (M.fromList $ map (\c -> (view contractName c,c)) cs) sc
-{-
-allPositions :: Map k SolcContract -> SourceCache -> Set (Text, Int)
-allPositions solcByName sources =
-      ( S.fromList
-      . mapMaybe (srcMapCodePos sources)
-      . toList
-      $ mconcat
-        ( solcByName
-        & M.elems
-        & map (\x -> view runtimeSrcmap x <> view creationSrcmap x)
-        )
-      )
--}
-
-srcMapCov :: SourceCache -> Map BS.ByteString (Set (Int, b)) -> SolcContract -> [Maybe (Text, Int)]
-srcMapCov sc s c = nub $ sort $ map (srcMapCodePos sc) $ mapMaybe (srcMapForOpLocation c) $ S.toList $ maybe S.empty (S.map fst) $ M.lookup (stripBytecodeMetadata $ view runtimeCode c) s
-                   --catMaybes $ S.toList $ maybe S.empty (S.map (srcMapForOpLocation c . fst)) $ M.lookup (stripBytecodeMetadata $ view runtimeCode c) s
-
-srcMapForOpLocation :: SolcContract -> Int -> Maybe SrcMap
-srcMapForOpLocation c n = preview (ix n) (view runtimeSrcmap c <> view creationSrcmap c)
-
-linesByName :: SourceCache -> Map Text (V.Vector BS.ByteString)
-linesByName sources =
-      ( M.fromList
-      . map
-          (\(k, v) ->
-             (fst (fromJust (M.lookup k (view sourceFiles sources))), v))
-      . M.toList
-      $ view sourceLines sources
-      ) 
 
 -- | Capture the current PC and bytecode (without metadata). This should identify instructions uniquely.
 pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
