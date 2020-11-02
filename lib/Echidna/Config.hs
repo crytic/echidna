@@ -16,7 +16,6 @@ import Control.Monad.State (StateT(..), runStateT)
 import Control.Monad.Trans (lift)
 import Data.Bool (bool)
 import Data.Aeson
-import Data.Functor ((<&>))
 import Data.Has (Has(..))
 import Data.HashMap.Strict (keys)
 import Data.HashSet (HashSet, fromList, insert, difference)
@@ -108,7 +107,7 @@ instance FromJSON EConfigWithUsage where
                 getWord s d = C Dull . fromIntegral <$> v ..:? s ..!= (d :: Integer)
                 xc = TxConf <$> getWord "propMaxGas" maxGasPerBlock
                             <*> getWord "testMaxGas" maxGasPerBlock
-                            <*> getWord "maxGasprice" 100000000000
+                            <*> getWord "maxGasprice" 0
                             <*> getWord "maxTimeDelay" defaultTimeDelay     
                             <*> getWord "maxBlockDelay" defaultBlockDelay
                             <*> getWord "maxValue" 100000000000000000000 -- 100 eth
