@@ -17,13 +17,11 @@ extra-deps:
 - text-format-0.3.2
 - these-1.0.1
 - tree-view-0.5
+- sbv-8.8
 - witherable-0.3.5
 - witherable-class-0
 - github: dmjio/semver-range
   commit: d8d9db892ddb6ae267c9bcbc4f6602668433f12a
-- github: leventerkok/sbv # 8.7.5
-  # TODO: sbv 8.8
-  commit: 91637c043d206530bc64d7eac88d2f80e8db0b85
 
 extra-include-dirs:
 - /usr/local/opt/readline/include
