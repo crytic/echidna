@@ -71,7 +71,11 @@ data TxResult = Success
               | ErrorInvalidMemoryAccess
               | ErrorCallDepthLimitReached
               | ErrorMaxCodeSizeExceeded
-              | ErrorPrecompileFailure      deriving (Eq, Ord, Show)
+              | ErrorPrecompileFailure
+              | ErrorUnexpectedSymbolic
+              | ErrorDeadPath
+              | ErrorChoose -- not entirely sure what this is
+  deriving (Eq, Ord, Show)
 $(deriveJSON defaultOptions ''TxResult)
 
 data TxConf = TxConf { _propGas       :: Word
@@ -88,7 +92,6 @@ data TxConf = TxConf { _propGas       :: Word
                      -- ^ Maximum value to use in transactions  
                      }
 makeLenses 'TxConf
-
 -- | Transform a VMResult into a more hash friendly sum type
 getResult :: VMResult -> TxResult
 getResult (VMSuccess _)                         = Success
@@ -109,3 +112,6 @@ getResult (VMFailure InvalidMemoryAccess)       = ErrorInvalidMemoryAccess
 getResult (VMFailure CallDepthLimitReached)     = ErrorCallDepthLimitReached
 getResult (VMFailure (MaxCodeSizeExceeded _ _)) = ErrorMaxCodeSizeExceeded
 getResult (VMFailure PrecompileFailure)         = ErrorPrecompileFailure
+getResult (VMFailure UnexpectedSymbolicArg)     = ErrorUnexpectedSymbolic
+getResult (VMFailure DeadPath)                  = ErrorDeadPath
+getResult (VMFailure (Choose _))                = ErrorChoose -- not entirely sure what this is
