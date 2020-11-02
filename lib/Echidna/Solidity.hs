@@ -31,17 +31,17 @@ import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
 import System.Directory           (findExecutable)
 import Echidna.ABI                (encodeSig, hashSig, fallback)
-import Echidna.Exec               (execTx)
+import Echidna.Exec               (execTx, initialVM)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (FunctionHash, SolSignature, SignatureMap)
-import Echidna.Types.Tx           (TxConf, TxCall(..), Tx(..), initialTimestamp, initialBlockNumber)
+import Echidna.Types.Tx           (TxConf, TxCall(..), Tx(..), unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.World        (World(..))
 import Echidna.Processor
 
 import EVM hiding (contracts, path)
 import qualified EVM (contracts)
 import EVM.ABI
-import EVM.Exec     (vmForEthrunCreation)
+--import EVM.Exec     (vmForEthrunCreation)
 import EVM.Solidity
 import EVM.Types    (Addr)
 import EVM.Concrete (w256)
@@ -161,7 +161,7 @@ loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
               => [SolcContract] -> Addr -> Addr -> VM -> m VM
 loadLibraries []     _  _ vm = return vm
 loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
-  where loadRest = execStateT (execTx $ Tx (SolCreate $ l ^. creationCode) d la 8000030 0 0 (initialTimestamp, initialBlockNumber)) vm
+  where loadRest = execStateT (execTx $ Tx (SolCreate $ l ^. creationCode) d la 8000030 0 0 (0, 0)) vm
 
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
@@ -198,7 +198,7 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  (SolConf ca d ads bala balc pref _ _ libs _ fp ma ch bm fs) <- view hasLens
+  SolConf ca d ads bala balc pref _ _ libs _ fp ma ch bm fs <- view hasLens
 
   -- generate the complete abi mapping
   let bc = c ^. creationCode
@@ -217,7 +217,9 @@ loadSpecified name cs = do
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
-  blank' <- maybe (pure (vmForEthrunCreation bc)) (loadEthenoBatch (fst <$> tests)) fp
+  blank' <- maybe (pure initialVM)
+                  (loadEthenoBatch $ fst <$> tests)
+                  fp
   let blank = populateAddresses (NE.toList ads |> d) bala blank'
             & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
 
@@ -233,7 +235,7 @@ loadSpecified name cs = do
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
-      let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca 8000030 0 (w256 $ fromInteger balc) (initialTimestamp, initialBlockNumber)
+      let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca unlimitedGasPerBlock 0 (w256 $ fromInteger balc) (0, 0)
       vm' <- execStateT transaction vm
       case currentContract vm' of
         Just _  -> return (vm', neFuns, fst <$> tests, abiMapping)
@@ -290,16 +292,28 @@ loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has Tx
              => NE.NonEmpty FilePath -> Maybe Text -> m (VM, World, [SolTest])
 loadSolTests fp name = loadWithCryticCompile fp name >>= (\t -> prepareForTest t Nothing [])
 
+commonTypeSizes :: [Int]
+commonTypeSizes = [8,16..256]
+
 mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
 mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Nothing
+
+mkLargeAbiInt :: Int -> AbiValue
+mkLargeAbiInt i = AbiInt i $ 2 ^ (i - 1) - 1
+
+mkLargeAbiUInt :: Int -> AbiValue
+mkLargeAbiUInt i = AbiUInt i $ 2 ^ i - 1
 
 mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue
 mkValidAbiUInt i x = if x <= 2 ^ i - 1 then Just $ AbiUInt i x else Nothing
 
 timeConstants :: [AbiValue]
 timeConstants = concatMap dec [initialTimestamp, initialBlockNumber]
-  where dec i = let l f = f <$> [8,16..256] <*> fmap fromIntegral [i-1..i+1] in
+  where dec i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral [i-1..i+1] in
                 catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
+
+largeConstants :: [AbiValue]
+largeConstants = concatMap (\i -> [mkLargeAbiInt i, mkLargeAbiUInt i]) commonTypeSizes
 
 -- | Given a list of 'SolcContract's, try to parse out string and integer literals
 extractConstants :: [SolcContract] -> [AbiValue]
@@ -313,7 +327,7 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
   literal t f (String (T.words -> ((^? only t) -> m) : y : _)) = m *> f y
   literal _ _ _                                                = Nothing
   -- When we get a number, it could be an address, uint, or int. We'll try everything.
-  dec i = let l f = f <$> [8,16..256] <*> fmap fromIntegral [i-1..i+1] in
+  dec i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral [i-1..i+1] in
     AbiAddress i : catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
   -- 'constants' takes a property name and its 'Value', then tries to find solidity literals
   -- CASE ONE: we're looking at a big object with a bunch of little objects, recurse

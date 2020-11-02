@@ -32,7 +32,7 @@ import qualified Data.Yaml as Y
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Types.Campaign (CampaignConf(CampaignConf))
-import Echidna.Types.Tx (TxConf(TxConf))
+import Echidna.Types.Tx  (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
 import Echidna.UI
 import Echidna.UI.Report
 
@@ -105,11 +105,11 @@ instance FromJSON EConfigWithUsage where
                         return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result)
                                           (const psender)
                 getWord s d = C Dull . fromIntegral <$> v ..:? s ..!= (d :: Integer)
-                xc = TxConf <$> getWord "propMaxGas" 8000030
-                            <*> getWord "testMaxGas" 8000030
+                xc = TxConf <$> getWord "propMaxGas" maxGasPerBlock
+                            <*> getWord "testMaxGas" maxGasPerBlock
                             <*> getWord "maxGasprice" 100000000000
-                            <*> getWord "maxTimeDelay" 604800     
-                            <*> getWord "maxBlockDelay" 60480
+                            <*> getWord "maxTimeDelay" defaultTimeDelay     
+                            <*> getWord "maxBlockDelay" defaultBlockDelay
                             <*> getWord "maxValue" 100000000000000000000 -- 100 eth
 
                 cov = v ..:? "coverage" <&> \case Just True -> Just mempty

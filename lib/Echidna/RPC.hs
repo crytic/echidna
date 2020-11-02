@@ -16,14 +16,14 @@ import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Strict (MonadState, execStateT, runStateT, get, put)
 import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
 import Data.Binary.Get (runGetOrFail)
-import Data.ByteString.Char8 (ByteString, empty)
+import Data.ByteString.Char8 (ByteString)
 import Data.Has (Has(..))
-import Data.Map (fromList)
+import Data.Maybe (maybe)
 import Data.Text.Encoding (encodeUtf8)
 import EVM
 import EVM.ABI (AbiType(..), getAbi)
 import EVM.Concrete (w256)
-import EVM.Exec (exec, vmForEthrunCreation)
+import EVM.Exec (exec)
 import EVM.Types (Addr, W256)
 import EVM.Symbolic (Buffer(..))
 import Text.Read (readMaybe)
@@ -88,10 +88,9 @@ loadEthenoBatch ts fp = do
        (Left e) -> throwM $ EthenoException e
        (Right (ethenoInit :: [Etheno])) -> do
          -- Execute contract creations and initial transactions,
-         let blank  = vmForEthrunCreation empty & env . contracts .~ fromList []
-             initVM = foldM (execEthenoTxs ts) Nothing ethenoInit
+         let initVM = foldM (execEthenoTxs ts) Nothing ethenoInit
 
-         (addr, vm') <- runStateT initVM blank
+         (addr, vm') <- runStateT initVM initialVM
          case addr of
               Nothing -> throwM $ EthenoException "Could not find a contract with echidna tests"
               Just a  -> execStateT (liftSH . loadContract $ a) vm'
