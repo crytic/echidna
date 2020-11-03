@@ -111,7 +111,9 @@ ui v w ts d txs = do
           Just _ -> liftIO $ updateUI CampaignUpdated
         )
         (const $ liftIO $ killThread ticker)
-      app <- customMain (mkVty vtyConfig) (Just bc) <$> monitor
+      let vty = mkVty vtyConfig
+      initialVty <- liftIO vty
+      app <- customMain initialVty vty (Just bc) <$> monitor
       liftIO $ void $ app (defaultCampaign, Uninitialized)
       final <- liftIO $ readIORef ref
       liftIO . putStrLn =<< ppCampaign final

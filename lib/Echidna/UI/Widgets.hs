@@ -11,7 +11,6 @@ import Control.Lens
 import Control.Monad.Reader (MonadReader)
 import Data.Has (Has(..))
 import Data.List (nub, intersperse)
-import Data.Maybe (maybe)
 import Data.Version (showVersion)
 import Text.Printf (printf)
 

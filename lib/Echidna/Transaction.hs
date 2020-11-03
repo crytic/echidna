@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -20,11 +21,13 @@ import Data.Has (Has(..))
 import Data.Hashable (hash)
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
-import EVM hiding (value)
+import Data.SBV (SWord, literal)
+import EVM hiding (value, path)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
 import EVM.Solidity (stripBytecodeMetadata)
-import EVM.Types (Addr)
+import EVM.Symbolic ( litWord, litAddr)
+import EVM.Types (Addr, Buffer(..))
 
 import qualified System.Directory as SD
 import qualified Data.ByteString as BS
@@ -84,12 +87,12 @@ genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has Gen
   => Map Addr Contract
   -> m Tx
 genTxM m = do
-  TxConf _ g maxGp t b mv <- view hasLens
+  TxConf _ g gp t b mv <- view hasLens
   genTxWith
     m
     rElem rElem                                                                -- src and dst
     (const $ genInteractionsM . snd)                                           -- call itself
-    (pure g) (inRange maxGp) mv                                                -- gas, gasprice, value
+    (pure g) (pure gp) mv                                                      -- gas, gasprice, value
     (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
   where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
 
@@ -152,15 +155,19 @@ liftSH = stateST . runState . zoom hasLens
 setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
 setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty, state . gas .= g
-  , tx . gasprice .= gp, tx . origin .= s, state . caller .= s, state . callvalue .= v
-  , block . timestamp += t, block . number += b, setup] where
+  , tx . gasprice .= gp, tx . origin .= s, state . caller .= litAddr s, state . callvalue .= litWord v
+  , block . timestamp += litWord t, block . number += b, setup] where
     setup = case c of
       SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (InitCode bc) & set balance v) >> loadContract r >> state . code .= bc
-      SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= encode cd
-      SolCalldata cd -> incrementBalance >> loadContract r >> state . calldata .= cd
+      SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata (encode cd)
+      SolCalldata cd -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata cd
     incrementBalance = (env . contracts . ix r . balance) += v
     encode (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
+
+
+concreteCalldata :: BS.ByteString -> (Buffer, SWord 32)
+concreteCalldata cd = (ConcreteBuffer cd, literal . fromIntegral . BS.length $ cd)
 
 saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
 saveTxs (Just d) txs = mapM_ saveTx txs where

@@ -18,6 +18,8 @@ import EVM
 import EVM.Op (Op(..))
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Solidity (stripBytecodeMetadata)
+import EVM.Types (Buffer(..))
+import EVM.Symbolic (litWord)
 
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
@@ -35,9 +37,9 @@ classifyError (OutOfGas _ _)         = RevertE
 classifyError (Revert _)             = RevertE
 classifyError (UnrecognizedOpcode _) = RevertE
 classifyError (Query _)              = RevertE
+classifyError StackLimitExceeded     = RevertE
 classifyError StackUnderrun          = IllegalE
 classifyError BadJumpDestination     = IllegalE
-classifyError StackLimitExceeded     = IllegalE
 classifyError IllegalOverflow        = IllegalE
 classifyError _                      = UnknownE
 
@@ -79,7 +81,7 @@ execTxWith h m t = do
       hasLens . state . calldata .= cd
       hasLens . result ?= f
     (VMFailure x, _) -> h x
-    (VMSuccess bc, SolCreate _) ->
+    (VMSuccess (ConcreteBuffer bc), SolCreate _) ->
       (hasLens %=) . execState $ do
         env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
         replaceCodeOfSelf (RuntimeCode bc)
@@ -125,6 +127,6 @@ traceCoverage = do
   hasLens <>= [readOp (BS.index c $ v ^. state . pc) c]
 
 initialVM :: VM
-initialVM = vmForEthrunCreation mempty & block . timestamp .~ initialTimestamp
+initialVM = vmForEthrunCreation mempty & block . timestamp .~ litWord initialTimestamp
                                        & block . number .~ initialBlockNumber
                                        & env . contracts .~ fromList []       -- fixes weird nonce issues

@@ -23,6 +23,18 @@ data TxCall = SolCreate   ByteString
 makePrisms ''TxCall
 $(deriveJSON defaultOptions ''TxCall)
 
+maxGasPerBlock :: Integer
+maxGasPerBlock = 12500000 -- https://cointelegraph.com/news/ethereum-miners-vote-to-increase-gas-limit-causing-community-debate
+
+unlimitedGasPerBlock :: Word
+unlimitedGasPerBlock = 0xffffffff
+
+defaultTimeDelay :: Integer
+defaultTimeDelay = 604800
+
+defaultBlockDelay :: Integer
+defaultBlockDelay = 60480
+
 initialTimestamp :: Word
 initialTimestamp = 1524785992 -- Thu Apr 26 23:39:52 UTC 2018
 
@@ -59,7 +71,11 @@ data TxResult = Success
               | ErrorInvalidMemoryAccess
               | ErrorCallDepthLimitReached
               | ErrorMaxCodeSizeExceeded
-              | ErrorPrecompileFailure      deriving (Eq, Ord, Show)
+              | ErrorPrecompileFailure
+              | ErrorUnexpectedSymbolic
+              | ErrorDeadPath
+              | ErrorChoose -- not entirely sure what this is
+  deriving (Eq, Ord, Show)
 $(deriveJSON defaultOptions ''TxResult)
 
 data TxConf = TxConf { _propGas       :: Word
@@ -76,7 +92,6 @@ data TxConf = TxConf { _propGas       :: Word
                      -- ^ Maximum value to use in transactions  
                      }
 makeLenses 'TxConf
-
 -- | Transform a VMResult into a more hash friendly sum type
 getResult :: VMResult -> TxResult
 getResult (VMSuccess _)                         = Success
@@ -97,3 +112,6 @@ getResult (VMFailure InvalidMemoryAccess)       = ErrorInvalidMemoryAccess
 getResult (VMFailure CallDepthLimitReached)     = ErrorCallDepthLimitReached
 getResult (VMFailure (MaxCodeSizeExceeded _ _)) = ErrorMaxCodeSizeExceeded
 getResult (VMFailure PrecompileFailure)         = ErrorPrecompileFailure
+getResult (VMFailure UnexpectedSymbolicArg)     = ErrorUnexpectedSymbolic
+getResult (VMFailure DeadPath)                  = ErrorDeadPath
+getResult (VMFailure (Choose _))                = ErrorChoose -- not entirely sure what this is
