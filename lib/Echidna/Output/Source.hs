@@ -12,7 +12,7 @@ import Control.Lens hiding (index)
 import Data.Maybe (fromJust, mapMaybe)
 import Data.Map.Strict (Map)
 import Data.Set (Set)
-import Data.Text (Text, append, index, length, unlines)
+import Data.Text (Text, append, index, length, unlines, pack, unpack)
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
 import Data.List (sort, nub)
@@ -28,6 +28,10 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 
 import Echidna.Exec 
+import Echidna.Types.Tx
+
+
+type FilePathText = Text
 
 saveCoveredCode :: Maybe FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
 saveCoveredCode (Just d) sc cs s = let fn = d ++ "/covered.txt"
@@ -47,23 +51,48 @@ ppCoveredCode sc cs s | s == mempty = ""
                                       where 
                                        allLines = M.toList $ view sourceLines sc
                                        findFile k = fst $ M.findWithDefault ("<no source code>", mempty) k (view sourceFiles sc)
-                                       covLines = concat $ map (srcMapCov sc s) cs
+                                       covLines = concat $ map (srcMapCov sc s) cs 
 
-type Filename = Text
+markLine :: Int -> TxResult -> FilePathText -> [(FilePathText, Text)] -> [(FilePathText, Text)] 
+markLine n r cf ls = case splitAt (n-1) ls of
+                        (xs, (f,y):ys) | f == cf -> xs ++ [(cf, markStringLine r $ unpack y)] ++ ys
+                        _                        -> map (\(f,y) -> (f, checkMarkers $ unpack y)) ls
 
-markLine :: Int -> Filename -> [(Filename, Text)] -> [(Filename, Text)] 
-markLine n cf ls = case splitAt (n-1) ls of
-                     (xs, (f,y):ys) | f == cf -> xs ++ [(cf, markLine_ y)] ++ ys
-                     _                        -> ls
-markLine_   :: Text -> Text
-markLine_ l = if Data.Text.length l > 0 && (index l 0 == '|')
-              then l 
-              else append "|" l
+checkMarkers  :: String -> Text
+checkMarkers (m1: m2 : m3 : m4: '|':l) = pack $ m1: m2 : m3 : m4   : '|': l
+checkMarkers                        l  = pack $ ' ': ' ': ' ': ' ' : '|': l
 
-filterLines :: [Maybe (Filename, Int)] -> [(Filename, Text)] -> [(Filename, Text)]
-filterLines []                  ls  = ls
-filterLines (Nothing      : ns) ls  = filterLines ns ls
-filterLines ((Just (f,n)) : ns) ls  = filterLines ns (markLine n f ls)
+markStringLine  :: TxResult -> String -> Text
+markStringLine r (' ': ' ': ' ': ' ': '|':l) = pack $ getMarker r : ' ' : ' ' : ' ': '|' : l
+markStringLine r (m1: ' ': ' ': ' ':  '|':l)  = pack $ case (getMarker r) of
+                                                        m | m1 == m -> m1 : ' ' : ' ' : ' ': '|' : l
+                                                        m           -> m1 :  m  : ' ' : ' ': '|' : l
+
+markStringLine r (m1: m2 : ' ': ' ': '|':l)  = pack $ case (getMarker r) of
+                                                        m | m1 == m -> m1 :  m2  : ' ' : ' ': '|' : l
+                                                        m | m2 == m -> m1 :  m2  : ' ' : ' ': '|' : l
+                                                        m           -> m1 :  m2  : m   : ' ': '|' : l
+
+
+markStringLine r (m1: m2 : m3 : ' ': '|':l)  = pack $ case (getMarker r) of
+                                                        m | m1 == m -> m1 :  m2  : m3 : ' ': '|' : l
+                                                        m | m2 == m -> m1 :  m2  : m3 : ' ': '|' : l
+                                                        m | m3 == m -> m1 :  m2  : m3 : ' ': '|' : l
+                                                        m           -> m1 :  m2  : m3 : m  : '|' : l
+
+markStringLine _ (_: _ : _ : _ : '|':_)  = error "impossible to add another marker"
+markStringLine r l = pack $ getMarker r : ' ' : ' ' : ' ' : '|' : l
+
+getMarker :: TxResult -> Char
+getMarker Success       = '*'
+getMarker ErrorRevert   = 'r' 
+getMarker ErrorOutOfGas = 'o'
+getMarker _             = 'e'
+
+filterLines :: [Maybe (FilePathText, Int, TxResult)] -> [(FilePathText, Text)] -> [(FilePathText, Text)]
+filterLines []                    ls  = ls
+filterLines (Nothing        : ns) ls  = filterLines ns ls
+filterLines ((Just (f,n,r)) : ns) ls  = filterLines ns (markLine n r f ls)
 
 
 -- map (pack . show) $ S.toList $ allPositions (M.fromList $ map (\c -> (view contractName c,c)) cs) sc
@@ -81,12 +110,19 @@ allPositions solcByName sources =
       )
 -}
 
-srcMapCov :: SourceCache -> Map BS.ByteString (Set (Int, b)) -> SolcContract -> [Maybe (Text, Int)]
-srcMapCov sc s c = nub $ sort $ map (srcMapCodePos sc) $ mapMaybe (srcMapForOpLocation c) $ S.toList $ maybe S.empty (S.map fst) $ M.lookup (stripBytecodeMetadata $ view runtimeCode c) s
+srcMapCov :: SourceCache -> Map BS.ByteString (Set (Int, TxResult)) -> SolcContract -> [Maybe (FilePathText, Int, TxResult)]
+srcMapCov sc s c = nub $ sort $ map (srcMapCodePos' sc) $ mapMaybe (srcMapForOpLocation c) $ S.toList $ maybe S.empty (id) $ M.lookup (stripBytecodeMetadata $ view runtimeCode c) s
                    --catMaybes $ S.toList $ maybe S.empty (S.map (srcMapForOpLocation c . fst)) $ M.lookup (stripBytecodeMetadata $ view runtimeCode c) s
 
-srcMapForOpLocation :: SolcContract -> Int -> Maybe SrcMap
-srcMapForOpLocation c n = preview (ix n) (view runtimeSrcmap c <> view creationSrcmap c)
+
+srcMapCodePos' sc (n, r) = case srcMapCodePos sc n of 
+                             Just (t,n') -> Just (t,n',r)
+                             _          -> Nothing
+
+srcMapForOpLocation :: SolcContract -> (Int,TxResult) -> Maybe (SrcMap, TxResult)
+srcMapForOpLocation c (n,r) = case preview (ix n) (view runtimeSrcmap c <> view creationSrcmap c) of
+                                Just sm -> Just (sm,r)
+                                _       -> Nothing
 
 linesByName :: SourceCache -> Map Text (V.Vector BS.ByteString)
 linesByName sources =

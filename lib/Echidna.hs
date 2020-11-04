@@ -21,12 +21,10 @@ import Echidna.Types.Campaign
 import Echidna.Types.Random
 import Echidna.Types.Tx
 import Echidna.Types.World
-import Echidna.Transaction
 import Echidna.Processor
-import Echidna.Output.Source
+import Echidna.Output.Corpus
 
 import qualified Data.List.NonEmpty as NE
-import qualified Data.Text.IO as T (putStrLn)
 
 -- | This function is used to prepare, process, compile and initialize smart contracts for testing.
 -- It takes:

@@ -161,33 +161,3 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
 
 concreteCalldata :: BS.ByteString -> (Buffer, SWord 32)
 concreteCalldata cd = (ConcreteBuffer cd, literal . fromIntegral . BS.length $ cd)
-
-saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
-saveTxs (Just d) txs = mapM_ saveTx txs where
-  saveTx v = do let fn = d ++ "/coverage/" ++ (show . hash . show) v ++ ".txt"
-                b <- SD.doesFileExist fn
-                unless b $ encodeFile fn (toJSON v)
-saveTxs Nothing  _   = pure ()
-
-listDirectory :: FilePath -> IO [FilePath]
-listDirectory path = filter f <$> SD.getDirectoryContents path
-  where f filename = filename /= "." && filename /= ".."
-
-withCurrentDirectory :: FilePath  -- ^ Directory to execute in
-                     -> IO a      -- ^ Action to be executed
-                     -> IO a
-withCurrentDirectory dir action =
-  bracket SD.getCurrentDirectory SD.setCurrentDirectory $ \_ -> do
-    SD.setCurrentDirectory dir
-    action
-
-loadTxs :: Maybe FilePath -> IO [[Tx]]
-loadTxs (Just d) = do
-  fs <- listDirectory (d ++ "/coverage")
-  css <- mapM readCall <$> mapM SD.makeRelativeToCurrentDirectory fs
-  txs <- catMaybes <$> withCurrentDirectory d css
-  putStrLn ("Loaded total of " ++ show (length txs) ++ " transactions from " ++ d)
-  return txs
-  where readCall f = decodeStrict <$> BS.readFile f
-
-loadTxs Nothing  = pure []
