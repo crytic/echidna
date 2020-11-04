@@ -9,7 +9,7 @@ module Echidna.Exec where
 
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
-import Control.Monad.State.Strict (MonadState, execState, unless)
+import Control.Monad.State.Strict (MonadState, execState)
 import Data.Has (Has(..))
 import Data.Map.Strict (Map, fromList)
 import Data.Maybe (fromMaybe)
@@ -18,7 +18,7 @@ import EVM
 import EVM.Op (Op(..))
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Solidity (stripBytecodeMetadata)
-import EVM.Types (Buffer(..), Addr)
+import EVM.Types (Buffer(..))
 import EVM.Symbolic (litWord)
 
 import qualified Data.ByteString as BS

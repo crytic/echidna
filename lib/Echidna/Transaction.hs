@@ -11,7 +11,7 @@ module Echidna.Transaction where
 import Prelude hiding (Word)
 
 import Control.Lens
-import Control.Monad (join, liftM2, unless, when)
+import Control.Monad (join, liftM2, unless)
 import Control.Monad.Catch (MonadThrow, bracket)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
