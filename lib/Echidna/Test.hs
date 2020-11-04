@@ -9,13 +9,12 @@ import Control.Monad ((<=<), ap)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform, uniformMay)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import Control.Monad.State.Strict (MonadState(get, put), gets)
+import Control.Monad.State.Strict (MonadState(get, put), gets, when)
 import Data.Bool (bool)
 import Data.Foldable (traverse_)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
---import EVM (Error(..), VMResult(..), VM, calldata, result, state)
 import EVM
 import EVM.ABI (AbiValue(..), abiCalldata, encodeAbiValue)
 import EVM.Types (Addr)
@@ -27,6 +26,7 @@ import Echidna.ABI
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
+import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, propGas, src)
 import Echidna.Events   (EventMap, extractEvents)
 
@@ -44,9 +44,9 @@ data CallRes = ResFalse | ResTrue | ResRevert | ResOther deriving (Eq, Show)
 
 -- | Given a 'VMResult', classify it assuming it was the result of a call to an Echidna test.
 classifyRes :: VMResult -> CallRes
-classifyRes (VMSuccess b) | b == encodeAbiValue (AbiBool True)  = ResTrue
-                          | b == encodeAbiValue (AbiBool False) = ResFalse
-                          | otherwise                           = ResOther
+classifyRes (VMSuccess b) | viewBuffer b == Just (encodeAbiValue (AbiBool True))  = ResTrue
+                          | viewBuffer b == Just (encodeAbiValue (AbiBool False)) = ResFalse
+                          | otherwise                                             = ResOther
 
 classifyRes Reversion = ResRevert
 classifyRes _ = ResOther
@@ -63,7 +63,9 @@ checkETest em t = do
   --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
   let matchR (Just (VMFailure (UnrecognizedOpcode 0xfe))) = False
       matchR _                                            = True
-      matchC sig = not . (BS.isPrefixOf . BS.take 4 $ abiCalldata (encodeSig sig) mempty)
+      matchC sig b = case viewBuffer b of
+        Just cd -> not . BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) $ cd
+        Nothing -> False
   res <- case t of
     -- If our test is a regular user-defined test, we exec it and check the result
     Left  (f, a) -> do
@@ -75,19 +77,12 @@ checkETest em t = do
     Right sig    -> do
       vm' <- use hasLens
       b1 <- fmap matchR       (use $ hasLens . result)
-      b2 <- fmap (matchC sig) (use $ hasLens . state . calldata)
+      b2 <- fmap (matchC sig) (use $ hasLens . state . calldata . _1)
       let es = extractEvents em vm'
       let b3 = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
       return $ b2 || (b1 && b3)
   put st -- restore EVM state
   pure res
-
-
-hasSelfdestructed :: (MonadState y m, Has VM y) => Addr -> m Bool
-hasSelfdestructed a = do
-  sd <- use $ hasLens . tx . substate . selfdestructs
-  return (a `elem` sd)
-
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
 -- still solves that test.

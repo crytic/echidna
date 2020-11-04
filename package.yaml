@@ -13,7 +13,7 @@ dependencies:
   - ansi-terminal
   - base16-bytestring
   - binary
-  - brick                <= 0.46
+  - brick
   - base16-bytestring
   - bytestring
   - containers
@@ -36,6 +36,7 @@ dependencies:
   - process
   - random
   - rosezipper
+  - sbv
   - stm
   - temporary
   - text

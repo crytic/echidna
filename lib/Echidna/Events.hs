@@ -9,6 +9,7 @@ import EVM.ABI      (Event(..), Indexed(..) )
 import EVM.Types    (W256)
 import EVM.Concrete (wordValue)
 import EVM.Format   (showValues)
+import EVM.Symbolic (maybeLitWord)
 
 type EventMap = Map W256 Event
 type Events = [Text]
@@ -25,9 +26,11 @@ extractEvents em vm =
             case topics of
                  [] -> []
                  (topic:_) ->
-                   case Data.Map.lookup (wordValue topic) em of
-                     Just (Event name _ types) -> [name `append` showValues [t | (t, NotIndexed) <- types] bytes ]
-                     Nothing -> []
+                   case maybeLitWord topic of 
+                     Nothing   -> []
+                     Just word -> case Data.Map.lookup (wordValue word) em of
+                                    Just (Event name _ types) -> [name `append` showValues [t | (t, NotIndexed) <- types] bytes ]
+                                    Nothing -> []
           _ -> []
 
    in concat $ concatMap flatten $ fmap (fmap showTrace) forest 

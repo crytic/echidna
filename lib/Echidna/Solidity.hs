@@ -12,7 +12,6 @@ import Control.Exception          (Exception)
 import Control.Monad              (liftM2, when, unless, void)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
-import Control.Monad.Fail         (MonadFail)
 import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
 import Data.Aeson                 (Value(..))
@@ -24,7 +23,6 @@ import Data.List                  (find, nub, partition)
 import Data.List.Lens             (prefixed, suffixed)
 import Data.Map                   (elems)
 import Data.Maybe                 (isJust, isNothing, catMaybes)
-import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
@@ -42,7 +40,7 @@ import Echidna.Types.Tx           (TxConf, TxCall(..), Tx(..), unlimitedGasPerBl
 import Echidna.Types.World        (World(..))
 import Echidna.Processor
 
-import EVM hiding (contracts)
+import EVM hiding (contracts, path)
 import qualified EVM (contracts)
 import EVM.ABI
 import EVM.Solidity

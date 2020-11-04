@@ -3,7 +3,6 @@
 module Echidna.Mutator where
 
 import Control.Monad.Random.Strict (fromList, MonadRandom, getRandomR)
-import Data.Maybe (maybe)
 
 import qualified Data.ListLike as LL
 

@@ -13,4 +13,9 @@ contract C {
   function echidna_still_alive() public returns (bool) {
     return true;
   }
+
+  function echidna_revert_still_alive() public returns (bool) {
+    revert();
+  }
+
 }

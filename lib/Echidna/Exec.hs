@@ -9,7 +9,7 @@ module Echidna.Exec where
 
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
-import Control.Monad.State.Strict (MonadState, execState)
+import Control.Monad.State.Strict (MonadState, execState, unless)
 import Data.Has (Has(..))
 import Data.Map.Strict (Map, fromList)
 import Data.Maybe (fromMaybe)
@@ -18,6 +18,8 @@ import EVM
 import EVM.Op (Op(..))
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Solidity (stripBytecodeMetadata)
+import EVM.Types (Buffer(..), Addr)
+import EVM.Symbolic (litWord)
 
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
@@ -68,26 +70,30 @@ vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> Unknow
 -- using the given execution strategy, handling errors with the given handler.
 execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Int)
 execTxWith h m t = do
-  hasLens . traces .= emptyEvents 
-  (og :: VM) <- use hasLens
-  setupTx t
-  gasIn <- use $ hasLens . state . gas
-  res <- m
-  gasOut <- use $ hasLens . state . gas
-  cd  <- use $ hasLens . state . calldata
-  case (res, t ^. call) of
-    (f@Reversion, _) -> do
-      hasLens .= og
-      hasLens . state . calldata .= cd
-      hasLens . result ?= f
-    (VMFailure x, _) -> h x
-    (VMSuccess bc, SolCreate _) ->
-      (hasLens %=) . execState $ do
-        env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
-        replaceCodeOfSelf (RuntimeCode bc)
-        loadContract (t ^. dst)
-    _ -> pure ()
-  pure (res, fromIntegral (gasIn - gasOut))
+  sd <- hasSelfdestructed (t ^. dst)
+  if sd 
+  then pure (VMFailure (Revert ""), 0)
+  else do 
+    hasLens . traces .= emptyEvents 
+    (og :: VM) <- use hasLens
+    setupTx t
+    gasIn <- use $ hasLens . state . gas
+    res <- m
+    gasOut <- use $ hasLens . state . gas
+    cd  <- use $ hasLens . state . calldata
+    case (res, t ^. call) of
+      (f@Reversion, _) -> do
+        hasLens .= og
+        hasLens . state . calldata .= cd
+        hasLens . result ?= f
+      (VMFailure x, _) -> h x
+      (VMSuccess (ConcreteBuffer bc), SolCreate _) ->
+        (hasLens %=) . execState $ do
+          env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
+          replaceCodeOfSelf (RuntimeCode bc)
+          loadContract (t ^. dst)
+      _ -> pure ()
+    pure (res, fromIntegral (gasIn - gasOut))
 
 -- | Execute a transaction "as normal".
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
@@ -127,6 +133,6 @@ traceCoverage = do
   hasLens <>= [readOp (BS.index c $ v ^. state . pc) c]
 
 initialVM :: VM
-initialVM = vmForEthrunCreation mempty & block . timestamp .~ initialTimestamp
+initialVM = vmForEthrunCreation mempty & block . timestamp .~ litWord initialTimestamp
                                        & block . number .~ initialBlockNumber
                                        & env . contracts .~ fromList []       -- fixes weird nonce issues
