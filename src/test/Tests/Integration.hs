@@ -84,6 +84,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_valid_timestamp failed",         passed      "echidna_valid_timestamp") ]
   , testContract "basic/fallback.sol"     Nothing
       [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
+  , testContract "basic/large.sol"     Nothing
+      [ ("echidna_large failed",                   solved      "echidna_large") ]
   , testContract "basic/darray.sol"       Nothing
       [ ("echidna_darray passed",                  solved      "echidna_darray")
       , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
@@ -104,7 +106,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_now passed",                     solved      "echidna_now") ]
   , testContract "basic/construct.sol"    Nothing
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
-  , testContract "basic/gasprice.sol"     Nothing
+  , testContract "basic/gasprice.sol"     (Just "basic/gasprice.yaml")
       [ ("echidna_state passed",                   solved      "echidna_state") ]
   , let fp = "basic_multicontract/contracts/Foo.sol"; cfg = Just "basic_multicontract/echidna_config.yaml" in
       testCase fp $
@@ -136,7 +138,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       ]
   ,  testContract "coverage/boolean.sol"       (Just "coverage/boolean.yaml")
       [ ("echidna_true failed",                    passed     "echidna_true")
-      , ("unexpected corpus count ",               countCorpus 6)]
+      , ("unexpected corpus count ",               countCorpus 5)]
   ,  testContract "basic/payable.sol"     Nothing
       [ ("echidna_payable failed",                 solved      "echidna_payable") ]
   ,  checkConstructorConditions "basic/codesize.sol"

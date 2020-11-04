@@ -12,7 +12,6 @@ import Control.Exception          (Exception)
 import Control.Monad              (liftM2, when, unless, void)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
-import Control.Monad.Fail         (MonadFail)
 import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
 import Data.Aeson                 (Value(..))
@@ -24,7 +23,6 @@ import Data.List                  (find, nub, partition)
 import Data.List.Lens             (prefixed, suffixed)
 import Data.Map                   (elems)
 import Data.Maybe                 (isJust, isNothing, catMaybes)
-import Data.Monoid                ((<>))
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
 import Data.Text.Read             (decimal)
@@ -36,11 +34,11 @@ import Echidna.ABI                (encodeSig, hashSig, fallback)
 import Echidna.Exec               (execTx, initialVM)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (FunctionHash, SolSignature, SignatureMap)
-import Echidna.Types.Tx           (TxConf, TxCall(..), Tx(..), initialTimestamp, initialBlockNumber)
+import Echidna.Types.Tx           (TxConf, TxCall(..), Tx(..), unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.World        (World(..))
 import Echidna.Processor
 
-import EVM hiding (contracts)
+import EVM hiding (contracts, path)
 import qualified EVM (contracts)
 import EVM.ABI
 import EVM.Solidity
@@ -236,7 +234,7 @@ loadSpecified name cs = do
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
-      let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca 8000030 0 (w256 $ fromInteger balc) (0, 0)
+      let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca unlimitedGasPerBlock 0 (w256 $ fromInteger balc) (0, 0)
       vm' <- execStateT transaction vm
       case currentContract vm' of
         Just _  -> return (vm', neFuns, fst <$> tests, abiMapping)
@@ -293,16 +291,28 @@ loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has Tx
              => NE.NonEmpty FilePath -> Maybe Text -> m (VM, World, [SolTest])
 loadSolTests fp name = loadWithCryticCompile fp name >>= (\t -> prepareForTest t Nothing [])
 
+commonTypeSizes :: [Int]
+commonTypeSizes = [8,16..256]
+
 mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
 mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Nothing
+
+mkLargeAbiInt :: Int -> AbiValue
+mkLargeAbiInt i = AbiInt i $ 2 ^ (i - 1) - 1
+
+mkLargeAbiUInt :: Int -> AbiValue
+mkLargeAbiUInt i = AbiUInt i $ 2 ^ i - 1
 
 mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue
 mkValidAbiUInt i x = if x <= 2 ^ i - 1 then Just $ AbiUInt i x else Nothing
 
 timeConstants :: [AbiValue]
 timeConstants = concatMap dec [initialTimestamp, initialBlockNumber]
-  where dec i = let l f = f <$> [8,16..256] <*> fmap fromIntegral [i-1..i+1] in
+  where dec i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral [i-1..i+1] in
                 catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
+
+largeConstants :: [AbiValue]
+largeConstants = concatMap (\i -> [mkLargeAbiInt i, mkLargeAbiUInt i]) commonTypeSizes
 
 -- | Given a list of 'SolcContract's, try to parse out string and integer literals
 extractConstants :: [SolcContract] -> [AbiValue]
@@ -316,7 +326,7 @@ extractConstants = nub . concatMap (constants "" . view contractAst) where
   literal t f (String (T.words -> ((^? only t) -> m) : y : _)) = m *> f y
   literal _ _ _                                                = Nothing
   -- When we get a number, it could be an address, uint, or int. We'll try everything.
-  dec i = let l f = f <$> [8,16..256] <*> fmap fromIntegral [i-1..i+1] in
+  dec i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral [i-1..i+1] in
     AbiAddress i : catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
   -- 'constants' takes a property name and its 'Value', then tries to find solidity literals
   -- CASE ONE: we're looking at a big object with a bunch of little objects, recurse
