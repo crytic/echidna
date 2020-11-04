@@ -5,7 +5,7 @@ module Echidna where
 import Control.Lens (view, (^.), to)
 import Data.Has (Has(..))
 import Control.Monad.Catch (MonadCatch(..))
-import Control.Monad.Reader (MonadReader, MonadIO, liftIO)
+import Control.Monad.Reader (MonadReader, MonadIO, liftIO, when)
 import Control.Monad.Random (MonadRandom)
 import Data.Map.Strict (keys)
 import Data.Text (pack)
@@ -52,6 +52,7 @@ prepareContract cfg fs c g = do
   -- run processors
   ca <- view (hasLens . cryticArgs)
   si <- runSlither (NE.head fs) ca
+  when (null si) $ liftIO $ putStrLn "WARNING: slither failed to run or extracted no information at all"
 
   -- load tests
   (v, w, ts) <- prepareForTest p c si

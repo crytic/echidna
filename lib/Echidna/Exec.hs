@@ -8,6 +8,8 @@
 
 module Echidna.Exec where
 
+import Prelude hiding (unlines)
+
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.State.Strict (MonadState, execState)
@@ -20,18 +22,13 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.List (sort, nub)
 import EVM
 import EVM.Op (Op(..))
-
-
-import EVM.Exec (exec)
+import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Solidity --(SourceCache, SrcMap, SolcContract, contractName, sourceLines, sourceFiles, runtimeCode, runtimeSrcmap, creationSrcmap)
 import EVM.Debug (srcMapCodePos) --, srcMapCode)
-import Prelude hiding (unlines)
-
-import qualified Data.Vector as V
-import EVM.Exec (vmForEthrunCreation)
 import EVM.Types (Buffer(..))
 import EVM.Symbolic (litWord)
 
+import qualified Data.Vector as V
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
 import qualified Data.Set as S
