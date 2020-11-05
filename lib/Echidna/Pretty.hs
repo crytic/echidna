@@ -20,4 +20,5 @@ ppSolCall (t, vs) = (if t == "" then unpack "*fallback*" else unpack t) ++ "(" +
 ppTxCall :: TxCall -> String
 ppTxCall (SolCreate _)    = "<CREATE>"
 ppTxCall (SolCall x)      = ppSolCall x
+ppTxCall NoCall           = "*wait*"
 ppTxCall (SolCalldata x)  = BSC8.unpack $ "0x" <> BS16.encode x
