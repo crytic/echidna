@@ -57,16 +57,16 @@ genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m)
           -> (Addr -> ContractA -> m SolCall)         -- ^ Call generator
           -> m Word                                   -- ^ Gas generator
           -> m Word                                   -- ^ Gas price generator
-          -> Word                                     -- ^ Max value generator
+          -> ([FunctionHash] -> Addr -> ContractA -> SolCall -> m Word)   -- ^ Value generator
           -> m (Word, Word)                           -- ^ Delay generator
           -> m Tx
-genTxWith m s r c g gp mv t = do
+genTxWith m s r c g gp vg t = do
   World ss hmm lmm ps <- use hasLens
   mm <- getSignatures hmm lmm
   let s' = s ss
       r' = r rs
       c' = join $ liftM2 c s' r'
-      v' = genValue ps mv
+      v' = vg ps
       rs = NE.fromList . catMaybes $ mkR <$> toList m
       mkR = _2 (flip M.lookup mm . view (bytecode . to stripBytecodeMetadata))
   v'' <- v' <$> s' <*> r' <*> c'
@@ -88,18 +88,25 @@ genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has Gen
   -> m Tx
 genTxM m = do
   TxConf _ g gp t b mv <- view hasLens
+  genDict <- use hasLens
+  let vals = dictValues genDict
   genTxWith
     m
     rElem rElem                                                                -- src and dst
     (const $ genInteractionsM . snd)                                           -- call itself
-    (pure g) (pure gp) mv                                                      -- gas, gasprice, value
+    (pure g) (pure gp) (genValue mv vals)                                      -- gas, gasprice, value
     (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
   where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
 
-genValue :: (MonadRandom m) => [FunctionHash] -> Word -> Addr -> ContractA -> SolCall -> m Word
-genValue ps mv _ _ sc =
+--genDelay :: (MonadRandom m) => Word -> m Word
+--genDelay hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
+
+genValue :: (MonadRandom m) => Word -> [Integer] -> [FunctionHash] -> Addr -> ContractA -> SolCall -> m Word
+genValue mv ds ps _ _ sc =
   if sig `elem` ps
-  then fromIntegral <$> randValue
+  then do
+    g <- oftenUsually randValue (rElem $ NE.fromList (0:ds))
+    fromIntegral <$> g
   else do
     g <- usuallyRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
     fromIntegral <$> g

@@ -41,6 +41,7 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
 import qualified Data.Text.Encoding  as TE 
 import qualified Data.Vector as V
+import qualified Data.HashSet as H
 
 import Echidna.Mutator (mutateLL, replaceAt) 
 import Echidna.Types.Random
@@ -125,6 +126,12 @@ gaddCalls c = wholeCalls <>~ hashMapBy (fmap $ fmap abiValueType) c
 
 defaultDict :: GenDict
 defaultDict = mkGenDict 0 [] [] 0 (const Nothing)
+
+dictValues :: GenDict -> [Integer] 
+dictValues g = catMaybes $ concatMap (\(_,h) -> map fromValue $ H.toList h) $ M.toList $ g ^. constants
+  where fromValue (AbiUInt _ n) = Just (toInteger n)
+        fromValue (AbiInt  _ n) = Just (toInteger n)
+        fromValue _             = Nothing
 
 -- This instance is the only way for mkConf to work nicely, and is well-formed.
 {-# ANN module ("HLint: ignore Unused LANGUAGE pragma" :: String) #-}
