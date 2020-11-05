@@ -10,7 +10,7 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 
 * Generates inputs tailored to your actual code
 * Optional corpus collection, mutation and coverage guidance to find deeper bugs
-* Optional [Slither](https://github.com/crytic/slither) integration to extract useful information before the fuzzing campaign
+* Powered by [Slither](https://github.com/crytic/slither) to extract useful information before the fuzzing campaign
 * Curses-based retro UI, text-only or JSON output
 * Automatic testcase minimization for quick triage
 * Seamless integration into the development workflow
@@ -129,9 +129,12 @@ will either be `property` or `assertion`, and `status` always takes on either
 
 ## Installation
 
+
+
 ### Precompiled binaries
 
-If you want to quickly test Echidna in Linux or MacOS, we provide statically linked Linux binaries built on Ubuntu and mostly static MacOS binaries on our [releases page](https://github.com/crytic/echidna/releases). You can also grab the same type of binaries from our [CI pipeline](https://github.com/crytic/echidna/actions?query=workflow%3ACI+branch%3Amaster+event%3Apush), just click the commit to find binaries for Linux or MacOS. Make sure you have the latest release of [crytic-compile](https://github.com/crytic/crytic-compile) and [slither](https://github.com/crytic/slither) installed before starting to use Echidna.
+Before starting, make sure Slither is [installed](https://github.com/crytic/slither) (`pip3 install slither-analyzer --user`).
+If you want to quickly test Echidna in Linux or MacOS, we provide statically linked Linux binaries built on Ubuntu and mostly static MacOS binaries on our [releases page](https://github.com/crytic/echidna/releases). You can also grab the same type of binaries from our [CI pipeline](https://github.com/crytic/echidna/actions?query=workflow%3ACI+branch%3Amaster+event%3Apush), just click the commit to find binaries for Linux or MacOS.
 
 ### Docker container
 

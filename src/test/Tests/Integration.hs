@@ -62,7 +62,8 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
       [ ("echidna_address failed",                 passed      "echidna_address") ]
   , testContract "basic/constants.sol"    Nothing
-      [ ("echidna_found failed",                   solved      "echidna_found") ]
+      [ ("echidna_found failed",                   solved      "echidna_found")
+      , ("echidna_found_large failed",             solved      "echidna_found_large") ]
   , testContract "basic/constants2.sol"   Nothing
       [ ("echidna_found32 failed",                 solved      "echidna_found32") ]
   , testContract "basic/constants3.sol"   Nothing
