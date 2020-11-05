@@ -34,7 +34,7 @@ data ProcException = ProcessorFailure String String
 
 instance Show ProcException where
   show = \case
-    ProcessorFailure p e -> "Error running " ++ p ++ ": " ++ e
+    ProcessorFailure p e -> "Error running " ++ p ++ ":\n" ++ e
     ProcessorNotFound p e -> "Cannot find " ++ p ++ "in PATH.\n" ++ e
 
 instance Exception ProcException
@@ -80,12 +80,12 @@ runSlither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m [SlitherInf
 runSlither fp args = let args' = ["--ignore-compile", "--print", "echidna", "--json", "-"] ++ args in do
   mp <- liftIO $ findExecutable "slither"
   case mp of
-    Nothing -> return []
+    Nothing -> throwM $ ProcessorNotFound "slither" "You should install it using 'pip3 install slither-analyzer --user'"
     Just path -> liftIO $ do
-      (ec, out, _) <- readCreateProcessWithExitCode (proc path $ args' |> fp) {std_err = Inherit} ""
+      (ec, out, err) <- readCreateProcessWithExitCode (proc path $ args' |> fp) {std_err = Inherit} ""
       case ec of
         ExitSuccess -> return $ procSlither out
-        ExitFailure _ -> throwM $ ProcessorFailure "slither" "You should install it using 'pip3 install slither-analyzer --user'"
+        ExitFailure _ -> throwM $ ProcessorFailure "slither" err
 
 procSlither :: String -> [SlitherInfo]
 procSlither r =
