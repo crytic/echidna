@@ -19,6 +19,7 @@ import Echidna.Types.Signature (SolCall)
 data TxCall = SolCreate   ByteString
             | SolCall     SolCall
             | SolCalldata ByteString
+            | NoCall
   deriving (Show, Ord, Eq)
 makePrisms ''TxCall
 $(deriveJSON defaultOptions ''TxCall)
