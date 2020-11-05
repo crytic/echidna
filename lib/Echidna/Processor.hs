@@ -23,7 +23,7 @@ import qualified Data.ByteString.UTF8 as BSU
 import qualified Data.HashMap.Strict as M
 
 import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
-import EVM.ABI 
+import EVM.ABI (AbiValue(..))
 import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
 
 
