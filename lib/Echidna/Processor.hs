@@ -30,12 +30,12 @@ import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
 -- instance for more detailed explanations.
 data ProcException = ProcessorFailure String String
-                   | ProcessorNotFound String
+                   | ProcessorNotFound String String
 
 instance Show ProcException where
   show = \case
     ProcessorFailure p e -> "Error running " ++ p ++ ": " ++ e
-    ProcessorNotFound p  -> "Cannot find processor " ++ p
+    ProcessorNotFound p e -> "Cannot find " ++ p ++ "in PATH.\n" ++ e
 
 instance Exception ProcException
 
@@ -85,7 +85,7 @@ runSlither fp args = let args' = ["--ignore-compile", "--print", "echidna", "--j
       (ec, out, _) <- readCreateProcessWithExitCode (proc path $ args' |> fp) {std_err = Inherit} ""
       case ec of
         ExitSuccess -> return $ procSlither out
-        ExitFailure _ -> return [] --we can make slither mandatory using: throwM $ ProcessorFailure "slither" err
+        ExitFailure _ -> throwM $ ProcessorFailure "slither" "You should install it using 'pip3 install slither-analyzer --user'"
 
 procSlither :: String -> [SlitherInfo]
 procSlither r =
