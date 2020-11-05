@@ -1,9 +1,9 @@
 contract C { 
-  bytes example = "abcdef123";
+  bytes e = "abcdef123";
   bool state;
 
   function f(bytes memory bs) public {
-    if (bs[0] == "a" && bs[1] == "b" && bs[2] == "c" && bs.length > 16)
+    if (bs[0] == e[0] && bs[1] == e[1] && bs[2] == e[2] && bs.length > 16)
         state = true;
   }
 
