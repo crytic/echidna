@@ -27,7 +27,7 @@ import System.Process             (StdStream(..), readCreateProcessWithExitCode,
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
 import System.Directory           (findExecutable)
-import Echidna.ABI                (encodeSig, hashSig, fallback)
+import Echidna.ABI                (encodeSig, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec               (execTx, initialVM)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (FunctionHash, SolSignature, SignatureMap)

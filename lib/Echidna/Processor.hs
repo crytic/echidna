@@ -10,8 +10,6 @@ import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Exception          (Exception)
 import Control.Monad.Catch        (MonadThrow(..))
 import Data.Aeson                 (decode, Value(..))
-import Data.DoubleWord            (Int256, Word256)
-import Data.Maybe                 (catMaybes)
 import Data.Text                  (Text, pack, unpack)
 import Data.List                  (nub)
 import Text.Read                  (readMaybe)
@@ -23,11 +21,10 @@ import Numeric                    (showHex)
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import qualified Data.ByteString.UTF8 as BSU
 import qualified Data.HashMap.Strict as M
-import qualified Data.ByteString     as BS
 
 import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
 import EVM.ABI 
-import Echidna.ABI (hashSig)
+import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
 
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
@@ -158,39 +155,22 @@ mconsts' _ (Object o) = case (M.lookup "value" o, M.lookup "type" o) of
 mconsts' _ (Array  a) = concatMap (mconsts' "") a
 mconsts' _  _         = []
 
-commonTypeSizes :: [Int]
-commonTypeSizes = [8,16..256]
-
-mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
-mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Nothing
-
-mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue
-mkValidAbiUInt i x = if x <= 2 ^ i - 1 then Just $ AbiUInt i x else Nothing
-
-makeNumAbiValues :: Integer -> [AbiValue]
-makeNumAbiValues i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral [i-1..i+1] in
-    catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt) 
-
-makeArrayAbiValues :: BS.ByteString -> [AbiValue]
-makeArrayAbiValues b = let size = BS.length b in [AbiString b, AbiBytesDynamic b] ++
- fmap (\n -> AbiBytes n . BS.append b $ BS.replicate (n - size) 0) [size..32]
-
 parseAbiValue :: (String, String) -> [AbiValue]
-parseAbiValue (v, 'u':'i':'n':'t':_)       = case readMaybe v of 
-                                               (Just m) -> makeNumAbiValues m
-                                               _        -> []
-
-parseAbiValue (v, 'i':'n':'t':_)           = case readMaybe v of 
+parseAbiValue (v, 'u':'i':'n':'t':_) = case readMaybe v of 
                                                Just m -> makeNumAbiValues m
-                                               _                -> []
+                                               _      -> []
 
-parseAbiValue (v, ['s','t','r','i','n','g'])     = makeArrayAbiValues $ BSU.fromString v
-parseAbiValue (v, ['a','d','d','r','e','s','s']) = case readMaybe v :: Maybe Int of
+parseAbiValue (v, 'i':'n':'t':_)     = case readMaybe v of 
+                                               Just m -> makeNumAbiValues m
+                                               _      -> []
+
+parseAbiValue (v, "string")          = makeArrayAbiValues $ BSU.fromString v
+parseAbiValue (v, "address")         = case readMaybe v :: Maybe Int of
                                                           Just n -> case readMaybe ("0x" ++ showHex n "") of
                                                                       Just a  -> [AbiAddress a]
                                                                       Nothing -> []
                                                           _      -> []
-parseAbiValue _                               = []
+parseAbiValue _                      = []
 
 
 -- parse actual generation graph
