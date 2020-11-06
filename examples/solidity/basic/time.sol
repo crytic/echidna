@@ -14,4 +14,9 @@ contract Time {
   function echidna_timepassed() public returns (bool) {
     return(start == marked);
   }
+
+  function echidna_moretimepassed() public returns (bool) {
+    return(now < start + 10 weeks );
+  }
+
 }

@@ -54,10 +54,13 @@ prepareContract cfg fs c g = do
   si <- runSlither (NE.head fs) ca
   when (null si) $ liftIO $ putStrLn "WARNING: slither failed to run or extracted no information at all"
 
+  -- filter extracted constants
+  let extractedConstants = filterConstantValue si
+
   -- load tests
   (v, w, ts) <- prepareForTest p c si
   let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
   -- start ui and run tests
-  return (v, sc, cs, w, ts, Just $ mkGenDict df (extractConstants cs ++ timeConstants ++ largeConstants ++ NE.toList ads ++ ads') [] g (returnTypes cs), txs)
+  return (v, sc, cs, w, ts, Just $ mkGenDict df (extractedConstants ++ timeConstants ++ largeConstants ++ NE.toList ads ++ ads') [] g (returnTypes cs), txs)
   where cd = cfg ^. cConf . corpusDir
         df = cfg ^. cConf . dictFreq

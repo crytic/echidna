@@ -43,6 +43,7 @@ dependencies:
   - unix
   - unliftio
   - unliftio-core
+  - utf8-string
   - unordered-containers
   - vector
   - vector-instances
