@@ -153,7 +153,7 @@ execTxOptC t = do
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage (hasLens . coverage)) t
   let vmr = getResult $ fst res
   -- Update the coverage map with the proper binary according to the vm result
-  hasLens . coverage %= mapWithKey (\ _ s -> DS.map (\(i,_) -> (i, vmr)) s)
+  hasLens . coverage %= mapWithKey (\ _ s -> DS.map (\(i, j, _) -> (i, j, vmr)) s)
   -- Update the global coverage map with the union of the result just obtained
   hasLens . coverage %= unionWith DS.union og
   grew <- (== LT) . comparing coveragePoints og <$> use (hasLens . coverage)

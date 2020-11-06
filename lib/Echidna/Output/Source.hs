@@ -109,7 +109,7 @@ allPositions solcByName sources =
       )
 -}
 
-srcMapCov :: SourceCache -> Map BS.ByteString (Set (Int, TxResult)) -> SolcContract -> [Maybe (FilePathText, Int, TxResult)]
+srcMapCov :: SourceCache -> Map BS.ByteString (Set (Int, Int, TxResult)) -> SolcContract -> [Maybe (FilePathText, Int, TxResult)]
 srcMapCov sc s c = nub $ sort $ map (srcMapCodePos' sc) $ mapMaybe (srcMapForOpLocation c) $ S.toList $ fromMaybe S.empty $ M.lookup (stripBytecodeMetadata $ view runtimeCode c) s
                    --catMaybes $ S.toList $ maybe S.empty (S.map (srcMapForOpLocation c . fst)) $ M.lookup (stripBytecodeMetadata $ view runtimeCode c) s
 
@@ -117,12 +117,12 @@ srcMapCodePos' :: SourceCache -> (SrcMap, TxResult) -> Maybe (Text, Int, TxResul
 
 srcMapCodePos' sc (n, r) = case srcMapCodePos sc n of 
                              Just (t,n') -> Just (t,n',r)
-                             _          -> Nothing
+                             _           -> Nothing
 
-srcMapForOpLocation :: SolcContract -> (Int,TxResult) -> Maybe (SrcMap, TxResult)
-srcMapForOpLocation c (n,r) = case preview (ix n) (view runtimeSrcmap c <> view creationSrcmap c) of
-                                Just sm -> Just (sm,r)
-                                _       -> Nothing
+srcMapForOpLocation :: SolcContract -> (Int, Int, TxResult) -> Maybe (SrcMap, TxResult)
+srcMapForOpLocation c (_,n,r) = case preview (ix n) (view runtimeSrcmap c <> view creationSrcmap c) of
+                                 Just sm -> Just (sm,r)
+                                 _       -> Nothing
 
 linesByName :: SourceCache -> Map Text (V.Vector BS.ByteString)
 linesByName sources = M.fromList . map
