@@ -25,7 +25,7 @@ import System.Process             (StdStream(..), readCreateProcessWithExitCode,
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
 import System.Directory           (findExecutable)
-import Echidna.ABI                (encodeSig, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
+import Echidna.ABI                (encodeSig, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt, pregenAdds)
 import Echidna.Exec               (execTx, initialVM)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (FunctionHash, SolSignature, SignatureMap)
@@ -213,9 +213,11 @@ loadSpecified name cs = do
   blank' <- maybe (pure initialVM)
                   (loadEthenoBatch $ fst <$> tests)
                   fp
-  let blank = populateAddresses (NE.toList ads |> d) bala blank'
+  let blank'' = populateAddresses (NE.toList ads |> d) bala blank'
             & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
 
+  let blank = populateAddresses pregenAdds 0 blank''
+ 
   unless (null con || isJust fp) (throwM $ ConstructorArgs (show con))
   -- Select libraries
   ls <- mapM (choose cs . Just . T.pack) libs
