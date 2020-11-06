@@ -3,7 +3,7 @@ contract C {
   uint state = 0;
   uint another_state = 0;
   function payable_function() public payable {
-    if (msg.value > 128)
+    if (msg.value == 129)
         state = msg.value;
   }
 

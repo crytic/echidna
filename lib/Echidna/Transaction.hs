@@ -89,23 +89,27 @@ genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has Gen
 genTxM m = do
   TxConf _ g gp t b mv <- view hasLens
   genDict <- use hasLens
-  let vals = dictValues genDict
+  let ns = dictValues genDict
   genTxWith
     m
     rElem rElem                                                                -- src and dst
     (const $ genInteractionsM . snd)                                           -- call itself
-    (pure g) (pure gp) (genValue mv vals)                                      -- gas, gasprice, value
-    (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
-  where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
+    (pure g) (pure gp) (genValue mv ns)                                        -- gas, gasprice, value
+    (level <$> liftM2 (,) (genDelay t ns) (genDelay b ns))                     -- delay
 
---genDelay :: (MonadRandom m) => Word -> m Word
---genDelay hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
-
+genDelay :: (MonadRandom f) => Word -> [Integer] -> f Word
+genDelay mv ds = do
+  let ds' = map (`mod` (fromIntegral mv + 1)) ds
+  g <- oftenUsually randValue $ rElem $ NE.fromList (0:ds')
+  w256 . fromIntegral <$> g
+  where randValue = getRandomR (1 :: Integer, fromIntegral mv)
+ 
 genValue :: (MonadRandom m) => Word -> [Integer] -> [FunctionHash] -> Addr -> ContractA -> SolCall -> m Word
 genValue mv ds ps _ _ sc =
   if sig `elem` ps
   then do
-    g <- oftenUsually randValue (rElem $ NE.fromList (0:ds))
+    let ds' = map (`mod` (fromIntegral mv + 1)) ds
+    g <- oftenUsually randValue (rElem $ NE.fromList (0:ds'))
     fromIntegral <$> g
   else do
     g <- usuallyRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
