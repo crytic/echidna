@@ -49,7 +49,7 @@ runContract :: FilePath -> Maybe String -> EConfig -> IO Campaign
 runContract f c cfg =
   flip runReaderT cfg $ do
     g <- getRandom
-    (v, w, ts, d, txs) <- prepareContract cfg (f :| []) c g
+    (v, _, _, w, ts, d, txs) <- prepareContract cfg (f :| []) c g
     -- start ui and run tests
     campaign (pure ()) v w ts d txs
 
