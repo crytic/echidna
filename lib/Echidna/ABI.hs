@@ -46,6 +46,10 @@ import Echidna.Mutator (mutateLL, replaceAt)
 import Echidna.Types.Random
 import Echidna.Types.Signature
 
+
+pregenAdds :: [AbiValue]
+pregenAdds = map AbiAddress [i*0xffffffff | i <- [1,10]]
+
 -- | Fallback function is the null string
 fallback :: SolSignature
 fallback = ("",[])
@@ -301,7 +305,7 @@ genAbiValueM :: (MonadState x m, Has GenDict x, MonadRandom m) => AbiType -> m A
 genAbiValueM = genWithDict (fmap toList . view constants) $ \case
   (AbiUIntType n)         -> AbiUInt n  . fromInteger <$> getRandomUint n
   (AbiIntType n)          -> AbiInt n   . fromInteger <$> getRandomR (-1 * 2 ^ n, 2 ^ (n - 1))
-  AbiAddressType          -> AbiAddress . fromInteger <$> getRandomR (0, 2 ^ (160 :: Integer) - 1)
+  AbiAddressType          -> rElem $ NE.fromList pregenAdds --AbiAddress . fromInteger <$> getRandomR (0, 2 ^ (160 :: Integer) - 1)
   AbiBoolType             -> AbiBool <$> getRandom
   (AbiBytesType n)        -> AbiBytes n . BS.pack . take n <$> getRandoms
   AbiBytesDynamicType     -> liftM2 (\n -> AbiBytesDynamic . BS.pack . take n)
