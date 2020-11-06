@@ -9,6 +9,7 @@ module Echidna.Solidity where
 
 import Control.Lens
 import Control.Exception          (Exception)
+import Control.Arrow              (first)
 import Control.Monad              (liftM2, when, unless, void)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
@@ -138,18 +139,18 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
               ExitSuccess -> readSolc "crytic-export/combined_solc.json"
               ExitFailure _ -> throwM $ CompileFailure out err
             
-          maybe (throwM SolcReadFailure) (pure . (\(i,j) -> (toList i , j))) mSolc
+          maybe (throwM SolcReadFailure) (pure . first toList) mSolc
     cps <- mapM compileOne fps
     let (cs, ss) = unzip cps
     let lss = length ss
     when (lss > 1) $ liftIO $ putStrLn "WARNING: more than one SourceCache was found after compile. Only the first one will be used."
-    return $ (concat cs, head ss)
+    return (concat cs, head ss)
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
 addresses = do
   SolConf{_contractAddr = ca, _deployer = d, _sender = ads} <- view hasLens
   pure $ AbiAddress . fromIntegral <$> NE.nub (join ads [ca, d, 0x0])
-  where join (first NE.:| rest) list = first NE.:| (rest ++ list)
+  where join (f NE.:| r) l = f NE.:| (r ++ l)
 
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm

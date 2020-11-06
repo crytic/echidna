@@ -11,25 +11,22 @@ module Echidna.Transaction where
 import Prelude hiding (Word)
 
 import Control.Lens
-import Control.Monad (join, liftM2, unless)
-import Control.Monad.Catch (MonadThrow, bracket)
+import Control.Monad (join, liftM2)
+import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, evalStateT, runState, get, put)
-import Data.Aeson (ToJSON(..), decodeStrict, encodeFile)
 import Data.Has (Has(..))
-import Data.Hashable (hash)
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
 import Data.SBV (SWord, literal)
-import EVM hiding (value, path)
+import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
 import EVM.Solidity (stripBytecodeMetadata)
 import EVM.Symbolic ( litWord, litAddr)
 import EVM.Types (Addr, Buffer(..))
 
-import qualified System.Directory as SD
 import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
 import qualified Data.List.NonEmpty as NE

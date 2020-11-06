@@ -4,11 +4,8 @@
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE TupleSections #-}
 
 module Echidna.Exec where
-
-import Prelude hiding (unlines)
 
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))

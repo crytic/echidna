@@ -21,7 +21,6 @@ import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.IORef
 import EVM (VM)
-import EVM.Solidity (SourceCache, SolcContract)
 import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
