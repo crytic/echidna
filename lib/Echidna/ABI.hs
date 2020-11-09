@@ -10,9 +10,8 @@ module Echidna.ABI where
 
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, foldM, replicateM)
-import Control.Monad.Catch (MonadThrow(..))
-import Control.Monad.State.Class (MonadState, gets)
-import Control.Monad.State (evalStateT)
+import Control.Monad.Reader (runReaderT)
+import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.Random.Strict (MonadRandom, getRandom, getRandoms, getRandomR, uniformMay)
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
@@ -160,14 +159,14 @@ getRandomUint n = join $ R.fromList [(getRandomR (0, 1023), 1), (getRandomR (0, 
 -- Note that we define the dictionary case ('genAbiValueM') first (below), so recursive types can be
 -- be generated using the same dictionary easily
 genAbiValue :: MonadRandom m => AbiType -> m AbiValue
-genAbiValue = flip evalStateT defaultDict . genAbiValueM
+genAbiValue = flip runReaderT defaultDict . genAbiValueM
 
 -- | Synthesize a random 'SolCall' given its 'SolSignature'. Doesn't use a dictionary.
 genAbiCall :: MonadRandom m => SolSignature -> m SolCall
 genAbiCall = traverse $ traverse genAbiValue
 
 -- | Synthesize a random 'SolCall' given a list of 'SolSignature's (effectively, an ABI). Doesn't use a dictionary.
-genInteractions :: (MonadThrow m, MonadRandom m) => NE.NonEmpty SolSignature -> m SolCall
+genInteractions :: MonadRandom m => NE.NonEmpty SolSignature -> m SolCall
 genInteractions l = genAbiCall =<< rElem l
 
 -- Mutation helper functions
@@ -298,13 +297,15 @@ mutateAbiCall = traverse f
 -- | Given a generator taking an @a@ and returning a @b@ and a way to get @b@s associated with some
 -- @a@ from a GenDict, return a generator that takes an @a@ and either synthesizes new @b@s with the
 -- provided generator or uses the 'GenDict' dictionary (when available).
-genWithDict :: (Eq a, Hashable a, MonadState x m, Has GenDict x, MonadRandom m)
+genWithDict :: (Eq a, Hashable a, MonadReader x m, Has GenDict x, MonadRandom m)
             => (GenDict -> HashMap a [b]) -> (a -> m b) -> a -> m b
-genWithDict f g t = let fromDict = uniformMay . M.lookupDefault [] t . f in gets getter >>= \c ->
+genWithDict f g t = do
+  let fromDict = uniformMay . M.lookupDefault [] t . f
+  c <- view hasLens
   fromMaybe <$> g t <*> (bool (pure Nothing) (fromDict c) . (c ^. pSynthA >=) =<< getRandom)
 
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Requires a dictionary.
-genAbiValueM :: (MonadState x m, Has GenDict x, MonadRandom m) => AbiType -> m AbiValue
+genAbiValueM :: (MonadReader x m, Has GenDict x, MonadRandom m) => AbiType -> m AbiValue
 genAbiValueM = genWithDict (fmap toList . view constants) $ \case
   (AbiUIntType n)         -> AbiUInt n  . fromInteger <$> getRandomUint n
   (AbiIntType n)          -> AbiInt n   . fromInteger <$> getRandomR (-1 * 2 ^ n, 2 ^ (n - 1))
@@ -321,10 +322,10 @@ genAbiValueM = genWithDict (fmap toList . view constants) $ \case
   (AbiTupleType v)        -> AbiTuple <$> traverse genAbiValueM v
 
 -- | Given a 'SolSignature', generate a random 'SolCalls' with that signature, possibly with a dictionary.
-genAbiCallM :: (MonadState x m, Has GenDict x, MonadRandom m) => SolSignature -> m SolCall
+genAbiCallM :: (MonadReader x m, Has GenDict x, MonadRandom m) => SolSignature -> m SolCall
 genAbiCallM abi = genWithDict (fmap toList . view wholeCalls) (traverse $ traverse genAbiValueM) abi >>= mutateAbiCall
 
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one, possibly with a dictionary.
-genInteractionsM :: (MonadState x m, Has GenDict x, MonadRandom m, MonadThrow m)
+genInteractionsM :: (MonadReader x m, Has GenDict x, MonadRandom m)
                  => NE.NonEmpty SolSignature -> m SolCall
 genInteractionsM l = genAbiCallM =<< rElem l
