@@ -141,6 +141,7 @@ instance FromJSON EConfigWithUsage where
                              <*> v ..:? "sender"          ..!= (0x10000 NE.:| [0x20000, defaultDeployer])
                              <*> v ..:? "balanceAddr"     ..!= 0xffffffff
                              <*> v ..:? "balanceContract" ..!= 0
+                             <*> v ..:? "codeSize"        ..!= 0x6000      -- 24576 (EIP-170)
                              <*> v ..:? "prefix"          ..!= "echidna_"
                              <*> v ..:? "cryticArgs"      ..!= []
                              <*> v ..:? "solcArgs"        ..!= ""

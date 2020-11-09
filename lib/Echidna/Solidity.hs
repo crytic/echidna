@@ -92,6 +92,7 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _sender          :: NE.NonEmpty Addr -- ^ Sender addresses to use
                        , _balanceAddr     :: Integer          -- ^ Initial balance of deployer and senders
                        , _balanceContract :: Integer          -- ^ Initial balance of contract to test
+                       , _codeSize        :: Integer          -- ^ Max code size for deployed contratcs (default 2576, per EIP-170)
                        , _prefix          :: Text             -- ^ Function name prefix used to denote tests
                        , _cryticArgs      :: [String]         -- ^ Args to pass to crytic
                        , _solcArgs        :: String           -- ^ Args to pass to @solc@
@@ -193,7 +194,7 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  SolConf ca d ads bala balc pref _ _ libs _ fp ma ch bm fs <- view hasLens
+  SolConf ca d ads bala balc mcs pref _ _ libs _ fp ma ch bm fs <- view hasLens
 
   -- generate the complete abi mapping
   let bc = c ^. creationCode
@@ -212,7 +213,7 @@ loadSpecified name cs = do
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
-  blank' <- maybe (pure initialVM)
+  blank' <- maybe (pure (initialVM & block . maxCodeSize .~ (w256 $ fromInteger mcs)))
                   (loadEthenoBatch $ fst <$> tests)
                   fp
   let blank = populateAddresses (NE.toList ads |> d) bala blank'
