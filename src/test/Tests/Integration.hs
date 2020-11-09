@@ -103,6 +103,9 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("tests are not empty",                    testsEmpty                  ) ]
   , testContract "basic/time.sol"         (Just "basic/time.yaml")
       [ ("echidna_timepassed passed",              solved      "echidna_timepassed") ]
+  , testContract "basic/delay.sol"        Nothing
+      [ ("echidna_block_number passed",            solved    "echidna_block_number") 
+      , ("echidna_timestamp passed",               solved    "echidna_timestamp") ]
   , testContract "basic/now.sol"         Nothing
       [ ("echidna_now passed",                     solved      "echidna_now") ]
   , testContract "basic/construct.sol"    Nothing
