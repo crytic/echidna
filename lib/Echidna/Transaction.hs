@@ -64,7 +64,7 @@ genTxM m = do
   let ns = dictValues genDict
   s' <- rElem ss
   r' <- rElem $ NE.fromList . catMaybes $ toContractA mm <$> toList m
-  c' <- genInteractionsM (snd r')
+  c' <- genInteractionsM genDict (snd r')
   v' <- genValue mv ns ps c'
   t' <- (,) <$> genDelay t ns <*> genDelay b ns
   pure $ Tx (SolCall c') s' (fst r') g gp v' (level t')
