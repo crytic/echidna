@@ -213,7 +213,7 @@ loadSpecified name cs = do
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
-  blank' <- maybe (pure (initialVM & block . maxCodeSize .~ (w256 $ fromInteger mcs)))
+  blank' <- maybe (pure (initialVM & block . maxCodeSize .~ w256 (fromInteger mcs)))
                   (loadEthenoBatch $ fst <$> tests)
                   fp
   let blank = populateAddresses (NE.toList ads |> d) bala blank'
