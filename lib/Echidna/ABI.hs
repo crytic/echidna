@@ -8,7 +8,7 @@
 
 module Echidna.ABI where
 
-import Control.Lens (makeLenses, (<>~))
+import Control.Lens
 import Control.Monad (join, liftM2, liftM3, foldM, replicateM)
 import Control.Monad.Random.Strict (MonadRandom, getRandom, getRandoms, getRandomR, uniformMay)
 import Data.Bool (bool)
@@ -124,7 +124,7 @@ defaultDict :: GenDict
 defaultDict = mkGenDict 0 [] [] 0 (const Nothing)
 
 dictValues :: GenDict -> [Integer]
-dictValues g = catMaybes $ concatMap (\(_,h) -> map fromValue $ H.toList h) $ M.toList $ _constants g
+dictValues g = catMaybes $ concatMap (\(_,h) -> map fromValue $ H.toList h) $ M.toList $ g ^. constants
   where fromValue (AbiUInt _ n) = Just (toInteger n)
         fromValue (AbiInt  _ n) = Just (toInteger n)
         fromValue _             = Nothing
@@ -296,13 +296,15 @@ mutateAbiCall = traverse f
 -- provided generator or uses the 'GenDict' dictionary (when available).
 genWithDict :: (Eq a, Hashable a, MonadRandom m)
             => GenDict -> HashMap a [b] -> (a -> m b) -> a -> m b
-genWithDict genDict f g t = do
-  let fromDict = uniformMay (M.lookupDefault [] t f)
-  fromMaybe <$> g t <*> (bool (pure Nothing) fromDict . (_pSynthA genDict >=) =<< getRandom)
+genWithDict genDict m g t = do
+  r <- getRandom
+  let maybeValM = if genDict ^. pSynthA >= r then fromDict else pure Nothing
+      fromDict = uniformMay (M.lookupDefault [] t m)
+  fromMaybe <$> g t <*> maybeValM
 
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Requires a dictionary.
 genAbiValueM :: MonadRandom m => GenDict -> AbiType -> m AbiValue
-genAbiValueM genDict = genWithDict genDict (toList <$> _constants genDict) $ \case
+genAbiValueM genDict = genWithDict genDict (toList <$> genDict ^. constants) $ \case
   (AbiUIntType n)         -> AbiUInt n  . fromInteger <$> getRandomUint n
   (AbiIntType n)          -> AbiInt n   . fromInteger <$> getRandomR (-1 * 2 ^ n, 2 ^ (n - 1))
   AbiAddressType          -> AbiAddress . fromInteger <$> getRandomR (0, 2 ^ (160 :: Integer) - 1)
@@ -319,13 +321,12 @@ genAbiValueM genDict = genWithDict genDict (toList <$> _constants genDict) $ \ca
 
 -- | Given a 'SolSignature', generate a random 'SolCalls' with that signature, possibly with a dictionary.
 genAbiCallM :: MonadRandom m => GenDict -> SolSignature -> m SolCall
-genAbiCallM genDict abi =
-  genWithDict
-    genDict
-    (toList <$> _wholeCalls genDict)
-    (traverse $ traverse (genAbiValueM genDict))
-    abi
-  >>= mutateAbiCall
+genAbiCallM genDict abi = do
+  solCall <- genWithDict genDict
+                         (toList <$> genDict ^. wholeCalls)
+                         (traverse $ traverse (genAbiValueM genDict))
+                         abi
+  mutateAbiCall solCall
 
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one, possibly with a dictionary.
 genInteractionsM :: MonadRandom m => GenDict -> NE.NonEmpty SolSignature -> m SolCall
