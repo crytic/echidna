@@ -214,7 +214,6 @@ loadSpecified name cs = do
                   (loadEthenoBatch $ fst <$> tests)
                   fp
   let blank = populateAddresses (NE.toList ads |> d) bala blank'
-            & env . EVM.contracts %~ sans 0x3be95e4159a131e56a84657c4ad4d43ec7cd865d -- fixes weird nonce issues
 
   unless (null con || isJust fp) (throwM $ ConstructorArgs (show con))
   -- Select libraries
