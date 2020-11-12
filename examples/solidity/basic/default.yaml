@@ -33,7 +33,7 @@ sender: ["0x10000", "0x20000", "0x00a329c0648769a73afac7f9381e08fb43dbea70"]
 balanceAddr: 0xffffffff
 #balanceContract overrides balanceAddr for the contract address
 balanceContract: 0
-#codeSize max code size for deployed contratcs (default 2576, per EIP-170)
+#codeSize max code size for deployed contratcs (default 24576, per EIP-170)
 codeSize: 0x6000
 #solcArgs allows special args to solc
 solcArgs: ""

@@ -92,7 +92,7 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _sender          :: NE.NonEmpty Addr -- ^ Sender addresses to use
                        , _balanceAddr     :: Integer          -- ^ Initial balance of deployer and senders
                        , _balanceContract :: Integer          -- ^ Initial balance of contract to test
-                       , _codeSize        :: Integer          -- ^ Max code size for deployed contratcs (default 2576, per EIP-170)
+                       , _codeSize        :: Integer          -- ^ Max code size for deployed contratcs (default 24576, per EIP-170)
                        , _prefix          :: Text             -- ^ Function name prefix used to denote tests
                        , _cryticArgs      :: [String]         -- ^ Args to pass to crytic
                        , _solcArgs        :: String           -- ^ Args to pass to @solc@
