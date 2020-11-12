@@ -26,7 +26,7 @@ import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
-import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, propGas, src)
+import Echidna.Types.Tx (Tx, TxConf, basicTx, propGas, src)
 
 -- | Configuration for evaluating Echidna tests.
 data TestConf = TestConf { classifier :: Text -> VM -> Bool
@@ -66,10 +66,12 @@ checkETest t = do
         Nothing -> False
   res <- case t of
     -- If our test is a regular user-defined test, we exec it and check the result
-    Left  (f, a) -> execTx (Tx (SolCall (f, [])) (s a) a g 0 0 (0, 0)) >> gets (p f . getter)
+    Left  (f, a) -> execTx (basicTx f [] (s a) a g) >> gets (p f . getter)
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
-    Right sig    -> (||) <$> fmap matchR       (use $ hasLens . result)
-                         <*> fmap (matchC sig) (use $ hasLens . state . calldata . _1)
+    Right sig    -> do
+      ret       <- matchR <$> use (hasLens . result)
+      correctFn <- matchC sig <$> use (hasLens . state . calldata . _1)
+      pure $ ret || correctFn
   put vm -- restore EVM state
   pure res
 

@@ -7,7 +7,9 @@ import Prelude hiding (Word)
 import Control.Lens.TH (makePrisms, makeLenses)
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.ByteString (ByteString)
+import Data.Text (Text)
 import EVM (VMResult(..), Error(..))
+import EVM.ABI (AbiValue)
 import EVM.Concrete (Word)
 import EVM.Types (Addr)
 
@@ -54,6 +56,18 @@ data Tx = Tx { _call  :: TxCall       -- | Call
              } deriving (Eq, Ord, Show)
 makeLenses ''Tx
 $(deriveJSON defaultOptions ''Tx)
+
+basicTx :: Text -> [AbiValue] -> Addr -> Addr -> Word -> Tx
+basicTx f a s d g = basicTxWithValue f a s d g 0
+
+basicTxWithValue :: Text -> [AbiValue] -> Addr -> Addr -> Word -> Word -> Tx
+basicTxWithValue f a s d g v = Tx (SolCall (f, a)) s d g 0 v (0, 0)
+
+createTx :: ByteString -> Addr -> Addr -> Word -> Tx
+createTx bc s d g = createTxWithValue bc s d g 0
+
+createTxWithValue :: ByteString -> Addr -> Addr -> Word -> Word -> Tx
+createTxWithValue bc s d g v = Tx (SolCreate bc) s d g 0 v (0, 0)
 
 data TxResult = Success
               | ErrorBalanceTooLow 
