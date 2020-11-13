@@ -29,7 +29,7 @@ import Echidna.ABI                (encodeSig, hashSig, fallback, commonTypeSizes
 import Echidna.Exec               (execTx, initialVM)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (FunctionHash, SolSignature, SignatureMap)
-import Echidna.Types.Tx           (TxConf, TxCall(..), Tx(..), unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
+import Echidna.Types.Tx           (TxConf, createTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.World        (World(..))
 import Echidna.Processor
 
@@ -154,7 +154,7 @@ loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
               => [SolcContract] -> Addr -> Addr -> VM -> m VM
 loadLibraries []     _  _ vm = return vm
 loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
-  where loadRest = execStateT (execTx $ Tx (SolCreate $ l ^. creationCode) d la 8000030 0 0 (0, 0)) vm
+  where loadRest = execStateT (execTx $ createTx (l ^. creationCode) d la unlimitedGasPerBlock) vm
 
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
@@ -203,7 +203,7 @@ loadSpecified name cs = do
   -- Filter ABI according to the config options
   fabiOfc <- filterMethods fs $ abiOf pref c
   -- Filter again for assertions checking if enabled
-  neFuns <- filterMethods fs (NE.fromList $ fallback : funs)
+  neFuns <- filterMethods fs (fallback NE.:| funs)
   -- Construct ABI mapping for World
   let abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode . to stripBytecodeMetadata, abiOf pref cc)
                          else M.singleton (c ^. runtimeCode . to stripBytecodeMetadata) fabiOfc
@@ -227,7 +227,7 @@ loadSpecified name cs = do
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
-      let transaction = unless (isJust fp) $ void . execTx $ Tx (SolCreate bc) d ca unlimitedGasPerBlock 0 (w256 $ fromInteger balc) (0, 0)
+      let transaction = unless (isJust fp) $ void . execTx $ createTxWithValue bc d ca unlimitedGasPerBlock (w256 $ fromInteger balc)
       vm' <- execStateT transaction vm
       case currentContract vm' of
         Just _  -> return (vm', neFuns, fst <$> tests, abiMapping)
