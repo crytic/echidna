@@ -57,16 +57,36 @@ data Tx = Tx { _call  :: TxCall       -- | Call
 makeLenses ''Tx
 $(deriveJSON defaultOptions ''Tx)
 
-basicTx :: Text -> [AbiValue] -> Addr -> Addr -> Word -> Tx
+basicTx :: Text       -- | Function name
+        -> [AbiValue] -- | Function args
+        -> Addr       -- | msg.sender
+        -> Addr       -- | Destination contract
+        -> Word       -- | Gas limit
+        -> Tx
 basicTx f a s d g = basicTxWithValue f a s d g 0
 
-basicTxWithValue :: Text -> [AbiValue] -> Addr -> Addr -> Word -> Word -> Tx
+basicTxWithValue :: Text       -- | Function name
+                 -> [AbiValue] -- | Function args
+                 -> Addr       -- | msg.sender
+                 -> Addr       -- | Destination contract
+                 -> Word       -- | Gas limit
+                 -> Word       -- | Value
+                 -> Tx
 basicTxWithValue f a s d g v = Tx (SolCall (f, a)) s d g 0 v (0, 0)
 
-createTx :: ByteString -> Addr -> Addr -> Word -> Tx
+createTx :: ByteString  -- | Constructor bytecode
+         -> Addr        -- | Creator
+         -> Addr        -- | Destination address
+         -> Word        -- | Gas limit
+         -> Tx
 createTx bc s d g = createTxWithValue bc s d g 0
 
-createTxWithValue :: ByteString -> Addr -> Addr -> Word -> Word -> Tx
+createTxWithValue :: ByteString  -- | Constructor bytecode
+                  -> Addr        -- | Creator
+                  -> Addr        -- | Destination address
+                  -> Word        -- | Gas limit
+                  -> Word        -- | Value
+                  -> Tx
 createTxWithValue bc s d g v = Tx (SolCreate bc) s d g 0 v (0, 0)
 
 data TxResult = Success
