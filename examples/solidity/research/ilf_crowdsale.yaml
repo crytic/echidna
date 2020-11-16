@@ -1,0 +1,4 @@
+checkAsserts: true
+maxValue: 10000000000000000000000000
+coverage: true
+cryticArgs: ["--solc", "solc-0.5.7"]
