@@ -44,7 +44,10 @@ data CampaignConf = CampaignConf { _testLimit     :: Int
                                    -- ^ Frequency for the use of dictionary values in the random transactions
                                  , _corpusDir     :: Maybe FilePath
                                    -- ^ Directory to load and save lists of transactions
+                                 , _testSamples   :: Maybe FilePath
+                                   -- ^ JSON file to load transactions from unit tests
                                  , _mutConsts     :: MutationConsts
+                                   -- ^ Frecuency for the types of corpus mutations
                                  }
 makeLenses ''CampaignConf
 

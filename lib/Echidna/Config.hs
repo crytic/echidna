@@ -123,6 +123,7 @@ instance FromJSON EConfigWithUsage where
                                   <*> v ..:? "seed"
                                   <*> v ..:? "dictFreq"    ..!= 0.40
                                   <*> v ..:? "corpusDir"   ..!= Nothing
+                                  <*> v ..:? "testSamples" ..!= Nothing 
                                   <*> v ..:? "mutConsts"   ..!= (100,1,1)
 
                 names :: Names

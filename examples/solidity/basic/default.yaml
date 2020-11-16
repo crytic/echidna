@@ -68,6 +68,8 @@ filterFunctions: []
 filterBlacklist: true
 #directory to save the corpus; by default is disabled
 corpusDir: null
+# json file to seed the corpus
+testSamples: null
 # constants for corpus mutations (for experimentation only)
 mutConsts: [100, 1, 1]
 # maximum value to send to payable functions

@@ -285,7 +285,7 @@ campaign u v w ts d txs = do
     step        = runUpdate (updateTest v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = do
-      CampaignConf tl sof _ q sl _ _ _ _ _ <- view hasLens
+      CampaignConf tl sof _ q sl _ _ _ _ _ _ <- view hasLens
       Campaign { _ncallseqs } <- view hasLens <$> get
       if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step

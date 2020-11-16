@@ -19,8 +19,11 @@ import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Char8 (ByteString)
 import Data.Has (Has(..))
 import Data.Text.Encoding (encodeUtf8)
+
+import Data.Maybe (catMaybes)
+import Data.List (nub)
 import EVM
-import EVM.ABI (AbiType(..), getAbi)
+import EVM.ABI (AbiType(..), AbiValue(..), decodeAbiValue, getAbi, selector)
 import EVM.Concrete (w256)
 import EVM.Exec (exec)
 import EVM.Types (Addr, Buffer(..), W256)
@@ -29,11 +32,16 @@ import Text.Read (readMaybe)
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Data.ByteString.Base16 as BS16 (decode)
 import qualified Data.Text as T (Text, drop, unpack)
-import qualified Data.Vector as V (fromList)
+import qualified Data.Vector as V (fromList, toList)
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy as LBS
 
 import Echidna.Exec
 import Echidna.Transaction
-import Echidna.Types.Tx (TxCall(..), Tx(Tx), TxConf, propGas)
+import Echidna.Types.Tx (TxCall(..), Tx(Tx), TxConf, propGas, makeSingleTx)
+import Echidna.Types.Signature (SolSignature)
+import Echidna.ABI (encodeSig)
+
 
 -- | During initialization we can either call a function or create an account or contract
 data Etheno = AccountCreated Addr                                       -- ^ Registers an address with the echidna runtime
@@ -74,6 +82,29 @@ instance Show EthenoException where
     show (EthenoException e) = "Error parsing Etheno initialization file: " ++ e
 
 instance Exception EthenoException
+
+loadEtheno :: (MonadThrow m, MonadIO m, M.MonadFail m)
+                => FilePath -> m [Etheno]
+loadEtheno fp = do  
+  bs <- liftIO $ eitherDecodeFileStrict fp
+
+  case bs of
+       (Left e) -> throwM $ EthenoException e
+       (Right (ethenoInit :: [Etheno])) -> return ethenoInit
+
+extractFromEtheno :: [Etheno] -> [SolSignature] -> Addr -> Addr -> [[Tx]]
+extractFromEtheno es ss a d = nub $ catMaybes $ concatMap f ss
+  where f s = map (matchSignatureAndCreateTx s a d) es 
+
+matchSignatureAndCreateTx :: SolSignature -> Addr -> Addr -> Etheno -> Maybe [Tx]
+matchSignatureAndCreateTx ("", []) _ _ _ = Nothing -- Not sure if we should match this.
+matchSignatureAndCreateTx (s,ts) a d (FunctionCall _ _ _ _ bs v) = if (BS.take 4 bs) == (selector $ encodeSig (s,ts)) 
+                                                                   then Just $ makeSingleTx a d v $ SolCall (s, fromTuple $ decodeAbiValue t (LBS.fromStrict bs)) 
+                                                                   else Nothing
+  where t = AbiTupleType (V.fromList ts)
+        fromTuple (AbiTuple xs) = V.toList xs
+        fromTuple _            = []
+matchSignatureAndCreateTx _ _ _ _                                = Nothing 
 
 -- | Main function: takes a filepath where the initialization sequence lives and returns
 -- | the initialized VM along with a list of Addr's to put in GenConf

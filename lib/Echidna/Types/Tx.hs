@@ -8,8 +8,8 @@ import Control.Lens.TH (makePrisms, makeLenses)
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.ByteString (ByteString)
 import EVM (VMResult(..), Error(..))
-import EVM.Concrete (Word)
-import EVM.Types (Addr)
+import EVM.Concrete (Word, w256)
+import EVM.Types (Addr, W256)
 
 import Echidna.Orphans.JSON ()
 import Echidna.Types.Signature (SolCall)
@@ -116,3 +116,7 @@ getResult (VMFailure PrecompileFailure)         = ErrorPrecompileFailure
 getResult (VMFailure UnexpectedSymbolicArg)     = ErrorUnexpectedSymbolic
 getResult (VMFailure DeadPath)                  = ErrorDeadPath
 getResult (VMFailure (Choose _))                = ErrorChoose -- not entirely sure what this is
+
+makeSingleTx :: Addr -> Addr -> W256 -> TxCall -> [Tx]
+makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d (fromInteger maxGasPerBlock) 0 (w256 v) (0, 0)]
+makeSingleTx _ _ _ _           = error "invalid usage of makeSingleTx"
