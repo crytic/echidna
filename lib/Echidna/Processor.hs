@@ -12,11 +12,11 @@ import Control.Monad.Catch        (MonadThrow(..))
 import Data.Aeson                 (decode, Value(..))
 import Data.Text                  (Text, pack, unpack)
 import Data.List                  (nub)
+import Data.Maybe                 (maybeToList)
 import Text.Read                  (readMaybe)
 import System.Directory           (findExecutable)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit                (ExitCode(..))
-import Numeric                    (showHex)
 
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import qualified Data.ByteString.UTF8 as BSU
@@ -24,6 +24,7 @@ import qualified Data.HashMap.Strict as M
 
 import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
 import EVM.ABI (AbiValue(..))
+import EVM.Types (Addr(..))
 import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
 
 
@@ -165,11 +166,7 @@ parseAbiValue (v, 'i':'n':'t':_)     = case readMaybe v of
                                                _      -> []
 
 parseAbiValue (v, "string")          = makeArrayAbiValues $ BSU.fromString v
-parseAbiValue (v, "address")         = case readMaybe v :: Maybe Int of
-                                                          Just n -> case readMaybe ("0x" ++ if n < 0 then "0" else showHex n "") of
-                                                                      Just a  -> [AbiAddress a]
-                                                                      Nothing -> []
-                                                          _      -> []
+parseAbiValue (v, "address")         = maybeToList $ AbiAddress . Addr <$> readMaybe v
 parseAbiValue _                      = []
 
 
