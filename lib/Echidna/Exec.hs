@@ -130,4 +130,4 @@ traceCoverage = do
 initialVM :: VM
 initialVM = vmForEthrunCreation mempty & block . timestamp .~ litWord initialTimestamp
                                        & block . number .~ initialBlockNumber
-                                       & env . contracts .~ fromList []       -- fixes weird nonce issues
+                                       & env . contracts .~ mempty       -- fixes weird nonce issues

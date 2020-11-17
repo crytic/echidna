@@ -15,14 +15,26 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-        #  - macos-latest
+          - macos-latest
         include:
           - os: ubuntu-latest
             apt-get: autoconf automake libtool
-        #  - os: macos-latest
-        #    brew: automake
+          - os: macos-latest
+            brew: automake
 
     steps:
+      - name: Workaround for actions/virtual-environments#1811
+        if: runner.os == 'macOS'
+        run: |
+          brew untap local/homebrew-openssl
+          brew untap local/homebrew-python2
+
+      - name: Workaround for actions/cache#403
+        if: runner.os == 'macOS'
+        run: |
+          brew install gnu-tar
+          echo PATH="/usr/local/opt/gnu-tar/libexec/gnubin:$PATH" >> $GITHUB_ENV
+
       - name: Get Packages
         uses: mstksg/get-package@v1
         with:
@@ -42,21 +54,21 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.local/
-          key: ${{ runner.os }}-local-v1
+          key: ${{ runner.os }}-local-v3
 
       - name: Cache Stack
         id: cache-stack
         uses: actions/cache@v1
         with:
           path: ~/.stack
-          key: ${{ runner.os }}-stack-v1
+          key: ${{ runner.os }}-stack-v3
 
       - name: Cache Cabal
         id: cache-cabal
         uses: actions/cache@v1
         with:
           path: ~/.cabal
-          key: ${{ runner.os }}-cabal-v1
+          key: ${{ runner.os }}-cabal-v3
 
       - name: Build Binaries
         run: |
@@ -91,7 +103,12 @@ jobs:
             stack test --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
           done
 
-      - name: Compress binary
+      - name: Amend and compress binaries (macOS)
+        if: runner.os == 'macOS'
+        run: .github/scripts/build-macos-release.sh
+
+      - name: Compress binary (Linux)
+        if: runner.os == 'Linux'
         run: GZIP=-9 tar -czf echidna-test.tar.gz $HOME/.local/bin/echidna-test
 
       - name: Upload artifact

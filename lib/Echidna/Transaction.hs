@@ -11,11 +11,10 @@ module Echidna.Transaction where
 import Prelude hiding (Word)
 
 import Control.Lens
-import Control.Monad (join, liftM2)
-import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.State.Strict (MonadState, State, evalStateT, runState, get, put)
+import Control.Monad.State.Strict (MonadState, State, runState, get, put)
+import Control.Monad (join, liftM2)
 import Data.Has (Has(..))
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
@@ -45,58 +44,44 @@ level :: (Num a, Eq a) => (a, a) -> (a, a)
 level (elemOf each 0 -> True) = (0,0)
 level x                       = x
 
--- | Given generators for an origin, destination, value, and function call, generate a call
--- transaction. Note: This doesn't generate @CREATE@s because I don't know how to do that at random.
-genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m)
-          => Map Addr Contract                        -- ^ List of contracts
-          -> (NE.NonEmpty Addr -> m Addr)             -- ^ Sender generator
-          -> (NE.NonEmpty ContractA -> m ContractA)   -- ^ Receiver generator
-          -> (Addr -> ContractA -> m SolCall)         -- ^ Call generator
-          -> m Word                                   -- ^ Gas generator
-          -> m Word                                   -- ^ Gas price generator
-          -> Word                                     -- ^ Max value generator
-          -> m (Word, Word)                           -- ^ Delay generator
-          -> m Tx
-genTxWith m s r c g gp mv t = do
-  World ss hmm lmm ps <- use hasLens
-  mm <- getSignatures hmm lmm
-  let s' = s ss
-      r' = r rs
-      c' = join $ liftM2 c s' r'
-      v' = genValue ps mv
-      rs = NE.fromList . catMaybes $ mkR <$> toList m
-      mkR = _2 (flip M.lookup mm . view (bytecode . to stripBytecodeMetadata))
-  v'' <- v' <$> s' <*> r' <*> c'
-  Tx <$> (SolCall <$> c') <*> s' <*> (fst <$> r') <*> g <*> gp <*> v'' <*> t
-
 getSignatures :: MonadRandom m => SignatureMap -> Maybe SignatureMap -> m SignatureMap
 getSignatures hmm Nothing = return hmm
 getSignatures hmm (Just lmm) = usuallyVeryRarely hmm lmm -- once in a while, this will use the low-priority signature for the input generation
 
--- | Synthesize a random 'Transaction', not using a dictionary.
-genTx :: forall m x y. (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m)
-      => Map Addr Contract
-      -> m Tx
-genTx m = use (hasLens :: Lens' y World) >>= evalStateT (genTxM m) . (defaultDict,)
-
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
-genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has GenDict y, Has World y, MonadThrow m)
+genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, Has GenDict x, Has World x)
   => Map Addr Contract
   -> m Tx
 genTxM m = do
   TxConf _ g gp t b mv <- view hasLens
-  genTxWith
-    m
-    rElem rElem                                                                -- src and dst
-    (const $ genInteractionsM . snd)                                           -- call itself
-    (pure g) (pure gp) mv                                                      -- gas, gasprice, value
-    (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
-  where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
+  World ss hmm lmm ps <- view hasLens
+  genDict <- view hasLens
+  mm <- getSignatures hmm lmm
+  let ns = dictValues genDict
+  s' <- rElem ss
+  r' <- rElem $ NE.fromList . catMaybes $ toContractA mm <$> toList m
+  c' <- genInteractionsM genDict (snd r')
+  v' <- genValue mv ns ps c'
+  t' <- (,) <$> genDelay t ns <*> genDelay b ns
+  pure $ Tx (SolCall c') s' (fst r') g gp v' (level t')
+  where
+    toContractA :: SignatureMap -> (Addr, Contract) -> Maybe ContractA
+    toContractA mm (addr, c) =
+      (addr,) <$> M.lookup (stripBytecodeMetadata $ c ^. bytecode) mm
 
-genValue :: (MonadRandom m) => [FunctionHash] -> Word -> Addr -> ContractA -> SolCall -> m Word
-genValue ps mv _ _ sc =
-  if sig `elem` ps
-  then fromIntegral <$> randValue
+genDelay :: MonadRandom m => Word -> [Integer] -> m Word
+genDelay mv ds = do
+  let ds' = map (`mod` (fromIntegral mv + 1)) ds
+  g <- oftenUsually randValue $ rElem (0 NE.:| ds')
+  w256 . fromIntegral <$> g
+  where randValue = getRandomR (1 :: Integer, fromIntegral mv)
+
+genValue :: MonadRandom m => Word -> [Integer] -> [FunctionHash] -> SolCall -> m Word
+genValue mv ds ps sc =
+  if sig `elem` ps then do
+    let ds' = map (`mod` (fromIntegral mv + 1)) ds
+    g <- oftenUsually randValue $ rElem (0 NE.:| ds')
+    fromIntegral <$> g
   else do
     g <- usuallyRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
     fromIntegral <$> g
@@ -150,7 +135,7 @@ liftSH = stateST . runState . zoom hasLens
 setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
 setupTx (Tx NoCall _ r _ _ _ (t, b)) = liftSH . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty
-  , block . timestamp += litWord t, block . number += b, loadContract r] 
+  , block . timestamp += litWord t, block . number += b, loadContract r]
 
 setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty, state . gas .= g
