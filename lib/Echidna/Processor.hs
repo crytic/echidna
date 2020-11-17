@@ -166,7 +166,7 @@ parseAbiValue (v, 'i':'n':'t':_)     = case readMaybe v of
 
 parseAbiValue (v, "string")          = makeArrayAbiValues $ BSU.fromString v
 parseAbiValue (v, "address")         = case readMaybe v :: Maybe Int of
-                                                          Just n -> case readMaybe ("0x" ++ if (n < 0) then "0" else showHex n "") of
+                                                          Just n -> case readMaybe ("0x" ++ if n < 0 then "0" else showHex n "") of
                                                                       Just a  -> [AbiAddress a]
                                                                       Nothing -> []
                                                           _      -> []
