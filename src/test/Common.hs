@@ -21,7 +21,7 @@ import Prelude hiding (lookup)
 import Test.Tasty (TestTree)
 import Test.Tasty.HUnit (testCase, assertBool)
 
-import Control.Lens (view, set, (.~))
+import Control.Lens (view, set, (.~), (^.))
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
 import Control.Monad.State.Strict (evalStateT)
@@ -39,7 +39,7 @@ import Echidna.Test (checkETest)
 import Echidna.Types.Campaign (Campaign, TestState(..), testLimit, shrinkLimit, tests, gasInfo, corpus, coverage)
 import Echidna.Types.Signature (SolCall)
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
-import Echidna.Types.World (World(..))
+import Echidna.Types.World (eventMap)
 
 testConfig :: EConfig
 testConfig = defaultConfig & sConf . quiet .~ True
@@ -70,7 +70,7 @@ checkConstructorConditions :: FilePath -> String -> TestTree
 checkConstructorConditions fp as = testCase fp $ do
   r <- flip runReaderT testConfig $ do
     (v, w, t) <- loadSolTests (fp :| []) Nothing
-    let (World _ _ _ _ em) = w
+    let em = w ^. eventMap
     mapM (\u -> evalStateT (checkETest em u) v) t
   mapM_ (assertBool as) r
 

@@ -1,8 +1,8 @@
 module Echidna.Events where
 import Data.Tree        (flatten)
 import Data.Tree.Zipper (fromForest, TreePos, Empty)
-import Data.Map         (Map, lookup)
 import Data.Text        (Text, append)
+import Data.Maybe       (listToMaybe)
 import Control.Lens     (view)
 import EVM
 import EVM.ABI      (Event(..), Indexed(..) )
@@ -11,7 +11,9 @@ import EVM.Concrete (wordValue)
 import EVM.Format   (showValues)
 import EVM.Symbolic (maybeLitWord)
 
-type EventMap = Map W256 Event
+import qualified Data.Map as M
+
+type EventMap = M.Map W256 Event
 type Events = [Text]
 
 emptyEvents :: TreePos Empty a
@@ -23,14 +25,11 @@ extractEvents em vm =
       showTrace trace = 
         case view traceData trace of
           EventTrace (Log _ bytes topics) ->
-            case topics of
-                 [] -> []
-                 (topic:_) ->
-                   case maybeLitWord topic of 
-                     Nothing   -> []
-                     Just word -> case Data.Map.lookup (wordValue word) em of
-                                    Just (Event name _ types) -> [name `append` showValues [t | (t, NotIndexed) <- types] bytes ]
-                                    Nothing -> []
+            case maybeLitWord =<< listToMaybe topics of
+              Nothing   -> []
+              Just word -> case M.lookup (wordValue word) em of
+                             Just (Event name _ types) ->
+                               [name `append` showValues [t | (t, NotIndexed) <- types] bytes ]
+                             Nothing -> []
           _ -> []
-
-   in concat $ concatMap flatten $ fmap (fmap showTrace) forest 
+  in concat $ concatMap flatten $ fmap (fmap showTrace) forest 

@@ -45,7 +45,7 @@ import Echidna.Types.World (World(..))
 hasSelfdestructed :: (MonadState y m, Has VM y) => Addr -> m Bool
 hasSelfdestructed a = do
   sd <- use $ hasLens . tx . substate . selfdestructs
-  return (a `elem` sd)
+  return $ a `elem` sd
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating delays, since block number
 -- only goes up with timestamp

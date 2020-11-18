@@ -43,7 +43,7 @@ import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types.Campaign
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
-import Echidna.Types.World (World(..))
+import Echidna.Types.World (World(..), eventMap)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -84,7 +84,7 @@ updateTest :: ( MonadCatch m, MonadRandom m, MonadReader x m
            => World -> VM -> Maybe (VM, [Tx]) -> (SolTest, TestState) -> m (SolTest, TestState)
 updateTest w v (Just (v', xs)) (n, t) = do
   tl <- view (hasLens . testLimit)
-  let (World _ _ _ _ em) = w
+  let em = w ^. eventMap
   (n,) <$> case t of
     Open i | i >= tl -> pure Passed
     Open i           -> catch (evalStateT (checkETest em n) v' <&> bool (Large (-1) xs) (Open (i + 1)))
@@ -92,7 +92,7 @@ updateTest w v (Just (v', xs)) (n, t) = do
     _                -> snd <$> updateTest w v Nothing (n,t)
 updateTest w v Nothing (n, t) = do
   sl <- view (hasLens . shrinkLimit)
-  let (World _ _ _ _ em) = w
+  let em = w ^. eventMap
   (n,) <$> case t of
     Large i x | i >= sl -> pure $ Solved x
     Large i x           -> if length x > 1 || any canShrinkTx x

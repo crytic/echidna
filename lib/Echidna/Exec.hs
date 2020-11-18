@@ -80,7 +80,7 @@ execTxWith h m t = do
     gasIn <- use $ hasLens . state . gas
     res <- m
     gasOut <- use $ hasLens . state . gas
-    cd  <- use $ hasLens . state . calldata
+    cd <- use $ hasLens . state . calldata
     case (res, t ^. call) of
       (f@Reversion, _) -> do
         hasLens .= og
