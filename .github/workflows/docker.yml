@@ -44,8 +44,8 @@ jobs:
             PKG=echidna
           fi
           set -e
-          echo "::set-env name=PKG::$PKG"
-          echo "::set-env name=VER::$VER"
+          echo "PKG=$PKG" >> $GITHUB_ENV
+          echo "VER=$VER" >> $GITHUB_ENV
 
       - name: Docker Build
         run: docker build -t $PKG:$VER .
