@@ -18,9 +18,9 @@ jobs:
       - name: GitHub Login
         uses: azure/docker-login@v1
         with:
-          login-server: docker.pkg.github.com
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          login-server: ghcr.io
+          username: ${{ secrets.CR_USERNAME }}
+          password: ${{ secrets.CR_PAT }}
 
       - name: Set Docker Package and Version
         run: |
@@ -30,10 +30,8 @@ jobs:
             # branch
             if [ "$GITHUB_REF" = "refs/heads/master" ]; then
               VER=latest
-              PKG=echidna
             else
               VER=testing
-              PKG=testing
             fi
           fi
           _=$(echo "$GITHUB_REF" | grep "^refs/tags/")
@@ -41,28 +39,27 @@ jobs:
             # tag
             # refs/tags/v1.X => v1.X
             VER=$(echo "$GITHUB_REF" | sed -e 's/.*\///')
-            PKG=echidna
           fi
           set -e
-          echo "PKG=$PKG" >> $GITHUB_ENV
           echo "VER=$VER" >> $GITHUB_ENV
 
       - name: Docker Build
-        run: docker build -t $PKG:$VER .
+        run: docker build -t echidna:$VER .
 
       - name: Push to GitHub Packages
         run: |
-          docker tag $PKG:$VER docker.pkg.github.com/$GITHUB_REPOSITORY/$PKG:$VER
-          docker push docker.pkg.github.com/$GITHUB_REPOSITORY/$PKG:$VER
+          docker tag echidna:$VER ghcr.io/${{ github.repository_owner }}/echidna:$VER
+          docker push ghcr.io/${{ github.repository_owner }}/echidna:$VER
 
       - name: DockerHub Login
-        uses: azure/docker-login@v1
+        if: ${{ github.repository_owner == 'crytic' }}
+        uses: docker/login-action@v1
         with:
-          login-server: registry.hub.docker.com
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
 
       - name: Push to DockerHub
+        if: ${{ github.repository_owner == 'crytic' }}
         run: |
-          docker tag $PKG:$VER registry.hub.docker.com/trailofbits/echidna:$VER
+          docker tag echidna:$VER registry.hub.docker.com/trailofbits/echidna:$VER
           docker push registry.hub.docker.com/trailofbits/echidna:$VER
