@@ -11,7 +11,7 @@ import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.State.Strict (MonadState, execState)
 import Data.Has (Has(..))
-import Data.Map.Strict (Map, fromList)
+import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import EVM
@@ -135,4 +135,4 @@ traceCoverage = do
 initialVM :: VM
 initialVM = vmForEthrunCreation mempty & block . timestamp .~ litWord initialTimestamp
                                        & block . number .~ initialBlockNumber
-                                       & env . contracts .~ fromList []       -- fixes weird nonce issues
+                                       & env . contracts .~ mempty       -- fixes weird nonce issues

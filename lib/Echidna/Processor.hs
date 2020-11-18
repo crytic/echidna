@@ -11,25 +11,32 @@ import Control.Exception          (Exception)
 import Control.Monad.Catch        (MonadThrow(..))
 import Data.Aeson                 (decode, Value(..))
 import Data.Text                  (Text, pack, unpack)
+import Data.List                  (nub)
+import Data.Maybe                 (maybeToList)
+import Text.Read                  (readMaybe)
 import System.Directory           (findExecutable)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit                (ExitCode(..))
 
 import qualified Data.ByteString.Lazy.Char8 as BSL
+import qualified Data.ByteString.UTF8 as BSU
 import qualified Data.HashMap.Strict as M
 
 import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
-import Echidna.ABI (hashSig)
+import EVM.ABI (AbiValue(..))
+import EVM.Types (Addr(..))
+import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
+
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
 -- instance for more detailed explanations.
 data ProcException = ProcessorFailure String String
-                   | ProcessorNotFound String
+                   | ProcessorNotFound String String
 
 instance Show ProcException where
   show = \case
-    ProcessorFailure p e -> "Error running " ++ p ++ ": " ++ e
-    ProcessorNotFound p  -> "Cannot find processor " ++ p
+    ProcessorFailure p e -> "Error running " ++ p ++ ":\n" ++ e
+    ProcessorNotFound p e -> "Cannot find " ++ p ++ "in PATH.\n" ++ e
 
 instance Exception ProcException
 
@@ -46,7 +53,7 @@ filterResults Nothing rs = concatMap (fmap hashSig . snd) rs
 data SlitherInfo = PayableInfo (ContractName, [FunctionName])
                  | ConstantFunctionInfo (ContractName, [FunctionName])
                  | AssertFunction (ContractName, [FunctionName])
-                 | ConstantValue (ContractName, Text) -- Not used right now, it will change soon
+                 | ConstantValue AbiValue
                  | GenerationGraph (ContractName, FunctionName, [FunctionName])
   deriving (Show)
 makePrisms ''SlitherInfo
@@ -66,17 +73,20 @@ filterConstantFunction = slitherFilter _ConstantFunctionInfo
 filterGenerationGraph :: [SlitherInfo] -> [(ContractName, FunctionName, [FunctionName])]
 filterGenerationGraph = slitherFilter _GenerationGraph
 
+filterConstantValue :: [SlitherInfo] -> [AbiValue]
+filterConstantValue = slitherFilter _ConstantValue
+
 -- Slither processing
 runSlither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m [SlitherInfo]
 runSlither fp args = let args' = ["--ignore-compile", "--print", "echidna", "--json", "-"] ++ args in do
   mp <- liftIO $ findExecutable "slither"
   case mp of
-    Nothing -> return []
+    Nothing -> throwM $ ProcessorNotFound "slither" "You should install it using 'pip3 install slither-analyzer --user'"
     Just path -> liftIO $ do
-      (ec, out, _) <- readCreateProcessWithExitCode (proc path $ args' |> fp) {std_err = Inherit} ""
+      (ec, out, err) <- readCreateProcessWithExitCode (proc path $ args' |> fp) {std_err = Inherit} ""
       case ec of
         ExitSuccess -> return $ procSlither out
-        ExitFailure _ -> return [] --we can make slither mandatory using: throwM $ ProcessorFailure "slither" err
+        ExitFailure _ -> throwM $ ProcessorFailure "slither" err
 
 procSlither :: String -> [SlitherInfo]
 procSlither r =
@@ -139,12 +149,25 @@ mconsts _  _         = []
 
 mconsts' :: Text -> Value -> [SlitherInfo]
 mconsts' _ (Object o) = case (M.lookup "value" o, M.lookup "type" o) of
-                         (Just v, Just (String t)) -> [ConstantValue (pack $ show v, t)]
-                         (Nothing, Nothing)        -> concatMap (uncurry mconsts') $ M.toList o
-                         _                         -> error "invalid JSON formatting parsing constants"
+                         (Just (String s), Just (String t)) -> map ConstantValue $ nub $ parseAbiValue (unpack s, unpack t)
+                         (Nothing, Nothing)                 -> concatMap (uncurry mconsts') $ M.toList o
+                         _                                  -> error "invalid JSON formatting parsing constants"
 
 mconsts' _ (Array  a) = concatMap (mconsts' "") a
 mconsts' _  _         = []
+
+parseAbiValue :: (String, String) -> [AbiValue]
+parseAbiValue (v, 'u':'i':'n':'t':_) = case readMaybe v of 
+                                               Just m -> makeNumAbiValues m
+                                               _      -> []
+
+parseAbiValue (v, 'i':'n':'t':_)     = case readMaybe v of 
+                                               Just m -> makeNumAbiValues m
+                                               _      -> []
+
+parseAbiValue (v, "string")          = makeArrayAbiValues $ BSU.fromString v
+parseAbiValue (v, "address")         = maybeToList $ AbiAddress . Addr <$> readMaybe v
+parseAbiValue _                      = []
 
 
 -- parse actual generation graph

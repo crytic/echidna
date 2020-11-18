@@ -27,7 +27,7 @@ import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
-import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, propGas, src)
+import Echidna.Types.Tx (Tx(..), TxConf, basicTx, propGas, src)
 import Echidna.Events   (EventMap, extractEvents)
 
 -- | Configuration for evaluating Echidna tests.
@@ -57,7 +57,7 @@ checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Ha
 checkETest em t = do
   TestConf p s <- asks getter
   g <- view (hasLens . propGas)
-  st <- get -- save EVM state
+  vm <- get -- save EVM state
   -- To check these tests, we're going to need a couple auxilary functions:
   --   * matchR[eturn] checks if we just tried to exec 0xfe, which means we failed an assert
   --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
@@ -70,18 +70,18 @@ checkETest em t = do
     -- If our test is a regular user-defined test, we exec it and check the result
     Left  (f, a) -> do
       sd <- hasSelfdestructed a
-      _  <- execTx (Tx (SolCall (f, [])) (s a) a g 0 0 (0, 0)) 
+      _  <- execTx (basicTx f [] (s a) a g) 
       b  <- gets (p f . getter)
-      return $ not sd && b
+      pure $ not sd && b
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
     Right sig    -> do
       vm' <- use hasLens
-      b1 <- fmap matchR       (use $ hasLens . result)
-      b2 <- fmap (matchC sig) (use $ hasLens . state . calldata . _1)
+      ret <- matchR <$> use (hasLens . result)
+      correctFn <- matchC sig <$> use (hasLens . state . calldata . _1)
       let es = extractEvents em vm'
-      let b3 = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
-      return $ b2 || (b1 && b3)
-  put st -- restore EVM state
+      let fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
+      pure $ correctFn || (ret && fa)
+  put vm -- restore EVM state
   pure res
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that

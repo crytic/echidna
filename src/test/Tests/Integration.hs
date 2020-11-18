@@ -62,7 +62,8 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
       [ ("echidna_address failed",                 passed      "echidna_address") ]
   , testContract "basic/constants.sol"    Nothing
-      [ ("echidna_found failed",                   solved      "echidna_found") ]
+      [ ("echidna_found failed",                   solved      "echidna_found")
+      , ("echidna_found_large failed",             solved      "echidna_found_large") ]
   , testContract "basic/constants2.sol"   Nothing
       [ ("echidna_found32 failed",                 solved      "echidna_found32") ]
   , testContract "basic/constants3.sol"   Nothing
@@ -106,6 +107,9 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("tests are not empty",                    testsEmpty                  ) ]
   , testContract "basic/time.sol"         (Just "basic/time.yaml")
       [ ("echidna_timepassed passed",              solved      "echidna_timepassed") ]
+  , testContract "basic/delay.sol"        Nothing
+      [ ("echidna_block_number passed",            solved    "echidna_block_number") 
+      , ("echidna_timestamp passed",               solved    "echidna_timestamp") ]
   , testContract "basic/now.sol"         Nothing
       [ ("echidna_now passed",                     solved      "echidna_now") ]
   , testContract "basic/construct.sol"    Nothing

@@ -7,7 +7,9 @@ import Prelude hiding (Word)
 import Control.Lens.TH (makePrisms, makeLenses)
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.ByteString (ByteString)
+import Data.Text (Text)
 import EVM (VMResult(..), Error(..))
+import EVM.ABI (AbiValue)
 import EVM.Concrete (Word)
 import EVM.Types (Addr)
 
@@ -19,6 +21,7 @@ import Echidna.Types.Signature (SolCall)
 data TxCall = SolCreate   ByteString
             | SolCall     SolCall
             | SolCalldata ByteString
+            | NoCall
   deriving (Show, Ord, Eq)
 makePrisms ''TxCall
 $(deriveJSON defaultOptions ''TxCall)
@@ -53,6 +56,38 @@ data Tx = Tx { _call  :: TxCall       -- | Call
              } deriving (Eq, Ord, Show)
 makeLenses ''Tx
 $(deriveJSON defaultOptions ''Tx)
+
+basicTx :: Text       -- | Function name
+        -> [AbiValue] -- | Function args
+        -> Addr       -- | msg.sender
+        -> Addr       -- | Destination contract
+        -> Word       -- | Gas limit
+        -> Tx
+basicTx f a s d g = basicTxWithValue f a s d g 0
+
+basicTxWithValue :: Text       -- | Function name
+                 -> [AbiValue] -- | Function args
+                 -> Addr       -- | msg.sender
+                 -> Addr       -- | Destination contract
+                 -> Word       -- | Gas limit
+                 -> Word       -- | Value
+                 -> Tx
+basicTxWithValue f a s d g v = Tx (SolCall (f, a)) s d g 0 v (0, 0)
+
+createTx :: ByteString  -- | Constructor bytecode
+         -> Addr        -- | Creator
+         -> Addr        -- | Destination address
+         -> Word        -- | Gas limit
+         -> Tx
+createTx bc s d g = createTxWithValue bc s d g 0
+
+createTxWithValue :: ByteString  -- | Constructor bytecode
+                  -> Addr        -- | Creator
+                  -> Addr        -- | Destination address
+                  -> Word        -- | Gas limit
+                  -> Word        -- | Value
+                  -> Tx
+createTxWithValue bc s d g v = Tx (SolCreate bc) s d g 0 v (0, 0)
 
 data TxResult = Success
               | ErrorBalanceTooLow 

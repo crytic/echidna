@@ -16,6 +16,7 @@ import Control.Monad (liftM3, replicateM, when, (<=<), ap, unless)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR, uniform, uniformMay, fromList)
 import Control.Monad.Reader.Class (MonadReader)
+import Control.Monad.Reader (runReaderT)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
@@ -185,12 +186,13 @@ seqMutators (c1, c2, c3) = fromList
           return . take ql $ if flp then take k gtxs ++ rtxs else take k rtxs ++ gtxs
 
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
-randseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
-           , Has GenDict y, Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign y)
+randseq :: ( MonadRandom m, MonadReader x m
+           , Has GenDict x, Has TxConf x, Has TestConf x, Has CampaignConf x, Has Campaign x)
         => Int -> Map Addr Contract -> World -> m [Tx]
 randseq ql o w = do
-  ca <- use hasLens
+  ca <- view hasLens
   cs <- view $ hasLens . mutConsts
+  txConf :: TxConf <- view hasLens
   let ctxs = ca ^. corpus
       p    = ca ^. ncallseqs
   if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
@@ -198,7 +200,7 @@ randseq ql o w = do
   else
     do
       -- Randomly generate new random transactions
-      gtxs <- replicateM ql (evalStateT (genTxM o) (w, ca ^. genDict))
+      gtxs <- replicateM ql $ runReaderT (genTxM o) (w, ca ^. genDict, txConf)
       -- Select a random mutator
       mut <- seqMutators cs
       if DS.null ctxs
@@ -219,8 +221,11 @@ callseq v w ql = do
   gasEnabled <- view $ hasLens . estimateGas
   -- Then, we get the current campaign state
   ca <- use hasLens
+  caConf :: CampaignConf <- view hasLens
+  testConf :: TestConf <- view hasLens
+  txConf :: TxConf <- view hasLens
   -- Then, we generate the actual transaction in the sequence
-  is <- randseq ql old w
+  is <- runReaderT (randseq ql old w) (ca ^. genDict, ca, caConf, testConf, txConf)
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, s) <- runStateT (evalSeq w v ef is) (v, ca)
   let new = s ^. _1 . env . EVM.contracts
