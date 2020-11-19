@@ -1,7 +1,7 @@
 module Echidna.Events where
 import Data.Tree        (flatten)
 import Data.Tree.Zipper (fromForest, TreePos, Empty)
-import Data.Text        (Text, append)
+import Data.Text        (Text)
 import Data.Maybe       (listToMaybe)
 import Control.Lens     (view)
 import EVM
@@ -29,7 +29,7 @@ extractEvents em vm =
               Nothing   -> []
               Just word -> case M.lookup (wordValue word) em of
                              Just (Event name _ types) ->
-                               [name `append` showValues [t | (t, NotIndexed) <- types] bytes ]
+                               [name <> showValues [t | (t, NotIndexed) <- types] bytes]
                              Nothing -> []
           _ -> []
   in concat $ concatMap flatten $ fmap (fmap showTrace) forest 

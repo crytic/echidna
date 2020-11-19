@@ -15,7 +15,7 @@ import Data.Foldable (traverse_)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import EVM
+import EVM (Error(..), VMResult(..), VM, calldata, result, state)
 import EVM.ABI (AbiValue(..), abiCalldata, encodeAbiValue)
 import EVM.Types (Addr)
 
@@ -28,7 +28,7 @@ import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Tx (Tx(..), TxConf, basicTx, propGas, src)
-import Echidna.Events   (EventMap, extractEvents)
+import Echidna.Events (EventMap, extractEvents)
 
 -- | Configuration for evaluating Echidna tests.
 data TestConf = TestConf { classifier :: Text -> VM -> Bool
@@ -79,7 +79,7 @@ checkETest em t = do
       ret <- matchR <$> use (hasLens . result)
       correctFn <- matchC sig <$> use (hasLens . state . calldata . _1)
       let es = extractEvents em vm'
-      let fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
+          fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
       pure $ correctFn || (ret && fa)
   put vm -- restore EVM state
   pure res

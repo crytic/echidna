@@ -85,7 +85,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_valid_timestamp failed",         passed      "echidna_valid_timestamp") ]
   , testContract "basic/fallback.sol"     Nothing
       [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
-  , testContract "basic/large.sol"     Nothing
+  , testContract "basic/large.sol"        Nothing
       [ ("echidna_large failed",                   solved      "echidna_large") ]
   , testContract "basic/darray.sol"       Nothing
       [ ("echidna_darray passed",                  solved      "echidna_darray")
@@ -110,7 +110,7 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/delay.sol"        Nothing
       [ ("echidna_block_number passed",            solved    "echidna_block_number") 
       , ("echidna_timestamp passed",               solved    "echidna_timestamp") ]
-  , testContract "basic/now.sol"         Nothing
+  , testContract "basic/now.sol"          Nothing
       [ ("echidna_now passed",                     solved      "echidna_now") ]
   , testContract "basic/construct.sol"    Nothing
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
@@ -150,7 +150,7 @@ integrationTests = testGroup "Solidity Integration Testing"
   ,  testContract "basic/payable.sol"     Nothing
       [ ("echidna_payable failed",                 solved      "echidna_payable") ]
   ,  testContract "basic/killed.sol"      Nothing
-      [ ("echidna_still_alive failed",                 solved      "echidna_still_alive") ]
+      [ ("echidna_still_alive failed",             solved      "echidna_still_alive") ]
   ,  checkConstructorConditions "basic/codesize.sol"
       "invalid codesize"
   ]
