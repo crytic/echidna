@@ -138,7 +138,7 @@ If you want to quickly test Echidna in Linux or MacOS, we provide statically lin
 
 ### Docker container
 
-If you prefer to use a pre-built Docker container, log into Github on your local `docker` client and check out our [docker package](https://github.com/crytic/echidna/packages/136575), which are also auto-built via Github Actions.
+If you prefer to use a pre-built Docker container, log into Github on your local `docker` client and check out our [docker package](https://github.com/orgs/crytic/packages/container/package/echidna), which are also auto-built via Github Actions.
 Otherwise, if you want to install the latest released version of Echidna, we recommend using docker:
 
 ```
