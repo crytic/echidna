@@ -71,8 +71,7 @@ vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> Unknow
 execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Int)
 execTxWith h m t = do
   sd <- hasSelfdestructed (t ^. dst)
-  if sd 
-  then pure (VMFailure (Revert ""), 0)
+  if sd then pure (VMFailure (Revert ""), 0)
   else do 
     hasLens . traces .= emptyEvents 
     (og :: VM) <- use hasLens
