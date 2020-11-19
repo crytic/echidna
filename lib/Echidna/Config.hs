@@ -99,12 +99,9 @@ instance FromJSON EConfigWithUsage where
             let useKey k = hasLens %= insert k
                 x ..:? k = useKey k >> lift (x .:? k)
                 x ..!= y = fromMaybe y <$> x
-                tc = do psender <- v ..:? "psender" ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                        fprefix <- v ..:? "prefix"  ..!= "echidna_"
-                        let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
-                        return $ TestConf (\fname -> (== goal fname)  . maybe ResOther classifyRes . view result)
-                                          (const psender)
                 getWord s d = C Dull . fromIntegral <$> v ..:? s ..!= (d :: Integer)
+
+                -- TxConf
                 xc = TxConf <$> getWord "propMaxGas" maxGasPerBlock
                             <*> getWord "testMaxGas" maxGasPerBlock
                             <*> getWord "maxGasprice" 0
@@ -112,6 +109,15 @@ instance FromJSON EConfigWithUsage where
                             <*> getWord "maxBlockDelay" defaultBlockDelay
                             <*> getWord "maxValue" 100000000000000000000 -- 100 eth
 
+                -- TestConf
+                tc = do
+                  psender <- v ..:? "psender" ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                  fprefix <- v ..:? "prefix"  ..!= "echidna_"
+                  let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
+                      classify fname vm = maybe ResOther classifyRes (vm ^. result) == goal fname
+                  return $ TestConf classify (const psender)
+
+                -- CampaignConf
                 cov = v ..:? "coverage" <&> \case Just True -> Just mempty
                                                   _         -> Nothing
                 cc = CampaignConf <$> v ..:? "testLimit"   ..!= 50000
@@ -123,36 +129,38 @@ instance FromJSON EConfigWithUsage where
                                   <*> v ..:? "seed"
                                   <*> v ..:? "dictFreq"    ..!= 0.40
                                   <*> v ..:? "corpusDir"   ..!= Nothing
-                                  <*> v ..:? "mutConsts"   ..!= (100,1,1)
+                                  <*> v ..:? "mutConsts"   ..!= (100, 1, 1)
 
+                -- SolConf
+                defaultAddr     = 0x00a329c0648769a73afac7f9381e08fb43dbea72
+                defaultDeployer = 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                fnFilter = bool Whitelist Blacklist <$> v ..:? "filterBlacklist" ..!= True
+                                                    <*> v ..:? "filterFunctions" ..!= []
+                sc = SolConf <$> v ..:? "contractAddr"    ..!= defaultAddr
+                             <*> v ..:? "deployer"        ..!= defaultDeployer
+                             <*> v ..:? "sender"          ..!= (0x10000 NE.:| [0x20000, defaultDeployer])
+                             <*> v ..:? "balanceAddr"     ..!= 0xffffffff
+                             <*> v ..:? "balanceContract" ..!= 0
+                             <*> v ..:? "prefix"          ..!= "echidna_"
+                             <*> v ..:? "cryticArgs"      ..!= []
+                             <*> v ..:? "solcArgs"        ..!= ""
+                             <*> v ..:? "solcLibs"        ..!= []
+                             <*> v ..:? "quiet"           ..!= False
+                             <*> v ..:? "initialize"      ..!= Nothing
+                             <*> v ..:? "multi-abi"       ..!= False
+                             <*> v ..:? "checkAsserts"    ..!= False
+                             <*> v ..:? "benchmarkMode"   ..!= False
+                             <*> fnFilter
                 names :: Names
                 names Sender = (" from: " ++) . show
                 names _      = const ""
                 mode = fromMaybe Interactive <$> (v ..:? "format" >>= \case
-                  Just ("text" :: String) -> pure $ Just $ NonInteractive Text
-                  Just "json" -> pure $ Just $ NonInteractive JSON
-                  Just "none" -> pure $ Just $ NonInteractive None
+                  Just ("text" :: String) -> pure . Just . NonInteractive $ Text
+                  Just "json"             -> pure . Just . NonInteractive $ JSON
+                  Just "none"             -> pure . Just . NonInteractive $ None
                   Nothing -> pure Nothing
                   _ -> M.fail "unrecognized format type (should be text, json, or none)") in
-            EConfig <$> cc
-                    <*> pure names
-                    <*> (SolConf <$> v ..:? "contractAddr"    ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea72
-                                 <*> v ..:? "deployer"        ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
-                                 <*> v ..:? "sender"          ..!= (0x10000 NE.:| [0x20000, 0x00a329c0648769a73afac7f9381e08fb43dbea70])
-                                 <*> v ..:? "balanceAddr"     ..!= 0xffffffff
-                                 <*> v ..:? "balanceContract" ..!= 0
-                                 <*> v ..:? "prefix"          ..!= "echidna_"
-                                 <*> v ..:? "cryticArgs"      ..!= []
-                                 <*> v ..:? "solcArgs"        ..!= ""
-                                 <*> v ..:? "solcLibs"        ..!= []
-                                 <*> v ..:? "quiet"           ..!= False
-                                 <*> v ..:? "initialize"      ..!= Nothing
-                                 <*> v ..:? "multi-abi"       ..!= False
-                                 <*> v ..:? "checkAsserts"    ..!= False
-                                 <*> v ..:? "benchmarkMode"   ..!= False
-                                 <*> (bool Whitelist Blacklist <$> v ..:? "filterBlacklist" ..!= True <*> v ..:? "filterFunctions" ..!= []))
-                    <*> tc
-                    <*> xc
+            EConfig <$> cc <*> pure names <*> sc <*> tc <*> xc
                     <*> (UIConf <$> v ..:? "timeout" <*> mode)
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
