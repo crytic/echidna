@@ -20,13 +20,15 @@ import EVM.ABI (AbiValue(..), abiCalldata, encodeAbiValue)
 import EVM.Types (Addr)
 
 import qualified Data.ByteString as BS
+import qualified Data.Text as T
 
 import Echidna.ABI
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
-import Echidna.Types.Tx (Tx, TxConf, basicTx, propGas, src)
+import Echidna.Types.Tx (Tx(..), TxConf, basicTx, propGas, src)
+import Echidna.Events (EventMap, extractEvents)
 
 -- | Configuration for evaluating Echidna tests.
 data TestConf = TestConf { classifier :: Text -> VM -> Bool
@@ -51,8 +53,8 @@ classifyRes _ = ResOther
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
-           => SolTest -> m Bool
-checkETest t = do
+           => EventMap -> SolTest -> m Bool
+checkETest em t = do
   TestConf p s <- asks getter
   g <- view (hasLens . propGas)
   vm <- get -- save EVM state
@@ -66,12 +68,19 @@ checkETest t = do
         Nothing -> False
   res <- case t of
     -- If our test is a regular user-defined test, we exec it and check the result
-    Left  (f, a) -> execTx (basicTx f [] (s a) a g) >> gets (p f . getter)
+    Left  (f, a) -> do
+      sd <- hasSelfdestructed a
+      _  <- execTx (basicTx f [] (s a) a g) 
+      b  <- gets (p f . getter)
+      pure $ not sd && b
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
     Right sig    -> do
-      ret       <- matchR <$> use (hasLens . result)
+      vm' <- use hasLens
+      ret <- matchR <$> use (hasLens . result)
       correctFn <- matchC sig <$> use (hasLens . state . calldata . _1)
-      pure $ ret || correctFn
+      let es = extractEvents em vm'
+          fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
+      pure $ correctFn || (ret && fa)
   put vm -- restore EVM state
   pure res
 

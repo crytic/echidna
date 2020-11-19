@@ -6,6 +6,7 @@ import Control.Lens.TH (makeLenses)
 import Data.List.NonEmpty (NonEmpty)
 import EVM.Types (Addr)
 import Echidna.Types.Signature (FunctionHash, SignatureMap)
+import Echidna.Events (EventMap)
 
 -- | The world is composed by: 
 --    * A list of "human" addresses 
@@ -16,5 +17,6 @@ data World = World { _senders          :: NonEmpty Addr
                    , _highSignatureMap :: SignatureMap
                    , _lowSignatureMap  :: Maybe SignatureMap
                    , _payableSigs      :: [FunctionHash]
+                   , _eventMap         :: EventMap
                    }
 makeLenses ''World

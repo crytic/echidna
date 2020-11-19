@@ -35,6 +35,7 @@ dependencies:
   - optparse-applicative
   - process
   - random
+  - rosezipper
   - sbv
   - stm
   - temporary

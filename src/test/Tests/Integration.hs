@@ -85,7 +85,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_valid_timestamp failed",         passed      "echidna_valid_timestamp") ]
   , testContract "basic/fallback.sol"     Nothing
       [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
-  , testContract "basic/large.sol"     Nothing
+  , testContract "basic/large.sol"        Nothing
       [ ("echidna_large failed",                   solved      "echidna_large") ]
   , testContract "basic/darray.sol"       Nothing
       [ ("echidna_darray passed",                  solved      "echidna_darray")
@@ -93,8 +93,12 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml")
       [ ("echidna_runForever passed",              solved      "echidna_runForever") ]
   , testContract "basic/assert.sol"       (Just "basic/assert.yaml")
-      [ ("echidna_set0 passed",                    solved      "ASSERTION set0")
-      , ("echidna_set1 failed",                    passed      "ASSERTION set1") ]
+      [ ("set0 passed",                    solved      "ASSERTION set0")
+      , ("set1 failed",                    passed      "ASSERTION set1")
+      , ("internal_assert passed",         solved      "ASSERTION internal_assert")
+      , ("external_assert passed",         solved      "ASSERTION external_assert")
+      , ("f failed",                       passed      "ASSERTION f")
+ ]
   , testContract "basic/assert.sol"       (Just "basic/benchmark.yaml")
       [ ("coverage is empty",                      not . coverageEmpty         )
       , ("tests are not empty",                    testsEmpty                  ) ]
@@ -106,7 +110,7 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/delay.sol"        Nothing
       [ ("echidna_block_number passed",            solved    "echidna_block_number") 
       , ("echidna_timestamp passed",               solved    "echidna_timestamp") ]
-  , testContract "basic/now.sol"         Nothing
+  , testContract "basic/now.sol"          Nothing
       [ ("echidna_now passed",                     solved      "echidna_now") ]
   , testContract "basic/construct.sol"    Nothing
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
@@ -145,6 +149,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("unexpected corpus count ",               countCorpus 5)]
   ,  testContract "basic/payable.sol"     Nothing
       [ ("echidna_payable failed",                 solved      "echidna_payable") ]
+  ,  testContract "basic/killed.sol"      Nothing
+      [ ("echidna_still_alive failed",             solved      "echidna_still_alive") ]
   ,  checkConstructorConditions "basic/codesize.sol"
       "invalid codesize"
   ]
