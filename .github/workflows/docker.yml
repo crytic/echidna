@@ -29,6 +29,13 @@ jobs:
           username: ${{ secrets.CR_USERNAME }}
           password: ${{ secrets.CR_PAT }}
 
+      - name: DockerHub Login
+        if: ${{ github.repository_owner == 'crytic' }}
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
+
       - name: Cache Docker layers
         uses: actions/cache@v2
         with:
@@ -58,29 +65,19 @@ jobs:
           set -e
           echo "VER=$VER" >> $GITHUB_ENV
 
-      - name: Docker Build
+      - name: Enable Crytic tag
+        if: ${{ github.repository_owner == 'crytic' }}
+        run: |
+          echo "CRYTIC_TAG=trailofbits/echidna:$VER" >> $GITHUB_ENV
+
+      - name: Docker Build and Push
         uses: docker/build-push-action@v2
         with:
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
           platforms: linux/amd64
           pull: true
-          tags: echidna:$VER
-
-      - name: Push to GitHub Packages
-        run: |
-          docker tag echidna:$VER ghcr.io/${{ github.repository_owner }}/echidna:$VER
-          docker push ghcr.io/${{ github.repository_owner }}/echidna:$VER
-
-      - name: DockerHub Login
-        if: ${{ github.repository_owner == 'crytic' }}
-        uses: docker/login-action@v1
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
-
-      - name: Push to DockerHub
-        if: ${{ github.repository_owner == 'crytic' }}
-        run: |
-          docker tag echidna:$VER registry.hub.docker.com/trailofbits/echidna:$VER
-          docker push registry.hub.docker.com/trailofbits/echidna:$VER
+          push: true
+          tags: |
+           ghcr.io/${{ github.repository_owner }}/echidna:${{ env.VER }}
+           ${{ env.CRYTIC_TAG }}
