@@ -25,8 +25,10 @@ import System.Process             (StdStream(..), readCreateProcessWithExitCode,
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
 import System.Directory           (findExecutable)
+
 import Echidna.ABI                (encodeSig, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec               (execTx, initialVM)
+import Echidna.Events             (EventMap)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (FunctionHash, SolSignature, SignatureMap)
 import Echidna.Types.Tx           (TxConf, createTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
@@ -180,7 +182,7 @@ abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
 loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-              => Maybe Text -> [SolcContract] -> m (VM, NE.NonEmpty SolSignature, [Text], SignatureMap)
+              => Maybe Text -> [SolcContract] -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
 loadSpecified name cs = do
   -- Pick contract to load
   c <- choose cs name
@@ -230,7 +232,7 @@ loadSpecified name cs = do
       let transaction = unless (isJust fp) $ void . execTx $ createTxWithValue bc d ca unlimitedGasPerBlock (w256 $ fromInteger balc)
       vm' <- execStateT transaction vm
       case currentContract vm' of
-        Just _  -> return (vm', neFuns, fst <$> tests, abiMapping)
+        Just _  -> return (vm', c ^. eventMap, neFuns, fst <$> tests, abiMapping)
         Nothing -> throwM DeploymentFailed
 
   where choose []    _        = throwM NoContracts
@@ -247,18 +249,18 @@ loadSpecified name cs = do
 --             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 --loadSolidity fp name = contracts fp >>= loadSpecified name
 loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-                      => NE.NonEmpty FilePath -> Maybe Text -> m (VM, NE.NonEmpty SolSignature, [Text], SignatureMap)
+                      => NE.NonEmpty FilePath -> Maybe Text -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
 loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
 
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
-               => (VM, NE.NonEmpty SolSignature, [Text], SignatureMap)
+               => (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
                -> Maybe String
                -> [SlitherInfo]
                -> m (VM, World, [SolTest])
-prepareForTest (v, a, ts, m) c si = do
+prepareForTest (v, em, a, ts, m) c si = do
   SolConf{ _sender = s, _checkAsserts = ch } <- view hasLens
   let r = v ^. state . contract
       a' = NE.toList a
@@ -266,7 +268,9 @@ prepareForTest (v, a, ts, m) c si = do
       as = if ch then filterResults c $ filterAssert si else []
       cs = filterResults c $ filterConstantFunction si
       (hm, lm) = prepareHashMaps cs as m
-  pure (v, World s hm lm ps, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else [])
+  pure (v, World s hm lm ps em, fmap Left (zip ts $ repeat r)
+                                 ++ if ch then Right <$> drop 1 a'
+                                          else [])
 
 prepareHashMaps :: [FunctionHash] -> [FunctionHash] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
 prepareHashMaps [] _  m = (m, Nothing)                                -- No constant functions detected

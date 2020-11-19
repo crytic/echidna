@@ -42,6 +42,11 @@ import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 
+hasSelfdestructed :: (MonadState y m, Has VM y) => Addr -> m Bool
+hasSelfdestructed a = do
+  sd <- use $ hasLens . tx . substate . selfdestructs
+  return $ a `elem` sd
+
 -- | If half a tuple is zero, make both halves zero. Useful for generating delays, since block number
 -- only goes up with timestamp
 level :: (Num a, Eq a) => (a, a) -> (a, a)
@@ -58,7 +63,7 @@ genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, Has GenDict x, Has Worl
   -> m Tx
 genTxM m = do
   TxConf _ g gp t b mv <- view hasLens
-  World ss hmm lmm ps <- view hasLens
+  World ss hmm lmm ps _ <- view hasLens
   genDict <- view hasLens
   mm <- getSignatures hmm lmm
   let ns = dictValues genDict
