@@ -1,7 +1,7 @@
 ## TODO
 
 ## 1.6.0
-* Slither is now mandatory to properly run Echidna.
+* Slither is now a required dependency.
 * Made sure that <ESC> gets mapped correctly, fixing #474 (#503)
 * Fix library timestamp/block delay issue (#510)
 * Make stack limit exceeded a revert (#517)
