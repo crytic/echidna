@@ -1,6 +1,7 @@
 ## TODO
 
-## 1.5.2
+## 1.6.0
+* Slither is now mandatory to properly run Echidna.
 * Made sure that <ESC> gets mapped correctly, fixing #474 (#503)
 * Fix library timestamp/block delay issue (#510)
 * Make stack limit exceeded a revert (#517)
@@ -15,7 +16,8 @@
 * Simplified a bunch of code (#548, #549, #513)
 * Fix negative address bug (#552)
 * Various Github Actions improvements (#527, #554)
-
+* Allow to bypass EIP-170 and set up a custom max code size (#544)
+ 
 ## 1.5.1
 
 * Fix timestamp and block delays having the initial timestamp/block added to them (#460, #469)
