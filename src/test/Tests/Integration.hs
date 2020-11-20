@@ -153,4 +153,6 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_still_alive failed",             solved      "echidna_still_alive") ]
   ,  checkConstructorConditions "basic/codesize.sol"
       "invalid codesize"
+  , testContract "basic/eip-170.sol"   (Just "basic/eip-170.yaml")
+      [ ("echidna_test passed",                    passed      "echidna_test") ]
   ]
