@@ -39,7 +39,7 @@ import EVM hiding (contracts, path)
 import qualified EVM (contracts)
 import EVM.ABI
 import EVM.Solidity
-import EVM.Types    (Addr)
+import EVM.Types    (Addr, Buffer(ConcreteBuffer))
 import EVM.Concrete (w256)
 
 import qualified Data.List.NonEmpty  as NE
@@ -232,8 +232,12 @@ loadSpecified name cs = do
       vm <- loadLibraries ls addrLibrary d blank
       let transaction = unless (isJust fp) $ void . execTx $ createTxWithValue bc d ca unlimitedGasPerBlock (w256 $ fromInteger balc)
       vm' <- execStateT transaction vm
+      -- Take the result from calling the constructor and also load it in the ABI mapping for World
+      let abiMapping' = case vm' ^. result of
+            Just (VMSuccess (ConcreteBuffer bc')) -> M.insert (stripBytecodeMetadata bc') fabiOfc abiMapping
+            _ -> abiMapping
       case currentContract vm' of
-        Just _  -> return (vm', c ^. eventMap, neFuns, fst <$> tests, abiMapping)
+        Just _  -> return (vm', c ^. eventMap, neFuns, fst <$> tests, abiMapping')
         Nothing -> throwM DeploymentFailed
 
   where choose []    _        = throwM NoContracts
