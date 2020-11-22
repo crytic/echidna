@@ -30,9 +30,9 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
 import Echidna.Solidity
-import Echidna.Test
 import Echidna.Types.Campaign (CampaignConf(CampaignConf))
 import Echidna.Types.Tx  (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
+import Echidna.Types.Test (TestConf(..), CallRes(..), classifyRes)
 import Echidna.UI
 import Echidna.UI.Report
 

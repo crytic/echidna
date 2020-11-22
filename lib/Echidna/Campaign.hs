@@ -45,6 +45,7 @@ import Echidna.Transaction
 import Echidna.Types.Campaign
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
 import Echidna.Types.World (World(..), eventMap)
+import Echidna.Types.Test (TestConf(..))
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -60,11 +61,11 @@ isDone c | null (view tests c) = do
   return $ view ncallseqs c * q >= tl
 isDone (view tests -> ts) = do
   (tl, sl, sof) <- view (hasLens . to (liftM3 (,,) _testLimit _shrinkLimit _stopOnFail))
-  let res (Open  i)   = if i >= tl then Just True else Nothing
-      res Passed      = Just True
-      res (Large i _) = if i >= sl then Just False else Nothing
-      res (Solved _)  = Just False
-      res (Failed _)  = Just False
+  let res (Open  i)     = if i >= tl then Just True else Nothing
+      res Passed        = Just True
+      res (Large i _ _) = if i >= sl then Just False else Nothing
+      res (Solved _ _)  = Just False
+      res (Failed _)    = Just False
   pure $ res . snd <$> ts & if sof then elem $ Just False else all isJust
 
 -- | Given a 'Campaign', check if the test results should be reported as a
@@ -87,17 +88,18 @@ updateTest w v (Just (v', xs)) (n, t) = do
   let em = w ^. eventMap
   (n,) <$> case t of
     Open i | i >= tl -> pure Passed
-    Open i           -> catch (evalStateT (checkETest em n) v' <&> bool (Large (-1) xs) (Open (i + 1)))
-                              (pure . Failed)
+    Open i           -> catch (evalStateT (checkETest em n) v' <&> (\(b, r) -> (bool (Large (-1) xs r) (Open (i + 1)) b))) 
+                          (pure . Failed)
     _                -> snd <$> updateTest w v Nothing (n,t)
 updateTest w v Nothing (n, t) = do
   sl <- view (hasLens . shrinkLimit)
   let em = w ^. eventMap
   (n,) <$> case t of
-    Large i x | i >= sl -> pure $ Solved x
-    Large i x           -> if length x > 1 || any canShrinkTx x
-                             then Large (i + 1) <$> evalStateT (shrinkSeq (checkETest em n) x) v
-                             else pure $ Solved x
+    Large i x r | i >= sl -> pure $ Solved x r
+    Large i x r           -> if length x > 1 || any canShrinkTx x
+                             then do xs' <- evalStateT (shrinkSeq (checkETest em n) x) v
+                                     pure $ Large (i + 1) xs' r
+                             else pure $ Solved x r
     _                   -> pure t
 
 -- | Given a rule for updating a particular test's state, apply it to each test in a 'Campaign'.
@@ -296,8 +298,8 @@ campaign u v w ts d txs = do
     update c    = do
       CampaignConf tl sof _ q sl _ _ _ _ _ <- view hasLens
       Campaign { _ncallseqs } <- view hasLens <$> get
-      if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
-         | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
-         | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
-         | null c && (q * _ncallseqs) < tl                                     -> callseq v w q >> step
-         | otherwise                                                           -> lift u
+      if | sof && any (\case Solved _ _ -> True; Failed _ -> True; _ -> False) c -> lift u
+         | any (\case Open  n     -> n < tl; _ -> False) c                       -> callseq v w q >> step
+         | any (\case Large n _ _ -> n < sl; _ -> False) c                       -> step
+         | null c && (q * _ncallseqs) < tl                                       -> callseq v w q >> step
+         | otherwise                                                             -> lift u

@@ -111,8 +111,8 @@ mapTest (solTest, testState) =
   where
   mapTestState (C.Open _) = (Fuzzing, Nothing, Nothing)
   mapTestState C.Passed = (Passed, Nothing, Nothing)
-  mapTestState (C.Solved txs) = (Solved, Just $ mapTx <$> txs, Nothing)
-  mapTestState (C.Large _ txs) = (Shrinking, Just $ mapTx <$> txs, Nothing)
+  mapTestState (C.Solved txs _) = (Solved, Just $ mapTx <$> txs, Nothing)
+  mapTestState (C.Large _ txs _) = (Shrinking, Just $ mapTx <$> txs, Nothing)
   mapTestState (C.Failed e) = (Error, Nothing, Just $ show e) -- TODO add (show e)
 
   mapTx Tx{..} =

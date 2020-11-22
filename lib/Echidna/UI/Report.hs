@@ -19,6 +19,7 @@ import Echidna.Exec
 import Echidna.Pretty (ppTxCall)
 import Echidna.Types.Campaign
 import Echidna.Types.Tx (Tx(Tx), TxCall(..), TxConf, txGas, src)
+import Echidna.Types.Test (CallRes(..), prettyRes)
 
 -- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.
 data Role = Sender | Receiver | Ambiguous
@@ -64,25 +65,25 @@ ppGasInfo Campaign { _gasInfo = gi } | gi == mempty = pure ""
 ppGasInfo Campaign { _gasInfo = gi } = (fmap $ intercalate "") (mapM ppGasOne $ sortOn (\(_, (n, _)) -> n) $ toList gi)
 
 -- | Pretty-print the status of a solved test.
-ppFail :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> [Tx] -> m String
-ppFail _ [] = pure "failed with no transactions made ⁉️  "
-ppFail b xs = let status = case b of
+ppFail :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> [Tx] -> CallRes -> m String
+ppFail _ [] r = pure ("failed with no transactions made ⁉️  when property " ++ prettyRes r)
+ppFail b xs r = let status = case b of
                                 Nothing    -> ""
                                 Just (n,m) -> ", shrinking " ++ progress n m
-                  pxs = mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs in
- (("failed!💥  \n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> pxs
+                    pxs = mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs in
+ (("failed!💥 when property " ++ prettyRes r ++"\n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> pxs
 
 -- | Pretty-print the status of a test.
 ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => TestState -> m String
-ppTS (Failed e)  = pure $ "could not evaluate ☣\n  " ++ show e
-ppTS (Solved l)  = ppFail Nothing l
-ppTS Passed      = pure "passed! 🎉"
-ppTS (Open i)    = do
+ppTS (Failed e)   = pure $ "could not evaluate ☣\n  " ++ show e
+ppTS (Solved l r) = ppFail Nothing l r
+ppTS Passed       = pure "passed! 🎉"
+ppTS (Open i )    = do
   t <- view (hasLens .  testLimit)
   if i >= t then ppTS Passed else pure $ "fuzzing " ++ progress i t
-ppTS (Large n l) = do
+ppTS (Large n l r) = do
   m <- view (hasLens . shrinkLimit)
-  ppFail (if n < m then Just (n, m) else Nothing) l
+  ppFail (if n < m then Just (n, m) else Nothing) l r
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String

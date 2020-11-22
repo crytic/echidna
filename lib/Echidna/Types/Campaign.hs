@@ -20,6 +20,7 @@ import Echidna.ABI (GenDict, defaultDict)
 import Echidna.Exec (CoverageMap, ExecException)
 import Echidna.Solidity (SolTest)
 import Echidna.Types.Tx (Tx)
+import Echidna.Types.Test (CallRes(..))
 
 type MutationConsts = (Integer, Integer, Integer)
 
@@ -49,27 +50,27 @@ data CampaignConf = CampaignConf { _testLimit     :: Int
 makeLenses ''CampaignConf
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
-data TestState = Open Int             -- ^ Maybe solvable, tracking attempts already made
-               | Large Int [Tx]       -- ^ Solved, maybe shrinable, tracking shrinks tried + best solve
-               | Passed               -- ^ Presumed unsolvable
-               | Solved [Tx]          -- ^ Solved with no need for shrinking
-               | Failed ExecException -- ^ Broke the execution environment
+data TestState = Open Int                -- ^ Maybe solvable, tracking attempts already made
+               | Large Int [Tx] CallRes  -- ^ Solved, maybe shrinable, tracking shrinks tried + best solve
+               | Passed                  -- ^ Presumed unsolvable
+               | Solved [Tx] CallRes     -- ^ Solved with no need for shrinking
+               | Failed ExecException    -- ^ Broke the execution environment
                  deriving Show
 
 instance Eq TestState where
-  (Open i)    == (Open j)    = i == j
-  (Large i l) == (Large j m) = i == j && l == m
-  Passed      == Passed      = True
-  (Solved l)  == (Solved m)  = l == m
-  _           == _           = False
+  (Open i)      == (Open j)      = i == j
+  (Large i l _) == (Large j m _) = i == j && l == m
+  Passed        == Passed        = True
+  (Solved l _)  == (Solved m _)  = l == m
+  _             == _             = False
 
 instance ToJSON TestState where
   toJSON s = object $ ("passed", toJSON passed) : maybeToList desc where
-    (passed, desc) = case s of Open _    -> (True, Nothing)
-                               Passed    -> (True, Nothing)
-                               Large _ l -> (False, Just ("callseq", toJSON l))
-                               Solved  l -> (False, Just ("callseq", toJSON l))
-                               Failed  e -> (False, Just ("exception", toJSON $ show e))
+    (passed, desc) = case s of Open _       -> (True, Nothing)
+                               Passed       -> (True, Nothing)
+                               Large _ l _  -> (False, Just ("callseq", toJSON l))
+                               Solved  l _  -> (False, Just ("callseq", toJSON l))
+                               Failed  e    -> (False, Just ("exception", toJSON $ show e))
 
 type Corpus = Set (Integer, [Tx])
 

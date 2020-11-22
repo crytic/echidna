@@ -13,7 +13,7 @@ import Control.Monad.State.Strict (MonadState(get, put), gets)
 import Data.Bool (bool)
 import Data.Foldable (traverse_)
 import Data.Has (Has(..))
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, fromJust)
 import Data.Text (Text)
 import EVM (Error(..), VMResult(..), VM, calldata, result, state)
 import EVM.ABI (AbiValue(..), abiCalldata, encodeAbiValue)
@@ -29,31 +29,11 @@ import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Tx (Tx, TxConf, basicTx, propGas, src)
-
--- | Configuration for evaluating Echidna tests.
-data TestConf = TestConf { classifier :: Text -> VM -> Bool
-                           -- ^ Given a VM state and test name, check if a test just passed (typically
-                           -- examining '_result'.)
-                         , testSender :: Addr -> Addr
-                           -- ^ Given the address of a test, return the address to send test evaluation
-                           -- transactions from.
-                         }
-
--- | Possible responses to a call to an Echidna test: @true@, @false@, @REVERT@, and ???.
-data CallRes = ResFalse | ResTrue | ResRevert | ResOther
-  deriving (Eq, Show)
-
--- | Given a 'VMResult', classify it assuming it was the result of a call to an Echidna test.
-classifyRes :: VMResult -> CallRes
-classifyRes (VMSuccess b) | viewBuffer b == Just (encodeAbiValue (AbiBool True))  = ResTrue
-                          | viewBuffer b == Just (encodeAbiValue (AbiBool False)) = ResFalse
-                          | otherwise                                             = ResOther
-classifyRes Reversion = ResRevert
-classifyRes _         = ResOther
+import Echidna.Types.Test (TestConf(..), CallRes(..), classifyRes)
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
-           => EventMap -> SolTest -> m Bool
+           => EventMap -> SolTest -> m (Bool, CallRes)
 checkETest em t = do
   TestConf p s <- view hasLens
   g <- view (hasLens . propGas)
@@ -70,9 +50,9 @@ checkETest em t = do
     -- If our test is a regular user-defined test, we exec it and check the result
     Left (f, a) -> do
       sd <- hasSelfdestructed a
-      _  <- execTx $ basicTx f [] (s a) a g
+      (vm',_) <- execTx $ basicTx f [] (s a) a g
       b  <- gets $ p f . getter
-      pure $ not sd && b
+      pure (not sd && b, classifyRes vm')
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
     Right sig   -> do
       vm' <- use hasLens
@@ -80,7 +60,7 @@ checkETest em t = do
       correctFn <- matchC sig <$> use (hasLens . state . calldata . _1)
       let es = extractEvents em vm'
           fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
-      pure $ correctFn || (ret && fa)
+      pure (correctFn || (ret && fa), classifyRes $ fromJust $ vm' ^. result)
   put vm -- restore EVM state
   pure res
 
@@ -89,11 +69,11 @@ checkETest em t = do
 shrinkSeq :: ( MonadRandom m, MonadReader x m, MonadThrow m
              , Has SolConf x, Has TestConf x, Has TxConf x, MonadState y m
              , Has VM y)
-          => m Bool -> [Tx] -> m [Tx]
+          => m (Bool, CallRes) -> [Tx] -> m [Tx]
 shrinkSeq f xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
   check xs' = do
     og <- get
-    res <- traverse_ execTx xs' >> f
+    (res,_) <- traverse_ execTx xs' >> f
     put og
     pure res
   shrinkSender x = do

@@ -72,16 +72,16 @@ checkConstructorConditions fp as = testCase fp $ do
     (v, w, t) <- loadSolTests (fp :| []) Nothing
     let em = w ^. eventMap
     mapM (\u -> evalStateT (checkETest em u) v) t
-  mapM_ (assertBool as) r
+  mapM_ (assertBool as . fst) r
 
 getResult :: Text -> Campaign -> Maybe TestState
 getResult t = fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor t c = case getResult t c of
-  Just (Large _ s) -> Just s
-  Just (Solved  s) -> Just s
-  _                -> Nothing
+  Just (Large _ s _) -> Just s
+  Just (Solved  s _) -> Just s
+  _                  -> Nothing
 
 solved :: Text -> Campaign -> Bool
 solved t = isJust . solnFor t

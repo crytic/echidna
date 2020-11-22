@@ -24,6 +24,7 @@ import Echidna.Campaign (isDone)
 import Echidna.Solidity
 import Echidna.Types.Campaign
 import Echidna.Types.Tx (Tx, TxConf, src)
+import Echidna.Types.Test (CallRes(..), prettyRes)
 import Echidna.UI.Report
 
 data UIState = Uninitialized | Running | Timedout
@@ -96,25 +97,25 @@ testWidget (test, testState) =
 
 tsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
          => TestState -> m (Widget (), Widget ())
-tsWidget (Failed e)  = pure (str "could not evaluate", str $ show e)
-tsWidget (Solved l)  = failWidget Nothing l
-tsWidget Passed      = pure (withAttr "success" $ str "PASSED!", emptyWidget)
-tsWidget (Open i)    = do
+tsWidget (Failed e)   = pure (str "could not evaluate", str $ show e)
+tsWidget (Solved l r) = failWidget Nothing l r
+tsWidget Passed       = pure (withAttr "success" $ str "PASSED!", emptyWidget)
+tsWidget (Open i)     = do
   t <- view (hasLens . testLimit)
   if i >= t then
     tsWidget Passed
   else
     pure (withAttr "working" $ str $ "fuzzing " ++ progress i t, emptyWidget)
-tsWidget (Large n l) = do
+tsWidget (Large n l r) = do
   m <- view (hasLens . shrinkLimit)
-  failWidget (if n < m then Just (n,m) else Nothing) l
+  failWidget (if n < m then Just (n,m) else Nothing) l r
 
 failWidget :: (MonadReader x m, Has Names x, Has TxConf x)
-           => Maybe (Int, Int) -> [Tx] -> m (Widget (), Widget ())
-failWidget _ [] = pure (failureBadge, str "*no transactions made*")
-failWidget b xs = do
+           => Maybe (Int, Int) -> [Tx] -> CallRes -> m (Widget (), Widget ())
+failWidget _ [] r = pure (failureBadge <+> str (" when property " ++ prettyRes r), str "*no transactions made*")
+failWidget b xs r = do
   s <- seqWidget
-  pure (failureBadge, titleWidget <=> s)
+  pure (failureBadge <+> str (" when property " ++ prettyRes r), titleWidget <=> s) 
   where
   titleWidget  = str "Call sequence" <+> status <+> str ":"
 
