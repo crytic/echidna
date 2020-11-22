@@ -39,27 +39,24 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Setup Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v2
         with:
           python-version: '3.6'
 
       - name: Cache Local
-        id: cache-local
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: ~/.local/
           key: ${{ runner.os }}-local-v3
 
       - name: Cache Stack
-        id: cache-stack
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: ~/.stack
           key: ${{ runner.os }}-stack-v3
 
       - name: Cache Cabal
-        id: cache-cabal
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: ~/.cabal
           key: ${{ runner.os }}-cabal-v3
