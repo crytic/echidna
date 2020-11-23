@@ -12,7 +12,7 @@ import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.State.Strict (MonadState, execState)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe, fromJust)
-import Data.Map.Strict (Map, fromList)
+import Data.Map.Strict (Map)
 import Data.Set (Set)
 import Data.Tuple.Extra (fst3)
 import EVM

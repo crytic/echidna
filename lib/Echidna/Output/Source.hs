@@ -9,12 +9,10 @@ module Echidna.Output.Source where
 
 import Control.Lens
 import Data.Maybe (fromMaybe, mapMaybe)
-import Data.Map.Strict (Map)
-import Data.Set (Set)
 import Data.Text (Text, unlines, pack, unpack)
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
-import Data.List (sort, nub)
+import Data.List (nub)
 
 import EVM.Solidity (stripBytecodeMetadata, SourceCache, SrcMap, SolcContract, sourceLines, sourceFiles, runtimeCode, runtimeSrcmap, creationSrcmap)
 import EVM.Debug (srcMapCodePos)
@@ -22,7 +20,6 @@ import Prelude hiding (unlines, writeFile)
 
 import qualified Data.Vector as V
 
-import qualified Data.ByteString as BS
 import qualified Data.Map as M
 import qualified Data.Set as S
 
