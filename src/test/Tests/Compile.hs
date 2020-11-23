@@ -32,6 +32,8 @@ compilationTests = testGroup "Compilation and loading tests"
       pmatch _ConstructorArgs
   , loadFails "bad/revert.sol"     Nothing    "failed to warn on a failed deployment" $
       pmatch _DeploymentFailed
+  , loadFails "basic/eip-170.sol"  Nothing    "failed to warn on a failed deployment" $
+      pmatch _DeploymentFailed
   ]
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
