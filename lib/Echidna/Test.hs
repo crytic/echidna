@@ -14,10 +14,8 @@ import Data.Bool (bool)
 import Data.Foldable (traverse_)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe, fromJust)
-import Data.Text (Text)
 import EVM (Error(..), VMResult(..), VM, calldata, result, state)
-import EVM.ABI (AbiValue(..), abiCalldata, encodeAbiValue)
-import EVM.Types (Addr)
+import EVM.ABI (abiCalldata)
 
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
