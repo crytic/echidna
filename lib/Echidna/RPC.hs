@@ -93,19 +93,19 @@ loadEtheno fp = do
        (Left e) -> throwM $ EthenoException e
        (Right (ethenoInit :: [Etheno])) -> return ethenoInit
 
-extractFromEtheno :: [Etheno] -> [SolSignature] -> Addr -> Addr -> [[Tx]]
-extractFromEtheno es ss a d = nub $ catMaybes $ concatMap f ss
-  where f s = map (matchSignatureAndCreateTx s a d) es 
+extractFromEtheno :: [Etheno] -> [SolSignature] -> [[Tx]]
+extractFromEtheno es ss = nub $ catMaybes $ concatMap f ss
+  where f s = map (matchSignatureAndCreateTx s) es 
 
-matchSignatureAndCreateTx :: SolSignature -> Addr -> Addr -> Etheno -> Maybe [Tx]
-matchSignatureAndCreateTx ("", []) _ _ _ = Nothing -- Not sure if we should match this.
-matchSignatureAndCreateTx (s,ts) a d (FunctionCall _ _ _ _ bs v) = if (BS.take 4 bs) == (selector $ encodeSig (s,ts)) 
+matchSignatureAndCreateTx :: SolSignature -> Etheno -> Maybe [Tx]
+matchSignatureAndCreateTx ("", []) _ = Nothing -- Not sure if we should match this.
+matchSignatureAndCreateTx (s,ts) (FunctionCall a d _ _ bs v) = if (BS.take 4 bs) == (selector $ encodeSig (s,ts)) 
                                                                    then Just $ makeSingleTx a d v $ SolCall (s, fromTuple $ decodeAbiValue t (LBS.fromStrict bs)) 
                                                                    else Nothing
   where t = AbiTupleType (V.fromList ts)
         fromTuple (AbiTuple xs) = V.toList xs
         fromTuple _            = []
-matchSignatureAndCreateTx _ _ _ _                                = Nothing 
+matchSignatureAndCreateTx _ _                                = Nothing 
 
 -- | Main function: takes a filepath where the initialization sequence lives and returns
 -- | the initialized VM along with a list of Addr's to put in GenConf
@@ -121,9 +121,10 @@ loadEthenoBatch ts fp = do
          let initVM = foldM (execEthenoTxs ts) Nothing ethenoInit
 
          (addr, vm') <- runStateT initVM initialVM
-         case addr of
-              Nothing -> throwM $ EthenoException "Could not find a contract with echidna tests"
-              Just a  -> execStateT (liftSH . loadContract $ a) vm'
+         return vm'
+         --case addr of
+         --     Nothing -> throwM $ EthenoException "Could not find a contract with echidna tests"
+         --     Just a  -> execStateT (liftSH . loadContract $ a) vm'
 
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
 -- | address containing echidna tests

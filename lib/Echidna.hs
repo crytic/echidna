@@ -69,7 +69,9 @@ prepareContract cfg fs c g = do
   liftIO $ putStrLn "Reading test samples and de-duplicating dataset"
   es <- liftIO $ if (isJust tf) then loadEtheno (fromJust tf) else return []
   let sigs = concat $ map (NE.toList . snd) $ H.toList $ w ^. highSignatureMap
-  let txs = nub $ ctxs ++ extractFromEtheno es sigs (NE.head ss) da
+  let mtxs = concat $ extractFromEtheno es sigs
+
+  let txs = nub $ ctxs ++ [mtxs]
   liftIO $ putStrLn ("Done. Processed a dataset with " ++ show (length txs) ++ " sequences of transactions")
   
   -- start ui and run tests
@@ -77,5 +79,3 @@ prepareContract cfg fs c g = do
   where cd = cfg ^. cConf . corpusDir
         tf = cfg ^. cConf . testSamples
         df = cfg ^. cConf . dictFreq
-        ss = cfg ^. sConf . sender 
-        da = cfg ^. sConf . contractAddr

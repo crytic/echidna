@@ -211,11 +211,17 @@ loadSpecified name cs = do
   let abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode . to stripBytecodeMetadata, abiOf pref cc)
                          else M.singleton (c ^. runtimeCode . to stripBytecodeMetadata) fabiOfc
 
+  --liftIO $ print abiMapping
+  --error "end"
+
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
   blank' <- maybe (pure (initialVM & block . maxCodeSize .~ w256 (fromInteger mcs)))
                   (loadEthenoBatch $ fst <$> tests)
                   fp
+
+  --liftIO $ print $ view EVM.contracts $ view env blank'
+  --error "end"
   let blank = populateAddresses (NE.toList ads |> d) bala blank'
 
   unless (null con || isJust fp) (throwM $ ConstructorArgs (show con))
@@ -230,7 +236,7 @@ loadSpecified name cs = do
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
-      let transaction = unless (isJust fp) $ void . execTx $ createTxWithValue bc d ca unlimitedGasPerBlock (w256 $ fromInteger balc)
+      let transaction = execTx $ createTxWithValue bc d ca unlimitedGasPerBlock (w256 $ fromInteger balc)
       vm' <- execStateT transaction vm
       case currentContract vm' of
         Just _  -> return (vm', c ^. eventMap, neFuns, fst <$> tests, abiMapping)
