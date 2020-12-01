@@ -1,7 +1,6 @@
 module Echidna.Types.Signature where
 
 import Data.HashMap.Strict (HashMap)
-import Data.ByteString (ByteString)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
 import EVM.ABI (AbiType, AbiValue)
@@ -27,4 +26,4 @@ type SolCall     = (FunctionName, [AbiValue])
 -- | A contract is just an address with an ABI (for our purposes).
 type ContractA = (Addr, NonEmpty SolSignature)
 
-type SignatureMap = HashMap ByteString (NonEmpty SolSignature)
+type SignatureMap = HashMap Int (NonEmpty SolSignature)
