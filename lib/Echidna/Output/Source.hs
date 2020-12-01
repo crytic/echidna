@@ -14,7 +14,7 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
 import Data.List (nub)
 
-import EVM.Solidity (stripBytecodeMetadata, SourceCache, SrcMap, SolcContract, sourceLines, sourceFiles, runtimeCode, runtimeSrcmap, creationSrcmap)
+import EVM.Solidity (SourceCache, SrcMap, SolcContract, sourceLines, sourceFiles, runtimeCode, runtimeSrcmap, creationSrcmap)
 import EVM.Debug (srcMapCodePos)
 import Prelude hiding (unlines, writeFile)
 
@@ -25,7 +25,7 @@ import qualified Data.Set as S
 
 import Echidna.Exec 
 import Echidna.Types.Tx
-
+import Echidna.Types.Signature (getBytecodeMetadata)
 
 type FilePathText = Text
 
@@ -108,7 +108,7 @@ srcMapCov sc s c = nub $  -- Deduplicate results
                      map (srcMapCodePosResult sc) $ -- Get the filename, number of line and tx result
                        mapMaybe (srcMapForOpLocation c) $ -- Get the mapped line and tx result
                          S.toList $ fromMaybe S.empty $    -- Convert from Set to list
-                             M.lookup (stripBytecodeMetadata $ view runtimeCode c) s -- Get the coverage information of the current contract
+                             M.lookup (getBytecodeMetadata $ view runtimeCode c) s -- Get the coverage information of the current contract
 
 -- | Given a source cache, a mapped line, return a tuple with the filename, number of line and tx result
 srcMapCodePosResult :: SourceCache -> (SrcMap, TxResult) -> Maybe (Text, Int, TxResult)

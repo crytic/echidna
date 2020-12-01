@@ -33,7 +33,7 @@ import qualified Data.Vector as V
 import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
-import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash)
+import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, getBytecodeMetadata)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 
@@ -71,7 +71,7 @@ genTxM m = do
   where
     toContractA :: SignatureMap -> (Addr, Contract) -> Maybe ContractA
     toContractA mm (addr, c) =
-      (addr,) <$> M.lookup (BS.length $ c ^. bytecode) mm
+      (addr,) <$> M.lookup (getBytecodeMetadata $ c ^. bytecode) mm
 
 genDelay :: MonadRandom m => Word -> [Integer] -> m Word
 genDelay mv ds = do

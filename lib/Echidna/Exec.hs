@@ -28,6 +28,7 @@ import qualified Data.Set as S
 
 import Echidna.Transaction
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
+import Echidna.Types.Signature (getBytecodeMetadata)
 import Echidna.Events (emptyEvents)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
@@ -123,7 +124,7 @@ pointCoverage l = do
                     (fromMaybe (error "no contract information on coverage") $ h v)
                     mempty
   where
-    h v = stripBytecodeMetadata <$>
+    h v = getBytecodeMetadata <$>
             v ^? env . contracts . at (v ^. state . contract) . _Just . bytecode
 
 traceCoverage :: (MonadState x m, Has VM x, Has [Op] x) => m ()
