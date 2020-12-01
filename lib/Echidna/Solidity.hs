@@ -46,6 +46,7 @@ import qualified Data.List.NonEmpty  as NE
 import qualified Data.List.NonEmpty.Extra as NEE
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text           as T
+import qualified Data.ByteString     as BS
 
 data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
 
@@ -208,9 +209,10 @@ loadSpecified name cs = do
   -- Filter again for assertions checking if enabled
   neFuns <- filterMethods fs (fallback NE.:| funs)
   -- Construct ABI mapping for World
-  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode . to stripBytecodeMetadata, abiOf pref cc)
-                         else M.singleton (c ^. runtimeCode . to stripBytecodeMetadata) fabiOfc
-
+  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (BS.length $ c ^. runtimeCode, abiOf pref cc)
+                         else M.singleton (BS.length $ c ^. runtimeCode) fabiOfc
+  --liftIO $ print abiMapping
+  --liftIO $ print $ BS.length $ c ^. runtimeCode
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
   blank' <- maybe (pure (initialVM & block . maxCodeSize .~ w256 (fromInteger mcs)))
