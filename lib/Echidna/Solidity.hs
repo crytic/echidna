@@ -214,7 +214,7 @@ loadSpecified name (cs,_) = do
   -- Filter again for assertions checking if enabled
   neFuns <- filterMethods fs (fallback NE.:| funs)
   -- Construct ABI mapping for World
-  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (getBytecodeMetadata $ c ^. runtimeCode, abiOf pref cc)
+  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (getBytecodeMetadata $ cc ^. runtimeCode, abiOf pref cc)
                          else M.singleton (getBytecodeMetadata $ c ^. runtimeCode) fabiOfc
   
   -- Set up initial VM, either with chosen contract or Etheno initialization file
