@@ -64,11 +64,11 @@ checkETest em t = do
       matchC sig b = case viewBuffer b of
         Just cd -> not . BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) $ cd
         Nothing -> False
+  vm <- get -- save EVM state
   res <- case t of
     -- If our test is a regular user-defined test, we exec it and check the result
     Left (f, a) -> do
       g <- view (hasLens . propGas)
-      vm <- get -- save EVM state
       sd <- hasSelfdestructed a
       _  <- execTx $ basicTx f [] (s a) a g
       b  <- gets $ p f . getter
@@ -77,9 +77,9 @@ checkETest em t = do
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
     Right sig   -> do
       vm' <- use hasLens
-      ret <- matchR <$> use (hasLens . result)
-      correctFn <- matchC sig <$> use (hasLens . state . calldata . _1)
-      let es = extractEvents em vm'
+      let correctFn = matchC sig $ vm ^. hasLens . state . calldata . _1
+          ret = matchR $ vm ^. hasLens . result
+          es = extractEvents em vm'
           fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
       pure $ correctFn || (ret && fa)
   pure res
