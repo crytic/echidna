@@ -56,8 +56,6 @@ checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Ha
            => EventMap -> SolTest -> m Bool
 checkETest em t = do
   TestConf p s <- view hasLens
-  g <- view (hasLens . propGas)
-  vm <- get -- save EVM state
   -- To check these tests, we're going to need a couple auxilary functions:
   --   * matchR[eturn] checks if we just tried to exec 0xfe, which means we failed an assert
   --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
@@ -69,9 +67,12 @@ checkETest em t = do
   res <- case t of
     -- If our test is a regular user-defined test, we exec it and check the result
     Left (f, a) -> do
+      g <- view (hasLens . propGas)
+      vm <- get -- save EVM state
       sd <- hasSelfdestructed a
       _  <- execTx $ basicTx f [] (s a) a g
       b  <- gets $ p f . getter
+      put vm -- restore EVM state
       pure $ not sd && b
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
     Right sig   -> do
@@ -81,7 +82,6 @@ checkETest em t = do
       let es = extractEvents em vm'
           fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
       pure $ correctFn || (ret && fa)
-  put vm -- restore EVM state
   pure res
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
