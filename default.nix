@@ -43,19 +43,7 @@ let
         doCheck = false;
       };
 
-  hevm = if pkgs.stdenv.isDarwin then
-    # problems on macOS with static libs
-    # hopefully will be fixed soon https://github.com/NixOS/nixpkgs/pull/105937
-    let libff = pkgs.libff.overrideAttrs (attrs: {
-      postPatch = pkgs.stdenv.lib.optionalString pkgs.stdenv.isDarwin ''
-        substituteInPlace libff/CMakeLists.txt --replace "STATIC" "SHARED"
-      '';
-    });
-    in pkgs.haskell.lib.addExtraLibrary pkgs.haskellPackages.hevm libff
-  else
-    pkgs.haskellPackages.hevm;
-
-  drv = pkgs.haskellPackages.callPackage f { inherit hevm; };
+  drv = pkgs.haskellPackages.callPackage f { };
 in
   if pkgs.lib.inNixShell
     then drv.env
