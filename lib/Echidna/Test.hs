@@ -55,6 +55,16 @@ classifyRes _         = ResOther
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> SolTest -> m Bool
 checkETest em t = do
+    r <- use (hasLens . result)
+    case r of
+      Just (VMSuccess _)                         -> checkETest' em t
+      Just (VMFailure (UnrecognizedOpcode 0xfe)) -> checkETest' em t
+      _                                          -> return True
+
+-- | Given a 'SolTest', evaluate it and see if it currently passes.
+checkETest' :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+           => EventMap -> SolTest -> m Bool
+checkETest' em t = do
   TestConf p s <- view hasLens
   -- To check these tests, we're going to need a couple auxilary functions:
   --   * matchR[eturn] checks if we just tried to exec 0xfe, which means we failed an assert
