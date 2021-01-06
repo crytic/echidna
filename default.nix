@@ -1,11 +1,7 @@
-{ nixpkgs ? import ./nix/dapptools.nix, compiler ? "default", doBenchmark ? false }:
+{ pkgs ? import <nixpkgs> {} }:
 
 let
-  inherit (nixpkgs) pkgs;
-
-  v = "1.5.0";
-
-  crytic-compile = pkgs.python3Packages.callPackage (import ./nix/crytic-compile.nix) {};
+  v = "1.6.0";
 
   f = { mkDerivation, aeson, ansi-terminal, base, base16-bytestring
       , binary, brick, bytestring, cborg, containers, data-dword, data-has
@@ -15,7 +11,7 @@ let
       , tasty-hunit, tasty-quickcheck, temporary, text, transformers
       , unix, unliftio, unliftio-core, unordered-containers, vector
       , vector-instances, vty, wl-pprint-annotated, word8, yaml
-      , cabal-install, extra
+      , cabal-install, extra, ListLike, hlint
       }:
       mkDerivation rec {
         pname = "echidna";
@@ -29,14 +25,13 @@ let
           hashable hevm lens lens-aeson megaparsec MonadRandom mtl
           optparse-applicative process random stm temporary text transformers
           unix unliftio unliftio-core unordered-containers vector
-          vector-instances vty wl-pprint-annotated word8 yaml extra
+          vector-instances vty wl-pprint-annotated word8 yaml extra ListLike
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
-        libraryToolDepends = [ hpack cabal-install ];
+        libraryToolDepends = [ hpack cabal-install hlint ];
         executableHaskellDepends = libraryHaskellDepends;
         testHaskellDepends = [
           tasty tasty-hunit tasty-quickcheck
         ];
-        executableSystemDepends = [ crytic-compile pkgs.solc-versions.solc_0_5_15 ];
         preConfigure = ''
           hpack
           # re-enable dynamic build for Linux
@@ -48,31 +43,8 @@ let
         doCheck = false;
       };
 
-  haskellPackages = if compiler == "default"
-                       then pkgs.haskellPackages
-                       else pkgs.haskell.packages.${compiler};
-
-  # extra from dapptools is outdated, override
-  extra = pkgs.haskellPackages.callCabal2nix "extra" (builtins.fetchGit {
-    url = "https://github.com/ndmitchell/extra";
-    rev = "24dd03b2073860553cd37ac3064cf7e95c7feff9"; # 1.17.1
-  }) {};
-
-  haskellPackages' = haskellPackages.extend (self: super: { inherit extra; } );
-
-  variant = if doBenchmark then pkgs.haskell.lib.doBenchmark else pkgs.lib.id;
-
-  drv = variant (haskellPackages'.callPackage f {});
+  drv = pkgs.haskellPackages.callPackage f { };
 in
   if pkgs.lib.inNixShell
     then drv.env
-    else pkgs.symlinkJoin {
-      name = "echidna-${v}-with-deps";
-      paths = [ (pkgs.haskell.lib.justStaticExecutables drv) ];
-      buildInputs = [ pkgs.makeWrapper ];
-      postBuild = ''
-        wrapProgram $out/bin/echidna-test \
-          --prefix PATH : ${pkgs.lib.makeBinPath [ crytic-compile ]} \
-          --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.solc-versions.solc_0_5_15 ]}
-      '';
-    }
+    else pkgs.haskell.lib.justStaticExecutables drv
