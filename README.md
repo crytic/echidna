@@ -54,7 +54,7 @@ Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` an
 
 ### Crash course on Echidna
 
-Our [Builiding Secure Smart Contracts](https://github.com/crytic/building-secure-contracts) repository contains a crash course on Echidna, including examples, lessons and exercises. You should [start here](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial).
+Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts) repository contains a crash course on Echidna, including examples, lessons and exercises. You should [start here](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial).
 
 ### Support for smart contract build systems 
 
