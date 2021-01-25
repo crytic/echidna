@@ -92,6 +92,10 @@ signatureCall (t, vs) = (t, map abiValueType vs)
 encodeSig :: SolSignature -> Text
 encodeSig (n, ts) = n <> "(" <> T.intercalate "," (abiTypeSolidity <$> ts) <> ")"
 
+-- | Get the text signature of a solidity method (for later hashing)
+encodeSigWithName :: Text -> SolSignature -> Text
+encodeSigWithName cn (n, ts) = last (T.split (==':') cn) <> "." <> n <> "(" <> T.intercalate "," (abiTypeSolidity <$> ts) <> ")"
+
 -- | Get the signature of a solidity method
 hashSig :: Text -> FunctionHash
 hashSig = abiKeccak . TE.encodeUtf8

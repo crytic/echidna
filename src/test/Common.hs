@@ -9,6 +9,7 @@ module Common
   , passed
   , solvedLen
   , solvedWith
+  , solvedWithout 
   , getGas
   , gasInRange
   , countCorpus
@@ -37,7 +38,6 @@ import Echidna.Config (EConfig, _econfig, parseConfig, defaultConfig, sConf, cCo
 import Echidna.Solidity (loadSolTests, quiet)
 import Echidna.Test (checkETest)
 import Echidna.Types.Campaign (Campaign, TestState(..), testLimit, shrinkLimit, tests, gasInfo, corpus, coverage)
-import Echidna.Types.Signature (SolCall)
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
 import Echidna.Types.World (eventMap)
 
@@ -96,8 +96,11 @@ solvedLen :: Int -> Text -> Campaign -> Bool
 solvedLen i t = (== Just i) . fmap length . solnFor t
 
 -- NOTE: this just verifies a call was found in the solution. Doesn't care about ordering/seq length
-solvedWith :: SolCall -> Text -> Campaign -> Bool
-solvedWith c t = maybe False (any $ (== SolCall c) . view call) . solnFor t
+solvedWith :: TxCall -> Text -> Campaign -> Bool
+solvedWith tx t = maybe False (any $ (== tx) . view call) . solnFor t
+
+solvedWithout :: TxCall -> Text -> Campaign -> Bool
+solvedWithout tx t = maybe False (all $ (/= tx) . view call) . solnFor t
 
 getGas :: Text -> Campaign -> Maybe (Int, [Tx])
 getGas t = lookup t . view gasInfo
