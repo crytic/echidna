@@ -15,7 +15,7 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - macos-latest
+        #  - macos-latest
         include:
           - os: ubuntu-latest
             apt-get: autoconf automake libtool
