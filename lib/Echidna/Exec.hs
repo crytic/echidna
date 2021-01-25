@@ -17,7 +17,6 @@ import Data.Set (Set)
 import EVM
 import EVM.Op (Op(..))
 import EVM.Exec (exec, vmForEthrunCreation)
-import EVM.Solidity (stripBytecodeMetadata)
 import EVM.Types (Buffer(..))
 import EVM.Symbolic (litWord)
 

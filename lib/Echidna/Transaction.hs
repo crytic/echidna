@@ -25,7 +25,6 @@ import Data.SBV (SWord, literal)
 import EVM hiding (value, path)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
-import EVM.Solidity (stripBytecodeMetadata)
 import EVM.Symbolic ( litWord, litAddr)
 import EVM.Types (Addr, Buffer(..))
 
