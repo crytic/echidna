@@ -3,7 +3,7 @@ module Tests.Integration (integrationTests) where
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool)
 
-import Common (runContract, testContract, testContract', checkConstructorConditions, testConfig, passed, solved, solvedLen, solvedWith, coverageEmpty, testsEmpty, gasInRange, countCorpus)
+import Common (runContract, testContract, testContract', checkConstructorConditions, testConfig, passed, solved, solvedLen, solvedWith, solvedWithout, coverageEmpty, testsEmpty, gasInRange, countCorpus)
 import Control.Lens (set)
 import Control.Monad (when)
 import Data.Functor ((<&>))
@@ -11,6 +11,7 @@ import Data.List (isInfixOf)
 import Data.Text (unpack)
 import Echidna.Config (_econfig, parseConfig, sConf)
 import Echidna.Solidity (quiet)
+import Echidna.Types.Tx (TxCall(..))
 import EVM.ABI (AbiValue(..))
 import System.Process (readProcess)
 
@@ -44,7 +45,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_fails_on_revert didn't shrink to one transaction",
          solvedLen 1 "echidna_fails_on_revert")
       , ("echidna_revert_is_false didn't shrink to f(-1, 0x0, 0xdeadbeef)",
-         solvedWith ("f", [AbiInt 256 (-1), AbiAddress 0, AbiAddress 0xdeadbeef]) "echidna_fails_on_revert")
+         solvedWith (SolCall ("f", [AbiInt 256 (-1), AbiAddress 0, AbiAddress 0xdeadbeef])) "echidna_fails_on_revert")
       ]
   , testContract "basic/nearbyMining.sol" (Just "coverage/test.yaml")
       [ ("echidna_findNearby passed", solved "echidna_findNearby") ]
@@ -54,7 +55,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_all_sender passed",                      solved             "echidna_all_sender")
       , ("echidna_all_sender didn't shrink optimally",     solvedLen 3        "echidna_all_sender")
       ] ++ (["s1", "s2", "s3"] <&> \n ->
-        ("echidna_all_sender solved without " ++ unpack n, solvedWith (n, []) "echidna_all_sender"))
+        ("echidna_all_sender solved without " ++ unpack n, solvedWith (SolCall (n, [])) "echidna_all_sender"))
   , testContract "basic/memory-reset.sol" Nothing
       [ ("echidna_memory failed",                  passed      "echidna_memory") ]
   , testContract "basic/contractAddr.sol" Nothing
@@ -90,6 +91,8 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/darray.sol"       Nothing
       [ ("echidna_darray passed",                  solved      "echidna_darray")
       , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
+  , testContract "basic/push_long.sol" (Just "basic/push_long.yaml")
+      [ ("test_long_5 passed",                     solvedWithout NoCall "ASSERTION test_long_5")]
   , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml")
       [ ("echidna_runForever passed",              solved      "echidna_runForever") ]
   , testContract "basic/assert.sol"       (Just "basic/assert.yaml")
