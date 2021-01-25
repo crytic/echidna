@@ -4,7 +4,7 @@ contract TEST {
   bool lengthChecking = false;
 
   function push_1() public {
-    a.push(1);
+    a.push(address(1));
   }
 
   function turn_on_length_checking() public {
