@@ -15,13 +15,13 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-            #- macos-latest
+        #  - macos-latest
         include:
           - os: ubuntu-latest
             apt-get: autoconf automake libtool
-            #- os: macos-latest
-            #brew: automake
-
+         # - os: macos-latest
+         #   brew: automake
+         
     steps:
       - name: Workaround for actions/virtual-environments#1811
         if: runner.os == 'macOS'

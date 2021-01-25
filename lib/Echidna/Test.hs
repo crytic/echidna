@@ -55,9 +55,17 @@ classifyRes _         = ResOther
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> SolTest -> m Bool
 checkETest em t = do
+    r <- use (hasLens . result)
+    case r of
+      Just (VMSuccess _)                         -> checkETest' em t
+      Just (VMFailure (UnrecognizedOpcode 0xfe)) -> checkETest' em t
+      _                                          -> return True
+
+-- | Given a 'SolTest', evaluate it and see if it currently passes.
+checkETest' :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+           => EventMap -> SolTest -> m Bool
+checkETest' em t = do
   TestConf p s <- view hasLens
-  g <- view (hasLens . propGas)
-  vm <- get -- save EVM state
   -- To check these tests, we're going to need a couple auxilary functions:
   --   * matchR[eturn] checks if we just tried to exec 0xfe, which means we failed an assert
   --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
@@ -66,22 +74,24 @@ checkETest em t = do
       matchC sig b = case viewBuffer b of
         Just cd -> not . BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) $ cd
         Nothing -> False
+  vm <- get -- save EVM state
   res <- case t of
     -- If our test is a regular user-defined test, we exec it and check the result
     Left (f, a) -> do
+      g <- view (hasLens . propGas)
       sd <- hasSelfdestructed a
       _  <- execTx $ basicTx f [] (s a) a g
       b  <- gets $ p f . getter
+      put vm -- restore EVM state
       pure $ not sd && b
     -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
     Right sig   -> do
       vm' <- use hasLens
-      ret <- matchR <$> use (hasLens . result)
-      correctFn <- matchC sig <$> use (hasLens . state . calldata . _1)
-      let es = extractEvents em vm'
+      let correctFn = matchC sig $ vm ^. hasLens . state . calldata . _1
+          ret = matchR $ vm ^. hasLens . result
+          es = extractEvents em vm'
           fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
       pure $ correctFn || (ret && fa)
-  put vm -- restore EVM state
   pure res
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
