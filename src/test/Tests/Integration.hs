@@ -84,7 +84,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_library_call failed",            solved      "echidna_library_call") ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
       [ ("echidna_valid_timestamp failed",         passed      "echidna_valid_timestamp") ]
-  , testContractV "basic/fallback.sol"   (Just (<= solcV 0 5 7)) Nothing 
+  , testContractV "basic/fallback.sol"   (Just (< solcV 0 6 0)) Nothing 
       [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
   , testContract "basic/large.sol"        Nothing
       [ ("echidna_large failed",                   solved      "echidna_large") ]
