@@ -36,8 +36,10 @@ dependencies:
   - process
   - random
   - rosezipper
+  - semver
   - sbv
   - stm
+  - split
   - temporary
   - text
   - transformers

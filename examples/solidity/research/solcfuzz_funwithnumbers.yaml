@@ -1,4 +1,4 @@
 testLimit: 1000
 coverage: true
 checkAsserts: true
-cryticArgs: ["--solc", "solc-0.5.7"]
+#cryticArgs: ["--solc", "solc-0.5.7"]

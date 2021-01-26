@@ -2,6 +2,8 @@ module Common
   ( testConfig
   , runContract
   , testContract
+  , testContractV
+  , solcV
   , testContract'
   , checkConstructorConditions
   , solnFor
@@ -19,19 +21,24 @@ module Common
 
 import Prelude hiding (lookup)
 
-import Test.Tasty (TestTree)
+import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool)
 
 import Control.Lens (view, set, (.~), (^.))
+import Control.Monad (when)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
 import Control.Monad.State.Strict (evalStateT)
 import Data.Function ((&))
-import Data.List (find)
+import Data.List (find, isInfixOf)
 import Data.List.NonEmpty (NonEmpty(..))
+import Data.List.Split (splitOn)
 import Data.Map (lookup, empty)
 import Data.Maybe (isJust)
-import Data.Text (Text)
+import Data.Text (Text, pack)
+import Data.SemVer (Version, version, fromText)
+import System.Process (readProcess)
+
 import Echidna (prepareContract)
 import Echidna.Campaign (campaign)
 import Echidna.Config (EConfig, _econfig, parseConfig, defaultConfig, sConf, cConf)
@@ -46,6 +53,24 @@ testConfig = defaultConfig & sConf . quiet .~ True
                            & cConf . testLimit .~ 10000
                            & cConf . shrinkLimit .~ 4000
 
+type SolcVersion = Version
+type SolcVersionComp = Version -> Bool
+
+solcV :: Int -> Int -> Int -> SolcVersion
+solcV x y z = version x y z [] []
+
+withSolcVersion :: Maybe SolcVersionComp -> IO () -> IO () 
+withSolcVersion Nothing t = t 
+withSolcVersion (Just f) t = do 
+  sv <- readProcess "solc" ["--version"] ""
+  let (_:sv':_) = splitOn "Version: " sv
+  let (sv'':_) = splitOn "+" sv'
+  case (fromText $ pack sv'') of 
+    Right v' -> if (f v') then t else assertBool "skip" True  
+    Left e   -> error $ show e
+
+type Name = String
+
 runContract :: FilePath -> Maybe String -> EConfig -> IO Campaign
 runContract f c cfg =
   flip runReaderT cfg $ do
@@ -55,10 +80,13 @@ runContract f c cfg =
     campaign (pure ()) v w ts d txs
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
-testContract fp cfg = testContract' fp Nothing cfg True
+testContract fp cfg = testContract' fp Nothing Nothing cfg True
 
-testContract' :: FilePath -> Maybe String -> Maybe FilePath -> Bool -> [(String, Campaign -> Bool)] -> TestTree
-testContract' fp n cfg s as = testCase fp $ do
+testContractV :: FilePath -> Maybe SolcVersionComp -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
+testContractV fp v cfg = testContract' fp Nothing v cfg True
+
+testContract' :: FilePath -> Maybe Name -> Maybe SolcVersionComp -> Maybe FilePath -> Bool -> [(String, Campaign -> Bool)] -> TestTree
+testContract' fp n v cfg s as = testCase fp $ withSolcVersion v $ do 
   c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
   let c' = c & sConf . quiet .~ True
              & (if s then cConf . testLimit .~ 10000 else id)
