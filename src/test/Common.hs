@@ -21,16 +21,15 @@ module Common
 
 import Prelude hiding (lookup)
 
-import Test.Tasty (TestTree, testGroup)
+import Test.Tasty (TestTree)
 import Test.Tasty.HUnit (testCase, assertBool)
 
 import Control.Lens (view, set, (.~), (^.))
-import Control.Monad (when)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
 import Control.Monad.State.Strict (evalStateT)
 import Data.Function ((&))
-import Data.List (find, isInfixOf)
+import Data.List (find)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
 import Data.Map (lookup, empty)
@@ -65,8 +64,8 @@ withSolcVersion (Just f) t = do
   sv <- readProcess "solc" ["--version"] ""
   let (_:sv':_) = splitOn "Version: " sv
   let (sv'':_) = splitOn "+" sv'
-  case (fromText $ pack sv'') of 
-    Right v' -> if (f v') then t else assertBool "skip" True  
+  case fromText $ pack sv'' of 
+    Right v' -> if f v' then t else assertBool "skip" True  
     Left e   -> error $ show e
 
 type Name = String
