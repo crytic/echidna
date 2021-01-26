@@ -138,10 +138,7 @@ jobs:
           .github/scripts/install-crytic-compile.sh
         env:
           HOST_OS: ${{ runner.os }}
-          # there are some tests hardcoded for specific solc
-          # versions, so install everything for the time being
-          # instead of a precise version
-          #SOLC_VER: ${{ matrix.solc }}
+          SOLC_VER: ${{ matrix.solc }}
 
       - name: Download testsuite
         uses: actions/download-artifact@v2
