@@ -189,8 +189,8 @@ abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
 loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-              => Maybe Text -> ([SolcContract], SourceCache) -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
-loadSpecified name (cs,_) = do
+              => Maybe Text -> ([SolcContract]) -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
+loadSpecified name cs = do
   -- Pick contract to load
   c <- choose cs name
   q <- view (hasLens . quiet)
@@ -257,7 +257,7 @@ loadSpecified name (cs,_) = do
 --loadSolidity fp name = contracts fp >>= loadSpecified name
 loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
                       => NE.NonEmpty FilePath -> Maybe Text -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
-loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
+loadWithCryticCompile fp name = contracts fp >>= \(cs, _) -> loadSpecified name cs
 
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready

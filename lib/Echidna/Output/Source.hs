@@ -40,9 +40,9 @@ saveCoveredCode Nothing  _  _  _ = pure ()
 ppCoveredCode :: SourceCache -> [SolcContract] -> CoverageMap -> Text
 ppCoveredCode sc cs s | s == mempty = "Coverage map is empty"
                       | otherwise   =
-  let allLines = M.toList $ view sourceLines sc
+  let allLines = M.toList $ sc ^. sourceLines
   -- ^ Collect all the possible lines from all the files
-      findFile k = fst $ M.findWithDefault ("<no source code>", mempty) k (view sourceFiles sc)
+      findFile k = fst $ M.findWithDefault ("<no source code>", mempty) k (sc ^. sourceFiles)
   -- ^ Auxiliary function to get the path for each source file
       covLines = concatMap (srcMapCov sc s) cs
   -- ^ List of covered lines during the fuzzing campaing
@@ -108,7 +108,7 @@ srcMapCov sc s c = nub $  -- Deduplicate results
                      map (srcMapCodePosResult sc) $ -- Get the filename, number of line and tx result
                        mapMaybe (srcMapForOpLocation c) $ -- Get the mapped line and tx result
                          S.toList $ fromMaybe S.empty $    -- Convert from Set to list
-                             M.lookup (getBytecodeMetadata $ view runtimeCode c) s -- Get the coverage information of the current contract
+                             M.lookup (getBytecodeMetadata $ c ^. runtimeCode) s -- Get the coverage information of the current contract
 
 -- | Given a source cache, a mapped line, return a tuple with the filename, number of line and tx result
 srcMapCodePosResult :: SourceCache -> (SrcMap, TxResult) -> Maybe (Text, Int, TxResult)
@@ -118,6 +118,6 @@ srcMapCodePosResult sc (n, r) = case srcMapCodePos sc n of
 
 -- | Given a contract, and tuple as coverage, return the corresponding mapped line (if any)
 srcMapForOpLocation :: SolcContract -> (Int, Int, TxResult) -> Maybe (SrcMap, TxResult)
-srcMapForOpLocation c (_,n,r) = case preview (ix n) (view runtimeSrcmap c <> view creationSrcmap c) of
+srcMapForOpLocation c (_,n,r) = case preview (ix n) (c ^. runtimeSrcmap <> c ^. creationSrcmap) of
                                  Just sm -> Just (sm,r)
                                  _       -> Nothing

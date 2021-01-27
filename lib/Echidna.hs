@@ -47,7 +47,7 @@ prepareContract cfg fs c g = do
   -- compile and load contracts
   (cs, sc) <- Echidna.Solidity.contracts fs
   ads <- addresses
-  p <- loadSpecified (pack <$> c) (cs, sc)
+  p <- loadSpecified (pack <$> c) cs
 
   -- run processors
   ca <- view (hasLens . cryticArgs)
