@@ -3,7 +3,7 @@ contract C {
   uint time;
 
   function set() public {
-    time = now;
+    time = block.timestamp;
   }
 
   function guess(uint x) public {
