@@ -30,7 +30,7 @@ import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallba
 import Echidna.Exec               (execTx, initialVM)
 import Echidna.Events             (EventMap)
 import Echidna.RPC                (loadEthenoBatch)
-import Echidna.Types.Signature    (FunctionHash, SolSignature, SignatureMap)
+import Echidna.Types.Signature    (FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
 import Echidna.Types.Tx           (TxConf, createTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.World        (World(..))
 import Echidna.Processor
@@ -209,8 +209,8 @@ loadSpecified name cs = do
   let neFuns = filterMethods (c ^. contractName) fs (fallback NE.:| funs)
   
   -- Construct ABI mapping for World
-  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode . to stripBytecodeMetadata, filterMethods (cc ^. contractName) fs $ abiOf pref cc)
-                         else M.singleton (c ^. runtimeCode . to stripBytecodeMetadata) fabiOfc
+  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode . to getBytecodeMetadata, filterMethods (cc ^. contractName) fs $ abiOf pref cc)
+                         else M.singleton (c ^. runtimeCode . to getBytecodeMetadata) fabiOfc
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict

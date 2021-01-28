@@ -25,7 +25,6 @@ import Data.SBV (SWord, literal)
 import EVM hiding (value, path)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
-import EVM.Solidity (stripBytecodeMetadata)
 import EVM.Symbolic ( litWord, litAddr)
 import EVM.Types (Addr, Buffer(..))
 
@@ -38,7 +37,7 @@ import qualified Data.Vector as V
 import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
-import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash)
+import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, getBytecodeMetadata)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 
@@ -76,7 +75,7 @@ genTxM m = do
   where
     toContractA :: SignatureMap -> (Addr, Contract) -> Maybe ContractA
     toContractA mm (addr, c) =
-      (addr,) <$> M.lookup (stripBytecodeMetadata $ c ^. bytecode) mm
+      (addr,) <$> M.lookup (getBytecodeMetadata $ c ^. bytecode) mm
 
 genDelay :: MonadRandom m => Word -> [Integer] -> m Word
 genDelay mv ds = do
