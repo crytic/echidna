@@ -136,7 +136,7 @@ liftSH = stateST . runState . zoom hasLens
 -- 'Transaction's \"on-chain\".
 setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
 setupTx (Tx NoCall _ r _ _ _ (t, b)) = liftSH . sequence_ $
-  [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty
+  [ state . pc .= 0, state . stack .= mempty, state . memory .= mempty
   , block . timestamp += litWord t, block . number += b, loadContract r]
 
 setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
