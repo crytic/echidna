@@ -1,19 +1,12 @@
 module Tests.Integration (integrationTests) where
 
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (testCase, assertBool)
 
-import Common (runContract, testContract, testContractV, solcV, testContract', checkConstructorConditions, testConfig, passed, solved, solvedLen, solvedWith, solvedWithout, coverageEmpty, testsEmpty, gasInRange, countCorpus)
-import Control.Lens (set)
-import Control.Monad (when)
+import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout, coverageEmpty, testsEmpty, gasInRange, countCorpus)
 import Data.Functor ((<&>))
-import Data.List (isInfixOf)
 import Data.Text (unpack)
-import Echidna.Config (_econfig, parseConfig, sConf)
-import Echidna.Solidity (quiet)
 import Echidna.Types.Tx (TxCall(..))
 import EVM.ABI (AbiValue(..))
-import System.Process (readProcess)
 
 integrationTests :: TestTree
 integrationTests = testGroup "Solidity Integration Testing"
