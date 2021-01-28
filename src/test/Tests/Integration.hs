@@ -115,19 +115,19 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_timestamp passed",               solved    "echidna_timestamp") ]
   , testContract "basic/now.sol"          Nothing
       [ ("echidna_now passed",                     solved      "echidna_now") ]
-  , testContract "basic/immutable.sol"          Nothing
+  , testContractV "basic/immutable.sol"    (Just (>= solcV (0,6,0))) Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "basic/construct.sol"    Nothing
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
   , testContract "basic/gasprice.sol"     (Just "basic/gasprice.yaml")
       [ ("echidna_state passed",                   solved      "echidna_state") ]
-  , let fp = "basic_multicontract/contracts/Foo.sol"; cfg = Just "basic_multicontract/echidna_config.yaml" in
-      testCase fp $
-        do sv <- readProcess "solc" ["--version"] ""
-           when ("Version: 0.4.25" `isInfixOf` sv) $ do
-             c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
-             res <- runContract fp (Just "Foo") c
-             assertBool "echidna_test passed" $ solved "echidna_test" res
+  --, let fp = "basic_multicontract/contracts/Foo.sol"; cfg = Just "basic_multicontract/echidna_config.yaml" in
+  --    testCase fp $
+  --      do sv <- readProcess "solc" ["--version"] ""
+  --         when ("Version: 0.4.25" `isInfixOf` sv) $ do
+  --           c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
+  --           res <- runContract fp (Just "Foo") c
+  --           assertBool "echidna_test passed" $ solved "echidna_test" res
   , testContract' "basic/multi-abi.sol" (Just "B") Nothing (Just "basic/multi-abi.yaml") True
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Ballot.sol"       Nothing
