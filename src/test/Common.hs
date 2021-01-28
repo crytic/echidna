@@ -55,8 +55,8 @@ testConfig = defaultConfig & sConf . quiet .~ True
 type SolcVersion = Version
 type SolcVersionComp = Version -> Bool
 
-solcV :: Int -> Int -> Int -> SolcVersion
-solcV x y z = version x y z [] []
+solcV :: (Int, Int, Int) -> SolcVersion
+solcV (x,y,z) = version x y z [] []
 
 withSolcVersion :: Maybe SolcVersionComp -> IO () -> IO () 
 withSolcVersion Nothing t = t 
