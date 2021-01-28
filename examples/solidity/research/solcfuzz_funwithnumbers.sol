@@ -1,7 +1,5 @@
 // Original example from https://github.com/b-mueller/sabre#example-2-integer-precision-bug
 
-pragma solidity ^0.5.0;
-
 contract FunWithNumbers {
     uint constant public tokensPerEth = 10;
     uint constant public weiPerEth = 1e18;

@@ -3,7 +3,7 @@ module Tests.Integration (integrationTests) where
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool)
 
-import Common (runContract, testContract, testContract', checkConstructorConditions, testConfig, passed, solved, solvedLen, solvedWith, solvedWithout, coverageEmpty, testsEmpty, gasInRange, countCorpus)
+import Common (runContract, testContract, testContractV, solcV, testContract', checkConstructorConditions, testConfig, passed, solved, solvedLen, solvedWith, solvedWithout, coverageEmpty, testsEmpty, gasInRange, countCorpus)
 import Control.Lens (set)
 import Control.Monad (when)
 import Data.Functor ((<&>))
@@ -49,7 +49,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       ]
   , testContract "basic/nearbyMining.sol" (Just "coverage/test.yaml")
       [ ("echidna_findNearby passed", solved "echidna_findNearby") ]
-  , testContract' "basic/smallValues.sol" Nothing (Just "coverage/test.yaml") False
+  , testContract' "basic/smallValues.sol" Nothing Nothing (Just "coverage/test.yaml") False
       [ ("echidna_findSmall passed", solved "echidna_findSmall") ]
   , testContract "basic/multisender.sol" (Just "basic/multisender.yaml") $
       [ ("echidna_all_sender passed",                      solved             "echidna_all_sender")
@@ -71,7 +71,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_found_sender failed",            solved      "echidna_found_sender") ]
   , testContract "basic/rconstants.sol"   Nothing
       [ ("echidna_found failed",                   solved      "echidna_found") ]
-  , testContract' "basic/cons-create-2.sol" (Just "C") Nothing True
+  , testContract' "basic/cons-create-2.sol" (Just "C") Nothing Nothing True
       [ ("echidna_state failed",                   solved      "echidna_state") ]
 -- single.sol is really slow and kind of unstable. it also messes up travis.
 --  , testContract "coverage/single.sol"    (Just "coverage/test.yaml")
@@ -84,7 +84,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_library_call failed",            solved      "echidna_library_call") ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
       [ ("echidna_valid_timestamp failed",         passed      "echidna_valid_timestamp") ]
-  , testContract "basic/fallback.sol"     Nothing
+  , testContractV "basic/fallback.sol"   (Just (< solcV (0,6,0))) Nothing 
       [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
   , testContract "basic/large.sol"        Nothing
       [ ("echidna_large failed",                   solved      "echidna_large") ]
@@ -128,7 +128,7 @@ integrationTests = testGroup "Solidity Integration Testing"
              c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
              res <- runContract fp (Just "Foo") c
              assertBool "echidna_test passed" $ solved "echidna_test" res
-  , testContract' "basic/multi-abi.sol" (Just "B") (Just "basic/multi-abi.yaml") True
+  , testContract' "basic/multi-abi.sol" (Just "B") Nothing (Just "basic/multi-abi.yaml") True
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Ballot.sol"       Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
