@@ -51,6 +51,12 @@ ppCoveredCode sc cs s | s == mempty = "Coverage map is empty"
       filterLines covLines (map ((findFile f,) . decodeUtf8) $ V.toList vls) -- Show the source code for each file with its covered line.
                                    ) allLines
 
+-- | Filter the lines per file, marking each line
+filterLines :: [Maybe (FilePathText, Int, TxResult)] -> [(FilePathText, Text)] -> [(FilePathText, Text)]
+filterLines []                  ls  = ls
+filterLines (Nothing      : ns) ls  = filterLines ns ls
+filterLines (Just (f,n,r) : ns) ls  = filterLines ns (markLine n r f ls)
+
 -- | Mark one particular line, from a list of lines, keeping the order of them 
 markLine :: Int -> TxResult -> FilePathText -> [(FilePathText, Text)] -> [(FilePathText, Text)] 
 markLine n r cf ls = case splitAt (n-1) ls of
@@ -94,13 +100,6 @@ getMarker Success       = '*'
 getMarker ErrorRevert   = 'r' 
 getMarker ErrorOutOfGas = 'o'
 getMarker _             = 'e'
-
--- | Filter the lines per file, marking each line
-filterLines :: [Maybe (FilePathText, Int, TxResult)] -> [(FilePathText, Text)] -> [(FilePathText, Text)]
-filterLines []                  ls  = ls
-filterLines (Nothing      : ns) ls  = filterLines ns ls
-filterLines (Just (f,n,r) : ns) ls  = filterLines ns (markLine n r f ls)
-
 
 -- | Given a source cache, a coverage map, a contract returns a list of covered lines
 srcMapCov :: SourceCache -> CoverageMap -> SolcContract -> [Maybe (FilePathText, Int, TxResult)]

@@ -139,9 +139,8 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
           maybe (throwM SolcReadFailure) (pure . first toList) mSolc
     cps <- mapM compileOne fps
     let (cs, ss) = unzip cps
-    let lss = length ss
-    when (lss > 1) $ liftIO $ putStrLn "WARNING: more than one SourceCache was found after compile. Only the first one will be used."
-    return (concat cs, head ss)
+    when (length ss > 1) $ liftIO $ putStrLn "WARNING: more than one SourceCache was found after compile. Only the first one will be used."
+    pure (concat cs, head ss)
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
 addresses = do
@@ -189,7 +188,7 @@ abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
 loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-              => Maybe Text -> ([SolcContract]) -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
+              => Maybe Text -> [SolcContract] -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
 loadSpecified name cs = do
   -- Pick contract to load
   c <- choose cs name
