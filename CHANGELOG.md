@@ -1,5 +1,15 @@
 ## TODO
 
+## 1.6.1
+
+* Use metadata to detect deployed contracts (#593)
+* Semver integration for improving testing with different solc versions (#594)
+* Added some performance improvement in property execution (#576)
+* Fixed wait bug when shrinking (#584) 
+* Added funwithnumber example from Sabre (#565)
+* Improved function filtering to be more precise (#570)
+* Small fixes in README (#590) and Nix (#581) 
+
 ## 1.6.0
 * Slither is now a required dependency.
 * Made sure that <ESC> gets mapped correctly, fixing #474 (#503)
