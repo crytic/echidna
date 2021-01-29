@@ -1,19 +1,12 @@
 module Tests.Integration (integrationTests) where
 
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (testCase, assertBool)
 
-import Common (runContract, testContract, testContractV, solcV, testContract', checkConstructorConditions, testConfig, passed, solved, solvedLen, solvedWith, solvedWithout, coverageEmpty, testsEmpty, gasInRange, countCorpus)
-import Control.Lens (set)
-import Control.Monad (when)
+import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout, coverageEmpty, testsEmpty, gasInRange, countCorpus)
 import Data.Functor ((<&>))
-import Data.List (isInfixOf)
 import Data.Text (unpack)
-import Echidna.Config (_econfig, parseConfig, sConf)
-import Echidna.Solidity (quiet)
 import Echidna.Types.Tx (TxCall(..))
 import EVM.ABI (AbiValue(..))
-import System.Process (readProcess)
 
 integrationTests :: TestTree
 integrationTests = testGroup "Solidity Integration Testing"
@@ -115,17 +108,19 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_timestamp passed",               solved    "echidna_timestamp") ]
   , testContract "basic/now.sol"          Nothing
       [ ("echidna_now passed",                     solved      "echidna_now") ]
+  , testContractV "basic/immutable.sol"    (Just (>= solcV (0,6,0))) Nothing
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "basic/construct.sol"    Nothing
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
   , testContract "basic/gasprice.sol"     (Just "basic/gasprice.yaml")
       [ ("echidna_state passed",                   solved      "echidna_state") ]
-  , let fp = "basic_multicontract/contracts/Foo.sol"; cfg = Just "basic_multicontract/echidna_config.yaml" in
-      testCase fp $
-        do sv <- readProcess "solc" ["--version"] ""
-           when ("Version: 0.4.25" `isInfixOf` sv) $ do
-             c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
-             res <- runContract fp (Just "Foo") c
-             assertBool "echidna_test passed" $ solved "echidna_test" res
+  --, let fp = "basic_multicontract/contracts/Foo.sol"; cfg = Just "basic_multicontract/echidna_config.yaml" in
+  --    testCase fp $
+  --      do sv <- readProcess "solc" ["--version"] ""
+  --         when ("Version: 0.4.25" `isInfixOf` sv) $ do
+  --           c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
+  --           res <- runContract fp (Just "Foo") c
+  --           assertBool "echidna_test passed" $ solved "echidna_test" res
   , testContract' "basic/multi-abi.sol" (Just "B") Nothing (Just "basic/multi-abi.yaml") True
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "abiv2/Ballot.sol"       Nothing

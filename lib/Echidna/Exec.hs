@@ -30,6 +30,7 @@ import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimesta
 import Echidna.Types.Signature (getBytecodeMetadata)
 import Echidna.Events (emptyEvents)
 
+
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
 
