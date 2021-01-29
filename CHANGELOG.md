@@ -8,7 +8,7 @@
 * Fixed wait bug when shrinking (#584) 
 * Added funwithnumber example from Sabre (#565)
 * Improved function filtering to be more precise (#570)
-* Small fixes in README (#590) and Nix (#581) 
+* Small fixes in the macOS CI (#597), the README (#590) and Nix (#581) 
 
 ## 1.6.0
 * Slither is now a required dependency.
