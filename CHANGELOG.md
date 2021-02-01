@@ -2,6 +2,7 @@
 
 ## 1.6.1
 
+* Use a sensible default value for `block.gaslimit` (#596)
 * Use metadata to detect deployed contracts (#593)
 * Semver integration for improving testing with different solc versions (#594)
 * Added some performance improvement in property execution (#576)
