@@ -142,6 +142,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("f_open1 gas estimate wrong",             gasInRange "f_open1"  18000 23000)
       , ("push_b gas estimate wrong",              gasInRange "push_b"   39000 45000)
       ]
+  , testContract "basic/gaslimit.sol"  Nothing
+      [ ("echidna_gaslimit passed",                passed      "echidna_gaslimit") ] 
   ,  testContract "coverage/boolean.sol"       (Just "coverage/boolean.yaml")
       [ ("echidna_true failed",                    passed     "echidna_true")
       , ("unexpected corpus count ",               countCorpus 5)]
