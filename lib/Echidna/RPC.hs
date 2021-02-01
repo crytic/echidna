@@ -138,5 +138,5 @@ execEthenoTxs ts addr et = do
 -- | For an etheno txn, set up VM to execute txn
 setupEthenoTx :: (MonadState x m, Has VM x) => Etheno -> m ()
 setupEthenoTx (AccountCreated _) = pure ()
-setupEthenoTx (ContractCreated f c _ _ d v) = setupTx $ createTxWithValue d f c unlimitedGasPerBlock (w256 v)
-setupEthenoTx (FunctionCall f t _ _ d v) = setupTx $ Tx (SolCalldata d) f t unlimitedGasPerBlock 0 (w256 v) (0, 0)
+setupEthenoTx (ContractCreated f c _ _ d v) = setupTx $ createTxWithValue d f c (fromInteger unlimitedGasPerBlock) (w256 v)
+setupEthenoTx (FunctionCall f t _ _ d v) = setupTx $ Tx (SolCalldata d) f t (fromInteger unlimitedGasPerBlock) 0 (w256 v) (0, 0)
