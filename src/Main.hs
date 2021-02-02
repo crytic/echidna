@@ -4,7 +4,7 @@ import Control.Lens ((^.), (.~), (&))
 import Control.Monad (unless)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
-import Data.Text (unpack)
+import Data.Text (pack, unpack)
 import Data.Version (showVersion)
 import Options.Applicative
 import Paths_echidna (version)
@@ -63,7 +63,7 @@ main = do
   let cd = cfg ^. cConf . corpusDir
 
   cpg <- flip runReaderT cfg $ do
-    (v, w, ts, d, txs) <- prepareContract cfg f c g
+    (v, w, ts, d, txs) <- prepareContract cfg f (pack <$> c) g
     -- start ui and run tests
     ui v w ts d txs
 
