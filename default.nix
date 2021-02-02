@@ -1,7 +1,7 @@
 { pkgs ? import <nixpkgs> {} }:
 
 let
-  v = "1.6.0";
+  v = "1.6.1";
 
   f = { mkDerivation, aeson, ansi-terminal, base, base16-bytestring
       , binary, brick, bytestring, cborg, containers, data-dword, data-has
@@ -11,7 +11,7 @@ let
       , tasty-hunit, tasty-quickcheck, temporary, text, transformers
       , unix, unliftio, unliftio-core, unordered-containers, vector
       , vector-instances, vty, wl-pprint-annotated, word8, yaml
-      , cabal-install, extra, ListLike, hlint
+      , cabal-install, extra, ListLike, hlint, semver
       }:
       mkDerivation rec {
         pname = "echidna";
@@ -26,6 +26,7 @@ let
           optparse-applicative process random stm temporary text transformers
           unix unliftio unliftio-core unordered-containers vector
           vector-instances vty wl-pprint-annotated word8 yaml extra ListLike
+          semver
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
         libraryToolDepends = [ hpack cabal-install hlint ];
         executableHaskellDepends = libraryHaskellDepends;
