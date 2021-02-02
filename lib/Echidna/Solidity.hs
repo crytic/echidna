@@ -31,7 +31,7 @@ import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallba
 import Echidna.Exec               (execTx, initialVM)
 import Echidna.Events             (EventMap)
 import Echidna.RPC                (loadEthenoBatch)
-import Echidna.Types.Signature    (FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
+import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
 import Echidna.Types.Tx           (TxConf, createTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.World        (World(..))
 import Echidna.Processor
@@ -162,7 +162,7 @@ loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
               => [SolcContract] -> Addr -> Addr -> VM -> m VM
 loadLibraries []     _  _ vm = return vm
 loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
-  where loadRest = execStateT (execTx $ createTx (l ^. creationCode) d la unlimitedGasPerBlock) vm
+  where loadRest = execStateT (execTx $ createTx (l ^. creationCode) d la (fromInteger unlimitedGasPerBlock)) vm
 
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
@@ -212,14 +212,14 @@ loadSpecified name cs = do
   let fabiOfc = filterMethods (c ^. contractName) fs $ abiOf pref c
   -- Filter again for assertions checking if enabled
   let neFuns = filterMethods (c ^. contractName) fs (fallback NE.:| funs)
-  
+
   -- Construct ABI mapping for World
   let abiMapping = if ma then M.fromList $ cs <&> \cc -> (getBytecodeMetadata $ cc ^. runtimeCode,  filterMethods (cc ^. contractName) fs $ abiOf pref cc)
                          else M.singleton (getBytecodeMetadata $ c ^. runtimeCode) fabiOfc
   
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
-  blank' <- maybe (pure (initialVM & block . maxCodeSize .~ w256 (fromInteger mcs)))
+  blank' <- maybe (pure (initialVM & block . gaslimit .~ fromInteger unlimitedGasPerBlock & block . maxCodeSize .~ w256 (fromInteger mcs)))
                   (loadEthenoBatch $ fst <$> tests)
                   fp
   let blank = populateAddresses (NE.toList ads |> d) bala blank'
@@ -236,7 +236,7 @@ loadSpecified name cs = do
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       vm <- loadLibraries ls addrLibrary d blank
-      let transaction = unless (isJust fp) $ void . execTx $ createTxWithValue bc d ca unlimitedGasPerBlock (w256 $ fromInteger balc)
+      let transaction = unless (isJust fp) $ void . execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc)
       vm' <- execStateT transaction vm
       case currentContract vm' of
         Just _  -> return (vm', c ^. eventMap, neFuns, fst <$> tests, abiMapping)
@@ -264,20 +264,30 @@ loadWithCryticCompile fp name = contracts fp >>= \(cs, _) -> loadSpecified name 
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
                => (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
-               -> Maybe String
-               -> [SlitherInfo]
+               -> Maybe ContractName
+               -> SlitherInfo
                -> m (VM, World, [SolTest])
 prepareForTest (v, em, a, ts, m) c si = do
   SolConf{ _sender = s, _checkAsserts = ch } <- view hasLens
   let r = v ^. state . contract
       a' = NE.toList a
-      ps = filterResults c $ filterPayable si
-      as = if ch then filterResults c $ filterAssert si else []
-      cs = filterResults c $ filterConstantFunction si
+      ps = filterResults c $ payableFunctions si
+      as = if ch then filterResults c $ asserts si else []
+      cs = filterResults c $ constantFunctions si
       (hm, lm) = prepareHashMaps cs as m
   pure (v, World s hm lm ps em, fmap Left (zip ts $ repeat r)
                                  ++ if ch then Right <$> drop 1 a'
                                           else [])
+
+-- this limited variant is used only in tests
+prepareForTest' :: (MonadReader x m, Has SolConf x)
+               => (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
+               -> m (VM, World, [SolTest])
+prepareForTest' (v, em, a, ts, _) = do
+  SolConf{ _sender = s, _checkAsserts = ch } <- view hasLens
+  let r = v ^. state . contract
+      a' = NE.toList a
+  pure (v, World s M.empty Nothing [] em, fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else [])
 
 prepareHashMaps :: [FunctionHash] -> [FunctionHash] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
 prepareHashMaps [] _  m = (m, Nothing)                                -- No constant functions detected
@@ -293,7 +303,7 @@ prepareHashMaps cs as m =
 -- a testing function.
 loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
              => NE.NonEmpty FilePath -> Maybe Text -> m (VM, World, [SolTest])
-loadSolTests fp name = loadWithCryticCompile fp name >>= (\t -> prepareForTest t Nothing [])
+loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest'
 
 mkLargeAbiInt :: Int -> AbiValue
 mkLargeAbiInt i = AbiInt i $ 2 ^ (i - 1) - 1

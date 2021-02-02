@@ -75,7 +75,7 @@ checkETest' em t = do
         Just cd -> not . BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) $ cd
         Nothing -> False
   vm <- get -- save EVM state
-  res <- case t of
+  case t of
     -- If our test is a regular user-defined test, we exec it and check the result
     Left (f, a) -> do
       g <- view (hasLens . propGas)
@@ -92,7 +92,6 @@ checkETest' em t = do
           es = extractEvents em vm'
           fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
       pure $ correctFn || (ret && fa)
-  pure res
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
 -- still solves that test.
