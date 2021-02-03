@@ -1,5 +1,3 @@
-pragma solidity ^0.6.8;
-
 contract C {
 
   bytes32 public immutable x = keccak256("");
