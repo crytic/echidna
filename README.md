@@ -56,7 +56,7 @@ Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` an
 
 Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts) repository contains a crash course on Echidna, including examples, lessons and exercises. You should [start here](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial).
 
-### Support for smart contract build systems 
+### Support for smart contract build systems
 
 Echidna can test contracts compiled with different smart contract build systems, including [Truffle](https://truffleframework.com/), [Embark](https://framework.embarklabs.io/) and even [Vyper](https://vyper.readthedocs.io), using [crytic-compile](https://github.com/crytic/crytic-compile). For instance,
 we can uncover an integer overflow in the [Metacoin Truffle box](https://github.com/truffle-box/metacoin-box) using a
@@ -174,6 +174,11 @@ $ git clone https://github.com/crytic/echidna
 $ cd echidna
 $ nix-shell
 [nix-shell]$ cabal new-repl
+```
+
+Running the test suite:
+```
+nix-shell --run 'cabal test'
 ```
 
 ## Getting help
