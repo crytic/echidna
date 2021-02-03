@@ -84,3 +84,11 @@ tests:
       - tasty
       - tasty-hunit
       - tasty-quickcheck
+    when:
+        - condition: os(linux)
+          ghc-options:
+            - -threaded
+            - -static
+            - -O2
+          cc-options: -static
+          ld-options: -static -pthread
