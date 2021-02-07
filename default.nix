@@ -1,7 +1,15 @@
-{ pkgs ? import <nixpkgs> {} }:
+{ pkgs ? import (builtins.fetchTarball {
+    name = "nixpkgs-21.03pre268255.e5b478271ea";
+    url = "https://github.com/nixos/nixpkgs/archive/e5b478271ea0af7b75d53c92cfa98bdb126b44a7.tar.gz";
+    sha256 = "06hmxvnx2swk63i15zp1q70axf53x04f7ywwlnxlcfkk0prrmwbh";
+  }) {}
+}:
 
 let
+  # slither is shipped with solc by default, we don't use it as we need
+  # precise solc versions
   slither-analyzer = pkgs.slither-analyzer.override { withSolc = false; };
+
   # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
   # would be great to integrate solc-select to be more flexible, improve this in future
   solc = pkgs.stdenv.mkDerivation {
