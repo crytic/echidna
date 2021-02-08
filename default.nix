@@ -1,17 +1,14 @@
-{ pkgs ? import <nixpkgs> {} }:
+{ pkgs ? import (builtins.fetchTarball {
+    name = "nixpkgs-21.03pre268255.e5b478271ea";
+    url = "https://github.com/nixos/nixpkgs/archive/e5b478271ea0af7b75d53c92cfa98bdb126b44a7.tar.gz";
+    sha256 = "06hmxvnx2swk63i15zp1q70axf53x04f7ywwlnxlcfkk0prrmwbh";
+  }) {}
+}:
 
 let
-  # fix slither, remove after this is merged https://github.com/NixOS/nixpkgs/pull/108610
-  python3Packages = pkgs.python3Packages.override (oldAttrs: {
-    overrides = self: super: {
-        crytic-compile = super.crytic-compile.overrideAttrs (x: {
-          patchPhase = ''
-            substituteInPlace setup.py --replace 'version="0.1.11",' 'version="0.1.12",'
-          '';
-        });
-        slither-analyzer = super.slither-analyzer.overrideAttrs (x: {postFixup = "";});
-    };
-  });
+  # slither is shipped with solc by default, we don't use it as we need
+  # precise solc versions
+  slither-analyzer = pkgs.slither-analyzer.override { withSolc = false; };
 
   # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
   # would be great to integrate solc-select to be more flexible, improve this in future
@@ -41,7 +38,7 @@ let
       , binary, brick, bytestring, cborg, containers, data-dword, data-has
       , deepseq, directory, exceptions, filepath, hashable, hevm, hpack
       , lens, lens-aeson, megaparsec, MonadRandom, mtl
-      , optparse-applicative, process, random, stdenv, stm, tasty
+      , optparse-applicative, process, random, stm, tasty
       , tasty-hunit, tasty-quickcheck, temporary, text, transformers
       , unix, unliftio, unliftio-core, unordered-containers, vector
       , vector-instances, vty, wl-pprint-annotated, word8, yaml
@@ -62,7 +59,7 @@ let
           vector-instances vty wl-pprint-annotated word8 yaml extra ListLike
           semver
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
-        libraryToolDepends = [ hpack cabal-install hlint python3Packages.slither-analyzer solc ];
+        libraryToolDepends = [ hpack cabal-install hlint slither-analyzer solc ];
         executableHaskellDepends = libraryHaskellDepends;
         testHaskellDepends = [
           tasty tasty-hunit tasty-quickcheck
@@ -73,7 +70,7 @@ let
           sed -i -e 's/os(linux)/false/' echidna.cabal
         '';
         shellHook = "hpack";
-        license = stdenv.lib.licenses.agpl3;
+        license = pkgs.lib.licenses.agpl3;
         doHaddock = false;
         doCheck = false;
       };
