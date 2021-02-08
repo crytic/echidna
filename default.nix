@@ -72,7 +72,7 @@ let
         shellHook = "hpack";
         license = pkgs.lib.licenses.agpl3;
         doHaddock = false;
-        doCheck = false;
+        doCheck = true;
       };
 
   drv = pkgs.haskellPackages.callPackage f { };
