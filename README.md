@@ -53,10 +53,11 @@ $ echidna-test examples/solidity/basic/flags.sol
 
 Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` and should be unable to find a falsifying input for `echidna_alwaystrue`.
 
-## Collecting and visualizing coverage
+### Collecting and visualizing coverage
 
-Echidna saves coverage in a special directory specifed with `corpusDir`. This will include a directory colled `coverage` with JSON files that can be replayed by our tool and a `covered.txt` plain-text file with the complete source code, indicatin how each lines was covered.
-If you run `examples/solidity/basic/flags.sol`, Echidna will save a few files in `coverage` and a `covered.txt` file with the following lines:
+After a fuzzing campaign is done, Echidna can save a corpus that maximizes coverage in a special directory specified with the `corpusDir` keyword in its config file. This directory will contain two entries: (1) a directory named `coverage` with JSON files that can be replayed by our tool and (2) a plain-text file named `covered.txt` with the complete source code, indicating how each line was covered.
+
+If you run `examples/solidity/basic/flags.sol` example, Echidna will save a few files in `coverage` and a `covered.txt` file with the following lines:
 
 ```
 *r  |  function set0(int val) public returns (bool){
@@ -70,11 +71,11 @@ If you run `examples/solidity/basic/flags.sol`, Echidna will save a few files in
   }
 ```
 
-Our tool signals each trace in the coverage with:
+Our tool signals each execution trace in the corpus with the following "line marker":
  - `*` if an execution ended with a STOP
  - `r` if an execution ended with a REVERT
- - `o` if an execution ended because it runned out of gas
- - `e` if an execution ended with any other error (zero division, assertion failure, etc). 
+ - `o` if an execution ended with an out-of-gas error
+ - `e` if an execution ended with any other error (zero division, assertion failure, etc) 
 
 ### Crash course on Echidna
 
