@@ -118,8 +118,8 @@ instance FromJSON EConfigWithUsage where
                   return $ TestConf classify (const psender)
 
                 -- CampaignConf
-                cov = v ..:? "coverage" <&> \case Just True -> Just mempty
-                                                  _         -> Nothing
+                cov = v ..:? "coverage" <&> \case Just False -> Nothing
+                                                  _          -> Just mempty
                 cc = CampaignConf <$> v ..:? "testLimit"   ..!= 50000
                                   <*> v ..:? "stopOnFail"  ..!= False
                                   <*> v ..:? "estimateGas" ..!= False
