@@ -125,7 +125,7 @@ scoveragePoints = sum . fmap (S.size . S.map fst3)
 pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
 pointCoverage l = do
   v <- use hasLens
-  l %= M.insertWith (const . S.insert $ ( v ^. state . pc, fromJust $ vmOpIx v, Success))
+  l %= M.insertWith (const . S.insert $ (v ^. state . pc, fromJust $ vmOpIx v, Success))
                     (fromMaybe (error "no contract information on coverage") $ h v)
                     mempty
   where

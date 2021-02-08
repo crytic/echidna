@@ -1,4 +1,3 @@
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Rank2Types #-}
@@ -29,11 +28,11 @@ import Echidna.Types.Signature (getBytecodeMetadata)
 
 type FilePathText = Text
 
-saveCoveredCode :: Maybe FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
-saveCoveredCode (Just d) sc cs s = let fn = d ++ "/covered.txt"
-                                       cc = ppCoveredCode sc cs s 
-                                   in writeFile fn cc
-saveCoveredCode Nothing  _  _  _ = pure ()
+saveCoverage :: Maybe FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
+saveCoverage (Just d) sc cs s = let fn = d ++ "/covered.txt"
+                                    cc = ppCoveredCode sc cs s 
+                                in writeFile fn cc
+saveCoverage Nothing  _  _  _ = pure ()
 
 
 -- | Pretty-print the covered code
@@ -60,39 +59,39 @@ filterLines (Just (f,n,r) : ns) ls  = filterLines ns (markLine n r f ls)
 -- | Mark one particular line, from a list of lines, keeping the order of them 
 markLine :: Int -> TxResult -> FilePathText -> [(FilePathText, Text)] -> [(FilePathText, Text)] 
 markLine n r cf ls = case splitAt (n-1) ls of
-                        (xs, (f,y):ys) | f == cf -> xs ++ [(cf, markStringLine r $ unpack y)] ++ ys
-                        _                        -> map (\(f,y) -> (f, checkMarkers $ unpack y)) ls
+  (xs, (f,y):ys) | f == cf -> xs ++ [(cf, pack $ markStringLine r $ unpack y)] ++ ys
+  _                        -> map (\(f,y) -> (f, pack $ checkMarkers $ unpack y)) ls
 
 -- | Header preppend to each line
 markerHeader :: String
 markerHeader = "    |"
 
 -- | Add space for markers if necessary
-checkMarkers  :: String -> Text
-checkMarkers l@(_:_:_:_:'|':_) = pack l
-checkMarkers l                 = pack $ markerHeader ++ l
+checkMarkers  :: String -> String
+checkMarkers l@(_:_:_:_:'|':_) = l
+checkMarkers l                 = markerHeader ++ l
 
 -- | Add a proper marker to a line, and convert it to Text
-markStringLine  :: TxResult -> String -> Text
-markStringLine r (' ': ' ': ' ': ' ': '|':l) = pack $ getMarker r : ' ' : ' ' : ' ': '|' : l
-markStringLine r (m1: ' ': ' ': ' ':  '|':l)  = pack $ case getMarker r of
-                                                        m | m1 == m -> m1 : ' ' : ' ' : ' ': '|' : l
-                                                        m           -> m1 :  m  : ' ' : ' ': '|' : l
+markStringLine  :: TxResult -> String -> String
+markStringLine r (' ': ' ': ' ': ' ': '|': l) = getMarker r : ' ' : ' ' : ' ': '|' : l
+markStringLine r (m1 : ' ': ' ': ' ': '|': l) = case getMarker r of
+  m | m1 == m -> m1 : ' ' : ' ' : ' ': '|' : l
+  m           -> m1 :  m  : ' ' : ' ': '|' : l
 
-markStringLine r (m1: m2 : ' ': ' ': '|':l)  = pack $ case getMarker r of
-                                                        m | m1 == m -> m1 :  m2  : ' ' : ' ': '|' : l
-                                                        m | m2 == m -> m1 :  m2  : ' ' : ' ': '|' : l
-                                                        m           -> m1 :  m2  : m   : ' ': '|' : l
+markStringLine r (m1 : m2 : ' ': ' ': '|': l) = case getMarker r of
+  m | m1 == m -> m1 :  m2  : ' ' : ' ': '|' : l
+  m | m2 == m -> m1 :  m2  : ' ' : ' ': '|' : l
+  m           -> m1 :  m2  : m   : ' ': '|' : l
 
 
-markStringLine r (m1: m2 : m3 : ' ': '|':l)  = pack $ case getMarker r of
-                                                        m | m1 == m -> m1 :  m2  : m3 : ' ': '|' : l
-                                                        m | m2 == m -> m1 :  m2  : m3 : ' ': '|' : l
-                                                        m | m3 == m -> m1 :  m2  : m3 : ' ': '|' : l
-                                                        m           -> m1 :  m2  : m3 : m  : '|' : l
+markStringLine r (m1 : m2 : m3 : ' ': '|': l) = case getMarker r of
+  m | m1 == m -> m1 :  m2  : m3 : ' ': '|' : l
+  m | m2 == m -> m1 :  m2  : m3 : ' ': '|' : l
+  m | m3 == m -> m1 :  m2  : m3 : ' ': '|' : l
+  m           -> m1 :  m2  : m3 : m  : '|' : l
 
-markStringLine _ (_: _ : _ : _ : '|':_)  = error "impossible to add another marker"
-markStringLine r l = pack $ getMarker r : ' ' : ' ' : ' ': '|' : l
+markStringLine _ (_: _ : _ : _ : '|':_) = error "impossible to add another marker"
+markStringLine r l = getMarker r : ' ' : ' ' : ' ': '|' : l
 
 -- | Select the proper marker, according to the result of the transaction
 getMarker :: TxResult -> Char
@@ -103,20 +102,20 @@ getMarker _             = 'e'
 
 -- | Given a source cache, a coverage map, a contract returns a list of covered lines
 srcMapCov :: SourceCache -> CoverageMap -> SolcContract -> [Maybe (FilePathText, Int, TxResult)]
-srcMapCov sc s c = nub $  -- Deduplicate results 
-                     map (srcMapCodePosResult sc) $ -- Get the filename, number of line and tx result
-                       mapMaybe (srcMapForOpLocation c) $ -- Get the mapped line and tx result
-                         S.toList $ fromMaybe S.empty $    -- Convert from Set to list
-                             M.lookup (getBytecodeMetadata $ c ^. runtimeCode) s -- Get the coverage information of the current contract
+srcMapCov sc s c = nub $                                               -- Deduplicate results 
+                   map (srcMapCodePosResult sc) $                      -- Get the filename, number of line and tx result
+                   mapMaybe (srcMapForOpLocation c) $                  -- Get the mapped line and tx result
+                   S.toList $ fromMaybe S.empty $                      -- Convert from Set to list
+                   M.lookup (getBytecodeMetadata $ c ^. runtimeCode) s -- Get the coverage information of the current contract
 
 -- | Given a source cache, a mapped line, return a tuple with the filename, number of line and tx result
 srcMapCodePosResult :: SourceCache -> (SrcMap, TxResult) -> Maybe (Text, Int, TxResult)
 srcMapCodePosResult sc (n, r) = case srcMapCodePos sc n of 
-                             Just (t,n') -> Just (t,n',r)
-                             _           -> Nothing
+  Just (t,n') -> Just (t,n',r)
+  _           -> Nothing
 
 -- | Given a contract, and tuple as coverage, return the corresponding mapped line (if any)
 srcMapForOpLocation :: SolcContract -> (Int, Int, TxResult) -> Maybe (SrcMap, TxResult)
 srcMapForOpLocation c (_,n,r) = case preview (ix n) (c ^. runtimeSrcmap <> c ^. creationSrcmap) of
-                                 Just sm -> Just (sm,r)
-                                 _       -> Nothing
+  Just sm -> Just (sm,r)
+  _       -> Nothing

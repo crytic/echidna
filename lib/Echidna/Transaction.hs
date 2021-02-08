@@ -11,10 +11,10 @@ module Echidna.Transaction where
 import Prelude hiding (Word)
 
 import Control.Lens
+import Control.Monad (join, liftM2)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, runState, get, put)
-import Control.Monad (join, liftM2)
 import Data.Has (Has(..))
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)

@@ -72,7 +72,7 @@ main = do
   saveTxs cd (snd <$> DS.toList (cpg ^. corpus))
 
   -- save source coverage
-  saveCoveredCode cd sc cs (cpg ^. coverage) 
+  saveCoverage cd sc cs (cpg ^. coverage) 
 
   if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
   where overrideConfig cfg (Options _ _ _ fmt) =
