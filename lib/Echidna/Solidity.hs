@@ -9,6 +9,7 @@ module Echidna.Solidity where
 
 import Control.Lens
 import Control.Exception          (Exception)
+import Control.Arrow              (first)
 import Control.Monad              (liftM2, when, unless, void)
 import Control.Monad.Catch        (MonadThrow(..))
 import Control.Monad.IO.Class     (MonadIO(..))
@@ -113,7 +114,7 @@ type SolTest = Either (Text, Addr) SolSignature
 -- | Given a list of files, use its extenstion to check if it is a precompiled
 -- contract or try to compile it and get a list of its contracts, throwing
 -- exceptions if necessary.
-contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => NE.NonEmpty FilePath -> m [SolcContract]
+contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => NE.NonEmpty FilePath -> m ([SolcContract], SourceCache)
 contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"] in do
   mp  <- liftIO $ findExecutable "crytic-compile"
   case mp of
@@ -126,7 +127,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
     let solargs = a ++ linkLibraries ls & (usual ++) .
                   (\sa -> if null sa then [] else ["--solc-args", sa])
         fps = toList fp
-        compileOne :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m [SolcContract]
+        compileOne :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m ([SolcContract], SourceCache)
         compileOne x = do
           mSolc <- liftIO $ do
             stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
@@ -134,14 +135,18 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
             case ec of
               ExitSuccess -> readSolc "crytic-export/combined_solc.json"
               ExitFailure _ -> throwM $ CompileFailure out err
-          maybe (throwM SolcReadFailure) (pure . toList . fst) mSolc
-    concat <$> sequence (compileOne <$> fps)
+            
+          maybe (throwM SolcReadFailure) (pure . first toList) mSolc
+    cps <- mapM compileOne fps
+    let (cs, ss) = unzip cps
+    when (length ss > 1) $ liftIO $ putStrLn "WARNING: more than one SourceCache was found after compile. Only the first one will be used."
+    pure (concat cs, head ss)
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
 addresses = do
   SolConf{_contractAddr = ca, _deployer = d, _sender = ads} <- view hasLens
   pure $ AbiAddress . fromIntegral <$> NE.nub (join ads [ca, d, 0x0])
-  where join (first NE.:| rest) list = first NE.:| (rest ++ list)
+  where join (f NE.:| r) l = f NE.:| (r ++ l)
 
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm
@@ -209,9 +214,9 @@ loadSpecified name cs = do
   let neFuns = filterMethods (c ^. contractName) fs (fallback NE.:| funs)
 
   -- Construct ABI mapping for World
-  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (cc ^. runtimeCode . to getBytecodeMetadata, filterMethods (cc ^. contractName) fs $ abiOf pref cc)
-                         else M.singleton (c ^. runtimeCode . to getBytecodeMetadata) fabiOfc
-
+  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (getBytecodeMetadata $ cc ^. runtimeCode,  filterMethods (cc ^. contractName) fs $ abiOf pref cc)
+                         else M.singleton (getBytecodeMetadata $ c ^. runtimeCode) fabiOfc
+  
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
   blank' <- maybe (pure (initialVM & block . gaslimit .~ fromInteger unlimitedGasPerBlock & block . maxCodeSize .~ w256 (fromInteger mcs)))
@@ -252,7 +257,7 @@ loadSpecified name cs = do
 --loadSolidity fp name = contracts fp >>= loadSpecified name
 loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
                       => NE.NonEmpty FilePath -> Maybe Text -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
-loadWithCryticCompile fp name = contracts fp >>= loadSpecified name
+loadWithCryticCompile fp name = contracts fp >>= \(cs, _) -> loadSpecified name cs
 
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
