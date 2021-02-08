@@ -11,6 +11,7 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 * Generates inputs tailored to your actual code
 * Optional corpus collection, mutation and coverage guidance to find deeper bugs
 * Powered by [Slither](https://github.com/crytic/slither) to extract useful information before the fuzzing campaign
+* Full source code integration to identify which lines are covered after the fuzzing campaign
 * Curses-based retro UI, text-only or JSON output
 * Automatic testcase minimization for quick triage
 * Seamless integration into the development workflow
@@ -51,6 +52,29 @@ $ echidna-test examples/solidity/basic/flags.sol
 ```
 
 Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` and should be unable to find a falsifying input for `echidna_alwaystrue`.
+
+## Collecting and visualizing coverage
+
+Echidna saves coverage in a special directory specifed with `corpusDir`. This will include a directory colled `coverage` with JSON files that can be replayed by our tool and a `covered.txt` plain-text file with the complete source code, indicatin how each lines was covered.
+If you run `examples/solidity/basic/flags.sol`, Echidna will save a few files in `coverage` and a `covered.txt` file with the following lines:
+
+```
+*r  |  function set0(int val) public returns (bool){
+*   |    if (val % 100 == 0)
+*   |      flag0 = false;
+  }
+
+*r  |  function set1(int val) public returns (bool){
+*   |    if (val % 10 == 0 && !flag0)
+*   |      flag1 = false;
+  }
+```
+
+Our tool signals each trace in the coverage with:
+ - `*` if an execution ended with a STOP
+ - `r` if an execution ended with a REVERT
+ - `o` if an execution ended because it runned out of gas
+ - `e` if an execution ended with any other error (zero division, assertion failure, etc). 
 
 ### Crash course on Echidna
 
