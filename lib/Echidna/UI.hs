@@ -84,9 +84,9 @@ isTerminal = liftIO $ (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 -- print non-interactive output in desired format at the end
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
       , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Names x, Has TxConf x, Has UIConf x)
-   => VM        -- ^ Initial VM state
-   -> World     -- ^ Initial world state
-   -> [SolTest] -- ^ Tests to evaluate
+   => VM             -- ^ Initial VM state
+   -> World          -- ^ Initial world state
+   -> [SolTest]      -- ^ Tests to evaluate
    -> Maybe GenDict
    -> [[Tx]]
    -> m Campaign
@@ -135,4 +135,5 @@ ui v w ts d txs = do
           when timedout $ liftIO $ putStrLn "TIMEOUT!"
         None ->
           pure ()
+
       pure final

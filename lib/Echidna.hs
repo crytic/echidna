@@ -11,6 +11,7 @@ import Data.Map.Strict (keys)
 
 import EVM (env, contracts, VM)
 import EVM.ABI (AbiValue(AbiAddress))
+import EVM.Solidity (SourceCache, SolcContract)
 
 import Echidna.ABI
 import Echidna.Config
@@ -20,8 +21,8 @@ import Echidna.Types.Random
 import Echidna.Types.Signature
 import Echidna.Types.Tx
 import Echidna.Types.World
-import Echidna.Transaction
 import Echidna.Processor
+import Echidna.Output.Corpus
 
 import qualified Data.List.NonEmpty as NE
 
@@ -39,12 +40,12 @@ import qualified Data.List.NonEmpty as NE
 -- * A list of transaction sequences to initialize the corpus
 prepareContract :: (MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, MonadFail m,
                     Has TxConf x, Has SolConf x)
-                => EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed -> m (VM, World, [SolTest], Maybe GenDict, [[Tx]])
+                => EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed -> m (VM, SourceCache, [SolcContract], World, [SolTest], Maybe GenDict, [[Tx]])
 prepareContract cfg fs c g = do
   txs <- liftIO $ loadTxs cd
 
   -- compile and load contracts
-  cs <- Echidna.Solidity.contracts fs
+  (cs, sc) <- Echidna.Solidity.contracts fs
   ads <- addresses
   p <- loadSpecified c cs
 
@@ -58,6 +59,6 @@ prepareContract cfg fs c g = do
   let constants' = enhanceConstants si ++ timeConstants ++ largeConstants ++ NE.toList ads ++ ads'
 
   -- start ui and run tests
-  return (v, w, ts, Just $ mkGenDict df constants' [] g (returnTypes cs), txs)
+  return (v, sc, cs, w, ts, Just $ mkGenDict df constants' [] g (returnTypes cs), txs)
   where cd = cfg ^. cConf . corpusDir
         df = cfg ^. cConf . dictFreq

@@ -11,9 +11,10 @@ import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.State.Strict (MonadState, execState)
 import Data.Has (Has(..))
+import Data.Maybe (fromMaybe, fromJust)
 import Data.Map.Strict (Map)
-import Data.Maybe (fromMaybe)
 import Data.Set (Set)
+import Data.Tuple.Extra (fst3)
 import EVM
 import EVM.Op (Op(..))
 import EVM.Exec (exec, vmForEthrunCreation)
@@ -99,7 +100,12 @@ execTxWith h m t = do
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
 execTx = execTxWith vmExcept $ liftSH exec
 
-type CoverageMap = Map BS.ByteString (Set (Int, TxResult))
+-- Program Counter directly obtained from the EVM
+type PC = Int
+-- Index per operation in the source code, obtained from the source mapping 
+type OpIx = Int
+-- Map with the coverage information needed for fuzzing and source code printing 
+type CoverageMap = Map BS.ByteString (Set (PC, OpIx, TxResult))
 
 -- | Given a way of capturing coverage info, execute while doing so once per instruction.
 usingCoverage :: (MonadState x m, Has VM x) => m () -> m VMResult
@@ -113,13 +119,13 @@ coveragePoints = sum . fmap S.size
 -- only considering the different instruction PCs (discarding the TxResult).
 -- This is useful to report a coverage measure to the user
 scoveragePoints :: CoverageMap -> Int
-scoveragePoints = sum . fmap (S.size . S.map fst)
+scoveragePoints = sum . fmap (S.size . S.map fst3)
 
 -- | Capture the current PC and bytecode (without metadata). This should identify instructions uniquely.
 pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
 pointCoverage l = do
   v <- use hasLens
-  l %= M.insertWith (const . S.insert $ (v ^. state . pc, Success))
+  l %= M.insertWith (const . S.insert $ (v ^. state . pc, fromJust $ vmOpIx v, Success))
                     (fromMaybe (error "no contract information on coverage") $ h v)
                     mempty
   where

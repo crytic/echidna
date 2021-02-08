@@ -1,8 +1,8 @@
 module Echidna.Types.Signature where
 
+import Data.ByteString (ByteString)
 import Data.Foldable (find)
 import Data.HashMap.Strict (HashMap)
-import Data.ByteString (ByteString)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
 import EVM.ABI (AbiType, AbiValue)
