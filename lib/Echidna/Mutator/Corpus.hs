@@ -2,7 +2,6 @@
 
 module Echidna.Mutator.Corpus where
 
-import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, weighted)
 import Control.Monad.State.Strict (MonadState(..))
 import Data.Has (Has(..))
