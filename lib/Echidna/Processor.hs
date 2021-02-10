@@ -1,169 +1,134 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Echidna.Processor where
 
-import Control.Arrow              (second)
-import Control.Lens
-import Control.Monad.IO.Class     (MonadIO(..))
-import Control.Exception          (Exception)
-import Control.Monad.Catch        (MonadThrow(..))
-import Data.Aeson                 (decode, Value(..))
-import Data.Text                  (Text, pack, unpack)
-import System.Directory           (findExecutable)
-import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
-import System.Exit                (ExitCode(..))
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Exception      (Exception)
+import Control.Monad.Catch    (MonadThrow(..))
+import Data.Aeson             ((.:), decode, parseJSON, withEmbeddedJSON, withObject)
+import Data.Aeson.Types       (FromJSON, Parser, Value(String))
+import Data.List              (nub)
+import Data.Maybe             (catMaybes)
+import Text.Read              (readMaybe)
+import System.Directory       (findExecutable)
+import System.Process         (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
+import System.Exit            (ExitCode(..))
 
 import qualified Data.ByteString.Lazy.Char8 as BSL
+import qualified Data.ByteString.UTF8 as BSU
+import qualified Data.List.NonEmpty as NE
 import qualified Data.HashMap.Strict as M
 
 import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
-import Echidna.ABI (hashSig)
+import EVM.ABI (AbiValue(..))
+import EVM.Types (Addr(..))
+import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
+
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
 -- instance for more detailed explanations.
 data ProcException = ProcessorFailure String String
-                   | ProcessorNotFound String
+                   | ProcessorNotFound String String
 
 instance Show ProcException where
   show = \case
-    ProcessorFailure p e -> "Error running " ++ p ++ ": " ++ e
-    ProcessorNotFound p  -> "Cannot find processor " ++ p
+    ProcessorFailure p e -> "Error running " ++ p ++ ":\n" ++ e
+    ProcessorNotFound p e -> "Cannot find " ++ p ++ "in PATH.\n" ++ e
 
 instance Exception ProcException
 
 -- | This function is used to filter the lists of function names according to the supplied
 -- contract name (if any) and returns a list of hashes
-filterResults :: Maybe String -> [(ContractName, [FunctionName])] -> [FunctionHash]
+filterResults :: Maybe ContractName -> M.HashMap ContractName [FunctionName] -> [FunctionHash]
 filterResults (Just c) rs =
-  case lookup (pack c) rs of
+  case M.lookup c rs of
     Nothing -> filterResults Nothing rs
     Just s -> hashSig <$> s
+filterResults Nothing rs = hashSig <$> (concat . M.elems) rs
 
-filterResults Nothing rs = concatMap (fmap hashSig . snd) rs
+enhanceConstants :: SlitherInfo -> [AbiValue]
+enhanceConstants si =
+  nub . concatMap enh . concat . concat . M.elems $ M.elems <$> constantValues si
+  where
+    enh (AbiUInt _ n) = makeNumAbiValues (fromIntegral n)
+    enh (AbiInt _ n) = makeNumAbiValues (fromIntegral n)
+    enh (AbiString s) = makeArrayAbiValues s
+    enh v = [v]
 
-data SlitherInfo = PayableInfo (ContractName, [FunctionName])
-                 | ConstantFunctionInfo (ContractName, [FunctionName])
-                 | AssertFunction (ContractName, [FunctionName])
-                 | ConstantValue (ContractName, Text) -- Not used right now, it will change soon
-                 | GenerationGraph (ContractName, FunctionName, [FunctionName])
-  deriving (Show)
-makePrisms ''SlitherInfo
+-- we loose info on what constants are in which functions
+data SlitherInfo = SlitherInfo
+  { payableFunctions :: M.HashMap ContractName [FunctionName]
+  , constantFunctions :: M.HashMap ContractName [FunctionName]
+  , asserts :: M.HashMap ContractName [FunctionName]
+  , constantValues  :: M.HashMap ContractName (M.HashMap FunctionName [AbiValue])
+  , generationGraph :: M.HashMap ContractName (M.HashMap FunctionName [FunctionName])
+  } deriving (Show)
 
-slitherFilter :: Prism' SlitherInfo a -> [SlitherInfo] -> [a]
-slitherFilter p = toListOf (traverse . p)
+instance FromJSON SlitherInfo where
+  parseJSON = withObject "slitherOutput" $ \o -> do
+    -- take the value under 'description' through the path - $['results']['printers'][0]['description']
+    results <- o .: "results"
+    printer <- NE.head <$> results .: "printers" -- there must be at least one printer
+    description <- printer .: "description"
+    -- description is a JSON string, needs additional parsing
+    withEmbeddedJSON "descriptionString" parseDescription (String description)
+    where
+      parseDescription = withObject "description" $ \o -> do
+        payableFunctions <- o .: "payable"
+        constantFunctions <- o .: "constant_functions"
+        asserts <- o .: "assert"
+        constantValues'
+          -- the type annotation is needed
+          :: M.HashMap ContractName (M.HashMap FunctionName [[Maybe AbiValue]])
+          <- o .: "constants_used" >>= (traverse . traverse . traverse . traverse) parseConstant
+        -- flatten [[AbiValue]], the array probably shouldn't be nested, fix it in Slither
+        let constantValues = (fmap . fmap) (catMaybes . concat) constantValues'
+        functionsRelations <- o .: "functions_relations"
+        generationGraph <- (traverse . traverse) (withObject "relations" (.: "impacts")) functionsRelations
+        pure SlitherInfo {..}
 
-filterPayable :: [SlitherInfo] -> [(ContractName, [FunctionName])]
-filterPayable = slitherFilter _PayableInfo
+      parseConstant :: Value -> Parser (Maybe AbiValue)
+      parseConstant = withObject "const" $ \o -> do
+        v <- o .: "value"
+        t <- o .: "type"
+        case t of
+          'u':'i':'n':'t':x ->
+            case AbiUInt <$> readMaybe x <*> readMaybe v of
+              Nothing -> failure v t
+              i -> pure i
 
-filterAssert :: [SlitherInfo] -> [(ContractName, [FunctionName])]
-filterAssert = slitherFilter _AssertFunction
+          'i':'n':'t':x ->
+            case AbiInt <$> readMaybe x <*> readMaybe v of
+              Nothing -> failure v t
+              i -> pure i
 
-filterConstantFunction :: [SlitherInfo] -> [(ContractName, [FunctionName])]
-filterConstantFunction = slitherFilter _ConstantFunctionInfo
+          "string" ->
+            pure . Just . AbiString $ BSU.fromString v
 
-filterGenerationGraph :: [SlitherInfo] -> [(ContractName, FunctionName, [FunctionName])]
-filterGenerationGraph = slitherFilter _GenerationGraph
+          "address" ->
+            case AbiAddress . Addr <$> readMaybe v of
+              Nothing -> failure v t
+              a -> pure a
+
+          -- we don't need all the types for now
+          _ -> pure Nothing
+        where failure v t = fail $ "failed to parse " ++ t ++ ": " ++ v
 
 -- Slither processing
-runSlither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m [SlitherInfo]
-runSlither fp args = let args' = ["--ignore-compile", "--print", "echidna", "--json", "-"] ++ args in do
+runSlither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m SlitherInfo
+runSlither fp extraArgs = do
   mp <- liftIO $ findExecutable "slither"
   case mp of
-    Nothing -> return []
+    Nothing -> throwM $ ProcessorNotFound "slither" "You should install it using 'pip3 install slither-analyzer --user'"
     Just path -> liftIO $ do
-      (ec, out, _) <- readCreateProcessWithExitCode (proc path $ args' |> fp) {std_err = Inherit} ""
+      let args = ["--ignore-compile", "--print", "echidna", "--json", "-"] ++ extraArgs ++ [fp]
+      (ec, out, err) <- readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
       case ec of
-        ExitSuccess -> return $ procSlither out
-        ExitFailure _ -> return [] --we can make slither mandatory using: throwM $ ProcessorFailure "slither" err
-
-procSlither :: String -> [SlitherInfo]
-procSlither r =
-  case (decode . BSL.pack) r of
-    Nothing -> []
-    Just v  -> mresult "" v
-
--- parse result json
-mresult :: Text -> Value -> [SlitherInfo]
-mresult "description" (String x) =
-  case (decode . BSL.pack . unpack) x of
-    Nothing -> []
-    Just v  -> mpayable "" v ++ mcfuncs "" v ++ mggraph "" v ++ mconsts "" v ++ massert "" v
-
-mresult _ (Object o) = concatMap (uncurry mresult) $ M.toList o
-mresult _ (Array  a) = concatMap (mresult "") a
-mresult _  _         = []
-
--- parse actual payable information
-mpayable :: Text -> Value -> [SlitherInfo]
-mpayable "payable" (Object o) = PayableInfo . second f <$> M.toList o
-  where f (Array xs)            = concatMap f xs
-        f (String "fallback()") = ["()"]
-        f (String s)            = [s]
-        f _                     = []
-
-mpayable _ (Object o) = concatMap (uncurry mpayable) $ M.toList o
-mpayable _ (Array  a) = concatMap (mpayable "") a
-mpayable _  _         = []
-
--- parse actual assert information
-massert :: Text -> Value -> [SlitherInfo]
-massert "assert" (Object o) = AssertFunction . second f <$> M.toList o
-  where f (Array xs)            = concatMap f xs
-        f (String "fallback()") = ["()"]
-        f (String s)            = [s]
-        f _                     = []
-
-massert _ (Object o) = concatMap (uncurry massert) $ M.toList o
-massert _ (Array  a) = concatMap (massert "") a
-massert _  _         = []
-
--- parse actual constant functions information
-mcfuncs :: Text -> Value -> [SlitherInfo]
-mcfuncs "constant_functions" (Object o)  = ConstantFunctionInfo . second f <$> M.toList o
-  where f (Array xs)            = concatMap f xs
-        f (String s)            = [s]
-        f _                     = []
-
-mcfuncs _ (Object o) = concatMap (uncurry mcfuncs) $ M.toList o
-mcfuncs _ (Array  a) = concatMap (mcfuncs "") a
-mcfuncs _  _         = []
-
--- parse actual constant functions information
-mconsts :: Text -> Value -> [SlitherInfo]
-mconsts "constants_used" (Object o) = concatMap (uncurry mconsts') $ M.toList o
-mconsts _ (Object o) = concatMap (uncurry mconsts) $ M.toList o
-mconsts _ (Array  a) = concatMap (mconsts "") a
-mconsts _  _         = []
-
-mconsts' :: Text -> Value -> [SlitherInfo]
-mconsts' _ (Object o) = case (M.lookup "value" o, M.lookup "type" o) of
-                         (Just v, Just (String t)) -> [ConstantValue (pack $ show v, t)]
-                         (Nothing, Nothing)        -> concatMap (uncurry mconsts') $ M.toList o
-                         _                         -> error "invalid JSON formatting parsing constants"
-
-mconsts' _ (Array  a) = concatMap (mconsts' "") a
-mconsts' _  _         = []
-
-
--- parse actual generation graph
-mggraph :: Text -> Value -> [SlitherInfo]
-mggraph "functions_relations" (Object o) = concatMap f $ M.toList o
-  where f (c, Object o1) = map (\(m,v) -> GenerationGraph (c, m, mggraph' "" v)) $ M.toList o1
-        f _              = []
-
-mggraph _ (Object o) = concatMap (uncurry mggraph) $ M.toList o
-mggraph _ (Array  a) = concatMap (mggraph "") a
-mggraph _  _         = []
-
-mggraph' :: Text -> Value -> [Text]
-mggraph' "impacts" (Array a) = concatMap f a
-  where f (Array xs)            = concatMap f xs
-        f (String "fallback()") = ["()"]
-        f (String s)            = [s]
-        f _                     = []
-
-mggraph' _ (Object o) = concatMap (uncurry mggraph') $ M.toList o
-mggraph' _ (Array  a) = concatMap (mggraph' "") a
-mggraph' _  _         = []
+        ExitSuccess ->
+          case decode (BSL.pack out) of
+            Just si -> pure si
+            Nothing -> throwM $ ProcessorFailure "slither" "decoding slither output failed"
+        ExitFailure _ -> throwM $ ProcessorFailure "slither" err

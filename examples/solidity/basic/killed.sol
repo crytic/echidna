@@ -5,17 +5,17 @@ contract C {
     state = x;
   }
 
-  function killed_if() {
+  function kill_me() public {
     require(state > 256);
-    suicide(0x0);
+    selfdestruct(msg.sender);
   }
 
   function echidna_still_alive() public returns (bool) {
     return true;
   }
 
-  function echidna_other_prop() public returns (bool) {
-    return true;
+  function echidna_revert_still_alive() public returns (bool) {
+    revert();
   }
 
 }

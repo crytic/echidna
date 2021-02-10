@@ -1,5 +1,34 @@
 ## TODO
 
+## 1.6.1
+
+* Use a sensible default value for `block.gaslimit` (#596)
+* Use metadata to detect deployed contracts (#593)
+* Semver integration for improving testing with different solc versions (#594)
+* Added some performance improvement in property execution (#576)
+* Fixed wait bug when shrinking (#584) 
+* Added funwithnumber example from Sabre (#565)
+* Improved function filtering to be more precise (#570)
+* Small fixes in the macOS CI (#597), the README (#590) and Nix (#581) 
+
+## 1.6.0
+* Slither is now a required dependency.
+* Made sure that <ESC> gets mapped correctly, fixing #474 (#503)
+* Fix library timestamp/block delay issue (#510)
+* Make stack limit exceeded a revert (#517)
+* Add some default transaction constants (#532)
+* Make large constants work better with dictionaries (#523)
+* Fix "flanky" corpus tests (#537)
+* HEVM updated to [150dddc67b6cbad75fd4ae5a689452892f55ea26] (0.42) (#511)
+  * this may introduce a slight performance hit as everything is partially symbolic
+* Improved shrinking and pretty printing (#518)
+* Integrate slither results (#451)
+* Disagreements about `MonadState` and `MonadReader` (#545, #513)
+* Simplified a bunch of code (#548, #549, #513)
+* Fix negative address bug (#552)
+* Various Github Actions improvements (#527, #554)
+* Allow to bypass EIP-170 and set up a custom max code size (#544)
+ 
 ## 1.5.1
 
 * Fix timestamp and block delays having the initial timestamp/block added to them (#460, #469)
@@ -89,3 +118,4 @@
 
 [2cc059b49cae613025b925f0273b906e25484b68]: https://github.com/dapphub/dapptools/tree/2cc059b49cae613025b925f0273b906e25484b68
 [af84e2ee0a0654fdaa91186384233cf1731ee7ce]: https://github.com/dapphub/dapptools/tree/af84e2ee0a0654fdaa91186384233cf1731ee7ce
+[150dddc67b6cbad75fd4ae5a689452892f55ea26]: https://github.com/dapphub/dapptools/tree/150dddc67b6cbad75fd4ae5a689452892f55ea26

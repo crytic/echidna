@@ -6,6 +6,7 @@ module Echidna.Output.JSON where
 import Echidna.ABI (ppAbiValue, GenDict(..))
 import qualified Echidna.Types.Campaign as C
 import Echidna.Solidity (SolTest)
+import Echidna.Exec (PC, OpIx)
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxResult)
 import Data.Aeson hiding (Error)
 import qualified Data.ByteString.Base16 as BS16
@@ -22,7 +23,7 @@ data Campaign = Campaign
   , _error :: Maybe String
   , _tests :: [Test]
   , seed :: Int
-  , coverage :: Map String [(Int, TxResult)]
+  , coverage :: Map String [(PC, OpIx, TxResult)]
   , gasInfo :: [(Text, (Int, [Tx]))]
   }
 
@@ -126,4 +127,5 @@ mapTest (solTest, testState) =
 
   mapCall (SolCreate _) = ("<CREATE>", Nothing)
   mapCall (SolCall (name, args)) = (name, Just $ ppAbiValue <$> args)
+  mapCall NoCall                 = ("*wait*", Nothing)
   mapCall (SolCalldata x) = (decodeUtf8 $ "0x" <> BS16.encode x, Nothing)

@@ -35,10 +35,7 @@ data CorpusMutation = Skip
 selectAndMutate :: MonadRandom m 
                 => ([Tx] -> m [Tx]) -> Corpus -> m [Tx]
 selectAndMutate f ctxs = do
-  let somePercent = if (fst . DS.findMax) ctxs > 1   -- if the corpus already contains new elements 
-                    then 1 + (DS.size ctxs `div` 20) -- then take 5% of its size
-                    else DS.size ctxs                -- otherwise, take all of it
-  rtxs <- weighted $ map (\(i, txs) -> (txs, fromInteger i)) $ take somePercent $ DS.toDescList ctxs
+  rtxs <- weighted $ map (\(i, txs) -> (txs, fromInteger i)) $ DS.toDescList ctxs
   k <- getRandomR (0, length rtxs - 1)
   f $ take k rtxs
 
@@ -51,7 +48,7 @@ selectAndCombine f ql ctxs gtxs = do
   return . take ql $ txs ++ gtxs
     where selectFromCorpus = weighted $ map (\(i, txs) -> (txs, fromInteger i)) $ DS.toDescList ctxs
 
-getCorpusMutation :: (MonadThrow m, MonadRandom m, Has GenDict x, MonadState x m) 
+getCorpusMutation :: (MonadRandom m, Has GenDict x, MonadState x m) 
                   => CorpusMutation -> (Int -> Corpus -> [Tx] -> m [Tx])
 getCorpusMutation Skip = \_ _ -> return
 getCorpusMutation (RandomAppend m) = 

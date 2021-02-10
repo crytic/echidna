@@ -10,7 +10,8 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 
 * Generates inputs tailored to your actual code
 * Optional corpus collection, mutation and coverage guidance to find deeper bugs
-* Optional [Slither](https://github.com/crytic/slither) integration to extract useful information before the fuzzing campaign
+* Powered by [Slither](https://github.com/crytic/slither) to extract useful information before the fuzzing campaign
+* Source code integration to identify which lines are covered after the fuzzing campaign
 * Curses-based retro UI, text-only or JSON output
 * Automatic testcase minimization for quick triage
 * Seamless integration into the development workflow
@@ -52,11 +53,35 @@ $ echidna-test examples/solidity/basic/flags.sol
 
 Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` and should be unable to find a falsifying input for `echidna_alwaystrue`.
 
+### Collecting and visualizing coverage
+
+After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain two entries: (1) a directory named `coverage` with JSON files that can be replayed by Echidna and (2) a plain-text file named `covered.txt`, a copy of the source code with coverage annotations.
+
+If you run `examples/solidity/basic/flags.sol` example, Echidna will save a few files in `coverage` and a `covered.txt` file with the following lines:
+
+```
+*r  |  function set0(int val) public returns (bool){
+*   |    if (val % 100 == 0)
+*   |      flag0 = false;
+  }
+
+*r  |  function set1(int val) public returns (bool){
+*   |    if (val % 10 == 0 && !flag0)
+*   |      flag1 = false;
+  }
+```
+
+Our tool signals each execution trace in the corpus with the following "line marker":
+ - `*` if an execution ended with a STOP
+ - `r` if an execution ended with a REVERT
+ - `o` if an execution ended with an out-of-gas error
+ - `e` if an execution ended with any other error (zero division, assertion failure, etc) 
+
 ### Crash course on Echidna
 
-Our [Builiding Secure Smart Contracts](https://github.com/crytic/building-secure-contracts) repository contains a crash course on Echidna, including examples, lessons and exercises. You should [start here](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial).
+Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts) repository contains a crash course on Echidna, including examples, lessons and exercises. You should [start here](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial).
 
-### Support for smart contract build systems 
+### Support for smart contract build systems
 
 Echidna can test contracts compiled with different smart contract build systems, including [Truffle](https://truffleframework.com/), [Embark](https://framework.embarklabs.io/) and even [Vyper](https://vyper.readthedocs.io), using [crytic-compile](https://github.com/crytic/crytic-compile). For instance,
 we can uncover an integer overflow in the [Metacoin Truffle box](https://github.com/truffle-box/metacoin-box) using a
@@ -129,9 +154,12 @@ will either be `property` or `assertion`, and `status` always takes on either
 
 ## Installation
 
+
+
 ### Precompiled binaries
 
-If you want to quickly test Echidna in Linux or MacOS, we provide statically linked Linux binaries built on Ubuntu and mostly static MacOS binaries on our [releases page](https://github.com/crytic/echidna/releases). You can also grab the same type of binaries from our [CI pipeline](https://github.com/crytic/echidna/actions?query=workflow%3ACI+branch%3Amaster+event%3Apush), just click the commit to find binaries for Linux or MacOS. Make sure you have the latest release of [crytic-compile](https://github.com/crytic/crytic-compile) and [slither](https://github.com/crytic/slither) installed before starting to use Echidna.
+Before starting, make sure Slither is [installed](https://github.com/crytic/slither) (`pip3 install slither-analyzer --user`).
+If you want to quickly test Echidna in Linux or MacOS, we provide statically linked Linux binaries built on Ubuntu and mostly static MacOS binaries on our [releases page](https://github.com/crytic/echidna/releases). You can also grab the same type of binaries from our [CI pipeline](https://github.com/crytic/echidna/actions?query=workflow%3ACI+branch%3Amaster+event%3Apush), just click the commit to find binaries for Linux or MacOS.
 
 ### Docker container
 
@@ -171,6 +199,11 @@ $ git clone https://github.com/crytic/echidna
 $ cd echidna
 $ nix-shell
 [nix-shell]$ cabal new-repl
+```
+
+Running the test suite:
+```
+nix-shell --run 'cabal test'
 ```
 
 ## Getting help

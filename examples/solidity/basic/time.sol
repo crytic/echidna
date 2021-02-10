@@ -3,15 +3,20 @@ contract Time {
   uint marked;
 
   constructor() public {
-    start  = now;
-    marked = now;
+    start  = block.timestamp;
+    marked = block.timestamp;
   }
 
   function mark() public {
-    marked = now;
+    marked = block.timestamp;
   }
 
   function echidna_timepassed() public returns (bool) {
     return(start == marked);
   }
+
+  function echidna_moretimepassed() public returns (bool) {
+    return(block.timestamp < start + 10 weeks );
+  }
+
 }

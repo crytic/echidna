@@ -1,21 +1,48 @@
-{ nixpkgs ? import ./nix/dapptools.nix, compiler ? "default", doBenchmark ? false }:
+{ pkgs ? import (builtins.fetchTarball {
+    name = "nixpkgs-21.03pre268255.e5b478271ea";
+    url = "https://github.com/nixos/nixpkgs/archive/e5b478271ea0af7b75d53c92cfa98bdb126b44a7.tar.gz";
+    sha256 = "06hmxvnx2swk63i15zp1q70axf53x04f7ywwlnxlcfkk0prrmwbh";
+  }) {}
+}:
 
 let
-  inherit (nixpkgs) pkgs;
+  # slither is shipped with solc by default, we don't use it as we need
+  # precise solc versions
+  slither-analyzer = pkgs.slither-analyzer.override { withSolc = false; };
 
-  v = "1.5.0";
+  # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
+  # would be great to integrate solc-select to be more flexible, improve this in future
+  solc = pkgs.stdenv.mkDerivation {
+    name = "solc";
+    src = if pkgs.stdenv.isDarwin then
+      pkgs.fetchurl {
+        url = "https://binaries.soliditylang.org/macosx-amd64/solc-macosx-amd64-v0.5.7+commit.6da8b019";
+        sha256 = "0p6s5d34qz4h3463jllciiy9cgfwvp3dqlc63pa4ryjmjvi7fyil";
+      }
+    else
+      pkgs.fetchurl {
+        url = "https://binaries.soliditylang.org/linux-amd64/solc-linux-amd64-v0.5.7+commit.6da8b019";
+        sha256 = "0dsvzck5jh8rvdxs7zyn2ga9hif024msx8gr8ifgj4cmyb7m4341";
+      };
+    phases = ["installPhase" "patchPhase"];
+    installPhase = ''
+      mkdir -p $out/bin
+      cp $src $out/bin/solc
+      chmod +x $out/bin/solc
+    '';
+  };
 
-  crytic-compile = pkgs.python3Packages.callPackage (import ./nix/crytic-compile.nix) {};
+  v = "1.6.1";
 
   f = { mkDerivation, aeson, ansi-terminal, base, base16-bytestring
       , binary, brick, bytestring, cborg, containers, data-dword, data-has
       , deepseq, directory, exceptions, filepath, hashable, hevm, hpack
       , lens, lens-aeson, megaparsec, MonadRandom, mtl
-      , optparse-applicative, process, random, stdenv, stm, tasty
+      , optparse-applicative, process, random, stm, tasty
       , tasty-hunit, tasty-quickcheck, temporary, text, transformers
       , unix, unliftio, unliftio-core, unordered-containers, vector
       , vector-instances, vty, wl-pprint-annotated, word8, yaml
-      , cabal-install, extra
+      , cabal-install, extra, ListLike, hlint, semver
       }:
       mkDerivation rec {
         pname = "echidna";
@@ -29,50 +56,27 @@ let
           hashable hevm lens lens-aeson megaparsec MonadRandom mtl
           optparse-applicative process random stm temporary text transformers
           unix unliftio unliftio-core unordered-containers vector
-          vector-instances vty wl-pprint-annotated word8 yaml extra
+          vector-instances vty wl-pprint-annotated word8 yaml extra ListLike
+          semver
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
-        libraryToolDepends = [ hpack cabal-install ];
+        libraryToolDepends = [ hpack cabal-install hlint slither-analyzer solc ];
         executableHaskellDepends = libraryHaskellDepends;
         testHaskellDepends = [
           tasty tasty-hunit tasty-quickcheck
         ];
-        executableSystemDepends = [ crytic-compile pkgs.solc-versions.solc_0_5_15 ];
         preConfigure = ''
           hpack
           # re-enable dynamic build for Linux
           sed -i -e 's/os(linux)/false/' echidna.cabal
         '';
         shellHook = "hpack";
-        license = stdenv.lib.licenses.agpl3;
+        license = pkgs.lib.licenses.agpl3;
         doHaddock = false;
-        doCheck = false;
+        doCheck = true;
       };
 
-  haskellPackages = if compiler == "default"
-                       then pkgs.haskellPackages
-                       else pkgs.haskell.packages.${compiler};
-
-  # extra from dapptools is outdated, override
-  extra = pkgs.haskellPackages.callCabal2nix "extra" (builtins.fetchGit {
-    url = "https://github.com/ndmitchell/extra";
-    rev = "24dd03b2073860553cd37ac3064cf7e95c7feff9"; # 1.17.1
-  }) {};
-
-  haskellPackages' = haskellPackages.extend (self: super: { inherit extra; } );
-
-  variant = if doBenchmark then pkgs.haskell.lib.doBenchmark else pkgs.lib.id;
-
-  drv = variant (haskellPackages'.callPackage f {});
+  drv = pkgs.haskellPackages.callPackage f { };
 in
   if pkgs.lib.inNixShell
     then drv.env
-    else pkgs.symlinkJoin {
-      name = "echidna-${v}-with-deps";
-      paths = [ (pkgs.haskell.lib.justStaticExecutables drv) ];
-      buildInputs = [ pkgs.makeWrapper ];
-      postBuild = ''
-        wrapProgram $out/bin/echidna-test \
-          --prefix PATH : ${pkgs.lib.makeBinPath [ crytic-compile ]} \
-          --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.solc-versions.solc_0_5_15 ]}
-      '';
-    }
+    else pkgs.haskell.lib.justStaticExecutables drv

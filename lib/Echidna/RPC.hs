@@ -33,7 +33,7 @@ import qualified Data.Vector as V (fromList)
 
 import Echidna.Exec
 import Echidna.Transaction
-import Echidna.Types.Tx (TxCall(..), Tx(Tx), TxConf, propGas)
+import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, basicTx, createTxWithValue, propGas, unlimitedGasPerBlock)
 
 -- | During initialization we can either call a function or create an account or contract
 data Etheno = AccountCreated Addr                                       -- ^ Registers an address with the echidna runtime
@@ -114,7 +114,7 @@ execEthenoTxs ts addr et = do
                -- found the tests, so just return the contract
                Just m  -> return $ Just m
                -- try to see if this is the contract we wish to test
-               Nothing -> let txs = ts <&> \t -> Tx (SolCall (t, [])) ca ca g 0 0 (0,0)
+               Nothing -> let txs = ts <&> \t -> basicTx t [] ca ca g
                               -- every test was executed successfully
                               go []     = return (Just ca)
                               -- execute x and check if it returned something of the correct type
@@ -138,5 +138,5 @@ execEthenoTxs ts addr et = do
 -- | For an etheno txn, set up VM to execute txn
 setupEthenoTx :: (MonadState x m, Has VM x) => Etheno -> m ()
 setupEthenoTx (AccountCreated _) = pure ()
-setupEthenoTx (ContractCreated f c _ _ d v) = setupTx $ Tx (SolCreate d) f c 0xffffffff 0 (w256 v) (0, 0)
-setupEthenoTx (FunctionCall f t _ _ d v) = setupTx $ Tx (SolCalldata d) f t 0xffffffff 0 (w256 v) (0, 0)
+setupEthenoTx (ContractCreated f c _ _ d v) = setupTx $ createTxWithValue d f c (fromInteger unlimitedGasPerBlock) (w256 v)
+setupEthenoTx (FunctionCall f t _ _ d v) = setupTx $ Tx (SolCalldata d) f t (fromInteger unlimitedGasPerBlock) 0 (w256 v) (0, 0)
