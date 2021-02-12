@@ -14,12 +14,11 @@ import Echidna.Transaction (mutateTx, shrinkTx)
 import Echidna.ABI (GenDict)
 import Echidna.Mutator.Array
 
-type MutationConsts = (Integer, Integer, Integer, Integer, Integer)
+type MutationConsts = (Integer, Integer, Integer, Integer)
 defaultMutationConsts :: MutationConsts 
-defaultMutationConsts = (10,1,1,1,1)
+defaultMutationConsts = (1,1,1,1)
 
-data TxsMutation = TxIdentity
-                 | Shrinking
+data TxsMutation = Shrinking
                  | Mutation
                  | Expansion
                  | Swapping
@@ -52,7 +51,6 @@ getCorpusMutation :: (MonadRandom m, Has GenDict x, MonadState x m)
 getCorpusMutation Skip = \_ _ -> return
 getCorpusMutation (RandomAppend m) = 
   case m of
-    TxIdentity -> mut return
     Shrinking  -> mut (mapM shrinkTx)
     Mutation   -> mut (mapM mutateTx)
     Expansion  -> mut expandRandList
@@ -64,7 +62,6 @@ getCorpusMutation (RandomAppend m) =
 
 getCorpusMutation (RandomPrepend m) = 
   case m of
-    TxIdentity -> mut return
     Shrinking  -> mut $ mapM shrinkTx
     Mutation   -> mut $ mapM mutateTx
     Expansion  -> mut expandRandList
@@ -79,23 +76,21 @@ getCorpusMutation RandomSplice = selectAndCombine spliceAtRandom
 getCorpusMutation RandomInterleave = selectAndCombine interleaveAtRandom
 
 seqMutators :: MonadRandom m => MutationConsts -> m CorpusMutation
-seqMutators (c1, c2, c3, c4, c5) = weighted 
+seqMutators (c1, c2, c3, c4) = weighted 
   [(Skip,                     1000),
 
-   (RandomAppend TxIdentity,  fromInteger c1),
-   (RandomAppend Shrinking,   fromInteger c2),
-   (RandomAppend Mutation,    fromInteger c3),
-   (RandomAppend Expansion,   fromInteger c4),
-   (RandomAppend Swapping,    fromInteger c4),
-   (RandomAppend Deletion,    fromInteger c4),
+   (RandomAppend Shrinking,   fromInteger c1),
+   (RandomAppend Mutation,    fromInteger c2),
+   (RandomAppend Expansion,   fromInteger c3),
+   (RandomAppend Swapping,    fromInteger c3),
+   (RandomAppend Deletion,    fromInteger c3),
 
-   (RandomPrepend TxIdentity, fromInteger c1),
-   (RandomPrepend Shrinking,  fromInteger c2),
-   (RandomPrepend Mutation,   fromInteger c3),
-   (RandomPrepend Expansion,  fromInteger c4),
-   (RandomPrepend Swapping,   fromInteger c4),
-   (RandomPrepend Deletion,   fromInteger c4),
+   (RandomPrepend Shrinking,  fromInteger c1),
+   (RandomPrepend Mutation,   fromInteger c2),
+   (RandomPrepend Expansion,  fromInteger c3),
+   (RandomPrepend Swapping,   fromInteger c3),
+   (RandomPrepend Deletion,   fromInteger c3),
 
-   (RandomSplice,             fromInteger c5),
-   (RandomInterleave,         fromInteger c5)
+   (RandomSplice,             fromInteger c4),
+   (RandomInterleave,         fromInteger c4)
  ]
