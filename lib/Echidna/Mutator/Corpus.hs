@@ -23,12 +23,14 @@ data TxsMutation = Shrinking
                  | Expansion
                  | Swapping
                  | Deletion
+  deriving (Eq, Ord, Show) 
 
 data CorpusMutation = Skip
                     | RandomAppend TxsMutation 
                     | RandomPrepend TxsMutation
                     | RandomSplice
                     | RandomInterleave
+  deriving (Eq, Ord, Show)
 
 selectAndMutate :: MonadRandom m 
                 => ([Tx] -> m [Tx]) -> Corpus -> m [Tx]
@@ -51,15 +53,14 @@ getCorpusMutation :: (MonadRandom m, Has GenDict x, MonadState x m)
 getCorpusMutation Skip = \_ _ -> return
 getCorpusMutation (RandomAppend m) = 
   case m of
-    Shrinking  -> mut (mapM shrinkTx)
-    Mutation   -> mut (mapM mutateTx)
+    Shrinking  -> mut $ mapM shrinkTx
+    Mutation   -> mut $ mapM mutateTx
     Expansion  -> mut expandRandList
     Swapping   -> mut swapRandList
     Deletion   -> mut deleteRandList
  where mut f ql ctxs gtxs = do
           rtxs' <- selectAndMutate f ctxs
           return . take ql $ rtxs' ++ gtxs  
-
 getCorpusMutation (RandomPrepend m) = 
   case m of
     Shrinking  -> mut $ mapM shrinkTx
