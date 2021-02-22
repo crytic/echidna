@@ -15,7 +15,7 @@ module Echidna.Campaign where
 import Control.Lens
 import Control.Monad (liftM3, replicateM, when, (<=<), ap, unless)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
-import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR, uniform, uniformMay, fromList)
+import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR, uniform, uniformMay)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
@@ -44,7 +44,8 @@ import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types.Campaign
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
-import Echidna.Types.World (World(..), eventMap)
+import Echidna.Types.World (World, eventMap)
+import Echidna.Mutator.Corpus
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -175,22 +176,6 @@ addToCorpus :: (MonadState s m, Has Campaign s) => Int -> [(Tx, (VMResult, Int))
 addToCorpus n res = unless (null rtxs) $ hasLens . corpus %= DS.insert (toInteger n, rtxs)
   where rtxs = fst <$> res
 
-seqMutators :: (MonadRandom m) => MutationConsts -> m (Int -> Corpus -> [Tx] -> m [Tx])
-seqMutators (c1, c2, c3) =
-  fromList [ (cnm      , fromInteger c1)
-           , (mut False, fromInteger c2)
-           , (mut True , fromInteger c3)
-           ]
-  -- Use the generated random transactions
-  where cnm _ _ = return
-        mut flp ql ctxs gtxs = do
-          let somePercent = if (fst . DS.findMax) ctxs > 1    -- if the corpus already contains new elements
-                             then 1 + (DS.size ctxs `div` 20) -- then take 5% of its size
-                             else DS.size ctxs                -- otherwise, take all of it
-          rtxs <- fromList $ map (\(i, txs) -> (txs, fromInteger i)) $ take somePercent $ DS.toDescList ctxs
-          k <- getRandomR (0, length rtxs - 1)
-          return . take ql $ if flp then take k gtxs ++ rtxs else take k rtxs ++ gtxs
-
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: ( MonadRandom m, MonadReader x m, MonadState y m
            , Has TxConf x, Has TestConf x, Has CampaignConf x, Has GenDict y, Has Campaign y)
@@ -206,8 +191,10 @@ randseq ql o w = do
   else do
     -- Randomly generate new random transactions
     gtxs <- replicateM ql $ runReaderT (genTxM o) (w, txConf)
-    -- Select a random mutator
-    mut <- seqMutators cs
+    -- Generate a random mutator
+    cmut <- seqMutators cs
+    -- Fetch the mutator
+    let mut = getCorpusMutation cmut
     if DS.null ctxs then
       return gtxs      -- Use the generated random transactions
     else

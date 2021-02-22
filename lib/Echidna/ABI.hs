@@ -39,7 +39,7 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Vector as V
 import qualified Data.HashSet as H
 
-import Echidna.Mutator (mutateLL, replaceAt)
+import Echidna.Mutator.Array (mutateLL, replaceAt) 
 import Echidna.Types.Random
 import Echidna.Types.Signature
 

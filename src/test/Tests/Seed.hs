@@ -10,6 +10,7 @@ import Data.Function ((&))
 import Echidna.Config (defaultConfig, sConf, cConf)
 import Echidna.Solidity (quiet)
 import Echidna.Types.Campaign (CampaignConf(..), tests)
+import Echidna.Mutator.Corpus (defaultMutationConsts)
 
 seedTests :: TestTree
 seedTests =
@@ -18,6 +19,6 @@ seedTests =
     , testCase "same seeds" $ assertBool "results differ" =<< same 0 0
     ]
     where cfg s = defaultConfig & sConf . quiet .~ True
-                                & cConf .~ CampaignConf 600 False False 20 0 Nothing (Just s) 0.15 Nothing (1,1,1)
+                                & cConf .~ CampaignConf 600 False False 20 0 Nothing (Just s) 0.15 Nothing defaultMutationConsts
           gen s = view tests <$> runContract "basic/flags.sol" Nothing (cfg s)
           same s t = liftM2 (==) (gen s) (gen t)
