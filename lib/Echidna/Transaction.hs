@@ -121,6 +121,13 @@ shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
     ]
   in join $ usuallyRarely (join (uniform possibilities) <*> pure tx') (pure $ removeCallTx tx')
 
+mutateTx :: (MonadRandom m) => Tx -> m Tx
+mutateTx t@(Tx (SolCall c) _ _ _ _ _ _) = do f <- oftenUsually skip mutate
+                                             f c
+                                           where mutate  z = mutateAbiCall z >>= \c' -> pure $ t { _call = SolCall c' }
+                                                 skip    _ = pure t
+mutateTx t                              = pure t
+
 -- | Lift an action in the context of a component of some 'MonadState' to an action in the
 -- 'MonadState' itself.
 liftSH :: (MonadState a m, Has b a) => State b x -> m x
