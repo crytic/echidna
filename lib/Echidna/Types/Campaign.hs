@@ -11,7 +11,6 @@ import Data.Foldable (toList)
 import Data.Has (Has(..))
 import Data.Map (Map, mapKeys)
 import Data.Maybe (mapMaybe, maybeToList)
-import Data.Set (Set)
 import Data.Text (Text)
 import EVM.Keccak (keccak)
 import Numeric (showHex)
@@ -20,8 +19,8 @@ import Echidna.ABI (GenDict, defaultDict)
 import Echidna.Exec (CoverageMap, ExecException)
 import Echidna.Solidity (SolTest)
 import Echidna.Types.Tx (Tx)
-
-type MutationConsts = (Integer, Integer, Integer)
+import Echidna.Types.Corpus 
+import Echidna.Mutator.Corpus
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { _testLimit     :: Int
@@ -70,8 +69,6 @@ instance ToJSON TestState where
                                Large _ l -> (False, Just ("callseq", toJSON l))
                                Solved  l -> (False, Just ("callseq", toJSON l))
                                Failed  e -> (False, Just ("exception", toJSON $ show e))
-
-type Corpus = Set (Integer, [Tx])
 
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests       :: [(SolTest, TestState)]

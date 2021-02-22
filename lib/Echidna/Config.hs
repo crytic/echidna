@@ -32,6 +32,7 @@ import qualified Data.Yaml as Y
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Types.Campaign (CampaignConf(CampaignConf))
+import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Types.Tx  (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
 import Echidna.UI
 import Echidna.UI.Report
@@ -129,7 +130,7 @@ instance FromJSON EConfigWithUsage where
                                   <*> v ..:? "seed"
                                   <*> v ..:? "dictFreq"    ..!= 0.40
                                   <*> v ..:? "corpusDir"   ..!= Nothing
-                                  <*> v ..:? "mutConsts"   ..!= (100, 1, 1)
+                                  <*> v ..:? "mutConsts"   ..!= defaultMutationConsts
 
                 -- SolConf
                 defaultAddr     = 0x00a329c0648769a73afac7f9381e08fb43dbea72
