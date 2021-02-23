@@ -59,13 +59,13 @@ prepareContract cfg fs c g = do
   -- load tests
   (v, w, ts) <- prepareForTest p c si
   let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
-    -- get signatures
+  -- get signatures
   let sigs = nub $ concatMap (NE.toList . snd) (toList $ w ^. highSignatureMap)
-  liftIO $ print sigs
+  
   -- load transactions from init sequence (if any)
   es' <- liftIO $ maybe (return []) loadEtheno it
   let constants' = enhanceConstants si ++ timeConstants ++ largeConstants ++ NE.toList ads ++ ads'
-  let txs = ctxs ++ [extractFromEtheno es' sigs]
+  let txs = ctxs ++ maybe (return []) (return [extractFromEtheno es' sigs]) it
 
   -- start ui and run tests
   return (v, sc, cs, w, ts, Just $ mkGenDict df constants' [] g (returnTypes cs), txs)
