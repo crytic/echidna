@@ -8,6 +8,8 @@ import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Reader (MonadReader, MonadIO, liftIO)
 import Control.Monad.Random (MonadRandom)
 import Data.Map.Strict (keys)
+import Data.HashMap.Strict (toList)
+import Data.List (nub)
 
 import EVM (env, contracts, VM)
 import EVM.ABI (AbiValue(AbiAddress))
@@ -23,6 +25,7 @@ import Echidna.Types.Tx
 import Echidna.Types.World
 import Echidna.Processor
 import Echidna.Output.Corpus
+import Echidna.RPC (loadEtheno, extractFromEtheno)
 
 import qualified Data.List.NonEmpty as NE
 
@@ -42,7 +45,7 @@ prepareContract :: (MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, Mon
                     Has TxConf x, Has SolConf x)
                 => EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed -> m (VM, SourceCache, [SolcContract], World, [SolTest], Maybe GenDict, [[Tx]])
 prepareContract cfg fs c g = do
-  txs <- liftIO $ loadTxs cd
+  ctxs <- liftIO $ loadTxs cd
 
   -- compile and load contracts
   (cs, sc) <- Echidna.Solidity.contracts fs
@@ -56,9 +59,16 @@ prepareContract cfg fs c g = do
   -- load tests
   (v, w, ts) <- prepareForTest p c si
   let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
+    -- get signatures
+  let sigs = nub $ concatMap (NE.toList . snd) (toList $ w ^. highSignatureMap)
+  liftIO $ print sigs
+  -- load transactions from init sequence (if any)
+  es' <- liftIO $ maybe (return []) loadEtheno it
   let constants' = enhanceConstants si ++ timeConstants ++ largeConstants ++ NE.toList ads ++ ads'
+  let txs = ctxs ++ [extractFromEtheno es' sigs]
 
   -- start ui and run tests
   return (v, sc, cs, w, ts, Just $ mkGenDict df constants' [] g (returnTypes cs), txs)
   where cd = cfg ^. cConf . corpusDir
         df = cfg ^. cConf . dictFreq
+        it = cfg ^. sConf . initialize
