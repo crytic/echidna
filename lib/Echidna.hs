@@ -65,7 +65,7 @@ prepareContract cfg fs c g = do
   -- load transactions from init sequence (if any)
   es' <- liftIO $ maybe (return []) loadEtheno it
   let constants' = enhanceConstants si ++ timeConstants ++ largeConstants ++ NE.toList ads ++ ads'
-  let txs = ctxs ++ maybe (return []) (return [extractFromEtheno es' sigs]) it
+  let txs = ctxs ++ maybe [] (const [extractFromEtheno es' sigs]) it
 
   -- start ui and run tests
   return (v, sc, cs, w, ts, Just $ mkGenDict df constants' [] g (returnTypes cs), txs)
