@@ -42,7 +42,7 @@ The following lists security vulnerabilities that were found by Echidna. If you 
 
 ### Research Examples
 
-We also reproduced with Echdina a number of research examples from smart contract fuzzing papers to show how quickly it can find the solution:
+We can also use Echidna to reproduce a number of research examples from smart contract fuzzing papers to show how quickly it can find the solution:
 
 | Source | Code 
 |--|--
@@ -51,7 +51,7 @@ We also reproduced with Echdina a number of research examples from smart contrac
 [Learning to Fuzz from Symbolic Execution with Application to Smart Contracts](https://files.sri.inf.ethz.ch/website/papers/ccs19-ilf.pdf) | [Crowdsale](https://github.com/crytic/echidna/blob/master/examples/solidity/research/ilf_crowdsale.sol)
 [Harvey: A Greybox Fuzzer for Smart Contracts](https://arxiv.org/abs/1905.06944) | [Foo](https://github.com/crytic/echidna/blob/master/examples/solidity/research/harvey_foo.sol), [Baz](https://github.com/crytic/echidna/blob/master/examples/solidity/research/harvey_baz.sol)
 
-All these can be solved, from a few seconds to one or two minutes in a laptop computer.
+All these can be solved, from a few seconds to one or two minutes on a laptop computer.
 
 ## Usage
 
