@@ -42,10 +42,16 @@ The following lists security vulnerabilities that were found by Echidna. If you 
 
 ### Research Examples
 
-We reproduced with Echdina a number of research examples from smart contract fuzzing papers to show how quickly it can find the solution:
+We also reproduced with Echdina a number of research examples from smart contract fuzzing papers to show how quickly it can find the solution:
 
+| Source | Code 
+|--|--
+[Using automatic analysis tools with MakerDAO contracts](https://forum.openzeppelin.com/t/using-automatic-analysis-tools-with-makerdao-contracts/1021) | [SimpleDSChief](https://github.com/crytic/echidna/blob/master/examples/solidity/research/vera_dschief.sol)
+[Integer precision bug in Sigma Prime](https://github.com/b-mueller/sabre#example-2-integer-precision-bug) | [VerifyFunWithNumbers](https://github.com/crytic/echidna/blob/master/examples/solidity/research/solcfuzz_funwithnumbers.sol)
+[Learning to Fuzz from Symbolic Execution with Application to Smart Contracts](https://files.sri.inf.ethz.ch/website/papers/ccs19-ilf.pdf) | [Crowdsale](https://github.com/crytic/echidna/blob/master/examples/solidity/research/ilf_crowdsale.sol)
+[Harvey: A Greybox Fuzzer for Smart Contracts](https://arxiv.org/abs/1905.06944) | [Foo](https://github.com/crytic/echidna/blob/master/examples/solidity/research/harvey_foo.sol), [Baz](https://github.com/crytic/echidna/blob/master/examples/solidity/research/harvey_baz.sol)
 
-
+All these can be solved, from a few seconds to one or two minutes in a laptop computer.
 
 ## Usage
 
@@ -177,8 +183,6 @@ will either be `property` or `assertion`, and `status` always takes on either
 
 ## Installation
 
-
-
 ### Precompiled binaries
 
 Before starting, make sure Slither is [installed](https://github.com/crytic/slither) (`pip3 install slither-analyzer --user`).
@@ -238,3 +242,14 @@ Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://emp
 * Review the [Solidity examples](examples/solidity) directory for more extensive Echidna use cases
 
 * Considering [emailing](mailto:echidna-dev@trailofbits.com) the Echidna development team directly for more detailed questions
+
+## License
+
+Echidna is licensed and distributed under the [AGPLv3 license](https://github.com/crytic/echidna/blob/master/LICENSE).
+
+## Publications
+
+### Trail of Bits publication
+- [Echidna: effective, usable, and fast fuzzing for smart contracts](https://github.com/trailofbits/publications/blob/master/papers/echidna_issta2020.pdf), Gustavo Grieco, Will Song, Artur Cygan, Josselin  Feist, Alex Groce - ISSTA '20
+
+If you are using Echidna on an academic work, consider applying to the [Crytic $10k Research Prize](https://blog.trailofbits.com/2019/11/13/announcing-the-crytic-10k-research-prize/).
