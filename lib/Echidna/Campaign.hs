@@ -192,7 +192,7 @@ randseq ql o w = do
     -- Randomly generate new random transactions
     gtxs <- replicateM ql $ runReaderT (genTxM o) (w, txConf)
     -- Generate a random mutator
-    cmut <- seqMutators cs
+    cmut <- seqMutators (fromConsts cs)
     -- Fetch the mutator
     let mut = getCorpusMutation cmut
     if DS.null ctxs then

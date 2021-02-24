@@ -10,7 +10,7 @@ import qualified Data.ListLike as LL
 listMutators :: (LL.ListLike f i, MonadRandom m) => m (f -> m f)
 listMutators = fromList [(return, 1), (expandRandList, 10), (deleteRandList, 10), (swapRandList, 10)]
 
--- | Mutate a list-like data structure using a list of mutators 
+-- | Mutate a list-like data structure using a list of mutators
 mutateLL :: (LL.ListLike f i, MonadRandom m)
          => Maybe Int -- ^ Required size for the mutated list-like value (or Nothing if there are no constrains)
          -> f         -- ^ Randomly generated list-like value to complement the mutated list, if it is shorter than the requested size
@@ -19,18 +19,18 @@ mutateLL :: (LL.ListLike f i, MonadRandom m)
 mutateLL mn fs vs = do
   f <- listMutators
   xs <- f vs
-  return $ maybe xs (`LL.take` (xs `LL.append` fs)) mn
+  return $ maybe xs (`LL.take` (xs <> fs)) mn
 
 replaceAt :: LL.ListLike f i => i -> f -> Int -> f
-replaceAt i f n = LL.take n f `LL.append` LL.cons i (LL.drop (n + 1) f)
+replaceAt i f n = LL.take n f <> LL.cons i (LL.drop (n + 1) f)
 
 expandAt :: LL.ListLike f i => f -> Int -> Int -> f
-expandAt xs k t = case LL.uncons xs of
-                       Nothing     -> xs
-                       Just (y,ys) -> if k == 0
-                                      then LL.replicate t y `LL.append` ys
-                                      else LL.cons y (expandAt ys (k - 1) t)
-
+expandAt xs k t =
+  case LL.uncons xs of
+    Nothing     -> xs
+    Just (y,ys) -> if k == 0
+                   then LL.replicate t y <> ys
+                   else LL.cons y (expandAt ys (k - 1) t)
 
 expandRandList :: (LL.ListLike f i, MonadRandom m) => f -> m f
 expandRandList xs
@@ -42,51 +42,50 @@ expandRandList xs
     return $ expandAt xs k t
   where l = LL.length xs
 
-
 deleteAt :: LL.ListLike f i => Int -> f -> f
-deleteAt n f = LL.take n f `LL.append` LL.drop (n+1) f
+deleteAt n f = LL.take n f <> LL.drop (n+1) f
 
 deleteRandList :: (LL.ListLike f i, MonadRandom m) => f -> m f
-deleteRandList xs = if LL.null xs
-                    then return xs 
-                    else do k <- getRandomR (0, LL.length xs - 1)
-                            return $ deleteAt k xs
-
+deleteRandList xs =
+  if LL.null xs
+  then return xs
+  else do
+    k <- getRandomR (0, LL.length xs - 1)
+    return $ deleteAt k xs
 
 -- taken from https://stackoverflow.com/questions/30551033/swap-two-elements-in-a-list-by-its-indices/30551130#30551130
 swapAt :: LL.ListLike f i => f -> Int -> Int -> f
-swapAt xs i j =  let elemI = xs `LL.index` i
-                     elemJ = xs `LL.index` j
-                     left = LL.take i xs
-                     middle = LL.take (j - i - 1) (LL.drop (i + 1) xs)
-                     right = LL.drop (j + 1) xs
-                 in left `LL.append` LL.cons elemJ middle `LL.append` LL.cons elemI right
+swapAt xs i j = left <> LL.cons elemJ middle <> LL.cons elemI right
+  where elemI = xs `LL.index` i
+        elemJ = xs `LL.index` j
+        left = LL.take i xs
+        middle = LL.take (j - i - 1) (LL.drop (i + 1) xs)
+        right = LL.drop (j + 1) xs
 
 swapRandList :: (LL.ListLike f i, MonadRandom m) => f -> m f
-swapRandList xs = if LL.null xs
-                  then return xs
-                  else do i <- getRandomR (0, LL.length xs - 1)
-                          j <- getRandomR (0, LL.length xs - 1)
-                          return $ case i `compare` j of
-                            EQ -> xs
-                            LT -> swapAt xs i j
-                            GT -> swapAt xs j i
+swapRandList xs =
+  if LL.null xs
+  then return xs
+  else do
+    i <- getRandomR (0, LL.length xs - 1)
+    j <- getRandomR (0, LL.length xs - 1)
+    return $ if i == j then xs else swapAt xs (min i j) (max i j)
 
 spliceAtRandom :: (LL.ListLike f i, MonadRandom m) => f -> f -> m f
-spliceAtRandom xs1 xs2 = do 
+spliceAtRandom xs1 xs2 = do
   idx1 <- getRandomR (0, LL.length xs1 - 1)
   idx2 <- getRandomR (0, LL.length xs2 - 1)
-  return $ LL.take idx1 xs1 `LL.append` LL.drop idx2 xs2
+  return $ LL.take idx1 xs1 <> LL.drop idx2 xs2
 
 interleaveAtRandom :: (LL.ListLike f i, MonadRandom m) => f -> f -> m f
-interleaveAtRandom xs1 xs2 = do 
-  idx1 <- getRandomR (0, LL.length xs1 - 1) 
+interleaveAtRandom xs1 xs2 = do
+  idx1 <- getRandomR (0, LL.length xs1 - 1)
   idx2 <- getRandomR (0, LL.length xs2 - 1)
   return $ LL.take idx1 xs1 `interleaveLL` LL.take idx2 xs2
 
 {- | Takes two lists and combines them interleaving its elements -}
-interleaveLL :: (LL.ListLike f i) => f -> f -> f
+interleaveLL :: LL.ListLike f i => f -> f -> f
 interleaveLL a b
   | LL.null a = b
   | LL.null b = a
-  | otherwise = LL.cons (LL.head a) $ LL.cons (LL.head b) (interleaveLL (LL.tail a) (LL.tail b)) 
+  | otherwise = LL.cons (LL.head a) . LL.cons (LL.head b) $ interleaveLL (LL.tail a) (LL.tail b)
