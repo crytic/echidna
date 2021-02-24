@@ -24,6 +24,29 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 
 <a href="https://trailofbits.files.wordpress.com/2020/03/image5.png"><img src="https://trailofbits.files.wordpress.com/2020/03/image5.png" width="650"/></a>
 
+## Echidna Trophies
+
+### Security Issues
+
+The following lists security vulnerabilities that were found by Echidna. If you found a security vulnerability using our tool, please submit a PR with the relevant information.
+
+| Project | Vulnerability | Date |
+|--|--|--|
+[Yield Protocol](https://github.com/trailofbits/publications/blob/master/reviews/YieldProtocol.pdf) | Arithmetic computation for buying and selling tokens is imprecise | Aug 2020
+[Origin Dollar](https://github.com/trailofbits/publications/blob/master/reviews/OriginDollar.pdf) | Users are allowed to transfer more tokens that they have | Nov 2020
+[Origin Dollar](https://github.com/trailofbits/publications/blob/master/reviews/OriginDollar.pdf) | User balances can be larger than total supply | Nov 2020
+[Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | Closing troves require to hold the full amount of LUSD minted |  Dec 2020
+[Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | Troves can be improperly removed |  Dec 2020
+[Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | Initial redeem can revert unexpectedly |  Dec 2020
+[Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | Redeem without redemptions might still return success |  Dec 2020
+
+### Research Examples
+
+We reproduced with Echdina a number of research examples from smart contract fuzzing papers to show how quickly it can find the solution:
+
+
+
+
 ## Usage
 
 ### Executing the test runner
