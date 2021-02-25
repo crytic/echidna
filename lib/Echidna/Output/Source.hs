@@ -11,6 +11,7 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text, unlines, pack, unpack)
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
+import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.List (nub)
 
 import EVM.Solidity (SourceCache, SrcMap, SolcContract, sourceLines, sourceFiles, runtimeCode, runtimeSrcmap, creationSrcmap)
@@ -29,9 +30,9 @@ import Echidna.Types.Signature (getBytecodeMetadata)
 type FilePathText = Text
 
 saveCoverage :: Maybe FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
-saveCoverage (Just d) sc cs s = let fn = d ++ "/covered.txt"
+saveCoverage (Just d) sc cs s = let fn t = d ++ "/covered." ++ show t ++ ".txt"
                                     cc = ppCoveredCode sc cs s 
-                                in writeFile fn cc
+                                in getSystemTime >>= \t -> writeFile (fn $ systemSeconds t) cc
 saveCoverage Nothing  _  _  _ = pure ()
 
 
