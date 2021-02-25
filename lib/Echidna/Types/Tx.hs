@@ -59,7 +59,7 @@ $(deriveJSON defaultOptions ''Tx)
 
 basicTx :: Text         -- | Function name
         -> [AbiValue]   -- | Function args
-        -> Addr         -- | msg.sender
+        -> Addr         -- | Sender
         -> Addr         -- | Destination contract
         -> Word         -- | Gas limit
         -> (Word, Word) -- | Block increment
@@ -68,7 +68,7 @@ basicTx f a s d g = basicTxWithValue f a s d g 0
 
 basicTxWithValue :: Text         -- | Function name
                  -> [AbiValue]   -- | Function args
-                 -> Addr         -- | msg.sender
+                 -> Addr         -- | Sender
                  -> Addr         -- | Destination contract
                  -> Word         -- | Gas limit
                  -> Word         -- | Value
@@ -84,11 +84,11 @@ createTx :: ByteString   -- | Constructor bytecode
          -> Tx
 createTx bc s d g = createTxWithValue bc s d g 0
 
-createTxWithValue :: ByteString  -- | Constructor bytecode
-                  -> Addr        -- | Creator
-                  -> Addr        -- | Destination address
-                  -> Word        -- | Gas limit
-                  -> Word        -- | Value
+createTxWithValue :: ByteString   -- | Constructor bytecode
+                  -> Addr         -- | Creator
+                  -> Addr         -- | Destination address
+                  -> Word         -- | Gas limit
+                  -> Word         -- | Value
                   -> (Word, Word) -- | Block increment
                   -> Tx
 createTxWithValue bc s d g = Tx (SolCreate bc) s d g 0
