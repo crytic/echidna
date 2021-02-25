@@ -43,6 +43,7 @@ dependencies:
   - temporary
   - text
   - transformers
+  - time
   - unix
   - unliftio
   - unliftio-core
