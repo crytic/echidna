@@ -57,7 +57,7 @@ Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` an
 
 After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain two entries: (1) a directory named `coverage` with JSON files that can be replayed by Echidna and (2) a plain-text file named `covered.txt`, a copy of the source code with coverage annotations.
 
-If you run `examples/solidity/basic/flags.sol` example, Echidna will save a few files in `coverage` and a `covered.txt` file with the following lines:
+If you run `examples/solidity/basic/flags.sol` example, Echidna will save a few files serialized transactions in the `coverage` directory and a `covered.$(date +%s).txt` file with the following lines:
 
 ```
 *r  |  function set0(int val) public returns (bool){
