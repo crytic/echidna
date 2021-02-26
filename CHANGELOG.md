@@ -1,5 +1,17 @@
 ## TODO
 
+## 1.7.0
+
+* Refactored and improved etheno support to be more useful (#615) 
+* Coverage filenames are not overwritten (#620)
+* Refactored the mutator code (#618)
+* More corpus and array mutations implemented (#372)
+* Source coverage is printed after fuzzing campaign (#516)
+* Nix improvements and fixes (#603, #604, #608, #612)
+* Simplified slither information parsing (#543) 
+* Enabled use of coverage by default (#605)
+* Run echidna tests in parallel (#571)
+
 ## 1.6.1
 
 * Use a sensible default value for `block.gaslimit` (#596)
