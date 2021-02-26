@@ -9,9 +9,9 @@ import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.ByteString (ByteString)
 import Data.Text (Text)
 import EVM (VMResult(..), Error(..))
+import EVM.Concrete (Word, w256)
+import EVM.Types (Addr, W256)
 import EVM.ABI (AbiValue)
-import EVM.Concrete (Word)
-import EVM.Types (Addr)
 
 import Echidna.Orphans.JSON ()
 import Echidna.Types.Signature (SolCall)
@@ -57,37 +57,41 @@ data Tx = Tx { _call  :: TxCall       -- | Call
 makeLenses ''Tx
 $(deriveJSON defaultOptions ''Tx)
 
-basicTx :: Text       -- | Function name
-        -> [AbiValue] -- | Function args
-        -> Addr       -- | msg.sender
-        -> Addr       -- | Destination contract
-        -> Word       -- | Gas limit
+basicTx :: Text         -- | Function name
+        -> [AbiValue]   -- | Function args
+        -> Addr         -- | Sender
+        -> Addr         -- | Destination contract
+        -> Word         -- | Gas limit
+        -> (Word, Word) -- | Block increment
         -> Tx
 basicTx f a s d g = basicTxWithValue f a s d g 0
 
-basicTxWithValue :: Text       -- | Function name
-                 -> [AbiValue] -- | Function args
-                 -> Addr       -- | msg.sender
-                 -> Addr       -- | Destination contract
-                 -> Word       -- | Gas limit
-                 -> Word       -- | Value
+basicTxWithValue :: Text         -- | Function name
+                 -> [AbiValue]   -- | Function args
+                 -> Addr         -- | Sender
+                 -> Addr         -- | Destination contract
+                 -> Word         -- | Gas limit
+                 -> Word         -- | Value
+                 -> (Word, Word) -- | Block increment
                  -> Tx
-basicTxWithValue f a s d g v = Tx (SolCall (f, a)) s d g 0 v (0, 0)
+basicTxWithValue f a s d g = Tx (SolCall (f, a)) s d g 0
 
-createTx :: ByteString  -- | Constructor bytecode
-         -> Addr        -- | Creator
-         -> Addr        -- | Destination address
-         -> Word        -- | Gas limit
+createTx :: ByteString   -- | Constructor bytecode
+         -> Addr         -- | Creator
+         -> Addr         -- | Destination address
+         -> Word         -- | Gas limit
+         -> (Word, Word) -- | Block increment
          -> Tx
 createTx bc s d g = createTxWithValue bc s d g 0
 
-createTxWithValue :: ByteString  -- | Constructor bytecode
-                  -> Addr        -- | Creator
-                  -> Addr        -- | Destination address
-                  -> Word        -- | Gas limit
-                  -> Word        -- | Value
+createTxWithValue :: ByteString   -- | Constructor bytecode
+                  -> Addr         -- | Creator
+                  -> Addr         -- | Destination address
+                  -> Word         -- | Gas limit
+                  -> Word         -- | Value
+                  -> (Word, Word) -- | Block increment
                   -> Tx
-createTxWithValue bc s d g v = Tx (SolCreate bc) s d g 0 v (0, 0)
+createTxWithValue bc s d g = Tx (SolCreate bc) s d g 0
 
 data TxResult = Success
               | ErrorBalanceTooLow 
@@ -150,3 +154,7 @@ getResult (VMFailure PrecompileFailure)         = ErrorPrecompileFailure
 getResult (VMFailure UnexpectedSymbolicArg)     = ErrorUnexpectedSymbolic
 getResult (VMFailure DeadPath)                  = ErrorDeadPath
 getResult (VMFailure (Choose _))                = ErrorChoose -- not entirely sure what this is
+
+makeSingleTx :: Addr -> Addr -> W256 -> TxCall -> [Tx]
+makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d (fromInteger maxGasPerBlock) 0 (w256 v) (0, 0)]
+makeSingleTx _ _ _ _           = error "invalid usage of makeSingleTx"

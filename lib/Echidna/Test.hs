@@ -80,7 +80,7 @@ checkETest' em t = do
     Left (f, a) -> do
       g <- view (hasLens . propGas)
       sd <- hasSelfdestructed a
-      _  <- execTx $ basicTx f [] (s a) a g
+      _  <- execTx $ basicTx f [] (s a) a g (0, 0)
       b  <- gets $ p f . getter
       put vm -- restore EVM state
       pure $ not sd && b
