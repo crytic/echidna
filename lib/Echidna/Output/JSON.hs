@@ -4,9 +4,10 @@
 module Echidna.Output.JSON where
 
 import Echidna.ABI (ppAbiValue, GenDict(..))
-import qualified Echidna.Types.Campaign as C
-import Echidna.Solidity (SolTest)
 import Echidna.Exec (PC, OpIx)
+import qualified Echidna.Types.Campaign as C
+import qualified Echidna.Types.Test as T
+import Echidna.Types.Test (SolTest)
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxResult)
 import Data.Aeson hiding (Error)
 import qualified Data.ByteString.Base16 as BS16
@@ -99,7 +100,7 @@ encodeCampaign C.Campaign{..} = encode
            , gasInfo = toList _gasInfo
            }
 
-mapTest :: (SolTest, C.TestState) -> Test
+mapTest :: (SolTest, T.TestState) -> Test
 mapTest (solTest, testState) =
   let (status, transactions, err) = mapTestState testState in
   Test { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
@@ -110,11 +111,11 @@ mapTest (solTest, testState) =
        , transactions = transactions
        }
   where
-  mapTestState (C.Open _) = (Fuzzing, Nothing, Nothing)
-  mapTestState C.Passed = (Passed, Nothing, Nothing)
-  mapTestState (C.Solved txs) = (Solved, Just $ mapTx <$> txs, Nothing)
-  mapTestState (C.Large _ txs) = (Shrinking, Just $ mapTx <$> txs, Nothing)
-  mapTestState (C.Failed e) = (Error, Nothing, Just $ show e) -- TODO add (show e)
+  mapTestState (T.Open _) = (Fuzzing, Nothing, Nothing)
+  mapTestState T.Passed = (Passed, Nothing, Nothing)
+  mapTestState (T.Solved txs) = (Solved, Just $ mapTx <$> txs, Nothing)
+  mapTestState (T.Large _ txs) = (Shrinking, Just $ mapTx <$> txs, Nothing)
+  mapTestState (T.Failed e) = (Error, Nothing, Just $ show e) -- TODO add (show e)
 
   mapTx Tx{..} =
     let (function, args) = mapCall _call in

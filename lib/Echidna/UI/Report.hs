@@ -18,6 +18,7 @@ import Echidna.ABI (defSeed)
 import Echidna.Exec
 import Echidna.Pretty (ppTxCall)
 import Echidna.Types.Campaign
+import Echidna.Types.Test (TestState(..))
 import Echidna.Types.Tx (Tx(Tx), TxCall(..), TxConf, txGas, src)
 
 -- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.

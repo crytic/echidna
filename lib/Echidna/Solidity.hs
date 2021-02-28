@@ -33,6 +33,7 @@ import Echidna.Events             (EventMap)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
 import Echidna.Types.Tx           (TxConf, createTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
+import Echidna.Types.Test         (SolTest)
 import Echidna.Types.World        (World(..))
 import Echidna.Processor
 
@@ -106,10 +107,6 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _methodFilter    :: Filter           -- ^ List of methods to avoid or include calling during a campaign
                        }
 makeLenses ''SolConf
-
--- | An Echidna test is either the name of the function to call and the address where its contract is,
--- or a function that could experience an exception
-type SolTest = Either (Text, Addr) SolSignature
 
 -- | Given a list of files, use its extenstion to check if it is a precompiled
 -- contract or try to compile it and get a list of its contracts, throwing
