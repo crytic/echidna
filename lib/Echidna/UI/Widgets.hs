@@ -21,8 +21,8 @@ import qualified Paths_echidna (version)
 
 import Echidna.ABI
 import Echidna.Campaign (isDone)
-import Echidna.Solidity
 import Echidna.Types.Campaign
+import Echidna.Types.Test (TestState(..), SolTest)
 import Echidna.Types.Tx (Tx, TxConf, src)
 import Echidna.UI.Report
 
