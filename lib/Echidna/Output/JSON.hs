@@ -24,7 +24,7 @@ data Campaign = Campaign
   , _error :: Maybe String
   , _tests :: [Test]
   , seed :: Int
-  , coverage :: Map String [ (PC, OpIx, NumberFrames, TxResult)]
+  , coverage :: Map String [(PC, OpIx, NumberFrames, TxResult)]
   , gasInfo :: [(Text, (Int, [Tx]))]
   }
 

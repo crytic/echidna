@@ -121,7 +121,7 @@ coveragePoints = sum . fmap S.size
 -- only considering the different instruction PCs (discarding the rest of the fields).
 -- This is useful to report a coverage measure to the user
 scoveragePoints :: CoverageMap -> Int
-scoveragePoints = sum . fmap (S.size . S.map (\(x, _, _, _) -> x))
+scoveragePoints = sum . fmap (S.size . S.map (view _1))
 
 -- | Capture the current PC and bytecode (without metadata). This should identify instructions uniquely.
 pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
