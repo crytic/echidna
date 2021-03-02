@@ -3,7 +3,7 @@
 
 module Echidna.Output.JSON where
 
-import Echidna.ABI (ppAbiValue, GenDict(..)
+import Echidna.ABI (ppAbiValue, GenDict(..))
 import Echidna.Exec (PC, OpIx, NumberFrames)
 import qualified Echidna.Types.Campaign as C
 import qualified Echidna.Types.Test as T
