@@ -28,6 +28,7 @@ import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
+import Echidna.Types.Test (SolTest)
 import Echidna.Types.Tx (Tx, TxConf, basicTx, propGas, src)
 
 -- | Configuration for evaluating Echidna tests.
