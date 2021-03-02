@@ -43,6 +43,7 @@ import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types.Campaign
+import Echidna.Types.Test (TestState(..), SolTest)
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
 import Echidna.Types.World (World, eventMap)
 import Echidna.Mutator.Corpus

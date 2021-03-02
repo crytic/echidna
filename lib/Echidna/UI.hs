@@ -34,6 +34,7 @@ import qualified Echidna.Output.JSON
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Types.Campaign
+import Echidna.Types.Test (SolTest)
 import Echidna.Types.Tx (Tx, TxConf)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
