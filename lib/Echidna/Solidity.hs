@@ -218,7 +218,7 @@ loadSpecified name cs = do
   blank' <- maybe (pure (initialVM & block . gaslimit .~ fromInteger unlimitedGasPerBlock & block . maxCodeSize .~ w256 (fromInteger mcs)))
                   loadEthenoBatch
                   fp
-  let blank = populateAddresses (((NE.toList ads) ++ pregenAdds) |> d) bala blank'
+  let blank = populateAddresses ((NE.toList ads ++ pregenAdds) |> d) bala blank'
  
   unless (null con || isJust fp) (throwM $ ConstructorArgs (show con))
   -- Select libraries
