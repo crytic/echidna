@@ -4,7 +4,7 @@ import Control.Lens ((^.), (.~), (&))
 import Control.Monad (unless)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
-import Data.Text (unpack)
+import Data.Text (pack, unpack)
 import Data.Version (showVersion)
 import Options.Applicative
 import Paths_echidna (version)
@@ -17,7 +17,8 @@ import Echidna.Solidity
 import Echidna.Types.Campaign
 import Echidna.Campaign (isSuccess)
 import Echidna.UI
-import Echidna.Transaction
+import Echidna.Output.Source
+import Echidna.Output.Corpus
 
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as DS
@@ -53,7 +54,6 @@ optsParser = info (helper <*> versionOption <*> options) $ fullDesc
   <> header "Echidna"
 
 main :: IO ()
-
 main = do
   opts@(Options f c conf _) <- execParser optsParser
   g <- getRandom
@@ -62,13 +62,18 @@ main = do
   unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
   let cd = cfg ^. cConf . corpusDir
 
-  cpg <- flip runReaderT cfg $ do
-    (v, w, ts, d, txs) <- prepareContract cfg f c g
+  (sc, cs, cpg) <- flip runReaderT cfg $ do
+    (v, sc, cs, w, ts, d, txs) <- prepareContract cfg f (pack <$> c) g
     -- start ui and run tests
-    ui v w ts d txs
+    r <- ui v w ts d txs
+    return (sc, cs, r)
 
   -- save corpus
   saveTxs cd (snd <$> DS.toList (cpg ^. corpus))
+
+  -- save source coverage
+  saveCoverage cd sc cs (cpg ^. coverage) 
+
   if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
   where overrideConfig cfg (Options _ _ _ fmt) =
           case maybe (cfg ^. uConf . operationMode) NonInteractive fmt of

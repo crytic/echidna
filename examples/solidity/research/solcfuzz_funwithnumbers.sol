@@ -1,12 +1,12 @@
-pragma solidity ^0.5.0;
+// Original example from https://github.com/b-mueller/sabre#example-2-integer-precision-bug
 
 contract FunWithNumbers {
     uint constant public tokensPerEth = 10;
     uint constant public weiPerEth = 1e18;
     mapping(address => uint) public balances;
 
-    function buyTokens(uint256 msg_value) public payable {
-        uint tokens = msg_value/weiPerEth*tokensPerEth; // convert wei to eth, then multiply by token rate
+    function buyTokens() public payable {
+        uint tokens = msg.value/weiPerEth*tokensPerEth; // convert wei to eth, then multiply by token rate
         balances[msg.sender] += tokens;
     }
 
@@ -35,26 +35,22 @@ contract VerifyFunWithNumbers is FunWithNumbers {
         
         if (address(this).balance > contract_balance_old && balances[msg.sender] <= sender_balance_old) {
             emit AssertionFailed("Invariant violation: Sender token balance must increase when contract account balance increases");
-            assert(false);
         }
         if (balances[msg.sender] > sender_balance_old && contract_balance_old >= address(this).balance) {
             emit AssertionFailed("Invariant violation: Contract account balance must increase when sender token balance increases");
-            assert(false);
         }
         if (address(this).balance < contract_balance_old && balances[msg.sender] >= sender_balance_old) {
             emit AssertionFailed("Invariant violation: Sender token balance must decrease when contract account balance decreases");
-            assert(false);
         }
         if (balances[msg.sender] < sender_balance_old && address(this).balance >= contract_balance_old) {
             emit AssertionFailed("Invariant violation: Contract account balance must decrease when sender token balance decreases");
-            assert(false);
         }
-       
+        
         contract_balance_old = address(this).balance;
     }
 
-    function buyTokens(uint256 msg_value) public payable checkInvariants {
-        super.buyTokens(msg_value);
+    function buyTokens() public payable checkInvariants {
+        super.buyTokens();
     }
             
     function sellTokens(uint tokens) public checkInvariants {

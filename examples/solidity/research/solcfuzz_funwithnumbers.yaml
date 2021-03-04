@@ -1,2 +1,3 @@
+testLimit: 1000
 coverage: true
 checkAsserts: true

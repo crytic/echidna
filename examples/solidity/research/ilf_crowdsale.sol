@@ -1,6 +1,5 @@
 contract Crowdsale { 
 
-  function echidna_alwaystrue() public returns (bool) { return(true); }
   uint256 goal = 10000 * 10**18;
   uint256 raised = 0;
   uint256 closeTime;  
@@ -13,10 +12,10 @@ contract Crowdsale {
     owner = msg.sender;
   }
 
-  function invest(uint64 msg_value) public payable {
+  function invest() public payable {
     require(phase == 0 && raised < goal);
-    deposits[msg.sender] += msg_value;  
-    raised += msg_value; 
+    deposits[msg.sender] += msg.value;  
+    raised += msg.value; 
   }
 
   function setPhase(uint256 newPhase) public {
@@ -33,6 +32,7 @@ contract Crowdsale {
 
   function withdraw() public {
     require(phase == 1);
+    assert(msg.sender == owner); // added for echidna detection
     owner.transfer(raised);
   }
 

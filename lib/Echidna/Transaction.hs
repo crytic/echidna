@@ -11,25 +11,20 @@ module Echidna.Transaction where
 import Prelude hiding (Word)
 
 import Control.Lens
-import Control.Monad (join, liftM2, unless)
-import Control.Monad.Catch (MonadThrow, bracket)
+import Control.Monad (join, liftM2)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.State.Strict (MonadState, State, evalStateT, runState, get, put)
-import Data.Aeson (ToJSON(..), decodeStrict, encodeFile)
+import Control.Monad.State.Strict (MonadState, State, runState, get, put)
 import Data.Has (Has(..))
-import Data.Hashable (hash)
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
 import Data.SBV (SWord, literal)
-import EVM hiding (value, path)
+import EVM hiding (value)
 import EVM.ABI (abiCalldata, abiValueType)
 import EVM.Concrete (Word(..), w256)
-import EVM.Solidity (stripBytecodeMetadata)
 import EVM.Symbolic ( litWord, litAddr)
 import EVM.Types (Addr, Buffer(..))
 
-import qualified System.Directory as SD
 import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
 import qualified Data.List.NonEmpty as NE
@@ -38,9 +33,14 @@ import qualified Data.Vector as V
 import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
-import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash)
+import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, getBytecodeMetadata)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
+
+hasSelfdestructed :: (MonadState y m, Has VM y) => Addr -> m Bool
+hasSelfdestructed a = do
+  sd <- use $ hasLens . tx . substate . selfdestructs
+  return $ a `elem` sd
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating delays, since block number
 -- only goes up with timestamp
@@ -48,58 +48,44 @@ level :: (Num a, Eq a) => (a, a) -> (a, a)
 level (elemOf each 0 -> True) = (0,0)
 level x                       = x
 
--- | Given generators for an origin, destination, value, and function call, generate a call
--- transaction. Note: This doesn't generate @CREATE@s because I don't know how to do that at random.
-genTxWith :: (MonadRandom m, MonadState x m, Has World x, MonadThrow m)
-          => Map Addr Contract                        -- ^ List of contracts
-          -> (NE.NonEmpty Addr -> m Addr)             -- ^ Sender generator
-          -> (NE.NonEmpty ContractA -> m ContractA)   -- ^ Receiver generator
-          -> (Addr -> ContractA -> m SolCall)         -- ^ Call generator
-          -> m Word                                   -- ^ Gas generator
-          -> m Word                                   -- ^ Gas price generator
-          -> Word                                     -- ^ Max value generator
-          -> m (Word, Word)                           -- ^ Delay generator
-          -> m Tx
-genTxWith m s r c g gp mv t = do
-  World ss hmm lmm ps <- use hasLens
-  mm <- getSignatures hmm lmm
-  let s' = s ss
-      r' = r rs
-      c' = join $ liftM2 c s' r'
-      v' = genValue ps mv
-      rs = NE.fromList . catMaybes $ mkR <$> toList m
-      mkR = _2 (flip M.lookup mm . view (bytecode . to stripBytecodeMetadata))
-  v'' <- v' <$> s' <*> r' <*> c'
-  Tx <$> (SolCall <$> c') <*> s' <*> (fst <$> r') <*> g <*> gp <*> v'' <*> t
-
 getSignatures :: MonadRandom m => SignatureMap -> Maybe SignatureMap -> m SignatureMap
 getSignatures hmm Nothing = return hmm
 getSignatures hmm (Just lmm) = usuallyVeryRarely hmm lmm -- once in a while, this will use the low-priority signature for the input generation
 
--- | Synthesize a random 'Transaction', not using a dictionary.
-genTx :: forall m x y. (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has World y, MonadThrow m)
-      => Map Addr Contract
-      -> m Tx
-genTx m = use (hasLens :: Lens' y World) >>= evalStateT (genTxM m) . (defaultDict,)
-
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
-genTxM :: (MonadRandom m, MonadReader x m, Has TxConf x, MonadState y m, Has GenDict y, Has World y, MonadThrow m)
+genTxM :: (MonadRandom m, MonadReader x m, MonadState y m, Has TxConf x, Has World x, Has GenDict y)
   => Map Addr Contract
   -> m Tx
 genTxM m = do
   TxConf _ g gp t b mv <- view hasLens
-  genTxWith
-    m
-    rElem rElem                                                                -- src and dst
-    (const $ genInteractionsM . snd)                                           -- call itself
-    (pure g) (pure gp) mv                                                      -- gas, gasprice, value
-    (level <$> liftM2 (,) (inRange t) (inRange b))                             -- delay
-  where inRange hi = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral hi)
+  World ss hmm lmm ps _ <- view hasLens
+  genDict <- use hasLens
+  mm <- getSignatures hmm lmm
+  let ns = dictValues genDict
+  s' <- rElem ss
+  r' <- rElem $ NE.fromList . catMaybes $ toContractA mm <$> toList m
+  c' <- genInteractionsM genDict (snd r')
+  v' <- genValue mv ns ps c'
+  t' <- (,) <$> genDelay t ns <*> genDelay b ns
+  pure $ Tx (SolCall c') s' (fst r') g gp v' (level t')
+  where
+    toContractA :: SignatureMap -> (Addr, Contract) -> Maybe ContractA
+    toContractA mm (addr, c) =
+      (addr,) <$> M.lookup (getBytecodeMetadata $ c ^. bytecode) mm
 
-genValue :: (MonadRandom m) => [FunctionHash] -> Word -> Addr -> ContractA -> SolCall -> m Word
-genValue ps mv _ _ sc =
-  if sig `elem` ps
-  then fromIntegral <$> randValue
+genDelay :: MonadRandom m => Word -> [Integer] -> m Word
+genDelay mv ds = do
+  let ds' = map (`mod` (fromIntegral mv + 1)) ds
+  g <- oftenUsually randValue $ rElem (0 NE.:| ds')
+  w256 . fromIntegral <$> g
+  where randValue = getRandomR (1 :: Integer, fromIntegral mv)
+
+genValue :: MonadRandom m => Word -> [Integer] -> [FunctionHash] -> SolCall -> m Word
+genValue mv ds ps sc =
+  if sig `elem` ps then do
+    let ds' = map (`mod` (fromIntegral mv + 1)) ds
+    g <- oftenUsually randValue $ rElem (0 NE.:| ds')
+    fromIntegral <$> g
   else do
     g <- usuallyRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
     fromIntegral <$> g
@@ -108,11 +94,11 @@ genValue ps mv _ _ sc =
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool
-canShrinkTx (Tx (SolCreate _) _ _ _ 0 0 (0, 0))   = False
-canShrinkTx (Tx (SolCall (_,l)) _ _ _ 0 0 (0, 0)) = any canShrinkAbiValue l
-canShrinkTx (Tx (SolCalldata _) _ _ _ 0 0 (0, 0)) = False
-canShrinkTx (Tx NoCall _ _ _ _ _ (0, 0))          = False
-canShrinkTx _                                     = True
+canShrinkTx (Tx solcall _ _ _ 0 0 (0, 0)) =
+  case solcall of
+    SolCall (_, l) -> any canShrinkAbiValue l
+    _ -> False
+canShrinkTx _ = True
 
 removeCallTx :: Tx -> Tx
 removeCallTx (Tx _ _ r _ _ _ d) = Tx NoCall 0 r 0 0 0 d
@@ -122,10 +108,8 @@ removeCallTx (Tx _ _ r _ _ _ d) = Tx NoCall 0 r 0 0 0 d
 shrinkTx :: MonadRandom m => Tx -> m Tx
 shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
   c' = case c of
-            SolCreate{}   -> pure c
-            SolCall sc    -> SolCall <$> shrinkAbiCall sc
-            SolCalldata{} -> pure c
-            NoCall        -> pure c
+         SolCall sc -> SolCall <$> shrinkAbiCall sc
+         _ -> pure c
   lower 0 = pure $ w256 0
   lower x = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral x)
               >>= \r -> uniform [0, r] -- try 0 quicker
@@ -136,6 +120,13 @@ shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
     , set delay     <$> fmap level (liftM2 (,) (lower t) (lower b))
     ]
   in join $ usuallyRarely (join (uniform possibilities) <*> pure tx') (pure $ removeCallTx tx')
+
+mutateTx :: (MonadRandom m) => Tx -> m Tx
+mutateTx t@(Tx (SolCall c) _ _ _ _ _ _) = do f <- oftenUsually skip mutate
+                                             f c
+                                           where mutate  z = mutateAbiCall z >>= \c' -> pure $ t { _call = SolCall c' }
+                                                 skip    _ = pure t
+mutateTx t                              = pure t
 
 -- | Lift an action in the context of a component of some 'MonadState' to an action in the
 -- 'MonadState' itself.
@@ -152,8 +143,8 @@ liftSH = stateST . runState . zoom hasLens
 -- 'Transaction's \"on-chain\".
 setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
 setupTx (Tx NoCall _ r _ _ _ (t, b)) = liftSH . sequence_ $
-  [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty
-  , block . timestamp += litWord t, block . number += b, loadContract r] 
+  [ state . pc .= 0, state . stack .= mempty, state . memory .= mempty
+  , block . timestamp += litWord t, block . number += b, loadContract r]
 
 setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty, state . gas .= g
@@ -171,33 +162,3 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
 
 concreteCalldata :: BS.ByteString -> (Buffer, SWord 32)
 concreteCalldata cd = (ConcreteBuffer cd, literal . fromIntegral . BS.length $ cd)
-
-saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
-saveTxs (Just d) txs = mapM_ saveTx txs where
-  saveTx v = do let fn = d ++ "/" ++ (show . hash . show) v ++ ".txt"
-                b <- SD.doesFileExist fn
-                unless b $ encodeFile fn (toJSON v)
-saveTxs Nothing  _   = pure ()
-
-listDirectory :: FilePath -> IO [FilePath]
-listDirectory path = filter f <$> SD.getDirectoryContents path
-  where f filename = filename /= "." && filename /= ".."
-
-withCurrentDirectory :: FilePath  -- ^ Directory to execute in
-                     -> IO a      -- ^ Action to be executed
-                     -> IO a
-withCurrentDirectory dir action =
-  bracket SD.getCurrentDirectory SD.setCurrentDirectory $ \_ -> do
-    SD.setCurrentDirectory dir
-    action
-
-loadTxs :: Maybe FilePath -> IO [[Tx]]
-loadTxs (Just d) = do
-  fs <- listDirectory d
-  css <- mapM readCall <$> mapM SD.makeRelativeToCurrentDirectory fs
-  txs <- catMaybes <$> withCurrentDirectory d css
-  putStrLn ("Loaded total of " ++ show (length txs) ++ " transactions from " ++ d)
-  return txs
-  where readCall f = decodeStrict <$> BS.readFile f
-
-loadTxs Nothing  = pure []

@@ -10,18 +10,17 @@ import Data.Aeson (ToJSON(..), object)
 import Data.Foldable (toList)
 import Data.Has (Has(..))
 import Data.Map (Map, mapKeys)
-import Data.Maybe (mapMaybe, maybeToList)
-import Data.Set (Set)
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import EVM.Keccak (keccak)
 import Numeric (showHex)
 
 import Echidna.ABI (GenDict, defaultDict)
-import Echidna.Exec (CoverageMap, ExecException)
-import Echidna.Solidity (SolTest)
+import Echidna.Exec (CoverageMap)
+import Echidna.Types.Test (SolTest, TestState(..))
 import Echidna.Types.Tx (Tx)
-
-type MutationConsts = (Integer, Integer, Integer)
+import Echidna.Types.Corpus 
+import Echidna.Mutator.Corpus
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { _testLimit     :: Int
@@ -44,34 +43,9 @@ data CampaignConf = CampaignConf { _testLimit     :: Int
                                    -- ^ Frequency for the use of dictionary values in the random transactions
                                  , _corpusDir     :: Maybe FilePath
                                    -- ^ Directory to load and save lists of transactions
-                                 , _mutConsts     :: MutationConsts
+                                 , _mutConsts     :: MutationConsts Integer
                                  }
 makeLenses ''CampaignConf
-
--- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
-data TestState = Open Int             -- ^ Maybe solvable, tracking attempts already made
-               | Large Int [Tx]       -- ^ Solved, maybe shrinable, tracking shrinks tried + best solve
-               | Passed               -- ^ Presumed unsolvable
-               | Solved [Tx]          -- ^ Solved with no need for shrinking
-               | Failed ExecException -- ^ Broke the execution environment
-                 deriving Show
-
-instance Eq TestState where
-  (Open i)    == (Open j)    = i == j
-  (Large i l) == (Large j m) = i == j && l == m
-  Passed      == Passed      = True
-  (Solved l)  == (Solved m)  = l == m
-  _           == _           = False
-
-instance ToJSON TestState where
-  toJSON s = object $ ("passed", toJSON passed) : maybeToList desc where
-    (passed, desc) = case s of Open _    -> (True, Nothing)
-                               Passed    -> (True, Nothing)
-                               Large _ l -> (False, Just ("callseq", toJSON l))
-                               Solved  l -> (False, Just ("callseq", toJSON l))
-                               Failed  e -> (False, Just ("exception", toJSON $ show e))
-
-type Corpus = Set (Integer, [Tx])
 
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests       :: [(SolTest, TestState)]

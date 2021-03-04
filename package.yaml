@@ -3,7 +3,7 @@ name: echidna
 author: Trail of Bits <echidna-dev@trailofbits.com>
 maintainer: Trail of Bits <echidna-dev@trailofbits.com>
 
-version: 1.5.1
+version: 1.7.0
 
 ghc-options: -Wall -fno-warn-orphans -O2 -threaded +RTS -N -RTS
 
@@ -35,11 +35,15 @@ dependencies:
   - optparse-applicative
   - process
   - random
+  - rosezipper
+  - semver
   - sbv
   - stm
+  - split
   - temporary
   - text
   - transformers
+  - time
   - unix
   - unliftio
   - unliftio-core
@@ -81,3 +85,11 @@ tests:
       - tasty
       - tasty-hunit
       - tasty-quickcheck
+    when:
+        - condition: os(linux)
+          ghc-options:
+            - -threaded
+            - -static
+            - -O2
+          cc-options: -static
+          ld-options: -static -pthread

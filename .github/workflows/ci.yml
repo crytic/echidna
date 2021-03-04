@@ -9,20 +9,27 @@ on:
     - master
 
 jobs:
-  test:
+  build:
+    name: Build Echidna
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os:
           - ubuntu-latest
-        #  - macos-latest
+          - macos-latest
         include:
           - os: ubuntu-latest
             apt-get: autoconf automake libtool
-        #  - os: macos-latest
-        #    brew: automake
-
+          - os: macos-latest
+            brew: automake
+         
     steps:
+      - name: Workaround for actions/cache#403
+        if: runner.os == 'macOS'
+        run: |
+          brew install gnu-tar
+          echo PATH="/usr/local/opt/gnu-tar/libexec/gnubin:$PATH" >> $GITHUB_ENV
+
       - name: Get Packages
         uses: mstksg/get-package@v1
         with:
@@ -33,37 +40,27 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Setup Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v2
         with:
           python-version: '3.6'
 
       - name: Cache Local
-        id: cache-local
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: ~/.local/
-          key: ${{ runner.os }}-local-v1
+          key: ${{ runner.os }}-local-v3
 
       - name: Cache Stack
-        id: cache-stack
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: ~/.stack
-          key: ${{ runner.os }}-stack-v1
+          key: ${{ runner.os }}-stack-v3
 
       - name: Cache Cabal
-        id: cache-cabal
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: ~/.cabal
-          key: ${{ runner.os }}-cabal-v1
-
-      - name: Build Binaries
-        run: |
-          .github/scripts/install-solc.sh
-          .github/scripts/install-crytic-compile.sh
-        env:
-          HOST_OS: ${{ runner.os }}
+          key: ${{ runner.os }}-cabal-v3
 
       - name: Build Libraries
         run: |
@@ -80,22 +77,77 @@ jobs:
         run: |
           stack install --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
 
-      - name: Test
+      - name: Amend and compress binaries (macOS)
+        if: runner.os == 'macOS'
+        run: .github/scripts/build-macos-release.sh
+
+      - name: Compress binary (Linux)
         if: runner.os == 'Linux'
-        run: |
-          export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:$HOME/.local/lib"
-          export PATH="${PATH}:$HOME/.local/bin"
-
-          for VER in "0.4.25" "0.5.7" ; do
-            cp "$HOME/.local/bin/solc-$VER" "$HOME/.local/bin/solc"
-            stack test --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
-          done
-
-      - name: Compress binary
-        run: GZIP=-9 tar -czf echidna-test.tar.gz $HOME/.local/bin/echidna-test
+        run: GZIP=-9 tar -czf echidna-test.tar.gz -C $HOME/.local/bin/ echidna-test
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v2
         with:
           name: echidna-test-${{ runner.os }}
           path: echidna-test.tar.gz
+
+      - name: Build and copy test suite
+        if: runner.os == 'Linux'
+        run: |
+          stack build --test --no-run-tests --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+          cp "$(find "$PWD" -name echidna-testsuite -type f)" .
+
+      - name: Upload testsuite
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v2
+        with:
+          name: echidna-testsuite
+          path: echidna-testsuite
+
+
+  test:
+    name: Test Echidna with solc ${{ matrix.solc }}
+    runs-on: ubuntu-latest
+    needs: build
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        solc:
+          - "0.4.25"
+          - "0.5.7"
+        experimental: [false]
+        include:
+          - solc: "0.6.12"
+            experimental: true
+          - solc: "0.7.5"
+            experimental: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: '3.6'
+
+      - name: Install dependencies
+        run: |
+          .github/scripts/install-solc.sh
+          .github/scripts/install-crytic-compile.sh
+        env:
+          HOST_OS: ${{ runner.os }}
+          SOLC_VER: ${{ matrix.solc }}
+
+      - name: Download testsuite
+        uses: actions/download-artifact@v2
+        with:
+         name: echidna-testsuite
+
+      - name: Test
+        run: |
+          export PATH="${PATH}:$HOME/.local/bin"
+          cp "$HOME/.local/bin/solc-${{ matrix.solc }}" "$HOME/.local/bin/solc"
+          chmod +x echidna-testsuite
+          ./echidna-testsuite

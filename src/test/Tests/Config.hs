@@ -16,8 +16,8 @@ configTests = testGroup "Configuration tests" $
   [ testCase "parse \"coverage: true\"" $ do
       config <- _econfig <$> parseConfig "coverage/test.yaml"
       assertCoverage config $ Just mempty
-  , testCase "coverage disabled by default" $
-      assertCoverage defaultConfig Nothing
+  , testCase "coverage enabled by default" $
+      assertCoverage defaultConfig $ Just mempty
   , testCase "default.yaml" $ do
       EConfigWithUsage _ bad unset <- parseConfig "basic/default.yaml"
       assertBool ("unused options: " ++ show bad) $ null bad

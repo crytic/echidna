@@ -11,6 +11,7 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 * Generates inputs tailored to your actual code
 * Optional corpus collection, mutation and coverage guidance to find deeper bugs
 * Powered by [Slither](https://github.com/crytic/slither) to extract useful information before the fuzzing campaign
+* Source code integration to identify which lines are covered after the fuzzing campaign
 * Curses-based retro UI, text-only or JSON output
 * Automatic testcase minimization for quick triage
 * Seamless integration into the development workflow
@@ -52,11 +53,35 @@ $ echidna-test examples/solidity/basic/flags.sol
 
 Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` and should be unable to find a falsifying input for `echidna_alwaystrue`.
 
+### Collecting and visualizing coverage
+
+After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain two entries: (1) a directory named `coverage` with JSON files that can be replayed by Echidna and (2) a plain-text file named `covered.txt`, a copy of the source code with coverage annotations.
+
+If you run `examples/solidity/basic/flags.sol` example, Echidna will save a few files serialized transactions in the `coverage` directory and a `covered.$(date +%s).txt` file with the following lines:
+
+```
+*r  |  function set0(int val) public returns (bool){
+*   |    if (val % 100 == 0)
+*   |      flag0 = false;
+  }
+
+*r  |  function set1(int val) public returns (bool){
+*   |    if (val % 10 == 0 && !flag0)
+*   |      flag1 = false;
+  }
+```
+
+Our tool signals each execution trace in the corpus with the following "line marker":
+ - `*` if an execution ended with a STOP
+ - `r` if an execution ended with a REVERT
+ - `o` if an execution ended with an out-of-gas error
+ - `e` if an execution ended with any other error (zero division, assertion failure, etc) 
+
 ### Crash course on Echidna
 
-Our [Builiding Secure Smart Contracts](https://github.com/crytic/building-secure-contracts) repository contains a crash course on Echidna, including examples, lessons and exercises. You should [start here](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial).
+Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts) repository contains a crash course on Echidna, including examples, lessons and exercises. You should [start here](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial).
 
-### Support for smart contract build systems 
+### Support for smart contract build systems
 
 Echidna can test contracts compiled with different smart contract build systems, including [Truffle](https://truffleframework.com/), [Embark](https://framework.embarklabs.io/) and even [Vyper](https://vyper.readthedocs.io), using [crytic-compile](https://github.com/crytic/crytic-compile). For instance,
 we can uncover an integer overflow in the [Metacoin Truffle box](https://github.com/truffle-box/metacoin-box) using a
@@ -129,8 +154,6 @@ will either be `property` or `assertion`, and `status` always takes on either
 
 ## Installation
 
-
-
 ### Precompiled binaries
 
 Before starting, make sure Slither is [installed](https://github.com/crytic/slither) (`pip3 install slither-analyzer --user`).
@@ -176,6 +199,11 @@ $ nix-shell
 [nix-shell]$ cabal new-repl
 ```
 
+Running the test suite:
+```
+nix-shell --run 'cabal test'
+```
+
 ## Getting help
 
 Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://empireslacking.herokuapp.com/) for help using or extending Echidna.
@@ -185,3 +213,50 @@ Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://emp
 * Review the [Solidity examples](examples/solidity) directory for more extensive Echidna use cases
 
 * Considering [emailing](mailto:echidna-dev@trailofbits.com) the Echidna development team directly for more detailed questions
+
+## License
+
+Echidna is licensed and distributed under the [AGPLv3 license](https://github.com/crytic/echidna/blob/master/LICENSE).
+
+## Echidna Trophies
+
+### Security Issues
+
+The following lists security vulnerabilities that were found by Echidna. If you found a security vulnerability using our tool, please submit a PR with the relevant information.
+
+| Project | Vulnerability | Date |
+|--|--|--|
+[0x Protocol](https://github.com/trailofbits/publications/blob/master/reviews/0x-protocol.pdf) | If an order cannot be filled, then it cannot be canceled | Oct 2019
+[0x Protocol](https://github.com/trailofbits/publications/blob/master/reviews/0x-protocol.pdf) | If an order can be partially filled with zero, then it can be partially filled with one token | Oct 2019
+[0x Protocol](https://github.com/trailofbits/publications/blob/master/reviews/0x-protocol.pdf) | The cobbdouglas function does not revert when valid input parameters are used | Oct 2019
+[Balancer Core](https://github.com/trailofbits/publications/blob/master/reviews/BalancerCore.pdf) | An attacker cannot steal assets from a public pool | Jan 2020
+[Balancer Core](https://github.com/trailofbits/publications/blob/master/reviews/BalancerCore.pdf) | An attacker cannot generate free pool tokens with joinPool | Jan 2020
+[Balancer Core](https://github.com/trailofbits/publications/blob/master/reviews/BalancerCore.pdf) | Calling joinPool-exitPool does not lead to free pool tokens | Jan 2020
+[Balancer Core](https://github.com/trailofbits/publications/blob/master/reviews/BalancerCore.pdf) |  Calling exitswapExternAmountOut does not lead to free assets | Jan 2020
+[Yield Protocol](https://github.com/trailofbits/publications/blob/master/reviews/YieldProtocol.pdf) | Arithmetic computation for buying and selling tokens is imprecise | Aug 2020
+[Origin Dollar](https://github.com/trailofbits/publications/blob/master/reviews/OriginDollar.pdf) | Users are allowed to transfer more tokens that they have | Nov 2020
+[Origin Dollar](https://github.com/trailofbits/publications/blob/master/reviews/OriginDollar.pdf) | User balances can be larger than total supply | Nov 2020
+[Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | Closing troves require to hold the full amount of LUSD minted | Dec 2020
+[Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | Troves can be improperly removed | Dec 2020
+[Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | Initial redeem can revert unexpectedly | Dec 2020
+[Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | Redeem without redemptions might still return success | Dec 2020
+
+### Research Examples
+
+We can also use Echidna to reproduce a number of research examples from smart contract fuzzing papers to show how quickly it can find the solution:
+
+| Source | Code 
+|--|--
+[Using automatic analysis tools with MakerDAO contracts](https://forum.openzeppelin.com/t/using-automatic-analysis-tools-with-makerdao-contracts/1021) | [SimpleDSChief](https://github.com/crytic/echidna/blob/master/examples/solidity/research/vera_dschief.sol)
+[Integer precision bug in Sigma Prime](https://github.com/b-mueller/sabre#example-2-integer-precision-bug) | [VerifyFunWithNumbers](https://github.com/crytic/echidna/blob/master/examples/solidity/research/solcfuzz_funwithnumbers.sol)
+[Learning to Fuzz from Symbolic Execution with Application to Smart Contracts](https://files.sri.inf.ethz.ch/website/papers/ccs19-ilf.pdf) | [Crowdsale](https://github.com/crytic/echidna/blob/master/examples/solidity/research/ilf_crowdsale.sol)
+[Harvey: A Greybox Fuzzer for Smart Contracts](https://arxiv.org/abs/1905.06944) | [Foo](https://github.com/crytic/echidna/blob/master/examples/solidity/research/harvey_foo.sol), [Baz](https://github.com/crytic/echidna/blob/master/examples/solidity/research/harvey_baz.sol)
+
+All these can be solved, from a few seconds to one or two minutes on a laptop computer.
+
+## Publications
+
+### Trail of Bits
+- [Echidna: effective, usable, and fast fuzzing for smart contracts](https://github.com/trailofbits/publications/blob/master/papers/echidna_issta2020.pdf), Gustavo Grieco, Will Song, Artur Cygan, Josselin  Feist, Alex Groce - ISSTA '20
+
+If you are using Echidna on an academic work, consider applying to the [Crytic $10k Research Prize](https://blog.trailofbits.com/2019/11/13/announcing-the-crytic-10k-research-prize/).
