@@ -45,7 +45,7 @@ import Echidna.Types.Signature
 
 
 pregenAdds :: [Addr]
-pregenAdds = [i*0xffffffff | i <- [1,10]]
+pregenAdds = [i*0xffffffff | i <- [1 .. 3]]
 
 pregenAbiAdds :: [AbiValue]
 pregenAbiAdds = map (AbiAddress . fromIntegral) pregenAdds
