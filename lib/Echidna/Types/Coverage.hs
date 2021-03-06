@@ -3,7 +3,7 @@ module Echidna.Types.Coverage where
 import Data.Tuple.Extra (fst3)
 import Data.Set (Set, size, map)
 import Data.ByteString (ByteString) 
-import Data.Map.Strict (Map, size)
+import Data.Map.Strict (Map)
 
 import Echidna.Types.Tx (TxResult)
 
@@ -18,12 +18,12 @@ type CoverageMap = Map ByteString (Set CoverageInfo)
 
 -- | Given good point coverage, count unique points.
 coveragePoints :: CoverageMap -> Int
-coveragePoints = sum . fmap Data.Set.size
+coveragePoints = sum . fmap size
 
 -- | Given good point coverage, count the number of unique points but
 -- only considering the different instruction PCs (discarding the TxResult).
 -- This is useful to report a coverage measure to the user
 scoveragePoints :: CoverageMap -> Int
-scoveragePoints = sum . fmap (Data.Set.size . Data.Set.map fst3)
+scoveragePoints = sum . fmap (size . Data.Set.map fst3)
 
 
