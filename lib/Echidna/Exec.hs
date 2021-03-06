@@ -12,9 +12,6 @@ import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.State.Strict (MonadState, execState)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe, fromJust)
-import Data.Map.Strict (Map)
-import Data.Set (Set)
-import Data.Tuple.Extra (fst3)
 import EVM
 import EVM.Op (Op(..))
 import EVM.Exec (exec, vmForEthrunCreation)
@@ -26,10 +23,11 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 
 import Echidna.Transaction
+import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
+
 import Echidna.Types.Signature (getBytecodeMetadata)
 import Echidna.Events (emptyEvents)
-
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
@@ -100,26 +98,9 @@ execTxWith h m t = do
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
 execTx = execTxWith vmExcept $ liftSH exec
 
--- Program Counter directly obtained from the EVM
-type PC = Int
--- Index per operation in the source code, obtained from the source mapping 
-type OpIx = Int
--- Map with the coverage information needed for fuzzing and source code printing 
-type CoverageMap = Map BS.ByteString (Set (PC, OpIx, TxResult))
-
 -- | Given a way of capturing coverage info, execute while doing so once per instruction.
 usingCoverage :: (MonadState x m, Has VM x) => m () -> m VMResult
 usingCoverage cov = maybe (cov >> liftSH exec1 >> usingCoverage cov) pure =<< use (hasLens . result)
-
--- | Given good point coverage, count unique points.
-coveragePoints :: CoverageMap -> Int
-coveragePoints = sum . fmap S.size
-
--- | Given good point coverage, count the number of unique points but
--- only considering the different instruction PCs (discarding the TxResult).
--- This is useful to report a coverage measure to the user
-scoveragePoints :: CoverageMap -> Int
-scoveragePoints = sum . fmap (S.size . S.map fst3)
 
 -- | Capture the current PC and bytecode (without metadata). This should identify instructions uniquely.
 pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()

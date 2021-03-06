@@ -74,6 +74,8 @@ summaryWidget c =
     )
     <=>
     maybe emptyWidget str (ppCoverage $ c ^. coverage)
+    <=>
+    maybe emptyWidget str (ppCorpus $ c ^. corpus) 
   )
 
 testsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
