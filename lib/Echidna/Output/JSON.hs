@@ -4,11 +4,11 @@
 module Echidna.Output.JSON where
 
 import Echidna.ABI (ppAbiValue, GenDict(..))
-import Echidna.Exec (PC, OpIx)
+import Echidna.Types.Coverage (CoverageInfo)
 import qualified Echidna.Types.Campaign as C
 import qualified Echidna.Types.Test as T
 import Echidna.Types.Test (SolTest)
-import Echidna.Types.Tx (Tx(..), TxCall(..), TxResult)
+import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Data.Aeson hiding (Error)
 import qualified Data.ByteString.Base16 as BS16
 import Data.ByteString.Lazy (ByteString)
@@ -24,7 +24,7 @@ data Campaign = Campaign
   , _error :: Maybe String
   , _tests :: [Test]
   , seed :: Int
-  , coverage :: Map String [(PC, OpIx, TxResult)]
+  , coverage :: Map String [CoverageInfo]
   , gasInfo :: [(Text, (Int, [Tx]))]
   }
 

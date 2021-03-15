@@ -15,9 +15,10 @@ import EVM.Types (Addr)
 import qualified Data.Text as T
 
 import Echidna.ABI (defSeed)
-import Echidna.Exec
+import Echidna.Types.Coverage (CoverageMap, scoveragePoints)
 import Echidna.Pretty (ppTxCall)
 import Echidna.Types.Campaign
+import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Test (TestState(..))
 import Echidna.Types.Tx (Tx(Tx), TxCall(..), TxConf, txGas, src)
 
@@ -52,6 +53,11 @@ ppCoverage :: CoverageMap -> Maybe String
 ppCoverage s | s == mempty = Nothing
              | otherwise   = Just $ "Unique instructions: " ++ show (scoveragePoints s)
                                  ++ "\nUnique codehashes: " ++ show (length s)
+
+-- | Pretty-print the corpus a 'Campaign' has obtained.
+ppCorpus :: Corpus -> Maybe String
+ppCorpus c | c == mempty = Nothing
+           | otherwise   = Just $ "Corpus size: " ++ show (corpusSize c)
 
 -- | Pretty-print the gas usage for a function.
 ppGasOne :: (MonadReader x m, Has Names x, Has TxConf x) => (Text, (Int, [Tx])) -> m String
@@ -97,9 +103,11 @@ ppCampaign c = do
   testsPrinted <- ppTests c
   gasInfoPrinted <- ppGasInfo c
   let coveragePrinted = maybe "" ("\n" ++) . ppCoverage $ c ^. coverage
+      corpusPrinted = maybe "" ("\n" ++) . ppCorpus $ c ^. corpus
       seedPrinted = "\nSeed: " ++ show (c ^. genDict . defSeed)
   pure $
     testsPrinted
     ++ gasInfoPrinted
     ++ coveragePrinted
+    ++ corpusPrinted
     ++ seedPrinted
