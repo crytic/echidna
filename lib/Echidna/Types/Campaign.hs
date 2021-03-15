@@ -16,7 +16,7 @@ import EVM.Keccak (keccak)
 import Numeric (showHex)
 
 import Echidna.ABI (GenDict, defaultDict)
-import Echidna.Exec (CoverageMap)
+import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Test (SolTest, TestState(..))
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Corpus 

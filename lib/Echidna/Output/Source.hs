@@ -23,8 +23,8 @@ import qualified Data.Vector as V
 import qualified Data.Map as M
 import qualified Data.Set as S
 
-import Echidna.Exec 
-import Echidna.Types.Tx
+import Echidna.Types.Coverage (CoverageMap) 
+import Echidna.Types.Tx (TxResult(..))
 import Echidna.Types.Signature (getBytecodeMetadata)
 
 type FilePathText = Text
