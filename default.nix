@@ -17,7 +17,7 @@ let
     src = if pkgs.stdenv.isDarwin then
       pkgs.fetchurl {
         url = "https://binaries.soliditylang.org/macosx-amd64/solc-macosx-amd64-v0.5.7+commit.6da8b019";
-        sha256 = "0p6s5d34qz4h3463jllciiy9cgfwvp3dqlc63pa4ryjmjvi7fyil";
+        sha256 = "095mlw5x9lpdcdl9jzlvkvw46ag03xr4nj4vly4hgn92rgivimm7";
       }
     else
       pkgs.fetchurl {
