@@ -75,7 +75,7 @@ summaryWidget c =
     <=>
     maybe emptyWidget str (ppCoverage $ c ^. coverage)
     <=>
-    maybe emptyWidget str (ppCorpus $ c ^. corpus) 
+    maybe emptyWidget str (ppCorpus $ c ^. corpus)
   )
 
 testsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
@@ -129,7 +129,7 @@ failWidget b xs = do
     let ordinals = str . printf "%d." <$> [1 :: Int ..]
     pure $
       foldl (<=>) emptyWidget $
-        zipWith (<+>) ordinals (withAttr "tx" . str <$> ppTxs)
+        zipWith (<+>) ordinals (withAttr "tx" . strWrap <$> ppTxs)
 
 failureBadge :: Widget ()
 failureBadge = withAttr "failure" $ str "FAILED!"
