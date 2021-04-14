@@ -43,7 +43,7 @@ options = Options <$> (NE.fromList <$> some (argument str (metavar "FILES"
                         <> help "Contract to analyze")
                   <*> optional (option str $ long "config"
                         <> metavar "CONFIG"
-                        <> help "Config file")
+                        <> help "Config file (CLI arguments override config options")
                   <*> optional (option auto $ long "format"
                         <> metavar "FORMAT"
                         <> help "Output format: json, text, none. Disables interactive UI")
