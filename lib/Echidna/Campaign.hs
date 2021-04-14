@@ -17,7 +17,7 @@ import Control.Monad (liftM3, replicateM, when, (<=<), ap, unless)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR, uniform, uniformMay)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.Reader (runReaderT)
+import Control.Monad.Reader (runReaderT, MonadIO, liftIO)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
@@ -28,6 +28,7 @@ import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Text (Text)
+import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import EVM
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (Addr, Buffer(..))
@@ -174,8 +175,9 @@ execTxOptC t = do
   return res
 
 -- | Given a list of transactions in the corpus, save them discarding reverted transactions
-addToCorpus :: (MonadState s m, Has Campaign s) => Int -> [(Tx, (VMResult, Int))] -> m ()
-addToCorpus n res = unless (null rtxs) $ hasLens . corpus %= DS.insert (toInteger n, rtxs)
+addToCorpus :: (MonadState s m, Has Campaign s, MonadIO m) => Int -> [(Tx, (VMResult, Int))] -> m ()
+addToCorpus n res = do t <- liftIO getSystemTime 
+                       unless (null rtxs) $ hasLens . corpus %= DS.insert (toInteger n, toInteger $ systemSeconds t, rtxs)
   where rtxs = fst <$> res
 
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
@@ -189,7 +191,7 @@ randseq ql o w = do
   let ctxs = ca ^. corpus
       p    = ca ^. ncallseqs
   if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
-    return . snd $ DS.elemAt p ctxs
+    return . (\(_, _, txs) -> txs) $ DS.elemAt p ctxs
   else do
     -- Randomly generate new random transactions
     gtxs <- replicateM ql $ runReaderT (genTxM o) (w, txConf)
@@ -204,7 +206,7 @@ randseq ql o w = do
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
-callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
+callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m, MonadIO m
            , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Campaign y, Has GenDict y)
         => VM -> World -> Int -> m ()
 callseq v w ql = do
@@ -252,7 +254,7 @@ callseq v w ql = do
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
-campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
+campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m
             , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x)
          => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
          -> VM                  -- ^ Initial VM state
@@ -276,7 +278,7 @@ campaign u v w ts d txs = do
       mempty
       effectiveGenDict
       False
-      (DS.fromList $ map (1,) txs)
+      (DS.fromList $ map (1,1,) txs)
       0
     )
   where

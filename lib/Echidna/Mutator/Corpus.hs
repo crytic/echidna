@@ -45,7 +45,7 @@ mutator Deletion = deleteRandList
 selectAndMutate :: MonadRandom m
                 => ([Tx] -> m [Tx]) -> Corpus -> m [Tx]
 selectAndMutate f ctxs = do
-  rtxs <- weighted $ map (\(i, txs) -> (txs, fromInteger i)) $ DS.toDescList ctxs
+  rtxs <- weighted $ map (\(i, _, txs) -> (txs, fromInteger i)) $ DS.toDescList ctxs
   k <- getRandomR (0, length rtxs - 1)
   f $ take k rtxs
 
@@ -56,7 +56,7 @@ selectAndCombine f ql ctxs gtxs = do
   rtxs2 <- selectFromCorpus
   txs <- f rtxs1 rtxs2
   return . take ql $ txs ++ gtxs
-    where selectFromCorpus = weighted $ map (\(i, txs) -> (txs, fromInteger i)) $ DS.toDescList ctxs
+    where selectFromCorpus = weighted $ map (\(i, _, txs) -> (txs, fromInteger i)) $ DS.toDescList ctxs
 
 getCorpusMutation :: (MonadRandom m, Has GenDict x, MonadState x m)
                   => CorpusMutation -> (Int -> Corpus -> [Tx] -> m [Tx])

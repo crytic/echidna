@@ -13,11 +13,11 @@ import qualified Data.ByteString as BS
 import Echidna.Types.Tx
 import Echidna.Output.Utils
 
-saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
-saveTxs (Just d) txs = mapM_ saveTx txs where
-  saveTx v = do let fn = d ++ "/coverage/" ++ (show . hash . show) v ++ ".txt"
-                b <- doesFileExist fn
-                unless b $ encodeFile fn (toJSON v)
+saveTxs :: Maybe FilePath -> [(Integer, Integer, [Tx])] -> IO ()
+saveTxs (Just d) cs = mapM_ saveTx cs where
+  saveTx (_,i,v) = do let fn = d ++ "/coverage/" ++ (show . hash . show) v ++ ".txt." ++ show i
+                      b <- doesFileExist fn
+                      unless b $ encodeFile fn (toJSON v)
 saveTxs Nothing  _   = pure ()
 
 loadTxs :: Maybe FilePath -> IO [[Tx]]

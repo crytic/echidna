@@ -69,7 +69,7 @@ main = do
     return (sc, cs, r)
 
   -- save corpus
-  saveTxs cd (snd <$> DS.toList (cpg ^. corpus))
+  saveTxs cd (DS.toList (cpg ^. corpus))
 
   -- save source coverage
   saveCoverage cd sc cs (cpg ^. coverage) 
