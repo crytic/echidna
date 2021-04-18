@@ -176,6 +176,14 @@ genInteractions l = genAbiCall =<< rElem l
 mutateNum :: (Integral a, MonadRandom m) => a -> m a
 mutateNum x = bool (x +) (x -) <$> getRandom <*> (fromIntegral <$> getRandomR (0, toInteger x))
 
+fixAbiUInt :: AbiValue -> AbiValue
+fixAbiUInt (AbiUInt n x) = AbiUInt n (x `mod` ((2 ^ n) - 1))
+fixAbiUInt _             = error "Not a AbiUInt to fix"
+
+fixAbiInt :: AbiValue -> AbiValue
+fixAbiInt (AbiInt n x) = AbiInt n (x `mod` 2 ^ (n - 1))
+fixAbiInt _            = error "Not a AbiInt to fix"
+
 -- | Given a way to generate random 'Word8's and a 'ByteString' b of length l,
 -- generate between 0 and 2l 'Word8's and add insert them into b at random indices.
 addChars :: MonadRandom m => m Word8 -> ByteString -> m ByteString
@@ -263,11 +271,11 @@ shrinkAbiCall = traverse $ traverse shrinkAbiValue
 mutateAbiValue :: MonadRandom m => AbiValue -> m AbiValue
 mutateAbiValue (AbiUInt n x)         = getRandomR (0, 9 :: Int) >>= -- 10% of chance of mutation
                                           \case
-                                            0 -> (AbiUInt n <$> mutateNum x)
+                                            0 -> (fixAbiUInt . AbiUInt n <$> mutateNum x)
                                             _ -> return $ AbiUInt n x
 mutateAbiValue (AbiInt n x)          = getRandomR (0, 9 :: Int) >>= -- 10% of chance of mutation
                                           \case
-                                            0 -> (AbiInt n <$> mutateNum x)
+                                            0 -> (fixAbiInt . AbiInt n <$> mutateNum x)
                                             _ -> return $ AbiInt n x
 
 mutateAbiValue (AbiAddress x)        = return $ AbiAddress x
