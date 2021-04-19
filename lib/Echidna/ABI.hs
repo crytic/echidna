@@ -39,7 +39,7 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Vector as V
 import qualified Data.HashSet as H
 
-import Echidna.Mutator.Array (mutateLL, replaceAt) 
+import Echidna.Mutator.Array (mutateLL, replaceAt)
 import Echidna.Types.Random
 import Echidna.Types.Signature
 
@@ -320,8 +320,8 @@ genWithDict genDict m g t = do
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Requires a dictionary.
 genAbiValueM :: MonadRandom m => GenDict -> AbiType -> m AbiValue
 genAbiValueM genDict = genWithDict genDict (toList <$> genDict ^. constants) $ \case
-  (AbiUIntType n)         -> AbiUInt n  . fromInteger <$> getRandomUint n
-  (AbiIntType n)          -> AbiInt n   . fromInteger <$> getRandomInt n
+  (AbiUIntType n)         -> fixAbiUInt . AbiUInt n  . fromInteger <$> getRandomUint n
+  (AbiIntType n)          -> fixAbiInt  . AbiInt n   . fromInteger <$> getRandomInt n
   AbiAddressType          -> AbiAddress . fromInteger <$> getRandomR (0, 2 ^ (160 :: Integer) - 1)
   AbiBoolType             -> AbiBool <$> getRandom
   (AbiBytesType n)        -> AbiBytes n . BS.pack . take n <$> getRandoms
