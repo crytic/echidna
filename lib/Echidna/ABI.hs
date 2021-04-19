@@ -317,8 +317,8 @@ genWithDict genDict m g t = do
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Requires a dictionary.
 genAbiValueM :: MonadRandom m => GenDict -> AbiType -> m AbiValue
 genAbiValueM genDict = genWithDict genDict (toList <$> genDict ^. constants) $ \case
-  (AbiUIntType n)         -> AbiUInt n  . fromInteger <$> getRandomUint n
-  (AbiIntType n)          -> AbiInt n   . fromInteger <$> getRandomR (-1 * 2 ^ n, 2 ^ (n - 1))
+  (AbiUIntType n)         -> fixAbiUInt . AbiUInt n  . fromInteger <$> getRandomUint n
+  (AbiIntType n)          -> fixAbiInt  . AbiInt n   . fromInteger <$> getRandomR (-1 * 2 ^ n, 2 ^ (n - 1))
   AbiAddressType          -> AbiAddress . fromInteger <$> getRandomR (0, 2 ^ (160 :: Integer) - 1)
   AbiBoolType             -> AbiBool <$> getRandom
   (AbiBytesType n)        -> AbiBytes n . BS.pack . take n <$> getRandoms
