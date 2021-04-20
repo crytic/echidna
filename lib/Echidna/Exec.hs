@@ -106,7 +106,7 @@ usingCoverage cov = maybe (cov >> liftSH exec1 >> usingCoverage cov) pure =<< us
 pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
 pointCoverage l = do
   v <- use hasLens
-  l %= M.insertWith (const . S.insert $ (v ^. state . pc, fromMaybe (error "no opIx") $ vmOpIx v, Success))
+  l %= M.insertWith (const . S.insert $ (v ^. state . pc, fromMaybe 0 $ vmOpIx v, Success))
                     (fromMaybe (error "no contract information on coverage") $ h v)
                     mempty
   where
