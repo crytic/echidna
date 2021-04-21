@@ -156,6 +156,9 @@ mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fma
 getRandomUint :: MonadRandom m => Int -> m Integer
 getRandomUint n = join $ R.fromList [(getRandomR (0, 1023), 1), (getRandomR (0, 2 ^ n - 1), 9)]
 
+getRandomInt :: MonadRandom m => Int -> m Integer
+getRandomInt n = join $ R.fromList [(getRandomR (-1023, 1023), 1), (getRandomR (-1 * 2 ^ n, 2 ^ (n - 1)), 9)]
+
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Doesn't use a dictionary.
 -- Note that we define the dictionary case ('genAbiValueM') first (below), so recursive types can be
 -- be generated using the same dictionary easily
@@ -310,7 +313,7 @@ genWithDict genDict m g t = do
 genAbiValueM :: MonadRandom m => GenDict -> AbiType -> m AbiValue
 genAbiValueM genDict = genWithDict genDict (toList <$> genDict ^. constants) $ \case
   (AbiUIntType n)         -> AbiUInt n  . fromInteger <$> getRandomUint n
-  (AbiIntType n)          -> AbiInt n   . fromInteger <$> getRandomR (-1 * 2 ^ n, 2 ^ (n - 1))
+  (AbiIntType n)          -> AbiInt n   . fromInteger <$> getRandomInt n
   AbiAddressType          -> AbiAddress . fromInteger <$> getRandomR (0, 2 ^ (160 :: Integer) - 1)
   AbiBoolType             -> AbiBool <$> getRandom
   (AbiBytesType n)        -> AbiBytes n . BS.pack . take n <$> getRandoms
