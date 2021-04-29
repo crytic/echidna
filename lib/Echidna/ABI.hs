@@ -179,13 +179,11 @@ genInteractions l = genAbiCall =<< rElem l
 mutateNum :: (Integral a, MonadRandom m) => a -> m a
 mutateNum x = bool (x +) (x -) <$> getRandom <*> (fromIntegral <$> getRandomR (0, toInteger x))
 
-fixAbiUInt :: AbiValue -> AbiValue
-fixAbiUInt (AbiUInt n x) = AbiUInt n (x `mod` ((2 ^ n) - 1))
-fixAbiUInt _             = error "Not a AbiUInt to fix"
+fixAbiUInt :: Int -> Word256 -> AbiValue
+fixAbiUInt n x = AbiUInt n (x `mod` ((2 ^ n) - 1))
 
-fixAbiInt :: AbiValue -> AbiValue
-fixAbiInt (AbiInt n x) = AbiInt n (x `mod` 2 ^ (n - 1))
-fixAbiInt _            = error "Not a AbiInt to fix"
+fixAbiInt :: Int -> Int256 -> AbiValue
+fixAbiInt n x = AbiInt n (x `mod` 2 ^ (n - 1))
 
 -- | Given a way to generate random 'Word8's and a 'ByteString' b of length l,
 -- generate between 0 and 2l 'Word8's and add insert them into b at random indices.
@@ -274,11 +272,11 @@ shrinkAbiCall = traverse $ traverse shrinkAbiValue
 mutateAbiValue :: MonadRandom m => AbiValue -> m AbiValue
 mutateAbiValue (AbiUInt n x)         = getRandomR (0, 9 :: Int) >>= -- 10% of chance of mutation
                                           \case
-                                            0 -> (fixAbiUInt . AbiUInt n <$> mutateNum x)
+                                            0 -> fixAbiUInt n <$> mutateNum x
                                             _ -> return $ AbiUInt n x
 mutateAbiValue (AbiInt n x)          = getRandomR (0, 9 :: Int) >>= -- 10% of chance of mutation
                                           \case
-                                            0 -> (fixAbiInt . AbiInt n <$> mutateNum x)
+                                            0 -> fixAbiInt n <$> mutateNum x
                                             _ -> return $ AbiInt n x
 
 mutateAbiValue (AbiAddress x)        = return $ AbiAddress x
@@ -320,8 +318,8 @@ genWithDict genDict m g t = do
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Requires a dictionary.
 genAbiValueM :: MonadRandom m => GenDict -> AbiType -> m AbiValue
 genAbiValueM genDict = genWithDict genDict (toList <$> genDict ^. constants) $ \case
-  (AbiUIntType n)         -> fixAbiUInt . AbiUInt n  . fromInteger <$> getRandomUint n
-  (AbiIntType n)          -> fixAbiInt  . AbiInt n   . fromInteger <$> getRandomInt n
+  (AbiUIntType n)         -> fixAbiUInt n . fromInteger <$> getRandomUint n
+  (AbiIntType n)          -> fixAbiInt n . fromInteger <$> getRandomInt n
   AbiAddressType          -> AbiAddress . fromInteger <$> getRandomR (0, 2 ^ (160 :: Integer) - 1)
   AbiBoolType             -> AbiBool <$> getRandom
   (AbiBytesType n)        -> AbiBytes n . BS.pack . take n <$> getRandoms
