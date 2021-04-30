@@ -4,7 +4,7 @@
 module Echidna.Output.JSON where
 
 import Echidna.ABI (ppAbiValue, GenDict(..))
-import Echidna.Exec (PC, OpIx, NumberFrames)
+import Echidna.Exec (PC, OpIx, FrameCount)
 import qualified Echidna.Types.Campaign as C
 import qualified Echidna.Types.Test as T
 import Echidna.Types.Test (SolTest)
@@ -24,7 +24,7 @@ data Campaign = Campaign
   , _error :: Maybe String
   , _tests :: [Test]
   , seed :: Int
-  , coverage :: Map String [(PC, OpIx, NumberFrames, TxResult)]
+  , coverage :: Map String [(PC, OpIx, FrameCount, TxResult)]
   , gasInfo :: [(Text, (Int, [Tx]))]
   }
 

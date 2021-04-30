@@ -104,10 +104,10 @@ type PC = Int
 -- Index per operation in the source code, obtained from the source mapping 
 type OpIx = Int
 -- Stack size from the EVM
-type NumberFrames = Int 
+type FrameCount = Int
 
 -- Map with the coverage information needed for fuzzing and source code printing 
-type CoverageMap = Map BS.ByteString (Set (PC, OpIx, NumberFrames, TxResult))
+type CoverageMap = Map BS.ByteString (Set (PC, OpIx, FrameCount, TxResult))
 
 -- | Given a way of capturing coverage info, execute while doing so once per instruction.
 usingCoverage :: (MonadState x m, Has VM x) => m () -> m VMResult
