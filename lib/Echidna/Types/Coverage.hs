@@ -11,8 +11,10 @@ import Echidna.Types.Tx (TxResult)
 type PC = Int
 -- Index per operation in the source code, obtained from the source mapping 
 type OpIx = Int
+-- Stack size from the EVM
+type FrameCount = Int
 -- Basic coverage information
-type CoverageInfo = (PC, OpIx, TxResult)
+type CoverageInfo = (PC, OpIx, FrameCount, TxResult)
 -- Map with the coverage information needed for fuzzing and source code printing 
 type CoverageMap = Map ByteString (Set CoverageInfo)
 

@@ -23,7 +23,7 @@ import qualified Data.Vector as V
 import qualified Data.Map as M
 import qualified Data.Set as S
 
-import Echidna.Types.Coverage (CoverageMap) 
+import Echidna.Types.Coverage (CoverageMap, CoverageInfo)
 import Echidna.Types.Tx (TxResult(..))
 import Echidna.Types.Signature (getBytecodeMetadata)
 
@@ -116,7 +116,7 @@ srcMapCodePosResult sc (n, r) = case srcMapCodePos sc n of
   _           -> Nothing
 
 -- | Given a contract, and tuple as coverage, return the corresponding mapped line (if any)
-srcMapForOpLocation :: SolcContract -> (Int, Int, TxResult) -> Maybe (SrcMap, TxResult)
-srcMapForOpLocation c (_,n,r) = case preview (ix n) (c ^. runtimeSrcmap <> c ^. creationSrcmap) of
+srcMapForOpLocation :: SolcContract -> CoverageInfo -> Maybe (SrcMap, TxResult)
+srcMapForOpLocation c (_,n,_,r) = case preview (ix n) (c ^. runtimeSrcmap <> c ^. creationSrcmap) of
   Just sm -> Just (sm,r)
   _       -> Nothing
