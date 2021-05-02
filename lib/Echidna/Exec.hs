@@ -17,6 +17,8 @@ import EVM.Op (Op(..))
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Types (Buffer(..))
 import EVM.Symbolic (litWord)
+import EVM.Concrete (Word)
+import Data.SBV (SWord)
 
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
@@ -37,12 +39,18 @@ classifyError :: Error -> ErrorClass
 classifyError (OutOfGas _ _)         = RevertE
 classifyError (Revert _)             = RevertE
 classifyError (UnrecognizedOpcode _) = RevertE
-classifyError (Query _)              = RevertE
 classifyError StackLimitExceeded     = RevertE
 classifyError StackUnderrun          = IllegalE
 classifyError BadJumpDestination     = IllegalE
 classifyError IllegalOverflow        = IllegalE
 classifyError _                      = UnknownE
+
+getQuery :: VMResult -> Maybe Query
+getQuery (VMFailure (Query q)) = Just q
+getQuery _                     = Nothing
+
+emptyAccount :: Contract
+emptyAccount = initialContract (RuntimeCode mempty)
 
 -- | Matches execution errors that just cause a reversion.
 pattern Reversion :: VMResult
@@ -80,6 +88,32 @@ execTxWith h m t = do
     res <- m
     gasOut <- use $ hasLens . state . gas
     cd <- use $ hasLens . state . calldata
+    case getQuery res of
+      -- A previously unknown contract is required 
+      Just (PleaseFetchContract _ cont) -> do
+        -- Use the empty contract
+        (hasLens %=) . execState $ cont emptyAccount 
+        contTxWith h m og cd gasIn t
+
+      -- A previously unknown slot is required
+      Just (PleaseFetchSlot _ _ cont) -> do
+        -- Use the zero slot
+        (hasLens %=) . execState $ cont 0 
+        contTxWith h m og cd gasIn t
+
+      -- No queries to answer
+      _      -> getExecResult h res og cd (fromIntegral $ gasIn - gasOut) t
+
+contTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> VM -> (Buffer, SWord 32) -> EVM.Concrete.Word -> Tx -> m (VMResult, Int)
+contTxWith h m og cd gasIn t = do
+  -- Run remaining effects
+  res <- m
+  -- Correct gas usage
+  gasOut <- use $ hasLens . state . gas
+  getExecResult h res og cd (fromIntegral $ gasIn - gasOut) t
+
+getExecResult :: (MonadState x m, Has VM x) => (Error -> m ()) -> VMResult -> VM -> (Buffer, SWord 32) -> Int -> Tx -> m (VMResult, Int)
+getExecResult h res og cd g t = do
     case (res, t ^. call) of
       (f@Reversion, _) -> do
         hasLens .= og
@@ -92,7 +126,7 @@ execTxWith h m t = do
           replaceCodeOfSelf (RuntimeCode bc)
           loadContract (t ^. dst)
       _ -> pure ()
-    pure (res, fromIntegral (gasIn - gasOut))
+    pure (res, fromIntegral g)
 
 -- | Execute a transaction "as normal".
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
