@@ -18,14 +18,14 @@ import Control.Monad.State.Strict (execStateT)
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
 import Data.List                  (find, partition)
-import Data.Map                   (elems)
+import Data.Map                   (Map, elems, unions)
 import Data.Maybe                 (isJust, isNothing, catMaybes)
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
-import System.Directory           (findExecutable)
+import System.Directory           (findExecutable, listDirectory)
 
 import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec               (execTx, initialVM)
@@ -108,6 +108,15 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        }
 makeLenses ''SolConf
 
+readSolcs :: FilePath -> IO (Maybe (Map Text SolcContract, SourceCache))
+
+readSolcs d = do
+  fs <- listDirectory d
+  mxs <- mapM (\ f -> readSolc (d ++ "/" ++ f)) fs
+  case catMaybes mxs of
+    [] -> error "everythin failed"
+    xs -> return $ Just ( unions $ map fst xs, snd $ head xs )
+
 -- | Given a list of files, use its extenstion to check if it is a precompiled
 -- contract or try to compile it and get a list of its contracts, throwing
 -- exceptions if necessary.
@@ -130,7 +139,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
             stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
             (ec, out, err) <- readCreateProcessWithExitCode (proc path $ (c ++ solargs) |> x) {std_err = stderr} ""
             case ec of
-              ExitSuccess -> readSolc "crytic-export/combined_solc.json"
+              ExitSuccess -> readSolcs "crytic-export"
               ExitFailure _ -> throwM $ CompileFailure out err
             
           maybe (throwM SolcReadFailure) (pure . first toList) mSolc
