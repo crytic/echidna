@@ -6,6 +6,18 @@
 }:
 
 let
+  dapptools = pkgs.fetchFromGitHub {
+    owner = "dapphub";
+    repo = "dapptools";
+    rev = "hevm/0.46.0";
+    sha256 = "1nfdb48jp2ydm2gxjlzjm21nbxrqnaq9py2zmjg0h27b73wdw2wq";
+  };
+  hevm = pkgs.haskell.lib.dontCheck (
+    pkgs.haskell.lib.doJailbreak (
+      pkgs.haskellPackages.callCabal2nix "hevm" "${dapptools}/src/hevm"
+        { secp256k1 = pkgs.secp256k1; }
+  ));
+
   # slither is shipped with solc by default, we don't use it as we need
   # precise solc versions
   slither-analyzer = pkgs.slither-analyzer.override { withSolc = false; };
@@ -75,7 +87,7 @@ let
         doCheck = true;
       };
 
-  drv = pkgs.haskellPackages.callPackage f { };
+  drv = pkgs.haskellPackages.callPackage f { hevm = hevm; };
 in
   if pkgs.lib.inNixShell
     then drv.env

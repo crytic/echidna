@@ -9,8 +9,7 @@ import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.ByteString (ByteString)
 import Data.Text (Text)
 import EVM (VMResult(..), Error(..))
-import EVM.Concrete (Word, w256)
-import EVM.Types (Addr, W256)
+import EVM.Types (Addr, W256, Word, w256)
 import EVM.ABI (AbiValue)
 
 import Echidna.Orphans.JSON ()
@@ -94,7 +93,7 @@ createTxWithValue :: ByteString   -- | Constructor bytecode
 createTxWithValue bc s d g = Tx (SolCreate bc) s d g 0
 
 data TxResult = Success
-              | ErrorBalanceTooLow 
+              | ErrorBalanceTooLow
               | ErrorUnrecognizedOpcode
               | ErrorSelfDestruction
               | ErrorStackUnderrun
@@ -128,7 +127,7 @@ data TxConf = TxConf { _propGas       :: Word
                      , _maxBlockDelay :: Word
                      -- ^ Maximum block delay between transactions
                      , _maxValue      :: Word
-                     -- ^ Maximum value to use in transactions  
+                     -- ^ Maximum value to use in transactions
                      }
 makeLenses 'TxConf
 -- | Transform a VMResult into a more hash friendly sum type

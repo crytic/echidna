@@ -20,9 +20,8 @@ import Data.Text.Encoding (encodeUtf8)
 
 import EVM
 import EVM.ABI (AbiType(..), AbiValue(..), decodeAbiValue, selector)
-import EVM.Concrete (w256)
 import EVM.Exec (exec)
-import EVM.Types (Addr, Buffer(..), W256)
+import EVM.Types (Addr, Buffer(..), W256, w256)
 import Text.Read (readMaybe)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
@@ -34,7 +33,6 @@ import qualified Data.ByteString.Lazy as LBS
 
 import Echidna.Exec
 import Echidna.Transaction
---import Echidna.Types.Tx (TxCall(..), Tx(Tx), TxConf, propGas, makeSingleTx)
 import Echidna.Types.Signature (SolSignature)
 import Echidna.ABI (encodeSig)
 
@@ -45,7 +43,7 @@ data Etheno = AccountCreated Addr                                       -- ^ Reg
             | ContractCreated Addr Addr Integer Integer ByteString W256 -- ^ A contract was constructed on the blockchain
             | FunctionCall Addr Addr Integer Integer ByteString W256    -- ^ A contract function was executed
             | BlockMined Integer Integer                                -- ^ A new block was mined contract
- 
+
   deriving (Eq, Show)
 
 instance FromJSON Etheno where
@@ -71,7 +69,7 @@ instance FromJSON Etheno where
                                               <*> v .: "value"
          "BlockMined"      -> BlockMined      <$> ni
                                               <*> ti
- 
+
          _ -> M.fail "event should be one of \"AccountCreated\", \"ContractCreated\", or \"FunctionCall\""
     where decode x = case BS16.decode . encodeUtf8 . T.drop 2 $ x of
                           (a, "") -> pure a
@@ -89,7 +87,7 @@ instance Exception EthenoException
 
 loadEtheno :: (MonadThrow m, MonadIO m, M.MonadFail m)
                 => FilePath -> m [Etheno]
-loadEtheno fp = do  
+loadEtheno fp = do
   bs <- liftIO $ eitherDecodeFileStrict fp
 
   case bs of
@@ -97,7 +95,7 @@ loadEtheno fp = do
        (Right (ethenoInit :: [Etheno])) -> return ethenoInit
 
 extractFromEtheno :: [Etheno] -> [SolSignature] -> [Tx]
-extractFromEtheno ess ss = case ess of 
+extractFromEtheno ess ss = case ess of
                            (BlockMined ni ti :es)  -> Tx NoCall 0 0 0 0 0 (fromInteger ti, fromInteger ni) : extractFromEtheno es ss
                            (c@FunctionCall{} :es)  -> concatMap (`matchSignatureAndCreateTx` c) ss ++ extractFromEtheno es ss
                            (_:es)                  -> extractFromEtheno es ss
@@ -105,14 +103,14 @@ extractFromEtheno ess ss = case ess of
 
 matchSignatureAndCreateTx :: SolSignature -> Etheno -> [Tx]
 matchSignatureAndCreateTx ("", []) _ = [] -- Not sure if we should match this.
-matchSignatureAndCreateTx (s,ts) (FunctionCall a d _ _ bs v) = 
+matchSignatureAndCreateTx (s,ts) (FunctionCall a d _ _ bs v) =
   if BS.take 4 bs == selector (encodeSig (s,ts))
-  then makeSingleTx a d v $ SolCall (s, fromTuple $ decodeAbiValue t (LBS.fromStrict $ BS.drop 4 bs)) 
+  then makeSingleTx a d v $ SolCall (s, fromTuple $ decodeAbiValue t (LBS.fromStrict $ BS.drop 4 bs))
   else []
   where t = AbiTupleType (V.fromList ts)
         fromTuple (AbiTuple xs) = V.toList xs
         fromTuple _            = []
-matchSignatureAndCreateTx _ _                                = [] 
+matchSignatureAndCreateTx _ _                                = []
 
 -- | Main function: takes a filepath where the initialization sequence lives and returns
 -- | the initialized VM along with a list of Addr's to put in GenConf
@@ -143,8 +141,8 @@ execEthenoTxs _ et = do
        (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
        (VMSuccess (ConcreteBuffer bc),
         ContractCreated _ ca _ _ _ _) -> do
-          hasLens . env . contracts . at ca . _Just . contractcode .= InitCode ""
-          liftSH (replaceCodeOfSelf (RuntimeCode bc) >> loadContract ca)
+          hasLens . env . contracts . at ca . _Just . contractcode .= InitCode (ConcreteBuffer "")
+          liftSH (replaceCodeOfSelf (RuntimeCode (ConcreteBuffer bc)) >> loadContract ca)
           return ()
        _                              -> return ()
 
