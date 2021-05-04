@@ -114,7 +114,7 @@ readSolcs d = do
   fs <- listDirectory d
   mxs <- mapM (\ f -> readSolc (d ++ "/" ++ f)) fs
   case catMaybes mxs of
-    [] -> error "everythin failed"
+    [] -> return Nothing
     xs -> return $ Just ( unions $ map fst xs, snd $ head xs )
 
 -- | Given a list of files, use its extenstion to check if it is a precompiled
