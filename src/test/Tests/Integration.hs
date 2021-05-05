@@ -72,7 +72,11 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "coverage/multi.sol"     Nothing
       [ ("echidna_state3 failed",                  solved      "echidna_state3") ]
   , testContract "basic/balance.sol"      (Just "basic/balance.yaml")
-      [ ("echidna_balance failed",                 passed      "echidna_balance") ]
+      [ ("echidna_balance failed",                 passed      "echidna_balance")
+      , ("echidna_balance_new failed",             passed      "echidna_balance_new") 
+      , ("echidna_low_level_call failed",          passed      "echidna_low_level_call") 
+      , ("echidna_no_magic failed",                passed      "echidna_no_magic") 
+      ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
       [ ("echidna_library_call failed",            solved      "echidna_library_call") ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
@@ -94,7 +98,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("internal_assert passed",         solved      "ASSERTION internal_assert")
       , ("external_assert passed",         solved      "ASSERTION external_assert")
       , ("f failed",                       passed      "ASSERTION f")
- ]
+      ]
   , testContract "basic/assert.sol"       (Just "basic/benchmark.yaml")
       [ ("coverage is empty",                      not . coverageEmpty         )
       , ("tests are not empty",                    testsEmpty                  ) ]
