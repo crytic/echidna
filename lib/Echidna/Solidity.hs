@@ -141,7 +141,7 @@ getSolcVersion = do
   case maybeSolcPath of
     Nothing -> throwM NoSolc
     Just solcPath -> do
-      let createProcess = (proc solcPath ["--version"])
+      let createProcess = proc solcPath ["--version"]
       (ec, stdout, stderr) <- liftIO $ readCreateProcessWithExitCode createProcess ""
       case ec of
         ExitSuccess -> case solcVersionFromSolcStdout stdout of
