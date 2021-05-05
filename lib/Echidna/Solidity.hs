@@ -59,8 +59,8 @@ type SolcVersionComp = Version -> Bool
 solcV :: (Int, Int, Int) -> SolcVersion
 solcV (x,y,z) = version x y z [] []
 
-minSolcVersion :: SolcVersion
-minSolcVersion = solcV (0, 4, 15)
+minSupportedSolcVersion :: SolcVersion
+minSupportedSolcVersion = solcV (0, 4, 15)
 
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
@@ -101,7 +101,7 @@ instance Show SolException where
     NoSolc                   -> "solc not installed or not found in PATH. To install solc {version}}, run: \n   pip install solc-select\n   solc-select install {version}\n   solc-select use {version}"
     SolcVersionBadOutput s   -> "parsing the output of `solc --version` failed with: " ++ s
     SolcVersionFailure o e   -> "`solc --version` failed with stdout `" ++ o ++ "` stderr `" ++ e ++ "`."
-    SolcVersionTooOld v      -> "solc version " ++ toString v ++ " detected. Echidna doesn't support versions of solc before " ++ toString minSolcVersion ++ ". Please use a newer version."
+    SolcVersionTooOld v      -> "solc version " ++ toString v ++ " detected. Echidna doesn't support versions of solc before " ++ toString minSupportedSolcVersion ++ ". Please use a newer version."
     (InvalidMethodFilters f) -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
     DeploymentFailed         -> "Deploying the contract failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
 
@@ -153,7 +153,7 @@ getSolcVersion = do
 contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => NE.NonEmpty FilePath -> m ([SolcContract], SourceCache)
 contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"] in do
   sv <- getSolcVersion
-  when (sv < minSolcVersion) (throwM $ SolcVersionTooOld sv)
+  when (sv < minSupportedSolcVersion) (throwM $ SolcVersionTooOld sv)
   mp <- liftIO $ findExecutable "crytic-compile"
   case mp of
    Nothing -> throwM NoCryticCompile
