@@ -18,10 +18,12 @@ import Control.Monad.State.Strict (execStateT)
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
 import Data.List                  (find, partition)
+import Data.List.Split (splitOn)
 import Data.Map                   (elems)
 import Data.Maybe                 (isJust, isNothing, catMaybes)
-import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
+import Data.Text                  (Text, pack, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
+import Data.SemVer (Version, version, fromText, toString)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
@@ -51,6 +53,15 @@ import qualified Data.Text           as T
 
 data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
 
+type SolcVersion = Version
+type SolcVersionComp = Version -> Bool
+
+solcV :: (Int, Int, Int) -> SolcVersion
+solcV (x,y,z) = version x y z [] []
+
+minSolcVersion :: SolcVersion
+minSolcVersion = solcV (0, 4, 15)
+
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
 data SolException = BadAddr Addr
@@ -66,6 +77,10 @@ data SolException = BadAddr Addr
                   | ConstructorArgs String
                   | DeploymentFailed
                   | NoCryticCompile
+                  | NoSolc
+                  | SolcVersionBadOutput String
+                  | SolcVersionFailure String String
+                  | SolcVersionTooOld SolcVersion
                   | InvalidMethodFilters Filter
 makePrisms ''SolException
 
@@ -83,6 +98,10 @@ instance Show SolException where
     OnlyTests                -> "Only tests and no public functions found in ABI"
     (ConstructorArgs s)      -> "Constructor arguments are required: " ++ s
     NoCryticCompile          -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
+    NoSolc                   -> "solc not installed or not found in PATH. To install solc {version}}, run: \n   pip install solc-select\n   solc-select install {version}\n   solc-select use {version}"
+    SolcVersionBadOutput s   -> "parsing the output of `solc --version` failed with: " ++ s
+    SolcVersionFailure o e   -> "`solc --version` failed with stdout `" ++ o ++ "` stderr `" ++ e ++ "`."
+    SolcVersionTooOld v      -> "solc version " ++ toString v ++ " detected. Echidna doesn't support versions of solc before " ++ toString minSolcVersion ++ ". Please use a newer version."
     (InvalidMethodFilters f) -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
     DeploymentFailed         -> "Deploying the contract failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
 
@@ -108,12 +127,34 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        }
 makeLenses ''SolConf
 
--- | Given a list of files, use its extenstion to check if it is a precompiled
+solcVersionFromSolcStdout :: String -> Either String SolcVersion
+solcVersionFromSolcStdout stdout = fromText $ pack versionString
+  where
+    (_:versionPlusCommit:_) = splitOn "Version: " stdout
+    (versionString:_) = splitOn "+" versionPlusCommit
+
+getSolcVersion :: (MonadIO m, MonadThrow m) => m SolcVersion
+getSolcVersion = do
+  maybeSolcPath <- liftIO $ findExecutable "solc"
+  case maybeSolcPath of
+    Nothing -> throwM NoSolc
+    Just solcPath -> do
+      let createProcess = (proc solcPath ["--version"])
+      (ec, stdout, stderr) <- liftIO $ readCreateProcessWithExitCode createProcess ""
+      case ec of
+        ExitSuccess -> case solcVersionFromSolcStdout stdout of
+          Right v -> return v
+          Left e -> throwM $ SolcVersionBadOutput e
+        ExitFailure _ -> throwM $ SolcVersionFailure stdout stderr
+
+-- | Given a list of files, use its extension to check if it is a precompiled
 -- contract or try to compile it and get a list of its contracts, throwing
 -- exceptions if necessary.
 contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => NE.NonEmpty FilePath -> m ([SolcContract], SourceCache)
 contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"] in do
-  mp  <- liftIO $ findExecutable "crytic-compile"
+  sv <- getSolcVersion
+  when (sv < minSolcVersion) (throwM $ SolcVersionTooOld sv)
+  mp <- liftIO $ findExecutable "crytic-compile"
   case mp of
    Nothing -> throwM NoCryticCompile
    Just path -> do

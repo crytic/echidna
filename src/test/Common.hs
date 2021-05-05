@@ -3,7 +3,6 @@ module Common
   , runContract
   , testContract
   , testContractV
-  , solcV
   , testContract'
   , checkConstructorConditions
   , solnFor
@@ -31,17 +30,14 @@ import Control.Monad.State.Strict (evalStateT)
 import Data.Function ((&))
 import Data.List (find)
 import Data.List.NonEmpty (NonEmpty(..))
-import Data.List.Split (splitOn)
 import Data.Map (lookup, empty)
 import Data.Maybe (isJust)
-import Data.Text (Text, pack)
-import Data.SemVer (Version, version, fromText)
-import System.Process (readProcess)
+import Data.Text (Text)
 
 import Echidna (prepareContract)
 import Echidna.Campaign (campaign)
 import Echidna.Config (EConfig, _econfig, parseConfig, defaultConfig, sConf, cConf)
-import Echidna.Solidity (loadSolTests, quiet)
+import Echidna.Solidity (loadSolTests, quiet, getSolcVersion, SolcVersionComp)
 import Echidna.Test (checkETest)
 import Echidna.Types.Campaign (Campaign, testLimit, shrinkLimit, tests, gasInfo, corpus, coverage)
 import Echidna.Types.Signature (ContractName)
@@ -54,21 +50,11 @@ testConfig = defaultConfig & sConf . quiet .~ True
                            & cConf . testLimit .~ 10000
                            & cConf . shrinkLimit .~ 4000
 
-type SolcVersion = Version
-type SolcVersionComp = Version -> Bool
-
-solcV :: (Int, Int, Int) -> SolcVersion
-solcV (x,y,z) = version x y z [] []
-
 withSolcVersion :: Maybe SolcVersionComp -> IO () -> IO ()
 withSolcVersion Nothing t = t
-withSolcVersion (Just f) t = do
-  sv <- readProcess "solc" ["--version"] ""
-  let (_:sv':_) = splitOn "Version: " sv
-  let (sv'':_) = splitOn "+" sv'
-  case fromText $ pack sv'' of
-    Right v' -> if f v' then t else assertBool "skip" True
-    Left e   -> error $ show e
+withSolcVersion (Just solcVersionComp) t = do
+  sv <- getSolcVersion
+  if solcVersionComp sv then t else assertBool "skip" True
 
 runContract :: FilePath -> Maybe ContractName -> EConfig -> IO Campaign
 runContract f c cfg =

@@ -2,7 +2,8 @@ module Tests.Integration (integrationTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout, coverageEmpty, testsEmpty, gasInRange, countCorpus)
+import Common (testContract, testContractV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout, coverageEmpty, testsEmpty, gasInRange, countCorpus)
+import Echidna.Solidity (solcV)
 import Data.Functor ((<&>))
 import Data.Text (unpack)
 import Echidna.Types.Tx (TxCall(..))

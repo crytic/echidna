@@ -2,7 +2,8 @@ module Tests.Research (researchTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, testContractV, testContract', solcV, solved)
+import Common (testContract, testContractV, testContract', solved)
+import Echidna.Solidity (solcV)
 
 researchTests :: TestTree
 researchTests = testGroup "Research-based Integration Testing"
