@@ -108,14 +108,13 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        }
 makeLenses ''SolConf
 
-readSolcs :: FilePath -> IO (Maybe (Map Text SolcContract, SourceCache))
-
-readSolcs d = do
+readSolcBatch :: FilePath -> IO (Maybe (Map Text SolcContract, SourceCache))
+readSolcBatch d = do
   fs <- listDirectory d
-  mxs <- mapM (\ f -> readSolc (d ++ "/" ++ f)) fs
+  mxs <- mapM (\f -> readSolc (d ++ "/" ++ f)) fs
   case catMaybes mxs of
     [] -> return Nothing
-    xs -> return $ Just ( unions $ map fst xs, snd $ head xs )
+    xs -> return $ Just (unions $ map fst xs, snd $ head xs)
 
 -- | Given a list of files, use its extenstion to check if it is a precompiled
 -- contract or try to compile it and get a list of its contracts, throwing
@@ -139,7 +138,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
             stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
             (ec, out, err) <- readCreateProcessWithExitCode (proc path $ (c ++ solargs) |> x) {std_err = stderr} ""
             case ec of
-              ExitSuccess -> readSolcs "crytic-export"
+              ExitSuccess -> readSolcBatch "crytic-export"
               ExitFailure _ -> throwM $ CompileFailure out err
             
           maybe (throwM SolcReadFailure) (pure . first toList) mSolc
