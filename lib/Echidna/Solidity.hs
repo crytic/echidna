@@ -60,7 +60,7 @@ solcV :: (Int, Int, Int) -> SolcVersion
 solcV (x,y,z) = version x y z [] []
 
 minSupportedSolcVersion :: SolcVersion
-minSupportedSolcVersion = solcV (0, 4, 15)
+minSupportedSolcVersion = solcV (0, 4, 25)
 
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
 -- instance for more detailed explanations.
