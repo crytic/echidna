@@ -74,6 +74,7 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/balance.sol"      (Just "basic/balance.yaml")
       [ ("echidna_balance failed",                 passed      "echidna_balance")
       , ("echidna_balance_new failed",             passed      "echidna_balance_new") 
+      , ("echidna_low_level_call failed",             passed      "echidna_low_level_call") 
       , ("echidna_no_magic failed",                passed      "echidna_no_magic") 
       ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")

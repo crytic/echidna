@@ -14,6 +14,11 @@ contract C {
       return address(0xcafe).balance == 0;
   }
 
+  function echidna_low_level_call() public returns (bool) {
+      address(0xcafe).call("");
+      return true;
+  }
+
   function echidna_no_magic() public returns (bool) {
     if (value_found)
       return false;
