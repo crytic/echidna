@@ -127,12 +127,14 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        }
 makeLenses ''SolConf
 
+-- | Given the output of `solc --version` returns the version.
 solcVersionFromSolcStdout :: String -> Either String SolcVersion
 solcVersionFromSolcStdout stdout = fromText $ pack versionString
   where
     (_:versionPlusCommit:_) = splitOn "Version: " stdout
     (versionString:_) = splitOn "+" versionPlusCommit
 
+-- | Calls `solc --version` and returns the version.
 getSolcVersion :: (MonadIO m, MonadThrow m) => m SolcVersion
 getSolcVersion = do
   maybeSolcPath <- liftIO $ findExecutable "solc"
