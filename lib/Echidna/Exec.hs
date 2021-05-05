@@ -45,6 +45,7 @@ classifyError BadJumpDestination     = IllegalE
 classifyError IllegalOverflow        = IllegalE
 classifyError _                      = UnknownE
 
+-- | Extracts the 'Query' if there is one.
 getQuery :: VMResult -> Maybe Query
 getQuery (VMFailure (Query q)) = Just q
 getQuery _                     = Nothing
@@ -80,31 +81,38 @@ execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx 
 execTxWith h m t = do
   sd <- hasSelfdestructed (t ^. dst)
   if sd then pure (VMFailure (Revert ""), 0)
-  else do 
-    hasLens . traces .= emptyEvents 
-    (og :: VM) <- use hasLens
+  else do
+    hasLens . traces .= emptyEvents
+    og <- use hasLens
     setupTx t
     gasIn <- use $ hasLens . state . gas
     res <- m
     gasOut <- use $ hasLens . state . gas
     cd <- use $ hasLens . state . calldata
     case getQuery res of
-      -- A previously unknown contract is required 
+      -- A previously unknown contract is required
       Just (PleaseFetchContract _ cont) -> do
         -- Use the empty contract
-        (hasLens %=) . execState $ cont emptyAccount 
+        hasLens %= execState (cont emptyAccount)
         contTxWith h m og cd gasIn t
 
       -- A previously unknown slot is required
       Just (PleaseFetchSlot _ _ cont) -> do
         -- Use the zero slot
-        (hasLens %=) . execState $ cont 0 
+        hasLens %= execState (cont 0)
         contTxWith h m og cd gasIn t
 
       -- No queries to answer
-      _      -> getExecResult h res og cd (fromIntegral $ gasIn - gasOut) t
+      _ -> getExecResult h res og cd (fromIntegral $ gasIn - gasOut) t
 
-contTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> VM -> (Buffer, SWord 32) -> EVM.Concrete.Word -> Tx -> m (VMResult, Int)
+contTxWith :: (MonadState x m, Has VM x)
+           => (Error -> m ())
+           -> m VMResult
+           -> VM
+           -> (Buffer, SWord 32)
+           -> EVM.Concrete.Word
+           -> Tx
+           -> m (VMResult, Int)
 contTxWith h m og cd gasIn t = do
   -- Run remaining effects
   res <- m
@@ -112,7 +120,14 @@ contTxWith h m og cd gasIn t = do
   gasOut <- use $ hasLens . state . gas
   getExecResult h res og cd (fromIntegral $ gasIn - gasOut) t
 
-getExecResult :: (MonadState x m, Has VM x) => (Error -> m ()) -> VMResult -> VM -> (Buffer, SWord 32) -> Int -> Tx -> m (VMResult, Int)
+getExecResult :: (MonadState x m, Has VM x)
+              => (Error -> m ())
+              -> VMResult
+              -> VM
+              -> (Buffer, SWord 32)
+              -> Int
+              -> Tx
+              -> m (VMResult, Int)
 getExecResult h res og cd g t = do
     case (res, t ^. call) of
       (f@Reversion, _) -> do
@@ -121,10 +136,10 @@ getExecResult h res og cd g t = do
         hasLens . result ?= f
       (VMFailure x, _) -> h x
       (VMSuccess (ConcreteBuffer bc), SolCreate _) ->
-        (hasLens %=) . execState $ do
+        hasLens %= execState (do
           env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
           replaceCodeOfSelf (RuntimeCode bc)
-          loadContract (t ^. dst)
+          loadContract (t ^. dst))
       _ -> pure ()
     pure (res, fromIntegral g)
 
