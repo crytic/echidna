@@ -12,6 +12,7 @@ import Data.Aeson             ((.:), decode, parseJSON, withEmbeddedJSON, withOb
 import Data.Aeson.Types       (FromJSON, Parser, Value(String))
 import Data.List              (nub)
 import Data.Maybe             (catMaybes)
+import Data.Text              (pack, isSuffixOf)
 import Text.Read              (readMaybe)
 import System.Directory       (findExecutable)
 import System.Process         (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
@@ -67,6 +68,9 @@ data SlitherInfo = SlitherInfo
   , generationGraph :: M.HashMap ContractName (M.HashMap FunctionName [FunctionName])
   } deriving (Show)
 
+noInfo :: SlitherInfo
+noInfo = SlitherInfo mempty mempty mempty mempty mempty
+
 instance FromJSON SlitherInfo where
   parseJSON = withObject "slitherOutput" $ \o -> do
     -- take the value under 'description' through the path - $['results']['printers'][0]['description']
@@ -119,7 +123,7 @@ instance FromJSON SlitherInfo where
 
 -- Slither processing
 runSlither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m SlitherInfo
-runSlither fp extraArgs = do
+runSlither fp extraArgs = if ".vy" `isSuffixOf` pack fp then return noInfo else do
   mp <- liftIO $ findExecutable "slither"
   case mp of
     Nothing -> throwM $ ProcessorNotFound "slither" "You should install it using 'pip3 install slither-analyzer --user'"
