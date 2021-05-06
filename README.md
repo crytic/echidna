@@ -126,13 +126,7 @@ To compile echidna from source, either using stack or nix, refer to [our documen
 
 ## Getting help
 
-Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://empireslacking.herokuapp.com/) for help using or extending Echidna.
-
-* Get started by reviewing these simple [Echidna invariants](examples/solidity/basic/flags.sol)
-
-* Review the [Solidity examples](examples/solidity) directory for more extensive Echidna use cases
-
-* Considering [emailing](mailto:echidna-dev@trailofbits.com) the Echidna development team directly for more detailed questions
+Before getting help, review the Echidna [limitations and known issues](Limitations and known issues.md). In any case, feel free to use or #ethereum slack channel in [Empire Hacking](https://empireslacking.herokuapp.com/) for help using or extending Echidna. Alternatively, considering [emailing](mailto:echidna-dev@trailofbits.com) the Echidna development team directly for more detailed questions.
 
 ## License
 
