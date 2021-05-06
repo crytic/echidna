@@ -1,5 +1,21 @@
 ## TODO
 
+## 1.7.1
+
+* Documented known issues and limitations (#655)
+* Automatically initialize addresses when used (#657)
+* Improved coverage to count number of EVM frames (#624)
+* Avoid mutations to generate inputs outside their expected ABI range (#650)
+* Various small to run Vyper contracts (#645)
+* Improved integer generation to use small values (#644)
+* Added two CLI options: --corpus-dir and --check-asserts (#640)
+* Refactored shrinkSeq to improve readability (#639)
+* Fixed UI to fit long function calls (#635)
+* Refactor coverage types and added corpus size in UI (#627)
+* Fixed link to macOS binary in binaries.soliditylang.org (#629)
+* Fixed default.nix to use 1.7.0 as version (#623)
+* Refactored Test type (#622) 
+
 ## 1.7.0
 
 * Refactored and improved etheno support to be more useful (#615) 
