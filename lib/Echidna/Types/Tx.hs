@@ -113,6 +113,8 @@ data TxResult = Success
               | ErrorUnexpectedSymbolic
               | ErrorDeadPath
               | ErrorChoose -- not entirely sure what this is
+              | ErrorWhiffNotUnique
+              | ErrorSMTTimeout
   deriving (Eq, Ord, Show)
 $(deriveJSON defaultOptions ''TxResult)
 
@@ -153,6 +155,8 @@ getResult (VMFailure PrecompileFailure)         = ErrorPrecompileFailure
 getResult (VMFailure UnexpectedSymbolicArg)     = ErrorUnexpectedSymbolic
 getResult (VMFailure DeadPath)                  = ErrorDeadPath
 getResult (VMFailure (Choose _))                = ErrorChoose -- not entirely sure what this is
+getResult (VMFailure (NotUnique _))             = ErrorWhiffNotUnique
+getResult (VMFailure SMTTimeout)              = ErrorSMTTimeout
 
 makeSingleTx :: Addr -> Addr -> W256 -> TxCall -> [Tx]
 makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d (fromInteger maxGasPerBlock) 0 (w256 v) (0, 0)]
