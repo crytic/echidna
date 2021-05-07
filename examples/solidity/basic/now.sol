@@ -7,7 +7,7 @@ contract C {
   }
 
   function guess(uint x) public {
-    if (x <= time + 1 weeks && x >= time - 1 weeks ) 
+    if (x <= time + 4 weeks && x >= time - 4 weeks )
       state = true;
   }
 
