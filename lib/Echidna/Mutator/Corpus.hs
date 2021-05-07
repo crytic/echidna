@@ -21,21 +21,22 @@ defaultMutationConsts = (1, 1, 1, 1)
 fromConsts :: Num a => MutationConsts Integer -> MutationConsts a
 fromConsts (a, b, c, d) = let fi = fromInteger in (fi a, fi b, fi c, fi d)
 
-data TxsMutation = Shrinking
+data TxsMutation = Identity
+                 | Shrinking
                  | Mutation
                  | Expansion
                  | Swapping
                  | Deletion
   deriving (Eq, Ord, Show)
 
-data CorpusMutation = Skip
-                    | RandomAppend TxsMutation
+data CorpusMutation = RandomAppend TxsMutation
                     | RandomPrepend TxsMutation
                     | RandomSplice
                     | RandomInterleave
   deriving (Eq, Ord, Show)
 
 mutator :: MonadRandom m => TxsMutation -> [Tx] -> m [Tx]
+mutator Identity  = return
 mutator Shrinking = mapM shrinkTx
 mutator Mutation = mapM mutateTx
 mutator Expansion = expandRandList
@@ -60,7 +61,6 @@ selectAndCombine f ql ctxs gtxs = do
 
 getCorpusMutation :: (MonadRandom m, Has GenDict x, MonadState x m)
                   => CorpusMutation -> (Int -> Corpus -> [Tx] -> m [Tx])
-getCorpusMutation Skip = \_ _ -> return
 getCorpusMutation (RandomAppend m) = mut (mutator m)
  where mut f ql ctxs gtxs = do
           rtxs' <- selectAndMutate f ctxs
@@ -75,7 +75,8 @@ getCorpusMutation RandomInterleave = selectAndCombine interleaveAtRandom
 
 seqMutators :: MonadRandom m => MutationConsts Rational -> m CorpusMutation
 seqMutators (c1, c2, c3, c4) = weighted
-  [(Skip,                    1000),
+  [(RandomAppend Identity,   800),
+   (RandomPrepend Identity,  200),
 
    (RandomAppend Shrinking,  c1),
    (RandomAppend Mutation,   c2),
