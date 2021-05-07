@@ -2,6 +2,7 @@
 
 ## 1.7.1
 
+* Tweaked mutators and improved test stability (#628)
 * Documented known issues and limitations (#655)
 * Automatically initialize addresses when used (#657)
 * Improved coverage to count number of EVM frames (#624)
