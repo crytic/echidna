@@ -9,6 +9,7 @@ import Control.Monad.Random (getRandom)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, unpack)
 import Data.Version (showVersion)
+import EVM.Types (Addr)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
@@ -33,6 +34,16 @@ data Options = Options
   , cliOutputFormat     :: Maybe OutputFormat
   , cliCorpusDir        :: Maybe FilePath
   , cliCheckAsserts     :: Maybe Bool
+  , cliMultiAbi         :: Maybe Bool
+  , cliTestLimit        :: Maybe Int
+  , cliShrinkLimit      :: Maybe Int
+  , cliSeqLen           :: Maybe Int
+  , cliContractAddr     :: Maybe Addr
+  , cliDeployer         :: Maybe Addr
+  , cliSender           :: [Addr]
+  , cliSeed             :: Maybe Int
+  , cliCryticArgs       :: Maybe String
+  , cliSolcArgs         :: Maybe String
   }
 
 options :: Parser Options
@@ -43,15 +54,44 @@ options = Options <$> (NE.fromList <$> some (argument str (metavar "FILES"
                         <> help "Contract to analyze")
                   <*> optional (option str $ long "config"
                         <> metavar "CONFIG"
-                        <> help "Config file (CLI arguments override config options")
+                        <> help "Config file (CLI arguments override config options)")
                   <*> optional (option auto $ long "format"
                         <> metavar "FORMAT"
-                        <> help "Output format: json, text, none. Disables interactive UI")
+                        <> help "Output format: json, text, none. Disables interactive UI.")
                   <*> optional (option str $ long "corpus-dir"
                         <> metavar "PATH"
-                        <> help "Directory to store corpus and coverage data")
+                        <> help "Directory to store corpus and coverage data.")
                   <*> optional (switch $ long "check-asserts"
-                        <> help "Check asserts in the code")
+                        <> help "Check asserts in the code.")
+                  <*> optional (switch $ long "multi-abi"
+                        <> help "Use multi-abi mode of testing.")
+                  <*> optional (option auto $ long "test-limit"
+                        <> metavar "INTEGER"
+                        <> help "Number of sequences of transactions to generate during testing.")
+                  <*> optional (option auto $ long "shrink-limit"
+                        <> metavar "INTEGER"
+                        <> help "Number of tries to attempt to shrink a failing sequence of transactions.")
+                  <*> optional (option auto $ long "seq-len"
+                        <> metavar "INTEGER"
+                        <> help "Number of transactions to generate during testing.")
+                  <*> optional (option auto $ long "contract-addr"
+                        <> metavar "ADDRESS"
+                        <> help "Address to deploy the contract to test.")
+                  <*> optional (option auto $ long "deployer"
+                        <> metavar "ADDRESS"
+                        <> help "Address of the deployer of the contract to test.")
+                  <*> many (option auto $ long "sender"
+                        <> metavar "ADDRESS"
+                        <> help "Addresses to use for the transactions sent during testing. Can be passed multiple times.")
+                  <*> optional (option auto $ long "seed"
+                        <> metavar "SEED"
+                        <> help "Run with a specific seed.")
+                  <*> optional (option str $ long "crytic-args"
+                        <> metavar "ARGS"
+                        <> help "Additional arguments to use in crytic-compile for the compilation of the contract to test.")
+                  <*> optional (option str $ long "solc-args"
+                        <> metavar "ARGS"
+                        <> help "Additional arguments to use in solc for the compilation of the contract to test.")
 
 versionOption :: Parser (a -> a)
 versionOption = infoOption
@@ -91,6 +131,16 @@ overrideConfig config Options{..} =
   foldl (\a f -> f a) config [ overrideFormat
                              , overrideCorpusDir
                              , overrideCheckAsserts
+                             , overrideMultiAbi
+                             , overrideTestLimit
+                             , overrideShrinkLimit
+                             , overrideSeqLen
+                             , overrideContractAddr
+                             , overrideDeployer
+                             , overrideSender
+                             , overrideSeed
+                             , overrideCryticArgs
+                             , overrideSolcArgs
                              ]
   where
     overrideFormat cfg =
@@ -105,3 +155,33 @@ overrideConfig config Options{..} =
 
     overrideCheckAsserts cfg =
       cfg & sConf . checkAsserts %~ (`fromMaybe` cliCheckAsserts)
+
+    overrideMultiAbi cfg =
+      cfg & sConf . multiAbi %~ (`fromMaybe` cliMultiAbi)
+
+    overrideTestLimit cfg =
+      cfg & cConf . testLimit %~ (`fromMaybe` cliTestLimit)
+
+    overrideShrinkLimit cfg =
+      cfg & cConf . testLimit %~ (`fromMaybe` cliShrinkLimit)
+
+    overrideSeqLen cfg =
+      cfg & cConf . seqLen %~ (`fromMaybe` cliSeqLen)
+
+    overrideContractAddr cfg =
+      cfg & sConf . contractAddr %~ (`fromMaybe` cliContractAddr)
+
+    overrideDeployer cfg =
+      cfg & sConf . deployer %~ (`fromMaybe` cliDeployer)
+
+    overrideSender cfg =
+      cfg & sConf . sender %~ (`fromMaybe` NE.nonEmpty cliSender)
+
+    overrideSeed cfg =
+      cfg & cConf . seed %~ (cliSeed <|>)
+
+    overrideCryticArgs cfg =
+      cfg & sConf . cryticArgs %~ (`fromMaybe` (words <$> cliCryticArgs))
+
+    overrideSolcArgs cfg =
+      cfg & sConf . solcArgs %~ (`fromMaybe` cliSolcArgs)
