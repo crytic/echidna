@@ -39,7 +39,7 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Vector as V
 import qualified Data.HashSet as H
 
-import Echidna.Mutator.Array (mutateLL, replaceAt) 
+import Echidna.Mutator.Array (mutateLL, replaceAt)
 import Echidna.Types.Random
 import Echidna.Types.Signature
 
@@ -165,6 +165,9 @@ mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fma
 getRandomUint :: MonadRandom m => Int -> m Integer
 getRandomUint n = join $ R.fromList [(getRandomR (0, 1023), 1), (getRandomR (0, 2 ^ n - 1), 9)]
 
+getRandomInt :: MonadRandom m => Int -> m Integer
+getRandomInt n = join $ R.fromList [(getRandomR (-1023, 1023), 1), (getRandomR (-1 * 2 ^ n, 2 ^ (n - 1)), 9)]
+
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Doesn't use a dictionary.
 -- Note that we define the dictionary case ('genAbiValueM') first (below), so recursive types can be
 -- be generated using the same dictionary easily
@@ -184,6 +187,12 @@ genInteractions l = genAbiCall =<< rElem l
 -- | Given an 'Integral' number n, get a random number in [0,2n].
 mutateNum :: (Integral a, MonadRandom m) => a -> m a
 mutateNum x = bool (x +) (x -) <$> getRandom <*> (fromIntegral <$> getRandomR (0, toInteger x))
+
+fixAbiUInt :: Int -> Word256 -> AbiValue
+fixAbiUInt n x = AbiUInt n (x `mod` ((2 ^ n) - 1))
+
+fixAbiInt :: Int -> Int256 -> AbiValue
+fixAbiInt n x = AbiInt n (x `mod` 2 ^ (n - 1))
 
 -- | Given a way to generate random 'Word8's and a 'ByteString' b of length l,
 -- generate between 0 and 2l 'Word8's and add insert them into b at random indices.
@@ -272,11 +281,11 @@ shrinkAbiCall = traverse $ traverse shrinkAbiValue
 mutateAbiValue :: MonadRandom m => AbiValue -> m AbiValue
 mutateAbiValue (AbiUInt n x)         = getRandomR (0, 9 :: Int) >>= -- 10% of chance of mutation
                                           \case
-                                            0 -> (AbiUInt n <$> mutateNum x)
+                                            0 -> fixAbiUInt n <$> mutateNum x
                                             _ -> return $ AbiUInt n x
 mutateAbiValue (AbiInt n x)          = getRandomR (0, 9 :: Int) >>= -- 10% of chance of mutation
                                           \case
-                                            0 -> (AbiInt n <$> mutateNum x)
+                                            0 -> fixAbiInt n <$> mutateNum x
                                             _ -> return $ AbiInt n x
 
 mutateAbiValue (AbiAddress x)        = return $ AbiAddress x
@@ -318,8 +327,8 @@ genWithDict genDict m g t = do
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Requires a dictionary.
 genAbiValueM :: MonadRandom m => GenDict -> AbiType -> m AbiValue
 genAbiValueM genDict = genWithDict genDict (toList <$> genDict ^. constants) $ \case
-  (AbiUIntType n)         -> AbiUInt n  . fromInteger <$> getRandomUint n
-  (AbiIntType n)          -> AbiInt n   . fromInteger <$> getRandomR (-1 * 2 ^ n, 2 ^ (n - 1))
+  (AbiUIntType n)         -> fixAbiUInt n . fromInteger <$> getRandomUint n
+  (AbiIntType n)          -> fixAbiInt n . fromInteger <$> getRandomInt n
   AbiAddressType          -> rElem $ NE.fromList pregenAbiAdds --AbiAddress . fromInteger <$> getRandomR (0, 2 ^ (160 :: Integer) - 1)
   AbiBoolType             -> AbiBool <$> getRandom
   (AbiBytesType n)        -> AbiBytes n . BS.pack . take n <$> getRandoms

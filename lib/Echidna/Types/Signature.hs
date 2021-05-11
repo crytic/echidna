@@ -36,7 +36,7 @@ getBytecodeMetadata :: ByteString -> ByteString
 getBytecodeMetadata bs =
   let stripCandidates = flip BS.breakSubstring bs <$> knownBzzrPrefixes in
     case find ((/= mempty) . snd) stripCandidates of
-      Nothing -> mempty
+      Nothing     -> bs -- if no metadata is found, return the complete bytecode
       Just (_, m) -> m
 
 knownBzzrPrefixes :: [ByteString]

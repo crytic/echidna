@@ -43,6 +43,7 @@ import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types.Campaign
+import Echidna.Types.Coverage (coveragePoints)
 import Echidna.Types.Test (TestState(..), SolTest)
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
 import Echidna.Types.World (World, eventMap)
@@ -163,7 +164,7 @@ execTxOptC t = do
   res <- execTxWith vmExcept (usingCoverage $ pointCoverage cov) t
   let vmr = getResult $ fst res
   -- Update the coverage map with the proper binary according to the vm result
-  cov %= mapWithKey (\_ s -> DS.map (set _3 vmr) s)
+  cov %= mapWithKey (\_ s -> DS.map (set _4 vmr) s)
   -- Update the global coverage map with the union of the result just obtained
   cov %= unionWith DS.union og
   grew <- (== LT) . comparing coveragePoints og <$> use cov
