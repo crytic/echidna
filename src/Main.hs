@@ -33,8 +33,8 @@ data Options = Options
   , cliConfigFilepath   :: Maybe FilePath
   , cliOutputFormat     :: Maybe OutputFormat
   , cliCorpusDir        :: Maybe FilePath
-  , cliCheckAsserts     :: Maybe Bool
-  , cliMultiAbi         :: Maybe Bool
+  , cliCheckAsserts     :: Bool
+  , cliMultiAbi         :: Bool
   , cliTestLimit        :: Maybe Int
   , cliShrinkLimit      :: Maybe Int
   , cliSeqLen           :: Maybe Int
@@ -61,9 +61,9 @@ options = Options <$> (NE.fromList <$> some (argument str (metavar "FILES"
                   <*> optional (option str $ long "corpus-dir"
                         <> metavar "PATH"
                         <> help "Directory to store corpus and coverage data.")
-                  <*> optional (switch $ long "check-asserts"
+                  <*> switch (long "check-asserts"
                         <> help "Check asserts in the code.")
-                  <*> optional (switch $ long "multi-abi"
+                  <*> switch (long "multi-abi"
                         <> help "Use multi-abi mode of testing.")
                   <*> optional (option auto $ long "test-limit"
                         <> metavar "INTEGER"
@@ -154,10 +154,10 @@ overrideConfig config Options{..} =
       cfg & cConf . corpusDir %~ (cliCorpusDir <|>)
 
     overrideCheckAsserts cfg =
-      cfg & sConf . checkAsserts %~ (`fromMaybe` cliCheckAsserts)
+      if cliCheckAsserts then cfg & sConf . checkAsserts .~ True else cfg
 
     overrideMultiAbi cfg =
-      cfg & sConf . multiAbi %~ (`fromMaybe` cliMultiAbi)
+      if cliMultiAbi then cfg & sConf . multiAbi .~ True else cfg
 
     overrideTestLimit cfg =
       cfg & cConf . testLimit %~ (`fromMaybe` cliTestLimit)
