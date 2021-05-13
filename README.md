@@ -233,7 +233,23 @@ Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://emp
 
 Echidna is licensed and distributed under the [AGPLv3 license](https://github.com/crytic/echidna/blob/master/LICENSE).
 
-## Echidna Trophies
+## Projects using Echidna
+
+This is a partial list of smart contracts projects that use Echidna for testing:
+
+* [Uniswap-v3](https://github.com/search?q=org%3AUniswap+echidna&type=commits)
+* [Balancer](https://github.com/balancer-labs/balancer-core/tree/master/echidna)
+* [MakerDAO vest](https://github.com/makerdao/dss-vest/pull/16)
+* [Optimism DAI Bridge](https://github.com/BellwoodStudios/optimism-dai-bridge/blob/master/contracts/test/DaiEchidnaTest.sol)
+* [WETH10](https://github.com/WETH10/WETH10/tree/main/contracts/fuzzing)
+* [Yield](https://github.com/yieldprotocol/fyDai/pull/312)
+* [Convexity Protocol](https://github.com/opynfinance/ConvexityProtocol/tree/dev/contracts/echidna)
+* [Aragon Staking](https://github.com/aragon/staking/blob/82bf54a3e11ec4e50d470d66048a2dd3154f940b/packages/protocol/contracts/test/lib/EchidnaStaking.sol)
+* [Centre Token](https://github.com/centrehq/centre-tokens/tree/master/echidna_tests)
+* [Tokencard](https://github.com/tokencard/contracts/tree/master/tools/echidna)
+* [Minimalist USD Stablecoin](https://github.com/usmfum/USM/pull/41) 
+
+## Trophies
 
 ### Security Issues
 
