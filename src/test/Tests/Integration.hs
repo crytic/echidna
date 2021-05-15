@@ -69,7 +69,7 @@ integrationTests = testGroup "Solidity Integration Testing"
 -- single.sol is really slow and kind of unstable. it also messes up travis.
 --  , testContract "coverage/single.sol"    (Just "coverage/test.yaml")
 --      [ ("echidna_state failed",                   solved      "echidna_state") ]
-  , testContract "coverage/multi.sol"     Nothing
+  , testContract "coverage/multi.sol"     (Just "coverage/test.yaml")
       [ ("echidna_state3 failed",                  solved      "echidna_state3") ]
   , testContract "basic/balance.sol"      (Just "basic/balance.yaml")
       [ ("echidna_balance failed",                 passed      "echidna_balance")
