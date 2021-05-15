@@ -163,9 +163,9 @@ EVM emulation and testing is hard. Echidna has a number of limitations in the la
 | Limited library support for testing | [#651](https://github.com/crytic/echidna/issues/651) | *wont fix* |
 | If the contract is not properly linked, Echidna will crash | [#514](https://github.com/crytic/echidna/issues/514) | *in review* | 
 | Assertions are not detected in internal transactions | [#601](https://github.com/crytic/echidna/issues/601) | *in review* |
-| Some mutations generate inputs outside their expected ABI range | [#654](https://github.com/crytic/echidna/issues/654) | *fixed* |
-| Uninitialized addresses can produce unexpected reverts | [#653](https://github.com/crytic/echidna/issues/653) | *fixed* | 
+| Assertions are not detected in solc 0.8.x | [#669](https://github.com/crytic/echidna/issues/669) | *in review* |
 | Value generation can fail in multi-abi mode, since the function hash is not precise enough | [#579](https://github.com/crytic/echidna/issues/579) | *in review*|
+| `checkAsserts` flag is ignored in the config file (and it should be enabled by command-line) | [#665](https://github.com/crytic/echidna/pull/665) | *fixed* |
 
 ## Installation
 
