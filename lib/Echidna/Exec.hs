@@ -163,12 +163,6 @@ pointCoverage l = do
       bc <- viewBuffer buffer
       pure $ getBytecodeMetadata bc
 
-traceCoverage :: (MonadState x m, Has VM x, Has [Op] x) => m ()
-traceCoverage = do
-  v <- use hasLens
-  let ConcreteBuffer c = v ^. state . code
-  hasLens <>= [readOp (BS.index c $ v ^. state . pc) (ConcreteBuffer c)]
-
 initialVM :: VM
 initialVM = vmForEthrunCreation mempty & block . timestamp .~ litWord initialTimestamp
                                        & block . number .~ initialBlockNumber
