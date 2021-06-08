@@ -13,12 +13,10 @@ import Control.Monad.State.Strict (MonadState, execState)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import EVM
-import EVM.Op (Op(..))
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Types (Buffer(..), SymWord, Word)
 import EVM.Symbolic (litWord)
 
-import qualified Data.ByteString as BS
 import qualified Data.Map as M
 import qualified Data.Set as S
 
