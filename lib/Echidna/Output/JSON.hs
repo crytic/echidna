@@ -3,11 +3,12 @@
 
 module Echidna.Output.JSON where
 
+import Control.Lens ((^.))
 import Echidna.ABI (ppAbiValue, GenDict(..))
 import Echidna.Types.Coverage (CoverageInfo)
 import qualified Echidna.Types.Campaign as C
 import qualified Echidna.Types.Test as T
-import Echidna.Types.Test (SolTest)
+import Echidna.Types.Test (EchidnaTest, testState)
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Data.Aeson hiding (Error)
 import qualified Data.ByteString.Base16 as BS16
@@ -100,14 +101,15 @@ encodeCampaign C.Campaign{..} = encode
            , gasInfo = toList _gasInfo
            }
 
-mapTest :: (SolTest, T.TestState) -> Test
-mapTest (solTest, testState) =
-  let (status, transactions, err) = mapTestState testState in
+mapTest :: EchidnaTest -> Test
+mapTest echidnaTest =
+  let tst = echidnaTest ^. testState
+      (status, transactions, err) = mapTestState tst in
   Test { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
-       , name = case solTest of Left (n, _) -> n; Right (n, _) -> n
+       , name = "name" --case solTest of Left (n, _) -> n; Right (n, _) -> n
        , status = status
        , _error = err
-       , testType = case solTest of Left _ -> Property; Right _ -> Assertion
+       , testType = Property --case solTest of Left _ -> Property; Right _ -> Assertion
        , transactions = transactions
        }
   where

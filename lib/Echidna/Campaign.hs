@@ -44,7 +44,7 @@ import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types.Campaign
 import Echidna.Types.Coverage (coveragePoints)
-import Echidna.Types.Test (TestState(..), SolTest)
+import Echidna.Types.Test (TestState(..), _testState, testState, EchidnaTest)
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
 import Echidna.Types.World (World, eventMap)
 import Echidna.Mutator.Corpus
@@ -62,6 +62,8 @@ isDone c | null (view tests c) = do
   q <- view (hasLens . seqLen)
   return $ view ncallseqs c * q >= tl
 isDone (view tests -> ts) = do
+  pure False
+  {-
   (tl, sl, sof) <- view (hasLens . to (liftM3 (,,) _testLimit _shrinkLimit _stopOnFail))
   let res (Open  i)   = if i >= tl then Just True else Nothing
       res Passed      = Just True
@@ -69,11 +71,11 @@ isDone (view tests -> ts) = do
       res (Solved _)  = Just False
       res (Failed _)  = Just False
   pure $ res . snd <$> ts & if sof then elem $ Just False else all isJust
-
+  -}
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
 isSuccess :: Campaign -> Bool
-isSuccess = allOf (tests . traverse . _2) (\case { Passed -> True; Open _ -> True; _ -> False; })
+isSuccess = allOf (tests . traverse . (testState)) (\case { Passed -> True; Open _ -> True; _ -> False; })
 
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
 -- of transactions and the state after evaluation, see if:
@@ -84,28 +86,32 @@ isSuccess = allOf (tests . traverse . _2) (\case { Passed -> True; Open _ -> Tru
 -- Then update accordingly, keeping track of how many times we've tried to solve or shrink.
 updateTest :: ( MonadCatch m, MonadRandom m, MonadReader x m
               , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x)
-           => World -> VM -> Maybe (VM, [Tx]) -> (SolTest, TestState) -> m (SolTest, TestState)
-updateTest w v (Just (v', xs)) (n, t) = do
+           => World -> VM -> Maybe (VM, [Tx]) -> EchidnaTest -> m EchidnaTest
+
+
+updateTest w v (Just (v', xs)) test = do
   tl <- view (hasLens . testLimit)
   let em = w ^. eventMap
-  (n,) <$> case t of
-    Open i | i >= tl -> pure Passed
-    Open i           -> catch (evalStateT (checkETest em n) v' <&> bool (Large (-1) xs) (Open (i + 1)))
-                              (pure . Failed)
-    _                -> snd <$> updateTest w v Nothing (n,t)
-updateTest w v Nothing (n, t) = do
+  case (test ^. testState) of
+    Open i | i >= tl -> pure $ test { _testState = Passed }
+    Open i           -> do b <- evalStateT (checkETest em test) v' 
+                           pure $ test { _testState = if b then Open (i + 1) else Large (-1) xs }
+    _                -> updateTest w v Nothing test
+
+updateTest w v Nothing test = do
   sl <- view (hasLens . shrinkLimit)
   let em = w ^. eventMap
-  (n,) <$> case t of
-    Large i x | i >= sl -> pure $ Solved x
+  case (test ^. testState) of
+    Large i x | i >= sl -> pure $ test { _testState =  Solved x }
     Large i x           -> if length x > 1 || any canShrinkTx x
-                             then Large (i + 1) <$> evalStateT (shrinkSeq (checkETest em n) x) v
-                             else pure $ Solved x
-    _                   -> pure t
+                             then (\txs -> test { _testState = Large (i + 1) txs }) <$> evalStateT (shrinkSeq (checkETest em test) x) v
+                             else pure $ test { _testState = Solved x }
+    _                   -> pure test
+
 
 -- | Given a rule for updating a particular test's state, apply it to each test in a 'Campaign'.
 runUpdate :: (MonadReader x m, Has TxConf x, MonadState y m, Has Campaign y)
-          => ((SolTest, TestState) -> m (SolTest, TestState)) -> m ()
+          => (EchidnaTest -> m EchidnaTest) -> m ()
 runUpdate f = let l = hasLens . tests in use l >>= mapM f >>= (l .=)
 
 -- | Given an initial 'VM' state and a way to run transactions, evaluate a list of transactions, constantly
@@ -257,7 +263,7 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
          => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
          -> VM                  -- ^ Initial VM state
          -> World               -- ^ Initial world state
-         -> [SolTest]           -- ^ Tests to evaluate
+         -> [EchidnaTest]       -- ^ Tests to evaluate
          -> Maybe GenDict       -- ^ Optional generation dictionary
          -> [[Tx]]              -- ^ Initial corpus of transactions
          -> m Campaign
@@ -271,7 +277,7 @@ campaign u v w ts d txs = do
   execStateT
     (evalRandT runCampaign (mkStdGen effectiveSeed))
     (Campaign
-      ((, Open (-1)) <$> if b then [] else ts)
+      ts --((, Open (-1)) <$> if b then [] else ts)
       c
       mempty
       effectiveGenDict
@@ -281,7 +287,7 @@ campaign u v w ts d txs = do
     )
   where
     step        = runUpdate (updateTest w v Nothing) >> lift u >> runCampaign
-    runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
+    runCampaign = use (hasLens . tests . to (fmap (view testState))) >>= update
     update c    = do
       CampaignConf tl sof _ q sl _ _ _ _ _ <- view hasLens
       Campaign { _ncallseqs } <- view hasLens <$> get

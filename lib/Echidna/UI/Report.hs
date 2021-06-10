@@ -94,9 +94,10 @@ ppTS (Large n l) = do
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
 ppTests Campaign { _tests = ts } = unlines . catMaybes <$> mapM pp ts where
-  pp (Left  (n, _), s)      = Just .                    ((T.unpack n ++ ": ") ++) <$> ppTS s
-  pp (Right _,      Open _) = pure Nothing
-  pp (Right (n, _), s)      = Just . (("assertion in " ++ T.unpack n ++ ": ") ++) <$> ppTS s
+  pp _ = pure Nothing
+  --pp (Left  (n, _), s)      = Just .                    ((T.unpack n ++ ": ") ++) <$> ppTS s
+  --pp (Right _,      Open _) = pure Nothing
+  --pp (Right (n, _), s)      = Just . (("assertion in " ++ T.unpack n ++ ": ") ++) <$> ppTS s
 
 ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
 ppCampaign c = do

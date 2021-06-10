@@ -27,7 +27,7 @@ import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
-import Echidna.Types.Test (SolTest)
+import Echidna.Types.Test (EchidnaTest(..), testType, TestState(..), TestType(..))
 import Echidna.Types.Tx (Tx, TxConf, basicTx, propGas, src)
 
 -- | Configuration for evaluating Echidna tests.
@@ -53,7 +53,13 @@ classifyRes _         = ResOther
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
-           => EventMap -> SolTest -> m Bool
+           => EventMap -> EchidnaTest -> m Bool
+
+checkETest _ t = case (t ^. testType) of
+                  Exploration -> return True
+                  _           -> return False
+
+{-
 checkETest em t = do
     r <- use (hasLens . result)
     case r of
@@ -92,6 +98,7 @@ checkETest' em t = do
           es = extractEvents em vm'
           fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
       pure $ correctFn || (ret && fa)
+-}
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
 -- still solves that test.

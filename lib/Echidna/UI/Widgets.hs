@@ -22,7 +22,7 @@ import qualified Paths_echidna (version)
 import Echidna.ABI
 import Echidna.Campaign (isDone)
 import Echidna.Types.Campaign
-import Echidna.Types.Test (TestState(..), SolTest)
+import Echidna.Types.Test (TestState(..), TestType(..), testType, testState, EchidnaTest)
 import Echidna.Types.Tx (Tx, TxConf, src)
 import Echidna.UI.Report
 
@@ -79,18 +79,21 @@ summaryWidget c =
   )
 
 testsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
-            => [(SolTest, TestState)] -> m (Widget())
+            => [EchidnaTest] -> m (Widget())
 testsWidget tests' = foldl (<=>) emptyWidget . intersperse hBorder <$> traverse testWidget tests'
 
 testWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
-           => (SolTest, TestState) -> m (Widget ())
-testWidget (test, testState) =
-  case test of
-      Left  (n, _) -> widget n ""
-      Right (n, _) -> widget n "assertion in "
+           => EchidnaTest -> m (Widget ())
+testWidget etest =
+ case test of
+      Exploration -> widget "exploration" ""
+      --Left  (n, _) -> widget n ""
+      --Right (n, _) -> widget n "assertion in "
   where
+  test = etest ^. testType
+  state = etest ^. testState 
   widget n infront = do
-    (status, details) <- tsWidget testState
+    (status, details) <- tsWidget state
     pure $ padLeft (Pad 1) $
       str infront <+> name n <+> str ": " <+> status
       <=> padTop (Pad 1) details

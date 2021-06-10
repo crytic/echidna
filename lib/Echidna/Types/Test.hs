@@ -1,9 +1,13 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Echidna.Types.Test where
 
+import Control.Lens
 import Data.Aeson (ToJSON(..), object)
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
-import EVM.Types    (Addr)
+import EVM (VM)
+import EVM.Types (Addr)
 
 import Echidna.Exec (ExecException)
 import Echidna.Types.Tx (Tx)
@@ -11,7 +15,7 @@ import Echidna.Types.Signature (SolSignature)
 
 -- | An Echidna test is either the name of the function to call and the address where its contract is,
 -- or a function that could experience an exception
-type SolTest = Either (Text, Addr) SolSignature
+--type SolTest = Either (Text, Addr) SolSignature
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
 data TestState = Open Int             -- ^ Maybe solvable, tracking attempts already made
@@ -20,6 +24,15 @@ data TestState = Open Int             -- ^ Maybe solvable, tracking attempts alr
                | Solved [Tx]          -- ^ Solved with no need for shrinking
                | Failed ExecException -- ^ Broke the execution environment
                  deriving Show
+
+data TestType = PropertyTest Text Addr | AssertTest Addr SolSignature | CallTest (VM -> Bool) |  MinTest (VM -> Int) | Exploration
+
+data EchidnaTest = EchidnaTest { 
+                   _testState :: TestState,
+                   _testType :: TestType
+                   }  
+
+makeLenses ''EchidnaTest
 
 instance Eq TestState where
   (Open i)    == (Open j)    = i == j

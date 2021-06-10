@@ -34,7 +34,7 @@ import qualified Echidna.Output.JSON
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Types.Campaign
-import Echidna.Types.Test (SolTest)
+import Echidna.Types.Test (EchidnaTest)
 import Echidna.Types.Tx (Tx, TxConf)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
@@ -87,7 +87,7 @@ ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
       , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Names x, Has TxConf x, Has UIConf x)
    => VM             -- ^ Initial VM state
    -> World          -- ^ Initial world state
-   -> [SolTest]      -- ^ Tests to evaluate
+   -> [EchidnaTest]      -- ^ Tests to evaluate
    -> Maybe GenDict
    -> [[Tx]]
    -> m Campaign
