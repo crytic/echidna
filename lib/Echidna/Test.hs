@@ -27,17 +27,9 @@ import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
-import Echidna.Types.Test (EchidnaTest(..), testType, TestState(..), TestType(..))
+import Echidna.Types.Test (TestConf(..), EchidnaTest(..), testType, TestState(..), TestType(..))
+import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Tx (Tx, TxConf, basicTx, propGas, src)
-
--- | Configuration for evaluating Echidna tests.
-data TestConf = TestConf { classifier :: Text -> VM -> Bool
-                           -- ^ Given a VM state and test name, check if a test just passed (typically
-                           -- examining '_result'.)
-                         , testSender :: Addr -> Addr
-                           -- ^ Given the address of a test, return the address to send test evaluation
-                           -- transactions from.
-                         }
 
 -- | Possible responses to a call to an Echidna test: @true@, @false@, @REVERT@, and ???.
 data CallRes = ResFalse | ResTrue | ResRevert | ResOther
@@ -55,23 +47,46 @@ classifyRes _         = ResOther
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> EchidnaTest -> m Bool
 
-checkETest _ t = case (t ^. testType) of
-                  Exploration -> return True
-                  _           -> return False
+checkETest em t = case (t ^. testType) of
+                  Exploration      -> return True
+                  PropertyTest n a -> checkProperty (n, a)
+                  AssertionTest n a -> checkAssertion em (n, a)
+                  _                -> error "unhandled test"
 
-{-
-checkETest em t = do
+checkProperty :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+           => (Text, Addr) -> m Bool
+checkProperty t = do
     r <- use (hasLens . result)
     case r of
-      Just (VMSuccess _)                         -> checkETest' em t
-      Just (VMFailure (UnrecognizedOpcode 0xfe)) -> checkETest' em t
-      _                                          -> return True
+      Just (VMSuccess _) -> checkProperty' t
+      _                  -> return True
 
--- | Given a 'SolTest', evaluate it and see if it currently passes.
-checkETest' :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
-           => EventMap -> SolTest -> m Bool
-checkETest' em t = do
+-- | Given a property test, evaluate it and see if it currently passes.
+checkProperty' :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+           => (Text, Addr) -> m Bool
+checkProperty' (f,a) = do
   TestConf p s <- view hasLens
+  vm <- get -- save EVM state
+  -- Our test is a regular user-defined test, we exec it and check the result
+  g <- view (hasLens . propGas)
+  sd <- hasSelfdestructed a
+  _  <- execTx $ basicTx f [] (s a) a g (0, 0)
+  b  <- gets $ p f . getter
+  put vm -- restore EVM state
+  pure $ not sd && b
+
+
+checkAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+           => EventMap -> (SolSignature, Addr) -> m Bool
+checkAssertion em t = do
+    r <- use (hasLens . result)
+    case r of
+      Just (VMSuccess _) -> checkAssertion' em t
+      _                  -> return True
+
+checkAssertion' :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+           => EventMap -> (SolSignature, Addr) -> m Bool
+checkAssertion' em (s,a) =
   -- To check these tests, we're going to need a couple auxilary functions:
   --   * matchR[eturn] checks if we just tried to exec 0xfe, which means we failed an assert
   --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
@@ -79,26 +94,16 @@ checkETest' em t = do
       matchR _                                            = True
       matchC sig b = case viewBuffer b of
         Just cd -> not . BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) $ cd
-        Nothing -> False
-  vm <- get -- save EVM state
-  case t of
-    -- If our test is a regular user-defined test, we exec it and check the result
-    Left (f, a) -> do
-      g <- view (hasLens . propGas)
-      sd <- hasSelfdestructed a
-      _  <- execTx $ basicTx f [] (s a) a g (0, 0)
-      b  <- gets $ p f . getter
-      put vm -- restore EVM state
-      pure $ not sd && b
-    -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
-    Right sig   -> do
-      vm' <- use hasLens
-      let correctFn = matchC sig $ vm ^. hasLens . state . calldata . _1
-          ret = matchR $ vm ^. hasLens . result
-          es = extractEvents em vm'
-          fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
-      pure $ correctFn || (ret && fa)
--}
+        Nothing -> False 
+  in do
+    vm  <- get
+    vm' <- use hasLens
+    let correctFn = matchC s $ vm ^. hasLens . state . calldata . _1
+        ret = matchR $ vm ^. hasLens . result
+        es = extractEvents em vm'
+        fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
+    pure $ correctFn || (ret && fa)
+
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
 -- still solves that test.

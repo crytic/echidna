@@ -13,6 +13,17 @@ import Echidna.Exec (ExecException)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Signature (SolSignature)
 
+type TestMode = String
+
+-- | Configuration for the creation of Echidna tests.
+data TestConf = TestConf { classifier :: Text -> VM -> Bool
+                           -- ^ Given a VM state and test name, check if a test just passed (typically
+                           -- examining '_result'.)
+                         , testSender :: Addr -> Addr
+                           -- ^ Given the address of a test, return the address to send test evaluation
+                           -- transactions from.
+                         }
+
 -- | An Echidna test is either the name of the function to call and the address where its contract is,
 -- or a function that could experience an exception
 --type SolTest = Either (Text, Addr) SolSignature
@@ -25,7 +36,7 @@ data TestState = Open Int             -- ^ Maybe solvable, tracking attempts alr
                | Failed ExecException -- ^ Broke the execution environment
                  deriving Show
 
-data TestType = PropertyTest Text Addr | AssertTest Addr SolSignature | CallTest (VM -> Bool) |  MinTest (VM -> Int) | Exploration
+data TestType = PropertyTest Text Addr | AssertionTest SolSignature Addr | CallTest (VM -> Bool) |  MinTest (VM -> Int) | Exploration
 
 data EchidnaTest = EchidnaTest { 
                    _testState :: TestState,

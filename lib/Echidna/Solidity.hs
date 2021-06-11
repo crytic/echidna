@@ -33,7 +33,7 @@ import Echidna.Events             (EventMap)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
 import Echidna.Types.Tx           (TxConf, createTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
-import Echidna.Types.Test         (EchidnaTest(..), TestType(..), TestState(..))
+import Echidna.Types.Test         (TestMode, TestConf(..), EchidnaTest(..), TestType(..), TestState(..))
 import Echidna.Types.World        (World(..))
 import Echidna.Processor
 
@@ -104,6 +104,7 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
                        , _checkAsserts    :: Bool             -- ^ Test if we can cause assertions to fail
                        , _benchmarkMode   :: Bool             -- ^ Benchmark mode allows to generate coverage
+                       , _testMode        :: String           -- TODO
                        , _methodFilter    :: Filter           -- ^ List of methods to avoid or include calling during a campaign
                        }
 makeLenses ''SolConf
@@ -184,8 +185,8 @@ abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^
 -- testing and extract an ABI and list of tests. Throws exceptions if anything returned doesn't look
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
-loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-              => Maybe Text -> [SolcContract] -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
+loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has SolConf x, Has TestConf x, Has TxConf x, MonadFail m)
+              => Maybe Text -> [SolcContract] -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap, TestMode)
 loadSpecified name cs = do
   -- Pick contract to load
   c <- choose cs name
@@ -196,7 +197,8 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  SolConf ca d ads bala balc mcs pref _ _ libs _ fp ma ch bm fs <- view hasLens
+  SolConf ca d ads bala balc mcs pref _ _ libs _ fp ma ch bm tm fs <- view hasLens
+  TestConf _ _ <- view hasLens
 
   -- generate the complete abi mapping
   let bc = c ^. creationCode
@@ -236,7 +238,7 @@ loadSpecified name cs = do
       let transaction = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
       vm' <- execStateT transaction vm
       case currentContract vm' of
-        Just _  -> return (vm', c ^. eventMap, neFuns, fst <$> tests, abiMapping)
+        Just _  -> return (vm', c ^. eventMap, neFuns, fst <$> tests, abiMapping, tm)
         Nothing -> throwM DeploymentFailed
 
   where choose []    _        = throwM NoContracts
@@ -252,19 +254,27 @@ loadSpecified name cs = do
 --loadSolidity :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
 --             => FilePath -> Maybe Text -> m (VM, [SolSignature], [Text])
 --loadSolidity fp name = contracts fp >>= loadSpecified name
-loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
-                      => NE.NonEmpty FilePath -> Maybe Text -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
+loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TestConf x, Has TxConf x, MonadFail m)
+                      => NE.NonEmpty FilePath -> Maybe Text -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap, TestMode)
 loadWithCryticCompile fp name = contracts fp >>= \(cs, _) -> loadSpecified name cs
 
+
+createTests :: TestMode -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
+createTests m ts r ss = case m of
+  "exploration" -> [EchidnaTest st Exploration]
+  "property"    -> map (\t -> EchidnaTest st $ PropertyTest t r) ts
+  "assertion"   -> map (\s -> EchidnaTest st $ AssertionTest s r) $ drop 1 ss
+  _             -> error "Invalid test mode"
+  where st = Open (-1) 
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: (MonadReader x m, Has SolConf x)
-               => (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
+               => (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap, TestMode)
                -> Maybe ContractName
                -> SlitherInfo
                -> m (VM, World, [EchidnaTest])
-prepareForTest (v, em, a, ts, m) c si = do
+prepareForTest (v, em, a, ts, m, tm) c si = do
   SolConf{ _sender = s, _checkAsserts = ch } <- view hasLens
   let r = v ^. state . contract
       a' = NE.toList a
@@ -272,20 +282,17 @@ prepareForTest (v, em, a, ts, m) c si = do
       as = if ch then filterResults c $ asserts si else []
       cs = filterResults c $ constantFunctions si
       (hm, lm) = prepareHashMaps cs as m
-  pure (v, World s hm lm ps em, [ EchidnaTest (Open 0) Exploration ]) 
-                                 --fmap Left (zip ts $ repeat r)
-                                 -- ++ if ch then Right <$> drop 1 a'
-                                 --         else [])
+  pure (v, World s hm lm ps em, createTests tm ts r a') 
 
 -- this limited variant is used only in tests
 prepareForTest' :: (MonadReader x m, Has SolConf x)
-               => (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
+               => (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap, TestMode)
                -> m (VM, World, [EchidnaTest])
-prepareForTest' (v, em, a, ts, _) = do
+prepareForTest' (v, em, a, ts, _, tm) = do
   SolConf{ _sender = s, _checkAsserts = ch } <- view hasLens
   let r = v ^. state . contract
       a' = NE.toList a
-  pure (v, World s M.empty Nothing [] em, [ EchidnaTest (Open 0) Exploration ]) -- fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else [])
+  pure (v, World s M.empty Nothing [] em, createTests tm ts r a') -- fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else [])
 
 prepareHashMaps :: [FunctionHash] -> [FunctionHash] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
 prepareHashMaps [] _  m = (m, Nothing)                                -- No constant functions detected
@@ -299,7 +306,7 @@ prepareHashMaps cs as m =
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
-loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TxConf x, MonadFail m)
+loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TestConf x, Has TxConf x, MonadFail m)
              => NE.NonEmpty FilePath -> Maybe Text -> m (VM, World, [EchidnaTest])
 loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest'
 

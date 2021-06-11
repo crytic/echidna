@@ -44,7 +44,7 @@ import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types.Campaign
 import Echidna.Types.Coverage (coveragePoints)
-import Echidna.Types.Test (TestState(..), _testState, testState, EchidnaTest)
+import Echidna.Types.Test (TestConf(..), TestState(..), _testState, testState, EchidnaTest)
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
 import Echidna.Types.World (World, eventMap)
 import Echidna.Mutator.Corpus
@@ -62,16 +62,14 @@ isDone c | null (view tests c) = do
   q <- view (hasLens . seqLen)
   return $ view ncallseqs c * q >= tl
 isDone (view tests -> ts) = do
-  pure False
-  {-
   (tl, sl, sof) <- view (hasLens . to (liftM3 (,,) _testLimit _shrinkLimit _stopOnFail))
   let res (Open  i)   = if i >= tl then Just True else Nothing
       res Passed      = Just True
       res (Large i _) = if i >= sl then Just False else Nothing
       res (Solved _)  = Just False
       res (Failed _)  = Just False
-  pure $ res . snd <$> ts & if sof then elem $ Just False else all isJust
-  -}
+  pure $ res . (view testState) <$> ts & if sof then elem $ Just False else all isJust
+
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
 isSuccess :: Campaign -> Bool

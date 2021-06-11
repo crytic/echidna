@@ -86,9 +86,9 @@ testWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
            => EchidnaTest -> m (Widget ())
 testWidget etest =
  case test of
-      Exploration -> widget "exploration" ""
-      --Left  (n, _) -> widget n ""
-      --Right (n, _) -> widget n "assertion in "
+      Exploration      -> widget "exploration" ""
+      PropertyTest n _ -> widget n ""
+      AssertionTest s _   -> widget (encodeSig s) "assertion in "
   where
   test = etest ^. testType
   state = etest ^. testState 

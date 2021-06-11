@@ -34,6 +34,7 @@ import Echidna.Test
 import Echidna.Types.Campaign (CampaignConf(CampaignConf))
 import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Types.Tx  (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
+import Echidna.Types.Test  (TestConf(..))
 import Echidna.UI
 import Echidna.UI.Report
 
@@ -152,6 +153,7 @@ instance FromJSON EConfigWithUsage where
                              <*> v ..:? "multi-abi"       ..!= False
                              <*> v ..:? "checkAsserts"    ..!= False
                              <*> v ..:? "benchmarkMode"   ..!= False
+                             <*> v ..:? "testMode"        ..!= "properties"
                              <*> fnFilter
                 names :: Names
                 names Sender = (" from: " ++) . show
