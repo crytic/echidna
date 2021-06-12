@@ -131,9 +131,11 @@ getExecResult :: (MonadState x m, Has VM x)
 getExecResult h res og cd g t = do
     case (res, t ^. call) of
       (f@Reversion, _) -> do
+        ts <- use $ hasLens . traces
         hasLens .= og
         hasLens . state . calldata .= cd
         hasLens . result ?= f
+        hasLens . traces .= ts
       (VMFailure x, _) -> h x
       (VMSuccess (ConcreteBuffer bc), SolCreate _) ->
         hasLens %= execState (do

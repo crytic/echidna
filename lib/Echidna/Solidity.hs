@@ -30,7 +30,7 @@ import System.Directory           (findExecutable)
 import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec               (execTx, initialVM)
 import Echidna.Events             (EventMap)
-import Echidna.Test               (checkAssertionEvent)
+import Echidna.Test               (createTests)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
 import Echidna.Types.Tx           (TxConf, createTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
@@ -259,14 +259,6 @@ loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf 
                       => NE.NonEmpty FilePath -> Maybe Text -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap, TestMode)
 loadWithCryticCompile fp name = contracts fp >>= \(cs, _) -> loadSpecified name cs
 
-
-createTests :: TestMode -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
-createTests m ts r ss = case m of
-  "exploration" -> [EchidnaTest st Exploration]
-  "property"    -> map (\t -> EchidnaTest st $ PropertyTest t r) ts
-  "assertion"   -> (map (\s -> EchidnaTest st $ AssertionTest s r) $ drop 1 ss) ++ [EchidnaTest st $ CallTest "AssertionFailed(..)" checkAssertionEvent ]
-  _             -> error "Invalid test mode"
-  where st = Open (-1) 
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.

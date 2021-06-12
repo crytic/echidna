@@ -26,7 +26,7 @@ import Echidna.Events (EventMap, extractEvents)
 import Echidna.Exec
 import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
-import Echidna.Types.Test (TestConf(..), EchidnaTest(..), testType, TestState(..), TestType(..))
+import Echidna.Types.Test (TestConf(..), EchidnaTest(..), TestMode, testType, TestState(..), TestType(..))
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Tx (Tx, TxConf, basicTx, propGas, src)
 
@@ -41,6 +41,15 @@ classifyRes (VMSuccess b) | viewBuffer b == Just (encodeAbiValue (AbiBool True))
                           | otherwise                                             = ResOther
 classifyRes Reversion = ResRevert
 classifyRes _         = ResOther
+
+
+createTests :: TestMode -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
+createTests m ts r ss = case m of
+  "exploration" -> [EchidnaTest st Exploration []]
+  "property"    -> map (\t -> EchidnaTest st (PropertyTest t r) []) ts
+  "assertion"   -> (map (\s -> EchidnaTest st (AssertionTest s r) []) $ drop 1 ss) ++ [EchidnaTest st (CallTest "AssertionFailed(..)" checkAssertionEvent) []]
+  _             -> error "Invalid test mode"
+  where st = Open (-1) 
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)

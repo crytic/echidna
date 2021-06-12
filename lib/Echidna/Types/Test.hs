@@ -10,7 +10,7 @@ import EVM (VM)
 import EVM.Types (Addr)
 
 import Echidna.Exec (ExecException)
-import Echidna.Events (EventMap)
+import Echidna.Events (Events, EventMap)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Signature (SolSignature)
 
@@ -37,12 +37,20 @@ data TestState = Open Int             -- ^ Maybe solvable, tracking attempts alr
                | Failed ExecException -- ^ Broke the execution environment
                  deriving Show
 
-data TestType = PropertyTest Text Addr | AssertionTest SolSignature Addr | CallTest Text (EventMap -> VM -> Bool) |  MinTest (EventMap -> VM -> Int) | Exploration
+
+
+data TestType = PropertyTest Text Addr 
+              | AssertionTest SolSignature Addr 
+              | CallTest Text (EventMap -> VM -> Bool) 
+              | MinTest Text (EventMap -> VM -> Int) 
+              | Exploration
 
 data EchidnaTest = EchidnaTest { 
-                   _testState :: TestState,
-                   _testType :: TestType
-                   }  
+                                 _testState :: TestState
+                               , _testType :: TestType
+                               --, _testResult :: ????
+                               , _testEvents :: Events 
+                               }  
 
 makeLenses ''EchidnaTest
 
