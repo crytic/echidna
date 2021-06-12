@@ -42,6 +42,7 @@ import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
+import Echidna.Shrink (shrinkSeq)
 import Echidna.Types.Campaign
 import Echidna.Types.Coverage (coveragePoints)
 import Echidna.Types.Test (TestConf(..), TestState(..), _testState, testState, EchidnaTest)

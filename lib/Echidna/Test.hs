@@ -24,7 +24,6 @@ import qualified Data.Text as T
 import Echidna.ABI
 import Echidna.Events (EventMap, extractEvents)
 import Echidna.Exec
-import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Test (TestConf(..), EchidnaTest(..), testType, TestState(..), TestType(..))
@@ -48,10 +47,11 @@ checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Ha
            => EventMap -> EchidnaTest -> m Bool
 
 checkETest em t = case (t ^. testType) of
-                  Exploration      -> return True
-                  PropertyTest n a -> checkProperty (n, a)
+                  Exploration       -> return True
+                  PropertyTest n a  -> checkProperty (n, a)
                   AssertionTest n a -> checkAssertion em (n, a)
-                  _                -> error "unhandled test"
+                  CallTest _ f      -> checkCall em f
+                  _                 -> error "unhandled test"
 
 checkProperty :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => (Text, Addr) -> m Bool
@@ -75,18 +75,9 @@ checkProperty' (f,a) = do
   put vm -- restore EVM state
   pure $ not sd && b
 
-
 checkAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> (SolSignature, Addr) -> m Bool
-checkAssertion em t = do
-    r <- use (hasLens . result)
-    case r of
-      Just (VMSuccess _) -> checkAssertion' em t
-      _                  -> return True
-
-checkAssertion' :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
-           => EventMap -> (SolSignature, Addr) -> m Bool
-checkAssertion' em (s,a) =
+checkAssertion em (s, _) =
   -- To check these tests, we're going to need a couple auxilary functions:
   --   * matchR[eturn] checks if we just tried to exec 0xfe, which means we failed an assert
   --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
@@ -96,38 +87,18 @@ checkAssertion' em (s,a) =
         Just cd -> not . BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) $ cd
         Nothing -> False 
   in do
-    vm  <- get
-    vm' <- use hasLens
-    let correctFn = matchC s $ vm ^. hasLens . state . calldata . _1
-        ret = matchR $ vm ^. hasLens . result
-        es = extractEvents em vm'
-        fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
-    pure $ correctFn || (ret && fa)
+    vm <- use hasLens
+    let correctFn = matchC s $ vm ^. state . calldata . _1
+        ret = matchR $ vm ^. result
+    pure $ correctFn || ret
 
+checkCall :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+           => EventMap -> (EventMap -> VM -> Bool) -> m Bool
+checkCall em f = do 
+  vm <- use hasLens
+  pure $ f em vm
 
--- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
--- still solves that test.
-shrinkSeq :: ( MonadRandom m, MonadReader x m, MonadThrow m
-             , Has SolConf x, Has TestConf x, Has TxConf x, MonadState y m
-             , Has VM y)
-          => m Bool -> [Tx] -> m [Tx]
-shrinkSeq f xs = do
-  strategies <- sequence [shorten, shrunk]
-  let strategy = uniform strategies
-  xs' <- strategy
-  testPassed <- check xs'
-  -- if the test passed it means we didn't shrink successfully
-  pure $ if testPassed then xs else xs'
-  where
-    check xs' = do
-      og <- get
-      res <- traverse_ execTx xs' >> f
-      put og
-      pure res
-    shrinkSender x = do
-      l <- view (hasLens . sender)
-      case ifind (const (== x ^. src)) l of
-        Nothing     -> pure x
-        Just (i, _) -> flip (set src) x . fromMaybe (x ^. src) <$> uniformMay (l ^.. folded . indices (< i))
-    shrunk = mapM (shrinkSender <=< shrinkTx) xs
-    shorten = (\i -> take i xs ++ drop (i + 1) xs) <$> getRandomR (0, length xs)
+checkAssertionEvent :: EventMap -> VM -> Bool
+checkAssertionEvent em vm = 
+  let es = extractEvents em vm
+  in null es || not (any (T.isPrefixOf "AssertionFailed(") es)

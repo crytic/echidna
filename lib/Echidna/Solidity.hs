@@ -18,7 +18,7 @@ import Control.Monad.State.Strict (execStateT)
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
 import Data.List                  (find, partition)
-import Data.Map                   (elems)
+import Data.Map                   (elems, unions)
 import Data.Maybe                 (isJust, isNothing, catMaybes)
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
@@ -30,6 +30,7 @@ import System.Directory           (findExecutable)
 import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec               (execTx, initialVM)
 import Echidna.Events             (EventMap)
+import Echidna.Test               (checkAssertionEvent)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
 import Echidna.Types.Tx           (TxConf, createTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
@@ -238,7 +239,7 @@ loadSpecified name cs = do
       let transaction = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
       vm' <- execStateT transaction vm
       case currentContract vm' of
-        Just _  -> return (vm', c ^. eventMap, neFuns, fst <$> tests, abiMapping, tm)
+        Just _  -> return (vm', unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping, tm)
         Nothing -> throwM DeploymentFailed
 
   where choose []    _        = throwM NoContracts
@@ -263,7 +264,7 @@ createTests :: TestMode -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
 createTests m ts r ss = case m of
   "exploration" -> [EchidnaTest st Exploration]
   "property"    -> map (\t -> EchidnaTest st $ PropertyTest t r) ts
-  "assertion"   -> map (\s -> EchidnaTest st $ AssertionTest s r) $ drop 1 ss
+  "assertion"   -> (map (\s -> EchidnaTest st $ AssertionTest s r) $ drop 1 ss) ++ [EchidnaTest st $ CallTest "AssertionFailed(..)" checkAssertionEvent ]
   _             -> error "Invalid test mode"
   where st = Open (-1) 
 
