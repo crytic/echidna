@@ -44,7 +44,7 @@ let
     '';
   };
 
-  v = "1.7.0";
+  v = "1.7.1";
 
   f = { mkDerivation, aeson, ansi-terminal, base, base16-bytestring
       , binary, brick, bytestring, cborg, containers, data-dword, data-has
