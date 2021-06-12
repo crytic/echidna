@@ -21,9 +21,10 @@ import qualified Paths_echidna (version)
 
 import Echidna.ABI
 import Echidna.Campaign (isDone)
+import Echidna.Events (Events)
 import Echidna.Types.Campaign
-import Echidna.Types.Test (TestState(..), TestType(..), testType, testState, EchidnaTest)
-import Echidna.Types.Tx (Tx, TxConf, src)
+import Echidna.Types.Test (TestState(..), TestType(..), testEvents, testResult, testType, testState, EchidnaTest)
+import Echidna.Types.Tx (Tx, TxResult(..), TxConf, src)
 import Echidna.UI.Report
 
 data UIState = Uninitialized | Running | Timedout
@@ -93,41 +94,44 @@ testWidget etest =
  
   where
   test = etest ^. testType
-  state = etest ^. testState 
+  state = etest ^. testState
+  events = etest ^. testEvents
+  result = etest ^. testResult
   widget n infront = do
-    (status, details) <- tsWidget state
+    (status, details) <- tsWidget state events result
     pure $ padLeft (Pad 1) $
       str infront <+> name n <+> str ": " <+> status
       <=> padTop (Pad 1) details
   name n = withAttr "bold" $ str (T.unpack n)
 
 tsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
-         => TestState -> m (Widget (), Widget ())
-tsWidget (Failed e)  = pure (str "could not evaluate", str $ show e)
-tsWidget (Solved l)  = failWidget Nothing l
-tsWidget Passed      = pure (withAttr "success" $ str "PASSED!", emptyWidget)
-tsWidget (Open i)    = do
+         => TestState -> Events -> TxResult -> m (Widget (), Widget ())
+tsWidget (Failed e) _ _  = pure (str "could not evaluate", str $ show e)
+tsWidget (Solved l) es r = failWidget Nothing l es r
+tsWidget Passed     _ _  = pure (withAttr "success" $ str "PASSED!", emptyWidget)
+tsWidget (Open i)   _ _  = do
   t <- view (hasLens . testLimit)
   if i >= t then
-    tsWidget Passed
+    tsWidget Passed [] Stop
   else
     pure (withAttr "working" $ str $ "fuzzing " ++ progress i t, emptyWidget)
-tsWidget (Large n l) = do
+tsWidget (Large n l) es r = do
   m <- view (hasLens . shrinkLimit)
-  failWidget (if n < m then Just (n,m) else Nothing) l
+  failWidget (if n < m then Just (n,m) else Nothing) l es r
 
 failWidget :: (MonadReader x m, Has Names x, Has TxConf x)
-           => Maybe (Int, Int) -> [Tx] -> m (Widget (), Widget ())
-failWidget _ [] = pure (failureBadge, str "*no transactions made*")
-failWidget b xs = do
+           => Maybe (Int, Int) -> [Tx] -> Events -> TxResult -> m (Widget (), Widget ())
+failWidget _ [] _  _ = pure (failureBadge, str "*no transactions made*")
+failWidget b xs es r = do
   s <- seqWidget
-  pure (failureBadge, titleWidget <=> s)
+  pure (failureBadge  <+> str (" with " ++ show r), status <=> titleWidget <=> s <=> eventWidget <=> str (T.unpack $ T.intercalate ", " es))
   where
-  titleWidget  = str "Call sequence" <+> status <+> str ":"
+  titleWidget  = str "Call sequence" <+> str ":"
+  eventWidget = str "Event sequence" <+> str ":"
 
   status = case b of
     Nothing    -> emptyWidget
-    Just (n,m) -> str ", " <+> withAttr "working" (str ("shrinking " ++ progress n m))
+    Just (n,m) -> str "Current action: " <+> withAttr "working" (str ("shrinking " ++ progress n m))
 
   seqWidget = do
     ppTxs <- mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs

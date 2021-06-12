@@ -11,7 +11,7 @@ import EVM.Types (Addr)
 
 import Echidna.Exec (ExecException)
 import Echidna.Events (Events, EventMap)
-import Echidna.Types.Tx (Tx)
+import Echidna.Types.Tx (Tx, TxResult)
 import Echidna.Types.Signature (SolSignature)
 
 type TestMode = String
@@ -48,7 +48,7 @@ data TestType = PropertyTest Text Addr
 data EchidnaTest = EchidnaTest { 
                                  _testState :: TestState
                                , _testType :: TestType
-                               --, _testResult :: ????
+                               , _testResult :: TxResult
                                , _testEvents :: Events 
                                }  
 

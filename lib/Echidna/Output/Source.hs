@@ -96,7 +96,9 @@ markStringLine r l = getMarker r : ' ' : ' ' : ' ': '|' : l
 
 -- | Select the proper marker, according to the result of the transaction
 getMarker :: TxResult -> Char
-getMarker Success       = '*'
+getMarker ReturnTrue    = '*'
+getMarker ReturnFalse   = '*'
+getMarker Stop          = '*'
 getMarker ErrorRevert   = 'r' 
 getMarker ErrorOutOfGas = 'o'
 getMarker _             = 'e'

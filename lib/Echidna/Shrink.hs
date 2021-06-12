@@ -16,22 +16,24 @@ import EVM (Error(..), VMResult(..), VM, calldata, result, state)
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
+import Echidna.Events (Events)
 import Echidna.Types.Test (TestConf(..), EchidnaTest(..), testType, TestState(..), TestType(..))
-import Echidna.Types.Tx (Tx, TxConf, basicTx, propGas, src)
+import Echidna.Types.Tx (Tx, TxConf, TxResult, basicTx, propGas, src)
+import Echidna.Test (getResultFromVM)
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
 -- still solves that test.
 shrinkSeq :: ( MonadRandom m, MonadReader x m, MonadThrow m
              , Has SolConf x, Has TestConf x, Has TxConf x, MonadState y m
              , Has VM y)
-          => m Bool -> [Tx] -> m [Tx]
-shrinkSeq f xs = do
+          => m (Bool, Events, TxResult) -> (Events, TxResult) -> [Tx] -> m ([Tx], Events, TxResult)
+shrinkSeq f (es,r) xs = do
   strategies <- sequence [shorten, shrunk]
   let strategy = uniform strategies
   xs' <- strategy
-  testPassed <- check xs'
+  (testPassed, events, result) <- check xs'
   -- if the test passed it means we didn't shrink successfully
-  pure $ if testPassed then xs else xs'
+  pure $ if testPassed then (xs, es, r) else (xs', events, result)
   where
     check xs' = do
       og <- get

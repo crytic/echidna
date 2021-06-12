@@ -32,7 +32,6 @@ import Echidna.Campaign (campaign)
 import Echidna.ABI
 import qualified Echidna.Output.JSON
 import Echidna.Solidity
-import Echidna.Test
 import Echidna.Types.Campaign
 import Echidna.Types.Test (TestConf(..), EchidnaTest)
 import Echidna.Types.Tx (Tx, TxConf)

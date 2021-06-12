@@ -45,7 +45,7 @@ import Echidna.Transaction
 import Echidna.Shrink (shrinkSeq)
 import Echidna.Types.Campaign
 import Echidna.Types.Coverage (coveragePoints)
-import Echidna.Types.Test (TestConf(..), TestState(..), _testState, testState, EchidnaTest)
+import Echidna.Types.Test (TestConf(..), TestState(..), _testResult, testResult, _testState, _testEvents, testEvents, testState, EchidnaTest)
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
 import Echidna.Types.World (World, eventMap)
 import Echidna.Mutator.Corpus
@@ -93,17 +93,19 @@ updateTest w v (Just (v', xs)) test = do
   let em = w ^. eventMap
   case (test ^. testState) of
     Open i | i >= tl -> pure $ test { _testState = Passed }
-    Open i           -> do b <- evalStateT (checkETest em test) v' 
-                           pure $ test { _testState = if b then Open (i + 1) else Large (-1) xs }
+    Open i           -> do (b, evs, r) <- evalStateT (checkETest em test) v' 
+                           pure $ test { _testState = if b then Open (i + 1) else Large (-1) xs, _testEvents = evs, _testResult = r } -- FIX ME: update only if b is false 
     _                -> updateTest w v Nothing test
 
 updateTest w v Nothing test = do
   sl <- view (hasLens . shrinkLimit)
   let em = w ^. eventMap
+      es = test ^. testEvents
+      res = test ^. testResult
   case (test ^. testState) of
     Large i x | i >= sl -> pure $ test { _testState =  Solved x }
     Large i x           -> if length x > 1 || any canShrinkTx x
-                             then (\txs -> test { _testState = Large (i + 1) txs }) <$> evalStateT (shrinkSeq (checkETest em test) x) v
+                             then (\(txs, evs, r) -> test { _testState = Large (i + 1) txs, _testEvents = evs, _testResult = r}) <$> evalStateT (shrinkSeq (checkETest em test) (es, res) x) v
                              else pure $ test { _testState = Solved x }
     _                   -> pure test
 

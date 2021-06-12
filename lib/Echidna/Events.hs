@@ -1,14 +1,14 @@
 module Echidna.Events where
 import Data.Tree        (flatten)
 import Data.Tree.Zipper (fromForest, TreePos, Empty)
-import Data.Text        (Text)
+import Data.Text        (pack, Text)
 import Data.Maybe       (listToMaybe)
 import Control.Lens     (view)
 import EVM
 import EVM.ABI      (Event(..), Indexed(..) )
 import EVM.Types    (W256)
 import EVM.Concrete (wordValue)
-import EVM.Format   (showValues)
+import EVM.Format   (showValues, showError)
 import EVM.Symbolic (maybeLitWord)
 
 import qualified Data.Map as M
@@ -30,6 +30,11 @@ extractEvents em vm =
               Just word -> case M.lookup (wordValue word) em of
                              Just (Event name _ types) ->
                                [name <> showValues [t | (t, NotIndexed) <- types] bytes]
-                             Nothing -> []
+                             Nothing -> [pack $ show word]
+          ErrorTrace e ->
+            case e of
+              Revert out -> ["merror " <> "Revert " <> showError out]
+              _ -> ["merror " <> pack (show e)]
+          
           _ -> []
   in concat $ concatMap flatten $ fmap (fmap showTrace) forest 
