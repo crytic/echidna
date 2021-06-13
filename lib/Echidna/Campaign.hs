@@ -105,7 +105,8 @@ updateTest w v Nothing test = do
   case (test ^. testState) of
     Large i x | i >= sl -> pure $ test { _testState =  Solved x }
     Large i x           -> if length x > 1 || any canShrinkTx x
-                             then (\(txs, evs, r) -> test { _testState = Large (i + 1) txs, _testEvents = evs, _testResult = r}) <$> evalStateT (shrinkSeq (checkETest em test) (es, res) x) v
+                             then do (txs, evs, r) <- evalStateT (shrinkSeq (checkETest em test) (es, res) x) v
+                                     pure $ test { _testState = Large (i + 1) txs, _testEvents = evs, _testResult = r} 
                              else pure $ test { _testState = Solved x }
     _                   -> pure test
 

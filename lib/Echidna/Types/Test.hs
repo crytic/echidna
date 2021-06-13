@@ -37,22 +37,19 @@ data TestState = Open Int             -- ^ Maybe solvable, tracking attempts alr
                | Failed ExecException -- ^ Broke the execution environment
                  deriving Show
 
-
-
 data TestType = PropertyTest Text Addr 
               | AssertionTest SolSignature Addr 
               | CallTest Text (EventMap -> VM -> Bool) 
               | MinTest Text (EventMap -> VM -> Int) 
               | Exploration
 
-data EchidnaTest = EchidnaTest { 
-                                 _testState :: TestState
-                               , _testType :: TestType
-                               , _testResult :: TxResult
-                               , _testEvents :: Events 
-                               }  
+instance Eq TestType where -- MinTest is missing
+  (PropertyTest t a)  == (PropertyTest t' a')  = t == t' && a == a'
+  (AssertionTest s a) == (AssertionTest s' a') = s == s' && a == a'
+  (CallTest t _)      == (CallTest t' _)       = t == t'
+  Exploration         == Exploration           = True
+  _                   == _                     = False
 
-makeLenses ''EchidnaTest
 
 instance Eq TestState where
   (Open i)    == (Open j)    = i == j
@@ -60,6 +57,16 @@ instance Eq TestState where
   Passed      == Passed      = True
   (Solved l)  == (Solved m)  = l == m
   _           == _           = False
+
+
+data EchidnaTest = EchidnaTest { 
+                                 _testState :: TestState
+                               , _testType :: TestType
+                               , _testResult :: TxResult
+                               , _testEvents :: Events 
+                               } deriving Eq  
+
+makeLenses ''EchidnaTest
 
 instance ToJSON TestState where
   toJSON s = object $ ("passed", toJSON passed) : maybeToList desc where

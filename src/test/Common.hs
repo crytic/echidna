@@ -45,7 +45,7 @@ import Echidna.Solidity (loadSolTests, quiet)
 import Echidna.Test (checkETest)
 import Echidna.Types.Campaign (Campaign, testLimit, shrinkLimit, tests, gasInfo, corpus, coverage)
 import Echidna.Types.Signature (ContractName)
-import Echidna.Types.Test (TestState(..))
+import Echidna.Types.Test (TestState(..), testState, TestType(..), testType)
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
 import Echidna.Types.World (eventMap)
 
@@ -99,10 +99,15 @@ checkConstructorConditions fp as = testCase fp $ do
     (v, w, t) <- loadSolTests (fp :| []) Nothing
     let em = w ^. eventMap
     mapM (\u -> evalStateT (checkETest em u) v) t
-  mapM_ (assertBool as) r
+  mapM_ (\(b,_,_) -> assertBool as b) r
 
 getResult :: Text -> Campaign -> Maybe TestState
-getResult t = fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
+getResult n c = --fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
+  head $ map (Just . (view testState)) $ filter findTest $ view tests c
+  where findTest test = case (view testType test) of
+                          PropertyTest t _  -> t == n
+                          _                 -> False 
+
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor t c = case getResult t c of

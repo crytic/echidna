@@ -14,7 +14,7 @@ import Data.Foldable (traverse_)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import EVM (Error(..), VMResult(..), VM, calldata, result, state)
+import EVM (Error(..), VMResult(..), VM, calldata, result, tx, state, substate, selfdestructs)
 import EVM.ABI (AbiValue(..), abiCalldata, encodeAbiValue)
 import EVM.Types (Addr)
 
@@ -49,16 +49,17 @@ getResultFromVM vm =
     Just r -> getResult r
     Nothing -> error "getResultFromVM failed"
 
-createTest :: TestState -> TestType -> EchidnaTest
-createTest st m =  EchidnaTest st m Stop [] 
+createTest :: TestType -> EchidnaTest
+createTest m =  EchidnaTest (Open (-1)) m Stop [] 
 
 createTests :: TestMode -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
 createTests m ts r ss = case m of
-  "exploration" -> [EchidnaTest st Exploration Stop []]
-  "property"    -> map (\t -> EchidnaTest st (PropertyTest t r) Stop []) ts
-  "assertion"   -> (map (\s -> EchidnaTest st (AssertionTest s r) Stop []) $ drop 1 ss) ++ [EchidnaTest st (CallTest "AssertionFailed(..)" checkAssertionEvent) Stop []]
+  "exploration" -> [createTest Exploration]
+  "property"    -> map (\t -> createTest (PropertyTest t r)) ts ++ [sdt]
+  "assertion"   -> (map (\s -> createTest (AssertionTest s r)) $ drop 1 ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionEvent), sdt]
   _             -> error "Invalid test mode"
-  where st = Open (-1) 
+ where sdt = createTest (CallTest "Target contract is not self-destructed" $ checkSelfDestructedTarget r)
+       sdat =  createTest (CallTest "No contract can be self-destructed" $ checkAnySelfDestructed)
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
@@ -87,12 +88,11 @@ checkProperty' em (f,a) = do
   vm <- get -- save EVM state
   -- Our test is a regular user-defined test, we exec it and check the result
   g <- view (hasLens . propGas)
-  sd <- hasSelfdestructed a
   _  <- execTx $ basicTx f [] (s a) a g (0, 0)
   vm' <- use hasLens
   b  <- gets $ p f . getter
   put vm -- restore EVM state
-  pure $ (not sd && b, extractEvents em vm', getResultFromVM vm')
+  pure $ (b, extractEvents em vm', getResultFromVM vm')
 
 checkAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> (SolSignature, Addr) -> m (Bool, Events, TxResult)
@@ -121,6 +121,18 @@ checkAssertionEvent :: EventMap -> VM -> Bool
 checkAssertionEvent em vm = 
   let es = extractEvents em vm
   in null es || not (any (T.isPrefixOf "AssertionFailed(") es)
+
+checkSelfDestructedTarget :: Addr -> EventMap -> VM -> Bool
+checkSelfDestructedTarget a _ vm =
+  let sd = vm ^. tx ^. substate ^. selfdestructs 
+  in not $ a `elem` sd
+
+
+checkAnySelfDestructed :: EventMap -> VM -> Bool
+checkAnySelfDestructed _ vm =
+  let sd = vm ^. tx ^. substate ^. selfdestructs 
+  in (length sd) == 0
+
 
 --checkPanicEvent :: EventMap -> VM -> Bool
 --checkPanicEvent em vm = 
