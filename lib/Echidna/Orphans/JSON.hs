@@ -14,8 +14,7 @@ import Data.ByteString (ByteString)
 import Data.DoubleWord (Word256, Int256, Word160)
 import Data.Text (Text, unpack)
 import EVM.ABI (AbiValue, AbiType)
-import EVM.Concrete (Word)
-import EVM.Types (Addr)
+import EVM.Types (Addr, Word)
 import Text.Read (readMaybe)
 
 readT :: Read a => Text -> Maybe a
@@ -46,9 +45,6 @@ instance FromJSON ByteString where
   parseJSON = withText "ByteString" $ maybe (fail "could not parse ByteString") pure . readT
 
 instance ToJSON Addr where
-  toJSON = toJSON . show
-
-instance ToJSON Word where
   toJSON = toJSON . show
 
 instance FromJSON Word where
