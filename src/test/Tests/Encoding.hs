@@ -8,8 +8,7 @@ import Test.Tasty.QuickCheck (Arbitrary(..), Gen, (===), property, testProperty,
 import Data.Aeson (encode, decode)
 import Data.Text (pack)
 import Echidna.Types.Tx (TxCall(..), Tx(..))
-import EVM.Concrete (Word)
-import EVM.Types (Addr)
+import EVM.Types (Addr, Word)
 
 instance Arbitrary Addr where
   arbitrary = fromInteger <$> arbitrary

@@ -13,18 +13,15 @@ import Control.Monad.State.Strict (MonadState, execState)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import EVM
-import EVM.Op (Op(..))
 import EVM.Exec (exec, vmForEthrunCreation)
-import EVM.Types (Buffer(..))
+import EVM.Types (Buffer(..), SymWord, Word)
 import EVM.Symbolic (litWord)
-import EVM.Concrete (Word)
-import Data.SBV (SWord)
 
-import qualified Data.ByteString as BS
 import qualified Data.Map as M
 import qualified Data.Set as S
 
 import Echidna.Transaction
+import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
 
@@ -91,7 +88,7 @@ execTxWith h m t = do
     cd <- use $ hasLens . state . calldata
     case getQuery res of
       -- A previously unknown contract is required
-      Just (PleaseFetchContract _ cont) -> do
+      Just (PleaseFetchContract _ _ cont) -> do
         -- Use the empty contract
         hasLens %= execState (cont emptyAccount)
         contTxWith h m og cd gasIn t
@@ -109,8 +106,8 @@ contTxWith :: (MonadState x m, Has VM x)
            => (Error -> m ())
            -> m VMResult
            -> VM
-           -> (Buffer, SWord 32)
-           -> EVM.Concrete.Word
+           -> (Buffer, SymWord)
+           -> EVM.Types.Word
            -> Tx
            -> m (VMResult, Int)
 contTxWith h m og cd gasIn t = do
@@ -124,7 +121,7 @@ getExecResult :: (MonadState x m, Has VM x)
               => (Error -> m ())
               -> VMResult
               -> VM
-              -> (Buffer, SWord 32)
+              -> (Buffer, SymWord)
               -> Int
               -> Tx
               -> m (VMResult, Int)
@@ -137,8 +134,8 @@ getExecResult h res og cd g t = do
       (VMFailure x, _) -> h x
       (VMSuccess (ConcreteBuffer bc), SolCreate _) ->
         hasLens %= execState (do
-          env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode ""
-          replaceCodeOfSelf (RuntimeCode bc)
+          env . contracts . at (t ^. dst) . _Just . contractcode .= InitCode (ConcreteBuffer "")
+          replaceCodeOfSelf (RuntimeCode (ConcreteBuffer bc))
           loadContract (t ^. dst))
       _ -> pure ()
     pure (res, fromIntegral g)
@@ -159,14 +156,10 @@ pointCoverage l = do
                     (fromMaybe (error "no contract information on coverage") $ h v)
                     mempty
   where
-    h v = getBytecodeMetadata <$>
-            v ^? env . contracts . at (v ^. state . contract) . _Just . bytecode
-
-traceCoverage :: (MonadState x m, Has VM x, Has [Op] x) => m ()
-traceCoverage = do
-  v <- use hasLens
-  let c = v ^. state . code
-  hasLens <>= [readOp (BS.index c $ v ^. state . pc) c]
+    h v = do
+      buffer <- v ^? env . contracts . at (v ^. state . contract) . _Just . bytecode
+      bc <- viewBuffer buffer
+      pure $ getBytecodeMetadata bc
 
 initialVM :: VM
 initialVM = vmForEthrunCreation mempty & block . timestamp .~ litWord initialTimestamp

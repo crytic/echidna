@@ -19,7 +19,7 @@ import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
 import Data.List                  (find, partition)
 import Data.Map                   (Map, keys, elems, unions)
-import Data.Maybe                 (isJust, isNothing, catMaybes)
+import Data.Maybe                 (isJust, isNothing, catMaybes, listToMaybe)
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
@@ -41,8 +41,7 @@ import EVM hiding (contracts, path)
 import qualified EVM (contracts)
 import EVM.ABI
 import EVM.Solidity
-import EVM.Types    (Addr)
-import EVM.Concrete (w256)
+import EVM.Types    (Addr, w256)
 
 import qualified Data.List.NonEmpty  as NE
 import qualified Data.List.NonEmpty.Extra as NEE
@@ -158,7 +157,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
             case ec of
               ExitSuccess -> readSolcBatch "crytic-export"
               ExitFailure _ -> throwM $ CompileFailure out err
-            
+
           maybe (throwM SolcReadFailure) (pure . first toList) mSolc
     cps <- mapM compileOne fps
     let (cs, ss) = unzip cps
@@ -239,7 +238,7 @@ loadSpecified name cs = do
   -- Construct ABI mapping for World
   let abiMapping = if ma then M.fromList $ cs <&> \cc -> (getBytecodeMetadata $ cc ^. runtimeCode,  filterMethods (cc ^. contractName) fs $ abiOf pref cc)
                          else M.singleton (getBytecodeMetadata $ c ^. runtimeCode) fabiOfc
-  
+
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
   blank' <- maybe (pure (initialVM & block . gaslimit .~ fromInteger unlimitedGasPerBlock & block . maxCodeSize .~ w256 (fromInteger mcs)))
@@ -343,5 +342,7 @@ largeConstants :: [AbiValue]
 largeConstants = concatMap (\i -> [mkLargeAbiInt i, mkLargeAbiUInt i]) commonTypeSizes
 
 returnTypes :: [SolcContract] -> Text -> Maybe AbiType
-returnTypes cs t = preview (_Just . methodOutput . _Just . _2) .
-  find ((== t) . view methodName) $ concatMap (toList . view abiMap) cs
+returnTypes cs t = do
+  method <- find ((== t) . view methodName) $ concatMap (toList . view abiMap) cs
+  (_, abiType) <- listToMaybe $ method ^. methodOutput
+  pure abiType

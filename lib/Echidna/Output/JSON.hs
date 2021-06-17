@@ -15,7 +15,7 @@ import Data.ByteString.Lazy (ByteString)
 import Data.Text
 import Data.Text.Encoding (decodeUtf8)
 import Data.Map
-import EVM.Keccak (keccak)
+import EVM.Types (keccak)
 import qualified Data.Foldable as DF
 import Numeric (showHex)
 

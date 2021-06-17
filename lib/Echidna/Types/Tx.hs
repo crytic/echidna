@@ -9,8 +9,7 @@ import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.ByteString (ByteString)
 import Data.Text (Text)
 import EVM (VMResult(..), Error(..))
-import EVM.Concrete (Word, w256)
-import EVM.Types (Addr, W256)
+import EVM.Types (Addr, W256, Word, w256)
 import EVM.ABI (AbiValue)
 
 import Echidna.Orphans.JSON ()
@@ -94,7 +93,7 @@ createTxWithValue :: ByteString   -- | Constructor bytecode
 createTxWithValue bc s d g = Tx (SolCreate bc) s d g 0
 
 data TxResult = Success
-              | ErrorBalanceTooLow 
+              | ErrorBalanceTooLow
               | ErrorUnrecognizedOpcode
               | ErrorSelfDestruction
               | ErrorStackUnderrun
@@ -114,6 +113,8 @@ data TxResult = Success
               | ErrorUnexpectedSymbolic
               | ErrorDeadPath
               | ErrorChoose -- not entirely sure what this is
+              | ErrorWhiffNotUnique
+              | ErrorSMTTimeout
   deriving (Eq, Ord, Show)
 $(deriveJSON defaultOptions ''TxResult)
 
@@ -128,7 +129,7 @@ data TxConf = TxConf { _propGas       :: Word
                      , _maxBlockDelay :: Word
                      -- ^ Maximum block delay between transactions
                      , _maxValue      :: Word
-                     -- ^ Maximum value to use in transactions  
+                     -- ^ Maximum value to use in transactions
                      }
 makeLenses 'TxConf
 -- | Transform a VMResult into a more hash friendly sum type
@@ -154,6 +155,8 @@ getResult (VMFailure PrecompileFailure)         = ErrorPrecompileFailure
 getResult (VMFailure UnexpectedSymbolicArg)     = ErrorUnexpectedSymbolic
 getResult (VMFailure DeadPath)                  = ErrorDeadPath
 getResult (VMFailure (Choose _))                = ErrorChoose -- not entirely sure what this is
+getResult (VMFailure (NotUnique _))             = ErrorWhiffNotUnique
+getResult (VMFailure SMTTimeout)              = ErrorSMTTimeout
 
 makeSingleTx :: Addr -> Addr -> W256 -> TxCall -> [Tx]
 makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d (fromInteger maxGasPerBlock) 0 (w256 v) (0, 0)]
