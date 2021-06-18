@@ -52,11 +52,17 @@ getResultFromVM vm =
 createTest :: TestType -> EchidnaTest
 createTest m =  EchidnaTest (Open (-1)) m Stop [] 
 
+assertPanicTest :: EchidnaTest
+assertPanicTest = createTest $ CallTest "Assertion failure detector" (checkPanicEvent "1")
+
+integerOverflowTest :: EchidnaTest
+integerOverflowTest = createTest $ CallTest "Integer overflow detector" (checkPanicEvent "17")
+
 createTests :: TestMode -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
 createTests m ts r ss = case m of
   "exploration" -> [createTest Exploration]
   "property"    -> map (\t -> createTest (PropertyTest t r)) ts ++ [sdt]
-  "assertion"   -> (map (\s -> createTest (AssertionTest s r)) $ drop 1 ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionEvent), sdt]
+  "assertion"   -> (map (\s -> createTest (AssertionTest s r)) $ drop 1 ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionEvent), assertPanicTest, integerOverflowTest, sdt]
   _             -> error "Invalid test mode"
  where sdt = createTest (CallTest "Target contract is not self-destructed" $ checkSelfDestructedTarget r)
        sdat =  createTest (CallTest "No contract can be self-destructed" $ checkAnySelfDestructed)
@@ -133,11 +139,10 @@ checkAnySelfDestructed _ vm =
   let sd = vm ^. tx ^. substate ^. selfdestructs 
   in (length sd) == 0
 
-
---checkPanicEvent :: EventMap -> VM -> Bool
---checkPanicEvent em vm = 
---  let es = extractEvents em vm
---  in null es || not (any (T.isPrefixOf "Panic(") es)
+checkPanicEvent :: T.Text -> EventMap -> VM -> Bool
+checkPanicEvent n em vm = 
+  let es = extractEvents em vm
+  in null es || not (any (T.isPrefixOf ("Panic(" <> n <> ")")) es)
 
 --checkErrorEvent :: EventMap -> VM -> Bool
 --checkErrorEvent em vm = 
