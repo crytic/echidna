@@ -49,7 +49,9 @@ prepareContract cfg fs c g = do
   ctxs <- liftIO $ loadTxs cd
 
   -- compile and load contracts
-  (cs, sc) <- Echidna.Solidity.contracts fs
+  (cs, scs) <- Echidna.Solidity.contracts fs
+  let sc = selectSourceCache c scs
+
   ads <- addresses
   p <- loadSpecified c cs
 

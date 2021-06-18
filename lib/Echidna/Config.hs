@@ -22,7 +22,7 @@ import Data.HashSet (HashSet, fromList, insert, difference)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, isPrefixOf)
 import EVM (result)
-import EVM.Concrete (Word(..), Whiff(..))
+import EVM.Types (w256)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Data.ByteString as BS
@@ -101,13 +101,13 @@ instance FromJSON EConfigWithUsage where
             let useKey k = hasLens %= insert k
                 x ..:? k = useKey k >> lift (x .:? k)
                 x ..!= y = fromMaybe y <$> x
-                getWord s d = C Dull . fromIntegral <$> v ..:? s ..!= (d :: Integer)
+                getWord s d = w256 . fromIntegral <$> v ..:? s ..!= (d :: Integer)
 
                 -- TxConf
                 xc = TxConf <$> getWord "propMaxGas" maxGasPerBlock
                             <*> getWord "testMaxGas" maxGasPerBlock
                             <*> getWord "maxGasprice" 0
-                            <*> getWord "maxTimeDelay" defaultTimeDelay     
+                            <*> getWord "maxTimeDelay" defaultTimeDelay
                             <*> getWord "maxBlockDelay" defaultBlockDelay
                             <*> getWord "maxValue" 100000000000000000000 -- 100 eth
 

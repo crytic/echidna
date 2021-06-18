@@ -11,7 +11,9 @@ module Echidna.ABI where
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, foldM, replicateM)
 import Control.Monad.Random.Strict (MonadRandom, getRandom, getRandoms, getRandomR, uniformMay)
+import Data.Binary.Put (runPut, putWord32be)
 import Data.Bool (bool)
+import Data.ByteString.Lazy as BSLazy (toStrict)
 import Data.ByteString (ByteString)
 import Data.Foldable (toList)
 import Data.Hashable (Hashable(..))
@@ -20,6 +22,7 @@ import Data.HashSet (HashSet, fromList, union)
 import Data.List (intercalate)
 import Data.Maybe (fromMaybe, catMaybes)
 import Data.Text (Text)
+import Data.Text.Encoding (encodeUtf8)
 import Data.Vector (Vector)
 import Data.Vector.Instances ()
 import Data.Word8 (Word8)
@@ -27,8 +30,7 @@ import Data.DoubleWord (Int256, Word256)
 import Numeric (showHex)
 
 import EVM.ABI hiding (genAbiValue)
-import EVM.Keccak (abiKeccak)
-import EVM.Types (Addr)
+import EVM.Types (Addr, abiKeccak)
 
 import qualified Control.Monad.Random.Strict as R
 import qualified Data.ByteString as BS
@@ -344,3 +346,8 @@ genAbiCallM genDict abi = do
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one, possibly with a dictionary.
 genInteractionsM :: MonadRandom m => GenDict -> NE.NonEmpty SolSignature -> m SolCall
 genInteractionsM genDict l = genAbiCallM genDict =<< rElem l
+
+abiCalldata :: Text -> Vector AbiValue -> BS.ByteString
+abiCalldata s xs = BSLazy.toStrict . runPut $ do
+  putWord32be (abiKeccak (encodeUtf8 s))
+  putAbi (AbiTuple xs)

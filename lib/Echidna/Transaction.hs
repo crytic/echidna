@@ -18,12 +18,10 @@ import Control.Monad.State.Strict (MonadState, State, runState, get, put)
 import Data.Has (Has(..))
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
-import Data.SBV (SWord, literal)
 import EVM hiding (value)
-import EVM.ABI (abiCalldata, abiValueType)
-import EVM.Concrete (Word(..), w256)
+import EVM.ABI (abiValueType)
 import EVM.Symbolic ( litWord, litAddr)
-import EVM.Types (Addr, Buffer(..))
+import EVM.Types (Addr, Buffer(..),Word(..),w256, w256lit, SymWord)
 
 import qualified Data.ByteString as BS
 import qualified Data.HashMap.Strict as M
@@ -33,6 +31,7 @@ import qualified Data.Vector as V
 import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
+import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, getBytecodeMetadata)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
@@ -70,8 +69,9 @@ genTxM m = do
   pure $ Tx (SolCall c') s' (fst r') g gp v' (level t')
   where
     toContractA :: SignatureMap -> (Addr, Contract) -> Maybe ContractA
-    toContractA mm (addr, c) =
-      (addr,) <$> M.lookup (getBytecodeMetadata $ c ^. bytecode) mm
+    toContractA mm (addr, c) = do
+      bc <- viewBuffer $ c ^. bytecode
+      (addr,) <$> M.lookup (getBytecodeMetadata bc) mm
 
 genDelay :: MonadRandom m => Word -> [Integer] -> m Word
 genDelay mv ds = do
@@ -111,8 +111,8 @@ shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
          SolCall sc -> SolCall <$> shrinkAbiCall sc
          _ -> pure c
   lower 0 = pure $ w256 0
-  lower x = w256 . fromIntegral <$> getRandomR (0 :: Integer, fromIntegral x)
-              >>= \r -> uniform [0, r] -- try 0 quicker
+  lower x = (getRandomR (0 :: Integer, fromIntegral x)
+              >>= (\r -> uniform [0, r]) . w256 . fromIntegral)  -- try 0 quicker
   possibilities =
     [ set call      <$> c'
     , set value     <$> lower v
@@ -151,7 +151,7 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   , tx . gasprice .= gp, tx . origin .= s, state . caller .= litAddr s, state . callvalue .= litWord v
   , block . timestamp += litWord t, block . number += b, setup] where
     setup = case c of
-      SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (InitCode bc) & set balance v) >> loadContract r >> state . code .= bc
+      SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (InitCode (ConcreteBuffer bc)) & set balance v) >> loadContract r >> state . code .= ConcreteBuffer bc
       SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata (encode cd)
       SolCalldata cd -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata cd
       NoCall         -> error "NoCall"
@@ -159,6 +159,5 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
     encode (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
 
-
-concreteCalldata :: BS.ByteString -> (Buffer, SWord 32)
-concreteCalldata cd = (ConcreteBuffer cd, literal . fromIntegral . BS.length $ cd)
+concreteCalldata :: BS.ByteString -> (Buffer, SymWord)
+concreteCalldata cd = (ConcreteBuffer cd, w256lit . fromIntegral . BS.length $ cd)

@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
@@ -31,7 +30,7 @@ type FilePathText = Text
 
 saveCoverage :: Maybe FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
 saveCoverage (Just d) sc cs s = let fn t = d ++ "/covered." ++ show t ++ ".txt"
-                                    cc = ppCoveredCode sc cs s 
+                                    cc = ppCoveredCode sc cs s
                                 in getSystemTime >>= \t -> writeFile (fn $ systemSeconds t) cc
 saveCoverage Nothing  _  _  _ = pure ()
 
@@ -57,8 +56,8 @@ filterLines []                  ls  = ls
 filterLines (Nothing      : ns) ls  = filterLines ns ls
 filterLines (Just (f,n,r) : ns) ls  = filterLines ns (markLine n r f ls)
 
--- | Mark one particular line, from a list of lines, keeping the order of them 
-markLine :: Int -> TxResult -> FilePathText -> [(FilePathText, Text)] -> [(FilePathText, Text)] 
+-- | Mark one particular line, from a list of lines, keeping the order of them
+markLine :: Int -> TxResult -> FilePathText -> [(FilePathText, Text)] -> [(FilePathText, Text)]
 markLine n r cf ls = case splitAt (n-1) ls of
   (xs, (f,y):ys) | f == cf -> xs ++ [(cf, pack $ markStringLine r $ unpack y)] ++ ys
   _                        -> map (\(f,y) -> (f, pack $ checkMarkers $ unpack y)) ls
@@ -105,7 +104,7 @@ getMarker _             = 'e'
 
 -- | Given a source cache, a coverage map, a contract returns a list of covered lines
 srcMapCov :: SourceCache -> CoverageMap -> SolcContract -> [Maybe (FilePathText, Int, TxResult)]
-srcMapCov sc s c = nub $                                               -- Deduplicate results 
+srcMapCov sc s c = nub $                                               -- Deduplicate results
                    map (srcMapCodePosResult sc) $                      -- Get the filename, number of line and tx result
                    mapMaybe (srcMapForOpLocation c) $                  -- Get the mapped line and tx result
                    S.toList $ fromMaybe S.empty $                      -- Convert from Set to list
@@ -113,7 +112,7 @@ srcMapCov sc s c = nub $                                               -- Dedupl
 
 -- | Given a source cache, a mapped line, return a tuple with the filename, number of line and tx result
 srcMapCodePosResult :: SourceCache -> (SrcMap, TxResult) -> Maybe (Text, Int, TxResult)
-srcMapCodePosResult sc (n, r) = case srcMapCodePos sc n of 
+srcMapCodePosResult sc (n, r) = case srcMapCodePos sc n of
   Just (t,n') -> Just (t,n',r)
   _           -> Nothing
 

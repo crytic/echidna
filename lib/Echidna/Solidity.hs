@@ -18,14 +18,14 @@ import Control.Monad.State.Strict (execStateT)
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
 import Data.List                  (find, partition)
-import Data.Map                   (elems, unions)
-import Data.Maybe                 (isJust, isNothing, catMaybes)
+import Data.Map                   (Map, keys, elems, unions)
+import Data.Maybe                 (isJust, isNothing, catMaybes, listToMaybe)
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
-import System.Directory           (findExecutable)
+import System.Directory           (findExecutable, listDirectory)
 
 import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec               (execTx, initialVM)
@@ -42,8 +42,7 @@ import EVM hiding (contracts, path)
 import qualified EVM (contracts)
 import EVM.ABI
 import EVM.Solidity
-import EVM.Types    (Addr)
-import EVM.Concrete (w256)
+import EVM.Types    (Addr, w256)
 
 import qualified Data.List.NonEmpty  as NE
 import qualified Data.List.NonEmpty.Extra as NEE
@@ -110,10 +109,36 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        }
 makeLenses ''SolConf
 
+-- | List of contract names from every source cache
+type SourceCaches = [([ContractName], SourceCache)]
+
+-- | Given a list of source caches (SourceCaches) and an optional contract name, 
+-- select one that includes that contract (if possible). Otherwise, use the first source
+-- cache available (or fail if it is empty)
+selectSourceCache :: Maybe ContractName -> SourceCaches -> SourceCache
+selectSourceCache (Just c) scs =
+  let r = concatMap (\(cs,sc) -> [sc | isJust $ find (isSuffixOf (":" `append` c)) cs]) scs in
+  case r of
+    (sc:_) -> sc
+    _      -> error "Source cache selection returned no result"
+
+selectSourceCache _ scs =
+  case scs of 
+    (_,sc):_ -> sc
+    _        -> error "Empty source cache"
+
+readSolcBatch :: FilePath -> IO (Maybe (Map Text SolcContract, SourceCaches))
+readSolcBatch d = do
+  fs <- listDirectory d
+  mxs <- mapM (\f -> readSolc (d ++ "/" ++ f)) fs
+  case catMaybes mxs of
+    [] -> return Nothing
+    xs -> return $ Just (unions $ map fst xs, map (first keys) xs)
+
 -- | Given a list of files, use its extenstion to check if it is a precompiled
--- contract or try to compile it and get a list of its contracts, throwing
+-- contract or try to compile it and get a list of its contracts and a list of source cache, throwing
 -- exceptions if necessary.
-contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => NE.NonEmpty FilePath -> m ([SolcContract], SourceCache)
+contracts :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => NE.NonEmpty FilePath -> m ([SolcContract], SourceCaches)
 contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"] in do
   mp  <- liftIO $ findExecutable "crytic-compile"
   case mp of
@@ -126,19 +151,19 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
     let solargs = a ++ linkLibraries ls & (usual ++) .
                   (\sa -> if null sa then [] else ["--solc-args", sa])
         fps = toList fp
-        compileOne :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m ([SolcContract], SourceCache)
+        compileOne :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m ([SolcContract], SourceCaches)
         compileOne x = do
           mSolc <- liftIO $ do
             stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
             (ec, out, err) <- readCreateProcessWithExitCode (proc path $ (c ++ solargs) |> x) {std_err = stderr} ""
             case ec of
-              ExitSuccess -> readSolc "crytic-export/combined_solc.json"
+              ExitSuccess -> readSolcBatch "crytic-export"
               ExitFailure _ -> throwM $ CompileFailure out err
-            
+
           maybe (throwM SolcReadFailure) (pure . first toList) mSolc
     cps <- mapM compileOne fps
     let (cs, ss) = unzip cps
-    when (length ss > 1) $ liftIO $ putStrLn "WARNING: more than one SourceCache was found after compile. Only the first one will be used."
+    when (length ss > 1) $ liftIO $ putStrLn "WARNING: more than one SourceCaches was found after compile. Only the first one will be used."
     pure (concat cs, head ss)
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
@@ -216,7 +241,7 @@ loadSpecified name cs = do
   -- Construct ABI mapping for World
   let abiMapping = if ma then M.fromList $ cs <&> \cc -> (getBytecodeMetadata $ cc ^. runtimeCode,  filterMethods (cc ^. contractName) fs $ abiOf pref cc)
                          else M.singleton (getBytecodeMetadata $ c ^. runtimeCode) fabiOfc
-  
+
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
   blank' <- maybe (pure (initialVM & block . gaslimit .~ fromInteger unlimitedGasPerBlock & block . maxCodeSize .~ w256 (fromInteger mcs)))
@@ -318,5 +343,7 @@ largeConstants :: [AbiValue]
 largeConstants = concatMap (\i -> [mkLargeAbiInt i, mkLargeAbiUInt i]) commonTypeSizes
 
 returnTypes :: [SolcContract] -> Text -> Maybe AbiType
-returnTypes cs t = preview (_Just . methodOutput . _Just . _2) .
-  find ((== t) . view methodName) $ concatMap (toList . view abiMap) cs
+returnTypes cs t = do
+  method <- find ((== t) . view methodName) $ concatMap (toList . view abiMap) cs
+  (_, abiType) <- listToMaybe $ method ^. methodOutput
+  pure abiType

@@ -15,7 +15,7 @@ import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import EVM (Error(..), VMResult(..), VM, calldata, result, tx, state, substate, selfdestructs)
-import EVM.ABI (AbiValue(..), abiCalldata, encodeAbiValue)
+import EVM.ABI (AbiValue(..), encodeAbiValue)
 import EVM.Types (Addr)
 
 import qualified Data.ByteString as BS
