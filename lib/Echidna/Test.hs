@@ -58,6 +58,14 @@ assertPanicTest = createTest $ CallTest "Assertion failure detector" (checkPanic
 integerOverflowTest :: EchidnaTest
 integerOverflowTest = createTest $ CallTest "Integer overflow detector" (checkPanicEvent "17")
 
+isAssertionMode :: TestMode -> Bool
+isAssertionMode "assertion" = True
+isAssertionMode _           = False
+
+isExplorationMode :: TestMode -> Bool
+isExplorationMode "exploration" = True
+isExplorationMode _             = False
+
 createTests :: TestMode -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
 createTests m ts r ss = case m of
   "exploration" -> [createTest Exploration]

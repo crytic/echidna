@@ -151,8 +151,6 @@ instance FromJSON EConfigWithUsage where
                              <*> v ..:? "quiet"           ..!= False
                              <*> v ..:? "initialize"      ..!= Nothing
                              <*> v ..:? "multi-abi"       ..!= False
-                             <*> v ..:? "checkAsserts"    ..!= False
-                             <*> v ..:? "benchmarkMode"   ..!= False
                              <*> v ..:? "testMode"        ..!= "property"
                              <*> fnFilter
                 names :: Names

@@ -271,14 +271,13 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
 campaign u v w ts d txs = do
   c <- fromMaybe mempty <$> view (hasLens . knownCoverage)
   g <- view (hasLens . seed)
-  b <- view (hasLens . benchmarkMode)
   let effectiveSeed = fromMaybe (d' ^. defSeed) g
       effectiveGenDict = d' { _defSeed = effectiveSeed }
       d' = fromMaybe defaultDict d
   execStateT
     (evalRandT runCampaign (mkStdGen effectiveSeed))
     (Campaign
-      ts --((, Open (-1)) <$> if b then [] else ts)
+      ts
       c
       mempty
       effectiveGenDict

@@ -49,11 +49,11 @@ extractEvents em vm =
 decodeRevert :: VM -> Events
 decodeRevert vm = 
   case vm ^. result of
-    Just (VMFailure (Revert bs)) -> map pack $ catMaybes [decodeRevertString $ bs]
+    Just (VMFailure (Revert bs)) -> decodeRevertMsg bs
     _                            -> [] 
 
-decodeRevertString :: BS.ByteString -> Maybe [Char] 
-decodeRevertString bs = case BS.take 4 bs of
+decodeRevertMsg :: BS.ByteString -> Events 
+decodeRevertMsg bs = case BS.splitAt 4 bs of
                           --"\x08\xc3\x79\xa0" -> Just $ "Error(" ++ (show $ decodeAbiValue AbiStringType (fromStrict $ BS.drop 4 bs)) ++ ")"
-                          "\x4e\x48\x7b\x71" -> Just $ "Panic(" ++ (show $ decodeAbiValue (AbiUIntType 256) (fromStrict $ BS.drop 4 bs)) ++ ")"
-                          _                  -> Nothing
+                          ("\x4e\x48\x7b\x71",d) -> ["Panic(" <> (pack . show $ decodeAbiValue (AbiUIntType 256) (fromStrict d)) <> ")"]
+                          _                      -> []
