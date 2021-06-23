@@ -104,7 +104,7 @@ testWidget etest =
 tsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
          => TestState -> EchidnaTest -> m (Widget (), Widget ())
 tsWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
-tsWidget (Solved)   t = failWidget Nothing (t ^. testReproducer) (t ^. testEvents) (t  ^. testResult)
+tsWidget (Solved)   t = failWidget Nothing (t ^. testReproducer) (t ^. testEvents) (t ^. testValue) (t  ^. testResult)
 tsWidget Passed     t = case (t ^. testType) of 
                          OptimizationTest _ _ -> pure (str $ "Max value found: " ++ show (t ^. testValue), emptyWidget)
                          _                    -> pure (withAttr "success" $ str "PASSED!", emptyWidget)
@@ -116,14 +116,14 @@ tsWidget (Open i)   t = do
     pure (withAttr "working" $ str $ "fuzzing " ++ progress i n ++ "(" ++ show (t ^. testValue) ++ ")", emptyWidget)
 tsWidget (Large n)  t = do
   m <- view (hasLens . shrinkLimit)
-  failWidget (if n < m then Just (n,m) else Nothing) (t ^. testReproducer) (t ^. testEvents) (t  ^. testResult)
+  failWidget (if n < m then Just (n,m) else Nothing) (t ^. testReproducer) (t ^. testEvents) (t ^. testValue) (t  ^. testResult)
 
 failWidget :: (MonadReader x m, Has Names x, Has TxConf x)
-           => Maybe (Int, Int) -> [Tx] -> Events -> TxResult -> m (Widget (), Widget ())
-failWidget _ [] _  _ = pure (failureBadge, str "*no transactions made*")
-failWidget b xs es r = do
+           => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> TxResult -> m (Widget (), Widget ())
+failWidget _ [] _  _  _= pure (failureBadge, str "*no transactions made*")
+failWidget b xs es v r = do
   s <- seqWidget
-  pure (failureBadge  <+> str (" with " ++ show r), status <=> titleWidget <=> s <=> eventWidget <=> str (T.unpack $ T.intercalate ", " es))
+  pure (failureBadge  <+> str (" with " ++ show r ++ " and value " ++ show v), status <=> titleWidget <=> s <=> eventWidget <=> str (T.unpack $ T.intercalate ", " es))
   where
   titleWidget  = str "Call sequence" <+> str ":"
   eventWidget = str "Event sequence" <+> str ":"

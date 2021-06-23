@@ -26,14 +26,17 @@ import Echidna.Test (getResultFromVM)
 shrinkSeq :: ( MonadRandom m, MonadReader x m, MonadThrow m
              , Has SolConf x, Has TestConf x, Has TxConf x, MonadState y m
              , Has VM y)
-          => m (TestValue, Events, TxResult) -> (Events, TxResult) -> [Tx] -> m ([Tx], Events, TxResult)
-shrinkSeq f (es,r) xs = do
+          => m (TestValue, Events, TxResult) -> (TestValue, Events, TxResult) -> [Tx] -> m ([Tx], TestValue, Events, TxResult)
+shrinkSeq f (v,es,r) xs = do
   strategies <- sequence [shorten, shrunk]
   let strategy = uniform strategies
   xs' <- strategy
   (value, events, result) <- check xs'
   -- if the test passed it means we didn't shrink successfully
-  pure $ if (value == BoolValue True) then (xs, es, r) else (xs', events, result)
+  pure $ case (value,v) of 
+    (BoolValue False, _)               ->  (xs', value, events, result)
+    (IntValue x, IntValue y) | x >= y  ->  (xs', value, events, result)
+    _                                  ->  (xs, v, es, r)
   where
     check xs' = do
       og <- get

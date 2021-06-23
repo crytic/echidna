@@ -87,28 +87,30 @@ updateTest :: ( MonadCatch m, MonadRandom m, MonadReader x m
            => World -> VM -> Maybe (VM, [Tx]) -> EchidnaTest -> m EchidnaTest
 
 
-updateTest w v (Just (v', xs)) test = do
+updateTest w vm (Just (vm', xs)) test = do
   tl <- view (hasLens . testLimit)
+  sl <- view (hasLens . shrinkLimit) 
   let em = w ^. eventMap
   case (test ^. testState) of
     Open i | i >= tl -> case (test ^. testType) of
-                          OptimizationTest _ _ -> pure $ test { _testState = Large (i + 1) }
+                          OptimizationTest _ _ -> pure $ test { _testState = Large (-1) }
                           _                    -> pure $ test { _testState = Passed }
-    Open i           -> do r <- evalStateT (checkETest em test) v' 
+    Open i           -> do r <- evalStateT (checkETest em test) vm' 
                            pure $ updateOpenTest test xs i r 
-    _                -> updateTest w v Nothing test
+    _                -> updateTest w vm Nothing test
 
-updateTest w v Nothing test = do
+updateTest w vm Nothing test = do
   sl <- view (hasLens . shrinkLimit)
   let em = w ^. eventMap
       es = test ^. testEvents
       res = test ^. testResult
       x = test ^. testReproducer
+      v = test ^. testValue
   case (test ^. testState) of
     Large i | i >= sl -> pure $ test { _testState =  Solved, _testReproducer = x }
     Large i           -> if length x > 1 || any canShrinkTx x
-                             then do (txs, evs, r) <- evalStateT (shrinkSeq (checkETest em test) (es, res) x) v
-                                     pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r} 
+                             then do (txs, val, evs, r) <- evalStateT (shrinkSeq (checkETest em test) (v, es, res) x) vm
+                                     pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r, _testValue = val} 
                              else pure $ test { _testState = Solved, _testReproducer = x}
     _                   -> pure test
 

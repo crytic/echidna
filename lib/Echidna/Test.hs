@@ -57,7 +57,7 @@ createTest m =  EchidnaTest (Open (-1)) m v [] Stop []
                 where v = case m of 
                            PropertyTest _ _     -> BoolValue True
                            OptimizationTest _ _ -> IntValue minBound
-                           _                    -> error "invalid usage of test value"
+                           _                    -> NoValue
 
 assertPanicTest :: EchidnaTest
 assertPanicTest = createTest $ CallTest "Assertion failure detector" (checkPanicEvent "1")

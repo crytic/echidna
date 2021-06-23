@@ -42,11 +42,13 @@ data TestState = Open Int        -- ^ Maybe solvable, tracking attempts already 
 
 data TestValue = BoolValue Bool
                | IntValue Int256
+               | NoValue
                  deriving (Eq)
 
 instance Show TestValue where
   show (BoolValue x) = show x
   show (IntValue x)  = show x
+  show NoValue       = ""
 
 data TestType = PropertyTest Text Addr
               | OptimizationTest Text Addr
