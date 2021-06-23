@@ -80,9 +80,10 @@ ppFail b xs = let status = case b of
  (("failed!💥  \n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> pxs
 
 -- | Pretty-print the status of a test.
-ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => TestState -> m String
+{-
+ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => TestState -> [Tx] -> m String
 ppTS (Failed e)  = pure $ "could not evaluate ☣\n  " ++ show e
-ppTS (Solved l)  = ppFail Nothing l
+ppTS (Solved)    = ppFail Nothing l
 ppTS Passed      = pure "passed! 🎉"
 ppTS (Open i)    = do
   t <- view (hasLens .  testLimit)
@@ -90,6 +91,7 @@ ppTS (Open i)    = do
 ppTS (Large n l) = do
   m <- view (hasLens . shrinkLimit)
   ppFail (if n < m then Just (n, m) else Nothing) l
+-}
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String

@@ -23,7 +23,7 @@ import Echidna.ABI
 import Echidna.Campaign (isDone)
 import Echidna.Events (Events)
 import Echidna.Types.Campaign
-import Echidna.Types.Test (TestState(..), TestType(..), testEvents, testResult, testType, testState, EchidnaTest)
+import Echidna.Types.Test
 import Echidna.Types.Tx (Tx, TxResult(..), TxConf, src)
 import Echidna.UI.Report
 
@@ -86,38 +86,37 @@ testsWidget tests' = foldl (<=>) emptyWidget . intersperse hBorder <$> traverse 
 testWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
            => EchidnaTest -> m (Widget ())
 testWidget etest =
- case test of
+ case (etest ^. testType) of
       Exploration       -> widget "exploration" ""
       PropertyTest n _  -> widget n ""
+      OptimizationTest n _  -> widget n "optimizing " 
       AssertionTest s _ -> widget (encodeSig s) "assertion in "
       CallTest n _      -> widget n ""
  
   where
-  test = etest ^. testType
-  state = etest ^. testState
-  events = etest ^. testEvents
-  result = etest ^. testResult
   widget n infront = do
-    (status, details) <- tsWidget state events result
+    (status, details) <- tsWidget (etest ^. testState) etest
     pure $ padLeft (Pad 1) $
       str infront <+> name n <+> str ": " <+> status
       <=> padTop (Pad 1) details
   name n = withAttr "bold" $ str (T.unpack n)
 
 tsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
-         => TestState -> Events -> TxResult -> m (Widget (), Widget ())
-tsWidget (Failed e) _ _  = pure (str "could not evaluate", str $ show e)
-tsWidget (Solved l) es r = failWidget Nothing l es r
-tsWidget Passed     _ _  = pure (withAttr "success" $ str "PASSED!", emptyWidget)
-tsWidget (Open i)   _ _  = do
-  t <- view (hasLens . testLimit)
-  if i >= t then
-    tsWidget Passed [] Stop
+         => TestState -> EchidnaTest -> m (Widget (), Widget ())
+tsWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
+tsWidget (Solved)   t = failWidget Nothing (t ^. testReproducer) (t ^. testEvents) (t  ^. testResult)
+tsWidget Passed     t = case (t ^. testType) of 
+                         OptimizationTest _ _ -> pure (str $ "Max value found: " ++ show (t ^. testValue), emptyWidget)
+                         _                    -> pure (withAttr "success" $ str "PASSED!", emptyWidget)
+tsWidget (Open i)   t = do
+  n <- view (hasLens . testLimit)
+  if i >= n then
+    tsWidget Passed t
   else
-    pure (withAttr "working" $ str $ "fuzzing " ++ progress i t, emptyWidget)
-tsWidget (Large n l) es r = do
+    pure (withAttr "working" $ str $ "fuzzing " ++ progress i n ++ "(" ++ show (t ^. testValue) ++ ")", emptyWidget)
+tsWidget (Large n)  t = do
   m <- view (hasLens . shrinkLimit)
-  failWidget (if n < m then Just (n,m) else Nothing) l es r
+  failWidget (if n < m then Just (n,m) else Nothing) (t ^. testReproducer) (t ^. testEvents) (t  ^. testResult)
 
 failWidget :: (MonadReader x m, Has Names x, Has TxConf x)
            => Maybe (Int, Int) -> [Tx] -> Events -> TxResult -> m (Widget (), Widget ())

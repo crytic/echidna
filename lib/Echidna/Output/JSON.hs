@@ -8,7 +8,7 @@ import Echidna.ABI (ppAbiValue, GenDict(..))
 import Echidna.Types.Coverage (CoverageInfo)
 import qualified Echidna.Types.Campaign as C
 import qualified Echidna.Types.Test as T
-import Echidna.Types.Test (EchidnaTest, testState)
+import Echidna.Types.Test (EchidnaTest, testState, testReproducer)
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Data.Aeson hiding (Error)
 import qualified Data.ByteString.Base16 as BS16
@@ -104,20 +104,21 @@ encodeCampaign C.Campaign{..} = encode
 mapTest :: EchidnaTest -> Test
 mapTest echidnaTest =
   let tst = echidnaTest ^. testState
-      (status, transactions, err) = mapTestState tst in
+      txs = echidnaTest ^. testReproducer 
+      (status, transactions, err) = mapTestState tst txs in
   Test { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
        , name = "name" --case solTest of Left (n, _) -> n; Right (n, _) -> n
        , status = status
        , _error = err
-       , testType = Property --case solTest of Left _ -> Property; Right _ -> Assertion
+       , testType = Property 
        , transactions = transactions
        }
   where
-  mapTestState (T.Open _) = (Fuzzing, Nothing, Nothing)
-  mapTestState T.Passed = (Passed, Nothing, Nothing)
-  mapTestState (T.Solved txs) = (Solved, Just $ mapTx <$> txs, Nothing)
-  mapTestState (T.Large _ txs) = (Shrinking, Just $ mapTx <$> txs, Nothing)
-  mapTestState (T.Failed e) = (Error, Nothing, Just $ show e) -- TODO add (show e)
+  mapTestState (T.Open _) _ = (Fuzzing, Nothing, Nothing)
+  mapTestState T.Passed _ = (Passed, Nothing, Nothing)
+  mapTestState T.Solved txs = (Solved, Just $ mapTx <$> txs, Nothing)
+  mapTestState (T.Large _) txs = (Shrinking, Just $ mapTx <$> txs, Nothing)
+  mapTestState (T.Failed e) _ = (Error, Nothing, Just $ show e) -- TODO add (show e)
 
   mapTx Tx{..} =
     let (function, args) = mapCall _call in

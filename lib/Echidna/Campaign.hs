@@ -44,7 +44,7 @@ import Echidna.Transaction
 import Echidna.Shrink (shrinkSeq)
 import Echidna.Types.Campaign
 import Echidna.Types.Coverage (coveragePoints)
-import Echidna.Types.Test (TestConf(..), TestState(..), _testResult, testResult, _testState, _testEvents, testEvents, testState, EchidnaTest)
+import Echidna.Types.Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
 import Echidna.Types.World (World, eventMap)
 import Echidna.Mutator.Corpus
@@ -65,8 +65,8 @@ isDone (view tests -> ts) = do
   (tl, sl, sof) <- view (hasLens . to (liftM3 (,,) _testLimit _shrinkLimit _stopOnFail))
   let res (Open  i)   = if i >= tl then Just True else Nothing
       res Passed      = Just True
-      res (Large i _) = if i >= sl then Just False else Nothing
-      res (Solved _)  = Just False
+      res (Large i) = if i >= sl then Just False else Nothing
+      res (Solved)  = Just False
       res (Failed _)  = Just False
   pure $ res . (view testState) <$> ts & if sof then elem $ Just False else all isJust
 
@@ -91,9 +91,11 @@ updateTest w v (Just (v', xs)) test = do
   tl <- view (hasLens . testLimit)
   let em = w ^. eventMap
   case (test ^. testState) of
-    Open i | i >= tl -> pure $ test { _testState = Passed }
-    Open i           -> do (b, evs, r) <- evalStateT (checkETest em test) v' 
-                           pure $ test { _testState = if b then Open (i + 1) else Large (-1) xs, _testEvents = evs, _testResult = r } -- FIX ME: update only if b is false 
+    Open i | i >= tl -> case (test ^. testType) of
+                          OptimizationTest _ _ -> pure $ test { _testState = Large (i + 1) }
+                          _                    -> pure $ test { _testState = Passed }
+    Open i           -> do r <- evalStateT (checkETest em test) v' 
+                           pure $ updateOpenTest test xs i r 
     _                -> updateTest w v Nothing test
 
 updateTest w v Nothing test = do
@@ -101,12 +103,13 @@ updateTest w v Nothing test = do
   let em = w ^. eventMap
       es = test ^. testEvents
       res = test ^. testResult
+      x = test ^. testReproducer
   case (test ^. testState) of
-    Large i x | i >= sl -> pure $ test { _testState =  Solved x }
-    Large i x           -> if length x > 1 || any canShrinkTx x
+    Large i | i >= sl -> pure $ test { _testState =  Solved, _testReproducer = x }
+    Large i           -> if length x > 1 || any canShrinkTx x
                              then do (txs, evs, r) <- evalStateT (shrinkSeq (checkETest em test) (es, res) x) v
-                                     pure $ test { _testState = Large (i + 1) txs, _testEvents = evs, _testResult = r} 
-                             else pure $ test { _testState = Solved x }
+                                     pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r} 
+                             else pure $ test { _testState = Solved, _testReproducer = x}
     _                   -> pure test
 
 
@@ -291,8 +294,8 @@ campaign u v w ts d txs = do
     update c    = do
       CampaignConf tl sof _ q sl _ _ _ _ _ <- view hasLens
       Campaign { _ncallseqs } <- view hasLens <$> get
-      if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
+      if | sof && any (\case Solved -> True; Failed _ -> True; _ -> False) c -> lift u
          | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
-         | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
+         | any (\case Large n   -> n < sl; _ -> False) c                       -> step
          | null c && (q * _ncallseqs) < tl                                     -> callseq v w q >> step
          | otherwise                                                           -> lift u
