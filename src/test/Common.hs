@@ -33,7 +33,7 @@ import Data.List (find)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
 import Data.Map (lookup, empty)
-import Data.Maybe (isJust)
+import Data.Maybe (catMaybes, isJust)
 import Data.Text (Text, pack)
 import Data.SemVer (Version, version, fromText)
 import System.Process (readProcess)
@@ -45,7 +45,7 @@ import Echidna.Solidity (loadSolTests, quiet)
 import Echidna.Test (checkETest)
 import Echidna.Types.Campaign (Campaign, testLimit, shrinkLimit, tests, gasInfo, corpus, coverage)
 import Echidna.Types.Signature (ContractName)
-import Echidna.Types.Test (TestState(..), testState, TestType(..), testType)
+import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
 import Echidna.Types.World (eventMap)
 
@@ -99,33 +99,35 @@ checkConstructorConditions fp as = testCase fp $ do
     (v, w, t) <- loadSolTests (fp :| []) Nothing
     let em = w ^. eventMap
     mapM (\u -> evalStateT (checkETest em u) v) t
-  mapM_ (\(b,_,_) -> assertBool as b) r
+  mapM_ (\(BoolValue b,_,_) -> assertBool as b) r
 
-getResult :: Text -> Campaign -> Maybe TestState
+
+getResult :: Text -> Campaign -> Maybe EchidnaTest
 getResult n c = --fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
-  head $ map (Just . (view testState)) $ filter findTest $ view tests c
+  case (filter findTest $ view tests c) of
+    []    -> Nothing
+    (x:_) -> Just x
   where findTest test = case (view testType test) of
                           PropertyTest t _  -> t == n
+                          AssertionTest t _ -> (pack $ show t) == n
                           _                 -> False 
-
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor t c = case getResult t c of
-  Just (Large _ s) -> Just s
-  Just (Solved  s) -> Just s
-  _                -> Nothing
+  Just t -> if null $ t ^. testReproducer then Nothing else Just $ t ^. testReproducer 
 
 solved :: Text -> Campaign -> Bool
 solved t = isJust . solnFor t
 
 passed :: Text -> Campaign -> Bool
 passed t c = case getResult t c of
-  Just (Open _) -> True
-  Just Passed   -> True
-  _             -> False
+  Just t | isPassed t -> True
+  Just t | isOpen t   -> True
+  _                   -> False
 
 solvedLen :: Int -> Text -> Campaign -> Bool
 solvedLen i t = (== Just i) . fmap length . solnFor t
+
 
 -- NOTE: this just verifies a call was found in the solution. Doesn't care about ordering/seq length
 solvedWith :: TxCall -> Text -> Campaign -> Bool

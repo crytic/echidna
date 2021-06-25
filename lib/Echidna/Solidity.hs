@@ -34,7 +34,7 @@ import Echidna.Test               (createTests, isAssertionMode, isExplorationMo
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
 import Echidna.Types.Tx           (TxConf, createTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
-import Echidna.Types.Test         (TestMode, TestConf(..), EchidnaTest(..), TestType(..), TestState(..))
+import Echidna.Types.Test         (TestConf(..), EchidnaTest(..))
 import Echidna.Types.World        (World(..))
 import Echidna.Processor
 

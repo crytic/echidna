@@ -89,7 +89,6 @@ updateTest :: ( MonadCatch m, MonadRandom m, MonadReader x m
 
 updateTest w vm (Just (vm', xs)) test = do
   tl <- view (hasLens . testLimit)
-  sl <- view (hasLens . shrinkLimit) 
   let em = w ^. eventMap
   case (test ^. testState) of
     Open i | i >= tl -> case (test ^. testType) of
@@ -199,6 +198,7 @@ randseq ql o w = do
   cs <- view $ hasLens . mutConsts
   txConf :: TxConf <- view hasLens
   let ctxs = ca ^. corpus
+      rs   = filter (not . null) $ map (view testReproducer) $ ca ^. tests
       p    = ca ^. ncallseqs
   if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
     return . snd $ DS.elemAt p ctxs

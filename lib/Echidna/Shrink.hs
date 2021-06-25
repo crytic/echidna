@@ -11,15 +11,14 @@ import Control.Monad.State.Strict (MonadState(get, put))
 import Data.Foldable (traverse_)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
-import EVM (Error(..), VMResult(..), VM, calldata, result, state)
+import EVM (VM)
 
 import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.Events (Events)
-import Echidna.Types.Test (TestConf(..), EchidnaTest(..), TestValue(..), testType, TestState(..), TestType(..))
-import Echidna.Types.Tx (Tx, TxConf, TxResult, basicTx, propGas, src)
-import Echidna.Test (getResultFromVM)
+import Echidna.Types.Test (TestConf(..), TestValue(..))
+import Echidna.Types.Tx (Tx, TxConf, TxResult, src)
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
 -- still solves that test.

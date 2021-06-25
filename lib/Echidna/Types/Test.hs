@@ -53,8 +53,7 @@ instance Show TestValue where
 data TestType = PropertyTest Text Addr
               | OptimizationTest Text Addr
               | AssertionTest SolSignature Addr 
-              | CallTest Text (EventMap -> VM -> Bool) 
-              | MinTest Text (EventMap -> VM -> Int) 
+              | CallTest Text (EventMap -> VM -> TestValue) 
               | Exploration
 
 instance Eq TestType where -- MinTest is missing
@@ -84,6 +83,17 @@ data EchidnaTest = EchidnaTest {
                                } deriving Eq  
 
 makeLenses ''EchidnaTest
+
+isOpen :: EchidnaTest -> Bool
+isOpen t = case (t ^. testState) of
+            Open _ -> True
+            _      -> False
+
+isPassed :: EchidnaTest -> Bool 
+isPassed t = case (t ^. testState) of
+              Passed -> True
+              _      -> False
+ 
 
 instance ToJSON TestState where
   toJSON s = object $ ("passed", toJSON passed) : maybeToList desc where

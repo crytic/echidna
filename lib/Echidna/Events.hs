@@ -6,10 +6,10 @@ import Data.ByteString.Lazy (fromStrict)
 import Data.Tree        (flatten)
 import Data.Tree.Zipper (fromForest, TreePos, Empty)
 import Data.Text        (pack, Text)
-import Data.Maybe       (listToMaybe, catMaybes)
+import Data.Maybe       (listToMaybe)
 import Control.Lens
 import EVM
-import EVM.ABI      (Event(..), Indexed(..), decodeAbiValue, AbiType(AbiStringType, AbiUIntType))
+import EVM.ABI      (Event(..), Indexed(..), decodeAbiValue, AbiType(AbiUIntType))
 import EVM.Concrete (wordValue)
 import EVM.Dapp
 import EVM.Format   (showValues, showError)

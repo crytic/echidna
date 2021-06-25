@@ -10,14 +10,13 @@ import Data.Aeson (ToJSON(..), object)
 import Data.Foldable (toList)
 import Data.Has (Has(..))
 import Data.Map (Map, mapKeys)
-import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import EVM.Types (keccak)
 import Numeric (showHex)
 
 import Echidna.ABI (GenDict, defaultDict)
 import Echidna.Types.Coverage (CoverageMap)
-import Echidna.Types.Test (EchidnaTest, TestState(..))
+import Echidna.Types.Test (EchidnaTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Corpus
 import Echidna.Mutator.Corpus

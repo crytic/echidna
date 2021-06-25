@@ -5,16 +5,11 @@ module Echidna.Test where
 import Prelude hiding (Word)
 
 import Control.Lens
-import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadThrow)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform, uniformMay)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(get, put), gets)
-import Data.Foldable (traverse_)
 import Data.Has (Has(..))
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import Data.DoubleWord (Int256)
 import EVM (Error(..), VMResult(..), VM, calldata, result, tx, state, substate, selfdestructs)
 import EVM.ABI (AbiValue(..), AbiType(..), encodeAbiValue, decodeAbiValue, )
 import EVM.Types (Addr)
@@ -27,11 +22,10 @@ import qualified Data.Text as T
 import Echidna.ABI
 import Echidna.Events (Events, EventMap, extractEvents)
 import Echidna.Exec
-import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Test
 import Echidna.Types.Signature (SolSignature)
-import Echidna.Types.Tx (Tx, TxConf, basicTx, TxResult(..), getResult, propGas, src)
+import Echidna.Types.Tx (Tx, TxConf, basicTx, TxResult(..), getResult, propGas)
 
 --- | Possible responses to a call to an Echidna test: @true@, @false@, @REVERT@, and ???.
 data CallRes = ResFalse | ResTrue | ResRevert | ResOther
@@ -84,7 +78,7 @@ createTests m ts r ss = case m of
        sdat =  createTest (CallTest "No contract can be self-destructed" $ checkAnySelfDestructed)
 
 updateOpenTest :: EchidnaTest -> [Tx] -> Int -> (TestValue, Events, TxResult) -> EchidnaTest
-updateOpenTest test txs i (BoolValue False,es,r) = test { _testState = Large (-1), _testReproducer = txs, _testEvents = es, _testResult = r } 
+updateOpenTest test txs _ (BoolValue False,es,r) = test { _testState = Large (-1), _testReproducer = txs, _testEvents = es, _testResult = r } 
 updateOpenTest test _   i (BoolValue True,_,_)   = test { _testState = Open (i + 1) } 
 
 
@@ -95,7 +89,14 @@ updateOpenTest test txs i (IntValue v',es,r) = if v' > v then test { _testState 
                                                            _          -> error "Invalid type of value for optimization" 
 
 
-updateOpenTest test _ _ _                       = error "Invalid type of test"
+updateOpenTest _ _ _ _                       = error "Invalid type of test"
+
+--updateLargeTest :: EchidnaTest -> EchidnaTest
+--updateLargeTest test i = if length x > 1 || any canShrinkTx x
+--                             then do (txs, val, evs, r) <- evalStateT (shrinkSeq (checkETest em test) (v, es, res) x) vm
+--                                     pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r, _testValue = val} 
+--                             else pure $ test { _testState = Solved, _testReproducer = x}
+
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
@@ -107,7 +108,6 @@ checkETest em t = case (t ^. testType) of
                   OptimizationTest n a  -> checkOptimization em (n, a) 
                   AssertionTest n a     -> checkAssertion em (n, a)
                   CallTest _ f          -> checkCall em f
-                  _                     -> error "unhandled test"
 
 checkProperty :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> (Text, Addr) -> m (TestValue, Events, TxResult)
@@ -136,7 +136,7 @@ getIntFromResult :: Maybe VMResult -> TestValue
 getIntFromResult (Just (VMSuccess b)) = case (viewBuffer b) of
                            Nothing -> error "invalid decode of buffer"
                            Just bs -> case (decodeAbiValue (AbiIntType 256) $ LBS.fromStrict bs) of
-                                        AbiInt 256 n -> IntValue $ n
+         
                                         _            -> error "invalid decode of int256"
 getIntFromResult _ = IntValue minBound
 
@@ -144,7 +144,7 @@ getIntFromResult _ = IntValue minBound
 checkOptimization :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> (Text, Addr) -> m (TestValue, Events, TxResult)
 checkOptimization em (f,a) = do
-  TestConf p s <- view hasLens
+  TestConf _ s <- view hasLens
   vm <- get -- save EVM state
   -- Our test is a regular user-defined test, we exec it and check the result
   g <- view (hasLens . propGas)
@@ -172,31 +172,30 @@ checkAssertion em (s, _) =
     pure $ (BoolValue $ correctFn || ret, extractEvents em vm', getResultFromVM vm')
 
 checkCall :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
-           => EventMap -> (EventMap -> VM -> Bool) -> m (TestValue, Events, TxResult)
+           => EventMap -> (EventMap -> VM -> TestValue) -> m (TestValue, Events, TxResult)
 checkCall em f = do 
   vm <- use hasLens
-  pure $ (BoolValue $ f em vm, extractEvents em vm, getResultFromVM vm)
+  pure $ (f em vm, extractEvents em vm, getResultFromVM vm)
 
-checkAssertionEvent :: EventMap -> VM -> Bool
+checkAssertionEvent :: EventMap -> VM -> TestValue
 checkAssertionEvent em vm = 
   let es = extractEvents em vm
-  in null es || not (any (T.isPrefixOf "AssertionFailed(") es)
+  in BoolValue $ null es || not (any (T.isPrefixOf "AssertionFailed(") es)
 
-checkSelfDestructedTarget :: Addr -> EventMap -> VM -> Bool
+checkSelfDestructedTarget :: Addr -> EventMap -> VM -> TestValue
 checkSelfDestructedTarget a _ vm =
   let sd = vm ^. tx ^. substate ^. selfdestructs 
-  in not $ a `elem` sd
+  in BoolValue $ not $ a `elem` sd
 
-
-checkAnySelfDestructed :: EventMap -> VM -> Bool
+checkAnySelfDestructed :: EventMap -> VM -> TestValue
 checkAnySelfDestructed _ vm =
   let sd = vm ^. tx ^. substate ^. selfdestructs 
-  in (length sd) == 0
+  in BoolValue $ (length sd) == 0
 
-checkPanicEvent :: T.Text -> EventMap -> VM -> Bool
+checkPanicEvent :: T.Text -> EventMap -> VM -> TestValue
 checkPanicEvent n em vm = 
   let es = extractEvents em vm
-  in null es || not (any (T.isPrefixOf ("Panic(" <> n <> ")")) es)
+  in BoolValue $ null es || not (any (T.isPrefixOf ("Panic(" <> n <> ")")) es)
 
 --checkErrorEvent :: EventMap -> VM -> Bool
 --checkErrorEvent em vm = 
