@@ -15,7 +15,6 @@ module Common
   , getGas
   , gasInRange
   , countCorpus
-  , testsEmpty
   , coverageEmpty
   ) where
 
@@ -34,7 +33,7 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
 import Data.Map (lookup, empty)
 import Data.Maybe (catMaybes, isJust)
-import Data.Text (Text, pack)
+import Data.Text (Text, pack, isPrefixOf)
 import Data.SemVer (Version, version, fromText)
 import System.Process (readProcess)
 
@@ -105,16 +104,20 @@ checkConstructorConditions fp as = testCase fp $ do
 getResult :: Text -> Campaign -> Maybe EchidnaTest
 getResult n c = --fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
   case (filter findTest $ view tests c) of
-    []    -> Nothing
-    (x:_) -> Just x
+    []     -> Nothing
+    (x:[]) -> Just x
+    xs      -> error "found more than one tests"
+
   where findTest test = case (view testType test) of
                           PropertyTest t _  -> t == n
-                          AssertionTest t _ -> (pack $ show t) == n
+                          AssertionTest t _ -> isPrefixOf (pack $ show t ++ "(") n
+                          CallTest t _      -> (pack $ show t) == n
                           _                 -> False 
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor t c = case getResult t c of
   Just t -> if null $ t ^. testReproducer then Nothing else Just $ t ^. testReproducer 
+  _      -> Just []
 
 solved :: Text -> Campaign -> Bool
 solved t = isJust . solnFor t
@@ -146,9 +149,6 @@ gasInRange t l h c = case getGas t c of
 
 countCorpus :: Int -> Campaign -> Bool
 countCorpus n c = length (view corpus c) == n
-
-testsEmpty :: Campaign -> Bool
-testsEmpty c = null (view tests c)
 
 coverageEmpty :: Campaign -> Bool
 coverageEmpty c = view coverage c == empty

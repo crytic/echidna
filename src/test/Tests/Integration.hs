@@ -2,7 +2,7 @@ module Tests.Integration (integrationTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout, coverageEmpty, testsEmpty, gasInRange, countCorpus)
+import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout, coverageEmpty, gasInRange, countCorpus)
 import Data.Functor ((<&>))
 import Data.Text (unpack)
 import Echidna.Types.Tx (TxCall(..))
@@ -40,10 +40,10 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_revert_is_false didn't shrink to f(-1, 0x0, 0xdeadbeef)",
          solvedWith (SolCall ("f", [AbiInt 256 (-1), AbiAddress 0, AbiAddress 0xdeadbeef])) "echidna_fails_on_revert")
       ]
-  , testContract "basic/nearbyMining.sol" (Just "coverage/test.yaml")
-      [ ("echidna_findNearby passed", solved "echidna_findNearby") ]
-  , testContract' "basic/smallValues.sol" Nothing Nothing (Just "coverage/test.yaml") False
-      [ ("echidna_findSmall passed", solved "echidna_findSmall") ]
+ -- , testContract "basic/nearbyMining.sol" (Just "coverage/test.yaml")
+ --     [ ("echidna_findNearby passed", solved "echidna_findNearby") ]
+ -- , testContract' "basic/smallValues.sol" Nothing Nothing (Just "coverage/test.yaml") False
+ --     [ ("echidna_findSmall passed", solved "echidna_findSmall") ]
   , testContract "basic/multisender.sol" (Just "basic/multisender.yaml") $
       [ ("echidna_all_sender passed",                      solved             "echidna_all_sender")
       , ("echidna_all_sender didn't shrink optimally",     solvedLen 3        "echidna_all_sender")
@@ -51,8 +51,8 @@ integrationTests = testGroup "Solidity Integration Testing"
         ("echidna_all_sender solved without " ++ unpack n, solvedWith (SolCall (n, [])) "echidna_all_sender"))
   , testContract "basic/memory-reset.sol" Nothing
       [ ("echidna_memory failed",                  passed      "echidna_memory") ]
-  , testContract "basic/contractAddr.sol" Nothing
-      [ ("echidna_address failed",                 solved      "echidna_address") ]
+  , testContract "basic/contractAddr.sol" (Just "basic/multisender.yaml")
+      [ ("echidna_address failed",                 passed      "echidna_address") ]
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
       [ ("echidna_address failed",                 passed      "echidna_address") ]
   , testContract "basic/constants.sol"    Nothing
@@ -100,11 +100,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("f failed",                       passed      "ASSERTION f")
       ]
   , testContract "basic/assert.sol"       (Just "basic/benchmark.yaml")
-      [ ("coverage is empty",                      not . coverageEmpty         )
-      , ("tests are not empty",                    testsEmpty                  ) ]
-  , testContract "basic/constants.sol"    (Just "basic/benchmark.yaml")
-      [ ("coverage is empty",                      not . coverageEmpty         )
-      , ("tests are not empty",                    testsEmpty                  ) ]
+      [ ("coverage is empty",                      not . coverageEmpty         ) ]
   , testContract "basic/time.sol"         (Just "basic/time.yaml")
       [ ("echidna_timepassed passed",              solved      "echidna_timepassed") ]
   , testContract "basic/delay.sol"        Nothing
