@@ -4,12 +4,12 @@ module Echidna where
 
 import Control.Lens (view, (^.), to)
 import Data.Has (Has(..))
-import Control.Monad.Catch (MonadCatch(..))
+import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Reader (MonadReader, MonadIO, liftIO)
 import Control.Monad.Random (MonadRandom)
 import Data.Map.Strict (keys)
 import Data.HashMap.Strict (toList)
-import Data.List (nub)
+import Data.List (nub, find)
 
 import EVM (env, contracts, VM)
 import EVM.ABI (AbiValue(AbiAddress))
@@ -42,7 +42,7 @@ import qualified Data.List.NonEmpty as NE
 -- * A list of Echidna tests to check
 -- * A prepopulated dictionary (if any)
 -- * A list of transaction sequences to initialize the corpus
-prepareContract :: (MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, MonadFail m,
+prepareContract :: (MonadCatch m, MonadThrow m, MonadRandom m, MonadReader x m, MonadIO m, MonadFail m,
                     Has TxConf x, Has SolConf x)
                 => EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed -> m (VM, SourceCache, [SolcContract], World, [SolTest], Maybe GenDict, [[Tx]])
 prepareContract cfg fs c g = do
@@ -58,6 +58,10 @@ prepareContract cfg fs c g = do
   -- run processors
   ca <- view (hasLens . cryticArgs)
   si <- runSlither (NE.head fs) ca
+
+  case find (< Echidna.Solidity.minSupportedSolcVersion) $ solcVersions si of
+    Just outdatedVersion -> throwM $ OutdatedSolcVersion outdatedVersion
+    Nothing -> return ()
 
   -- load tests
   (v, w, ts) <- prepareForTest p c si
