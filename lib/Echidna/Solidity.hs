@@ -70,6 +70,7 @@ data SolException = BadAddr Addr
                   | DeploymentFailed
                   | NoCryticCompile
                   | InvalidMethodFilters Filter
+                  | OutdatedSolcVersion Version
 makePrisms ''SolException
 
 instance Show SolException where
@@ -88,6 +89,7 @@ instance Show SolException where
     NoCryticCompile          -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
     (InvalidMethodFilters f) -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
     DeploymentFailed         -> "Deploying the contract failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
+    OutdatedSolcVersion v    -> "Solc version " ++ toString v ++ " detected. Echidna doesn't support versions of solc before " ++ toString minSupportedSolcVersion ++ ". Please use a newer version."
 
 instance Exception SolException
 
