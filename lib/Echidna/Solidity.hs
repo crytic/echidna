@@ -22,6 +22,7 @@ import Data.Map                   (Map, keys, elems, unions)
 import Data.Maybe                 (isJust, isNothing, catMaybes, listToMaybe)
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
+import Data.SemVer                (Version, version, toString)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
@@ -47,6 +48,9 @@ import qualified Data.List.NonEmpty  as NE
 import qualified Data.List.NonEmpty.Extra as NEE
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text           as T
+
+minSupportedSolcVersion :: Version
+minSupportedSolcVersion = version 0 4 25 [] []
 
 data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
 
