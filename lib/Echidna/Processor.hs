@@ -8,7 +8,6 @@ module Echidna.Processor where
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Exception      (Exception)
 import Control.Monad.Catch    (MonadThrow(..))
-import Control.Monad          (sequence)
 import Data.Aeson             ((.:), decode, parseJSON, withEmbeddedJSON, withObject)
 import Data.Aeson.Types       (FromJSON, Parser, Value(String))
 import Data.List              (nub)
