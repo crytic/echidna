@@ -8,10 +8,10 @@ module Echidna.Processor where
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Exception      (Exception)
 import Control.Monad.Catch    (MonadThrow(..))
-import Data.Aeson             ((.:), decode, parseJSON, withEmbeddedJSON, withObject)
+import Data.Aeson             ((.:), (.:?), decode, parseJSON, withEmbeddedJSON, withObject)
 import Data.Aeson.Types       (FromJSON, Parser, Value(String))
 import Data.List              (nub)
-import Data.Maybe             (catMaybes)
+import Data.Maybe             (catMaybes, fromMaybe)
 import Data.Text              (pack, isSuffixOf)
 import Data.SemVer            (Version, fromText)
 import Text.Read              (readMaybe)
@@ -94,8 +94,8 @@ instance FromJSON SlitherInfo where
         let constantValues = (fmap . fmap) (catMaybes . concat) constantValues'
         functionsRelations <- o .: "functions_relations"
         generationGraph <- (traverse . traverse) (withObject "relations" (.: "impacts")) functionsRelations
-        solcVersions' :: [String] <- o .: "solc_versions"
-        solcVersions <- case sequence $ map (fromText . pack) solcVersions' of
+        solcVersions' <- o .:? "solc_versions"
+        solcVersions <- case sequence $ map (fromText . pack) (fromMaybe [] solcVersions') of
           Left err -> fail $ "failed to parse solc version: " ++ err
           Right versions -> pure versions
         pure SlitherInfo {..}
