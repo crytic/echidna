@@ -85,12 +85,12 @@ data EchidnaTest = EchidnaTest {
 makeLenses ''EchidnaTest
 
 isOpen :: EchidnaTest -> Bool
-isOpen t = case (t ^. testState) of
+isOpen t = case t ^. testState of
             Open _ -> True
             _      -> False
 
 isPassed :: EchidnaTest -> Bool 
-isPassed t = case (t ^. testState) of
+isPassed t = case t ^. testState of
               Passed -> True
               _      -> False
  

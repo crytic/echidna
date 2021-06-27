@@ -65,15 +65,15 @@ isDone (view tests -> ts) = do
   (tl, sl, sof) <- view (hasLens . to (liftM3 (,,) _testLimit _shrinkLimit _stopOnFail))
   let res (Open  i)   = if i >= tl then Just True else Nothing
       res Passed      = Just True
-      res (Large i) = if i >= sl then Just False else Nothing
-      res (Solved)  = Just False
+      res (Large i)   = if i >= sl then Just False else Nothing
+      res Solved      = Just False
       res (Failed _)  = Just False
-  pure $ res . (view testState) <$> ts & if sof then elem $ Just False else all isJust
+  pure $ res . view testState <$> ts & if sof then elem $ Just False else all isJust
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
 isSuccess :: Campaign -> Bool
-isSuccess = allOf (tests . traverse . (testState)) (\case { Passed -> True; Open _ -> True; _ -> False; })
+isSuccess = allOf (tests . traverse . testState) (\case { Passed -> True; Open _ -> True; _ -> False; })
 
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
 -- of transactions and the state after evaluation, see if:
@@ -90,8 +90,8 @@ updateTest :: ( MonadCatch m, MonadRandom m, MonadReader x m
 updateTest w vm (Just (vm', xs)) test = do
   tl <- view (hasLens . testLimit)
   let em = w ^. eventMap
-  case (test ^. testState) of
-    Open i | i >= tl -> case (test ^. testType) of
+  case test ^. testState of
+    Open i | i >= tl -> case test ^. testType of
                           OptimizationTest _ _ -> pure $ test { _testState = Large (-1) }
                           _                    -> pure $ test { _testState = Passed }
     Open i           -> do r <- evalStateT (checkETest em test) vm' 
@@ -105,7 +105,7 @@ updateTest w vm Nothing test = do
       res = test ^. testResult
       x = test ^. testReproducer
       v = test ^. testValue
-  case (test ^. testState) of
+  case test ^. testState of
     Large i | i >= sl -> pure $ test { _testState =  Solved, _testReproducer = x }
     Large i           -> if length x > 1 || any canShrinkTx x
                              then do (txs, val, evs, r) <- evalStateT (shrinkSeq (checkETest em test) (v, es, res) x) vm

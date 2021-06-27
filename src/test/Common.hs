@@ -102,7 +102,7 @@ checkConstructorConditions fp as = testCase fp $ do
 
 
 getResult :: Text -> Campaign -> Maybe EchidnaTest
-getResult n c = --fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
+getResult n c = 
   case (filter findTest $ view tests c) of
     []     -> Nothing
     (x:[]) -> Just x

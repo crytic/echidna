@@ -42,7 +42,7 @@ classifyRes _         = ResOther
 
 getResultFromVM :: VM -> TxResult
 getResultFromVM vm =
-  case (vm ^. result) of
+  case vm ^. result of
     Just r -> getResult r
     Nothing -> error "getResultFromVM failed"
 
@@ -72,7 +72,7 @@ createTests m ts r ss = case m of
   "exploration" -> [createTest Exploration]
   "property"    -> map (\t -> createTest (PropertyTest t r)) ts ++ [sdt]
   "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
-  "assertion"   -> (map (\s -> createTest (AssertionTest s r)) $ drop 1 ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionEvent), assertPanicTest, integerOverflowTest, sdt]
+  "assertion"   -> map (\s -> createTest (AssertionTest s r)) (drop 1 ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionEvent), assertPanicTest, integerOverflowTest, sdt]
   _             -> error "Invalid test mode"
  where sdt = createTest (CallTest "Target contract is not self-destructed" $ checkSelfDestructedTarget r)
        sdat =  createTest (CallTest "No contract can be self-destructed" $ checkAnySelfDestructed)
@@ -96,6 +96,7 @@ updateOpenTest _ _ _ _                       = error "Invalid type of test"
 --                             then do (txs, val, evs, r) <- evalStateT (shrinkSeq (checkETest em test) (v, es, res) x) vm
 --                                     pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r, _testValue = val} 
 --                             else pure $ test { _testState = Solved, _testReproducer = x}
+--                             t 
 
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
@@ -185,12 +186,12 @@ checkAssertionEvent em vm =
 checkSelfDestructedTarget :: Addr -> EventMap -> VM -> TestValue
 checkSelfDestructedTarget a _ vm =
   let sd = vm ^. tx ^. substate ^. selfdestructs 
-  in BoolValue $ not $ a `elem` sd
+  in BoolValue $ a `notElem` sd
 
 checkAnySelfDestructed :: EventMap -> VM -> TestValue
 checkAnySelfDestructed _ vm =
   let sd = vm ^. tx ^. substate ^. selfdestructs 
-  in BoolValue $ (length sd) == 0
+  in BoolValue $ null sd
 
 checkPanicEvent :: T.Text -> EventMap -> VM -> TestValue
 checkPanicEvent n em vm = 
