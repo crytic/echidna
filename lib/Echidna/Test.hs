@@ -137,8 +137,8 @@ getIntFromResult :: Maybe VMResult -> TestValue
 getIntFromResult (Just (VMSuccess b)) = case (viewBuffer b) of
                            Nothing -> error "invalid decode of buffer"
                            Just bs -> case (decodeAbiValue (AbiIntType 256) $ LBS.fromStrict bs) of
-         
-                                        _            -> error "invalid decode of int256"
+                                        AbiInt 256 n -> IntValue n
+                                        _            -> error ("invalid decode of int256: " ++ show bs)
 getIntFromResult _ = IntValue minBound
 
 -- | Given a property test, evaluate it and see if it currently passes.
