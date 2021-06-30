@@ -83,7 +83,7 @@ testsWidget tests' = foldl (<=>) emptyWidget . intersperse hBorder <$> traverse 
 testWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
            => EchidnaTest -> m (Widget ())
 testWidget etest =
- case (etest ^. testType) of
+ case etest ^. testType of
       Exploration           -> widget tsWidget "exploration" ""
       PropertyTest n _      -> widget tsWidget n ""
       OptimizationTest n _  -> widget optWidget n "optimizing " 
@@ -101,7 +101,7 @@ testWidget etest =
 tsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
          => TestState -> EchidnaTest -> m (Widget (), Widget ())
 tsWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
-tsWidget (Solved)   t = failWidget Nothing (t ^. testReproducer) (t ^. testEvents) (t ^. testValue) (t  ^. testResult)
+tsWidget Solved     t = failWidget Nothing (t ^. testReproducer) (t ^. testEvents) (t ^. testValue) (t  ^. testResult)
 tsWidget Passed     t = pure (withAttr "success" $ str "PASSED!", emptyWidget)
 tsWidget (Open i)   t = do
   n <- view (hasLens . testLimit)
@@ -121,7 +121,7 @@ failWidget b xs es _ r = do
   pure (failureBadge  <+> str (" with " ++ show r), status <=> titleWidget <=> s <=> eventWidget)
   where
   titleWidget  = str "Call sequence" <+> str ":"
-  eventWidget = if null es then error "no events!" else (str "Event sequence" <+> str ":" <=> str (T.unpack $ T.intercalate ", " es))
+  eventWidget = if null es then str "" else str "Event sequence" <+> str ":" <=> str (T.unpack $ T.intercalate ", " es)
 
   status = case b of
     Nothing    -> emptyWidget
@@ -131,7 +131,7 @@ failWidget b xs es _ r = do
 optWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
          => TestState -> EchidnaTest -> m (Widget (), Widget ())
 optWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
-optWidget (Solved)   _ = error "optimization tests cannot be solved"
+optWidget Solved     _ = error "optimization tests cannot be solved"
 optWidget Passed     t = pure (str $ "max value found: " ++ show (t ^. testValue), emptyWidget)
 optWidget (Open i)   t = do
   n <- view (hasLens . testLimit)

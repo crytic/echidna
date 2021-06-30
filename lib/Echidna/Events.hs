@@ -43,7 +43,7 @@ extractEvents em vm =
               _ -> ["merror " <> pack (show e)]
           
           _ -> []
-  in decodeRevert vm ++ (concat $ concatMap flatten $ fmap (fmap showTrace) forest)
+  in decodeRevert vm ++ concat (concatMap flatten $ fmap (fmap showTrace) forest)
 
 
 decodeRevert :: VM -> Events

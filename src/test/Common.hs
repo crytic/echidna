@@ -110,7 +110,7 @@ getResult n c =
 
   where findTest test = case (view testType test) of
                           PropertyTest t _  -> t == n
-                          AssertionTest t _ -> isPrefixOf (pack $ show t ++ "(") n
+                          AssertionTest t _ -> (fst t) == n
                           CallTest t _      -> (pack $ show t) == n
                           _                 -> False 
 
@@ -123,14 +123,14 @@ solved :: Text -> Campaign -> Bool
 solved t = isJust . solnFor t
 
 passed :: Text -> Campaign -> Bool
-passed t c = case getResult t c of
+passed n c = case getResult n c of
   Just t | isPassed t -> True
   Just t | isOpen t   -> True
+  Nothing             -> error ("no test was found with name: " ++ show n)
   _                   -> False
 
 solvedLen :: Int -> Text -> Campaign -> Bool
 solvedLen i t = (== Just i) . fmap length . solnFor t
-
 
 -- NOTE: this just verifies a call was found in the solution. Doesn't care about ordering/seq length
 solvedWith :: TxCall -> Text -> Campaign -> Bool

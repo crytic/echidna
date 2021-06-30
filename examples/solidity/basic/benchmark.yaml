@@ -1,2 +1,1 @@
-benchmarkMode: true
-coverage: true
+testMode: "exploration"

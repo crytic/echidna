@@ -89,15 +89,15 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_darray passed",                  solved      "echidna_darray")
       , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
   , testContract "basic/push_long.sol" (Just "basic/push_long.yaml")
-      [ ("test_long_5 passed",                     solvedWithout NoCall "ASSERTION test_long_5")]
+      [ ("test_long_5 passed",                     solvedWithout NoCall "test_long_5")]
   , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml")
       [ ("echidna_runForever passed",              solved      "echidna_runForever") ]
   , testContract "basic/assert.sol"       (Just "basic/assert.yaml")
-      [ ("set0 passed",                    solved      "ASSERTION set0")
-      , ("set1 failed",                    passed      "ASSERTION set1")
-      , ("internal_assert passed",         solved      "ASSERTION internal_assert")
-      , ("external_assert passed",         solved      "ASSERTION external_assert")
-      , ("f failed",                       passed      "ASSERTION f")
+      [ ("set0 passed",                    solved      "set0")
+      , ("set1 failed",                    passed      "set1")
+      , ("internal_assert passed",         solved      "internal_assert")
+      , ("external_assert passed",         solved      "external_assert")
+      , ("f failed",                       passed      "f")
       ]
   , testContract "basic/assert.sol"       (Just "basic/benchmark.yaml")
       [ ("coverage is empty",                      not . coverageEmpty         ) ]
