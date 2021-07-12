@@ -26,7 +26,7 @@ import Text.Read (readMaybe)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Data.ByteString.Base16 as BS16 (decode)
-import qualified Data.Text as T (drop, unpack)
+import qualified Data.Text as T (drop)
 import qualified Data.Vector as V (fromList, toList)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -72,8 +72,8 @@ instance FromJSON Etheno where
 
          _ -> M.fail "event should be one of \"AccountCreated\", \"ContractCreated\", or \"FunctionCall\""
     where decode x = case BS16.decode . encodeUtf8 . T.drop 2 $ x of
-                          (a, "") -> pure a
-                          _       -> M.fail $ "could not decode hexstring: " <> T.unpack x
+                          Right a -> pure a
+                          Left e -> M.fail $ "could not decode hexstring: " <> e
 
 
 -- | Handler for parsing errors

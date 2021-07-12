@@ -26,7 +26,7 @@ extractEvents :: EventMap -> VM -> Events
 extractEvents em vm =
   let forest = traceForest vm
       showTrace trace =
-        let ?context = DappContext { _contextInfo = emptyDapp, _contextEnv = vm ^?! EVM.env } in
+        let ?context = DappContext { _contextInfo = emptyDapp, _contextEnv = vm ^?! EVM.env . EVM.contracts } in
         case view traceData trace of
           EventTrace (Log _ bytes topics) ->
             case maybeLitWord =<< listToMaybe topics of
