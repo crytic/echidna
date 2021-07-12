@@ -1,5 +1,11 @@
 ## TODO
 
+## 1.7.2
+
+* Fixed check-asserts and multi-abi cli switches (#665)
+* Updated to hevm 0.4.6 (#660)
+* Support for loading multiple files with compiled contracts from hardhat/brownie (#659)
+
 ## 1.7.1
 
 * Tweaked mutators and improved test stability (#628)
