@@ -169,9 +169,10 @@ checkAssertion em (s, a) =
     vm' <- use hasLens
     let isCorrectFn = matchC s $ vm' ^. state . calldata . _1
         isCorrectAddr = a == vm' ^. state . contract
-        isCorrectContract = isCorrectFn && isCorrectAddr
-        ret = matchR $ vm' ^. result
-    pure (BoolValue $ isCorrectContract || ret, extractEvents em vm', getResultFromVM vm')
+        isCorrectTarget = isCorrectFn && isCorrectAddr
+        isNotAssertionFailure = matchR $ vm' ^. result
+        isSuccess = isCorrectTarget || isNotAssertionFailure
+    pure (BoolValue $ isSuccess, extractEvents em vm', getResultFromVM vm')
 
 checkCall :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> (EventMap -> VM -> TestValue) -> m (TestValue, Events, TxResult)
