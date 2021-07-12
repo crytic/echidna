@@ -158,14 +158,13 @@ EVM emulation and testing is hard. Echidna has a number of limitations in the la
 
 | Description |  Issue   | Status   |  
 | :--- |     :---:              |         :---:   |
-| Debug information can be insufficient | [#656](https://github.com/crytic/echidna/issues/656) | *in review* |
+| Debug information can be insufficient | [#656](https://github.com/crytic/echidna/issues/656) | *[in review for 2.0](https://github.com/crytic/echidna/pull/674)* |
 | Vyper support is limited | [#652](https://github.com/crytic/echidna/issues/652) | *wont fix* |
 | Limited library support for testing | [#651](https://github.com/crytic/echidna/issues/651) | *wont fix* |
 | If the contract is not properly linked, Echidna will crash | [#514](https://github.com/crytic/echidna/issues/514) | *in review* | 
-| Assertions are not detected in internal transactions | [#601](https://github.com/crytic/echidna/issues/601) | *in review* |
-| Assertions are not detected in solc 0.8.x | [#669](https://github.com/crytic/echidna/issues/669) | *in review* |
-| Value generation can fail in multi-abi mode, since the function hash is not precise enough | [#579](https://github.com/crytic/echidna/issues/579) | *in review*|
-| `checkAsserts` flag is ignored in the config file (and it should be enabled by command-line) | [#665](https://github.com/crytic/echidna/pull/665) | *fixed* |
+| Assertions are not detected in internal transactions | [#601](https://github.com/crytic/echidna/issues/601) | *[in review for 2.0](https://github.com/crytic/echidna/pull/674)* |
+| Assertions are not detected in solc 0.8.x | [#669](https://github.com/crytic/echidna/issues/669) | *[in review for 2.0](https://github.com/crytic/echidna/pull/674)* |
+| Value generation can fail in multi-abi mode, since the function hash is not precise enough | [#579](https://github.com/crytic/echidna/issues/579) | *[in review for 2.0](https://github.com/crytic/echidna/pull/674)*|
 
 ## Installation
 
@@ -289,5 +288,6 @@ All these can be solved, from a few seconds to one or two minutes on a laptop co
 
 ### Trail of Bits
 - [Echidna: effective, usable, and fast fuzzing for smart contracts](https://github.com/trailofbits/publications/blob/master/papers/echidna_issta2020.pdf), Gustavo Grieco, Will Song, Artur Cygan, Josselin  Feist, Alex Groce - ISSTA '20
+- [echidna-parade: A Tool for Diverse Multicore Smart Contract Fuzzing](https://agroce.github.io/issta21.pdf), Alex Groce, Gustavo Grieco - ISSTA '21
 
 If you are using Echidna on an academic work, consider applying to the [Crytic $10k Research Prize](https://blog.trailofbits.com/2019/11/13/announcing-the-crytic-10k-research-prize/).
