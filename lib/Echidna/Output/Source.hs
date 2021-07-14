@@ -40,7 +40,7 @@ saveCoverage Nothing  _  _  _ = pure ()
 ppCoveredCode :: SourceCache -> [SolcContract] -> CoverageMap -> Text
 ppCoveredCode sc cs s | s == mempty = "Coverage map is empty"
                       | otherwise   =
-  let allFiles = zipWith (\(srcPath, _) srcLines -> (srcPath, V.map decodeUtf8 srcLines))
+  let allFiles = zipWith (\(srcPath, _rawSource) srcLines -> (srcPath, V.map decodeUtf8 srcLines))
                    (sc ^. sourceFiles)
                    (sc ^. sourceLines)
   -- ^ Collect all the possible lines from all the files
@@ -53,10 +53,8 @@ ppCoveredCode sc cs s | s == mempty = "Coverage map is empty"
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
 markLines :: V.Vector Text -> M.Map Int [TxResult] -> V.Vector Text
-markLines codeLines resultMap =
-  V.map markLine (V.indexed codeLines)
+markLines codeLines resultMap = V.map markLine (V.indexed codeLines)
   where
-    markLine :: (Int, Text) -> Text
     markLine (i, codeLine) =
       let results = fromMaybe [] (M.lookup (i+1) resultMap)
       in pack $ printf "%-4s| %s" (getMarker <$> results) (unpack codeLine)
@@ -71,16 +69,16 @@ getMarker _             = 'e'
 -- | Given a source cache, a coverage map, a contract returns a list of covered lines
 srcMapCov :: SourceCache -> CoverageMap -> [SolcContract] -> M.Map FilePathText (M.Map Int [TxResult])
 srcMapCov sc s contracts =
-  M.map (M.fromListWith (++)) $
-  M.fromListWith (++) $
-  map (\(srcPath, line, txResult) -> (srcPath, [(line, [txResult])])) $
-  nub $                                               -- Deduplicate results
+  M.map (M.fromListWith (++)) .
+  M.fromListWith (++) .
+  map (\(srcPath, line, txResult) -> (srcPath, [(line, [txResult])])) .
+  nub .                                               -- Deduplicate results
   mapMaybe (srcMapCodePosResult sc) $                 -- Get the filename, number of line and tx result
   concatMap mapContract contracts
   where
     mapContract c =
-      mapMaybe (srcMapForOpLocation c) $                  -- Get the mapped line and tx result
-      S.toList $ fromMaybe S.empty $                      -- Convert from Set to list
+      mapMaybe (srcMapForOpLocation c) .                  -- Get the mapped line and tx result
+      S.toList . fromMaybe S.empty $                      -- Convert from Set to list
       M.lookup (getBytecodeMetadata $ c ^. runtimeCode) s -- Get the coverage information of the current contract
 
 -- | Given a source cache, a mapped line, return a tuple with the filename, number of line and tx result

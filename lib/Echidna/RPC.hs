@@ -73,7 +73,7 @@ instance FromJSON Etheno where
          _ -> M.fail "event should be one of \"AccountCreated\", \"ContractCreated\", or \"FunctionCall\""
     where decode x = case BS16.decode . encodeUtf8 . T.drop 2 $ x of
                           Right a -> pure a
-                          Left e -> M.fail $ "could not decode hexstring: " <> e
+                          Left e  -> M.fail $ "could not decode hexstring: " <> e
 
 
 -- | Handler for parsing errors
