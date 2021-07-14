@@ -1,7 +1,7 @@
 { pkgs ? import (builtins.fetchTarball {
-    name = "nixpkgs-21.03pre268255.e5b478271ea";
-    url = "https://github.com/nixos/nixpkgs/archive/e5b478271ea0af7b75d53c92cfa98bdb126b44a7.tar.gz";
-    sha256 = "06hmxvnx2swk63i15zp1q70axf53x04f7ywwlnxlcfkk0prrmwbh";
+    name = "nixpkgs-unstable";
+    url = "https://github.com/nixos/nixpkgs/archive/fb45fa64ae3460d6bd2701ab5a6c4512d781f166.tar.gz";
+    sha256 = "sha256:1dcvpwshmalp5xp25z9pjm8svlnfgkcrbhany1pwjwwcpxm5kp40";
   }) {}
 }:
 
@@ -9,8 +9,8 @@ let
   dapptools = pkgs.fetchFromGitHub {
     owner = "dapphub";
     repo = "dapptools";
-    rev = "hevm/0.46.0";
-    sha256 = "1nfdb48jp2ydm2gxjlzjm21nbxrqnaq9py2zmjg0h27b73wdw2wq";
+    rev = "hevm/0.47.0";
+    sha256 = "sha256-gFePasNQJ9bxrCDsSHWsZj2JVkjhVwIkjZf+wPDBKo0=";
   };
   hevm = pkgs.haskell.lib.dontCheck (
     pkgs.haskell.lib.doJailbreak (
@@ -18,9 +18,13 @@ let
         { secp256k1 = pkgs.secp256k1; }
   ));
 
+  crytic-compile = pkgs.python3Packages.callPackage (import ./nix/crytic-compile.nix) { };
   # slither is shipped with solc by default, we don't use it as we need
   # precise solc versions
-  slither-analyzer = pkgs.slither-analyzer.override { withSolc = false; };
+  slither-analyzer = pkgs.slither-analyzer.override {
+    inherit crytic-compile;
+    withSolc = false;
+  };
 
   # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
   # would be great to integrate solc-select to be more flexible, improve this in future
@@ -54,7 +58,7 @@ let
       , tasty-hunit, tasty-quickcheck, temporary, text, transformers
       , unix, unliftio, unliftio-core, unordered-containers, vector
       , vector-instances, vty, wl-pprint-annotated, word8, yaml
-      , cabal-install, extra, ListLike, hlint, semver
+      , cabal-install, extra, ListLike, hlint, semver, haskell-language-server
       }:
       mkDerivation rec {
         pname = "echidna";
@@ -71,7 +75,7 @@ let
           vector-instances vty wl-pprint-annotated word8 yaml extra ListLike
           semver
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
-        libraryToolDepends = [ hpack cabal-install hlint slither-analyzer solc ];
+        libraryToolDepends = [ hpack cabal-install hlint slither-analyzer solc haskell-language-server ];
         executableHaskellDepends = libraryHaskellDepends;
         testHaskellDepends = [
           tasty tasty-hunit tasty-quickcheck
