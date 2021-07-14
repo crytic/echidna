@@ -1,0 +1,3 @@
+coverage: true
+seqLen: 1
+testLimit: 5000

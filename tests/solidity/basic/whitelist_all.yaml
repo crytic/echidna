@@ -1,0 +1,2 @@
+filterBlacklist: false
+filterFunctions: ["Test.set0(int256)", "Test.set1(int256)"] 

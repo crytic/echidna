@@ -12,6 +12,7 @@ module Common
   , solvedLen
   , solvedWith
   , solvedWithout
+  , solvedUsing
   , getGas
   , gasInRange
   , countCorpus
@@ -111,7 +112,7 @@ getResult n c =
   where findTest test = case (view testType test) of
                           PropertyTest t _  -> t == n
                           AssertionTest t _ -> (fst t) == n
-                          CallTest t _      -> (pack $ show t) == n
+                          CallTest t _      -> t == n
                           _                 -> False 
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
@@ -131,6 +132,11 @@ passed n c = case getResult n c of
 
 solvedLen :: Int -> Text -> Campaign -> Bool
 solvedLen i t = (== Just i) . fmap length . solnFor t
+
+solvedUsing :: Text -> Text -> Campaign -> Bool
+solvedUsing f t = maybe False (any $ matchCall . view call) . solnFor t
+                 where matchCall (SolCall (f',_)) = f' == f
+                       matchCall _                = False
 
 -- NOTE: this just verifies a call was found in the solution. Doesn't care about ordering/seq length
 solvedWith :: TxCall -> Text -> Campaign -> Bool

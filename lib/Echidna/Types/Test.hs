@@ -15,6 +15,7 @@ import Echidna.Events (Events, EventMap)
 import Echidna.Types.Tx (Tx, TxResult)
 import Echidna.Types.Signature (SolSignature)
 
+-- | Test mode is parsed from a string
 type TestMode = String
 
 -- | Configuration for the creation of Echidna tests.
@@ -26,15 +27,11 @@ data TestConf = TestConf { classifier :: Text -> VM -> Bool
                            -- transactions from.
                          }
 
--- | An Echidna test is either the name of the function to call and the address where its contract is,
--- or a function that could experience an exception
---type SolTest = Either (Text, Addr) SolSignature
-
 type TestAttempts = Int
 
 -- | State of a particular Echidna test. N.B.: \"Solved\" means a falsifying call sequence was found.
 data TestState = Open Int        -- ^ Maybe solvable, tracking attempts already made
-               | Large Int       -- ^ Solved, maybe shrinable, tracking shrinks tried + best solve
+               | Large Int       -- ^ Solved, maybe shrinable, tracking shrinks tried
                | Passed          -- ^ Presumed unsolvable
                | Solved          -- ^ Solved with no need for shrinking
                | Failed ExecException -- ^ Broke the execution environment
@@ -56,7 +53,7 @@ data TestType = PropertyTest Text Addr
               | CallTest Text (EventMap -> VM -> TestValue) 
               | Exploration
 
-instance Eq TestType where -- MinTest is missing
+instance Eq TestType where
   (PropertyTest t a)     == (PropertyTest t' a')  = t == t' && a == a'
   (AssertionTest s a)    == (AssertionTest s' a') = s == s' && a == a'
   (OptimizationTest s a) == (OptimizationTest s' a') = s == s' && a == a'
@@ -72,7 +69,7 @@ instance Eq TestState where
   Solved    == Solved      = True
   _         == _           = False
 
-
+-- | An Echidna test is represented with the following data record
 data EchidnaTest = EchidnaTest { 
                                  _testState      :: TestState
                                , _testType       :: TestType
