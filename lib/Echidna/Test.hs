@@ -163,7 +163,7 @@ checkAssertion em (s, a) =
   let matchR (Just (VMFailure (UnrecognizedOpcode 0xfe))) = False
       matchR _                                            = True
       matchC sig b = case viewBuffer b of
-        Just cd -> not . BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) $ cd
+        Just cd -> BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) $ cd
         Nothing -> False 
   in do
     vm' <- use hasLens
