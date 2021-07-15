@@ -171,7 +171,7 @@ checkAssertion em (s, a) =
         isCorrectAddr = a == vm' ^. state . contract
         isCorrectTarget = isCorrectFn && isCorrectAddr
         isNotAssertionFailure = matchR $ vm' ^. result
-        isSuccess = isCorrectTarget || isNotAssertionFailure
+        isSuccess = not isCorrectTarget || isNotAssertionFailure
     pure (BoolValue $ isSuccess, extractEvents em vm', getResultFromVM vm')
 
 checkCall :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
