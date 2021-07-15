@@ -156,26 +156,23 @@ checkOptimization em (f,a) = do
 
 checkAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> (SolSignature, Addr) -> m (TestValue, Events, TxResult)
-checkAssertion em (s, a) =
-  -- To check these tests, we're going to need a couple auxilary functions:
-  --   * matchR[eturn] checks if we just tried to exec 0xfe, which means we failed an assert
-  --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
-  let matchR (Just (VMFailure (UnrecognizedOpcode 0xfe))) = False
-      matchR _                                            = True
-      matchC sig b = case viewBuffer b of
+checkAssertion eventMap (sig, addr) = do
+  vm <- use hasLens
+      -- Whether the last transaction called the function `sig`.
+  let isCorrectFn = case viewBuffer $ vm ^. state . calldata . _1 of
         Just cd -> BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) $ cd
         Nothing -> False 
-  in do
-    vm' <- use hasLens
-    let isCorrectFn = matchC s $ vm' ^. state . calldata . _1
-        isCorrectAddr = a == vm' ^. state . codeContract
-        isCorrectTarget = isCorrectFn && isCorrectAddr
-        isNotAssertionFailure = matchR $ vm' ^. result
-        -- Test always passes if it doesn't target the current contract and function.
-        -- If the test targets the current contract and function then it passes if
-        -- it doesn't fail with an assertion failure.
-        isSuccess = not isCorrectTarget || isNotAssertionFailure
-    pure (BoolValue $ isSuccess, extractEvents em vm', getResultFromVM vm')
+      -- Whether the last transaction executed a function on the contract `addr`.
+      isCorrectAddr = addr == vm ^. state . codeContract
+      isCorrectTarget = isCorrectFn && isCorrectAddr
+      -- Whether the last transaction executed opcode 0xfe, meaning an assertion failure.
+      isAssertionFailure = case vm ^. result of
+        Just (VMFailure (UnrecognizedOpcode 0xfe)) -> True
+        _ -> False
+      -- Test always passes if it doesn't target the last executed contract and function.
+      -- Otherwise it passes if it doesn't cause an assertion failure.
+      isSuccess = not isCorrectTarget || not isAssertionFailure
+  pure (BoolValue $ isSuccess, extractEvents eventMap vm, getResultFromVM vm)
 
 checkCall :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> (EventMap -> VM -> TestValue) -> m (TestValue, Events, TxResult)
