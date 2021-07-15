@@ -7,4 +7,6 @@ contract Test {
   }
 
   function f(uint val) public {}
+  function g() public { revert(); }
+
 }

@@ -1,8 +1,0 @@
-pragma solidity >=0.4.25 <0.6.0;
-
-library ConvertLib{
-	function convert(uint amount,uint conversionRate) internal pure returns (uint convertedAmount)
-	{
-		return amount * conversionRate;
-	}
-}

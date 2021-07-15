@@ -29,12 +29,11 @@ import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
 import Control.Monad.State.Strict (evalStateT)
 import Data.Function ((&))
-import Data.List (find)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
 import Data.Map (lookup, empty)
-import Data.Maybe (catMaybes, isJust)
-import Data.Text (Text, pack, isPrefixOf)
+import Data.Maybe (isJust)
+import Data.Text (Text, pack)
 import Data.SemVer (Version, version, fromText)
 import System.Process (readProcess)
 
@@ -104,19 +103,19 @@ checkConstructorConditions fp as = testCase fp $ do
 
 getResult :: Text -> Campaign -> Maybe EchidnaTest
 getResult n c = 
-  case (filter findTest $ view tests c) of
-    []     -> Nothing
-    (x:[]) -> Just x
-    xs      -> error "found more than one tests"
+  case filter findTest $ view tests c of
+    []  -> Nothing
+    [x] -> Just x
+    _   -> error "found more than one tests"
 
-  where findTest test = case (view testType test) of
-                          PropertyTest t _  -> t == n
-                          AssertionTest t _ -> (fst t) == n
-                          CallTest t _      -> t == n
-                          _                 -> False 
+  where findTest test = case view testType test of
+                          PropertyTest t _      -> t == n
+                          AssertionTest (t,_) _ -> t == n
+                          CallTest t _          -> t == n
+                          _                     -> False 
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
-solnFor t c = case getResult t c of
+solnFor n c = case getResult n c of
   Just t -> if null $ t ^. testReproducer then Nothing else Just $ t ^. testReproducer 
   _      -> Just []
 

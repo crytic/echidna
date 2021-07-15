@@ -1,2 +1,0 @@
-solcLibs: ["basic/library.sol:Test"]
-quiet: true
