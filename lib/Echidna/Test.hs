@@ -10,7 +10,7 @@ import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(get, put), gets)
 import Data.Has (Has(..))
 import Data.Text (Text)
-import EVM (Error(..), VMResult(..), VM, calldata, contract, result, tx, state, substate, selfdestructs)
+import EVM (Error(..), VMResult(..), VM, calldata, codeContract, result, tx, state, substate, selfdestructs)
 import EVM.ABI (AbiValue(..), AbiType(..), encodeAbiValue, decodeAbiValue, )
 import EVM.Types (Addr)
 
@@ -168,7 +168,7 @@ checkAssertion em (s, a) =
   in do
     vm' <- use hasLens
     let isCorrectFn = matchC s $ vm' ^. state . calldata . _1
-        isCorrectAddr = a == vm' ^. state . contract
+        isCorrectAddr = a == vm' ^. state . codeContract
         isCorrectTarget = isCorrectFn && isCorrectAddr
         isNotAssertionFailure = matchR $ vm' ^. result
         isSuccess = not isCorrectTarget || isNotAssertionFailure
