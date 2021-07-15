@@ -130,7 +130,9 @@ getExecResult h res og cd g t = do
       (f@Reversion, _) -> do
         ts <- use $ hasLens . traces
         codeContractBeforeVMReset <- use $ hasLens . state . codeContract
+        -- Reset VM to state before the transaction
         hasLens .= og
+        -- Undo reset of some of the VM state
         hasLens . state . calldata .= cd
         hasLens . result ?= f
         hasLens . traces .= ts
