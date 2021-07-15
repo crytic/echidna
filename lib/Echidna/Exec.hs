@@ -125,7 +125,7 @@ getExecResult :: (MonadState x m, Has VM x)
               -> Int
               -> Tx
               -> m (VMResult, Int)
-getExecResult h res vmBeforeTx cd g tx = do
+getExecResult errHandler res vmBeforeTx cdata gas tx = do
     case (res, tx ^. call) of
       (f@Reversion, _) -> do
         tracesBeforeVMReset <- use $ hasLens . traces
@@ -133,18 +133,18 @@ getExecResult h res vmBeforeTx cd g tx = do
         -- Reset VM to state before the transaction
         hasLens .= vmBeforeTx
         -- Undo reset of some of the VM state
-        hasLens . state . calldata .= cd
+        hasLens . state . calldata .= cdata
         hasLens . result ?= f
         hasLens . traces .= tracesBeforeVMReset
         hasLens . state . codeContract .= codeContractBeforeVMReset
-      (VMFailure x, _) -> h x
+      (VMFailure x, _) -> errHandler x
       (VMSuccess (ConcreteBuffer bc), SolCreate _) ->
         hasLens %= execState (do
           env . contracts . at (tx ^. dst) . _Just . contractcode .= InitCode (ConcreteBuffer "")
           replaceCodeOfSelf (RuntimeCode (ConcreteBuffer bc))
           loadContract (tx ^. dst))
       _ -> pure ()
-    pure (res, fromIntegral g)
+    pure (res, fromIntegral gas)
 
 -- | Execute a transaction "as normal".
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
