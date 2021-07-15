@@ -129,10 +129,12 @@ getExecResult h res og cd g t = do
     case (res, t ^. call) of
       (f@Reversion, _) -> do
         ts <- use $ hasLens . traces
+        codeContractBeforeVMReset <- use $ hasLens . state . codeContract
         hasLens .= og
         hasLens . state . calldata .= cd
         hasLens . result ?= f
         hasLens . traces .= ts
+        hasLens . state . codeContract .= codeContractBeforeVMReset
       (VMFailure x, _) -> h x
       (VMSuccess (ConcreteBuffer bc), SolCreate _) ->
         hasLens %= execState (do
