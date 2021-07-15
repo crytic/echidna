@@ -171,6 +171,9 @@ checkAssertion em (s, a) =
         isCorrectAddr = a == vm' ^. state . codeContract
         isCorrectTarget = isCorrectFn && isCorrectAddr
         isNotAssertionFailure = matchR $ vm' ^. result
+        -- Test always passes if it doesn't target the current contract and function.
+        -- If the test targets the current contract and function then it passes if
+        -- it doesn't fail with an assertion failure.
         isSuccess = not isCorrectTarget || isNotAssertionFailure
     pure (BoolValue $ isSuccess, extractEvents em vm', getResultFromVM vm')
 
