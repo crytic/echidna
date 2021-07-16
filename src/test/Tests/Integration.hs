@@ -98,6 +98,4 @@ integrationTests = testGroup "Solidity Integration Testing"
       "invalid codesize"
   , testContractV "basic/eip-170.sol" (Just (>= solcV (0,5,0))) (Just "basic/eip-170.yaml")
       [ ("echidna_test passed",                    passed      "echidna_test") ]
-  , testContract "assertion/multi-abi.sol"  (Just "assertion/multi-abi.yaml")
-      [ ("echidna_assert_fail_in_non_main_contract_ignored passed", passed "c") ]
   ]

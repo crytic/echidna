@@ -30,4 +30,7 @@ assertionTests = testGroup "Assertion-based Integration Testing"
       [ ("fail passed",     solvedUsing "fail" "AssertionFailed(..)")
       , ("f failed",         passed     "f")
       ]
+    , testContract "assert/conf.sol"  (Just "assert/multi.yaml")
+      [ ("c passed", passed "c") ]
+
   ]
