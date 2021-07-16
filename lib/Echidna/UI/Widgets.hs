@@ -102,7 +102,7 @@ tsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
          => TestState -> EchidnaTest -> m (Widget (), Widget ())
 tsWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 tsWidget Solved     t = failWidget Nothing (t ^. testReproducer) (t ^. testEvents) (t ^. testValue) (t  ^. testResult)
-tsWidget Passed     t = pure (withAttr "success" $ str "PASSED!", emptyWidget)
+tsWidget Passed     _ = pure (withAttr "success" $ str "PASSED!", emptyWidget)
 tsWidget (Open i)   t = do
   n <- view (hasLens . testLimit)
   if i >= n then
@@ -113,16 +113,19 @@ tsWidget (Large n)  t = do
   m <- view (hasLens . shrinkLimit)
   failWidget (if n < m then Just (n,m) else Nothing) (t ^. testReproducer) (t ^. testEvents) (t ^. testValue) (t  ^. testResult)
 
+titleWidget :: Widget n
+titleWidget = str "Call sequence" <+> str ":"
+
+eventWidget :: Events -> Widget n
+eventWidget es = if null es then str "" else str "Event sequence" <+> str ":" <=> str (T.unpack $ T.intercalate ", " es)
+
 failWidget :: (MonadReader x m, Has Names x, Has TxConf x)
            => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> TxResult -> m (Widget (), Widget ())
 failWidget _ [] _  _  _= pure (failureBadge, str "*no transactions made*")
 failWidget b xs es _ r = do
   s <- seqWidget xs
-  pure (failureBadge  <+> str (" with " ++ show r), status <=> titleWidget <=> s <=> eventWidget)
+  pure (failureBadge  <+> str (" with " ++ show r), status <=> titleWidget <=> s <=> eventWidget es)
   where
-  titleWidget  = str "Call sequence" <+> str ":"
-  eventWidget = if null es then str "" else str "Event sequence" <+> str ":" <=> str (T.unpack $ T.intercalate ", " es)
-
   status = case b of
     Nothing    -> emptyWidget
     Just (n,m) -> str "Current action: " <+> withAttr "working" (str ("shrinking " ++ progress n m))
@@ -141,18 +144,15 @@ optWidget (Open i)   t = do
     pure (withAttr "working" $ str $ "optimizing " ++ progress i n ++ ", current max value: " ++ show (t ^. testValue), emptyWidget)
 optWidget (Large n)  t = do
   m <- view (hasLens . shrinkLimit)
-  maxWidget (if n < m then Just (n,m) else Nothing) (t ^. testReproducer) (t ^. testEvents) (t ^. testValue) (t  ^. testResult)
+  maxWidget (if n < m then Just (n,m) else Nothing) (t ^. testReproducer) (t ^. testEvents) (t ^. testValue)
 
 maxWidget :: (MonadReader x m, Has Names x, Has TxConf x)
-           => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> TxResult -> m (Widget (), Widget ())
-maxWidget _ [] _  _  _= pure (failureBadge, str "*no transactions made*")
-maxWidget b xs es v r = do
+           => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> m (Widget (), Widget ())
+maxWidget _ [] _  _ = pure (failureBadge, str "*no transactions made*")
+maxWidget b xs es v = do
   s <- seqWidget xs
-  pure (maximumBadge  <+> str (" max value: " ++ show v), status <=> titleWidget <=> s <=> eventWidget)
+  pure (maximumBadge  <+> str (" max value: " ++ show v), status <=> titleWidget <=> s <=> eventWidget es)
   where
-  titleWidget  = str "Call sequence" <+> str ":"
-  eventWidget = if null es then str "" else str "Event sequence" <+> str ":" <=> str (T.unpack $ T.intercalate ", " es)
-
   status = case b of
     Nothing    -> emptyWidget
     Just (n,m) -> str "Current action: " <+> withAttr "working" (str ("shrinking " ++ progress n m))

@@ -75,7 +75,7 @@ createTests m ts r ss = case m of
   "assertion"   -> map (\s -> createTest (AssertionTest s r)) (drop 1 ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionEvent), assertPanicTest, integerOverflowTest, sdt]
   _             -> error "Invalid test mode"
  where sdt = createTest (CallTest "Target contract is not self-destructed" $ checkSelfDestructedTarget r)
-       sdat =  createTest (CallTest "No contract can be self-destructed" checkAnySelfDestructed)
+       -- TODO: this should be used in multi-abi: sdat =  createTest (CallTest "No contract can be self-destructed" checkAnySelfDestructed)
 
 updateOpenTest :: EchidnaTest -> [Tx] -> Int -> (TestValue, Events, TxResult) -> EchidnaTest
 updateOpenTest test txs _ (BoolValue False,es,r) = test { _testState = Large (-1), _testReproducer = txs, _testEvents = es, _testResult = r } 
@@ -117,16 +117,24 @@ checkProperty em t = do
       Just (VMSuccess _) -> checkProperty' em t
       _                  -> return (BoolValue True, [], Stop) -- These values are never used
 
--- | Given a property test, evaluate it and see if it currently passes.
-checkProperty' :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
-           => EventMap -> (Text, Addr) -> m (TestValue, Events, TxResult)
-checkProperty' em (f,a) = do
-  TestConf p s <- view hasLens
+
+runTx :: (MonadReader x m, MonadState y m, Has VM y, Has TxConf x, MonadThrow m)
+           => Text -> (Addr -> Addr) -> Addr -> m (y, VM)
+runTx f s a = do
   vm <- get -- save EVM state
   -- Our test is a regular user-defined test, we exec it and check the result
   g <- view (hasLens . propGas)
   _  <- execTx $ basicTx f [] (s a) a g (0, 0)
   vm' <- use hasLens
+  return (vm, vm')
+
+
+-- | Given a property test, evaluate it and see if it currently passes.
+checkProperty' :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+           => EventMap -> (Text, Addr) -> m (TestValue, Events, TxResult)
+checkProperty' em (f,a) = do
+  TestConf p s <- view hasLens
+  (vm, vm') <- runTx f s a
   b  <- gets $ p f . getter
   put vm -- restore EVM state
   pure (BoolValue b, extractEvents em vm', getResultFromVM vm')
@@ -145,11 +153,7 @@ checkOptimization :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState 
            => EventMap -> (Text, Addr) -> m (TestValue, Events, TxResult)
 checkOptimization em (f,a) = do
   TestConf _ s <- view hasLens
-  vm <- get -- save EVM state
-  -- Our test is a regular user-defined test, we exec it and check the result
-  g <- view (hasLens . propGas)
-  _  <- execTx $ basicTx f [] (s a) a g (0, 0)
-  vm' <- use hasLens
+  (vm, vm') <- runTx f s a
   put vm -- restore EVM state
   pure (getIntFromResult (vm' ^. result), extractEvents em vm', getResultFromVM vm')
 
@@ -160,7 +164,7 @@ checkAssertion eventMap (sig, addr) = do
   vm <- use hasLens
       -- Whether the last transaction called the function `sig`.
   let isCorrectFn = case viewBuffer $ vm ^. state . calldata . _1 of
-        Just cd -> BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) $ cd
+        Just cd -> BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) cd
         Nothing -> False 
       -- Whether the last transaction executed a function on the contract `addr`.
       isCorrectAddr = addr == vm ^. state . codeContract
@@ -172,7 +176,7 @@ checkAssertion eventMap (sig, addr) = do
       -- Test always passes if it doesn't target the last executed contract and function.
       -- Otherwise it passes if it doesn't cause an assertion failure.
       isSuccess = not isCorrectTarget || not isAssertionFailure
-  pure (BoolValue $ isSuccess, extractEvents eventMap vm, getResultFromVM vm)
+  pure (BoolValue isSuccess, extractEvents eventMap vm, getResultFromVM vm)
 
 checkCall :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> (EventMap -> VM -> TestValue) -> m (TestValue, Events, TxResult)

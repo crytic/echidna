@@ -198,7 +198,8 @@ randseq ql o w = do
   cs <- view $ hasLens . mutConsts
   txConf :: TxConf <- view hasLens
   let ctxs = ca ^. corpus
-      rs   = filter (not . null) $ map (view testReproducer) $ ca ^. tests
+      -- TODO: include reproducer when optimizing
+      --rs   = filter (not . null) $ map (view testReproducer) $ ca ^. tests
       p    = ca ^. ncallseqs
   if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
     return . snd $ DS.elemAt p ctxs

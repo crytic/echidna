@@ -12,14 +12,14 @@ import Data.Maybe (catMaybes)
 import Data.Text (Text, unpack)
 import EVM.Types (Addr)
 
-import qualified Data.Text as T
+--import qualified Data.Text as T
 
 import Echidna.ABI (defSeed)
 import Echidna.Types.Coverage (CoverageMap, scoveragePoints)
 import Echidna.Pretty (ppTxCall)
 import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
-import Echidna.Types.Test (TestState(..))
+--import Echidna.Types.Test (TestState(..))
 import Echidna.Types.Tx (Tx(Tx), TxCall(..), TxConf, txGas, src)
 
 -- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.
