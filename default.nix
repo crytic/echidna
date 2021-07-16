@@ -1,7 +1,7 @@
 { pkgs ? import (builtins.fetchTarball {
     name = "nixpkgs-unstable";
-    url = "https://github.com/nixos/nixpkgs/archive/fb45fa64ae3460d6bd2701ab5a6c4512d781f166.tar.gz";
-    sha256 = "sha256:1dcvpwshmalp5xp25z9pjm8svlnfgkcrbhany1pwjwwcpxm5kp40";
+    url = "https://github.com/nixos/nixpkgs/archive/0c98c6bbc43daa8af7554a3efe1983c0c096d979.tar.gz";
+    sha256 = "sha256:06j65wsy0sxva6nn0b4l117vba9mr723j150xwfj7997d1q7jkf9";
   }) {}
 }:
 
@@ -17,14 +17,6 @@ let
       pkgs.haskellPackages.callCabal2nix "hevm" "${dapptools}/src/hevm"
         { secp256k1 = pkgs.secp256k1; }
   ));
-
-  crytic-compile = pkgs.python3Packages.callPackage (import ./nix/crytic-compile.nix) { };
-  # slither is shipped with solc by default, we don't use it as we need
-  # precise solc versions
-  slither-analyzer = pkgs.slither-analyzer.override {
-    inherit crytic-compile;
-    withSolc = false;
-  };
 
   # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
   # would be great to integrate solc-select to be more flexible, improve this in future
@@ -75,7 +67,10 @@ let
           vector-instances vty wl-pprint-annotated word8 yaml extra ListLike
           semver
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
-        libraryToolDepends = [ hpack cabal-install hlint slither-analyzer solc haskell-language-server ];
+        libraryToolDepends = [
+          hpack cabal-install hlint pkgs.slither-analyzer solc
+          haskell-language-server
+        ];
         executableHaskellDepends = libraryHaskellDepends;
         testHaskellDepends = [
           tasty tasty-hunit tasty-quickcheck
