@@ -191,12 +191,12 @@ checkAssertionEvent em vm =
 
 checkSelfDestructedTarget :: Addr -> EventMap -> VM -> TestValue
 checkSelfDestructedTarget a _ vm =
-  let sd = vm ^. tx ^. substate ^. selfdestructs 
+  let sd = vm ^. (tx . substate . selfdestructs)
   in BoolValue $ a `notElem` sd
 
 checkAnySelfDestructed :: EventMap -> VM -> TestValue
 checkAnySelfDestructed _ vm =
-  let sd = vm ^. tx ^. substate ^. selfdestructs 
+  let sd = vm ^. (tx . substate . selfdestructs)
   in BoolValue $ null sd
 
 checkPanicEvent :: T.Text -> EventMap -> VM -> TestValue
