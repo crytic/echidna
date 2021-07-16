@@ -290,15 +290,15 @@ prepareForTest :: (MonadReader x m, Has SolConf x)
                -> Maybe ContractName
                -> SlitherInfo
                -> m (VM, World, [EchidnaTest])
-prepareForTest (v, em, a, ts, m) c si = do
+prepareForTest (vm, em, a, ts, m) c si = do
   SolConf{ _sender = s, _testMode = tm } <- view hasLens
-  let r = v ^. state . contract
+  let r = vm ^. state . contract
       a' = NE.toList a
       ps = filterResults c $ payableFunctions si
       as = if isAssertionMode tm then filterResults c $ asserts si else []
       cs = filterResults c $ constantFunctions si
       (hm, lm) = prepareHashMaps cs as m
-  pure (v, World s hm lm ps em, createTests tm ts r a') 
+  pure (vm, World s hm lm ps em, createTests tm ts r a')
 
 -- this limited variant is used only in tests
 prepareForTest' :: (MonadReader x m, Has SolConf x)
