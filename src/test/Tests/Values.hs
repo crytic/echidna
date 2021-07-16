@@ -2,7 +2,7 @@ module Tests.Values (valuesTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, testContract', solved, passed, countCorpus)
+import Common (testContract, testContract', solved)
 
 valuesTests :: TestTree
 valuesTests = testGroup "Value extraction tests"
