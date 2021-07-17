@@ -2,7 +2,7 @@ module Tests.Values (valuesTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, testContract', solved)
+import Common (testContract, testContract', solved, solvedLen)
 
 valuesTests :: TestTree
 valuesTests = testGroup "Value extraction tests"
@@ -30,4 +30,8 @@ valuesTests = testGroup "Value extraction tests"
       [ ("echidna_large failed",                   solved      "echidna_large") ]
     ,  testContract "values/payable.sol"     Nothing
       [ ("echidna_payable failed",                 solved      "echidna_payable") ]
+    , testContract "values/darray.sol"       Nothing
+      [ ("echidna_darray passed",                  solved      "echidna_darray")
+      , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
+
   ]

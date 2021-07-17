@@ -56,14 +56,11 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_no_magic failed",                passed      "echidna_no_magic") 
       ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
-      [ ("echidna_library_call failed",            solved      "echidna_library_call") ]
-  , testContract "basic/library.sol"      (Just "basic/library.yaml")
-      [ ("echidna_valid_timestamp failed",         passed      "echidna_valid_timestamp") ]
+      [ ("echidna_library_call failed",            solved      "echidna_library_call")
+      , ("echidna_valid_timestamp failed",         passed      "echidna_valid_timestamp") 
+      ]
   , testContractV "basic/fallback.sol"   (Just (< solcV (0,6,0))) Nothing
       [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
-  , testContract "basic/darray.sol"       Nothing
-      [ ("echidna_darray passed",                  solved      "echidna_darray")
-      , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
   , testContract "basic/push_long.sol" (Just "basic/push_long.yaml")
       [ ("test_long_5 passed",                     solvedWithout NoCall "test_long_5")]
   , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml")
