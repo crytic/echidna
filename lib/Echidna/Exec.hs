@@ -72,7 +72,7 @@ instance Exception ExecException
 vmExcept :: MonadThrow m => Error -> m ()
 vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e}
 
--- | Given an error handler `onErr`, an execution function `executeTx`, and a transaction `tx`, 
+-- | Given an error handler `onErr`, an execution strategy `executeTx`, and a transaction `tx`,
 -- execute that transaction using the given execution strategy, calling `onErr` on errors.
 execTxWith :: (MonadState x m, Has VM x) => (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Int)
 execTxWith onErr executeTx tx' = do
