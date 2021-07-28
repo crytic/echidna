@@ -1,23 +1,11 @@
 { pkgs ? import (builtins.fetchTarball {
-    name = "nixpkgs-unstable";
-    url = "https://github.com/nixos/nixpkgs/archive/0c98c6bbc43daa8af7554a3efe1983c0c096d979.tar.gz";
-    sha256 = "sha256:06j65wsy0sxva6nn0b4l117vba9mr723j150xwfj7997d1q7jkf9";
+    name = "nixpkgs-unstable-2021-08-11";
+    url = "https://github.com/nixos/nixpkgs/archive/0ac49d7c7b5625a2554f393ddfba72128c8f0f5d.tar.gz";
+    sha256 = "sha256:03s2k619fvsxv28gk574pphhf4k3y8dxm8ir3d3vvp04i7n4z6wj";
   }) {}
 }:
 
 let
-  dapptools = pkgs.fetchFromGitHub {
-    owner = "dapphub";
-    repo = "dapptools";
-    rev = "hevm/0.47.0";
-    sha256 = "sha256-gFePasNQJ9bxrCDsSHWsZj2JVkjhVwIkjZf+wPDBKo0=";
-  };
-  hevm = pkgs.haskell.lib.dontCheck (
-    pkgs.haskell.lib.doJailbreak (
-      pkgs.haskellPackages.callCabal2nix "hevm" "${dapptools}/src/hevm"
-        { secp256k1 = pkgs.secp256k1; }
-  ));
-
   # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
   # would be great to integrate solc-select to be more flexible, improve this in future
   solc = pkgs.stdenv.mkDerivation {
@@ -39,6 +27,8 @@ let
       chmod +x $out/bin/solc
     '';
   };
+
+  slither-analyzer = pkgs.slither-analyzer.override { withSolc = false; };
 
   v = "1.7.2";
 
@@ -68,7 +58,7 @@ let
           semver
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
         libraryToolDepends = [
-          hpack cabal-install hlint pkgs.slither-analyzer solc
+          hpack cabal-install hlint slither-analyzer solc
           haskell-language-server
         ];
         executableHaskellDepends = libraryHaskellDepends;
@@ -86,7 +76,7 @@ let
         doCheck = true;
       };
 
-  drv = pkgs.haskellPackages.callPackage f { hevm = hevm; };
+  drv = pkgs.haskellPackages.callPackage f { };
 in
   if pkgs.lib.inNixShell
     then drv.env
