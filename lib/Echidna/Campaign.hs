@@ -274,7 +274,7 @@ campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
          -> Maybe GenDict       -- ^ Optional generation dictionary
          -> [[Tx]]              -- ^ Initial corpus of transactions
          -> m Campaign
-campaign u v w ts d txs = do
+campaign u vm w ts d txs = do
   c <- fromMaybe mempty <$> view (hasLens . knownCoverage)
   g <- view (hasLens . seed)
   let effectiveSeed = fromMaybe (d' ^. defSeed) g
@@ -292,13 +292,13 @@ campaign u v w ts d txs = do
       0
     )
   where
-    step        = runUpdate (updateTest w v Nothing) >> lift u >> runCampaign
+    step        = runUpdate (updateTest w vm Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap (view testState))) >>= update
     update c    = do
       CampaignConf tl sof _ q sl _ _ _ _ _ <- view hasLens
       Campaign { _ncallseqs } <- view hasLens <$> get
       if | sof && any (\case Solved -> True; Failed _ -> True; _ -> False) c -> lift u
-         | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
+         | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq vm w q >> step
          | any (\case Large n   -> n < sl; _ -> False) c                       -> step
-         | null c && (q * _ncallseqs) < tl                                     -> callseq v w q >> step
+         | null c && (q * _ncallseqs) < tl                                     -> callseq vm w q >> step
          | otherwise                                                           -> lift u
