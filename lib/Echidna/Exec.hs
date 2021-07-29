@@ -119,29 +119,28 @@ handleErrorsAndConstruction :: (MonadState s m, Has VM s)
                             -> VM
                             -> Tx
                             -> m ()
-handleErrorsAndConstruction onErr vmResult' vmBeforeTx tx' = do
-    case (vmResult', tx' ^. call) of
-      (Reversion, _) -> do
-        tracesBeforeVMReset <- use $ hasLens . traces
-        codeContractBeforeVMReset <- use $ hasLens . state . codeContract
-        calldataBeforeReset <- use $ hasLens . state . calldata
-        -- If a transaction reverts reset VM to state before the transaction.
-        hasLens .= vmBeforeTx
-        -- Undo reset of some of the VM state.
-        -- Otherwise we'd loose all information about the reverted transaction like
-        -- contract address, calldata, result and traces.
-        hasLens . result ?= vmResult'
-        hasLens . state . calldata .= calldataBeforeReset
-        hasLens . traces .= tracesBeforeVMReset
-        hasLens . state . codeContract .= codeContractBeforeVMReset
-      (VMFailure x, _) -> onErr x
-      (VMSuccess (ConcreteBuffer bytecode'), SolCreate _) ->
-        -- Handle contract creation.
-        hasLens %= execState (do
-          env . contracts . at (tx' ^. dst) . _Just . contractcode .= InitCode (ConcreteBuffer "")
-          replaceCodeOfSelf (RuntimeCode (ConcreteBuffer bytecode'))
-          loadContract (tx' ^. dst))
-      _ -> pure ()
+handleErrorsAndConstruction onErr vmResult' vmBeforeTx tx' = case (vmResult', tx' ^. call) of
+  (Reversion, _) -> do
+    tracesBeforeVMReset <- use $ hasLens . traces
+    codeContractBeforeVMReset <- use $ hasLens . state . codeContract
+    calldataBeforeReset <- use $ hasLens . state . calldata
+    -- If a transaction reverts reset VM to state before the transaction.
+    hasLens .= vmBeforeTx
+    -- Undo reset of some of the VM state.
+    -- Otherwise we'd loose all information about the reverted transaction like
+    -- contract address, calldata, result and traces.
+    hasLens . result ?= vmResult'
+    hasLens . state . calldata .= calldataBeforeReset
+    hasLens . traces .= tracesBeforeVMReset
+    hasLens . state . codeContract .= codeContractBeforeVMReset
+  (VMFailure x, _) -> onErr x
+  (VMSuccess (ConcreteBuffer bytecode'), SolCreate _) ->
+    -- Handle contract creation.
+    hasLens %= execState (do
+      env . contracts . at (tx' ^. dst) . _Just . contractcode .= InitCode (ConcreteBuffer "")
+      replaceCodeOfSelf (RuntimeCode (ConcreteBuffer bytecode'))
+      loadContract (tx' ^. dst))
+  _ -> pure ()
 
 -- | Execute a transaction "as normal".
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
