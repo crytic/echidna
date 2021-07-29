@@ -14,7 +14,7 @@ import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import EVM
 import EVM.Exec (exec, vmForEthrunCreation)
-import EVM.Types (Buffer(..), SymWord, Word)
+import EVM.Types (Buffer(..))
 import EVM.Symbolic (litWord)
 
 import qualified Data.Map as M
