@@ -10,6 +10,7 @@ import Tests.Coverage (coverageTests)
 import Tests.Config (configTests)
 import Tests.Encoding (encodingJSONTests)
 import Tests.Integration (integrationTests)
+import Tests.Optimization (optimizationTests)
 import Tests.Research (researchTests)
 import Tests.Values (valuesTests)
 import Tests.Seed (seedTests)
@@ -25,6 +26,7 @@ main = withCurrentDirectory "./tests/solidity" . defaultMain $
            , coverageTests
            , abiv2Tests
            , assertionTests
+           , optimizationTests
            , researchTests
            , encodingJSONTests
            ]

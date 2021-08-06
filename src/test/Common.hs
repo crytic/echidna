@@ -6,6 +6,7 @@ module Common
   , solcV
   , testContract'
   , checkConstructorConditions
+  , optimized
   , solnFor
   , solved
   , passed
@@ -28,6 +29,7 @@ import Control.Lens (view, set, (.~), (^.))
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
 import Control.Monad.State.Strict (evalStateT)
+import Data.DoubleWord (Int256)
 import Data.Function ((&))
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
@@ -112,12 +114,24 @@ getResult n c =
                           PropertyTest t _      -> t == n
                           AssertionTest (t,_) _ -> t == n
                           CallTest t _          -> t == n
+                          OptimizationTest t _  -> t == n
                           _                     -> False 
+
+optnFor :: Text -> Campaign -> Maybe TestValue
+optnFor n c = case getResult n c of
+  Just t -> Just $ t ^. testValue
+  _      -> Nothing
+
+optimized :: Text -> Int256 -> Campaign -> Bool
+optimized n v c = case optnFor n c of
+                   Just (IntValue o1) -> o1 >= v
+                   Nothing            -> error "nothing"
+                   _                  -> error "incompatible values"
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor n c = case getResult n c of
   Just t -> if null $ t ^. testReproducer then Nothing else Just $ t ^. testReproducer 
-  _      -> Just []
+  _      -> Nothing
 
 solved :: Text -> Campaign -> Bool
 solved t = isJust . solnFor t
