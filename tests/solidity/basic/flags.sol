@@ -1,4 +1,6 @@
 contract Test {
+  event Flag(bool);
+
   bool private flag0 = true;
   bool private flag1 = true;
 
@@ -21,6 +23,8 @@ contract Test {
   }
 
   function echidna_sometimesfalse() public returns (bool){
+    emit Flag(flag0);
+    emit Flag(flag1);
     return(flag1);
   }
 
