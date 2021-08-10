@@ -53,11 +53,11 @@ createTest m =  EchidnaTest (Open (-1)) m v [] Stop []
                            OptimizationTest _ _ -> IntValue minBound
                            _                    -> NoValue
 
-assertPanicTest :: EchidnaTest
-assertPanicTest = createTest $ CallTest "Assertion failure detector" (checkPanicEvent "1")
+--assertPanicTest :: EchidnaTest
+--assertPanicTest = createTest $ CallTest "Assertion failure detector" (checkPanicEvent "1")
 
-integerOverflowTest :: EchidnaTest
-integerOverflowTest = createTest $ CallTest "Integer overflow detector" (checkPanicEvent "17")
+--integerOverflowTest :: EchidnaTest
+--integerOverflowTest = createTest $ CallTest "Integer overflow detector" (checkPanicEvent "17")
 
 isAssertionMode :: TestMode -> Bool
 isAssertionMode "assertion" = True
@@ -72,7 +72,7 @@ createTests m ts r ss = case m of
   "exploration" -> [createTest Exploration]
   "property"    -> map (\t -> createTest (PropertyTest t r)) ts ++ [sdt]
   "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
-  "assertion"   -> map (\s -> createTest (AssertionTest s r)) (drop 1 ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionEvent), assertPanicTest, integerOverflowTest, sdt]
+  "assertion"   -> map (\s -> createTest (AssertionTest s r)) (drop 1 ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest), sdt]
   _             -> error "Invalid test mode"
  where sdt = createTest (CallTest "Target contract is not self-destructed" $ checkSelfDestructedTarget r)
        -- TODO: this should be used in multi-abi: sdat =  createTest (CallTest "No contract can be self-destructed" checkAnySelfDestructed)
@@ -175,8 +175,10 @@ checkAssertion eventMap (sig, addr) = do
         _ -> False
       -- Test always passes if it doesn't target the last executed contract and function.
       -- Otherwise it passes if it doesn't cause an assertion failure.
-      isSuccess = not isCorrectTarget || not isAssertionFailure
-  pure (BoolValue isSuccess, extractEvents eventMap vm, getResultFromVM vm)
+      es = extractEvents eventMap vm
+      eventFailure = not (null es) && (checkAssertionEvent es || checkPanicEvent "1" es)
+      isFailure = isCorrectTarget && (eventFailure || isAssertionFailure)
+  pure (BoolValue (not isFailure), es, getResultFromVM vm)
 
 checkCall :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> (EventMap -> VM -> TestValue) -> m (TestValue, Events, TxResult)
@@ -184,10 +186,13 @@ checkCall em f = do
   vm <- use hasLens
   pure (f em vm, extractEvents em vm, getResultFromVM vm)
 
-checkAssertionEvent :: EventMap -> VM -> TestValue
-checkAssertionEvent em vm = 
+checkAssertionTest :: EventMap -> VM -> TestValue
+checkAssertionTest em vm = 
   let es = extractEvents em vm
-  in BoolValue $ null es || not (any (T.isPrefixOf "AssertionFailed(") es)
+  in BoolValue $ null es || not (checkAssertionEvent es)
+
+checkAssertionEvent :: Events -> Bool
+checkAssertionEvent = any (T.isPrefixOf "AssertionFailed(")
 
 checkSelfDestructedTarget :: Addr -> EventMap -> VM -> TestValue
 checkSelfDestructedTarget a _ vm =
@@ -199,10 +204,8 @@ checkAnySelfDestructed _ vm =
   let sd = vm ^. (tx . substate . selfdestructs)
   in BoolValue $ null sd
 
-checkPanicEvent :: T.Text -> EventMap -> VM -> TestValue
-checkPanicEvent n em vm = 
-  let es = extractEvents em vm
-  in BoolValue $ null es || not (any (T.isPrefixOf ("Panic(" <> n <> ")")) es)
+checkPanicEvent :: T.Text -> Events -> Bool
+checkPanicEvent n = any (T.isPrefixOf ("Panic(" <> n <> ")"))
 
 --checkErrorEvent :: EventMap -> VM -> Bool
 --checkErrorEvent em vm = 

@@ -14,7 +14,7 @@ assertionTests = testGroup "Assertion-based Integration Testing"
       ]
 
     , testContractV "assert/assert-0.8.sol" (Just (\v -> v >= solcV (0,8,0))) (Just "assert/config.yaml")
-      [ ("direct_assert passed", solvedUsing "direct_assert" "Assertion failure detector") ] 
+      [ ("direct_assert passed", solved "direct_assert") ] 
 
     , testContract "assert/revert.sol"   (Just "assert/config.yaml")
       [ ("assert_revert passed",       solvedUsing "assert_revert" "AssertionFailed(..)")
