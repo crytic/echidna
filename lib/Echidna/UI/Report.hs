@@ -82,7 +82,7 @@ ppFail b es xs = let status = case b of
     return (s ++ "\n" ++ ppEvents es)
 
 ppEvents :: Events -> String
-ppEvents es = if null es then "" else "Event sequence: " ++ T.unpack $ T.intercalate ", " es
+ppEvents es = if null es then "" else "Event sequence: " ++ T.unpack (T.intercalate ", " es)
 
 -- | Pretty-print the status of a test.
 
