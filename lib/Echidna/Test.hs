@@ -139,7 +139,7 @@ checkProperty' em (f,a) = do
   put vm -- restore EVM state
   pure (BoolValue b, extractEvents em vm', getResultFromVM vm')
 
---- | TODO.
+--- | Extract a test value from an execution.
 getIntFromResult :: Maybe VMResult -> TestValue
 getIntFromResult (Just (VMSuccess b)) = case viewBuffer b of
                            Nothing -> error "invalid decode of buffer"
