@@ -49,7 +49,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_memory failed",                  passed      "echidna_memory") ]
   , testContract "basic/contractAddr.sol" (Just "basic/contractAddr.yaml")
       [ ("echidna_address failed",                 passed      "echidna_address") ]
-  , testContract "basic/balance.sol"      (Just "basic/balance.yaml")
+  , testContractV "basic/balance.sol"     (Just (< solcV (0,8,0)))  (Just "basic/balance.yaml")
       [ ("echidna_balance failed",                 passed      "echidna_balance")
       , ("echidna_balance_new failed",             passed      "echidna_balance_new") 
       , ("echidna_low_level_call failed",          passed      "echidna_low_level_call") 
@@ -89,7 +89,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       ]
   , testContract "basic/gaslimit.sol"  Nothing
       [ ("echidna_gaslimit passed",                passed      "echidna_gaslimit") ]
-  ,  testContract "basic/killed.sol"      Nothing
+  ,  testContractV "basic/killed.sol"      (Just (< solcV (0,8,0))) Nothing
       [ ("echidna_still_alive failed",             solved      "echidna_still_alive") ]
   ,  checkConstructorConditions "basic/codesize.sol"
       "invalid codesize"
