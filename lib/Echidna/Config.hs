@@ -23,6 +23,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text, isPrefixOf)
 import EVM (result)
 import EVM.Types (w256)
+import EVM.Dapp (DappInfo)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Data.ByteString as BS
@@ -180,3 +181,34 @@ withDefaultConfig = (`runReaderT` defaultConfig)
 -- | 'withDefaultConfig' but not for transformers
 withDefaultConfig' :: Reader EConfig a -> a
 withDefaultConfig' = (`runReader` defaultConfig)
+
+data Env = Env {
+  _cfg :: EConfig,
+  _dapp :: DappInfo
+}
+
+makeLenses ''Env
+
+instance Has EConfig Env where
+  hasLens = cfg
+
+instance Has CampaignConf Env where
+  hasLens = cfg . cConf
+
+instance Has Names Env where
+  hasLens = cfg . nConf
+
+instance Has SolConf Env where
+  hasLens = cfg . sConf
+
+instance Has TestConf Env where
+  hasLens = cfg . tConf
+
+instance Has TxConf Env where
+  hasLens = cfg . xConf
+
+instance Has UIConf Env where
+  hasLens = cfg . uConf
+
+instance Has DappInfo Env where
+  hasLens = dapp

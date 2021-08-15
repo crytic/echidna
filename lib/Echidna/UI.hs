@@ -39,6 +39,8 @@ import Echidna.Types.World (World)
 import Echidna.UI.Report
 import Echidna.UI.Widgets
 
+import EVM.Dapp (DappInfo)
+
 data UIConf = UIConf { _maxTime       :: Maybe Int
                      , _operationMode :: OperationMode
                      }
@@ -83,7 +85,7 @@ isTerminal = liftIO $ (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 -- | Set up and run an Echidna 'Campaign' and display interactive UI or
 -- print non-interactive output in desired format at the end
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
-      , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Names x, Has TxConf x, Has UIConf x)
+      , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Names x, Has TxConf x, Has UIConf x, Has DappInfo x)
    => VM             -- ^ Initial VM state
    -> World          -- ^ Initial world state
    -> [EchidnaTest]      -- ^ Tests to evaluate

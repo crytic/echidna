@@ -117,7 +117,7 @@ titleWidget :: Widget n
 titleWidget = str "Call sequence" <+> str ":"
 
 eventWidget :: Events -> Widget n
-eventWidget es = if null es then str "" else str "Event sequence" <+> str ":" <=> str (T.unpack $ T.intercalate ", " es)
+eventWidget es = if null es then str "" else str "Event sequence" <+> str ":" <=> str (T.unpack $ T.intercalate "\n" es)
 
 failWidget :: (MonadReader x m, Has Names x, Has TxConf x)
            => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> TxResult -> m (Widget (), Widget ())

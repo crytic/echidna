@@ -9,6 +9,7 @@ import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import EVM (VM)
 import EVM.Types (Addr)
+import EVM.Dapp (DappInfo)
 
 import Echidna.Exec (ExecException)
 import Echidna.Events (Events, EventMap)
@@ -49,8 +50,8 @@ instance Show TestValue where
 
 data TestType = PropertyTest Text Addr
               | OptimizationTest Text Addr
-              | AssertionTest SolSignature Addr 
-              | CallTest Text (EventMap -> VM -> TestValue) 
+              | AssertionTest SolSignature Addr
+              | CallTest Text (DappInfo -> EventMap -> VM -> TestValue) 
               | Exploration
 
 instance Eq TestType where

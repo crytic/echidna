@@ -28,6 +28,7 @@ import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Text (Text)
 import EVM
+import EVM.Dapp (DappInfo)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (Addr, Buffer(..))
 import System.Random (mkStdGen)
@@ -83,7 +84,7 @@ isSuccess = allOf (tests . traverse . testState) (\case { Passed -> True; Open _
 -- (3): The test is unshrunk, and we can shrink it
 -- Then update accordingly, keeping track of how many times we've tried to solve or shrink.
 updateTest :: ( MonadCatch m, MonadRandom m, MonadReader x m
-              , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x)
+              , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has DappInfo x)
            => World -> VM -> Maybe (VM, [Tx]) -> EchidnaTest -> m EchidnaTest
 
 
@@ -122,7 +123,7 @@ runUpdate f = let l = hasLens . tests in use l >>= mapM f >>= (l .=)
 -- | Given an initial 'VM' state and a way to run transactions, evaluate a list of transactions, constantly
 -- checking if we've solved any tests or can shrink known solves.
 evalSeq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
-           , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x
+           , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has DappInfo x
            , Has Campaign y, Has VM y)
         => World -> VM -> (Tx -> m a) -> [Tx] -> m [(Tx, a)]
 evalSeq w v e = go [] where
@@ -218,7 +219,7 @@ randseq ql o w = do
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
 callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
-           , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Campaign y, Has GenDict y)
+           , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has DappInfo x, Has Campaign y, Has GenDict y)
         => VM -> World -> Int -> m ()
 callseq v w ql = do
   -- First, we figure out whether we need to execute with or without coverage optimization and gas info,
@@ -266,7 +267,7 @@ callseq v w ql = do
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
 campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
-            , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x)
+            , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has DappInfo x)
          => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
          -> VM                  -- ^ Initial VM state
          -> World               -- ^ Initial world state
