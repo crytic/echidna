@@ -1,0 +1,33 @@
+name: Action
+
+on:
+  push:
+    branches:
+      - master
+      - nix
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Assert test
+        uses: smoelius/echidna/action@master
+        with:
+          files: "examples/solidity/basic/assert.sol"
+          contract: "TestAssert"
+          config: "examples/solidity/basic/assert.yaml"
+          negate-exit-status: 1
+
+      - name: Multi-abi test
+        uses: smoelius/echidna/action@master
+        with:
+          files: "examples/solidity/basic/multi-abi.sol"
+          contract: "B"
+          multi-abi: true
+          negate-exit-status: 1
