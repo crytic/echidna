@@ -51,6 +51,9 @@ inputs:
   solc-args:
     description: "Additional arguments to use in solc for the compilation of the contract to test"
     required: false
+  solc-version:
+    description: "Version of the Solidity compiler to use"
+    required: false
   negate-exit-status:
     description: "Apply logical NOT to echidna-test's exit status (for testing the action)"
     required: false

@@ -32,6 +32,12 @@ for SWITCH in $SWITCHES; do
     fi
 done
 
+SOLC_VERSION="$(get 'INPUT_SOLC-VERSION')"
+if [[ -n "$SOLC_VERSION" ]]; then
+    solc-select install "$SOLC_VERSION"
+    solc-select use "$SOLC_VERSION"
+fi
+
 echo "${CMD[@]}" >&2
 
 if [[ -n "$(get 'INPUT_NEGATE-EXIT-STATUS')" ]]; then
