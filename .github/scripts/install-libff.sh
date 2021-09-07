@@ -17,10 +17,11 @@ git checkout v0.2.1
 ARGS="-DCMAKE_INSTALL_PREFIX=$PREFIX -DWITH_PROCPS=OFF"
 CXXFLAGS=""
 if [ "$HOST_OS" = "macOS" ]; then
-  export LDFLAGS=-L/usr/local/opt/openssl/lib
-  export CPPFLAGS=-I/usr/local/opt/openssl/include
-  export CXXFLAGS=-I/usr/local/opt/openssl/include
-  ARGS="$ARGS -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include/openssl -DCURVE=ALT_BN128 -DCMAKE_INSTALL_NAME_DIR=$PREFIX/lib"
+  OPENSSL_PREFIX=$(brew --prefix openssl)
+  export LDFLAGS=-L$OPENSSL_PREFIX/lib
+  export CPPFLAGS=-I$OPENSSL_PREFIX/include
+  export CXXFLAGS=-I$OPENSSL_PREFIX/include
+  ARGS="$ARGS -DOPENSSL_INCLUDE_DIR=$OPENSSL_PREFIX/include/openssl -DCURVE=ALT_BN128 -DCMAKE_INSTALL_NAME_DIR=$PREFIX/lib"
   sed -i '' 's/STATIC/SHARED/' libff/CMakeLists.txt # Fix GHC segfaults from hell (idk why)
   sed -i '' 's/STATIC/SHARED/' depends/CMakeLists.txt
 fi
