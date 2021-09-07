@@ -9,7 +9,11 @@ if [ -f $HOME/.local/lib/libff"$EXT" ]; then
   exit 0
 fi
 
-git clone https://github.com/scipr-lab/libff --recursive
+if [ -d libff ]; then
+  echo "$(pwd)/libff" already exists! Using it instead of re-cloning the repo.
+else
+  git clone https://github.com/scipr-lab/libff --recursive
+fi
 cd libff
 git submodule init && git submodule update
 git checkout v0.2.1
@@ -26,7 +30,7 @@ if [ "$HOST_OS" = "macOS" ]; then
   sed -i '' 's/STATIC/SHARED/' depends/CMakeLists.txt
 fi
 
-mkdir build
+mkdir -p build
 cd build
 CXXFLAGS="-fPIC $CXXFLAGS" cmake $ARGS ..
 make && make install
