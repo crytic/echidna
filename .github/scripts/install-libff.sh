@@ -25,7 +25,7 @@ if [ "$HOST_OS" = "macOS" ]; then
   export LDFLAGS=-L$OPENSSL_PREFIX/lib
   export CPPFLAGS=-I$OPENSSL_PREFIX/include
   export CXXFLAGS=-I$OPENSSL_PREFIX/include
-  ARGS="$ARGS -DOPENSSL_INCLUDE_DIR=$OPENSSL_PREFIX/include/openssl -DCURVE=ALT_BN128 -DCMAKE_INSTALL_NAME_DIR=$PREFIX/lib"
+  ARGS="$ARGS -DOPENSSL_INCLUDE_DIR=$OPENSSL_PREFIX/include/openssl -DCURVE=ALT_BN128 -DCMAKE_INSTALL_NAME_DIR=$PREFIX/lib -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_PREFIX/lib/libcrypto.dylib -DOPENSSL_SSL_LIBRARY=$OPENSSL_PREFIX/lib/libssl.dylib"
   sed -i '' 's/STATIC/SHARED/' libff/CMakeLists.txt # Fix GHC segfaults from hell (idk why)
   sed -i '' 's/STATIC/SHARED/' depends/CMakeLists.txt
 fi
