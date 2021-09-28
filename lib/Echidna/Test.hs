@@ -72,7 +72,7 @@ createTests m ts r ss = case m of
   "exploration" -> [createTest Exploration]
   "property"    -> map (\t -> createTest (PropertyTest t r)) ts ++ [sdt]
   "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
-  "assertion"   -> map (\s -> createTest (AssertionTest s r)) (drop 1 ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest), sdt]
+  "assertion"   -> map (\s -> createTest (AssertionTest s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest), sdt]
   _             -> error "Invalid test mode"
  where sdt = createTest (CallTest "Target contract is not self-destructed" $ checkSelfDestructedTarget r)
        -- TODO: this should be used in multi-abi: sdat =  createTest (CallTest "No contract can be self-destructed" checkAnySelfDestructed)
