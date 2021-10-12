@@ -113,7 +113,7 @@ instance FromJSON EConfigWithUsage where
 
                 -- TestConf
                 tc = do
-                  psender <- v ..:? "psender" ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                  psender <- v ..:? "psender" ..!= 0x10000
                   fprefix <- v ..:? "prefix"  ..!= "echidna_"
                   let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
                       classify fname vm = maybe ResOther classifyRes (vm ^. result) == goal fname
@@ -135,7 +135,7 @@ instance FromJSON EConfigWithUsage where
 
                 -- SolConf
                 defaultAddr     = 0x00a329c0648769a73afac7f9381e08fb43dbea72
-                defaultDeployer = 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                defaultDeployer = 0x30000
                 fnFilter = bool Whitelist Blacklist <$> v ..:? "filterBlacklist" ..!= True
                                                     <*> v ..:? "filterFunctions" ..!= []
                 sc = SolConf <$> v ..:? "contractAddr"    ..!= defaultAddr

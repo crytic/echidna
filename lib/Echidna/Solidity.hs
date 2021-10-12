@@ -30,7 +30,7 @@ import System.Directory           (findExecutable, listDirectory)
 import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec               (execTx, initialVM)
 import Echidna.Events             (EventMap)
-import Echidna.Test               (createTests, isAssertionMode, isExplorationMode)
+import Echidna.Test               (createTests, isAssertionMode, isPropertyMode)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
 import Echidna.Types.Tx           (TxConf, createTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
@@ -253,7 +253,7 @@ loadSpecified name cs = do
 
   -- Make sure everything is ready to use, then ship it
   when (null abi) $ throwM NoFuncs                              -- < ABI checks
-  when (not (isAssertionMode tm) && null tests && not (isExplorationMode tm)) $ throwM NoTests  -- <
+  when (null tests && (isPropertyMode tm)) $ throwM NoTests  -- <
   when (bc == mempty) $ throwM (NoBytecode $ c ^. contractName) -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check

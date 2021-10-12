@@ -67,13 +67,18 @@ isExplorationMode :: TestMode -> Bool
 isExplorationMode "exploration" = True
 isExplorationMode _             = False
 
+isPropertyMode :: TestMode -> Bool
+isPropertyMode "property" = True
+isPropertyMode _          = False
+
 createTests :: TestMode -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
 createTests m ts r ss = case m of
-  "exploration" -> [createTest Exploration]
-  "property"    -> map (\t -> createTest (PropertyTest t r)) ts ++ [sdt]
+  "exploration"  -> [createTest Exploration]
+  "overflow"     -> [createTest (CallTest "Integer (over/under)flow" checkOverflowTest)]
+  "property"     -> map (\t -> createTest (PropertyTest t r)) ts ++ [sdt]
   "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
-  "assertion"   -> map (\s -> createTest (AssertionTest s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest), sdt]
-  _             -> error "Invalid test mode"
+  "assertion"    -> map (\s -> createTest (AssertionTest s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest), sdt]
+  _              -> error "Invalid test mode"
  where sdt = createTest (CallTest "Target contract is not self-destructed" $ checkSelfDestructedTarget r)
        -- TODO: this should be used in multi-abi: sdat =  createTest (CallTest "No contract can be self-destructed" checkAnySelfDestructed)
 
@@ -206,6 +211,11 @@ checkAnySelfDestructed _ vm =
 
 checkPanicEvent :: T.Text -> Events -> Bool
 checkPanicEvent n = any (T.isPrefixOf ("Panic(" <> n <> ")"))
+
+checkOverflowTest :: EventMap -> VM -> TestValue
+checkOverflowTest em vm = 
+  let es = extractEvents em vm
+  in BoolValue $ null es || not (checkPanicEvent "17" es)
 
 --checkErrorEvent :: EventMap -> VM -> Bool
 --checkErrorEvent em vm = 
