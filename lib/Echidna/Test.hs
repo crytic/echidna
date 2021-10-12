@@ -71,16 +71,17 @@ isPropertyMode :: TestMode -> Bool
 isPropertyMode "property" = True
 isPropertyMode _          = False
 
-createTests :: TestMode -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
-createTests m ts r ss = case m of
+createTests :: TestMode -> Bool -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
+createTests m td ts r ss = case m of
   "exploration"  -> [createTest Exploration]
   "overflow"     -> [createTest (CallTest "Integer (over/under)flow" checkOverflowTest)]
-  "property"     -> map (\t -> createTest (PropertyTest t r)) ts ++ [sdt]
+  "property"     -> map (\t -> createTest (PropertyTest t r)) ts
   "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
-  "assertion"    -> map (\s -> createTest (AssertionTest s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest), sdt]
+  "assertion"    -> map (\s -> createTest (AssertionTest s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
   _              -> error "Invalid test mode"
- where sdt = createTest (CallTest "Target contract is not self-destructed" $ checkSelfDestructedTarget r)
-       -- TODO: this should be used in multi-abi: sdat =  createTest (CallTest "No contract can be self-destructed" checkAnySelfDestructed)
+ ++ (if td then [sdt, sdat] else [])
+   where sdt  = createTest (CallTest "Target contract is not self-destructed" $ checkSelfDestructedTarget r)
+         sdat = createTest (CallTest "No contract can be self-destructed" checkAnySelfDestructed)
 
 updateOpenTest :: EchidnaTest -> [Tx] -> Int -> (TestValue, Events, TxResult) -> EchidnaTest
 updateOpenTest test txs _ (BoolValue False,es,r) = test { _testState = Large (-1), _testReproducer = txs, _testEvents = es, _testResult = r } 

@@ -152,6 +152,7 @@ instance FromJSON EConfigWithUsage where
                              <*> v ..:? "initialize"      ..!= Nothing
                              <*> v ..:? "multi-abi"       ..!= False
                              <*> v ..:? "testMode"        ..!= "property"
+                             <*> v ..:? "testDestruction" ..!= False
                              <*> fnFilter
                 names :: Names
                 names Sender = (" from: " ++) . show

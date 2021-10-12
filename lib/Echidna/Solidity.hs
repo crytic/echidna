@@ -102,7 +102,8 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
                        , _initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
                        , _multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
-                       , _testMode        :: String           -- TODO
+                       , _testMode        :: String           -- ^ Testing mode
+                       , _testDestruction :: Bool             -- ^ Whether or not to add a property to detect contract destruction
                        , _methodFilter    :: Filter           -- ^ List of methods to avoid or include calling during a campaign
                        }
 makeLenses ''SolConf
@@ -221,7 +222,7 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  SolConf ca d ads bala balc mcs pref _ _ libs _ fp ma tm fs <- view hasLens
+  SolConf ca d ads bala balc mcs pref _ _ libs _ fp ma tm _ fs <- view hasLens
   TestConf _ _ <- view hasLens
 
   -- generate the complete abi mapping
@@ -291,14 +292,14 @@ prepareForTest :: (MonadReader x m, Has SolConf x)
                -> SlitherInfo
                -> m (VM, World, [EchidnaTest])
 prepareForTest (vm, em, a, ts, m) c si = do
-  SolConf{ _sender = s, _testMode = tm } <- view hasLens
+  SolConf{ _sender = s, _testMode = tm, _testDestruction = td } <- view hasLens
   let r = vm ^. state . contract
       a' = NE.toList a
       ps = filterResults c $ payableFunctions si
       as = if isAssertionMode tm then filterResults c $ asserts si else []
       cs = filterResults c $ constantFunctions si
       (hm, lm) = prepareHashMaps cs as m
-  pure (vm, World s hm lm ps em, createTests tm ts r a')
+  pure (vm, World s hm lm ps em, createTests tm td ts r a')
 
 -- this limited variant is used only in tests
 prepareForTest' :: (MonadReader x m, Has SolConf x)
@@ -308,7 +309,7 @@ prepareForTest' (v, em, a, ts, _) = do
   SolConf{ _sender = s, _testMode = tm } <- view hasLens
   let r = v ^. state . contract
       a' = NE.toList a
-  pure (v, World s M.empty Nothing [] em, createTests tm ts r a') -- fmap Left (zip ts $ repeat r) ++ if ch then Right <$> drop 1 a' else [])
+  pure (v, World s M.empty Nothing [] em, createTests tm True ts r a') 
 
 prepareHashMaps :: [FunctionHash] -> [FunctionHash] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
 prepareHashMaps [] _  m = (m, Nothing)                                -- No constant functions detected
