@@ -1,7 +1,7 @@
 { pkgs ? import (builtins.fetchTarball {
-    name = "nixpkgs-unstable-2021-08-11";
-    url = "https://github.com/nixos/nixpkgs/archive/0ac49d7c7b5625a2554f393ddfba72128c8f0f5d.tar.gz";
-    sha256 = "sha256:03s2k619fvsxv28gk574pphhf4k3y8dxm8ir3d3vvp04i7n4z6wj";
+    name = "nixpkgs-unstable-2021-10-15";
+    url = "https://github.com/nixos/nixpkgs/archive/ee084c02040e864eeeb4cf4f8538d92f7c675671.tar.gz";
+    sha256 = "sha256:1x8amcixdaw3ryyia32pb706vzhvn5whq9n8jin0qcha5qnm1fnh";
   }) {}
 }:
 
@@ -32,15 +32,13 @@ let
 
   v = "1.7.2";
 
-  f = { mkDerivation, aeson, ansi-terminal, base, base16-bytestring
-      , binary, brick, bytestring, cborg, containers, data-dword, data-has
-      , deepseq, directory, exceptions, filepath, hashable, hevm, hpack
-      , lens, lens-aeson, megaparsec, MonadRandom, mtl
-      , optparse-applicative, process, random, stm, tasty
-      , tasty-hunit, tasty-quickcheck, temporary, text, transformers
-      , unix, unliftio, unliftio-core, unordered-containers, vector
-      , vector-instances, vty, wl-pprint-annotated, word8, yaml
-      , cabal-install, extra, ListLike, hlint, semver, haskell-language-server
+  f = { mkDerivation, aeson, ansi-terminal, base, base16-bytestring, binary
+      , brick, bytestring, cborg, containers, data-dword, data-has, deepseq
+      , directory, exceptions, filepath, hashable, hevm, hpack, lens, lens-aeson
+      , megaparsec, MonadRandom, mtl, optparse-applicative, process, random
+      , semver, stm, tasty, tasty-hunit, tasty-quickcheck, temporary, text
+      , transformers, unix, unliftio, unliftio-core, unordered-containers, vector
+      , vector-instances, vty, wl-pprint-annotated, word8, yaml, extra, ListLike
       }:
       mkDerivation rec {
         pname = "echidna";
@@ -50,21 +48,17 @@ let
         isExecutable = true;
         libraryHaskellDepends = [
           aeson ansi-terminal base base16-bytestring binary brick bytestring
-          cborg containers data-dword data-has deepseq directory exceptions filepath
-          hashable hevm lens lens-aeson megaparsec MonadRandom mtl
+          cborg containers data-dword data-has deepseq directory exceptions
+          filepath hashable hevm lens lens-aeson megaparsec MonadRandom mtl
           optparse-applicative process random stm temporary text transformers
           unix unliftio unliftio-core unordered-containers vector
           vector-instances vty wl-pprint-annotated word8 yaml extra ListLike
           semver
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
-        libraryToolDepends = [
-          hpack cabal-install hlint slither-analyzer solc
-          haskell-language-server
-        ];
         executableHaskellDepends = libraryHaskellDepends;
-        testHaskellDepends = [
-          tasty tasty-hunit tasty-quickcheck
-        ];
+        testHaskellDepends = [ tasty tasty-hunit tasty-quickcheck ];
+        libraryToolDepends = [ hpack ];
+        testToolDepends = [ slither-analyzer solc ];
         preConfigure = ''
           hpack
           # re-enable dynamic build for Linux
@@ -76,8 +70,16 @@ let
         doCheck = true;
       };
 
-  drv = pkgs.haskellPackages.callPackage f { };
+  echidna = pkgs.haskellPackages.callPackage f { };
+  echidnaShell = pkgs.haskellPackages.shellFor {
+    packages = p: [ echidna ];
+    buildInputs = with pkgs.haskellPackages; [
+      hlint
+      cabal-install
+      haskell-language-server
+    ];
+  };
 in
   if pkgs.lib.inNixShell
-    then drv.env
-    else pkgs.haskell.lib.justStaticExecutables drv
+    then echidnaShell
+    else pkgs.haskell.lib.justStaticExecutables echidna
