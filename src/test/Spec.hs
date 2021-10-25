@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NamedFieldPuns #-}
 
 import Test.Tasty (defaultMain, testGroup)
 import System.Directory (withCurrentDirectory)
@@ -11,6 +10,7 @@ import Tests.Config (configTests)
 import Tests.Encoding (encodingJSONTests)
 import Tests.Integration (integrationTests)
 import Tests.Optimization (optimizationTests)
+import Tests.Overflow (overflowTests)
 import Tests.Research (researchTests)
 import Tests.Values (valuesTests)
 import Tests.Seed (seedTests)
@@ -27,6 +27,7 @@ main = withCurrentDirectory "./tests/solidity" . defaultMain $
            , coverageTests
            , abiv2Tests
            , assertionTests
+           , overflowTests
            , optimizationTests
            , researchTests
            , encodingJSONTests
