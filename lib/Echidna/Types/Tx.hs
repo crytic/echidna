@@ -102,13 +102,13 @@ data TxResult = ReturnTrue
               | ErrorStackUnderrun
               | ErrorBadJumpDestination
               | ErrorRevert
-              | ErrorNoSuchContract
               | ErrorOutOfGas
               | ErrorBadCheatCode
               | ErrorStackLimitExceeded
               | ErrorIllegalOverflow
               | ErrorQuery
               | ErrorStateChangeWhileStatic
+              | ErrorInvalidFormat
               | ErrorInvalidMemoryAccess
               | ErrorCallDepthLimitReached
               | ErrorMaxCodeSizeExceeded
@@ -148,13 +148,13 @@ getResult (VMFailure SelfDestruction )          = ErrorSelfDestruction
 getResult (VMFailure StackUnderrun )            = ErrorStackUnderrun
 getResult (VMFailure BadJumpDestination )       = ErrorBadJumpDestination
 getResult (VMFailure (Revert _))                = ErrorRevert
-getResult (VMFailure (NoSuchContract _))        = ErrorNoSuchContract
 getResult (VMFailure (OutOfGas _ _))            = ErrorOutOfGas
 getResult (VMFailure (BadCheatCode _))          = ErrorBadCheatCode
 getResult (VMFailure StackLimitExceeded)        = ErrorStackLimitExceeded
 getResult (VMFailure IllegalOverflow)           = ErrorIllegalOverflow
 getResult (VMFailure (Query _))                 = ErrorQuery
 getResult (VMFailure StateChangeWhileStatic)    = ErrorStateChangeWhileStatic
+getResult (VMFailure InvalidFormat)             = ErrorInvalidFormat
 getResult (VMFailure InvalidMemoryAccess)       = ErrorInvalidMemoryAccess
 getResult (VMFailure CallDepthLimitReached)     = ErrorCallDepthLimitReached
 getResult (VMFailure (MaxCodeSizeExceeded _ _)) = ErrorMaxCodeSizeExceeded
