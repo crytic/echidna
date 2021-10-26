@@ -192,7 +192,7 @@ loadSpecified name cs = do
       -- library deployment
       vm <- deployContracts (zip [addrLibrary ..] ls) d blank
       -- additional addresses deployment
-      (ctd, _) <- if (null atd) then (return ([], [])) else (contracts $ NE.fromList $ map show atd)
+      (ctd, _) <- if null atd then return ([], []) else contracts $ NE.fromList $ map show atd
       vm' <- deployContracts (zip atd ctd) d vm
       -- main contract deployment
       let transaction = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
