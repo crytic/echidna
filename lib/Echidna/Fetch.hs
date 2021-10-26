@@ -14,7 +14,7 @@ import EVM.Solidity
 import EVM.Types         (Addr)
 
 import Echidna.Types.Solidity (SolConf(..))
-import Echidna.Types.Tx           (TxConf, createTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
+import Echidna.Types.Tx           (createTx, unlimitedGasPerBlock)
 import Echidna.Exec               (execTx)
 
 -- | Load a list of solidity contracts as libraries

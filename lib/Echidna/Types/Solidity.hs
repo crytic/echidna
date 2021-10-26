@@ -10,13 +10,11 @@ module Echidna.Types.Solidity where
 import Control.Lens
 import Control.Exception (Exception)
 import Data.Text         (Text)
-import Data.Has                   (Has(..))
 
 import EVM.Solidity
 import EVM.Types         (Addr)
 
 import Echidna.Types.Signature    (ContractName)
-import Echidna.Types.Test         (TestConf(..), EchidnaTest(..))
 
 import qualified Data.List.NonEmpty  as NE
 
