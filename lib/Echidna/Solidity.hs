@@ -30,9 +30,10 @@ import Echidna.Test               (createTests, isAssertionMode, isPropertyMode)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Solidity
 import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
-import Echidna.Types.Tx           (TxConf, createTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
+import Echidna.Types.Tx           (TxConf, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.Test         (TestConf(..), EchidnaTest(..))
 import Echidna.Types.World        (World(..))
+import Echidna.Fetch              (deployContracts)
 import Echidna.Processor
 
 import EVM hiding (contracts, path)
@@ -45,6 +46,7 @@ import qualified Data.List.NonEmpty  as NE
 import qualified Data.List.NonEmpty.Extra as NEE
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text           as T
+import qualified Data.List           as DL
 
 -- | Given a list of source caches (SourceCaches) and an optional contract name, 
 -- select one that includes that contract (if possible). Otherwise, use the first source
@@ -64,7 +66,7 @@ selectSourceCache _ scs =
 readSolcBatch :: FilePath -> IO (Maybe (Map Text SolcContract, SourceCaches))
 readSolcBatch d = do
   fs <- listDirectory d
-  mxs <- mapM (\f -> readSolc (d ++ "/" ++ f)) fs
+  mxs <- mapM (\f -> readSolc (d ++ "/" ++ f)) $ filter (DL.isSuffixOf ".json") fs
   case catMaybes mxs of
     [] -> return Nothing
     xs -> return $ Just (unions $ map fst xs, map (first keys) xs)
@@ -115,13 +117,6 @@ populateAddresses (a:as) b vm = populateAddresses as b (vm & set (env . EVM.cont
 addrLibrary :: Addr
 addrLibrary = 0xff
 
- -- | Load a list of solidity contracts as libraries
-loadLibraries :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x)
-              => [SolcContract] -> Addr -> Addr -> VM -> m VM
-loadLibraries []     _  _ vm = return vm
-loadLibraries (l:ls) la d vm = loadLibraries ls (la + 1) d =<< loadRest
-  where loadRest = execStateT (execTx $ createTx (l ^. creationCode) d la (fromInteger unlimitedGasPerBlock) (0, 0)) vm
-
 -- | Generate a string to use as argument in solc to link libraries starting from addrLibrary
 linkLibraries :: [String] -> String
 linkLibraries [] = ""
@@ -157,7 +152,7 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  SolConf ca d ads bala balc mcs pref _ _ libs _ fp ma tm _ fs <- view hasLens
+  SolConf ca d ads bala balc mcs pref _ _ libs _ fp ma tm _ atd fs <- view hasLens
   TestConf _ _ <- view hasLens
 
   -- generate the complete abi mapping
@@ -194,11 +189,16 @@ loadSpecified name cs = do
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
-      vm <- loadLibraries ls addrLibrary d blank
+      -- library deployment
+      vm <- deployContracts (zip [addrLibrary ..] ls) d blank
+      -- additional addresses deployment
+      (ctd, _) <- contracts $ NE.fromList $ map show atd
+      vm' <- deployContracts (zip atd ctd) d vm
+      -- main contract deployment
       let transaction = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
-      vm' <- execStateT transaction vm
-      case currentContract vm' of
-        Just _  -> return (vm', unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
+      vm'' <- execStateT transaction vm'
+      case currentContract vm'' of
+        Just _  -> return (vm'', unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
         Nothing -> throwM DeploymentFailed
 
   where choose []    _        = throwM NoContracts

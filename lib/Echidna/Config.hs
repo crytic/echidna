@@ -153,6 +153,7 @@ instance FromJSON EConfigWithUsage where
                              <*> v ..:? "multi-abi"       ..!= False
                              <*> v ..:? "testMode"        ..!= "property"
                              <*> v ..:? "testDestruction" ..!= False
+                             <*> v ..:? "fetch"           ..!= []
                              <*> fnFilter
                 names :: Names
                 names Sender = (" from: " ++) . show
