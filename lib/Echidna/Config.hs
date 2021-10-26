@@ -29,10 +29,10 @@ import qualified Data.ByteString as BS
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
-import Echidna.Solidity
 import Echidna.Test
 import Echidna.Types.Campaign (CampaignConf(CampaignConf))
 import Echidna.Mutator.Corpus (defaultMutationConsts)
+import Echidna.Types.Solidity (SolConf(..), Filter(..))
 import Echidna.Types.Tx  (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
 import Echidna.Types.Test  (TestConf(..))
 import Echidna.UI

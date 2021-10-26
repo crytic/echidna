@@ -18,6 +18,7 @@ import EVM.Solidity (SourceCache, SolcContract)
 import Echidna.ABI
 import Echidna.Config
 import Echidna.Solidity
+import Echidna.Types.Solidity
 import Echidna.Types.Campaign
 import Echidna.Types.Random
 import Echidna.Types.Signature

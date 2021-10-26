@@ -17,7 +17,7 @@ import System.IO (hPutStrLn, stderr)
 
 import Echidna
 import Echidna.Config
-import Echidna.Solidity
+import Echidna.Types.Solidity
 import Echidna.Types.Campaign
 import Echidna.Types.Test (TestMode)
 import Echidna.Campaign (isSuccess)

@@ -14,9 +14,9 @@ import Data.Maybe (fromMaybe)
 import EVM (VM)
 
 import Echidna.Exec
-import Echidna.Solidity
 import Echidna.Transaction
 import Echidna.Events (Events)
+import Echidna.Types.Solidity (SolConf(..), sender)
 import Echidna.Types.Test (TestConf(..), TestValue(..))
 import Echidna.Types.Tx (Tx, TxConf, TxResult, src)
 

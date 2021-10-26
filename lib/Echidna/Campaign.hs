@@ -38,7 +38,6 @@ import qualified Data.Set as DS
 
 import Echidna.ABI
 import Echidna.Exec
-import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Shrink (shrinkSeq)
@@ -46,6 +45,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Coverage (coveragePoints)
 import Echidna.Types.Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
+import Echidna.Types.Solidity (SolConf(..), sender)
 import Echidna.Types.World (World, eventMap)
 import Echidna.Mutator.Corpus
 
