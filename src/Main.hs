@@ -9,6 +9,7 @@ import Control.Monad.Random (getRandom)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, unpack)
 import Data.Version (showVersion)
+import Data.Map (fromList)
 import EVM.Types (Addr)
 import Options.Applicative
 import Paths_echidna (version)
@@ -24,6 +25,9 @@ import Echidna.Campaign (isSuccess)
 import Echidna.UI
 import Echidna.Output.Source
 import Echidna.Output.Corpus
+
+import EVM.Dapp (dappInfo)
+import EVM.Solidity (contractName)
 
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as DS
@@ -115,9 +119,14 @@ main = do
 
   (sc, cs, cpg) <- flip runReaderT cfg $ do
     (v, sc, cs, w, ts, d, txs) <- prepareContract cfg cliFilePath cliSelectedContract g
-    -- start ui and run tests
-    r <- ui v w ts d txs
-    return (sc, cs, r)
+    let solcByName = fromList [(c ^. contractName, c) | c <- cs]
+    -- TODO put in real path
+    let dappInfo' = dappInfo "/" solcByName sc
+    let env = Env { _cfg = cfg, _dapp = dappInfo' }
+    flip runReaderT env $ do
+      -- start ui and run tests
+      r <- ui v w ts d txs
+      return (sc, cs, r)
 
   -- save corpus
   saveTxs cd (snd <$> DS.toList (cpg ^. corpus))

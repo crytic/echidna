@@ -27,6 +27,8 @@ import Echidna.Types.Test
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Tx (Tx, TxConf, basicTx, TxResult(..), getResult, propGas)
 
+import EVM.Dapp (DappInfo)
+
 --- | Possible responses to a call to an Echidna test: @true@, @false@, @REVERT@, and ???.
 data CallRes = ResFalse | ResTrue | ResRevert | ResOther
   deriving (Eq, Show)
@@ -106,16 +108,16 @@ updateOpenTest _ _ _ _                       = error "Invalid type of test"
 
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
-checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> EchidnaTest -> m (TestValue, Events, TxResult)
-checkETest em t = case t ^. testType of
+checkETest eventMap test = case test ^. testType of
                   Exploration           -> return (BoolValue True, [], Stop) -- These values are never used
-                  PropertyTest n a      -> checkProperty em (n, a)
-                  OptimizationTest n a  -> checkOptimization em (n, a) 
-                  AssertionTest n a     -> checkAssertion em (n, a)
-                  CallTest _ f          -> checkCall em f
+                  PropertyTest n a      -> checkProperty eventMap (n, a)
+                  OptimizationTest n a  -> checkOptimization eventMap (n, a)
+                  AssertionTest n a     -> checkAssertion eventMap (n, a)
+                  CallTest _ f          -> checkCall eventMap f
 
-checkProperty :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+checkProperty :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> (Text, Addr) -> m (TestValue, Events, TxResult)
 checkProperty em t = do
     r <- use (hasLens . result)
@@ -136,14 +138,15 @@ runTx f s a = do
 
 
 -- | Given a property test, evaluate it and see if it currently passes.
-checkProperty' :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+checkProperty' :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> (Text, Addr) -> m (TestValue, Events, TxResult)
-checkProperty' em (f,a) = do
+checkProperty' eventMap (f,a) = do
+  dappInfo <- view hasLens
   TestConf p s <- view hasLens
   (vm, vm') <- runTx f s a
   b  <- gets $ p f . getter
   put vm -- restore EVM state
-  pure (BoolValue b, extractEvents em vm', getResultFromVM vm')
+  pure (BoolValue b, extractEvents dappInfo eventMap vm', getResultFromVM vm')
 
 --- | Extract a test value from an execution.
 getIntFromResult :: Maybe VMResult -> TestValue
@@ -155,18 +158,20 @@ getIntFromResult (Just (VMSuccess b)) = case viewBuffer b of
 getIntFromResult _ = IntValue minBound
 
 -- | Given a property test, evaluate it and see if it currently passes.
-checkOptimization :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+checkOptimization :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> (Text, Addr) -> m (TestValue, Events, TxResult)
 checkOptimization em (f,a) = do
   TestConf _ s <- view hasLens
+  dappInfo <- view hasLens
   (vm, vm') <- runTx f s a
   put vm -- restore EVM state
-  pure (getIntFromResult (vm' ^. result), extractEvents em vm', getResultFromVM vm')
+  pure (getIntFromResult (vm' ^. result), extractEvents dappInfo em vm', getResultFromVM vm')
 
 
-checkAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
+checkAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
            => EventMap -> (SolSignature, Addr) -> m (TestValue, Events, TxResult)
 checkAssertion eventMap (sig, addr) = do
+  dappInfo <- view hasLens
   vm <- use hasLens
       -- Whether the last transaction called the function `sig`.
   let isCorrectFn = case viewBuffer $ vm ^. state . calldata . _1 of
@@ -181,29 +186,30 @@ checkAssertion eventMap (sig, addr) = do
         _ -> False
       -- Test always passes if it doesn't target the last executed contract and function.
       -- Otherwise it passes if it doesn't cause an assertion failure.
-      es = extractEvents eventMap vm
-      eventFailure = not (null es) && (checkAssertionEvent es || checkPanicEvent "1" es)
+      events = extractEvents dappInfo eventMap vm
+      eventFailure = not (null events) && (checkAssertionEvent events || checkPanicEvent "1" events)
       isFailure = isCorrectTarget && (eventFailure || isAssertionFailure)
-  pure (BoolValue (not isFailure), es, getResultFromVM vm)
+  pure (BoolValue (not isFailure), events, getResultFromVM vm)
 
-checkCall :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
-           => EventMap -> (EventMap -> VM -> TestValue) -> m (TestValue, Events, TxResult)
-checkCall em f = do 
+checkCall :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+           => EventMap -> (DappInfo -> EventMap -> VM -> TestValue) -> m (TestValue, Events, TxResult)
+checkCall eventMap f = do
+  dappInfo <- view hasLens
   vm <- use hasLens
-  pure (f em vm, extractEvents em vm, getResultFromVM vm)
+  pure (f dappInfo eventMap vm, extractEvents dappInfo eventMap vm, getResultFromVM vm)
 
-checkAssertionTest :: EventMap -> VM -> TestValue
-checkAssertionTest em vm = 
-  let es = extractEvents em vm
-  in BoolValue $ null es || not (checkAssertionEvent es)
+checkAssertionTest :: DappInfo -> EventMap -> VM -> TestValue
+checkAssertionTest dappInfo eventMap vm = 
+  let events = extractEvents dappInfo eventMap vm
+  in BoolValue $ null events || not (checkAssertionEvent events)
 
 checkAssertionEvent :: Events -> Bool
 checkAssertionEvent = any (T.isPrefixOf "AssertionFailed(")
 
-checkSelfDestructedTarget :: Addr -> EventMap -> VM -> TestValue
-checkSelfDestructedTarget a _ vm =
-  let sd = vm ^. (tx . substate . selfdestructs)
-  in BoolValue $ a `notElem` sd
+checkSelfDestructedTarget :: Addr -> DappInfo -> EventMap -> VM -> TestValue
+checkSelfDestructedTarget addr _ _ vm =
+  let selfdestructs' = vm ^. (tx . substate . selfdestructs)
+  in BoolValue $ addr `notElem` selfdestructs'
 
 checkAnySelfDestructed :: EventMap -> VM -> TestValue
 checkAnySelfDestructed _ vm =
