@@ -191,15 +191,17 @@ loadSpecified name cs = do
     Nothing    -> do
       -- library deployment
       vm <- deployContracts (zip [addrLibrary ..] ls) d blank
-      -- additional addresses deployment
+      -- additional contracts deployment
       (ctd, _) <- if null atd then return ([], []) else contracts $ NE.fromList $ map show atd
-      vm' <- deployContracts (zip atd ctd) d vm
+      let mainContract = head $ map (\x -> head $ T.splitOn "." $ last $ T.splitOn "-" $ head $ T.splitOn ":" (view contractName x)) ctd
+      let ctd' = filter (\x -> (last $ T.splitOn ":" (view contractName x)) == mainContract) ctd
+      vm' <- deployContracts (zip atd ctd') ca vm
       -- main contract deployment
       let transaction = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
       vm'' <- execStateT transaction vm'
       case currentContract vm'' of
         Just _  -> return (vm'', unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
-        Nothing -> throwM DeploymentFailed
+        Nothing -> throwM $ DeploymentFailed ca
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
