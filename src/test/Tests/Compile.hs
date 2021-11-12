@@ -12,7 +12,7 @@ import Control.Monad.Reader (runReaderT)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Maybe (isJust)
 import Data.Text (Text)
-import Echidna.Solidity (SolException, _ContractNotFound, _NoBytecode, _NoFuncs, _NoTests, _OnlyTests, _TestArgsFound, _ConstructorArgs, _DeploymentFailed, loadWithCryticCompile)
+import Echidna.Solidity (SolException, _ContractNotFound, _NoBytecode, _NoFuncs, _NoTests, _OnlyTests, _TestArgsFound, _ConstructorArgs, _DeploymentFailed, loadSolidity)
 
 compilationTests :: TestTree
 compilationTests = testGroup "Compilation and loading tests"
@@ -38,7 +38,7 @@ compilationTests = testGroup "Compilation and loading tests"
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
-  tryLoad = runReaderT (loadWithCryticCompile (fp :| []) c >> pure ()) testConfig
+  tryLoad = runReaderT (loadSolidity (fp :| []) c >> pure ()) testConfig
 
 pmatch :: Prism' s a -> s -> Bool
 pmatch p = isJust . preview p
