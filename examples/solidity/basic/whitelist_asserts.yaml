@@ -1,0 +1,3 @@
+checkAsserts: true
+filterBlacklist: false
+filterFunctions: ["Test.internal_assert(uint256)", "Test.set0(int256)"]
