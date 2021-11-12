@@ -26,7 +26,7 @@ import Data.Text.Lens             (unpacked)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
-import System.Directory           (findExecutable, listDirectory, removeFile)
+import System.Directory           (doesDirectoryExist, findExecutable, listDirectory, removeFile)
 import System.FilePath.Posix      ((</>))
 
 import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
@@ -150,7 +150,6 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
     c  <- view (hasLens . cryticArgs)
     let solargs = a ++ linkLibraries ls & (usual ++) .
                   (\sa -> if null sa then [] else ["--solc-args", sa])
-        fps = toList fp
         compileOne :: (MonadIO m, MonadThrow m) => FilePath -> m ([SolcContract], SourceCaches)
         compileOne x = do
           mSolc <- liftIO $ do
@@ -163,15 +162,17 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
           maybe (throwM SolcReadFailure) (pure . first toList) mSolc
     -- clean up previous artifacts
     liftIO $ removeJsonFiles "crytic-export"
-    cps <- mapM compileOne fps
-    let (cs, ss) = unzip cps
+    cps <- mapM compileOne fp
+    let (cs, ss) = NE.unzip cps
     when (length ss > 1) $ liftIO $ putStrLn "WARNING: more than one SourceCaches was found after compile. Only the first one will be used."
-    pure (concat cs, head ss)
+    pure (concat cs, NE.head ss)
 
 removeJsonFiles :: FilePath -> IO ()
 removeJsonFiles dir = do
-  files <- filter (".json" `Data.List.isSuffixOf`) <$> listDirectory dir
-  mapM_ removeFile ((dir </>) <$> files)
+  dirExists <- doesDirectoryExist dir
+  when dirExists $ do
+    files <- filter (".json" `Data.List.isSuffixOf`) <$> listDirectory dir
+    mapM_ removeFile ((dir </>) <$> files)
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
 addresses = do
