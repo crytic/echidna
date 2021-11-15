@@ -13,7 +13,7 @@ import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
-import Data.List                  (find, partition)
+import Data.List                  (find, partition, isSuffixOf)
 import Data.Map                   (Map, keys, elems, unions)
 import Data.Maybe                 (isJust, isNothing, catMaybes, listToMaybe)
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
@@ -21,7 +21,8 @@ import Data.Text.Lens             (unpacked)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
-import System.Directory           (findExecutable, listDirectory)
+import System.Directory           (doesDirectoryExist, findExecutable, listDirectory, removeFile)
+import System.FilePath.Posix      ((</>))
 
 import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec               (execTx, initialVM)
@@ -46,14 +47,13 @@ import qualified Data.List.NonEmpty  as NE
 import qualified Data.List.NonEmpty.Extra as NEE
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text           as T
-import qualified Data.List           as DL
 
 -- | Given a list of source caches (SourceCaches) and an optional contract name, 
 -- select one that includes that contract (if possible). Otherwise, use the first source
 -- cache available (or fail if it is empty)
 selectSourceCache :: Maybe ContractName -> SourceCaches -> SourceCache
 selectSourceCache (Just c) scs =
-  let r = concatMap (\(cs,sc) -> [sc | isJust $ find (isSuffixOf (":" `append` c)) cs]) scs in
+  let r = concatMap (\(cs,sc) -> [sc | isJust $ find (Data.Text.isSuffixOf (":" `append` c)) cs]) scs in
   case r of
     (sc:_) -> sc
     _      -> error "Source cache selection returned no result"
@@ -66,7 +66,7 @@ selectSourceCache _ scs =
 readSolcBatch :: FilePath -> IO (Maybe (Map Text SolcContract, SourceCaches))
 readSolcBatch d = do
   fs <- listDirectory d
-  mxs <- mapM (\f -> readSolc (d ++ "/" ++ f)) $ filter (DL.isSuffixOf ".json") fs
+  mxs <- mapM (\f -> readSolc (d </> f)) fs
   case catMaybes mxs of
     [] -> return Nothing
     xs -> return $ Just (unions $ map fst xs, map (first keys) xs)
@@ -86,8 +86,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
     c  <- view (hasLens . cryticArgs)
     let solargs = a ++ linkLibraries ls & (usual ++) .
                   (\sa -> if null sa then [] else ["--solc-args", sa])
-        fps = toList fp
-        compileOne :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x) => FilePath -> m ([SolcContract], SourceCaches)
+        compileOne :: (MonadIO m, MonadThrow m) => FilePath -> m ([SolcContract], SourceCaches)
         compileOne x = do
           mSolc <- liftIO $ do
             stderr <- if q then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
@@ -97,10 +96,19 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
               ExitFailure _ -> throwM $ CompileFailure out err
 
           maybe (throwM SolcReadFailure) (pure . first toList) mSolc
-    cps <- mapM compileOne fps
-    let (cs, ss) = unzip cps
+    -- clean up previous artifacts
+    liftIO $ removeJsonFiles "crytic-export"
+    cps <- mapM compileOne fp
+    let (cs, ss) = NE.unzip cps
     when (length ss > 1) $ liftIO $ putStrLn "WARNING: more than one SourceCaches was found after compile. Only the first one will be used."
-    pure (concat cs, head ss)
+    pure (concat cs, NE.head ss)
+
+removeJsonFiles :: FilePath -> IO ()
+removeJsonFiles dir = do
+  dirExists <- doesDirectoryExist dir
+  when dirExists $ do
+    files <- filter (".json" `Data.List.isSuffixOf`) <$> listDirectory dir
+    mapM_ removeFile ((dir </>) <$> files)
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
 addresses = do
@@ -206,7 +214,7 @@ loadSpecified name cs = do
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
-                                      find (isSuffixOf (if T.any (== ':') n then n else ":" `append` n) . view contractName) cs
+                                      find (Data.Text.isSuffixOf (if T.any (== ':') n then n else ":" `append` n) . view contractName) cs
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
 -- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
