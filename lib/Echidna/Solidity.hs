@@ -175,8 +175,7 @@ removeJsonFiles dir = do
     forM_ files $ \file ->
       when (".json" `Data.List.isSuffixOf` file) $ do
         let path = dir </> file
-        whenM (doesFileExist path) $ do
-          removeFile path
+        whenM (doesFileExist path) $ removeFile path
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
 addresses = do
