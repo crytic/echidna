@@ -169,7 +169,7 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
     pure (concat cs, NE.head ss)
 
 removeJsonFiles :: FilePath -> IO ()
-removeJsonFiles dir = do
+removeJsonFiles dir =
   whenM (doesDirectoryExist dir) $ do
     files <- listDirectory dir
     forM_ files $ \file ->
