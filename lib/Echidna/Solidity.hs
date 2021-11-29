@@ -11,8 +11,9 @@ module Echidna.Solidity where
 import Control.Lens
 import Control.Exception          (Exception)
 import Control.Arrow              (first)
-import Control.Monad              (liftM2, when, unless)
+import Control.Monad              (liftM2, when, unless, forM_)
 import Control.Monad.Catch        (MonadThrow(..))
+import Control.Monad.Extra        (whenM)
 import Control.Monad.IO.Class     (MonadIO(..))
 import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
@@ -26,7 +27,7 @@ import Data.Text.Lens             (unpacked)
 import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.IO                  (openFile, IOMode(..))
 import System.Exit                (ExitCode(..))
-import System.Directory           (doesDirectoryExist, findExecutable, listDirectory, removeFile)
+import System.Directory           (doesDirectoryExist, doesFileExist, findExecutable, listDirectory, removeFile)
 import System.FilePath.Posix      ((</>))
 
 import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
@@ -168,11 +169,13 @@ contracts fp = let usual = ["--solc-disable-warnings", "--export-format", "solc"
     pure (concat cs, NE.head ss)
 
 removeJsonFiles :: FilePath -> IO ()
-removeJsonFiles dir = do
-  dirExists <- doesDirectoryExist dir
-  when dirExists $ do
-    files <- filter (".json" `Data.List.isSuffixOf`) <$> listDirectory dir
-    mapM_ removeFile ((dir </>) <$> files)
+removeJsonFiles dir =
+  whenM (doesDirectoryExist dir) $ do
+    files <- listDirectory dir
+    forM_ files $ \file ->
+      when (".json" `Data.List.isSuffixOf` file) $ do
+        let path = dir </> file
+        whenM (doesFileExist path) $ removeFile path
 
 addresses :: (MonadReader x m, Has SolConf x) => m (NE.NonEmpty AbiValue)
 addresses = do
