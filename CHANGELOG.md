@@ -1,5 +1,14 @@
 ## TODO
 
+## 1.7.3
+
+* Removed old compilation artifacts before starting a new fuzzing campaign (#697)
+* Fixed incorrect function filtering when using assertion mode (#695)
+* Improved handling of negative constants (#683)
+* Updated hevm to 0.48.0 (#691)
+* Removed nix workaround for Slither (#680)
+* Fixed source printing when some lines are not covered (#678)
+
 ## 1.7.2
 
 * Fixed check-asserts and multi-abi cli switches (#665)
