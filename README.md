@@ -51,7 +51,7 @@ An example contract with tests can be found [examples/solidity/basic/flags.sol](
 $ echidna-test examples/solidity/basic/flags.sol
 ```
 
-Echidna should find a a call sequence that falisfies `echidna_sometimesfalse` and should be unable to find a falsifying input for `echidna_alwaystrue`.
+Echidna should find a a call sequence that falsifies `echidna_sometimesfalse` and should be unable to find a falsifying input for `echidna_alwaystrue`.
 
 ### Collecting and visualizing coverage
 
