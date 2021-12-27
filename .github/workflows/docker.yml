@@ -5,6 +5,7 @@ on:
     branches:
       - master
       - github-docker
+      - docker-slim
     tags:
       - '*'
 
