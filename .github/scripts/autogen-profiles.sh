@@ -7,6 +7,15 @@
 #  $1 - path to echidna-test to run, defaults to "echidna-test"
 #  $2 - examples folder to profile, defaults to "examples"
 
+# TO COMPILE to support profiling:
+#   nix: set profilingOn to true in default.nix and run nix-build
+#   cabal: add "library-profiling: True" and "executable-profiling: True" to echidna.cabal
+#   stack: use the flags "--profile --executable-profiling --library-profiling" when building
+#   ghc: use the flags "-prof -fprof-auto -rtsopts" when building
+
+# TO RUN an executable with profiling enabled (this script does this automatically):
+#   echidna-test [normal arguments] +RTS -p
+
 echidna=$1
 if [ -z "$1" ]; then
   echidna="echidna-test"
