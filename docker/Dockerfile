@@ -31,5 +31,6 @@ RUN python3 -m venv /venv && /venv/bin/pip3 install slither-analyzer
 FROM gcr.io/distroless/python3-debian11:nonroot AS final
 COPY --from=builder-echidna /root/.local/bin/echidna-test /usr/local/bin/echidna-test
 COPY --from=builder-python3 /venv /venv
+COPY docker/solc-install.py /usr/local/bin/solc-install
 ENV PATH="$PATH:/venv/bin"
-ENTRYPOINT [ "/usr/local/bin/echidna-test" ]
+ENTRYPOINT [ "/usr/local/bin/solc-install", "/usr/local/bin/echidna-test" ]

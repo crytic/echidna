@@ -55,7 +55,7 @@ jobs:
           echo "VER=$VER" >> $GITHUB_ENV
 
       - name: Docker Build
-        run: docker build -t $PKG:$VER .
+        run: docker build -t $PKG:$VER -f docker/Dockerfile .
 
       - name: Push to GitHub Packages
         run: |
