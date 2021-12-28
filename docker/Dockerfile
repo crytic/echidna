@@ -18,6 +18,7 @@ WORKDIR /echidna
 RUN .github/scripts/install-libff.sh
 RUN stack upgrade && stack setup && stack install --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
 
+
 FROM debian:bullseye AS builder-python3
 RUN apt-get update && \
     apt-get install -y --no-install-suggests --no-install-recommends \
@@ -28,12 +29,14 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PIP_NO_CACHE_DIR=1
 RUN python3 -m venv /venv && /venv/bin/pip3 install --no-cache slither-analyzer solc-select
 
+
 FROM gcr.io/distroless/python3-debian11:nonroot AS final-distroless
 COPY --from=builder-echidna /root/.local/bin/echidna-test /usr/local/bin/echidna-test
 COPY --from=builder-python3 /venv /venv
 COPY docker/solc-install.py /usr/local/bin/solc-install
 ENV PATH="$PATH:/venv/bin"
 ENTRYPOINT [ "/usr/local/bin/solc-install", "/usr/local/bin/echidna-test" ]
+
 
 FROM debian:bullseye-slim AS final-debian
 RUN apt-get update && \
@@ -45,3 +48,12 @@ RUN apt-get update && \
 COPY --from=builder-echidna /root/.local/bin/echidna-test /usr/local/bin/echidna-test
 COPY --from=builder-python3 /venv /venv
 ENV PATH="$PATH:/venv/bin"
+
+
+FROM final-debian AS final-debian-nvm
+RUN apt-get update && \
+    apt-get install -y --no-install-suggests --no-install-recommends \
+        curl \
+        && \
+    rm -rf /var/lib/apt/lists/*
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
