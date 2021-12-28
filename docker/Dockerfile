@@ -41,19 +41,13 @@ ENTRYPOINT [ "/usr/local/bin/solc-install", "/usr/local/bin/echidna-test" ]
 FROM debian:bullseye-slim AS final-debian
 RUN apt-get update && \
     apt-get install -y --no-install-suggests --no-install-recommends \
+        ca-certificates \
+        curl \
         python3 \
         python3.9 \
         && \
     rm -rf /var/lib/apt/lists/*
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
 COPY --from=builder-echidna /root/.local/bin/echidna-test /usr/local/bin/echidna-test
 COPY --from=builder-python3 /venv /venv
 ENV PATH="$PATH:/venv/bin"
-
-
-FROM final-debian AS final-debian-nvm
-RUN apt-get update && \
-    apt-get install -y --no-install-suggests --no-install-recommends \
-        curl \
-        && \
-    rm -rf /var/lib/apt/lists/*
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash

@@ -54,7 +54,7 @@ jobs:
           echo "PKG=$PKG" >> $GITHUB_ENV
           echo "VER=$VER" >> $GITHUB_ENV
 
-      - name: Docker Build and Push (Debian variant)
+      - name: Docker Build and Push (Debian & NVM variant)
         uses: docker/build-push-action@v2
         with:
           platforms: linux/amd64
@@ -64,17 +64,6 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/${{ env.PKG }}/debian:${{ env.VER }}
-
-      - name: Docker Build and Push (Debian with NVM variant)
-        uses: docker/build-push-action@v2
-        with:
-          platforms: linux/amd64
-          target: final-debian-nvm
-          file: docker/Dockerfile
-          pull: true
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/${{ env.PKG }}/debian-nvm:${{ env.VER }}
 
       - name: Docker Build and Push (Distroless variant)
         uses: docker/build-push-action@v2
