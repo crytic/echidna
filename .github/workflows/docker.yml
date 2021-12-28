@@ -37,7 +37,7 @@ jobs:
             # branch
             if [ "$GITHUB_REF" = "refs/heads/master" ]; then
               VER=latest
-              PKG=echidna
+              PKG=
             else
               VER=testing
               PKG=testing
@@ -48,32 +48,28 @@ jobs:
             # tag
             # refs/tags/v1.X => v1.X
             VER=$(echo "$GITHUB_REF" | sed -e 's/.*\///')
-            PKG=echidna
+            PKG=
           fi
           set -e
           echo "PKG=$PKG" >> $GITHUB_ENV
           echo "VER=$VER" >> $GITHUB_ENV
 
-      - name: Docker Build
-        run: |
-          docker build --target final-debian -t $PKG:$VER -f docker/Dockerfile .
-          docker build --target final-distroless -t $PKG:$VER-distroless -f docker/Dockerfile .
-
-      - name: Push to GitHub Packages
-        run: |
-          docker tag $PKG:$VER ghcr.io/$GITHUB_REPOSITORY/$PKG:$VER
-          docker push ghcr.io/$GITHUB_REPOSITORY/$PKG:$VER
-          docker tag $PKG:$VER-distroless ghcr.io/$GITHUB_REPOSITORY/$PKG:$VER-distroless
-          docker push ghcr.io/$GITHUB_REPOSITORY/$PKG:$VER-distroless
-
-      - name: DockerHub Login
-        uses: docker/login-action@v1
+      - name: Docker Build and Push (Debian variant)
+        uses: docker/build-push-action@v2
         with:
-          registry: registry.hub.docker.com
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
+          platforms: linux/amd64
+          target: final-debian
+          pull: true
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ env.PKG }}/debian:${{ env.VER }}
 
-      - name: Push to DockerHub
-        run: |
-          docker tag $PKG:$VER registry.hub.docker.com/trailofbits/echidna:$VER
-          docker push registry.hub.docker.com/trailofbits/echidna:$VER
+      - name: Docker Build and Push (Distroless variant)
+        uses: docker/build-push-action@v2
+        with:
+          platforms: linux/amd64
+          target: final-distroless
+          pull: true
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ env.PKG }}/distroless:${{ env.VER }}
