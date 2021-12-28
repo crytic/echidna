@@ -175,17 +175,36 @@ If you want to quickly test Echidna in Linux or MacOS, we provide statically lin
 
 ### Docker container
 
-If you prefer to use a pre-built Docker container, log into Github on your local `docker` client and check out our [docker package](https://github.com/crytic/echidna/packages/136575), which are also auto-built via Github Actions.
-Otherwise, if you want to install the latest released version of Echidna, we recommend using docker:
+If you prefer to use a pre-built Docker container, check out our [docker packages](https://github.com/orgs/crytic/packages?repo_name=echidna), which are auto-built via Github Actions. Two container variants are available:
 
-```
-$ docker build -t echidna .
+* **debian**: Based on `debian:bullseye-slim`, it is meant to be a small yet flexible enough image to use echidna on. It provides a pre-built version of `echidna-test`, as well as `slither`, `crytic-compile`, `solc-select` and `nvm` under 200 MB.
+* **distroless**: Based on `distroless/python3-debian11:nonroot`, it is meant to be a very small image with the bare minimum required to run echidna. It provides a pre-built version of `echidna-test`, as well as `slither`, `crytic-compile` and `solc-select`. No shell or `nvm` is provided in this image. A [wrapper](docker/solc-install.py) to install a `solc` version before running echidna is included, which will observe the `SOLC_VERSION` environment variable.
+
+Different tags are available on each container:
+
+| Tag           | Build in tag
+|---------------|-------------
+| `vx.y.z`      | Build corresponding to release `vx.y.z`
+| `latest`      | Latest Echidna tagged release.
+| `edge`        | Most recent commit on the default branch.
+| `testing-foo` | Testing build based on the `foo` branch.
+
+To run the Debian variant container with the latest Echidna version interactively, you can use something like the following command. It will map the current directory as `/src` inside the container, and give you a shell where you can use `echidna-test`:
+
+```sh
+$ docker run --rm -it -v `pwd`:/src ghcr.io/crytic/echidna/debian
 ```
 
-Then, run it via:
+Otherwise, if you want to locally build the latest version of Echidna, we recommend using Docker. From within a clone of this repository, run the following command to build the debian variant of the Docker container image:
 
+```sh
+$ docker build -t echidna -f docker/Dockerfile --target final-debian .
 ```
-$ docker run -it -v `pwd`:/src echidna echidna-test /src/examples/solidity/basic/flags.sol
+
+Then, you can run the `echidna` image locally. For example, to install solc 0.5.7 and check `examples/solidity/basic/flags.sol`, you can run:
+
+```sh
+$ docker run -it -v `pwd`:/src echidna bash -c "solc-select install 0.5.7 && solc-select use 0.5.7 && echidna-test /src/examples/solidity/basic/flags.sol"
 ```
 
 ### Building using Stack
