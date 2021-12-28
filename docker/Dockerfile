@@ -26,7 +26,7 @@ RUN apt-get update && \
         python3.9-venv
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PIP_NO_CACHE_DIR=1
-RUN python3 -m venv /venv && /venv/bin/pip3 install slither-analyzer solc-select
+RUN python3 -m venv /venv && /venv/bin/pip3 install --no-cache slither-analyzer solc-select
 
 FROM gcr.io/distroless/python3-debian11:nonroot AS final
 COPY --from=builder-echidna /root/.local/bin/echidna-test /usr/local/bin/echidna-test
