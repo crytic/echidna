@@ -59,6 +59,8 @@ jobs:
           push: true
           tags: ${{ steps.meta-debian.outputs.tags }}
           labels: ${{ steps.meta-debian.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Docker Build and Push (Distroless variant)
         uses: docker/build-push-action@v2
@@ -70,3 +72,5 @@ jobs:
           push: true
           tags: ${{ steps.meta-distroless.outputs.tags }}
           labels: ${{ steps.meta-distroless.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
