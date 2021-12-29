@@ -23,7 +23,7 @@ import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
 import Data.Map (Map, unionWith, (\\), elems, keys, lookup, insert, mapWithKey)
-import Data.Maybe (fromMaybe, isJust, mapMaybe, catMaybes)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Text (Text)
@@ -162,7 +162,7 @@ execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => ByteSt
 execTxOptC bsm t = do
   let cov = hasLens . coverage
   og  <- cov <<.= mempty
-  res <- execTxWith vmExcept (usingCoverage $ pointCoverage bsm cov) t
+  res <- execTxWith vmExcept (usingCoverage2 bsm cov) t
   let vmr = getResult $ fst res
   -- Update the coverage map with the proper binary according to the vm result
   cov %= mapWithKey (\_ s -> DS.map (set _4 vmr) s)
@@ -283,7 +283,7 @@ campaign u v w ts d txs = do
   where
     step        = runUpdate (updateTest w v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    bsm         = makeBytecodeMemo . catMaybes . map viewBuffer . map (^. bytecode) . elems $ (v ^. env . EVM.contracts)
+    bsm         = makeBytecodeMemo . mapMaybe (viewBuffer . (^. bytecode)) . elems $ (v ^. env . EVM.contracts)
     update c    = do
       CampaignConf tl sof _ q sl _ _ _ _ _ <- view hasLens
       Campaign { _ncallseqs } <- view hasLens <$> get

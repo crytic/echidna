@@ -3,13 +3,14 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Echidna.Exec where
 
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
-import Control.Monad.State.Strict (MonadState, execState)
+import Control.Monad.State.Strict (MonadState, execState, execState)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import EVM
@@ -158,6 +159,26 @@ pointCoverage bsm l = do
   where
     h v = do
       buffer <- v ^? env . contracts . at (v ^. state . contract) . _Just . bytecode
+      bc <- viewBuffer buffer
+      lookupBytecodeMetadata bsm bc
+
+usingCoverage2 :: (MonadState x m, Has VM x) => ByteStringMap -> Lens' x CoverageMap -> m VMResult
+usingCoverage2 bsm l = do
+  vm :: VM          <- use hasLens
+  cm :: CoverageMap <- use l
+  let (r, vm', cm') = loop vm cm
+  hasLens .= vm'
+  l       .= cm'
+  return r
+  where
+    loop vm cm = maybe (loop (stepVM vm) (addCoverage vm cm)) (, vm, cm) (_result vm)
+    stepVM = execState exec1
+    addCoverage vm = M.alter
+                       (Just . maybe mempty (S.insert $ currentCovLoc vm))
+                       (currentMeta vm)
+    currentCovLoc vm = (vm ^. state . pc, fromMaybe 0 $ vmOpIx vm, length $ vm ^. frames, Success)
+    currentMeta vm = fromMaybe (error "no contract information on coverage") $ do
+      buffer <- vm ^? env . contracts . at (vm ^. state . contract) . _Just . bytecode
       bc <- viewBuffer buffer
       lookupBytecodeMetadata bsm bc
 
