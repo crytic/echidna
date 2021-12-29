@@ -9,6 +9,7 @@ import EVM.ABI (AbiType, AbiValue)
 import EVM.Types (Addr)
 import GHC.Word (Word32)
 
+import qualified Data.Map as M
 import qualified Data.ByteString as BS
 
 -- | Name of the contract
@@ -30,6 +31,8 @@ type SolCall     = (FunctionName, [AbiValue])
 -- | A contract is just an address with an ABI (for our purposes).
 type ContractA = (Addr, NonEmpty SolSignature)
 
+type ByteStringMap = M.Map ByteString ByteString
+
 type SignatureMap = HashMap ByteString (NonEmpty SolSignature)
 
 getBytecodeMetadata :: ByteString -> ByteString
@@ -38,6 +41,12 @@ getBytecodeMetadata bs =
     case find ((/= mempty) . snd) stripCandidates of
       Nothing     -> bs -- if no metadata is found, return the complete bytecode
       Just (_, m) -> m
+
+lookupBytecodeMetadata :: ByteStringMap -> ByteString -> Maybe ByteString
+lookupBytecodeMetadata = (M.!?)
+
+makeBytecodeMemo :: [ByteString] -> ByteStringMap
+makeBytecodeMemo bss = M.fromList $ bss `zip` (getBytecodeMetadata <$> bss)
 
 knownBzzrPrefixes :: [ByteString]
 knownBzzrPrefixes = [

@@ -25,7 +25,7 @@ import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
 
-import Echidna.Types.Signature (getBytecodeMetadata)
+import Echidna.Types.Signature (ByteStringMap, lookupBytecodeMetadata)
 import Echidna.Events (emptyEvents)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
@@ -149,8 +149,8 @@ usingCoverage :: (MonadState x m, Has VM x) => m () -> m VMResult
 usingCoverage cov = maybe (cov >> liftSH exec1 >> usingCoverage cov) pure =<< use (hasLens . result)
 
 -- | Capture the current PC and bytecode (without metadata). This should identify instructions uniquely.
-pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
-pointCoverage l = do
+pointCoverage :: (MonadState x m, Has VM x) => ByteStringMap -> Lens' x CoverageMap -> m ()
+pointCoverage bsm l = do
   v <- use hasLens
   l %= M.insertWith (const . S.insert $ (v ^. state . pc, fromMaybe 0 $ vmOpIx v, length $ v ^. frames, Success))
                     (fromMaybe (error "no contract information on coverage") $ h v)
@@ -159,7 +159,7 @@ pointCoverage l = do
     h v = do
       buffer <- v ^? env . contracts . at (v ^. state . contract) . _Just . bytecode
       bc <- viewBuffer buffer
-      pure $ getBytecodeMetadata bc
+      lookupBytecodeMetadata bsm bc
 
 initialVM :: VM
 initialVM = vmForEthrunCreation mempty & block . timestamp .~ litWord initialTimestamp
