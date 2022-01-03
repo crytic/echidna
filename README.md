@@ -152,6 +152,13 @@ subject to change to be slightly more user friendly at a later date. `testType`
 will either be `property` or `assertion`, and `status` always takes on either
 `fuzzing`, `shrinking`, `solved`, `passed`, or `error`.
 
+### Using Echidna in a GitHub Actions workflow
+
+There is an Echidna action which can be used to run `echidna-test` as part of a
+GitHub Actions workflow. Please refer to the
+[crytic/echidna-action](https://github.com/crytic/echidna-action) repository for
+usage instructions and examples.
+
 ## Limitations and known issues
 
 EVM emulation and testing is hard. Echidna has a number of limitations in the latest release. Some of these are inherited from [hevm](https://github.com/dapphub/dapptools/tree/master/src/hevm) while some are results from design/performance decisions or simply bugs in our code. We list them here including their corresponding issue and the status ("wont fix", "in review", "fixed"). Issues that are "fixed" are expected to be included in the next Echidna release.

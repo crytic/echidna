@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Assert test
-        uses: ./action
+        uses: crytic/echidna-action@v1
         with:
           files: "examples/solidity/basic/assert.sol"
           contract: "TestAssert"
@@ -26,7 +26,7 @@ jobs:
           negate-exit-status: 1
 
       - name: Multi-abi test
-        uses: ./action
+        uses: crytic/echidna-action@v1
         with:
           files: "examples/solidity/basic/multi-abi.sol"
           contract: "B"
