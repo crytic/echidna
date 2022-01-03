@@ -44,7 +44,7 @@ import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Campaign
 import Echidna.Types.Coverage (coveragePoints)
-import Echidna.Types.Signature (ByteStringMap, makeBytecodeMemo)
+import Echidna.Types.Signature (makeBytecodeMemo)
 import Echidna.Types.Test (TestState(..), SolTest)
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
 import Echidna.Types.World (World, eventMap)
@@ -158,11 +158,12 @@ updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
 -- transaction if it finds new coverage.
-execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => ByteStringMap -> Tx -> m (VMResult, Int)
-execTxOptC bsm t = do
+execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
+execTxOptC t = do
   let cov = hasLens . coverage
-  og  <- cov <<.= mempty
-  res <- execTxWith vmExcept (usingCoverage2 bsm cov) t
+  og   <- cov <<.= mempty
+  memo <- use $ hasLens . bcMemo
+  res  <- execTxWith vmExcept (execTxWithCov memo cov) t
   let vmr = getResult $ fst res
   -- Update the coverage map with the proper binary according to the vm result
   cov %= mapWithKey (\_ s -> DS.map (set _4 vmr) s)
@@ -192,8 +193,9 @@ randseq ql o w = do
   if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
     return . snd $ DS.elemAt p ctxs
   else do
+    memo <- use $ hasLens . bcMemo
     -- Randomly generate new random transactions
-    gtxs <- replicateM ql $ runReaderT (genTxM o) (w, txConf)
+    gtxs <- replicateM ql $ runReaderT (genTxM memo o) (w, txConf)
     -- Generate a random mutator
     cmut <- seqMutators (fromConsts cs)
     -- Fetch the mutator
@@ -207,12 +209,12 @@ randseq ql o w = do
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
 callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Campaign y, Has GenDict y)
-        => ByteStringMap -> VM -> World -> Int -> m ()
-callseq bsm v w ql = do
+        => VM -> World -> Int -> m ()
+callseq v w ql = do
   -- First, we figure out whether we need to execute with or without coverage optimization and gas info,
   -- and pick our execution function appropriately
   coverageEnabled <- isJust <$> view (hasLens . knownCoverage)
-  let ef = if coverageEnabled then execTxOptC bsm else execTx
+  let ef = if coverageEnabled then execTxOptC else execTx
       old = v ^. env . EVM.contracts
   gasEnabled <- view $ hasLens . estimateGas
   -- Then, we get the current campaign state
@@ -279,16 +281,18 @@ campaign u v w ts d txs = do
       False
       (DS.fromList $ map (1,) txs)
       0
+      memo
     )
   where
+    -- "mapMaybe ..." is to get a list of all contracts
+    memo        = makeBytecodeMemo . mapMaybe (viewBuffer . (^. bytecode)) . elems $ (v ^. env . EVM.contracts)
     step        = runUpdate (updateTest w v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
-    bsm         = makeBytecodeMemo . mapMaybe (viewBuffer . (^. bytecode)) . elems $ (v ^. env . EVM.contracts)
     update c    = do
       CampaignConf tl sof _ q sl _ _ _ _ _ <- view hasLens
       Campaign { _ncallseqs } <- view hasLens <$> get
       if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
-         | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq bsm v w q >> step
+         | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
          | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
-         | null c && (q * _ncallseqs) < tl                                     -> callseq bsm v w q >> step
+         | null c && (q * _ncallseqs) < tl                                     -> callseq v w q >> step
          | otherwise                                                           -> lift u
