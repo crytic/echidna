@@ -291,3 +291,18 @@ All these can be solved, from a few seconds to one or two minutes on a laptop co
 - [echidna-parade: A Tool for Diverse Multicore Smart Contract Fuzzing](https://agroce.github.io/issta21.pdf), Alex Groce, Gustavo Grieco - ISSTA '21
 
 If you are using Echidna on an academic work, consider applying to the [Crytic $10k Research Prize](https://blog.trailofbits.com/2019/11/13/announcing-the-crytic-10k-research-prize/).
+
+## Debugging Performance Problems
+
+The best way to deal with an Echidna performance issue is to run `echidna-test` with profiling on.
+This creates a text file, `echidna-test.prof`, which shows which functions take up the most CPU and memory usage.
+
+To build a version of `echidna-test` that supports profiling, either Stack or Nix should be used.
+With Stack, adding the flag `--profile` will make the build support profiling.
+With Nix, running `nix-build --arg profiling true` will make the build support profiling.
+
+To run with profiling on, add the flags `+RTS -p` to your original `echidna-test` command.
+
+Performance issues in the past have been because of functions getting called repeatedly when they could be memoized,
+and memory leaks related to Haskell's lazy evaluation;
+checking for these would be a good place to start.
