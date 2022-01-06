@@ -122,7 +122,8 @@ main = do
   saveTxs cd (snd <$> DS.toList (cpg ^. corpus))
 
   -- save source coverage
-  saveCoverage cd sc cs (cpg ^. coverage)
+  saveCoverage False cd sc cs (cpg ^. coverage)
+  saveCoverage True  cd sc cs (cpg ^. coverage)
 
   if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
 
