@@ -22,7 +22,7 @@ import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
-import Data.Map (Map, unionWith, (\\), keys, lookup, insert, mapWithKey)
+import Data.Map (Map, unionWith, (\\), elems, keys, lookup, insert, mapWithKey)
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Ord (comparing)
 import Data.Has (Has(..))
@@ -41,8 +41,10 @@ import Echidna.Exec
 import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
+import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Campaign
 import Echidna.Types.Coverage (coveragePoints)
+import Echidna.Types.Signature (makeBytecodeMemo)
 import Echidna.Types.Test (TestState(..), SolTest)
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
 import Echidna.Types.World (World, eventMap)
@@ -159,8 +161,9 @@ updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 execTxOptC :: (MonadState x m, Has Campaign x, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
 execTxOptC t = do
   let cov = hasLens . coverage
-  og  <- cov <<.= mempty
-  res <- execTxWith vmExcept (usingCoverage $ pointCoverage cov) t
+  og   <- cov <<.= mempty
+  memo <- use $ hasLens . bcMemo
+  res  <- execTxWith vmExcept (execTxWithCov memo cov) t
   let vmr = getResult $ fst res
   -- Update the coverage map with the proper binary according to the vm result
   cov %= mapWithKey (\_ s -> DS.map (set _4 vmr) s)
@@ -190,8 +193,9 @@ randseq ql o w = do
   if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
     return . snd $ DS.elemAt p ctxs
   else do
+    memo <- use $ hasLens . bcMemo
     -- Randomly generate new random transactions
-    gtxs <- replicateM ql $ runReaderT (genTxM o) (w, txConf)
+    gtxs <- replicateM ql $ runReaderT (genTxM memo o) (w, txConf)
     -- Generate a random mutator
     cmut <- seqMutators (fromConsts cs)
     -- Fetch the mutator
@@ -277,8 +281,11 @@ campaign u v w ts d txs = do
       False
       (DS.fromList $ map (1,) txs)
       0
+      memo
     )
   where
+    -- "mapMaybe ..." is to get a list of all contracts
+    memo        = makeBytecodeMemo . mapMaybe (viewBuffer . (^. bytecode)) . elems $ (v ^. env . EVM.contracts)
     step        = runUpdate (updateTest w v Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
     update c    = do
