@@ -9,7 +9,7 @@ module Echidna.Exec where
 
 import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
-import Control.Monad.State.Strict (MonadState, execState)
+import Control.Monad.State.Strict (MonadState, execState, execState)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import EVM
@@ -25,7 +25,7 @@ import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
 
-import Echidna.Types.Signature (getBytecodeMetadata)
+import Echidna.Types.Signature (BytecodeMemo, lookupBytecodeMetadata)
 import Echidna.Events (emptyEvents)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
@@ -146,22 +146,54 @@ handleErrorsAndConstruction onErr vmResult' vmBeforeTx tx' = case (vmResult', tx
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
 execTx = execTxWith vmExcept $ liftSH exec
 
+-- <<<<<<< HEAD
 -- | Given a way of capturing coverage info, execute while doing so once per instruction.
-usingCoverage :: (MonadState x m, Has VM x) => m () -> m VMResult
-usingCoverage cov = maybe (cov >> liftSH exec1 >> usingCoverage cov) pure =<< use (hasLens . result)
+-- usingCoverage :: (MonadState x m, Has VM x) => m () -> m VMResult
+-- usingCoverage cov = maybe (cov >> liftSH exec1 >> usingCoverage cov) pure =<< use (hasLens . result)
 
 -- | Capture the current PC and bytecode (without metadata). This should identify instructions uniquely.
-pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
-pointCoverage l = do
-  v <- use hasLens
-  l %= M.insertWith (const . S.insert $ (v ^. state . pc, fromMaybe 0 $ vmOpIx v, length $ v ^. frames, Stop))
-                    (fromMaybe (error "no contract information on coverage") $ h v)
-                    mempty
+-- pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
+-- pointCoverage l = do
+--   v <- use hasLens
+--  l %= M.insertWith (const . S.insert $ (v ^. state . pc, fromMaybe 0 $ vmOpIx v, length $ v ^. frames, Stop))
+--                    (fromMaybe (error "no contract information on coverage") $ h v)
+--                    mempty
+-- =======
+-- | Execute a transaction, logging coverage at every step.
+execTxWithCov :: (MonadState x m, Has VM x) => BytecodeMemo -> Lens' x CoverageMap -> m VMResult
+execTxWithCov memo l = do
+  vm :: VM          <- use hasLens
+  cm :: CoverageMap <- use l
+  let (r, vm', cm') = loop vm cm
+  hasLens .= vm'
+  l       .= cm'
+  return r
+-- >>>>>>> aa99405... Memoize getBytecodeMetadata; fix State memory leak (#707)
   where
-    h v = do
-      buffer <- v ^? env . contracts . at (v ^. state . contract) . _Just . bytecode
+    -- | Repeatedly exec a step and add coverage until we have an end result
+    loop :: VM -> CoverageMap -> (VMResult, VM, CoverageMap)
+    loop vm cm = case _result vm of
+      Nothing  -> loop (stepVM vm) (addCoverage vm cm)
+      Just r   -> (r, vm, cm)
+
+    -- | Execute one instruction on the EVM
+    stepVM :: VM -> VM
+    stepVM = execState exec1
+
+    -- | Add current location to the CoverageMap
+    addCoverage :: VM -> CoverageMap -> CoverageMap
+    addCoverage vm = M.alter
+                       (Just . maybe mempty (S.insert $ currentCovLoc vm))
+                       (currentMeta vm)
+
+    -- | Get the VM's current execution location
+    currentCovLoc vm = (vm ^. state . pc, fromMaybe 0 $ vmOpIx vm, length $ vm ^. frames, Stop)
+
+    -- | Get the current contract's bytecode metadata
+    currentMeta vm = fromMaybe (error "no contract information on coverage") $ do
+      buffer <- vm ^? env . contracts . at (vm ^. state . contract) . _Just . bytecode
       bc <- viewBuffer buffer
-      pure $ getBytecodeMetadata bc
+      pure $ lookupBytecodeMetadata memo bc
 
 initialVM :: VM
 initialVM = vmForEthrunCreation mempty & block . timestamp .~ litWord initialTimestamp

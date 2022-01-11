@@ -17,6 +17,7 @@ import Numeric (showHex)
 import Echidna.ABI (GenDict, defaultDict)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Test (EchidnaTest)
+import Echidna.Types.Signature (BytecodeMemo)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Corpus
 import Echidna.Mutator.Corpus
@@ -61,11 +62,13 @@ data Campaign = Campaign { _tests       :: [EchidnaTest]
                            -- ^ List of transactions with maximum coverage
                          , _ncallseqs   :: Int
                            -- ^ Number of times the callseq is called
+                         , _bcMemo        :: BytecodeMemo
+                           -- ^ Stored results of getBytecodeMetadata on all contracts
                          }
 makeLenses ''Campaign
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co gi _ _ _ _) = object $ ("tests", toJSON $ map format ts)
+  toJSON (Campaign ts co gi _ _ _ _ _) = object $ ("tests", toJSON $ map format ts)
     : ((if co == mempty then [] else [
     ("coverage",) . toJSON . mapKeys (("0x" <>) . (`showHex` "") . keccak) $ toList <$> co]) ++
        [(("maxgas",) . toJSON . toList) gi | gi /= mempty]) where
@@ -78,4 +81,4 @@ instance Has GenDict Campaign where
   hasLens = genDict
 
 defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty mempty defaultDict False mempty 0
+defaultCampaign = Campaign mempty mempty mempty defaultDict False mempty 0 mempty
