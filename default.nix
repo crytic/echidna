@@ -2,7 +2,9 @@
     name = "nixpkgs-unstable-2021-10-15";
     url = "https://github.com/nixos/nixpkgs/archive/ee084c02040e864eeeb4cf4f8538d92f7c675671.tar.gz";
     sha256 = "sha256:1x8amcixdaw3ryyia32pb706vzhvn5whq9n8jin0qcha5qnm1fnh";
-  }) {}
+  }) {},
+  profiling ? false,
+  tests ? true
 }:
 
 let
@@ -32,6 +34,8 @@ let
 
   v = "1.7.2";
 
+  testInputs = [ slither-analyzer solc ];
+
   f = { mkDerivation, aeson, ansi-terminal, base, base16-bytestring, binary
       , brick, bytestring, cborg, containers, data-dword, data-has, deepseq
       , directory, exceptions, filepath, hashable, hevm, hpack, lens, lens-aeson
@@ -58,26 +62,28 @@ let
         executableHaskellDepends = libraryHaskellDepends;
         testHaskellDepends = [ tasty tasty-hunit tasty-quickcheck ];
         libraryToolDepends = [ hpack ];
-        testToolDepends = [ slither-analyzer solc ];
+        testToolDepends = testInputs;
+        configureFlags = if profiling then [ "--enable-profiling" "--enable-library-profiling" ] else [];
         preConfigure = ''
           hpack
           # re-enable dynamic build for Linux
           sed -i -e 's/os(linux)/false/' echidna.cabal
         '';
-        shellHook = "hpack";
         license = pkgs.lib.licenses.agpl3;
         doHaddock = false;
-        doCheck = true;
+        doCheck = tests;
       };
 
   echidna = pkgs.haskellPackages.callPackage f { };
   echidnaShell = pkgs.haskellPackages.shellFor {
     packages = p: [ echidna ];
+    shellHook = "hpack";
     buildInputs = with pkgs.haskellPackages; [
       hlint
       cabal-install
       haskell-language-server
     ];
+    nativeBuildInputs = if tests then [] else testInputs;
   };
 in
   if pkgs.lib.inNixShell
