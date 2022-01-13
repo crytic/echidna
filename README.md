@@ -20,8 +20,6 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 
 .. and [a beautiful high-resolution handcrafted logo](https://raw.githubusercontent.com/crytic/echidna/master/echidna.png).
 
-## Screenshot
-
 <a href="https://trailofbits.files.wordpress.com/2020/03/image5.png"><img src="https://trailofbits.files.wordpress.com/2020/03/image5.png" width="650"/></a>
 
 ## Usage
@@ -77,10 +75,6 @@ Our tool signals each execution trace in the corpus with the following "line mar
  - `o` if an execution ended with an out-of-gas error
  - `e` if an execution ended with any other error (zero division, assertion failure, etc) 
 
-### Crash course on Echidna
-
-Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts) repository contains a crash course on Echidna, including examples, lessons and exercises. You should [start here](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial).
-
 ### Support for smart contract build systems
 
 Echidna can test contracts compiled with different smart contract build systems, including [Truffle](https://truffleframework.com/), [Embark](https://framework.embarklabs.io/) and even [Vyper](https://vyper.readthedocs.io), using [crytic-compile](https://github.com/crytic/crytic-compile). For instance,
@@ -117,7 +111,6 @@ More detailed documentation on the configuration options is available in our
 Echidna supports three different output drivers. There is the default `text`
 driver, a `json` driver, and a `none` driver, which should suppress all
 `stdout` output. The JSON driver reports the overall campaign as follows.
-
 
 ```json
 Campaign = {
@@ -159,7 +152,26 @@ GitHub Actions workflow. Please refer to the
 [crytic/echidna-action](https://github.com/crytic/echidna-action) repository for
 usage instructions and examples.
 
-## Limitations and known issues
+### Debugging Performance Problems
+
+The best way to deal with an Echidna performance issue is to run `echidna-test` with profiling on.
+This creates a text file, `echidna-test.prof`, which shows which functions take up the most CPU and memory usage.
+
+To build a version of `echidna-test` that supports profiling, either Stack or Nix should be used.
+With Stack, adding the flag `--profile` will make the build support profiling.
+With Nix, running `nix-build --arg profiling true` will make the build support profiling.
+
+To run with profiling on, add the flags `+RTS -p` to your original `echidna-test` command.
+
+Performance issues in the past have been because of functions getting called repeatedly when they could be memoized,
+and memory leaks related to Haskell's lazy evaluation;
+checking for these would be a good place to start.
+
+### Crash course on Echidna
+
+Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial) repository contains a crash course on Echidna, including examples, lessons and exercises.
+
+### Limitations and known issues
 
 EVM emulation and testing is hard. Echidna has a number of limitations in the latest release. Some of these are inherited from [hevm](https://github.com/dapphub/dapptools/tree/master/src/hevm) while some are results from design/performance decisions or simply bugs in our code. We list them here including their corresponding issue and the status ("wont fix", "in review", "fixed"). Issues that are "fixed" are expected to be included in the next Echidna release.
 
@@ -225,21 +237,9 @@ Running the test suite:
 nix-shell --run 'cabal test'
 ```
 
-## Getting help
+## Public use of Echidna
 
-Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://empireslacking.herokuapp.com/) for help using or extending Echidna.
-
-* Get started by reviewing these simple [Echidna invariants](examples/solidity/basic/flags.sol)
-
-* Review the [Solidity examples](examples/solidity) directory for more extensive Echidna use cases
-
-* Considering [emailing](mailto:echidna-dev@trailofbits.com) the Echidna development team directly for more detailed questions
-
-## License
-
-Echidna is licensed and distributed under the [AGPLv3 license](https://github.com/crytic/echidna/blob/master/LICENSE).
-
-## Projects using Echidna
+### Property testing suites
 
 This is a partial list of smart contracts projects that use Echidna for testing:
 
@@ -255,11 +255,9 @@ This is a partial list of smart contracts projects that use Echidna for testing:
 * [Tokencard](https://github.com/tokencard/contracts/tree/master/tools/echidna)
 * [Minimalist USD Stablecoin](https://github.com/usmfum/USM/pull/41) 
 
-## Trophies
+### Trophies
 
-### Security Issues
-
-The following lists security vulnerabilities that were found by Echidna. If you found a security vulnerability using our tool, please submit a PR with the relevant information.
+The following security vulnerabilities were found by Echidna. If you found a security vulnerability using our tool, please submit a PR with the relevant information.
 
 | Project | Vulnerability | Date |
 |--|--|--|
@@ -270,17 +268,17 @@ The following lists security vulnerabilities that were found by Echidna. If you 
 [Balancer Core](https://github.com/trailofbits/publications/blob/master/reviews/BalancerCore.pdf) | An attacker cannot generate free pool tokens with joinPool | Jan 2020
 [Balancer Core](https://github.com/trailofbits/publications/blob/master/reviews/BalancerCore.pdf) | Calling joinPool-exitPool does not lead to free pool tokens | Jan 2020
 [Balancer Core](https://github.com/trailofbits/publications/blob/master/reviews/BalancerCore.pdf) |  Calling exitswapExternAmountOut does not lead to free assets | Jan 2020
-[Yield Protocol](https://github.com/trailofbits/publications/blob/master/reviews/YieldProtocol.pdf) | Arithmetic computation for buying and selling tokens is imprecise | Aug 2020
-[Origin Dollar](https://github.com/trailofbits/publications/blob/master/reviews/OriginDollar.pdf) | Users are allowed to transfer more tokens that they have | Nov 2020
-[Origin Dollar](https://github.com/trailofbits/publications/blob/master/reviews/OriginDollar.pdf) | User balances can be larger than total supply | Nov 2020
 [Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | [Closing troves require to hold the full amount of LUSD minted](https://github.com/liquity/dev/blob/echidna_ToB_final/packages/contracts/contracts/TestContracts/E2E.sol#L242-L298) | Dec 2020
 [Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | [Troves can be improperly removed](https://github.com/liquity/dev/blob/echidna_ToB_final/packages/contracts/contracts/TestContracts/E2E.sol#L242-L298) | Dec 2020
 [Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | Initial redeem can revert unexpectedly | Dec 2020
 [Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | Redeem without redemptions might still return success | Dec 2020
+[Origin Dollar](https://github.com/trailofbits/publications/blob/master/reviews/OriginDollar.pdf) | Users are allowed to transfer more tokens that they have | Nov 2020
+[Origin Dollar](https://github.com/trailofbits/publications/blob/master/reviews/OriginDollar.pdf) | User balances can be larger than total supply | Nov 2020
+[Yield Protocol](https://github.com/trailofbits/publications/blob/master/reviews/YieldProtocol.pdf) | Arithmetic computation for buying and selling tokens is imprecise | Aug 2020
 
-### Research Examples
+### Research
 
-We can also use Echidna to reproduce a number of research examples from smart contract fuzzing papers to show how quickly it can find the solution:
+We can also use Echidna to reproduce research examples from smart contract fuzzing papers to show how quickly it can find the solution. All these can be solved, from a few seconds to one or two minutes on a laptop computer.
 
 | Source | Code 
 |--|--
@@ -289,27 +287,26 @@ We can also use Echidna to reproduce a number of research examples from smart co
 [Learning to Fuzz from Symbolic Execution with Application to Smart Contracts](https://files.sri.inf.ethz.ch/website/papers/ccs19-ilf.pdf) | [Crowdsale](https://github.com/crytic/echidna/blob/master/examples/solidity/research/ilf_crowdsale.sol)
 [Harvey: A Greybox Fuzzer for Smart Contracts](https://arxiv.org/abs/1905.06944) | [Foo](https://github.com/crytic/echidna/blob/master/examples/solidity/research/harvey_foo.sol), [Baz](https://github.com/crytic/echidna/blob/master/examples/solidity/research/harvey_baz.sol)
 
-All these can be solved, from a few seconds to one or two minutes on a laptop computer.
+### Academic Publications
 
-## Publications
+| Paper Title | Venue | Publication Date |
+| --- | --- | --- |
+| [echidna-parade: Diverse multicore smart contract fuzzing](https://agroce.github.io/issta21.pdf) | [ISSTA 2021](https://conf.researchr.org/home/issta-2021) | July 2021 |
+| [Echidna: Effective, usable, and fast fuzzing for smart contracts](papers/echidna_issta2020.pdf) | [ISSTA 2020](https://conf.researchr.org/home/issta-2020) | July 2020 |
+| [Echidna: A Practical Smart Contract Fuzzer](papers/echidna_fc_poster.pdf) | [FC 2020](https://fc20.ifca.ai/program.html) | Feb 2020 |
 
-### Trail of Bits
-- [Echidna: effective, usable, and fast fuzzing for smart contracts](https://github.com/trailofbits/publications/blob/master/papers/echidna_issta2020.pdf), Gustavo Grieco, Will Song, Artur Cygan, Josselin  Feist, Alex Groce - ISSTA '20
-- [echidna-parade: A Tool for Diverse Multicore Smart Contract Fuzzing](https://agroce.github.io/issta21.pdf), Alex Groce, Gustavo Grieco - ISSTA '21
+If you are using Echidna for academic work, consider applying to the [Crytic $10k Research Prize](https://blog.trailofbits.com/2019/11/13/announcing-the-crytic-10k-research-prize/).
 
-If you are using Echidna on an academic work, consider applying to the [Crytic $10k Research Prize](https://blog.trailofbits.com/2019/11/13/announcing-the-crytic-10k-research-prize/).
+## Getting help
 
-## Debugging Performance Problems
+Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://empireslacking.herokuapp.com/) for help using or extending Echidna.
 
-The best way to deal with an Echidna performance issue is to run `echidna-test` with profiling on.
-This creates a text file, `echidna-test.prof`, which shows which functions take up the most CPU and memory usage.
+* Get started by reviewing these simple [Echidna invariants](examples/solidity/basic/flags.sol)
 
-To build a version of `echidna-test` that supports profiling, either Stack or Nix should be used.
-With Stack, adding the flag `--profile` will make the build support profiling.
-With Nix, running `nix-build --arg profiling true` will make the build support profiling.
+* Review the [Solidity examples](examples/solidity) directory for more extensive Echidna use cases
 
-To run with profiling on, add the flags `+RTS -p` to your original `echidna-test` command.
+* Considering [emailing](mailto:echidna-dev@trailofbits.com) the Echidna development team directly for more detailed questions
 
-Performance issues in the past have been because of functions getting called repeatedly when they could be memoized,
-and memory leaks related to Haskell's lazy evaluation;
-checking for these would be a good place to start.
+## License
+
+Echidna is licensed and distributed under the [AGPLv3 license](https://github.com/crytic/echidna/blob/master/LICENSE).
