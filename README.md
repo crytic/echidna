@@ -112,7 +112,6 @@ Echidna supports three different output drivers. There is the default `text`
 driver, a `json` driver, and a `none` driver, which should suppress all
 `stdout` output. The JSON driver reports the overall campaign as follows.
 
-
 ```json
 Campaign = {
   "success"      : bool,
@@ -170,9 +169,9 @@ checking for these would be a good place to start.
 
 ### Crash course on Echidna
 
-Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts) repository contains a crash course on Echidna, including examples, lessons and exercises. You should [start here](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial).
+Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial) repository contains a crash course on Echidna, including examples, lessons and exercises.
 
-## Limitations and known issues
+### Limitations and known issues
 
 EVM emulation and testing is hard. Echidna has a number of limitations in the latest release. Some of these are inherited from [hevm](https://github.com/dapphub/dapptools/tree/master/src/hevm) while some are results from design/performance decisions or simply bugs in our code. We list them here including their corresponding issue and the status ("wont fix", "in review", "fixed"). Issues that are "fixed" are expected to be included in the next Echidna release.
 
@@ -258,7 +257,7 @@ This is a partial list of smart contracts projects that use Echidna for testing:
 
 ### Trophies
 
-The following lists security vulnerabilities that were found by Echidna. If you found a security vulnerability using our tool, please submit a PR with the relevant information.
+The following security vulnerabilities were found by Echidna. If you found a security vulnerability using our tool, please submit a PR with the relevant information.
 
 | Project | Vulnerability | Date |
 |--|--|--|
@@ -279,7 +278,7 @@ The following lists security vulnerabilities that were found by Echidna. If you 
 
 ### Research
 
-We can also use Echidna to reproduce a number of research examples from smart contract fuzzing papers to show how quickly it can find the solution:
+We can also use Echidna to reproduce research examples from smart contract fuzzing papers to show how quickly it can find the solution:
 
 | Source | Code 
 |--|--
