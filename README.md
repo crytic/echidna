@@ -20,8 +20,6 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 
 .. and [a beautiful high-resolution handcrafted logo](https://raw.githubusercontent.com/crytic/echidna/master/echidna.png).
 
-## Screenshot
-
 <a href="https://trailofbits.files.wordpress.com/2020/03/image5.png"><img src="https://trailofbits.files.wordpress.com/2020/03/image5.png" width="650"/></a>
 
 ## Usage
@@ -76,10 +74,6 @@ Our tool signals each execution trace in the corpus with the following "line mar
  - `r` if an execution ended with a REVERT
  - `o` if an execution ended with an out-of-gas error
  - `e` if an execution ended with any other error (zero division, assertion failure, etc) 
-
-### Crash course on Echidna
-
-Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts) repository contains a crash course on Echidna, including examples, lessons and exercises. You should [start here](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial).
 
 ### Support for smart contract build systems
 
@@ -159,6 +153,25 @@ GitHub Actions workflow. Please refer to the
 [crytic/echidna-action](https://github.com/crytic/echidna-action) repository for
 usage instructions and examples.
 
+### Debugging Performance Problems
+
+The best way to deal with an Echidna performance issue is to run `echidna-test` with profiling on.
+This creates a text file, `echidna-test.prof`, which shows which functions take up the most CPU and memory usage.
+
+To build a version of `echidna-test` that supports profiling, either Stack or Nix should be used.
+With Stack, adding the flag `--profile` will make the build support profiling.
+With Nix, running `nix-build --arg profiling true` will make the build support profiling.
+
+To run with profiling on, add the flags `+RTS -p` to your original `echidna-test` command.
+
+Performance issues in the past have been because of functions getting called repeatedly when they could be memoized,
+and memory leaks related to Haskell's lazy evaluation;
+checking for these would be a good place to start.
+
+### Crash course on Echidna
+
+Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts) repository contains a crash course on Echidna, including examples, lessons and exercises. You should [start here](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial).
+
 ## Limitations and known issues
 
 EVM emulation and testing is hard. Echidna has a number of limitations in the latest release. Some of these are inherited from [hevm](https://github.com/dapphub/dapptools/tree/master/src/hevm) while some are results from design/performance decisions or simply bugs in our code. We list them here including their corresponding issue and the status ("wont fix", "in review", "fixed"). Issues that are "fixed" are expected to be included in the next Echidna release.
@@ -225,21 +238,9 @@ Running the test suite:
 nix-shell --run 'cabal test'
 ```
 
-## Getting help
+## Public use of Echidna
 
-Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://empireslacking.herokuapp.com/) for help using or extending Echidna.
-
-* Get started by reviewing these simple [Echidna invariants](examples/solidity/basic/flags.sol)
-
-* Review the [Solidity examples](examples/solidity) directory for more extensive Echidna use cases
-
-* Considering [emailing](mailto:echidna-dev@trailofbits.com) the Echidna development team directly for more detailed questions
-
-## License
-
-Echidna is licensed and distributed under the [AGPLv3 license](https://github.com/crytic/echidna/blob/master/LICENSE).
-
-## Projects using Echidna
+### Property testing suites
 
 This is a partial list of smart contracts projects that use Echidna for testing:
 
@@ -255,9 +256,7 @@ This is a partial list of smart contracts projects that use Echidna for testing:
 * [Tokencard](https://github.com/tokencard/contracts/tree/master/tools/echidna)
 * [Minimalist USD Stablecoin](https://github.com/usmfum/USM/pull/41) 
 
-## Trophies
-
-### Security Issues
+### Trophies
 
 The following lists security vulnerabilities that were found by Echidna. If you found a security vulnerability using our tool, please submit a PR with the relevant information.
 
@@ -278,7 +277,7 @@ The following lists security vulnerabilities that were found by Echidna. If you 
 [Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | Initial redeem can revert unexpectedly | Dec 2020
 [Liquity Dollar](https://github.com/trailofbits/publications/blob/master/reviews/Liquity.pdf) | Redeem without redemptions might still return success | Dec 2020
 
-### Research Examples
+### Research
 
 We can also use Echidna to reproduce a number of research examples from smart contract fuzzing papers to show how quickly it can find the solution:
 
@@ -291,25 +290,23 @@ We can also use Echidna to reproduce a number of research examples from smart co
 
 All these can be solved, from a few seconds to one or two minutes on a laptop computer.
 
-## Publications
+### Academic Publications
 
-### Trail of Bits
 - [Echidna: effective, usable, and fast fuzzing for smart contracts](https://github.com/trailofbits/publications/blob/master/papers/echidna_issta2020.pdf), Gustavo Grieco, Will Song, Artur Cygan, Josselin  Feist, Alex Groce - ISSTA '20
 - [echidna-parade: A Tool for Diverse Multicore Smart Contract Fuzzing](https://agroce.github.io/issta21.pdf), Alex Groce, Gustavo Grieco - ISSTA '21
 
 If you are using Echidna on an academic work, consider applying to the [Crytic $10k Research Prize](https://blog.trailofbits.com/2019/11/13/announcing-the-crytic-10k-research-prize/).
 
-## Debugging Performance Problems
+## Getting help
 
-The best way to deal with an Echidna performance issue is to run `echidna-test` with profiling on.
-This creates a text file, `echidna-test.prof`, which shows which functions take up the most CPU and memory usage.
+Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://empireslacking.herokuapp.com/) for help using or extending Echidna.
 
-To build a version of `echidna-test` that supports profiling, either Stack or Nix should be used.
-With Stack, adding the flag `--profile` will make the build support profiling.
-With Nix, running `nix-build --arg profiling true` will make the build support profiling.
+* Get started by reviewing these simple [Echidna invariants](examples/solidity/basic/flags.sol)
 
-To run with profiling on, add the flags `+RTS -p` to your original `echidna-test` command.
+* Review the [Solidity examples](examples/solidity) directory for more extensive Echidna use cases
 
-Performance issues in the past have been because of functions getting called repeatedly when they could be memoized,
-and memory leaks related to Haskell's lazy evaluation;
-checking for these would be a good place to start.
+* Considering [emailing](mailto:echidna-dev@trailofbits.com) the Echidna development team directly for more detailed questions
+
+## License
+
+Echidna is licensed and distributed under the [AGPLv3 license](https://github.com/crytic/echidna/blob/master/LICENSE).
