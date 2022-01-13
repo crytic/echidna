@@ -291,10 +291,13 @@ All these can be solved, from a few seconds to one or two minutes on a laptop co
 
 ### Academic Publications
 
-- [Echidna: effective, usable, and fast fuzzing for smart contracts](https://github.com/trailofbits/publications/blob/master/papers/echidna_issta2020.pdf), Gustavo Grieco, Will Song, Artur Cygan, Josselin  Feist, Alex Groce - ISSTA '20
-- [echidna-parade: A Tool for Diverse Multicore Smart Contract Fuzzing](https://agroce.github.io/issta21.pdf), Alex Groce, Gustavo Grieco - ISSTA '21
+| Paper Title | Venue | Publication Date |
+| --- | --- | --- |
+| [echidna-parade: Diverse multicore smart contract fuzzing](https://agroce.github.io/issta21.pdf) | [ISSTA 2021](https://conf.researchr.org/home/issta-2021) | July 2021 |
+| [Echidna: Effective, usable, and fast fuzzing for smart contracts](papers/echidna_issta2020.pdf) | [ISSTA 2020](https://conf.researchr.org/home/issta-2020) | July 2020 |
+| [Echidna: A Practical Smart Contract Fuzzer](papers/echidna_fc_poster.pdf) | [FC 2020](https://fc20.ifca.ai/program.html) | Feb 2020 |
 
-If you are using Echidna on an academic work, consider applying to the [Crytic $10k Research Prize](https://blog.trailofbits.com/2019/11/13/announcing-the-crytic-10k-research-prize/).
+If you are using Echidna for academic work, consider applying to the [Crytic $10k Research Prize](https://blog.trailofbits.com/2019/11/13/announcing-the-crytic-10k-research-prize/).
 
 ## Getting help
 
