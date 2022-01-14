@@ -1,12 +1,7 @@
-{ pkgs ? import (builtins.fetchTarball {
-    name = "nixpkgs-unstable-2021-10-15";
-    url = "https://github.com/nixos/nixpkgs/archive/ee084c02040e864eeeb4cf4f8538d92f7c675671.tar.gz";
-    sha256 = "sha256:1x8amcixdaw3ryyia32pb706vzhvn5whq9n8jin0qcha5qnm1fnh";
-  }) {},
+{ pkgs ? import nix/pkgs.nix,
   profiling ? false,
   tests ? true
 }:
-
 let
   # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
   # would be great to integrate solc-select to be more flexible, improve this in future
@@ -30,11 +25,9 @@ let
     '';
   };
 
-  slither-analyzer = pkgs.slither-analyzer.override { withSolc = false; };
+  v = "1.7.3";
 
-  v = "1.7.2";
-
-  testInputs = [ slither-analyzer solc ];
+  testInputs = [ pkgs.slither-analyzer solc ];
 
   f = { mkDerivation, aeson, ansi-terminal, base, base16-bytestring, binary
       , brick, bytestring, cborg, containers, data-dword, data-has, deepseq
@@ -53,17 +46,16 @@ let
         libraryHaskellDepends = [
           aeson ansi-terminal base base16-bytestring binary brick bytestring
           cborg containers data-dword data-has deepseq directory exceptions
-          filepath hashable hevm lens lens-aeson megaparsec MonadRandom mtl
-          optparse-applicative process random stm temporary text transformers
-          unix unliftio unliftio-core unordered-containers vector
+          filepath hashable hevm lens lens-aeson ListLike megaparsec MonadRandom
+          mtl optparse-applicative process random semver stm temporary text
+          transformers unix unliftio unliftio-core unordered-containers vector
           vector-instances vty wl-pprint-annotated word8 yaml extra ListLike
-          semver
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
         executableHaskellDepends = libraryHaskellDepends;
         testHaskellDepends = [ tasty tasty-hunit tasty-quickcheck ];
-        libraryToolDepends = [ hpack ];
         testToolDepends = testInputs;
         configureFlags = if profiling then [ "--enable-profiling" "--enable-library-profiling" ] else [];
+        libraryToolDepends = [ hpack pkgs.slither-analyzer solc ];
         preConfigure = ''
           hpack
           # re-enable dynamic build for Linux
@@ -81,6 +73,8 @@ let
     buildInputs = with pkgs.haskellPackages; [
       hlint
       cabal-install
+    ] ++ pkgs.lib.optional (!pkgs.stdenv.isAarch64) [
+      # this doesn't work due to ormolu not building
       haskell-language-server
     ];
     nativeBuildInputs = if tests then [] else testInputs;

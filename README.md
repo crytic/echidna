@@ -73,7 +73,7 @@ Our tool signals each execution trace in the corpus with the following "line mar
  - `*` if an execution ended with a STOP
  - `r` if an execution ended with a REVERT
  - `o` if an execution ended with an out-of-gas error
- - `e` if an execution ended with any other error (zero division, assertion failure, etc) 
+ - `e` if an execution ended with any other error (zero division, assertion failure, etc)
 
 ### Support for smart contract build systems
 
@@ -171,16 +171,16 @@ checking for these would be a good place to start.
 
 Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial) repository contains a crash course on Echidna, including examples, lessons and exercises.
 
-### Limitations and known issues
+## Limitations and known issues
 
 EVM emulation and testing is hard. Echidna has a number of limitations in the latest release. Some of these are inherited from [hevm](https://github.com/dapphub/dapptools/tree/master/src/hevm) while some are results from design/performance decisions or simply bugs in our code. We list them here including their corresponding issue and the status ("wont fix", "in review", "fixed"). Issues that are "fixed" are expected to be included in the next Echidna release.
 
-| Description |  Issue   | Status   |  
+| Description |  Issue   | Status   |
 | :--- |     :---:              |         :---:   |
 | Debug information can be insufficient | [#656](https://github.com/crytic/echidna/issues/656) | *[in review for 2.0](https://github.com/crytic/echidna/pull/674)* |
 | Vyper support is limited | [#652](https://github.com/crytic/echidna/issues/652) | *wont fix* |
 | Limited library support for testing | [#651](https://github.com/crytic/echidna/issues/651) | *wont fix* |
-| If the contract is not properly linked, Echidna will crash | [#514](https://github.com/crytic/echidna/issues/514) | *in review* | 
+| If the contract is not properly linked, Echidna will crash | [#514](https://github.com/crytic/echidna/issues/514) | *in review* |
 | Assertions are not detected in internal transactions | [#601](https://github.com/crytic/echidna/issues/601) | *[in review for 2.0](https://github.com/crytic/echidna/pull/674)* |
 | Assertions are not detected in solc 0.8.x | [#669](https://github.com/crytic/echidna/issues/669) | *[in review for 2.0](https://github.com/crytic/echidna/pull/674)* |
 | Value generation can fail in multi-abi mode, since the function hash is not precise enough | [#579](https://github.com/crytic/echidna/issues/579) | *[in review for 2.0](https://github.com/crytic/echidna/pull/674)*|
@@ -215,11 +215,20 @@ Some Linux distributions do not ship static libraries for certain things that Ha
 
 If you're getting errors building related to linking, try tinkering with `--extra-include-dirs` and `--extra-lib-dirs`.
 
-### Building using Nix
+### Building using Nix (works natively on Apple M1 systems)
 
-Nix users can install the lastest Echidna with:
+[Nix users](https://nixos.org/download.html) can install the lastest Echidna with:
 ```
 $ nix-env -i -f https://github.com/crytic/echidna/tarball/master
+```
+
+To build a standalone release for non-Nix macOS systems, the following will
+bundle Echidna and all linked dylibs in a tarball:
+
+```
+$ nix-build macos-release.nix
+$ ll result/
+bin    echidna-1.7.3-aarch64-darwin.tar.gz
 ```
 
 It is possible to develop Echidna with Cabal inside `nix-shell`. Nix will automatically
@@ -253,7 +262,7 @@ This is a partial list of smart contracts projects that use Echidna for testing:
 * [Aragon Staking](https://github.com/aragon/staking/blob/82bf54a3e11ec4e50d470d66048a2dd3154f940b/packages/protocol/contracts/test/lib/EchidnaStaking.sol)
 * [Centre Token](https://github.com/centrehq/centre-tokens/tree/master/echidna_tests)
 * [Tokencard](https://github.com/tokencard/contracts/tree/master/tools/echidna)
-* [Minimalist USD Stablecoin](https://github.com/usmfum/USM/pull/41) 
+* [Minimalist USD Stablecoin](https://github.com/usmfum/USM/pull/41)
 
 ### Trophies
 
@@ -280,7 +289,7 @@ The following security vulnerabilities were found by Echidna. If you found a sec
 
 We can also use Echidna to reproduce research examples from smart contract fuzzing papers to show how quickly it can find the solution. All these can be solved, from a few seconds to one or two minutes on a laptop computer.
 
-| Source | Code 
+| Source | Code
 |--|--
 [Using automatic analysis tools with MakerDAO contracts](https://forum.openzeppelin.com/t/using-automatic-analysis-tools-with-makerdao-contracts/1021) | [SimpleDSChief](https://github.com/crytic/echidna/blob/master/examples/solidity/research/vera_dschief.sol)
 [Integer precision bug in Sigma Prime](https://github.com/b-mueller/sabre#example-2-integer-precision-bug) | [VerifyFunWithNumbers](https://github.com/crytic/echidna/blob/master/examples/solidity/research/solcfuzz_funwithnumbers.sol)
