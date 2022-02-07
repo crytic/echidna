@@ -31,8 +31,9 @@ maybeContractNameFromCodeHash codeHash = fmap contractToName maybeContract
         contractToName = view (contractName . to contractNamePart)
 
 extractEvents :: DappInfo -> EventMap -> VM -> Events
-extractEvents dappInfo' eventMap vm =
-  let forest = traceForest vm
+extractEvents dappInfo' _ vm =
+  let eventMap = dappInfo' ^. dappEventMap
+      forest = traceForest vm
       showTrace trace =
         let ?context = DappContext { _contextInfo = dappInfo', _contextEnv = vm ^?! EVM.env . EVM.contracts } in
         let codehash' = trace ^. traceContract . codehash

@@ -211,17 +211,17 @@ checkSelfDestructedTarget addr _ _ vm =
   let selfdestructs' = vm ^. (tx . substate . selfdestructs)
   in BoolValue $ addr `notElem` selfdestructs'
 
-checkAnySelfDestructed :: EventMap -> VM -> TestValue
-checkAnySelfDestructed _ vm =
+checkAnySelfDestructed :: DappInfo -> EventMap -> VM -> TestValue
+checkAnySelfDestructed _ _ vm =
   let sd = vm ^. (tx . substate . selfdestructs)
   in BoolValue $ null sd
 
 checkPanicEvent :: T.Text -> Events -> Bool
 checkPanicEvent n = any (T.isPrefixOf ("Panic(" <> n <> ")"))
 
-checkOverflowTest :: EventMap -> VM -> TestValue
-checkOverflowTest em vm = 
-  let es = extractEvents em vm
+checkOverflowTest :: DappInfo -> EventMap -> VM -> TestValue
+checkOverflowTest dappInfo eventMap vm = 
+  let es = extractEvents dappInfo eventMap vm
   in BoolValue $ null es || not (checkPanicEvent "17" es)
 
 --checkErrorEvent :: EventMap -> VM -> Bool

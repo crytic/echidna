@@ -33,7 +33,7 @@ import Data.DoubleWord (Int256)
 import Data.Function ((&))
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
-import Data.Map (lookup, empty)
+import Data.Map (fromList, lookup, empty)
 import Data.Maybe (isJust)
 import Data.Text (Text, pack)
 import Data.SemVer (Version, version, fromText)
@@ -41,7 +41,7 @@ import System.Process (readProcess)
 
 import Echidna (prepareContract)
 import Echidna.Campaign (campaign)
-import Echidna.Config (EConfig, _econfig, parseConfig, defaultConfig, sConf, cConf)
+import Echidna.Config (Env(..), EConfig, _econfig, parseConfig, defaultConfig, sConf, cConf)
 import Echidna.Solidity (loadSolTests)
 import Echidna.Test (checkETest)
 import Echidna.Types.Solidity (quiet)
@@ -50,6 +50,9 @@ import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
 import Echidna.Types.World (eventMap)
+
+import EVM.Dapp (dappInfo, emptyDapp)
+import EVM.Solidity (contractName)
 
 testConfig :: EConfig
 testConfig = defaultConfig & sConf . quiet .~ True
@@ -73,12 +76,16 @@ withSolcVersion (Just f) t = do
     Left e   -> error $ show e
 
 runContract :: FilePath -> Maybe ContractName -> EConfig -> IO Campaign
-runContract f c cfg =
+runContract f c cfg = do 
   flip runReaderT cfg $ do
     g <- getRandom
-    (v, _, _, w, ts, d, txs) <- prepareContract cfg (f :| []) c g
-    -- start ui and run tests
-    campaign (pure ()) v w ts d txs
+    (v, sc, cs, w, ts, d, txs) <- prepareContract cfg (f :| []) c g
+    let solcByName = fromList [(c ^. contractName, c) | c <- cs]
+    let dappInfo' = dappInfo "/" solcByName sc
+    let env = Env { _cfg = cfg, _dapp = dappInfo' }
+    flip runReaderT env $ do
+      -- start ui and run tests
+      campaign (pure ()) v w ts d txs
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg = testContract' fp Nothing Nothing cfg True
@@ -100,7 +107,9 @@ checkConstructorConditions fp as = testCase fp $ do
   r <- flip runReaderT testConfig $ do
     (v, w, t) <- loadSolTests (fp :| []) Nothing
     let em = w ^. eventMap
-    mapM (\u -> evalStateT (checkETest em u) v) t
+    let env = Env { _cfg = testConfig, _dapp = emptyDapp }
+    flip runReaderT env $ do
+      mapM (\u -> evalStateT (checkETest em u) v) t
   mapM_ (\(BoolValue b,_,_) -> assertBool as b) r
 
 
