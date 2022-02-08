@@ -49,7 +49,7 @@ extractEvents dappInfo' _ vm =
                                -- they are filtered out for a reason as they only contain
                                -- the topic hash which is printed super verbose by dapptools
                                [name <>
-                                showValues [t | (t, NotIndexed) <- types] bytes <>
+                                showValues [t | (_, t, NotIndexed) <- types] bytes <>
                                 pack " from: " <>
                                 maybe mempty (\ x -> x <> pack "@") maybeContractName <>
                                 pack (show addr)]

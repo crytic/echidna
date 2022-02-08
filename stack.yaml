@@ -5,7 +5,7 @@ packages:
 
 extra-deps:
 - git: https://github.com/dapphub/dapptools.git
-  commit: a2b96cc2dbc28508c9fe699d6438bf6eccafc2ad
+  commit: fb9476ded759da44c449eb391cc67bfb0df61112
   subdirs:
   - src/hevm
 
