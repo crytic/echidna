@@ -76,10 +76,10 @@ withSolcVersion (Just f) t = do
     Left e   -> error $ show e
 
 runContract :: FilePath -> Maybe ContractName -> EConfig -> IO Campaign
-runContract f c cfg = do 
+runContract f mc cfg = do 
   flip runReaderT cfg $ do
     g <- getRandom
-    (v, sc, cs, w, ts, d, txs) <- prepareContract cfg (f :| []) c g
+    (v, sc, cs, w, ts, d, txs) <- prepareContract cfg (f :| []) mc g
     let solcByName = fromList [(c ^. contractName, c) | c <- cs]
     let dappInfo' = dappInfo "/" solcByName sc
     let env = Env { _cfg = cfg, _dapp = dappInfo' }

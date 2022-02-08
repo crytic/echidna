@@ -56,7 +56,7 @@ extractEvents dappInfo' _ vm =
                              Nothing -> [pack $ show word]
           ErrorTrace e ->
             case e of
-              Revert out -> ["merror " <> "Revert " <> showError out <> (maybe mempty (\ x -> pack " from: " <> x) maybeContractName)]
+              Revert out -> ["merror " <> "Revert " <> showError out <> maybe mempty (\ x -> pack " from: " <> x) maybeContractName]
               _ -> ["merror " <> pack (show e)]
           
           _ -> []

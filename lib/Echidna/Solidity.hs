@@ -163,7 +163,7 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  SolConf ca d ads bala balc mcs pref _ _ libs _ fp ma tm _ atd fs <- view hasLens
+  SolConf ca d ads bala balc mcs pref _ _ libs _ fp ma tm _ _ fs <- view hasLens
   TestConf _ _ <- view hasLens
 
   -- generate the complete abi mapping
@@ -203,13 +203,13 @@ loadSpecified name cs = do
       -- library deployment
       vm <- deployContracts (zip [addrLibrary ..] ls) d blank
       -- additional contracts deployment
-      (ctd, _) <- if null atd then return ([], []) else contracts $ NE.fromList $ map show atd
-      let mainContract = head $ map (\x -> head $ T.splitOn "." $ last $ T.splitOn "-" $ head $ T.splitOn ":" (view contractName x)) ctd
-      let ctd' = filter (\x -> (last $ T.splitOn ":" (view contractName x)) == mainContract) ctd
-      vm' <- deployContracts (zip atd ctd') ca vm
+      --(ctd, _) <- if null atd then return ([], []) else contracts $ NE.fromList $ map show atd
+      --let mainContract = head $ map (\x -> head $ T.splitOn "." $ last $ T.splitOn "-" $ head $ T.splitOn ":" (view contractName x)) ctd
+      --let ctd' = filter (\x -> (last $ T.splitOn ":" (view contractName x)) == mainContract) ctd
+      --vm' <- deployContracts (zip atd ctd') ca vm
       -- main contract deployment
       let transaction = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
-      vm'' <- execStateT transaction vm'
+      vm'' <- execStateT transaction vm
       case currentContract vm'' of
         Just _  -> return (vm'', unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
         Nothing -> throwM $ DeploymentFailed ca
