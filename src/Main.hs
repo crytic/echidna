@@ -17,7 +17,7 @@ import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.IO (hPutStrLn, stderr)
 
 import Echidna
-import Echidna.Config
+import Echidna.Config hiding (cfg)
 import Echidna.Types.Solidity
 import Echidna.Types.Campaign
 import Echidna.Types.Test (TestMode)
