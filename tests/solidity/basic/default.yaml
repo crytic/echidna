@@ -44,8 +44,6 @@ codeSize: 0x6000
 solcArgs: ""
 #solcLibs is solc libraries
 solcLibs: []
-#list of addresses to deploy from Etherscan
-fetch: []
 #cryticArgs allows special args to crytic
 cryticArgs: []
 #quiet produces (much) less verbose output

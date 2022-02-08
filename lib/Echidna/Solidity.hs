@@ -163,7 +163,7 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  SolConf ca d ads bala balc mcs pref _ _ libs _ fp ma tm _ _ fs <- view hasLens
+  SolConf ca d ads bala balc mcs pref _ _ libs _ fp ma tm _ fs <- view hasLens
   TestConf _ _ <- view hasLens
 
   -- generate the complete abi mapping
