@@ -75,14 +75,14 @@ withSolcVersion (Just f) t = do
     Left e   -> error $ show e
 
 runContract :: FilePath -> Maybe ContractName -> EConfig -> IO Campaign
-runContract f mc cfg = do 
+runContract f mc cfg = 
   flip runReaderT cfg $ do
     g <- getRandom
     (v, sc, cs, w, ts, d, txs) <- prepareContract cfg (f :| []) mc g
     let solcByName = fromList [(c ^. contractName, c) | c <- cs]
     let dappInfo' = dappInfo "/" solcByName sc
     let env = Env { _cfg = cfg, _dapp = dappInfo' }
-    flip runReaderT env $ do
+    flip runReaderT env $
       -- start ui and run tests
       campaign (pure ()) v w ts d txs
 
@@ -106,7 +106,7 @@ checkConstructorConditions fp as = testCase fp $ do
   r <- flip runReaderT testConfig $ do
     (v, _, t) <- loadSolTests (fp :| []) Nothing
     let env = Env { _cfg = testConfig, _dapp = emptyDapp }
-    flip runReaderT env $ do
+    flip runReaderT env $
       mapM (\u -> evalStateT (checkETest u) v) t
   mapM_ (\(BoolValue b,_,_) -> assertBool as b) r
 
