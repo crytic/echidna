@@ -61,8 +61,10 @@ markLines codeLines resultMap = V.map markLine (V.indexed codeLines)
 
 -- | Select the proper marker, according to the result of the transaction
 getMarker :: TxResult -> Char
-getMarker Success       = '*'
-getMarker ErrorRevert   = 'r'
+getMarker ReturnTrue    = '*'
+getMarker ReturnFalse   = '*'
+getMarker Stop          = '*'
+getMarker ErrorRevert   = 'r' 
 getMarker ErrorOutOfGas = 'o'
 getMarker _             = 'e'
 

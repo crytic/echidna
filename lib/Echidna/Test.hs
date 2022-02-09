@@ -5,45 +5,35 @@ module Echidna.Test where
 import Prelude hiding (Word)
 
 import Control.Lens
-import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadThrow)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform, uniformMay)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(get, put), gets)
-import Data.Foldable (traverse_)
 import Data.Has (Has(..))
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import EVM (Error(..), VMResult(..), VM, calldata, result, state)
-import EVM.ABI (AbiValue(..), encodeAbiValue)
+import EVM (Error(..), VMResult(..), VM, calldata, codeContract, result, tx, state, substate, selfdestructs)
+import EVM.ABI (AbiValue(..), AbiType(..), encodeAbiValue, decodeAbiValue, )
 import EVM.Types (Addr)
 
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as LBS
+
 import qualified Data.Text as T
 
 import Echidna.ABI
-import Echidna.Events (EventMap, extractEvents)
+import Echidna.Events (Events, extractEvents)
 import Echidna.Exec
-import Echidna.Solidity
-import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
-import Echidna.Types.Test (SolTest)
-import Echidna.Types.Tx (Tx, TxConf, basicTx, propGas, src)
+import Echidna.Types.Test
+import Echidna.Types.Signature (SolSignature)
+import Echidna.Types.Tx (Tx, TxConf, basicTx, TxResult(..), getResult, propGas)
 
--- | Configuration for evaluating Echidna tests.
-data TestConf = TestConf { classifier :: Text -> VM -> Bool
-                           -- ^ Given a VM state and test name, check if a test just passed (typically
-                           -- examining '_result'.)
-                         , testSender :: Addr -> Addr
-                           -- ^ Given the address of a test, return the address to send test evaluation
-                           -- transactions from.
-                         }
+import EVM.Dapp (DappInfo)
 
--- | Possible responses to a call to an Echidna test: @true@, @false@, @REVERT@, and ???.
+--- | Possible responses to a call to an Echidna test: @true@, @false@, @REVERT@, and ???.
 data CallRes = ResFalse | ResTrue | ResRevert | ResOther
   deriving (Eq, Show)
 
--- | Given a 'VMResult', classify it assuming it was the result of a call to an Echidna test.
+--- | Given a 'VMResult', classify it assuming it was the result of a call to an Echidna test.
 classifyRes :: VMResult -> CallRes
 classifyRes (VMSuccess b) | viewBuffer b == Just (encodeAbiValue (AbiBool True))  = ResTrue
                           | viewBuffer b == Just (encodeAbiValue (AbiBool False)) = ResFalse
@@ -51,71 +41,190 @@ classifyRes (VMSuccess b) | viewBuffer b == Just (encodeAbiValue (AbiBool True))
 classifyRes Reversion = ResRevert
 classifyRes _         = ResOther
 
+
+getResultFromVM :: VM -> TxResult
+getResultFromVM vm =
+  case vm ^. result of
+    Just r -> getResult r
+    Nothing -> error "getResultFromVM failed"
+
+createTest :: TestType -> EchidnaTest
+createTest m =  EchidnaTest (Open (-1)) m v [] Stop []   
+                where v = case m of 
+                           PropertyTest _ _     -> BoolValue True
+                           OptimizationTest _ _ -> IntValue minBound
+                           _                    -> NoValue
+
+--assertPanicTest :: EchidnaTest
+--assertPanicTest = createTest $ CallTest "Assertion failure detector" (checkPanicEvent "1")
+
+--integerOverflowTest :: EchidnaTest
+--integerOverflowTest = createTest $ CallTest "Integer overflow detector" (checkPanicEvent "17")
+
+isAssertionMode :: TestMode -> Bool
+isAssertionMode "assertion" = True
+isAssertionMode _           = False
+
+isExplorationMode :: TestMode -> Bool
+isExplorationMode "exploration" = True
+isExplorationMode _             = False
+
+isPropertyMode :: TestMode -> Bool
+isPropertyMode "property" = True
+isPropertyMode _          = False
+
+createTests :: TestMode -> Bool -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
+createTests m td ts r ss = case m of
+  "exploration"  -> [createTest Exploration]
+  "overflow"     -> [createTest (CallTest "Integer (over/under)flow" checkOverflowTest)]
+  "property"     -> map (\t -> createTest (PropertyTest t r)) ts
+  "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
+  "assertion"    -> map (\s -> createTest (AssertionTest s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
+  _              -> error "Invalid test mode"
+ ++ (if td then [sdt, sdat] else [])
+   where sdt  = createTest (CallTest "Target contract is not self-destructed" $ checkSelfDestructedTarget r)
+         sdat = createTest (CallTest "No contract can be self-destructed" checkAnySelfDestructed)
+
+updateOpenTest :: EchidnaTest -> [Tx] -> Int -> (TestValue, Events, TxResult) -> EchidnaTest
+updateOpenTest test txs _ (BoolValue False,es,r) = test { _testState = Large (-1), _testReproducer = txs, _testEvents = es, _testResult = r } 
+updateOpenTest test _   i (BoolValue True,_,_)   = test { _testState = Open (i + 1) } 
+
+
+updateOpenTest test txs i (IntValue v',es,r) = if v' > v then test { _testState = Open (i + 1), _testReproducer = txs, _testValue = IntValue v', _testEvents = es, _testResult = r } 
+                                                         else test { _testState = Open (i + 1) }
+                                                where v = case test ^. testValue of
+                                                           IntValue x -> x
+                                                           _          -> error "Invalid type of value for optimization" 
+
+
+updateOpenTest _ _ _ _                       = error "Invalid type of test"
+
+--updateLargeTest :: EchidnaTest -> EchidnaTest
+--updateLargeTest test i = if length x > 1 || any canShrinkTx x
+--                             then do (txs, val, evs, r) <- evalStateT (shrinkSeq (checkETest em test) (v, es, res) x) vm
+--                                     pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r, _testValue = val} 
+--                             else pure $ test { _testState = Solved, _testReproducer = x}
+--                             t 
+
+
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
-checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
-           => EventMap -> SolTest -> m Bool
-checkETest em t = do
+checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+           => EchidnaTest -> m (TestValue, Events, TxResult)
+checkETest test = case test ^. testType of
+                  Exploration           -> return (BoolValue True, [], Stop) -- These values are never used
+                  PropertyTest n a      -> checkProperty (n, a)
+                  OptimizationTest n a  -> checkOptimization (n, a)
+                  AssertionTest n a     -> checkAssertion (n, a)
+                  CallTest _ f          -> checkCall f
+
+checkProperty :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+           => (Text, Addr) -> m (TestValue, Events, TxResult)
+checkProperty t = do
     r <- use (hasLens . result)
     case r of
-      Just (VMSuccess _)                         -> checkETest' em t
-      Just (VMFailure (UnrecognizedOpcode 0xfe)) -> checkETest' em t
-      _                                          -> return True
+      Just (VMSuccess _) -> checkProperty' t
+      _                  -> return (BoolValue True, [], Stop) -- These values are never used
 
--- | Given a 'SolTest', evaluate it and see if it currently passes.
-checkETest' :: (MonadReader x m, Has TestConf x, Has TxConf x, MonadState y m, Has VM y, MonadThrow m)
-           => EventMap -> SolTest -> m Bool
-checkETest' em t = do
-  TestConf p s <- view hasLens
-  -- To check these tests, we're going to need a couple auxilary functions:
-  --   * matchR[eturn] checks if we just tried to exec 0xfe, which means we failed an assert
-  --   * matchC[alldata] checks if we just executed the function we thought we did, based on calldata
-  let matchR (Just (VMFailure (UnrecognizedOpcode 0xfe))) = False
-      matchR _                                            = True
-      matchC sig b = case viewBuffer b of
-        Just cd -> not . BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) $ cd
-        Nothing -> False
+
+runTx :: (MonadReader x m, MonadState y m, Has VM y, Has TxConf x, MonadThrow m)
+           => Text -> (Addr -> Addr) -> Addr -> m (y, VM)
+runTx f s a = do
   vm <- get -- save EVM state
-  case t of
-    -- If our test is a regular user-defined test, we exec it and check the result
-    Left (f, a) -> do
-      g <- view (hasLens . propGas)
-      sd <- hasSelfdestructed a
-      _  <- execTx $ basicTx f [] (s a) a g (0, 0)
-      b  <- gets $ p f . getter
-      put vm -- restore EVM state
-      pure $ not sd && b
-    -- If our test is an auto-generated assertion test, we check if we failed an assert on that fn
-    Right sig   -> do
-      vm' <- use hasLens
-      let correctFn = matchC sig $ vm ^. hasLens . state . calldata . _1
-          ret = matchR $ vm ^. hasLens . result
-          es = extractEvents em vm'
-          fa = null es || not (any (T.isPrefixOf "AssertionFailed(") es)
-      pure $ correctFn || (ret && fa)
+  -- Our test is a regular user-defined test, we exec it and check the result
+  g <- view (hasLens . propGas)
+  _  <- execTx $ basicTx f [] (s a) a g (0, 0)
+  vm' <- use hasLens
+  return (vm, vm')
 
--- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
--- still solves that test.
-shrinkSeq :: ( MonadRandom m, MonadReader x m, MonadThrow m
-             , Has SolConf x, Has TestConf x, Has TxConf x, MonadState y m
-             , Has VM y)
-          => m Bool -> [Tx] -> m [Tx]
-shrinkSeq f xs = do
-  strategies <- sequence [shorten, shrunk]
-  let strategy = uniform strategies
-  xs' <- strategy
-  testPassed <- check xs'
-  -- if the test passed it means we didn't shrink successfully
-  pure $ if testPassed then xs else xs'
-  where
-    check xs' = do
-      og <- get
-      res <- traverse_ execTx xs' >> f
-      put og
-      pure res
-    shrinkSender x = do
-      l <- view (hasLens . sender)
-      case ifind (const (== x ^. src)) l of
-        Nothing     -> pure x
-        Just (i, _) -> flip (set src) x . fromMaybe (x ^. src) <$> uniformMay (l ^.. folded . indices (< i))
-    shrunk = mapM (shrinkSender <=< shrinkTx) xs
-    shorten = (\i -> take i xs ++ drop (i + 1) xs) <$> getRandomR (0, length xs)
+
+-- | Given a property test, evaluate it and see if it currently passes.
+checkProperty' :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+           => (Text, Addr) -> m (TestValue, Events, TxResult)
+checkProperty' (f,a) = do
+  dappInfo <- view hasLens
+  TestConf p s <- view hasLens
+  (vm, vm') <- runTx f s a
+  b  <- gets $ p f . getter
+  put vm -- restore EVM state
+  pure (BoolValue b, extractEvents dappInfo vm', getResultFromVM vm')
+
+--- | Extract a test value from an execution.
+getIntFromResult :: Maybe VMResult -> TestValue
+getIntFromResult (Just (VMSuccess b)) = case viewBuffer b of
+                           Nothing -> error "invalid decode of buffer"
+                           Just bs -> case decodeAbiValue (AbiIntType 256) $ LBS.fromStrict bs of
+                                        AbiInt 256 n -> IntValue n
+                                        _            -> error ("invalid decode of int256: " ++ show bs)
+getIntFromResult _ = IntValue minBound
+
+-- | Given a property test, evaluate it and see if it currently passes.
+checkOptimization :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+           => (Text, Addr) -> m (TestValue, Events, TxResult)
+checkOptimization (f,a) = do
+  TestConf _ s <- view hasLens
+  dappInfo <- view hasLens
+  (vm, vm') <- runTx f s a
+  put vm -- restore EVM state
+  pure (getIntFromResult (vm' ^. result), extractEvents dappInfo vm', getResultFromVM vm')
+
+
+checkAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+           => (SolSignature, Addr) -> m (TestValue, Events, TxResult)
+checkAssertion (sig, addr) = do
+  dappInfo <- view hasLens
+  vm <- use hasLens
+      -- Whether the last transaction called the function `sig`.
+  let isCorrectFn = case viewBuffer $ vm ^. state . calldata . _1 of
+        Just cd -> BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) cd
+        Nothing -> False 
+      -- Whether the last transaction executed a function on the contract `addr`.
+      isCorrectAddr = addr == vm ^. state . codeContract
+      isCorrectTarget = isCorrectFn && isCorrectAddr
+      -- Whether the last transaction executed opcode 0xfe, meaning an assertion failure.
+      isAssertionFailure = case vm ^. result of
+        Just (VMFailure (UnrecognizedOpcode 0xfe)) -> True
+        _ -> False
+      -- Test always passes if it doesn't target the last executed contract and function.
+      -- Otherwise it passes if it doesn't cause an assertion failure.
+      events = extractEvents dappInfo vm
+      eventFailure = not (null events) && (checkAssertionEvent events || checkPanicEvent "1" events)
+      isFailure = isCorrectTarget && (eventFailure || isAssertionFailure)
+  pure (BoolValue (not isFailure), events, getResultFromVM vm)
+
+checkCall :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+           => (DappInfo -> VM -> TestValue) -> m (TestValue, Events, TxResult)
+checkCall f = do
+  dappInfo <- view hasLens
+  vm <- use hasLens
+  pure (f dappInfo vm, extractEvents dappInfo vm, getResultFromVM vm)
+
+checkAssertionTest :: DappInfo -> VM -> TestValue
+checkAssertionTest dappInfo vm = 
+  let events = extractEvents dappInfo vm
+  in BoolValue $ null events || not (checkAssertionEvent events)
+
+checkAssertionEvent :: Events -> Bool
+checkAssertionEvent = any (T.isPrefixOf "AssertionFailed(")
+
+checkSelfDestructedTarget :: Addr -> DappInfo -> VM -> TestValue
+checkSelfDestructedTarget addr _ vm =
+  let selfdestructs' = vm ^. (tx . substate . selfdestructs)
+  in BoolValue $ addr `notElem` selfdestructs'
+
+checkAnySelfDestructed :: DappInfo -> VM -> TestValue
+checkAnySelfDestructed _ vm =
+  let sd = vm ^. (tx . substate . selfdestructs)
+  in BoolValue $ null sd
+
+checkPanicEvent :: T.Text -> Events -> Bool
+checkPanicEvent n = any (T.isPrefixOf ("Panic(" <> n <> ")"))
+
+checkOverflowTest :: DappInfo -> VM -> TestValue
+checkOverflowTest dappInfo vm = 
+  let es = extractEvents dappInfo vm
+  in BoolValue $ null es || not (checkPanicEvent "17" es)
+
+--checkErrorEvent :: EventMap -> VM -> Bool
+--checkErrorEvent em vm = 
+--  let es = extractEvents em vm
+--  in null es || not (any (T.isPrefixOf "Error(") es)

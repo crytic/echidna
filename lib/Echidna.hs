@@ -2,7 +2,7 @@
 
 module Echidna where
 
-import Control.Lens ((^.), to)
+import Control.Lens (view, (^.), to)
 import Data.Has (Has(..))
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Reader (MonadReader, MonadIO, liftIO)
@@ -16,8 +16,9 @@ import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Solidity (SourceCache, SolcContract)
 
 import Echidna.ABI
-import Echidna.Config
+import Echidna.Config hiding (cfg)
 import Echidna.Solidity
+import Echidna.Types.Solidity
 import Echidna.Types.Campaign
 import Echidna.Types.Random
 import Echidna.Types.Signature
@@ -43,13 +44,22 @@ import qualified Data.List.NonEmpty as NE
 -- * A prepopulated dictionary (if any)
 -- * A list of transaction sequences to initialize the corpus
 prepareContract :: (MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, MonadFail m,
-                    Has TxConf x, Has SolConf x)
+                    Has TestConf x, Has TxConf x, Has SolConf x)
                 => EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
-                -> m (VM, SourceCache, [SolcContract], World, [SolTest], Maybe GenDict, [[Tx]])
-prepareContract cfg fp c g = do
+                -> m (VM, SourceCache, [SolcContract], World, [EchidnaTest], Maybe GenDict, [[Tx]])
+prepareContract cfg fs c g = do
   ctxs <- liftIO $ loadTxs cd
 
-  (v, w, ts, cs, scs, si) <- loadSolidity fp c
+  -- compile and load contracts
+  (cs, scs) <- Echidna.Solidity.contracts fs
+  p <- loadSpecified c cs
+
+  -- run processors
+  ca <- view (hasLens . cryticArgs)
+  si <- runSlither (NE.head fs) ca
+
+  -- load tests
+  (v, w, ts) <- prepareForTest p c si
 
   -- get signatures
   let sigs = nub $ concatMap (NE.toList . snd) (toList $ w ^. highSignatureMap)
