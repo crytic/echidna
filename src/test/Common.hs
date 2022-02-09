@@ -49,7 +49,6 @@ import Echidna.Types.Campaign (Campaign, testLimit, shrinkLimit, tests, gasInfo,
 import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
-import Echidna.Types.World (eventMap)
 
 import EVM.Dapp (dappInfo, emptyDapp)
 import EVM.Solidity (contractName)
@@ -105,11 +104,10 @@ testContract' fp n v cfg s as = testCase fp $ withSolcVersion v $ do
 checkConstructorConditions :: FilePath -> String -> TestTree
 checkConstructorConditions fp as = testCase fp $ do
   r <- flip runReaderT testConfig $ do
-    (v, w, t) <- loadSolTests (fp :| []) Nothing
-    let em = w ^. eventMap
+    (v, _, t) <- loadSolTests (fp :| []) Nothing
     let env = Env { _cfg = testConfig, _dapp = emptyDapp }
     flip runReaderT env $ do
-      mapM (\u -> evalStateT (checkETest em u) v) t
+      mapM (\u -> evalStateT (checkETest u) v) t
   mapM_ (\(BoolValue b,_,_) -> assertBool as b) r
 
 

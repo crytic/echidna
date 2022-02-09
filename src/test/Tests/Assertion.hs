@@ -13,6 +13,10 @@ assertionTests = testGroup "Assertion-based Integration Testing"
       , ("f failed",                       passed  "f")
       ]
 
+      , testContract "assert/assert.sol"  (Just "assert/whitelist_asserts.yaml")
+      [ ("direct_assert passed",           solved "direct_assert")
+      , ("internal_assert failed",         solved "internal_assert")]
+
     , testContractV "assert/assert-0.8.sol" (Just (\v -> v >= solcV (0,8,0))) (Just "assert/config.yaml")
       [ ("direct_assert passed", solved "direct_assert") ] 
 
