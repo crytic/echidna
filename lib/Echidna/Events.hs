@@ -30,8 +30,8 @@ maybeContractNameFromCodeHash codeHash = fmap contractToName maybeContract
   where maybeContract = preview (contextInfo . dappSolcByHash . ix codeHash . _2) ?context
         contractToName = view (contractName . to contractNamePart)
 
-extractEvents :: DappInfo -> EventMap -> VM -> Events
-extractEvents dappInfo' _ vm =
+extractEvents :: DappInfo -> VM -> Events
+extractEvents dappInfo' vm =
   let eventMap = dappInfo' ^. dappEventMap
       forest = traceForest vm
       showTrace trace =

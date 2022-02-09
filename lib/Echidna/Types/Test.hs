@@ -12,7 +12,7 @@ import EVM.Types (Addr)
 import EVM.Dapp (DappInfo)
 
 import Echidna.Exec (ExecException)
-import Echidna.Events (Events, EventMap)
+import Echidna.Events (Events)
 import Echidna.Types.Tx (Tx, TxResult)
 import Echidna.Types.Signature (SolSignature)
 
@@ -51,7 +51,7 @@ instance Show TestValue where
 data TestType = PropertyTest Text Addr
               | OptimizationTest Text Addr
               | AssertionTest SolSignature Addr
-              | CallTest Text (DappInfo -> EventMap -> VM -> TestValue) 
+              | CallTest Text (DappInfo -> VM -> TestValue) 
               | Exploration
 
 instance Eq TestType where

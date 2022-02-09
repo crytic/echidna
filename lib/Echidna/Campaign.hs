@@ -52,7 +52,7 @@ import Echidna.Types.Signature (makeBytecodeMemo)
 --import Echidna.Types.Test (TestState(..), SolTest)
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
 import Echidna.Types.Solidity (SolConf(..), sender)
-import Echidna.Types.World (World, eventMap)
+import Echidna.Types.World (World)
 import Echidna.Mutator.Corpus
 
 instance MonadThrow m => MonadThrow (RandT g m) where
@@ -95,26 +95,24 @@ updateTest :: ( MonadCatch m, MonadRandom m, MonadReader x m
 
 updateTest w vm (Just (vm', xs)) test = do
   tl <- view (hasLens . testLimit)
-  let em = w ^. eventMap
   case test ^. testState of
     Open i | i >= tl -> case test ^. testType of
                           OptimizationTest _ _ -> pure $ test { _testState = Large (-1) }
                           _                    -> pure $ test { _testState = Passed }
-    Open i           -> do r <- evalStateT (checkETest em test) vm' 
+    Open i           -> do r <- evalStateT (checkETest test) vm' 
                            pure $ updateOpenTest test xs i r 
     _                -> updateTest w vm Nothing test
 
-updateTest w vm Nothing test = do
+updateTest _ vm Nothing test = do
   sl <- view (hasLens . shrinkLimit)
-  let em = w ^. eventMap
-      es = test ^. testEvents
+  let es = test ^. testEvents
       res = test ^. testResult
       x = test ^. testReproducer
       v = test ^. testValue
   case test ^. testState of
     Large i | i >= sl -> pure $ test { _testState =  Solved, _testReproducer = x }
     Large i           -> if length x > 1 || any canShrinkTx x
-                             then do (txs, val, evs, r) <- evalStateT (shrinkSeq (checkETest em test) (v, es, res) x) vm
+                             then do (txs, val, evs, r) <- evalStateT (shrinkSeq (checkETest test) (v, es, res) x) vm
                                      pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r, _testValue = val} 
                              else pure $ test { _testState = Solved, _testReproducer = x}
     _                   -> pure test
