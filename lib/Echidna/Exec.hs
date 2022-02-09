@@ -146,19 +146,6 @@ handleErrorsAndConstruction onErr vmResult' vmBeforeTx tx' = case (vmResult', tx
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
 execTx = execTxWith vmExcept $ liftSH exec
 
--- <<<<<<< HEAD
--- | Given a way of capturing coverage info, execute while doing so once per instruction.
--- usingCoverage :: (MonadState x m, Has VM x) => m () -> m VMResult
--- usingCoverage cov = maybe (cov >> liftSH exec1 >> usingCoverage cov) pure =<< use (hasLens . result)
-
--- | Capture the current PC and bytecode (without metadata). This should identify instructions uniquely.
--- pointCoverage :: (MonadState x m, Has VM x) => Lens' x CoverageMap -> m ()
--- pointCoverage l = do
---   v <- use hasLens
---  l %= M.insertWith (const . S.insert $ (v ^. state . pc, fromMaybe 0 $ vmOpIx v, length $ v ^. frames, Stop))
---                    (fromMaybe (error "no contract information on coverage") $ h v)
---                    mempty
--- =======
 -- | Execute a transaction, logging coverage at every step.
 execTxWithCov :: (MonadState x m, Has VM x) => BytecodeMemo -> Lens' x CoverageMap -> m VMResult
 execTxWithCov memo l = do
@@ -168,7 +155,6 @@ execTxWithCov memo l = do
   hasLens .= vm'
   l       .= cm'
   return r
--- >>>>>>> aa99405... Memoize getBytecodeMetadata; fix State memory leak (#707)
   where
     -- | Repeatedly exec a step and add coverage until we have an end result
     loop :: VM -> CoverageMap -> (VMResult, VM, CoverageMap)
