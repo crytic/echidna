@@ -21,6 +21,7 @@ import Echidna.Config hiding (cfg)
 import Echidna.Types.Solidity
 import Echidna.Types.Campaign
 import Echidna.Types.Test (TestMode)
+import Echidna.Test (validateTestMode)
 import Echidna.Campaign (isSuccess)
 import Echidna.UI
 import Echidna.Output.Source
@@ -164,7 +165,7 @@ overrideConfig config Options{..} =
       cfg & cConf . corpusDir %~ (cliCorpusDir <|>)
 
     overrideTestMode cfg =
-      cfg & sConf . testMode %~ (`fromMaybe` cliTestMode)
+      cfg & sConf . testMode %~ (`fromMaybe` (validateTestMode <$> cliTestMode))
 
     overrideMultiAbi cfg =
       if cliMultiAbi then cfg & sConf . multiAbi .~ True else cfg

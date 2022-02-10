@@ -139,6 +139,9 @@ instance FromJSON EConfigWithUsage where
                 defaultDeployer = 0x30000
                 fnFilter = bool Whitelist Blacklist <$> v ..:? "filterBlacklist" ..!= True
                                                     <*> v ..:? "filterFunctions" ..!= []
+                mode = v ..:? "testMode" >>= \case
+                  Just s  -> pure $ validateTestMode s
+                  Nothing -> pure "property"
                 sc = SolConf <$> v ..:? "contractAddr"    ..!= defaultAddr
                              <*> v ..:? "deployer"        ..!= defaultDeployer
                              <*> v ..:? "sender"          ..!= (0x10000 NE.:| [0x20000, defaultDeployer])
@@ -152,20 +155,20 @@ instance FromJSON EConfigWithUsage where
                              <*> v ..:? "quiet"           ..!= False
                              <*> v ..:? "initialize"      ..!= Nothing
                              <*> v ..:? "multi-abi"       ..!= False
-                             <*> v ..:? "testMode"        ..!= "property"
+                             <*> mode
                              <*> v ..:? "testDestruction" ..!= False
                              <*> fnFilter
                 names :: Names
                 names Sender = (" from: " ++) . show
                 names _      = const ""
-                mode = fromMaybe Interactive <$> (v ..:? "format" >>= \case
+                format = fromMaybe Interactive <$> (v ..:? "format" >>= \case
                   Just ("text" :: String) -> pure . Just . NonInteractive $ Text
                   Just "json"             -> pure . Just . NonInteractive $ JSON
                   Just "none"             -> pure . Just . NonInteractive $ None
                   Nothing -> pure Nothing
-                  _ -> M.fail "unrecognized format type (should be text, json, or none)") in
+                  _ -> M.fail "Unrecognized format type (should be text, json, or none)") in
             EConfig <$> cc <*> pure names <*> sc <*> tc <*> xc
-                    <*> (UIConf <$> v ..:? "timeout" <*> mode)
+                    <*> (UIConf <$> v ..:? "timeout" <*> format)
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
 defaultConfig :: EConfig

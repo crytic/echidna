@@ -61,6 +61,18 @@ createTest m =  EchidnaTest (Open (-1)) m v [] Stop []
 --integerOverflowTest :: EchidnaTest
 --integerOverflowTest = createTest $ CallTest "Integer overflow detector" (checkPanicEvent "17")
 
+validateTestModeError :: String
+validateTestModeError = "Invalid test mode (should be property, assertion, optimization, overflow or exploration)"
+
+validateTestMode :: String -> TestMode
+validateTestMode s = case s of
+  "property"     -> s
+  "assertion"    -> s
+  "exploration"  -> s
+  "overflow"     -> s
+  "optimization" -> s
+  _              -> error validateTestModeError
+
 isAssertionMode :: TestMode -> Bool
 isAssertionMode "assertion" = True
 isAssertionMode _           = False
@@ -80,7 +92,8 @@ createTests m td ts r ss = case m of
   "property"     -> map (\t -> createTest (PropertyTest t r)) ts
   "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
   "assertion"    -> map (\s -> createTest (AssertionTest s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
-  _              -> error "Invalid test mode"
+  _              -> error validateTestModeError
+
  ++ (if td then [sdt, sdat] else [])
    where sdt  = createTest (CallTest "Target contract is not self-destructed" $ checkSelfDestructedTarget r)
          sdat = createTest (CallTest "No contract can be self-destructed" checkAnySelfDestructed)
