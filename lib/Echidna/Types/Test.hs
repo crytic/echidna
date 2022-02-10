@@ -87,6 +87,12 @@ isOpen t = case t ^. testState of
             Open _ -> True
             _      -> False
 
+didFailed :: EchidnaTest -> Bool 
+didFailed t = case t ^. testState of
+              Large _ -> True
+              Solved  -> True
+              _       -> False
+ 
 isPassed :: EchidnaTest -> Bool 
 isPassed t = case t ^. testState of
               Passed -> True

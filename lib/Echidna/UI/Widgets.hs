@@ -10,7 +10,7 @@ import Brick.Widgets.Center
 import Control.Lens
 import Control.Monad.Reader (MonadReader)
 import Data.Has (Has(..))
-import Data.List (nub, intersperse)
+import Data.List (nub, intersperse, sortBy)
 import Data.Version (showVersion)
 import Text.Printf (printf)
 
@@ -76,9 +76,13 @@ summaryWidget c =
     maybe emptyWidget str (ppCorpus $ c ^. corpus)
   )
 
+failedFirst :: EchidnaTest -> EchidnaTest -> Ordering
+failedFirst t1 _ | didFailed t1 = LT
+                 | otherwise   = GT 
+
 testsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
             => [EchidnaTest] -> m (Widget())
-testsWidget tests' = foldl (<=>) emptyWidget . intersperse hBorder <$> traverse testWidget tests'
+testsWidget tests' = foldl (<=>) emptyWidget . intersperse hBorder <$> traverse testWidget (sortBy failedFirst tests')
 
 testWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
            => EchidnaTest -> m (Widget ())
