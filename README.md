@@ -44,7 +44,7 @@ To check these invariants, run:
 $ echidna-test myContract.sol
 ```
 
-An example contract with tests can be found [tests/solidity/basic/flags.sol](examples/solidity/basic/flags.sol). To run it, you should execute:
+An example contract with tests can be found [tests/solidity/basic/flags.sol](tests/solidity/basic/flags.sol). To run it, you should execute:
 ```
 $ echidna-test tests/solidity/basic/flags.sol
 ```
@@ -104,7 +104,7 @@ $ echidna-test contract.sol --contract TEST --config config.yaml
 The configuration file allows users to choose EVM and test generation
 parameters. An example of a complete and annotated config file with the default
 options can be found at
-[tests/solidity/basic/default.yaml](examples/solidity/basic/default.yaml).
+[tests/solidity/basic/default.yaml](tests/solidity/basic/default.yaml).
 More detailed documentation on the configuration options is available in our
 [wiki](https://github.com/trailofbits/echidna/wiki/Config).
 
@@ -188,7 +188,7 @@ $ docker build -t echidna .
 Then, run it via:
 
 ```
-$ docker run -it -v `pwd`:/src echidna echidna-test /src/examples/solidity/basic/flags.sol
+$ docker run -it -v `pwd`:/src echidna echidna-test /src/tests/solidity/basic/flags.sol
 ```
 
 ### Building using Stack
