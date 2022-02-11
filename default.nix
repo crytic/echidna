@@ -25,7 +25,7 @@ let
     '';
   };
 
-  v = "1.7.3";
+  v = "2.0.0";
 
   testInputs = [ pkgs.slither-analyzer solc ];
 
