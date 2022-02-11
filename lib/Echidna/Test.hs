@@ -55,12 +55,6 @@ createTest m =  EchidnaTest (Open (-1)) m v [] Stop []
                            OptimizationTest _ _ -> IntValue minBound
                            _                    -> NoValue
 
---assertPanicTest :: EchidnaTest
---assertPanicTest = createTest $ CallTest "Assertion failure detector" (checkPanicEvent "1")
-
---integerOverflowTest :: EchidnaTest
---integerOverflowTest = createTest $ CallTest "Integer overflow detector" (checkPanicEvent "17")
-
 validateTestModeError :: String
 validateTestModeError = "Invalid test mode (should be property, assertion, optimization, overflow or exploration)"
 
@@ -111,14 +105,6 @@ updateOpenTest test txs i (IntValue v',es,r) = if v' > v then test { _testState 
 
 
 updateOpenTest _ _ _ _                       = error "Invalid type of test"
-
---updateLargeTest :: EchidnaTest -> EchidnaTest
---updateLargeTest test i = if length x > 1 || any canShrinkTx x
---                             then do (txs, val, evs, r) <- evalStateT (shrinkSeq (checkETest em test) (v, es, res) x) vm
---                                     pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r, _testValue = val} 
---                             else pure $ test { _testState = Solved, _testReproducer = x}
---                             t 
-
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
@@ -236,8 +222,3 @@ checkOverflowTest :: DappInfo -> VM -> TestValue
 checkOverflowTest dappInfo vm = 
   let es = extractEvents dappInfo vm
   in BoolValue $ null es || not (checkPanicEvent "17" es)
-
---checkErrorEvent :: EventMap -> VM -> Bool
---checkErrorEvent em vm = 
---  let es = extractEvents em vm
---  in null es || not (any (T.isPrefixOf "Error(") es)

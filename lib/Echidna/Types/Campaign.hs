@@ -72,10 +72,7 @@ instance ToJSON Campaign where
     : ((if co == mempty then [] else [
     ("coverage",) . toJSON . mapKeys (("0x" <>) . (`showHex` "") . keccak) $ toList <$> co]) ++
        [(("maxgas",) . toJSON . toList) gi | gi /= mempty]) where
-        format _ = "" :: String
-        --format (Right _,      Open _) = Nothing
-        --format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
-        --format (Left (n, _),  s)      = Just (n,                    toJSON s)
+        format _ = "" :: String -- TODO: complete this format string
 
 instance Has GenDict Campaign where
   hasLens = genDict
