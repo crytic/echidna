@@ -1,5 +1,17 @@
 ## TODO
 
+## 2.0.0
+
+* Refactored test internal data structures and code
+* Refactored unit test code and moved the related files to the `tests` directory
+* Added support to show events and custom errors when a property/assertion fails 
+* Added support for catching assertion failure in Solidity 0.8.x
+* Added two new testing mode: optimization and overflow (only in Solidity 0.8.x)
+* Added optional checks for contract destruction
+* Added `testMode` option and removed related flags
+* Simplified contract deployer and property sender addresses to be easier to read
+* Updated hevm to 0.49.0
+ 
 ## 1.7.3
 
 * Removed old compilation artifacts before starting a new fuzzing campaign (#697)

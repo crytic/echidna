@@ -28,6 +28,7 @@ import Data.Ord (comparing)
 import Data.Has (Has(..))
 import Data.Text (Text)
 import EVM
+import EVM.Dapp (DappInfo)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (Addr, Buffer(..))
 import System.Random (mkStdGen)
@@ -38,16 +39,17 @@ import qualified Data.Set as DS
 
 import Echidna.ABI
 import Echidna.Exec
-import Echidna.Solidity
 import Echidna.Test
 import Echidna.Transaction
-import Echidna.Types.Buffer (viewBuffer)
+import Echidna.Shrink (shrinkSeq)
 import Echidna.Types.Campaign
 import Echidna.Types.Coverage (coveragePoints)
+import Echidna.Types.Test
+import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Signature (makeBytecodeMemo)
-import Echidna.Types.Test (TestState(..), SolTest)
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, getResult, src, call, _SolCall)
-import Echidna.Types.World (World, eventMap)
+import Echidna.Types.Solidity (SolConf(..), sender)
+import Echidna.Types.World (World)
 import Echidna.Mutator.Corpus
 
 instance MonadThrow m => MonadThrow (RandT g m) where
@@ -66,15 +68,15 @@ isDone (view tests -> ts) = do
   (tl, sl, sof) <- view (hasLens . to (liftM3 (,,) _testLimit _shrinkLimit _stopOnFail))
   let res (Open  i)   = if i >= tl then Just True else Nothing
       res Passed      = Just True
-      res (Large i _) = if i >= sl then Just False else Nothing
-      res (Solved _)  = Just False
+      res (Large i)   = if i >= sl then Just False else Nothing
+      res Solved      = Just False
       res (Failed _)  = Just False
-  pure $ res . snd <$> ts & if sof then elem $ Just False else all isJust
+  pure $ res . view testState <$> ts & if sof then elem $ Just False else all isJust
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
 isSuccess :: Campaign -> Bool
-isSuccess = allOf (tests . traverse . _2) (\case { Passed -> True; Open _ -> True; _ -> False; })
+isSuccess = allOf (tests . traverse . testState) (\case { Passed -> True; Open _ -> True; _ -> False; })
 
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
 -- of transactions and the state after evaluation, see if:
@@ -84,35 +86,44 @@ isSuccess = allOf (tests . traverse . _2) (\case { Passed -> True; Open _ -> Tru
 -- (3): The test is unshrunk, and we can shrink it
 -- Then update accordingly, keeping track of how many times we've tried to solve or shrink.
 updateTest :: ( MonadCatch m, MonadRandom m, MonadReader x m
-              , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x)
-           => World -> VM -> Maybe (VM, [Tx]) -> (SolTest, TestState) -> m (SolTest, TestState)
-updateTest w v (Just (v', xs)) (n, t) = do
+              , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has DappInfo x)
+           => World -> VM -> Maybe (VM, [Tx]) -> EchidnaTest -> m EchidnaTest
+
+
+updateTest w vm (Just (vm', xs)) test = do
   tl <- view (hasLens . testLimit)
-  let em = w ^. eventMap
-  (n,) <$> case t of
-    Open i | i >= tl -> pure Passed
-    Open i           -> catch (evalStateT (checkETest em n) v' <&> bool (Large (-1) xs) (Open (i + 1)))
-                              (pure . Failed)
-    _                -> snd <$> updateTest w v Nothing (n,t)
-updateTest w v Nothing (n, t) = do
+  case test ^. testState of
+    Open i | i >= tl -> case test ^. testType of
+                          OptimizationTest _ _ -> pure $ test { _testState = Large (-1) }
+                          _                    -> pure $ test { _testState = Passed }
+    Open i           -> do r <- evalStateT (checkETest test) vm' 
+                           pure $ updateOpenTest test xs i r 
+    _                -> updateTest w vm Nothing test
+
+updateTest _ vm Nothing test = do
   sl <- view (hasLens . shrinkLimit)
-  let em = w ^. eventMap
-  (n,) <$> case t of
-    Large i x | i >= sl -> pure $ Solved x
-    Large i x           -> if length x > 1 || any canShrinkTx x
-                             then Large (i + 1) <$> evalStateT (shrinkSeq (checkETest em n) x) v
-                             else pure $ Solved x
-    _                   -> pure t
+  let es = test ^. testEvents
+      res = test ^. testResult
+      x = test ^. testReproducer
+      v = test ^. testValue
+  case test ^. testState of
+    Large i | i >= sl -> pure $ test { _testState =  Solved, _testReproducer = x }
+    Large i           -> if length x > 1 || any canShrinkTx x
+                             then do (txs, val, evs, r) <- evalStateT (shrinkSeq (checkETest test) (v, es, res) x) vm
+                                     pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r, _testValue = val} 
+                             else pure $ test { _testState = Solved, _testReproducer = x}
+    _                   -> pure test
+
 
 -- | Given a rule for updating a particular test's state, apply it to each test in a 'Campaign'.
 runUpdate :: (MonadReader x m, Has TxConf x, MonadState y m, Has Campaign y)
-          => ((SolTest, TestState) -> m (SolTest, TestState)) -> m ()
+          => (EchidnaTest -> m EchidnaTest) -> m ()
 runUpdate f = let l = hasLens . tests in use l >>= mapM f >>= (l .=)
 
 -- | Given an initial 'VM' state and a way to run transactions, evaluate a list of transactions, constantly
 -- checking if we've solved any tests or can shrink known solves.
 evalSeq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
-           , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x
+           , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has DappInfo x
            , Has Campaign y, Has VM y)
         => World -> VM -> (Tx -> m a) -> [Tx] -> m [(Tx, a)]
 evalSeq w v e = go [] where
@@ -189,6 +200,8 @@ randseq ql o w = do
   cs <- view $ hasLens . mutConsts
   txConf :: TxConf <- view hasLens
   let ctxs = ca ^. corpus
+      -- TODO: include reproducer when optimizing
+      --rs   = filter (not . null) $ map (view testReproducer) $ ca ^. tests
       p    = ca ^. ncallseqs
   if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
     return . snd $ DS.elemAt p ctxs
@@ -208,7 +221,7 @@ randseq ql o w = do
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
 callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
-           , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Campaign y, Has GenDict y)
+           , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has DappInfo x, Has Campaign y, Has GenDict y)
         => VM -> World -> Int -> m ()
 callseq v w ql = do
   -- First, we figure out whether we need to execute with or without coverage optimization and gas info,
@@ -256,25 +269,24 @@ callseq v w ql = do
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
 campaign :: ( MonadCatch m, MonadRandom m, MonadReader x m
-            , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x)
+            , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has DappInfo x)
          => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
          -> VM                  -- ^ Initial VM state
          -> World               -- ^ Initial world state
-         -> [SolTest]           -- ^ Tests to evaluate
+         -> [EchidnaTest]       -- ^ Tests to evaluate
          -> Maybe GenDict       -- ^ Optional generation dictionary
          -> [[Tx]]              -- ^ Initial corpus of transactions
          -> m Campaign
-campaign u v w ts d txs = do
+campaign u vm w ts d txs = do
   c <- fromMaybe mempty <$> view (hasLens . knownCoverage)
   g <- view (hasLens . seed)
-  b <- view (hasLens . benchmarkMode)
   let effectiveSeed = fromMaybe (d' ^. defSeed) g
       effectiveGenDict = d' { _defSeed = effectiveSeed }
       d' = fromMaybe defaultDict d
   execStateT
     (evalRandT runCampaign (mkStdGen effectiveSeed))
     (Campaign
-      ((, Open (-1)) <$> if b then [] else ts)
+      ts
       c
       mempty
       effectiveGenDict
@@ -285,14 +297,14 @@ campaign u v w ts d txs = do
     )
   where
     -- "mapMaybe ..." is to get a list of all contracts
-    memo        = makeBytecodeMemo . mapMaybe (viewBuffer . (^. bytecode)) . elems $ (v ^. env . EVM.contracts)
-    step        = runUpdate (updateTest w v Nothing) >> lift u >> runCampaign
-    runCampaign = use (hasLens . tests . to (fmap snd)) >>= update
+    memo        = makeBytecodeMemo . mapMaybe (viewBuffer . (^. bytecode)) . elems $ (vm ^. env . EVM.contracts)
+    step        = runUpdate (updateTest w vm Nothing) >> lift u >> runCampaign
+    runCampaign = use (hasLens . tests . to (fmap (view testState))) >>= update
     update c    = do
       CampaignConf tl sof _ q sl _ _ _ _ _ <- view hasLens
       Campaign { _ncallseqs } <- view hasLens <$> get
-      if | sof && any (\case Solved _ -> True; Failed _ -> True; _ -> False) c -> lift u
-         | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq v w q >> step
-         | any (\case Large n _ -> n < sl; _ -> False) c                       -> step
-         | null c && (q * _ncallseqs) < tl                                     -> callseq v w q >> step
+      if | sof && any (\case Solved -> True; Failed _ -> True; _ -> False) c -> lift u
+         | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq vm w q >> step
+         | any (\case Large n   -> n < sl; _ -> False) c                       -> step
+         | null c && (q * _ncallseqs) < tl                                     -> callseq vm w q >> step
          | otherwise                                                           -> lift u

@@ -10,15 +10,14 @@ import Data.Aeson (ToJSON(..), object)
 import Data.Foldable (toList)
 import Data.Has (Has(..))
 import Data.Map (Map, mapKeys)
-import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import EVM.Types (keccak)
 import Numeric (showHex)
 
 import Echidna.ABI (GenDict, defaultDict)
 import Echidna.Types.Coverage (CoverageMap)
+import Echidna.Types.Test (EchidnaTest)
 import Echidna.Types.Signature (BytecodeMemo)
-import Echidna.Types.Test (SolTest, TestState(..))
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Corpus
 import Echidna.Mutator.Corpus
@@ -49,7 +48,7 @@ data CampaignConf = CampaignConf { _testLimit     :: Int
 makeLenses ''CampaignConf
 
 -- | The state of a fuzzing campaign.
-data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
+data Campaign = Campaign { _tests       :: [EchidnaTest]
                            -- ^ Tests being evaluated
                          , _coverage    :: CoverageMap
                            -- ^ Coverage captured (NOTE: we don't always record this)
@@ -69,13 +68,11 @@ data Campaign = Campaign { _tests       :: [(SolTest, TestState)]
 makeLenses ''Campaign
 
 instance ToJSON Campaign where
-  toJSON (Campaign ts co gi _ _ _ _ _) = object $ ("tests", toJSON $ mapMaybe format ts)
+  toJSON (Campaign ts co gi _ _ _ _ _) = object $ ("tests", toJSON $ map format ts)
     : ((if co == mempty then [] else [
     ("coverage",) . toJSON . mapKeys (("0x" <>) . (`showHex` "") . keccak) $ toList <$> co]) ++
        [(("maxgas",) . toJSON . toList) gi | gi /= mempty]) where
-        format (Right _,      Open _) = Nothing
-        format (Right (n, _), s)      = Just ("assertion in " <> n, toJSON s)
-        format (Left (n, _),  s)      = Just (n,                    toJSON s)
+        format _ = "" :: String -- TODO: complete this format string
 
 instance Has GenDict Campaign where
   hasLens = genDict
