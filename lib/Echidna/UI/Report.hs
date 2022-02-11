@@ -78,7 +78,7 @@ ppFail b es xs = let status = case b of
                                 Nothing    -> ""
                                 Just (n,m) -> ", shrinking " ++ progress n m
                      pxs = mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs in
- do s <- ((" failed!💥  \n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> pxs
+ do s <- (("failed!💥  \n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> pxs
     return (s ++ "\n" ++ ppEvents es)
 
 ppEvents :: Events -> String
