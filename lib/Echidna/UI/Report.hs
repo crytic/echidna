@@ -78,7 +78,7 @@ ppFail b es xs = let status = case b of
                                 Nothing    -> ""
                                 Just (n,m) -> ", shrinking " ++ progress n m
                      pxs = mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs in
- do s <- (("failed!💥  \n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> pxs
+ do s <- ((" failed!💥  \n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> pxs
     return (s ++ "\n" ++ ppEvents es)
 
 ppEvents :: Events -> String
@@ -89,10 +89,11 @@ ppEvents es = if null es then "" else "Event sequence: " ++ T.unpack (T.intercal
 ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => TestState -> Events -> [Tx] -> m String
 ppTS (Failed e) _ _  = pure $ "could not evaluate ☣\n  " ++ show e
 ppTS Solved     es l = ppFail Nothing es l
-ppTS Passed     _ _  = pure "passed! 🎉"
-ppTS (Open i)   es _ = do
+ppTS Passed     _ _  = pure " passed! 🎉"
+ppTS (Open i)   es [] = do
   t <- view (hasLens .  testLimit)
-  if i >= t then ppTS Passed es [] else pure $ "fuzzing " ++ progress i t
+  if i >= t then ppTS Passed es [] else pure $ " fuzzing " ++ progress i t
+ppTS (Open _)   es r = ppFail Nothing es r -- Only reachable with optimization
 ppTS (Large n) es l  = do
   m <- view (hasLens . shrinkLimit)
   ppFail (if n < m then Just (n, m) else Nothing) es l
