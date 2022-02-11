@@ -23,17 +23,19 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text, isPrefixOf)
 import EVM (result)
 import EVM.Types (w256)
+import EVM.Dapp (DappInfo)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Data.ByteString as BS
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
-import Echidna.Solidity
 import Echidna.Test
 import Echidna.Types.Campaign (CampaignConf(CampaignConf))
 import Echidna.Mutator.Corpus (defaultMutationConsts)
+import Echidna.Types.Solidity (SolConf(..), Filter(..))
 import Echidna.Types.Tx  (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
+import Echidna.Types.Test  (TestConf(..))
 import Echidna.UI
 import Echidna.UI.Report
 
@@ -112,7 +114,7 @@ instance FromJSON EConfigWithUsage where
 
                 -- TestConf
                 tc = do
-                  psender <- v ..:? "psender" ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                  psender <- v ..:? "psender" ..!= 0x10000
                   fprefix <- v ..:? "prefix"  ..!= "echidna_"
                   let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
                       classify fname vm = maybe ResOther classifyRes (vm ^. result) == goal fname
@@ -134,9 +136,12 @@ instance FromJSON EConfigWithUsage where
 
                 -- SolConf
                 defaultAddr     = 0x00a329c0648769a73afac7f9381e08fb43dbea72
-                defaultDeployer = 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                defaultDeployer = 0x30000
                 fnFilter = bool Whitelist Blacklist <$> v ..:? "filterBlacklist" ..!= True
                                                     <*> v ..:? "filterFunctions" ..!= []
+                mode = v ..:? "testMode" >>= \case
+                  Just s  -> pure $ validateTestMode s
+                  Nothing -> pure "property"
                 sc = SolConf <$> v ..:? "contractAddr"    ..!= defaultAddr
                              <*> v ..:? "deployer"        ..!= defaultDeployer
                              <*> v ..:? "sender"          ..!= (0x10000 NE.:| [0x20000, defaultDeployer])
@@ -150,20 +155,20 @@ instance FromJSON EConfigWithUsage where
                              <*> v ..:? "quiet"           ..!= False
                              <*> v ..:? "initialize"      ..!= Nothing
                              <*> v ..:? "multi-abi"       ..!= False
-                             <*> v ..:? "checkAsserts"    ..!= False
-                             <*> v ..:? "benchmarkMode"   ..!= False
+                             <*> mode
+                             <*> v ..:? "testDestruction" ..!= False
                              <*> fnFilter
                 names :: Names
                 names Sender = (" from: " ++) . show
                 names _      = const ""
-                mode = fromMaybe Interactive <$> (v ..:? "format" >>= \case
+                format = fromMaybe Interactive <$> (v ..:? "format" >>= \case
                   Just ("text" :: String) -> pure . Just . NonInteractive $ Text
                   Just "json"             -> pure . Just . NonInteractive $ JSON
                   Just "none"             -> pure . Just . NonInteractive $ None
                   Nothing -> pure Nothing
-                  _ -> M.fail "unrecognized format type (should be text, json, or none)") in
+                  _ -> M.fail "Unrecognized format type (should be text, json, or none)") in
             EConfig <$> cc <*> pure names <*> sc <*> tc <*> xc
-                    <*> (UIConf <$> v ..:? "timeout" <*> mode)
+                    <*> (UIConf <$> v ..:? "timeout" <*> format)
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
 defaultConfig :: EConfig
@@ -180,3 +185,34 @@ withDefaultConfig = (`runReaderT` defaultConfig)
 -- | 'withDefaultConfig' but not for transformers
 withDefaultConfig' :: Reader EConfig a -> a
 withDefaultConfig' = (`runReader` defaultConfig)
+
+data Env = Env {
+  _cfg :: EConfig,
+  _dapp :: DappInfo
+}
+
+makeLenses ''Env
+
+instance Has EConfig Env where
+  hasLens = cfg
+
+instance Has CampaignConf Env where
+  hasLens = cfg . cConf
+
+instance Has Names Env where
+  hasLens = cfg . nConf
+
+instance Has SolConf Env where
+  hasLens = cfg . sConf
+
+instance Has TestConf Env where
+  hasLens = cfg . tConf
+
+instance Has TxConf Env where
+  hasLens = cfg . xConf
+
+instance Has UIConf Env where
+  hasLens = cfg . uConf
+
+instance Has DappInfo Env where
+  hasLens = dapp

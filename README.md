@@ -20,7 +20,7 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 
 .. and [a beautiful high-resolution handcrafted logo](https://raw.githubusercontent.com/crytic/echidna/master/echidna.png).
 
-<a href="https://trailofbits.files.wordpress.com/2020/03/image5.png"><img src="https://trailofbits.files.wordpress.com/2020/03/image5.png" width="650"/></a>
+<a href="https://i.imgur.com/saFWti4.png"><img src="https://i.imgur.com/saFWti4.png" width="650"/></a>
 
 ## Usage
 
@@ -44,9 +44,9 @@ To check these invariants, run:
 $ echidna-test myContract.sol
 ```
 
-An example contract with tests can be found [examples/solidity/basic/flags.sol](examples/solidity/basic/flags.sol). To run it, you should execute:
+An example contract with tests can be found [tests/solidity/basic/flags.sol](examples/solidity/basic/flags.sol). To run it, you should execute:
 ```
-$ echidna-test examples/solidity/basic/flags.sol
+$ echidna-test tests/solidity/basic/flags.sol
 ```
 
 Echidna should find a a call sequence that falsifies `echidna_sometimesfalse` and should be unable to find a falsifying input for `echidna_alwaystrue`.
@@ -55,7 +55,7 @@ Echidna should find a a call sequence that falsifies `echidna_sometimesfalse` an
 
 After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain two entries: (1) a directory named `coverage` with JSON files that can be replayed by Echidna and (2) a plain-text file named `covered.txt`, a copy of the source code with coverage annotations.
 
-If you run `examples/solidity/basic/flags.sol` example, Echidna will save a few files serialized transactions in the `coverage` directory and a `covered.$(date +%s).txt` file with the following lines:
+If you run `tests/solidity/basic/flags.sol` example, Echidna will save a few files serialized transactions in the `coverage` directory and a `covered.$(date +%s).txt` file with the following lines:
 
 ```
 *r  |  function set0(int val) public returns (bool){
@@ -77,20 +77,20 @@ Our tool signals each execution trace in the corpus with the following "line mar
 
 ### Support for smart contract build systems
 
-Echidna can test contracts compiled with different smart contract build systems, including [Truffle](https://truffleframework.com/), [Embark](https://framework.embarklabs.io/) and even [Vyper](https://vyper.readthedocs.io), using [crytic-compile](https://github.com/crytic/crytic-compile). For instance,
-we can uncover an integer overflow in the [Metacoin Truffle box](https://github.com/truffle-box/metacoin-box) using a
-[contract with Echidna properties to test](examples/solidity/truffle/metacoin/contracts/MetaCoinEchidna.sol):
+Echidna can test contracts compiled with different smart contract build systems, including [Truffle](https://truffleframework.com/) or [hardhat](https://hardhat.org/) using [crytic-compile](https://github.com/crytic/crytic-compile). To invoke echidna with the current compilation framework, use `echidna-test .`. 
 
-```
-$ cd examples/solidity/truffle/metacoin
-$ echidna-test . --contract TEST
-...
-echidna_convert: failed!💥
-  Call sequence:
-    mint(57896044618658097711785492504343953926634992332820282019728792003956564819968)
-```
+On top of that, Echidna supports two modes of testing complex contracts. Firstly, one can [describe an initialization procedure with Truffle and Etheno](https://github.com/crytic/building-secure-contracts/blob/master/program-analysis/echidna/end-to-end-testing.md) and use that as the base state for Echidna. Secondly, echidna can call into any contract with a known ABI by passing in the corresponding solidity source in the CLI. Use `multi-abi: true` in your config to turn this on.
 
-Echidna supports two modes of testing complex contracts. Firstly, one can [describe an initialization procedure with Truffle and Etheno](https://github.com/crytic/building-secure-contracts/blob/master/program-analysis/echidna/end-to-end-testing.md) and use that as the base state for Echidna. Secondly, echidna can call into any contract with a known ABI by passing in the corresponding solidity source in the CLI. Use `multi-abi: true` in your config to turn this on.
+### Crash course on Echidna
+
+Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial) repository contains a crash course on Echidna, including examples, lessons and exercises.
+
+### Using Echidna in a GitHub Actions workflow
+
+There is an Echidna action which can be used to run `echidna-test` as part of a
+GitHub Actions workflow. Please refer to the
+[crytic/echidna-action](https://github.com/crytic/echidna-action) repository for
+usage instructions and examples.
 
 ### Configuration options
 
@@ -104,7 +104,7 @@ $ echidna-test contract.sol --contract TEST --config config.yaml
 The configuration file allows users to choose EVM and test generation
 parameters. An example of a complete and annotated config file with the default
 options can be found at
-[examples/solidity/basic/default.yaml](examples/solidity/basic/default.yaml).
+[tests/solidity/basic/default.yaml](examples/solidity/basic/default.yaml).
 More detailed documentation on the configuration options is available in our
 [wiki](https://github.com/trailofbits/echidna/wiki/Config).
 
@@ -145,13 +145,6 @@ subject to change to be slightly more user friendly at a later date. `testType`
 will either be `property` or `assertion`, and `status` always takes on either
 `fuzzing`, `shrinking`, `solved`, `passed`, or `error`.
 
-### Using Echidna in a GitHub Actions workflow
-
-There is an Echidna action which can be used to run `echidna-test` as part of a
-GitHub Actions workflow. Please refer to the
-[crytic/echidna-action](https://github.com/crytic/echidna-action) repository for
-usage instructions and examples.
-
 ### Debugging Performance Problems
 
 The best way to deal with an Echidna performance issue is to run `echidna-test` with profiling on.
@@ -167,23 +160,14 @@ Performance issues in the past have been because of functions getting called rep
 and memory leaks related to Haskell's lazy evaluation;
 checking for these would be a good place to start.
 
-### Crash course on Echidna
-
-Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial) repository contains a crash course on Echidna, including examples, lessons and exercises.
-
 ## Limitations and known issues
 
 EVM emulation and testing is hard. Echidna has a number of limitations in the latest release. Some of these are inherited from [hevm](https://github.com/dapphub/dapptools/tree/master/src/hevm) while some are results from design/performance decisions or simply bugs in our code. We list them here including their corresponding issue and the status ("wont fix", "in review", "fixed"). Issues that are "fixed" are expected to be included in the next Echidna release.
 
 | Description |  Issue   | Status   |
 | :--- |     :---:              |         :---:   |
-| Debug information can be insufficient | [#656](https://github.com/crytic/echidna/issues/656) | *[in review for 2.0](https://github.com/crytic/echidna/pull/674)* |
 | Vyper support is limited | [#652](https://github.com/crytic/echidna/issues/652) | *wont fix* |
 | Limited library support for testing | [#651](https://github.com/crytic/echidna/issues/651) | *wont fix* |
-| If the contract is not properly linked, Echidna will crash | [#514](https://github.com/crytic/echidna/issues/514) | *in review* |
-| Assertions are not detected in internal transactions | [#601](https://github.com/crytic/echidna/issues/601) | *[in review for 2.0](https://github.com/crytic/echidna/pull/674)* |
-| Assertions are not detected in solc 0.8.x | [#669](https://github.com/crytic/echidna/issues/669) | *[in review for 2.0](https://github.com/crytic/echidna/pull/674)* |
-| Value generation can fail in multi-abi mode, since the function hash is not precise enough | [#579](https://github.com/crytic/echidna/issues/579) | *[in review for 2.0](https://github.com/crytic/echidna/pull/674)*|
 
 ## Installation
 
@@ -291,10 +275,10 @@ We can also use Echidna to reproduce research examples from smart contract fuzzi
 
 | Source | Code
 |--|--
-[Using automatic analysis tools with MakerDAO contracts](https://forum.openzeppelin.com/t/using-automatic-analysis-tools-with-makerdao-contracts/1021) | [SimpleDSChief](https://github.com/crytic/echidna/blob/master/examples/solidity/research/vera_dschief.sol)
-[Integer precision bug in Sigma Prime](https://github.com/b-mueller/sabre#example-2-integer-precision-bug) | [VerifyFunWithNumbers](https://github.com/crytic/echidna/blob/master/examples/solidity/research/solcfuzz_funwithnumbers.sol)
-[Learning to Fuzz from Symbolic Execution with Application to Smart Contracts](https://files.sri.inf.ethz.ch/website/papers/ccs19-ilf.pdf) | [Crowdsale](https://github.com/crytic/echidna/blob/master/examples/solidity/research/ilf_crowdsale.sol)
-[Harvey: A Greybox Fuzzer for Smart Contracts](https://arxiv.org/abs/1905.06944) | [Foo](https://github.com/crytic/echidna/blob/master/examples/solidity/research/harvey_foo.sol), [Baz](https://github.com/crytic/echidna/blob/master/examples/solidity/research/harvey_baz.sol)
+[Using automatic analysis tools with MakerDAO contracts](https://forum.openzeppelin.com/t/using-automatic-analysis-tools-with-makerdao-contracts/1021) | [SimpleDSChief](https://github.com/crytic/echidna/blob/master/tests/solidity/research/vera_dschief.sol)
+[Integer precision bug in Sigma Prime](https://github.com/b-mueller/sabre#example-2-integer-precision-bug) | [VerifyFunWithNumbers](https://github.com/crytic/echidna/blob/master/tests/solidity/research/solcfuzz_funwithnumbers.sol)
+[Learning to Fuzz from Symbolic Execution with Application to Smart Contracts](https://files.sri.inf.ethz.ch/website/papers/ccs19-ilf.pdf) | [Crowdsale](https://github.com/crytic/echidna/blob/master/tests/solidity/research/ilf_crowdsale.sol)
+[Harvey: A Greybox Fuzzer for Smart Contracts](https://arxiv.org/abs/1905.06944) | [Foo](https://github.com/crytic/echidna/blob/master/test/solidity/research/harvey_foo.sol), [Baz](https://github.com/crytic/echidna/blob/master/tests/solidity/research/harvey_baz.sol)
 
 ### Academic Publications
 
@@ -310,9 +294,7 @@ If you are using Echidna for academic work, consider applying to the [Crytic $10
 
 Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://empireslacking.herokuapp.com/) for help using or extending Echidna.
 
-* Get started by reviewing these simple [Echidna invariants](examples/solidity/basic/flags.sol)
-
-* Review the [Solidity examples](examples/solidity) directory for more extensive Echidna use cases
+* Get started by reviewing these simple [Echidna invariants](tests/solidity/basic/flags.sol)
 
 * Considering [emailing](mailto:echidna-dev@trailofbits.com) the Echidna development team directly for more detailed questions
 

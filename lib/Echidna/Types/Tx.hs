@@ -10,8 +10,9 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import EVM (VMResult(..), Error(..))
 import EVM.Types (Addr, W256, Word, w256)
-import EVM.ABI (AbiValue)
+import EVM.ABI (encodeAbiValue, AbiValue(..))
 
+import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Orphans.JSON ()
 import Echidna.Types.Signature (SolCall)
 
@@ -92,8 +93,10 @@ createTxWithValue :: ByteString   -- | Constructor bytecode
                   -> Tx
 createTxWithValue bc s d g = Tx (SolCreate bc) s d g 0
 
-data TxResult = Success
-              | ErrorBalanceTooLow
+data TxResult = ReturnTrue
+              | ReturnFalse
+              | Stop
+              | ErrorBalanceTooLow 
               | ErrorUnrecognizedOpcode
               | ErrorSelfDestruction
               | ErrorStackUnderrun
@@ -135,7 +138,10 @@ data TxConf = TxConf { _propGas       :: Word
 makeLenses 'TxConf
 -- | Transform a VMResult into a more hash friendly sum type
 getResult :: VMResult -> TxResult
-getResult (VMSuccess _)                         = Success
+getResult (VMSuccess b) | viewBuffer b == Just (encodeAbiValue (AbiBool True))  = ReturnTrue
+                        | viewBuffer b == Just (encodeAbiValue (AbiBool False)) = ReturnFalse
+                        | otherwise                                             = Stop
+
 getResult (VMFailure (BalanceTooLow _ _ ))      = ErrorBalanceTooLow
 getResult (VMFailure (UnrecognizedOpcode _))    = ErrorUnrecognizedOpcode
 getResult (VMFailure SelfDestruction )          = ErrorSelfDestruction
