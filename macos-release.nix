@@ -1,6 +1,10 @@
 { tests ? false }:
 let
-  pkgs = import nix/pkgs.nix;
+  pkgs = import (builtins.fetchTarball {
+    name = "nixpkgs-unstable-2022-02-10";
+    url = "https://github.com/nixos/nixpkgs/archive/1882c6b7368fd284ad01b0a5b5601ef136321292.tar.gz";
+    sha256 = "sha256:0zg7ak2mcmwzi2kg29g4v9fvbvs0viykjsg2pwaphm1fi13s7s0i";
+  }) {};
   echidna = import ./. { inherit tests; };
 in
   with pkgs; runCommand "echidna-${echidna.version}-bundled-dylibs" {
@@ -17,15 +21,6 @@ in
       -x $out/bin/echidna-test \
       -d $out/bin \
       -p '@executable_path'
-
-    # Manually fix iconv dylib ignored by dylibbundler
-    cp ${pkgs.libiconv.outPath}/lib/libiconv-nocharset.dylib $out/bin/
-    cp ${pkgs.libiconv.outPath}/lib/libcharset.1.0.0.dylib $out/bin/libcharset.1.dylib
-    chmod 755 $out/bin/libiconv-nocharset.dylib $out/bin/libcharset.1.dylib
-    install_name_tool -id "@rpath/libiconv-nocharset.dylib" $out/bin/libiconv-nocharset.dylib
-    install_name_tool -id "@rpath/libcharset.1.dylib" $out/bin/libcharset.1.dylib
-    install_name_tool -change ${pkgs.libiconv.outPath}/lib/libiconv-nocharset.dylib "@executable_path/libiconv-nocharset.dylib" $out/bin/libiconv.dylib
-    install_name_tool -change ${pkgs.libiconv.outPath}/lib/libcharset.1.dylib "@executable_path/libcharset.1.dylib" $out/bin/libiconv.dylib
 
     # re-sign the binaries since the load paths were modified
     codesign -s - -f $out/bin/*
