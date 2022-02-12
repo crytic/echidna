@@ -1,4 +1,8 @@
-{ pkgs ? import nix/pkgs.nix,
+{ pkgs ? import (builtins.fetchTarball {
+    name = "nixpkgs-unstable-2022-02-10";
+    url = "https://github.com/nixos/nixpkgs/archive/1882c6b7368fd284ad01b0a5b5601ef136321292.tar.gz";
+    sha256 = "sha256:0zg7ak2mcmwzi2kg29g4v9fvbvs0viykjsg2pwaphm1fi13s7s0i";
+  }) {},
   profiling ? false,
   tests ? true
 }:
@@ -25,7 +29,7 @@ let
     '';
   };
 
-  v = "1.7.3";
+  v = "2.0.0";
 
   testInputs = [ pkgs.slither-analyzer solc ];
 
@@ -66,7 +70,20 @@ let
         doCheck = tests;
       };
 
-  echidna = pkgs.haskellPackages.callPackage f { };
+  dapptools = pkgs.fetchFromGitHub {
+    owner = "dapphub";
+    repo = "dapptools";
+    rev = "hevm/0.49.0";
+    sha256 = "sha256-giBcHTlFV1zJVgdbzWmezPdtPRdJQbocBEmuenBFVqk";
+  };
+
+  hevm = pkgs.haskell.lib.dontCheck (
+    pkgs.haskell.lib.doJailbreak (
+      pkgs.haskellPackages.callCabal2nix "hevm" "${dapptools}/src/hevm"
+        { secp256k1 = pkgs.secp256k1; }
+  ));
+
+  echidna = pkgs.haskellPackages.callPackage f { hevm = hevm; };
   echidnaShell = pkgs.haskellPackages.shellFor {
     packages = p: [ echidna ];
     shellHook = "hpack";
