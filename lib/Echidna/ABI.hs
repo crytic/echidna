@@ -47,7 +47,10 @@ import Echidna.Types.Signature
 
 -- | Fallback function is the null string
 fallback :: SolSignature
-fallback = ("",[])
+fallback = ("*fallback*",[])
+
+receive :: SolSignature
+receive = ("*receive*",[])
 
 commonTypeSizes :: [Int]
 commonTypeSizes = [8,16..256]

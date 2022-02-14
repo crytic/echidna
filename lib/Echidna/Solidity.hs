@@ -25,7 +25,7 @@ import System.Exit                (ExitCode(..))
 import System.Directory           (doesDirectoryExist, doesFileExist, findExecutable, listDirectory, removeFile)
 import System.FilePath.Posix      ((</>))
 
-import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
+import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, receive, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec               (execTx, initialVM)
 import Echidna.Events             (EventMap)
 import Echidna.Test               (createTests, isAssertionMode, isPropertyMode)
@@ -144,7 +144,7 @@ filterMethods cn f@(Blacklist ig) ms = case NE.filter (\s -> encodeSigWithName c
                                          fs -> NE.fromList fs
 
 abiOf :: Text -> SolcContract -> NE.NonEmpty SolSignature
-abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
+abiOf pref cc = fallback NE.<| (receive NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2)))
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
