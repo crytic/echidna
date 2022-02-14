@@ -33,7 +33,7 @@ valuesTests = testGroup "Value extraction tests"
     , testContract "values/darray.sol"       Nothing
       [ ("echidna_darray passed",                  solved      "echidna_darray")
       , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
-    , testContractV "values/receive.sol"   (Just (< solcV (0,6,0))) Nothing
+    , testContractV "values/receive.sol"   (Just (>= solcV (0,6,0))) Nothing
       [ ("echidna_fallback failed",                solved      "echidna_fallback") 
       , ("echidna_receive failed",                 solved      "echidna_receive") ]
   ]
