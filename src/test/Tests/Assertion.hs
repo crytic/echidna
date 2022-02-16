@@ -2,7 +2,7 @@ module Tests.Assertion (assertionTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, testContractV, solcV, solved, solvedUsing, passed)
+import Common (testContract, testContract', testContractV, solcV, solved, solvedUsing, passed)
 
 assertionTests :: TestTree
 assertionTests = testGroup "Assertion-based Integration Testing"
@@ -34,7 +34,7 @@ assertionTests = testGroup "Assertion-based Integration Testing"
       [ ("fail passed",     solvedUsing "fail" "AssertionFailed(..)")
       , ("f failed",         passed     "f")
       ]
-    , testContract "assert/conf.sol"  (Just "assert/multi.yaml")
-      [ ("c passed", passed "c") ]
+    , testContract' "assert/conf.sol" (Just "A") Nothing (Just "assert/multi.yaml") True
+      [ ("c failed", passed "c") ]
 
   ]
