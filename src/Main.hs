@@ -174,7 +174,7 @@ overrideConfig config Options{..} =
       cfg & cConf . testLimit %~ (`fromMaybe` cliTestLimit)
 
     overrideShrinkLimit cfg =
-      cfg & cConf . testLimit %~ (`fromMaybe` cliShrinkLimit)
+      cfg & cConf . shrinkLimit %~ (`fromMaybe` cliShrinkLimit)
 
     overrideSeqLen cfg =
       cfg & cConf . seqLen %~ (`fromMaybe` cliSeqLen)
