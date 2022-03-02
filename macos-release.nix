@@ -12,6 +12,7 @@ in
       macdylibbundler
       darwin.sigtool
       darwin.cctools
+      perl
     ];
   } ''
     mkdir -p $out/bin
@@ -21,6 +22,9 @@ in
       -x $out/bin/echidna-test \
       -d $out/bin \
       -p '@executable_path'
+
+    # fix TERMINFO path in ncurses binary
+    perl -i -pe 's#(${pkgs.ncurses}/share/terminfo)#"/usr/share/terminfo" . "\x0" x (length($1) - 19)#e' $out/bin/libncursesw.6.dylib
 
     # re-sign the binaries since the load paths were modified
     codesign -s - -f $out/bin/*
