@@ -43,6 +43,7 @@ import Echidna.Test
 import Echidna.Transaction
 import Echidna.Shrink (shrinkSeq)
 import Echidna.Types.Campaign
+import Echidna.Types.Corpus (InitialCorpus)
 import Echidna.Types.Coverage (coveragePoints)
 import Echidna.Types.Test
 import Echidna.Types.Buffer (viewBuffer)
@@ -194,8 +195,8 @@ addToCorpus n res = unless (null rtxs) $ hasLens . corpus %= DS.insert (toIntege
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: ( MonadRandom m, MonadReader x m, MonadState y m
            , Has TxConf x, Has TestConf x, Has CampaignConf x, Has GenDict y, Has Campaign y)
-        => Int -> Map Addr Contract -> World -> m [Tx]
-randseq ql o w = do
+        => InitialCorpus -> Int -> Map Addr Contract -> World -> m [Tx]
+randseq (n,txs) ql o w = do
   ca <- use hasLens
   cs <- view $ hasLens . mutConsts
   txConf :: TxConf <- view hasLens
@@ -203,8 +204,8 @@ randseq ql o w = do
       -- TODO: include reproducer when optimizing
       --rs   = filter (not . null) $ map (view testReproducer) $ ca ^. tests
       p    = ca ^. ncallseqs
-  if length ctxs > p then -- Replay the transactions in the corpus, if we are executing the first iterations
-    return . snd $ DS.elemAt p ctxs
+  if n > p then -- Replay the transactions in the corpus, if we are executing the first iterations
+    return $ txs !! p
   else do
     memo <- use $ hasLens . bcMemo
     -- Randomly generate new random transactions
@@ -222,8 +223,8 @@ randseq ql o w = do
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
 callseq :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadState y m
            , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has DappInfo x, Has Campaign y, Has GenDict y)
-        => VM -> World -> Int -> m ()
-callseq v w ql = do
+        => InitialCorpus -> VM -> World -> Int -> m ()
+callseq ic v w ql = do
   -- First, we figure out whether we need to execute with or without coverage optimization and gas info,
   -- and pick our execution function appropriately
   coverageEnabled <- isJust <$> view (hasLens . knownCoverage)
@@ -233,7 +234,7 @@ callseq v w ql = do
   -- Then, we get the current campaign state
   ca <- use hasLens
   -- Then, we generate the actual transaction in the sequence
-  is <- randseq ql old w
+  is <- randseq ic ql old w
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, s) <- runStateT (evalSeq w v ef is) (v, ca)
   let new = s ^. _1 . env . EVM.contracts
@@ -291,12 +292,13 @@ campaign u vm w ts d txs = do
       mempty
       effectiveGenDict
       False
-      (DS.fromList $ map (1,) txs)
+      DS.empty
       0
       memo
     )
   where
     -- "mapMaybe ..." is to get a list of all contracts
+    ic          = (length txs, txs)
     memo        = makeBytecodeMemo . mapMaybe (viewBuffer . (^. bytecode)) . elems $ (vm ^. env . EVM.contracts)
     step        = runUpdate (updateTest w vm Nothing) >> lift u >> runCampaign
     runCampaign = use (hasLens . tests . to (fmap (view testState))) >>= update
@@ -304,7 +306,7 @@ campaign u vm w ts d txs = do
       CampaignConf tl sof _ q sl _ _ _ _ _ <- view hasLens
       Campaign { _ncallseqs } <- view hasLens <$> get
       if | sof && any (\case Solved -> True; Failed _ -> True; _ -> False) c -> lift u
-         | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq vm w q >> step
+         | any (\case Open  n   -> n < tl; _ -> False) c                       -> callseq ic vm w q >> step
          | any (\case Large n   -> n < sl; _ -> False) c                       -> step
-         | null c && (q * _ncallseqs) < tl                                     -> callseq vm w q >> step
+         | null c && (q * _ncallseqs) < tl                                     -> callseq ic vm w q >> step
          | otherwise                                                           -> lift u
