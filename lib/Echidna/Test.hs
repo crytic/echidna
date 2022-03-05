@@ -9,7 +9,7 @@ import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(get, put), gets)
 import Data.Has (Has(..))
-import Data.Text (Text)
+import Data.Text (Text, isPrefixOf)
 import EVM (Error(..), VMResult(..), VM, calldata, codeContract, result, tx, state, substate, selfdestructs)
 import EVM.ABI (AbiValue(..), AbiType(..), encodeAbiValue, decodeAbiValue, )
 import EVM.Types (Addr)
@@ -62,6 +62,7 @@ validateTestMode :: String -> TestMode
 validateTestMode s = case s of
   "property"     -> s
   "assertion"    -> s
+  "foundry"      -> s
   "exploration"  -> s
   "overflow"     -> s
   "optimization" -> s
@@ -85,7 +86,8 @@ createTests m td ts r ss = case m of
   "overflow"     -> [createTest (CallTest "Integer (over/under)flow" checkOverflowTest)]
   "property"     -> map (\t -> createTest (PropertyTest t r)) ts
   "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
-  "assertion"    -> map (\s -> createTest (AssertionTest s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
+  "assertion"    -> map (\s -> createTest (AssertionTest False s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
+  "foundry"      -> map (\s -> createTest (AssertionTest True s r)) (filter (\(f, _) -> "testFuzz" `isPrefixOf` f) ss)
   _              -> error validateTestModeError
 
  ++ (if td then [sdt, sdat] else [])
@@ -113,7 +115,7 @@ checkETest test = case test ^. testType of
                   Exploration           -> return (BoolValue True, [], Stop) -- These values are never used
                   PropertyTest n a      -> checkProperty (n, a)
                   OptimizationTest n a  -> checkOptimization (n, a)
-                  AssertionTest n a     -> checkAssertion (n, a)
+                  AssertionTest fm n a  -> checkAssertion fm (n, a)
                   CallTest _ f          -> checkCall f
 
 checkProperty :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
@@ -168,8 +170,8 @@ checkOptimization (f,a) = do
 
 
 checkAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
-           => (SolSignature, Addr) -> m (TestValue, Events, TxResult)
-checkAssertion (sig, addr) = do
+           => Bool -> (SolSignature, Addr) -> m (TestValue, Events, TxResult)
+checkAssertion foundryMode (sig, addr) = do
   dappInfo <- view hasLens
   vm <- use hasLens
       -- Whether the last transaction called the function `sig`.
@@ -182,6 +184,7 @@ checkAssertion (sig, addr) = do
       -- Whether the last transaction executed opcode 0xfe, meaning an assertion failure.
       isAssertionFailure = case vm ^. result of
         Just (VMFailure (UnrecognizedOpcode 0xfe)) -> True
+        Just (VMFailure _) -> foundryMode
         _ -> False
       -- Test always passes if it doesn't target the last executed contract and function.
       -- Otherwise it passes if it doesn't cause an assertion failure.
