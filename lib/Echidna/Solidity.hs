@@ -32,7 +32,7 @@ import Echidna.Test               (createTests, isAssertionMode, isPropertyMode)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Solidity
 import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
-import Echidna.Types.Tx           (TxConf, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
+import Echidna.Types.Tx           (TxConf, basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.Test         (TestConf(..), EchidnaTest(..))
 import Echidna.Types.World        (World(..))
 import Echidna.Fetch              (deployContracts)
@@ -208,10 +208,14 @@ loadSpecified name cs = do
       --let ctd' = filter (\x -> (last $ T.splitOn ":" (view contractName x)) == mainContract) ctd
       --vm' <- deployContracts (zip atd ctd') ca vm
       -- main contract deployment
-      let transaction = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
-      vm'' <- execStateT transaction vm
-      case currentContract vm'' of
-        Just _  -> return (vm'', unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
+      let deployment = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
+      vm'' <- execStateT deployment vm
+
+      let transaction = execTx $ basicTx "setUp" [] d ca (fromInteger unlimitedGasPerBlock) (0, 0)
+      vm''' <- execStateT transaction vm''
+ 
+      case currentContract vm''' of
+        Just _  -> return (vm''', unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
         Nothing -> throwM $ DeploymentFailed ca
 
   where choose []    _        = throwM NoContracts
