@@ -156,7 +156,7 @@ mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fma
 -- Generation (synthesis)
 
 getRandomUint :: MonadRandom m => Int -> m Integer
-getRandomUint n = join $ R.fromList [(getRandomR (0, 1023), 1), (getRandomR (0, 2 ^ n - 1), 9)]
+getRandomUint n = join $ R.fromList [(getRandomR (0, 1023), 1), (getRandomR (0, 2 ^ n - 5), 8), (getRandomR (2 ^ n - 5, 2 ^ n - 1), 1)]
 
 getRandomInt :: MonadRandom m => Int -> m Integer
 getRandomInt n = join $ R.fromList [(getRandomR (-1023, 1023), 1), (getRandomR (-1 * 2 ^ n, 2 ^ (n - 1)), 9)]
