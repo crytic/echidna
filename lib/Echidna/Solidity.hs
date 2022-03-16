@@ -237,12 +237,12 @@ prepareForTest :: (MonadReader x m, Has SolConf x)
                -> SlitherInfo
                -> m (VM, World, [EchidnaTest])
 prepareForTest (vm, em, a, ts, m) c si = do
-  SolConf{ _sender = s, _testMode = tm, _testDestruction = td } <- view hasLens
+  SolConf{ _sender = s, _testMode = tm, _testDestruction = td, _multiAbi = isMultiABI } <- view hasLens
   let r = vm ^. state . contract
       a' = NE.toList a
-      ps = filterResults c $ payableFunctions si
+      ps = if isMultiABI then filterResults Nothing $ payableFunctions si else filterResults c $ payableFunctions si
       as = if isAssertionMode tm then filterResults c $ asserts si else []
-      cs = filterResults c $ constantFunctions si
+      cs = if isMultiABI then [] else filterResults c $ constantFunctions si
       (hm, lm) = prepareHashMaps cs as m
   pure (vm, World s hm lm ps em, createTests tm td ts r a')
 
