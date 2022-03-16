@@ -14,11 +14,13 @@ import Tests.Overflow (overflowTests)
 import Tests.Research (researchTests)
 import Tests.Values (valuesTests)
 import Tests.Seed (seedTests)
+import Tests.Stateless (statelessTests)
 
 main :: IO ()
 main = withCurrentDirectory "./tests/solidity" . defaultMain $
          testGroup "Echidna"
            [ configTests
+           , statelessTests
            , researchTests
            , compilationTests
            , seedTests

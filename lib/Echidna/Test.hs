@@ -10,9 +10,10 @@ import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(get, put), gets)
 import Data.Has (Has(..))
 import Data.Text (Text, isPrefixOf)
-import EVM (Error(..), VMResult(..), VM, calldata, codeContract, result, tx, state, substate, selfdestructs)
+import EVM (Error(..), VMResult(..), VM, calldata, callvalue, codeContract, result, tx, state, substate, selfdestructs)
 import EVM.ABI (AbiValue(..), AbiType(..), encodeAbiValue, decodeAbiValue, )
 import EVM.Types (Addr)
+import EVM.Symbolic (forceLit)
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -62,7 +63,7 @@ validateTestMode :: String -> TestMode
 validateTestMode s = case s of
   "property"     -> s
   "assertion"    -> s
-  "foundry"      -> s
+  "stateless"    -> s
   "exploration"  -> s
   "overflow"     -> s
   "optimization" -> s
@@ -80,6 +81,10 @@ isPropertyMode :: TestMode -> Bool
 isPropertyMode "property" = True
 isPropertyMode _          = False
 
+isStatelessMode :: TestMode -> Bool
+isStatelessMode "stateless" = True
+isStatelessMode _           = False
+
 createTests :: TestMode -> Bool -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
 createTests m td ts r ss = case m of
   "exploration"  -> [createTest Exploration]
@@ -87,7 +92,7 @@ createTests m td ts r ss = case m of
   "property"     -> map (\t -> createTest (PropertyTest t r)) ts
   "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
   "assertion"    -> map (\s -> createTest (AssertionTest False s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
-  "foundry"      -> map (\s -> createTest (AssertionTest True s r)) (filter (\(f, _) -> "testFuzz" `isPrefixOf` f) ss)
+  "stateless"    -> map (\s -> createTest (AssertionTest True s r)) (filter (\(_, xs) -> length xs > 0) ss)
   _              -> error validateTestModeError
 
  ++ (if td then [sdt, sdat] else [])
@@ -115,7 +120,7 @@ checkETest test = case test ^. testType of
                   Exploration           -> return (BoolValue True, [], Stop) -- These values are never used
                   PropertyTest n a      -> checkProperty (n, a)
                   OptimizationTest n a  -> checkOptimization (n, a)
-                  AssertionTest fm n a  -> checkAssertion fm (n, a)
+                  AssertionTest st n a  -> if st then checkStatelessAssertion (n, a) else checkStatefullAssertion (n, a)
                   CallTest _ f          -> checkCall f
 
 checkProperty :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
@@ -169,9 +174,9 @@ checkOptimization (f,a) = do
   pure (getIntFromResult (vm' ^. result), extractEvents dappInfo vm', getResultFromVM vm')
 
 
-checkAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
-           => Bool -> (SolSignature, Addr) -> m (TestValue, Events, TxResult)
-checkAssertion foundryMode (sig, addr) = do
+checkStatefullAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+           => (SolSignature, Addr) -> m (TestValue, Events, TxResult)
+checkStatefullAssertion (sig, addr) = do
   dappInfo <- view hasLens
   vm <- use hasLens
       -- Whether the last transaction called the function `sig`.
@@ -184,7 +189,6 @@ checkAssertion foundryMode (sig, addr) = do
       -- Whether the last transaction executed opcode 0xfe, meaning an assertion failure.
       isAssertionFailure = case vm ^. result of
         Just (VMFailure (UnrecognizedOpcode 0xfe)) -> True
-        Just (VMFailure _) -> foundryMode
         _ -> False
       -- Test always passes if it doesn't target the last executed contract and function.
       -- Otherwise it passes if it doesn't cause an assertion failure.
@@ -192,6 +196,26 @@ checkAssertion foundryMode (sig, addr) = do
       eventFailure = not (null events) && (checkAssertionEvent events || checkPanicEvent "1" events)
       isFailure = isCorrectTarget && (eventFailure || isAssertionFailure)
   pure (BoolValue (not isFailure), events, getResultFromVM vm)
+
+
+checkStatelessAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+           => (SolSignature, Addr) -> m (TestValue, Events, TxResult)
+checkStatelessAssertion (sig, addr) = do
+  dappInfo <- view hasLens
+  vm <- use hasLens
+  -- Whether the last transaction has any value
+  let hasValue = (forceLit $ vm ^. state . callvalue) /= 0
+      -- Whether the last transaction called the function `sig`.
+  let isCorrectFn = case viewBuffer $ vm ^. state . calldata . _1 of
+        Just cd -> BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) cd
+        Nothing -> False 
+      isAssertionFailure = case vm ^. result of
+        Just (VMFailure _) -> True
+        _                  -> False
+      events = extractEvents dappInfo vm 
+      isFailure = (not hasValue || isAssertionFailure)
+  pure (BoolValue (not isFailure), events, getResultFromVM vm)
+
 
 checkCall :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
            => (DappInfo -> VM -> TestValue) -> m (TestValue, Events, TxResult)

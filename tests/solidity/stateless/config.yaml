@@ -1,0 +1,4 @@
+testMode: stateless
+testLimit: 10000
+shrinkLimit: 100
+seqLen: 2

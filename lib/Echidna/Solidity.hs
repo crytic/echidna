@@ -28,7 +28,7 @@ import System.FilePath.Posix      ((</>))
 import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec               (execTx, initialVM)
 import Echidna.Events             (EventMap)
-import Echidna.Test               (createTests, isAssertionMode, isPropertyMode)
+import Echidna.Test               (createTests, isAssertionMode, isPropertyMode, isStatelessMode)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Solidity
 import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
@@ -201,7 +201,7 @@ loadSpecified name cs = do
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       -- library deployment
-      vm <- deployContracts (zip [addrLibrary ..] ls) d blank
+      vm0 <- deployContracts (zip [addrLibrary ..] ls) d blank
       -- additional contracts deployment
       --(ctd, _) <- if null atd then return ([], []) else contracts $ NE.fromList $ map show atd
       --let mainContract = head $ map (\x -> head $ T.splitOn "." $ last $ T.splitOn "-" $ head $ T.splitOn ":" (view contractName x)) ctd
@@ -209,19 +209,22 @@ loadSpecified name cs = do
       --vm' <- deployContracts (zip atd ctd') ca vm
       -- main contract deployment
       let deployment = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
-      vm'' <- execStateT deployment vm
+      vm1 <- execStateT deployment vm0
 
-      let transaction = execTx $ basicTx "setUp" [] d ca (fromInteger unlimitedGasPerBlock) (0, 0)
-      vm''' <- execStateT transaction vm''
+      -- Run
+      let transaction = execTx $ basicTx (fst setUpFunction) (snd setUpFunction) d ca (fromInteger unlimitedGasPerBlock) (0, 0)
+      vm2 <- if ((isStatelessMode tm) && setUpFunction `elem` abi) then execStateT transaction vm1 else return vm1
  
-      case currentContract vm''' of
-        Just _  -> return (vm''', unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
+      case currentContract vm2 of
+        Just _  -> return (vm2, unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
         Nothing -> throwM $ DeploymentFailed ca
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
                                       find (Data.Text.isSuffixOf (if T.any (== ':') n then n else ":" `append` n) . view contractName) cs
+        setUpFunction = ("setUp", [])
+
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
 -- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find

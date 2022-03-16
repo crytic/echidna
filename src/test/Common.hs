@@ -119,11 +119,11 @@ getResult n c =
     _   -> error "found more than one tests"
 
   where findTest test = case view testType test of
-                          PropertyTest t _      -> t == n
-                          AssertionTest (t,_) _ -> t == n
-                          CallTest t _          -> t == n
-                          OptimizationTest t _  -> t == n
-                          _                     -> False 
+                          PropertyTest t _        -> t == n
+                          AssertionTest _ (t,_) _ -> t == n
+                          CallTest t _            -> t == n
+                          OptimizationTest t _    -> t == n
+                          _                       -> False 
 
 optnFor :: Text -> Campaign -> Maybe TestValue
 optnFor n c = case getResult n c of
