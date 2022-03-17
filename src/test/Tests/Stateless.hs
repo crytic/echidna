@@ -6,7 +6,7 @@ import Common (testContract, testContractV, testContract', solcV, solved, passed
 
 statelessTests :: TestTree
 statelessTests = testGroup "Stateless Integration Testing"
-  [ testContract' "stateless/basic.sol" (Just "GreeterTest") Nothing (Just "stateless/config.yaml") False
+  [ testContract' "stateless/basic.sol" (Just "GreeterTest") (Just (\v -> v >= solcV (0,7,5))) (Just "stateless/config.yaml") False
      [ 
         ("testShrinking passed", solved "testShrinking"),
         ("testFuzzFixedArray passed", solved "testFuzzFixedArray"),

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma abicoder v2;
-pragma solidity =0.7.6;
+pragma solidity >=0.7.5;
 
 contract Greeter {
     string public greeting;
