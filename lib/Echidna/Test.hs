@@ -9,7 +9,7 @@ import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(get, put), gets)
 import Data.Has (Has(..))
-import Data.Text (Text, isPrefixOf)
+import Data.Text (Text)
 import EVM (Error(..), VMResult(..), VM, calldata, callvalue, codeContract, result, tx, state, substate, selfdestructs)
 import EVM.ABI (AbiValue(..), AbiType(..), encodeAbiValue, decodeAbiValue, )
 import EVM.Types (Addr)
@@ -92,7 +92,7 @@ createTests m td ts r ss = case m of
   "property"     -> map (\t -> createTest (PropertyTest t r)) ts
   "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
   "assertion"    -> map (\s -> createTest (AssertionTest False s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
-  "stateless"    -> map (\s -> createTest (AssertionTest True s r)) (filter (\(_, xs) -> length xs > 0) ss)
+  "stateless"    -> map (\s -> createTest (AssertionTest True s r)) (filter (\(_, xs) -> not $ null xs) ss)
   _              -> error validateTestModeError
 
  ++ (if td then [sdt, sdat] else [])
@@ -197,6 +197,8 @@ checkStatefullAssertion (sig, addr) = do
       isFailure = isCorrectTarget && (eventFailure || isAssertionFailure)
   pure (BoolValue (not isFailure), events, getResultFromVM vm)
 
+assumeMagicReturnCode :: BS.ByteString
+assumeMagicReturnCode = "FOUNDRY::ASSUME\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0" 
 
 checkStatelessAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
            => (SolSignature, Addr) -> m (TestValue, Events, TxResult)
@@ -204,16 +206,19 @@ checkStatelessAssertion (sig, addr) = do
   dappInfo <- view hasLens
   vm <- use hasLens
   -- Whether the last transaction has any value
-  let hasValue = (forceLit $ vm ^. state . callvalue) /= 0
+  let hasValue = forceLit (vm ^. state . callvalue) /= 0
       -- Whether the last transaction called the function `sig`.
   let isCorrectFn = case viewBuffer $ vm ^. state . calldata . _1 of
         Just cd -> BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) cd
         Nothing -> False 
       isAssertionFailure = case vm ^. result of
-        Just (VMFailure _) -> True
-        _                  -> False
+        Just (VMFailure (Revert bs)) -> not $ BS.isSuffixOf assumeMagicReturnCode bs 
+        Just (VMFailure _)           -> True
+        _                            -> False
+      isCorrectAddr = addr == vm ^. state . codeContract
+      isCorrectTarget = isCorrectFn && isCorrectAddr 
       events = extractEvents dappInfo vm 
-      isFailure = (not hasValue || isAssertionFailure)
+      isFailure = not hasValue && (isCorrectTarget && isAssertionFailure)
   pure (BoolValue (not isFailure), events, getResultFromVM vm)
 
 

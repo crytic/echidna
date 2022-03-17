@@ -134,6 +134,7 @@ linkLibraries [] = ""
 linkLibraries ls = "--libraries " ++
   iconcatMap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls
 
+-- | Filter methods using a whitelist/blacklist
 filterMethods :: Text -> Filter -> NE.NonEmpty SolSignature -> NE.NonEmpty SolSignature
 filterMethods _  f@(Whitelist [])  _ = error $ show $ InvalidMethodFilters f
 filterMethods cn f@(Whitelist ic) ms = case NE.filter (\s -> encodeSigWithName cn s `elem` ic) ms of
@@ -142,6 +143,12 @@ filterMethods cn f@(Whitelist ic) ms = case NE.filter (\s -> encodeSigWithName c
 filterMethods cn f@(Blacklist ig) ms = case NE.filter (\s -> encodeSigWithName cn s `notElem` ig) ms of
                                          [] -> error $ show $ InvalidMethodFilters f
                                          fs -> NE.fromList fs
+
+-- | Filter methods with arguments, used for stateless mode
+filterMethodsWithArgs :: NE.NonEmpty SolSignature -> NE.NonEmpty SolSignature
+filterMethodsWithArgs ms = case NE.filter (\(_, xs) -> not $ null xs) ms of
+                             [] -> error "No stateless tests found" 
+                             fs -> NE.fromList fs
 
 abiOf :: Text -> SolcContract -> NE.NonEmpty SolSignature
 abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
@@ -174,13 +181,13 @@ loadSpecified name cs = do
 
 
   -- Filter ABI according to the config options
-  let fabiOfc = filterMethods (c ^. contractName) fs $ abiOf pref c
-  -- Filter again for assertions checking if enabled
+  let fabiOfc = if isStatelessMode tm then filterMethodsWithArgs (abiOf pref c) else filterMethods (c ^. contractName) fs $ abiOf pref c
+  -- Filter again for stateless tests or assertions checking if enabled
   let neFuns = filterMethods (c ^. contractName) fs (fallback NE.:| funs)
-
   -- Construct ABI mapping for World
   let abiMapping = if ma then M.fromList $ cs <&> \cc -> (getBytecodeMetadata $ cc ^. runtimeCode,  filterMethods (cc ^. contractName) fs $ abiOf pref cc)
                          else M.singleton (getBytecodeMetadata $ c ^. runtimeCode) fabiOfc
+
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
@@ -212,8 +219,8 @@ loadSpecified name cs = do
       vm1 <- execStateT deployment vm0
 
       -- Run
-      let transaction = execTx $ basicTx (fst setUpFunction) (snd setUpFunction) d ca (fromInteger unlimitedGasPerBlock) (0, 0)
-      vm2 <- if ((isStatelessMode tm) && setUpFunction `elem` abi) then execStateT transaction vm1 else return vm1
+      let transaction = execTx $ uncurry basicTx setUpFunction d ca (fromInteger unlimitedGasPerBlock) (0, 0)
+      vm2 <- if isStatelessMode tm && setUpFunction `elem` abi then execStateT transaction vm1 else return vm1
  
       case currentContract vm2 of
         Just _  -> return (vm2, unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
@@ -249,7 +256,7 @@ prepareForTest (vm, em, a, ts, m) c si = do
       a' = NE.toList a
       ps = filterResults c $ payableFunctions si
       as = if isAssertionMode tm then filterResults c $ asserts si else []
-      cs = filterResults c $ constantFunctions si
+      cs = if isStatelessMode tm then [] else filterResults c $ constantFunctions si
       (hm, lm) = prepareHashMaps cs as m
   pure (vm, World s hm lm ps em, createTests tm td ts r a')
 

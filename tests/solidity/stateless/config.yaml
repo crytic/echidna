@@ -1,4 +1,4 @@
 testMode: stateless
-testLimit: 10000
+testLimit: 1000
 shrinkLimit: 100
-seqLen: 2
+seqLen: 1
