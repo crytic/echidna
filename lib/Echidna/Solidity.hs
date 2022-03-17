@@ -14,7 +14,7 @@ import Control.Monad.Reader       (MonadReader)
 import Control.Monad.State.Strict (execStateT)
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
-import Data.List                  (find, partition, isSuffixOf)
+import Data.List                  (find, partition, isSuffixOf, (\\))
 import Data.Map                   (Map, keys, elems, unions)
 import Data.Maybe                 (isJust, isNothing, catMaybes, listToMaybe)
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
@@ -242,7 +242,7 @@ prepareForTest (vm, em, a, ts, m) c si = do
       a' = NE.toList a
       ps = filterResults c $ payableFunctions si
       as = if isAssertionMode tm then filterResults c $ asserts si else []
-      cs = filterResults c $ constantFunctions si
+      cs = (filterResults c $ constantFunctions si) \\ as
       (hm, lm) = prepareHashMaps cs as m
   pure (vm, World s hm lm ps em, createTests tm td ts r a')
 
