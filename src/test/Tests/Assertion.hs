@@ -37,7 +37,7 @@ assertionTests = testGroup "Assertion-based Integration Testing"
     , testContract' "assert/conf.sol" (Just "A") Nothing (Just "assert/multi.yaml") True
       [ ("c failed", passed "c") ]
  
-    , testContract' "assert/fullmath.sol" (Just "FullMathEchidnaTest") (Just (\v -> v == solcV (0,7,5))) (Just "assert/config.yaml") True
+    , testContract' "assert/fullmath.sol" (Just "FullMathEchidnaTest") (Just (\v -> v == solcV (0,7,5))) (Just "assert/config.yaml") False
       [ ("checkMulDivRoundingUp failed", solved "checkMulDivRoundingUp") ]
 
   ]

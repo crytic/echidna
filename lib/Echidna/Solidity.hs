@@ -242,7 +242,7 @@ prepareForTest (vm, em, a, ts, m) c si = do
       a' = NE.toList a
       ps = filterResults c $ payableFunctions si
       as = if isAssertionMode tm then filterResults c $ asserts si else []
-      cs = (filterResults c $ constantFunctions si) \\ as
+      cs = filterResults c $ constantFunctions si \\ as
       (hm, lm) = prepareHashMaps cs as m
   pure (vm, World s hm lm ps em, createTests tm td ts r a')
 
