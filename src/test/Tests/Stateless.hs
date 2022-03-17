@@ -2,7 +2,7 @@ module Tests.Stateless (statelessTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, testContractV, testContract', solcV, solved, passed)
+import Common (testContract', solcV, solved, passed)
 
 statelessTests :: TestTree
 statelessTests = testGroup "Stateless Integration Testing"
