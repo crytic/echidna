@@ -20,8 +20,6 @@ main :: IO ()
 main = withCurrentDirectory "./tests/solidity" . defaultMain $
          testGroup "Echidna"
            [ configTests
-           , statelessTests
-           , researchTests
            , compilationTests
            , seedTests
            , integrationTests
@@ -32,5 +30,6 @@ main = withCurrentDirectory "./tests/solidity" . defaultMain $
            , overflowTests
            , optimizationTests
            , researchTests
+           , statelessTests
            , encodingJSONTests
            ]

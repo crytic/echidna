@@ -57,7 +57,7 @@ createTest m =  EchidnaTest (Open (-1)) m v [] Stop []
                            _                    -> NoValue
 
 validateTestModeError :: String
-validateTestModeError = "Invalid test mode (should be property, assertion, optimization, overflow or exploration)"
+validateTestModeError = "Invalid test mode (should be property, assertion, stateless, optimization, overflow or exploration)"
 
 validateTestMode :: String -> TestMode
 validateTestMode s = case s of
