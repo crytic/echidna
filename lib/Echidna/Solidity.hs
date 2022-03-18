@@ -223,8 +223,8 @@ loadSpecified name cs = do
       let transaction = execTx $ uncurry basicTx setUpFunction d ca (fromInteger unlimitedGasPerBlock) (0, 0)
       vm2 <- if isStatelessMode tm && setUpFunction `elem` abi then execStateT transaction vm1 else return vm1
 
-      case (vm2 ^. result) of
-        Just (VMFailure _) -> throwM $ SetUpCallFailed
+      case vm2 ^. result of
+        Just (VMFailure _) -> throwM SetUpCallFailed
         _                  -> return (vm2, unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
 
   where choose []    _        = throwM NoContracts
