@@ -14,7 +14,7 @@ import Tests.Overflow (overflowTests)
 import Tests.Research (researchTests)
 import Tests.Values (valuesTests)
 import Tests.Seed (seedTests)
-import Tests.Stateless (statelessTests)
+import Tests.Dapptest (dapptestTests)
 
 main :: IO ()
 main = withCurrentDirectory "./tests/solidity" . defaultMain $
@@ -30,6 +30,6 @@ main = withCurrentDirectory "./tests/solidity" . defaultMain $
            , overflowTests
            , optimizationTests
            , researchTests
-           , statelessTests
+           , dapptestTests
            , encodingJSONTests
            ]

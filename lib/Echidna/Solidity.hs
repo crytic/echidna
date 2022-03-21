@@ -28,7 +28,7 @@ import System.FilePath.Posix      ((</>))
 import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec               (execTx, initialVM)
 import Echidna.Events             (EventMap)
-import Echidna.Test               (createTests, isAssertionMode, isPropertyMode, isStatelessMode)
+import Echidna.Test               (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Solidity
 import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
@@ -144,10 +144,10 @@ filterMethods cn f@(Blacklist ig) ms = case NE.filter (\s -> encodeSigWithName c
                                          [] -> error $ show $ InvalidMethodFilters f
                                          fs -> NE.fromList fs
 
--- | Filter methods with arguments, used for stateless mode
+-- | Filter methods with arguments, used for dapptest mode
 filterMethodsWithArgs :: NE.NonEmpty SolSignature -> NE.NonEmpty SolSignature
 filterMethodsWithArgs ms = case NE.filter (\(_, xs) -> not $ null xs) ms of
-                             [] -> error "No stateless tests found" 
+                             [] -> error "No dapptest tests found" 
                              fs -> NE.fromList fs
 
 abiOf :: Text -> SolcContract -> NE.NonEmpty SolSignature
@@ -181,8 +181,8 @@ loadSpecified name cs = do
 
 
   -- Filter ABI according to the config options
-  let fabiOfc = if isStatelessMode tm then filterMethodsWithArgs (abiOf pref c) else filterMethods (c ^. contractName) fs $ abiOf pref c
-  -- Filter again for stateless tests or assertions checking if enabled
+  let fabiOfc = if isDapptestMode tm then filterMethodsWithArgs (abiOf pref c) else filterMethods (c ^. contractName) fs $ abiOf pref c
+  -- Filter again for dapptest tests or assertions checking if enabled
   let neFuns = filterMethods (c ^. contractName) fs (fallback NE.:| funs)
   -- Construct ABI mapping for World
   let abiMapping = if ma then M.fromList $ cs <&> \cc -> (getBytecodeMetadata $ cc ^. runtimeCode,  filterMethods (cc ^. contractName) fs $ abiOf pref cc)
@@ -221,7 +221,7 @@ loadSpecified name cs = do
 
       -- Run
       let transaction = execTx $ uncurry basicTx setUpFunction d ca (fromInteger unlimitedGasPerBlock) (0, 0)
-      vm2 <- if isStatelessMode tm && setUpFunction `elem` abi then execStateT transaction vm1 else return vm1
+      vm2 <- if isDapptestMode tm && setUpFunction `elem` abi then execStateT transaction vm1 else return vm1
 
       case vm2 ^. result of
         Just (VMFailure _) -> throwM SetUpCallFailed
@@ -257,7 +257,7 @@ prepareForTest (vm, em, a, ts, m) c si = do
       a' = NE.toList a
       ps = filterResults c $ payableFunctions si
       as = if isAssertionMode tm then filterResults c $ asserts si else []
-      cs = if isStatelessMode tm then [] else filterResults c (constantFunctions si) \\ as
+      cs = if isDapptestMode tm then [] else filterResults c (constantFunctions si) \\ as
       (hm, lm) = prepareHashMaps cs as m
   pure (vm, World s hm lm ps em, createTests tm td ts r a')
 

@@ -57,13 +57,13 @@ createTest m =  EchidnaTest (Open (-1)) m v [] Stop []
                            _                    -> NoValue
 
 validateTestModeError :: String
-validateTestModeError = "Invalid test mode (should be property, assertion, stateless, optimization, overflow or exploration)"
+validateTestModeError = "Invalid test mode (should be property, assertion, dapptest, optimization, overflow or exploration)"
 
 validateTestMode :: String -> TestMode
 validateTestMode s = case s of
   "property"     -> s
   "assertion"    -> s
-  "stateless"    -> s
+  "dapptest"     -> s
   "exploration"  -> s
   "overflow"     -> s
   "optimization" -> s
@@ -81,9 +81,9 @@ isPropertyMode :: TestMode -> Bool
 isPropertyMode "property" = True
 isPropertyMode _          = False
 
-isStatelessMode :: TestMode -> Bool
-isStatelessMode "stateless" = True
-isStatelessMode _           = False
+isDapptestMode :: TestMode -> Bool
+isDapptestMode "dapptest"  = True
+isDapptestMode _           = False
 
 createTests :: TestMode -> Bool -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
 createTests m td ts r ss = case m of
@@ -92,7 +92,7 @@ createTests m td ts r ss = case m of
   "property"     -> map (\t -> createTest (PropertyTest t r)) ts
   "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
   "assertion"    -> map (\s -> createTest (AssertionTest False s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
-  "stateless"    -> map (\s -> createTest (AssertionTest True s r)) (filter (\(_, xs) -> not $ null xs) ss)
+  "dapptest"     -> map (\s -> createTest (AssertionTest True s r)) (filter (\(_, xs) -> not $ null xs) ss)
   _              -> error validateTestModeError
 
  ++ (if td then [sdt, sdat] else [])
@@ -120,7 +120,7 @@ checkETest test = case test ^. testType of
                   Exploration           -> return (BoolValue True, [], Stop) -- These values are never used
                   PropertyTest n a      -> checkProperty (n, a)
                   OptimizationTest n a  -> checkOptimization (n, a)
-                  AssertionTest st n a  -> if st then checkStatelessAssertion (n, a) else checkStatefullAssertion (n, a)
+                  AssertionTest dt n a  -> if dt then checkDapptestAssertion (n, a) else checkStatefullAssertion (n, a)
                   CallTest _ f          -> checkCall f
 
 checkProperty :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
@@ -200,9 +200,9 @@ checkStatefullAssertion (sig, addr) = do
 assumeMagicReturnCode :: BS.ByteString
 assumeMagicReturnCode = "FOUNDRY::ASSUME\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0" 
 
-checkStatelessAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+checkDapptestAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
            => (SolSignature, Addr) -> m (TestValue, Events, TxResult)
-checkStatelessAssertion (sig, addr) = do
+checkDapptestAssertion (sig, addr) = do
   dappInfo <- view hasLens
   vm <- use hasLens
   -- Whether the last transaction has any value
