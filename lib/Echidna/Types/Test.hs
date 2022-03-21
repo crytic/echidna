@@ -50,17 +50,17 @@ instance Show TestValue where
 
 data TestType = PropertyTest Text Addr
               | OptimizationTest Text Addr
-              | AssertionTest SolSignature Addr
+              | AssertionTest Bool SolSignature Addr
               | CallTest Text (DappInfo -> VM -> TestValue) 
               | Exploration
 
 instance Eq TestType where
-  (PropertyTest t a)     == (PropertyTest t' a')  = t == t' && a == a'
-  (AssertionTest s a)    == (AssertionTest s' a') = s == s' && a == a'
+  (PropertyTest t a)     == (PropertyTest t' a')     = t == t' && a == a'
+  (AssertionTest b s a)  == (AssertionTest b' s' a') = b == b' && s == s' && a == a'
   (OptimizationTest s a) == (OptimizationTest s' a') = s == s' && a == a'
-  (CallTest t _)         == (CallTest t' _)       = t == t'
-  Exploration            == Exploration           = True
-  _                      == _                     = False
+  (CallTest t _)         == (CallTest t' _)          = t == t'
+  Exploration            == Exploration              = True
+  _                      == _                        = False
 
 
 instance Eq TestState where

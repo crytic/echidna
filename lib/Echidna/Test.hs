@@ -10,9 +10,10 @@ import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState(get, put), gets)
 import Data.Has (Has(..))
 import Data.Text (Text)
-import EVM (Error(..), VMResult(..), VM, calldata, codeContract, result, tx, state, substate, selfdestructs)
+import EVM (Error(..), VMResult(..), VM, calldata, callvalue, codeContract, result, tx, state, substate, selfdestructs)
 import EVM.ABI (AbiValue(..), AbiType(..), encodeAbiValue, decodeAbiValue, )
 import EVM.Types (Addr)
+import EVM.Symbolic (forceLit)
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -56,12 +57,13 @@ createTest m =  EchidnaTest (Open (-1)) m v [] Stop []
                            _                    -> NoValue
 
 validateTestModeError :: String
-validateTestModeError = "Invalid test mode (should be property, assertion, optimization, overflow or exploration)"
+validateTestModeError = "Invalid test mode (should be property, assertion, dapptest, optimization, overflow or exploration)"
 
 validateTestMode :: String -> TestMode
 validateTestMode s = case s of
   "property"     -> s
   "assertion"    -> s
+  "dapptest"     -> s
   "exploration"  -> s
   "overflow"     -> s
   "optimization" -> s
@@ -79,13 +81,18 @@ isPropertyMode :: TestMode -> Bool
 isPropertyMode "property" = True
 isPropertyMode _          = False
 
+isDapptestMode :: TestMode -> Bool
+isDapptestMode "dapptest"  = True
+isDapptestMode _           = False
+
 createTests :: TestMode -> Bool -> [Text] -> Addr -> [SolSignature] -> [EchidnaTest]
 createTests m td ts r ss = case m of
   "exploration"  -> [createTest Exploration]
   "overflow"     -> [createTest (CallTest "Integer (over/under)flow" checkOverflowTest)]
   "property"     -> map (\t -> createTest (PropertyTest t r)) ts
   "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
-  "assertion"    -> map (\s -> createTest (AssertionTest s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
+  "assertion"    -> map (\s -> createTest (AssertionTest False s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
+  "dapptest"     -> map (\s -> createTest (AssertionTest True s r)) (filter (\(_, xs) -> not $ null xs) ss)
   _              -> error validateTestModeError
 
  ++ (if td then [sdt, sdat] else [])
@@ -113,7 +120,7 @@ checkETest test = case test ^. testType of
                   Exploration           -> return (BoolValue True, [], Stop) -- These values are never used
                   PropertyTest n a      -> checkProperty (n, a)
                   OptimizationTest n a  -> checkOptimization (n, a)
-                  AssertionTest n a     -> checkAssertion (n, a)
+                  AssertionTest dt n a  -> if dt then checkDapptestAssertion (n, a) else checkStatefullAssertion (n, a)
                   CallTest _ f          -> checkCall f
 
 checkProperty :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
@@ -167,9 +174,9 @@ checkOptimization (f,a) = do
   pure (getIntFromResult (vm' ^. result), extractEvents dappInfo vm', getResultFromVM vm')
 
 
-checkAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+checkStatefullAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
            => (SolSignature, Addr) -> m (TestValue, Events, TxResult)
-checkAssertion (sig, addr) = do
+checkStatefullAssertion (sig, addr) = do
   dappInfo <- view hasLens
   vm <- use hasLens
       -- Whether the last transaction called the function `sig`.
@@ -189,6 +196,31 @@ checkAssertion (sig, addr) = do
       eventFailure = not (null events) && (checkAssertionEvent events || checkPanicEvent "1" events)
       isFailure = isCorrectTarget && (eventFailure || isAssertionFailure)
   pure (BoolValue (not isFailure), events, getResultFromVM vm)
+
+assumeMagicReturnCode :: BS.ByteString
+assumeMagicReturnCode = "FOUNDRY::ASSUME\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0" 
+
+checkDapptestAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+           => (SolSignature, Addr) -> m (TestValue, Events, TxResult)
+checkDapptestAssertion (sig, addr) = do
+  dappInfo <- view hasLens
+  vm <- use hasLens
+  -- Whether the last transaction has any value
+  let hasValue = forceLit (vm ^. state . callvalue) /= 0
+      -- Whether the last transaction called the function `sig`.
+  let isCorrectFn = case viewBuffer $ vm ^. state . calldata . _1 of
+        Just cd -> BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) cd
+        Nothing -> False 
+      isAssertionFailure = case vm ^. result of
+        Just (VMFailure (Revert bs)) -> not $ BS.isSuffixOf assumeMagicReturnCode bs 
+        Just (VMFailure _)           -> True
+        _                            -> False
+      isCorrectAddr = addr == vm ^. state . codeContract
+      isCorrectTarget = isCorrectFn && isCorrectAddr 
+      events = extractEvents dappInfo vm 
+      isFailure = not hasValue && (isCorrectTarget && isAssertionFailure)
+  pure (BoolValue (not isFailure), events, getResultFromVM vm)
+
 
 checkCall :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
            => (DappInfo -> VM -> TestValue) -> m (TestValue, Events, TxResult)
