@@ -34,6 +34,7 @@ data SolException = BadAddr Addr
                   | OnlyTests
                   | ConstructorArgs String
                   | DeploymentFailed Addr
+                  | SetUpCallFailed 
                   | NoCryticCompile
                   | InvalidMethodFilters Filter
 makePrisms ''SolException
@@ -53,6 +54,7 @@ instance Show SolException where
     (ConstructorArgs s)      -> "Constructor arguments are required: " ++ s
     NoCryticCompile          -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
     (InvalidMethodFilters f) -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
+    SetUpCallFailed          -> "Calling the setUp() funciton failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
     (DeploymentFailed a)     -> "Deploying the contract " ++ show a ++ " failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
 
 instance Exception SolException
