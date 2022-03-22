@@ -10,8 +10,9 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import EVM (VMResult(..), Error(..))
 import EVM.Types (Addr, W256, Word, w256)
-import EVM.ABI (AbiValue)
+import EVM.ABI (encodeAbiValue, AbiValue(..))
 
+import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Orphans.JSON ()
 import Echidna.Types.Signature (SolCall)
 
@@ -92,20 +93,22 @@ createTxWithValue :: ByteString   -- | Constructor bytecode
                   -> Tx
 createTxWithValue bc s d g = Tx (SolCreate bc) s d g 0
 
-data TxResult = Success
-              | ErrorBalanceTooLow
+data TxResult = ReturnTrue
+              | ReturnFalse
+              | Stop
+              | ErrorBalanceTooLow 
               | ErrorUnrecognizedOpcode
               | ErrorSelfDestruction
               | ErrorStackUnderrun
               | ErrorBadJumpDestination
               | ErrorRevert
-              | ErrorNoSuchContract
               | ErrorOutOfGas
               | ErrorBadCheatCode
               | ErrorStackLimitExceeded
               | ErrorIllegalOverflow
               | ErrorQuery
               | ErrorStateChangeWhileStatic
+              | ErrorInvalidFormat
               | ErrorInvalidMemoryAccess
               | ErrorCallDepthLimitReached
               | ErrorMaxCodeSizeExceeded
@@ -115,6 +118,7 @@ data TxResult = Success
               | ErrorChoose -- not entirely sure what this is
               | ErrorWhiffNotUnique
               | ErrorSMTTimeout
+              | ErrorFFI
   deriving (Eq, Ord, Show)
 $(deriveJSON defaultOptions ''TxResult)
 
@@ -134,20 +138,23 @@ data TxConf = TxConf { _propGas       :: Word
 makeLenses 'TxConf
 -- | Transform a VMResult into a more hash friendly sum type
 getResult :: VMResult -> TxResult
-getResult (VMSuccess _)                         = Success
+getResult (VMSuccess b) | viewBuffer b == Just (encodeAbiValue (AbiBool True))  = ReturnTrue
+                        | viewBuffer b == Just (encodeAbiValue (AbiBool False)) = ReturnFalse
+                        | otherwise                                             = Stop
+
 getResult (VMFailure (BalanceTooLow _ _ ))      = ErrorBalanceTooLow
 getResult (VMFailure (UnrecognizedOpcode _))    = ErrorUnrecognizedOpcode
 getResult (VMFailure SelfDestruction )          = ErrorSelfDestruction
 getResult (VMFailure StackUnderrun )            = ErrorStackUnderrun
 getResult (VMFailure BadJumpDestination )       = ErrorBadJumpDestination
 getResult (VMFailure (Revert _))                = ErrorRevert
-getResult (VMFailure (NoSuchContract _))        = ErrorNoSuchContract
 getResult (VMFailure (OutOfGas _ _))            = ErrorOutOfGas
 getResult (VMFailure (BadCheatCode _))          = ErrorBadCheatCode
 getResult (VMFailure StackLimitExceeded)        = ErrorStackLimitExceeded
 getResult (VMFailure IllegalOverflow)           = ErrorIllegalOverflow
 getResult (VMFailure (Query _))                 = ErrorQuery
 getResult (VMFailure StateChangeWhileStatic)    = ErrorStateChangeWhileStatic
+getResult (VMFailure InvalidFormat)             = ErrorInvalidFormat
 getResult (VMFailure InvalidMemoryAccess)       = ErrorInvalidMemoryAccess
 getResult (VMFailure CallDepthLimitReached)     = ErrorCallDepthLimitReached
 getResult (VMFailure (MaxCodeSizeExceeded _ _)) = ErrorMaxCodeSizeExceeded
@@ -156,7 +163,8 @@ getResult (VMFailure UnexpectedSymbolicArg)     = ErrorUnexpectedSymbolic
 getResult (VMFailure DeadPath)                  = ErrorDeadPath
 getResult (VMFailure (Choose _))                = ErrorChoose -- not entirely sure what this is
 getResult (VMFailure (NotUnique _))             = ErrorWhiffNotUnique
-getResult (VMFailure SMTTimeout)              = ErrorSMTTimeout
+getResult (VMFailure SMTTimeout)                = ErrorSMTTimeout
+getResult (VMFailure (FFI _))                   = ErrorFFI
 
 makeSingleTx :: Addr -> Addr -> W256 -> TxCall -> [Tx]
 makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d (fromInteger maxGasPerBlock) 0 (w256 v) (0, 0)]

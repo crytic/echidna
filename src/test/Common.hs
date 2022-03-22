@@ -6,16 +6,17 @@ module Common
   , solcV
   , testContract'
   , checkConstructorConditions
+  , optimized
   , solnFor
   , solved
   , passed
   , solvedLen
   , solvedWith
   , solvedWithout
+  , solvedUsing
   , getGas
   , gasInRange
   , countCorpus
-  , testsEmpty
   , coverageEmpty
   ) where
 
@@ -28,11 +29,11 @@ import Control.Lens (view, set, (.~), (^.))
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
 import Control.Monad.State.Strict (evalStateT)
+import Data.DoubleWord (Int256)
 import Data.Function ((&))
-import Data.List (find)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
-import Data.Map (lookup, empty)
+import Data.Map (fromList, lookup, empty)
 import Data.Maybe (isJust)
 import Data.Text (Text, pack)
 import Data.SemVer (Version, version, fromText)
@@ -40,14 +41,17 @@ import System.Process (readProcess)
 
 import Echidna (prepareContract)
 import Echidna.Campaign (campaign)
-import Echidna.Config (EConfig, _econfig, parseConfig, defaultConfig, sConf, cConf)
-import Echidna.Solidity (loadSolTests, quiet)
+import Echidna.Config (Env(..), EConfig, _econfig, parseConfig, defaultConfig, sConf, cConf)
+import Echidna.Solidity (loadSolTests)
 import Echidna.Test (checkETest)
+import Echidna.Types.Solidity (quiet)
 import Echidna.Types.Campaign (Campaign, testLimit, shrinkLimit, tests, gasInfo, corpus, coverage)
 import Echidna.Types.Signature (ContractName)
-import Echidna.Types.Test (TestState(..))
+import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
-import Echidna.Types.World (eventMap)
+
+import EVM.Dapp (dappInfo, emptyDapp)
+import EVM.Solidity (contractName)
 
 testConfig :: EConfig
 testConfig = defaultConfig & sConf . quiet .~ True
@@ -71,12 +75,16 @@ withSolcVersion (Just f) t = do
     Left e   -> error $ show e
 
 runContract :: FilePath -> Maybe ContractName -> EConfig -> IO Campaign
-runContract f c cfg =
+runContract f mc cfg = 
   flip runReaderT cfg $ do
     g <- getRandom
-    (v, _, _, w, ts, d, txs) <- prepareContract cfg (f :| []) c g
-    -- start ui and run tests
-    campaign (pure ()) v w ts d txs
+    (v, sc, cs, w, ts, d, txs) <- prepareContract cfg (f :| []) mc g
+    let solcByName = fromList [(c ^. contractName, c) | c <- cs]
+    let dappInfo' = dappInfo "/" solcByName sc
+    let env = Env { _cfg = cfg, _dapp = dappInfo' }
+    flip runReaderT env $
+      -- start ui and run tests
+      campaign (pure ()) v w ts d txs
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg = testContract' fp Nothing Nothing cfg True
@@ -96,31 +104,60 @@ testContract' fp n v cfg s as = testCase fp $ withSolcVersion v $ do
 checkConstructorConditions :: FilePath -> String -> TestTree
 checkConstructorConditions fp as = testCase fp $ do
   r <- flip runReaderT testConfig $ do
-    (v, w, t) <- loadSolTests (fp :| []) Nothing
-    let em = w ^. eventMap
-    mapM (\u -> evalStateT (checkETest em u) v) t
-  mapM_ (assertBool as) r
+    (v, _, t) <- loadSolTests (fp :| []) Nothing
+    let env = Env { _cfg = testConfig, _dapp = emptyDapp }
+    flip runReaderT env $
+      mapM (\u -> evalStateT (checkETest u) v) t
+  mapM_ (\(BoolValue b,_,_) -> assertBool as b) r
 
-getResult :: Text -> Campaign -> Maybe TestState
-getResult t = fmap snd <$> find ((t ==) . either fst (("ASSERTION " <>) . fst) . fst) . view tests
+
+getResult :: Text -> Campaign -> Maybe EchidnaTest
+getResult n c = 
+  case filter findTest $ view tests c of
+    []  -> Nothing
+    [x] -> Just x
+    _   -> error "found more than one tests"
+
+  where findTest test = case view testType test of
+                          PropertyTest t _      -> t == n
+                          AssertionTest (t,_) _ -> t == n
+                          CallTest t _          -> t == n
+                          OptimizationTest t _  -> t == n
+                          _                     -> False 
+
+optnFor :: Text -> Campaign -> Maybe TestValue
+optnFor n c = case getResult n c of
+  Just t -> Just $ t ^. testValue
+  _      -> Nothing
+
+optimized :: Text -> Int256 -> Campaign -> Bool
+optimized n v c = case optnFor n c of
+                   Just (IntValue o1) -> o1 >= v
+                   Nothing            -> error "nothing"
+                   _                  -> error "incompatible values"
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
-solnFor t c = case getResult t c of
-  Just (Large _ s) -> Just s
-  Just (Solved  s) -> Just s
-  _                -> Nothing
+solnFor n c = case getResult n c of
+  Just t -> if null $ t ^. testReproducer then Nothing else Just $ t ^. testReproducer 
+  _      -> Nothing
 
 solved :: Text -> Campaign -> Bool
 solved t = isJust . solnFor t
 
 passed :: Text -> Campaign -> Bool
-passed t c = case getResult t c of
-  Just (Open _) -> True
-  Just Passed   -> True
-  _             -> False
+passed n c = case getResult n c of
+  Just t | isPassed t -> True
+  Just t | isOpen t   -> True
+  Nothing             -> error ("no test was found with name: " ++ show n)
+  _                   -> False
 
 solvedLen :: Int -> Text -> Campaign -> Bool
 solvedLen i t = (== Just i) . fmap length . solnFor t
+
+solvedUsing :: Text -> Text -> Campaign -> Bool
+solvedUsing f t = maybe False (any $ matchCall . view call) . solnFor t
+                 where matchCall (SolCall (f',_)) = f' == f
+                       matchCall _                = False
 
 -- NOTE: this just verifies a call was found in the solution. Doesn't care about ordering/seq length
 solvedWith :: TxCall -> Text -> Campaign -> Bool
@@ -139,9 +176,6 @@ gasInRange t l h c = case getGas t c of
 
 countCorpus :: Int -> Campaign -> Bool
 countCorpus n c = length (view corpus c) == n
-
-testsEmpty :: Campaign -> Bool
-testsEmpty c = null (view tests c)
 
 coverageEmpty :: Campaign -> Bool
 coverageEmpty c = view coverage c == empty

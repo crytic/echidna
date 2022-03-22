@@ -1,5 +1,32 @@
 ## TODO
 
+## 2.0.0
+
+* Refactored test internal data structures and code
+* Refactored unit test code and moved the related files to the `tests` directory
+* Added support to show events and custom errors when a property/assertion fails 
+* Added support for catching assertion failure in Solidity 0.8.x
+* Added two new testing mode: optimization and overflow (only in Solidity 0.8.x)
+* Added optional checks for contract destruction
+* Added `testMode` option and removed related flags
+* Simplified contract deployer and property sender addresses to be easier to read
+* Updated hevm to 0.49.0
+ 
+## 1.7.3
+
+* Removed old compilation artifacts before starting a new fuzzing campaign (#697)
+* Fixed incorrect function filtering when using assertion mode (#695)
+* Improved handling of negative constants (#683)
+* Updated hevm to 0.48.0 (#691)
+* Removed nix workaround for Slither (#680)
+* Fixed source printing when some lines are not covered (#678)
+
+## 1.7.2
+
+* Fixed check-asserts and multi-abi cli switches (#665)
+* Updated to hevm 0.4.6 (#660)
+* Support for loading multiple files with compiled contracts from hardhat/brownie (#659)
+
 ## 1.7.1
 
 * Tweaked mutators and improved test stability (#628)

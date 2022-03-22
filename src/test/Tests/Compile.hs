@@ -12,7 +12,8 @@ import Control.Monad.Reader (runReaderT)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Maybe (isJust)
 import Data.Text (Text)
-import Echidna.Solidity (SolException, _ContractNotFound, _NoBytecode, _NoFuncs, _NoTests, _OnlyTests, _TestArgsFound, _ConstructorArgs, _DeploymentFailed, loadWithCryticCompile)
+import Echidna.Types.Solidity (SolException, _ContractNotFound, _NoBytecode, _NoFuncs, _NoTests, _OnlyTests, _TestArgsFound, _ConstructorArgs, _DeploymentFailed)
+import Echidna.Solidity (loadWithCryticCompile)
 
 compilationTests :: TestTree
 compilationTests = testGroup "Compilation and loading tests"

@@ -1,0 +1,3 @@
+maxValue: 10000000000000000000000000
+coverage: true
+testMode: assertion

@@ -9,6 +9,7 @@ import Control.Monad.Random (getRandom)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, unpack)
 import Data.Version (showVersion)
+import Data.Map (fromList)
 import EVM.Types (Addr)
 import Options.Applicative
 import Paths_echidna (version)
@@ -16,13 +17,18 @@ import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.IO (hPutStrLn, stderr)
 
 import Echidna
-import Echidna.Config
-import Echidna.Solidity
+import Echidna.Config hiding (cfg)
+import Echidna.Types.Solidity
 import Echidna.Types.Campaign
+import Echidna.Types.Test (TestMode)
+import Echidna.Test (validateTestMode)
 import Echidna.Campaign (isSuccess)
 import Echidna.UI
 import Echidna.Output.Source
 import Echidna.Output.Corpus
+
+import EVM.Dapp (dappInfo)
+import EVM.Solidity (contractName)
 
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as DS
@@ -33,7 +39,7 @@ data Options = Options
   , cliConfigFilepath   :: Maybe FilePath
   , cliOutputFormat     :: Maybe OutputFormat
   , cliCorpusDir        :: Maybe FilePath
-  , cliCheckAsserts     :: Bool
+  , cliTestMode         :: Maybe TestMode
   , cliMultiAbi         :: Bool
   , cliTestLimit        :: Maybe Int
   , cliShrinkLimit      :: Maybe Int
@@ -61,8 +67,8 @@ options = Options <$> (NE.fromList <$> some (argument str (metavar "FILES"
                   <*> optional (option str $ long "corpus-dir"
                         <> metavar "PATH"
                         <> help "Directory to store corpus and coverage data.")
-                  <*> switch (long "check-asserts"
-                        <> help "Check asserts in the code.")
+                  <*> optional (option str $ long "test-mode"
+                        <> help "Test mode to use.")
                   <*> switch (long "multi-abi"
                         <> help "Use multi-abi mode of testing.")
                   <*> optional (option auto $ long "test-limit"
@@ -114,9 +120,14 @@ main = do
 
   (sc, cs, cpg) <- flip runReaderT cfg $ do
     (v, sc, cs, w, ts, d, txs) <- prepareContract cfg cliFilePath cliSelectedContract g
-    -- start ui and run tests
-    r <- ui v w ts d txs
-    return (sc, cs, r)
+    let solcByName = fromList [(c ^. contractName, c) | c <- cs]
+    -- TODO put in real path
+    let dappInfo' = dappInfo "/" solcByName sc
+    let env = Env { _cfg = cfg, _dapp = dappInfo' }
+    flip runReaderT env $ do
+      -- start ui and run tests
+      r <- ui v w ts d txs
+      return (sc, cs, r)
 
   -- save corpus
   saveTxs cd (snd <$> DS.toList (cpg ^. corpus))
@@ -130,7 +141,7 @@ overrideConfig :: EConfig -> Options -> EConfig
 overrideConfig config Options{..} =
   foldl (\a f -> f a) config [ overrideFormat
                              , overrideCorpusDir
-                             , overrideCheckAsserts
+                             , overrideTestMode
                              , overrideMultiAbi
                              , overrideTestLimit
                              , overrideShrinkLimit
@@ -153,8 +164,8 @@ overrideConfig config Options{..} =
     overrideCorpusDir cfg =
       cfg & cConf . corpusDir %~ (cliCorpusDir <|>)
 
-    overrideCheckAsserts cfg =
-      if cliCheckAsserts then cfg & sConf . checkAsserts .~ True else cfg
+    overrideTestMode cfg =
+      cfg & sConf . testMode %~ (`fromMaybe` (validateTestMode <$> cliTestMode))
 
     overrideMultiAbi cfg =
       if cliMultiAbi then cfg & sConf . multiAbi .~ True else cfg
@@ -163,7 +174,7 @@ overrideConfig config Options{..} =
       cfg & cConf . testLimit %~ (`fromMaybe` cliTestLimit)
 
     overrideShrinkLimit cfg =
-      cfg & cConf . testLimit %~ (`fromMaybe` cliShrinkLimit)
+      cfg & cConf . shrinkLimit %~ (`fromMaybe` cliShrinkLimit)
 
     overrideSeqLen cfg =
       cfg & cConf . seqLen %~ (`fromMaybe` cliSeqLen)

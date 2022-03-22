@@ -1,27 +1,12 @@
 { pkgs ? import (builtins.fetchTarball {
-    name = "nixpkgs-21.03pre268255.e5b478271ea";
-    url = "https://github.com/nixos/nixpkgs/archive/e5b478271ea0af7b75d53c92cfa98bdb126b44a7.tar.gz";
-    sha256 = "06hmxvnx2swk63i15zp1q70axf53x04f7ywwlnxlcfkk0prrmwbh";
-  }) {}
+    name = "nixpkgs-unstable-2022-02-10";
+    url = "https://github.com/nixos/nixpkgs/archive/1882c6b7368fd284ad01b0a5b5601ef136321292.tar.gz";
+    sha256 = "sha256:0zg7ak2mcmwzi2kg29g4v9fvbvs0viykjsg2pwaphm1fi13s7s0i";
+  }) {},
+  profiling ? false,
+  tests ? true
 }:
-
 let
-  dapptools = pkgs.fetchFromGitHub {
-    owner = "dapphub";
-    repo = "dapptools";
-    rev = "hevm/0.46.0";
-    sha256 = "1nfdb48jp2ydm2gxjlzjm21nbxrqnaq9py2zmjg0h27b73wdw2wq";
-  };
-  hevm = pkgs.haskell.lib.dontCheck (
-    pkgs.haskell.lib.doJailbreak (
-      pkgs.haskellPackages.callCabal2nix "hevm" "${dapptools}/src/hevm"
-        { secp256k1 = pkgs.secp256k1; }
-  ));
-
-  # slither is shipped with solc by default, we don't use it as we need
-  # precise solc versions
-  slither-analyzer = pkgs.slither-analyzer.override { withSolc = false; };
-
   # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
   # would be great to integrate solc-select to be more flexible, improve this in future
   solc = pkgs.stdenv.mkDerivation {
@@ -44,17 +29,17 @@ let
     '';
   };
 
-  v = "1.7.1";
+  v = "2.0.0";
 
-  f = { mkDerivation, aeson, ansi-terminal, base, base16-bytestring
-      , binary, brick, bytestring, cborg, containers, data-dword, data-has
-      , deepseq, directory, exceptions, filepath, hashable, hevm, hpack
-      , lens, lens-aeson, megaparsec, MonadRandom, mtl
-      , optparse-applicative, process, random, stm, tasty
-      , tasty-hunit, tasty-quickcheck, temporary, text, transformers
-      , unix, unliftio, unliftio-core, unordered-containers, vector
-      , vector-instances, vty, wl-pprint-annotated, word8, yaml
-      , cabal-install, extra, ListLike, hlint, semver
+  testInputs = [ pkgs.slither-analyzer solc ];
+
+  f = { mkDerivation, aeson, ansi-terminal, base, base16-bytestring, binary
+      , brick, bytestring, cborg, containers, data-dword, data-has, deepseq
+      , directory, exceptions, filepath, hashable, hevm, hpack, lens, lens-aeson
+      , megaparsec, MonadRandom, mtl, optparse-applicative, process, random
+      , semver, stm, tasty, tasty-hunit, tasty-quickcheck, temporary, text
+      , transformers, unix, unliftio, unliftio-core, unordered-containers, vector
+      , vector-instances, vty, wl-pprint-annotated, word8, yaml, extra, ListLike
       }:
       mkDerivation rec {
         pname = "echidna";
@@ -64,31 +49,54 @@ let
         isExecutable = true;
         libraryHaskellDepends = [
           aeson ansi-terminal base base16-bytestring binary brick bytestring
-          cborg containers data-dword data-has deepseq directory exceptions filepath
-          hashable hevm lens lens-aeson megaparsec MonadRandom mtl
-          optparse-applicative process random stm temporary text transformers
-          unix unliftio unliftio-core unordered-containers vector
+          cborg containers data-dword data-has deepseq directory exceptions
+          filepath hashable hevm lens lens-aeson ListLike megaparsec MonadRandom
+          mtl optparse-applicative process random semver stm temporary text
+          transformers unix unliftio unliftio-core unordered-containers vector
           vector-instances vty wl-pprint-annotated word8 yaml extra ListLike
-          semver
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
-        libraryToolDepends = [ hpack cabal-install hlint slither-analyzer solc ];
         executableHaskellDepends = libraryHaskellDepends;
-        testHaskellDepends = [
-          tasty tasty-hunit tasty-quickcheck
-        ];
+        testHaskellDepends = [ tasty tasty-hunit tasty-quickcheck ];
+        testToolDepends = testInputs;
+        configureFlags = if profiling then [ "--enable-profiling" "--enable-library-profiling" ] else [];
+        libraryToolDepends = [ hpack pkgs.slither-analyzer solc ];
         preConfigure = ''
           hpack
           # re-enable dynamic build for Linux
           sed -i -e 's/os(linux)/false/' echidna.cabal
         '';
-        shellHook = "hpack";
         license = pkgs.lib.licenses.agpl3;
         doHaddock = false;
-        doCheck = true;
+        doCheck = tests;
       };
 
-  drv = pkgs.haskellPackages.callPackage f { hevm = hevm; };
+  dapptools = pkgs.fetchFromGitHub {
+    owner = "dapphub";
+    repo = "dapptools";
+    rev = "hevm/0.49.0";
+    sha256 = "sha256-giBcHTlFV1zJVgdbzWmezPdtPRdJQbocBEmuenBFVqk";
+  };
+
+  hevm = pkgs.haskell.lib.dontCheck (
+    pkgs.haskell.lib.doJailbreak (
+      pkgs.haskellPackages.callCabal2nix "hevm" "${dapptools}/src/hevm"
+        { secp256k1 = pkgs.secp256k1; }
+  ));
+
+  echidna = pkgs.haskellPackages.callPackage f { hevm = hevm; };
+  echidnaShell = pkgs.haskellPackages.shellFor {
+    packages = p: [ echidna ];
+    shellHook = "hpack";
+    buildInputs = with pkgs.haskellPackages; [
+      hlint
+      cabal-install
+    ] ++ pkgs.lib.optional (!pkgs.stdenv.isAarch64) [
+      # this doesn't work due to ormolu not building
+      haskell-language-server
+    ];
+    nativeBuildInputs = if tests then [] else testInputs;
+  };
 in
   if pkgs.lib.inNixShell
-    then drv.env
-    else pkgs.haskell.lib.justStaticExecutables drv
+    then echidnaShell
+    else pkgs.haskell.lib.justStaticExecutables echidna
