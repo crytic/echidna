@@ -1,10 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
 
 module Echidna.Config where
 
@@ -18,12 +15,11 @@ import Data.Bool (bool)
 import Data.Aeson
 import Data.Has (Has(..))
 import Data.HashMap.Strict (keys)
-import Data.HashSet (HashSet, fromList, insert, difference)
+import Data.HashSet (fromList, insert, difference)
 import Data.Maybe (fromMaybe)
-import Data.Text (Text, isPrefixOf)
+import Data.Text (isPrefixOf)
 import EVM (result)
 import EVM.Types (w256)
-import EVM.Dapp (DappInfo)
 
 import qualified Control.Monad.Fail as M (MonadFail(..))
 import qualified Data.ByteString as BS
@@ -31,50 +27,14 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
 import Echidna.Test
-import Echidna.Types.Campaign (CampaignConf(CampaignConf))
+import Echidna.Types.Campaign 
 import Echidna.Mutator.Corpus (defaultMutationConsts)
-import Echidna.Types.Solidity (SolConf(..), Filter(..))
+import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..))
+import Echidna.Types.Solidity
 import Echidna.Types.Tx  (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
 import Echidna.Types.Test  (TestConf(..))
 import Echidna.UI
 import Echidna.UI.Report
-
--- | Our big glorious global config type, just a product of each local config.,
-data EConfig = EConfig { _cConf :: CampaignConf
-                       , _nConf :: Names
-                       , _sConf :: SolConf
-                       , _tConf :: TestConf
-                       , _xConf :: TxConf
-                       , _uConf :: UIConf
-                       }
-makeLenses ''EConfig
-
-data EConfigWithUsage = EConfigWithUsage { _econfig   :: EConfig
-                                         , _badkeys   :: HashSet Text
-                                         , _unsetkeys :: HashSet Text
-                                         }
-makeLenses ''EConfigWithUsage
-
-instance Has EConfig EConfigWithUsage where
-  hasLens = econfig
-
-instance Has CampaignConf EConfig where
-  hasLens = cConf
-
-instance Has Names EConfig where
-  hasLens = nConf
-
-instance Has SolConf EConfig where
-  hasLens = sConf
-
-instance Has TestConf EConfig where
-  hasLens = tConf
-
-instance Has TxConf EConfig where
-  hasLens = xConf
-
-instance Has UIConf EConfig where
-  hasLens = uConf
 
 instance FromJSON EConfig where
   -- retrieve the config from the key usage annotated parse
@@ -123,11 +83,11 @@ instance FromJSON EConfigWithUsage where
                 -- CampaignConf
                 cov = v ..:? "coverage" <&> \case Just False -> Nothing
                                                   _          -> Just mempty
-                cc = CampaignConf <$> v ..:? "testLimit"   ..!= 50000
+                cc = CampaignConf <$> v ..:? "testLimit"   ..!= defaultTestLimit
                                   <*> v ..:? "stopOnFail"  ..!= False
                                   <*> v ..:? "estimateGas" ..!= False
-                                  <*> v ..:? "seqLen"      ..!= 100
-                                  <*> v ..:? "shrinkLimit" ..!= 5000
+                                  <*> v ..:? "seqLen"      ..!= defaultSequenceLength
+                                  <*> v ..:? "shrinkLimit" ..!= defaultShrinkLimit
                                   <*> cov
                                   <*> v ..:? "seed"
                                   <*> v ..:? "dictFreq"    ..!= 0.40
@@ -135,16 +95,14 @@ instance FromJSON EConfigWithUsage where
                                   <*> v ..:? "mutConsts"   ..!= defaultMutationConsts
 
                 -- SolConf
-                defaultAddr     = 0x00a329c0648769a73afac7f9381e08fb43dbea72
-                defaultDeployer = 0x30000
                 fnFilter = bool Whitelist Blacklist <$> v ..:? "filterBlacklist" ..!= True
                                                     <*> v ..:? "filterFunctions" ..!= []
                 mode = v ..:? "testMode" >>= \case
                   Just s  -> pure $ validateTestMode s
                   Nothing -> pure "property"
-                sc = SolConf <$> v ..:? "contractAddr"    ..!= defaultAddr
-                             <*> v ..:? "deployer"        ..!= defaultDeployer
-                             <*> v ..:? "sender"          ..!= (0x10000 NE.:| [0x20000, defaultDeployer])
+                sc = SolConf <$> v ..:? "contractAddr"    ..!= defaultContractAddr
+                             <*> v ..:? "deployer"        ..!= defaultDeployerAddr
+                             <*> v ..:? "sender"          ..!= (0x10000 NE.:| [0x20000, defaultDeployerAddr])
                              <*> v ..:? "balanceAddr"     ..!= 0xffffffff
                              <*> v ..:? "balanceContract" ..!= 0
                              <*> v ..:? "codeSize"        ..!= 0x6000      -- 24576 (EIP-170)
@@ -185,34 +143,3 @@ withDefaultConfig = (`runReaderT` defaultConfig)
 -- | 'withDefaultConfig' but not for transformers
 withDefaultConfig' :: Reader EConfig a -> a
 withDefaultConfig' = (`runReader` defaultConfig)
-
-data Env = Env {
-  _cfg :: EConfig,
-  _dapp :: DappInfo
-}
-
-makeLenses ''Env
-
-instance Has EConfig Env where
-  hasLens = cfg
-
-instance Has CampaignConf Env where
-  hasLens = cfg . cConf
-
-instance Has Names Env where
-  hasLens = cfg . nConf
-
-instance Has SolConf Env where
-  hasLens = cfg . sConf
-
-instance Has TestConf Env where
-  hasLens = cfg . tConf
-
-instance Has TxConf Env where
-  hasLens = cfg . xConf
-
-instance Has UIConf Env where
-  hasLens = cfg . uConf
-
-instance Has DappInfo Env where
-  hasLens = dapp
