@@ -7,8 +7,9 @@ import Control.Lens ((^.), sans)
 import Control.Monad (void)
 import Data.Function ((&))
 
-import Echidna.Config (EConfigWithUsage(..), defaultConfig, parseConfig, cConf)
+import Echidna.Types.Config (EConfigWithUsage(..), cConf)
 import Echidna.Types.Campaign (knownCoverage)
+import Echidna.Config (defaultConfig, parseConfig)
 
 configTests :: TestTree
 configTests = testGroup "Configuration tests" $
