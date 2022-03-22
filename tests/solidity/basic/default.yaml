@@ -5,7 +5,7 @@ testMode: "property"
 testDestruction: false
 #psender is the sender for property transactions; by default intentionally
 #the same as contract deployer
-psender: "0x00a329c0648769a73afac7f9381e08fb43dbea70"
+psender: "0x10000"
 #prefix is the prefix for Boolean functions that are properties to be checked
 prefix: "echidna_"
 #propMaxGas defines gas cost at which a property fails
@@ -31,9 +31,9 @@ format: "text"
 #contractAddr is the address of the contract itself
 contractAddr: "0x00a329c0648769a73afac7f9381e08fb43dbea72"
 #deployer is address of the contract deployer (who often is privileged owner, etc.)
-deployer: "0x00a329c0648769a73afac7f9381e08fb43dbea70"
+deployer: "0x30000"
 #sender is set of addresses transactions may originate from
-sender: ["0x10000", "0x20000", "0x00a329c0648769a73afac7f9381e08fb43dbea70"]
+sender: ["0x10000", "0x20000", "0x30000"]
 #balanceAddr is default balance for addresses
 balanceAddr: 0xffffffff
 #balanceContract overrides balanceAddr for the contract address
