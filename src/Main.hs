@@ -17,7 +17,8 @@ import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.IO (hPutStrLn, stderr)
 
 import Echidna
-import Echidna.Config hiding (cfg)
+import Echidna.Config
+import Echidna.Types.Config hiding (cfg)
 import Echidna.Types.Solidity
 import Echidna.Types.Campaign
 import Echidna.Types.Test (TestMode)
@@ -60,35 +61,35 @@ options = Options <$> (NE.fromList <$> some (argument str (metavar "FILES"
                         <> help "Contract to analyze")
                   <*> optional (option str $ long "config"
                         <> metavar "CONFIG"
-                        <> help "Config file (CLI arguments override config options)")
+                        <> help "Config file (command-line arguments override config options)")
                   <*> optional (option auto $ long "format"
                         <> metavar "FORMAT"
-                        <> help "Output format: json, text, none. Disables interactive UI.")
+                        <> help "Output format. Either 'json', 'text', 'none'. All these disable interactive UI")
                   <*> optional (option str $ long "corpus-dir"
                         <> metavar "PATH"
-                        <> help "Directory to store corpus and coverage data.")
+                        <> help "Directory to save and load corpus and coverage data.")
                   <*> optional (option str $ long "test-mode"
-                        <> help "Test mode to use.")
+                        <> help "Test mode to use. Either 'property', 'assertion', 'dapptest', 'optimization', 'overflow' or 'exploration'" )
                   <*> switch (long "multi-abi"
                         <> help "Use multi-abi mode of testing.")
                   <*> optional (option auto $ long "test-limit"
                         <> metavar "INTEGER"
-                        <> help "Number of sequences of transactions to generate during testing.")
+                        <> help ("Number of sequences of transactions to generate during testing. Default is " ++ show defaultTestLimit))
                   <*> optional (option auto $ long "shrink-limit"
                         <> metavar "INTEGER"
-                        <> help "Number of tries to attempt to shrink a failing sequence of transactions.")
+                        <> help ("Number of tries to attempt to shrink a failing sequence of transactions. Default is " ++ show defaultShrinkLimit))
                   <*> optional (option auto $ long "seq-len"
                         <> metavar "INTEGER"
-                        <> help "Number of transactions to generate during testing.")
+                        <> help ("Number of transactions to generate during testing. Default is " ++ show defaultSequenceLength))
                   <*> optional (option auto $ long "contract-addr"
                         <> metavar "ADDRESS"
-                        <> help "Address to deploy the contract to test.")
+                        <> help ("Address to deploy the contract to test. Default is " ++ show defaultContractAddr))
                   <*> optional (option auto $ long "deployer"
                         <> metavar "ADDRESS"
-                        <> help "Address of the deployer of the contract to test.")
+                        <> help ("Address of the deployer of the contract to test. Default is " ++ show defaultDeployerAddr))
                   <*> many (option auto $ long "sender"
                         <> metavar "ADDRESS"
-                        <> help "Addresses to use for the transactions sent during testing. Can be passed multiple times.")
+                        <> help "Addresses to use for the transactions sent during testing. Can be passed multiple times. Check the documentation to see the default values.")
                   <*> optional (option auto $ long "seed"
                         <> metavar "SEED"
                         <> help "Run with a specific seed.")

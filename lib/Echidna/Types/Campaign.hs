@@ -79,3 +79,12 @@ instance Has GenDict Campaign where
 
 defaultCampaign :: Campaign
 defaultCampaign = Campaign mempty mempty mempty defaultDict False mempty 0 mempty
+
+defaultTestLimit :: Int
+defaultTestLimit = 50000
+
+defaultSequenceLength :: Int
+defaultSequenceLength = 100
+
+defaultShrinkLimit :: Int
+defaultShrinkLimit = 5000
