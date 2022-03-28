@@ -202,7 +202,8 @@ loadSpecified name cs = do
 
   -- Make sure everything is ready to use, then ship it
   when (null abi) $ throwM NoFuncs                              -- < ABI checks
-  when (null tests && isPropertyMode tm) $ throwM NoTests       -- < Test checks
+  when (null tests && (isPropertyMode tm || isDapptestMode tm)) 
+    $ throwM NoTests                                            -- < Test checks
   when (bc == mempty) $ throwM (NoBytecode $ c ^. contractName) -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
