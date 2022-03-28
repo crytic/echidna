@@ -1,0 +1,4 @@
+testMode: dapptest
+testLimit: 1000
+shrinkLimit: 100
+seqLen: 1

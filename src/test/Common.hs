@@ -40,10 +40,11 @@ import Data.SemVer (Version, version, fromText)
 import System.Process (readProcess)
 
 import Echidna (prepareContract)
+import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Campaign (campaign)
-import Echidna.Config (Env(..), EConfig, _econfig, parseConfig, defaultConfig, sConf, cConf)
 import Echidna.Solidity (loadSolTests)
 import Echidna.Test (checkETest)
+import Echidna.Types.Config (Env(..), EConfig, _econfig, sConf, cConf)
 import Echidna.Types.Solidity (quiet)
 import Echidna.Types.Campaign (Campaign, testLimit, shrinkLimit, tests, gasInfo, corpus, coverage)
 import Echidna.Types.Signature (ContractName)
@@ -119,11 +120,11 @@ getResult n c =
     _   -> error "found more than one tests"
 
   where findTest test = case view testType test of
-                          PropertyTest t _      -> t == n
-                          AssertionTest (t,_) _ -> t == n
-                          CallTest t _          -> t == n
-                          OptimizationTest t _  -> t == n
-                          _                     -> False 
+                          PropertyTest t _        -> t == n
+                          AssertionTest _ (t,_) _ -> t == n
+                          CallTest t _            -> t == n
+                          OptimizationTest t _    -> t == n
+                          _                       -> False 
 
 optnFor :: Text -> Campaign -> Maybe TestValue
 optnFor n c = case getResult n c of
