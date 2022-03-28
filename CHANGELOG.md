@@ -2,7 +2,8 @@
 
 ## 2.0.1
 
-* Added Stateless support: compatibility mode to run foundry and dapptool fuzz tests
+* Expanded and improved command-line help (#741)
+* Added dapptest support: compatibility mode to run foundry and dapptool fuzz tests
 * Generate more values closer to the maximum (#736) 
 * Fix TERMINFO path for Nix release builds (#731)
 * Mitigate large memory consumption when replaying corpus (#725)
