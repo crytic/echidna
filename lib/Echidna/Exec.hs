@@ -153,29 +153,29 @@ execTxWithCov :: (MonadState x m, Has VM x) => BytecodeMemo -> Lens' x CoverageM
 execTxWithCov memo l = do
   vm :: VM          <- use hasLens
   cm :: CoverageMap <- use l
-  let (r, vm', cm') = loop vm cm
+  let (r, vm', cm') = loop vm vm cm
   hasLens .= vm'
   l       .= cm'
   return r
   where
     -- | Repeatedly exec a step and add coverage until we have an end result
-    loop :: VM -> CoverageMap -> (VMResult, VM, CoverageMap)
-    loop vm cm = case _result vm of
-      Nothing  -> loop (stepVM vm) (addCoverage vm cm)
-      Just r   -> (r, vm, cm)
+    loop :: VM -> VM -> CoverageMap -> (VMResult, VM, CoverageMap)
+    loop pvm vm cm = case _result vm of
+      Nothing  -> loop vm (stepVM vm) (addCoverage vm False cm)
+      Just r   -> (r, vm, addCoverage pvm True cm)
 
     -- | Execute one instruction on the EVM
     stepVM :: VM -> VM
     stepVM = execState exec1
 
     -- | Add current location to the CoverageMap
-    addCoverage :: VM -> CoverageMap -> CoverageMap
-    addCoverage vm = M.alter
-                       (Just . maybe mempty (S.insert $ currentCovLoc vm))
+    addCoverage :: VM -> Bool -> CoverageMap -> CoverageMap
+    addCoverage vm ends = M.alter
+                       (Just . maybe mempty (S.insert $ currentCovLoc vm ends))
                        (currentMeta vm)
 
     -- | Get the VM's current execution location
-    currentCovLoc vm = (vm ^. state . pc, fromMaybe 0 $ vmOpIx vm, length $ vm ^. frames, Stop)
+    currentCovLoc vm ends = (vm ^. state . pc, fromMaybe 0 $ vmOpIx vm, length $ vm ^. frames, Stop, ends)
 
     -- | Get the current contract's bytecode metadata
     currentMeta vm = fromMaybe (error "no contract information on coverage") $ do

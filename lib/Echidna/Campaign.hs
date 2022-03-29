@@ -177,7 +177,7 @@ execTxOptC t = do
   memo <- use $ hasLens . bcMemo
   res  <- execTxWith vmExcept (execTxWithCov memo cov) t
   let vmr = getResult $ fst res
-  -- Update the coverage map with the proper binary according to the vm result
+  -- Update the coverage map with the proper result according to the vm result
   cov %= mapWithKey (\_ s -> DS.map (set _4 vmr) s)
   -- Update the global coverage map with the union of the result just obtained
   cov %= unionWith DS.union og

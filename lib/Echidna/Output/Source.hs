@@ -23,7 +23,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 
-import Echidna.Types.Coverage (CoverageMap, CoverageInfo)
+import Echidna.Types.Coverage (CoverageMap, CoverageInfo, TxEnded)
 import Echidna.Types.Tx (TxResult(..))
 import Echidna.Types.Signature (getBytecodeMetadata)
 
@@ -52,24 +52,29 @@ ppCoveredCode sc cs s | s == mempty = "Coverage map is empty"
   in T.intercalate "\n" $ map ppFile allFiles
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
-markLines :: V.Vector Text -> M.Map Int [TxResult] -> V.Vector Text
+markLines :: V.Vector Text -> M.Map Int [(TxResult, TxEnded)] -> V.Vector Text
 markLines codeLines resultMap = V.map markLine (V.indexed codeLines)
   where
     markLine (i, codeLine) =
       let results = fromMaybe [] (M.lookup (i+1) resultMap)
-      in pack $ printf "%-4s| %s" (sort $ nub $ getMarker <$> results) (unpack codeLine)
+      in pack $ printf "%-4s| %s" (sort $ simplifyMarkers $ nub $ getMarker <$> results) (unpack codeLine)
 
 -- | Select the proper marker, according to the result of the transaction
-getMarker :: TxResult -> Char
-getMarker ReturnTrue    = '*'
-getMarker ReturnFalse   = '*'
-getMarker Stop          = '*'
-getMarker ErrorRevert   = 'r' 
-getMarker ErrorOutOfGas = 'o'
-getMarker _             = 'e'
+getMarker :: (TxResult, TxEnded) -> Char
+getMarker (ReturnTrue,  _)   = '*'
+getMarker (ReturnFalse, _)   = '*'
+getMarker (Stop, _)          = '*'
+getMarker (ErrorRevert, b)   = if b then 'R' else 'r'
+getMarker (ErrorOutOfGas, _) = 'o'
+getMarker _                  = 'e'
+
+simplifyMarkers :: String -> String
+simplifyMarkers cs = if 'R' `elem` cs && 'r' `elem` cs
+  then filter (/= 'r') cs
+  else cs
 
 -- | Given a source cache, a coverage map, a contract returns a list of covered lines
-srcMapCov :: SourceCache -> CoverageMap -> [SolcContract] -> M.Map FilePathText (M.Map Int [TxResult])
+srcMapCov :: SourceCache -> CoverageMap -> [SolcContract] -> M.Map FilePathText (M.Map Int [(TxResult, TxEnded)])
 srcMapCov sc s contracts =
   M.map (M.fromListWith (++)) .
   M.fromListWith (++) .
@@ -84,13 +89,13 @@ srcMapCov sc s contracts =
       M.lookup (getBytecodeMetadata $ c ^. runtimeCode) s -- Get the coverage information of the current contract
 
 -- | Given a source cache, a mapped line, return a tuple with the filename, number of line and tx result
-srcMapCodePosResult :: SourceCache -> (SrcMap, TxResult) -> Maybe (Text, Int, TxResult)
+srcMapCodePosResult :: SourceCache -> (SrcMap, (TxResult, TxEnded)) -> Maybe (Text, Int, (TxResult, TxEnded))
 srcMapCodePosResult sc (n, r) = case srcMapCodePos sc n of
   Just (t,n') -> Just (t,n',r)
   _           -> Nothing
 
 -- | Given a contract, and tuple as coverage, return the corresponding mapped line (if any)
-srcMapForOpLocation :: SolcContract -> CoverageInfo -> Maybe (SrcMap, TxResult)
-srcMapForOpLocation c (_,n,_,r) = case preview (ix n) (c ^. runtimeSrcmap <> c ^. creationSrcmap) of
-  Just sm -> Just (sm,r)
+srcMapForOpLocation :: SolcContract -> CoverageInfo -> Maybe (SrcMap, (TxResult, TxEnded))
+srcMapForOpLocation c (_,n,_,r,b) = case preview (ix n) (c ^. runtimeSrcmap <> c ^. creationSrcmap) of
+  Just sm -> Just (sm,(r,b))
   _       -> Nothing
