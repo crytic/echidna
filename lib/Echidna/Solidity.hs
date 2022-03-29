@@ -204,7 +204,7 @@ loadSpecified name cs = do
   when (null abi) $ throwM NoFuncs                              -- < ABI checks
   when (null tests && isPropertyMode tm)                        -- < Properties checks
     $ throwM NoTests
-  when (null neFuns && isDapptestMode tm)                       -- < Dapptests checks
+  when (null abiMapping && isDapptestMode tm)                   -- < Dapptests checks
     $ throwM NoTests
   when (bc == mempty) $ throwM (NoBytecode $ c ^. contractName) -- Bytecode check
   case find (not . null . snd) tests of
