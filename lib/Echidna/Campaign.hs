@@ -211,7 +211,7 @@ randseq (n,txs) ql o w = do
     -- Randomly generate new random transactions
     gtxs <- replicateM ql $ runReaderT (genTxM memo o) (w, txConf)
     -- Generate a random mutator
-    cmut <- seqMutators (fromConsts cs)
+    cmut <- if ql == 1 then seqMutatorsStateless (fromConsts cs) else seqMutatorsStateful (fromConsts cs)
     -- Fetch the mutator
     let mut = getCorpusMutation cmut
     if DS.null ctxs then
