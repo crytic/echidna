@@ -3,13 +3,13 @@
 ## 2.0.1
 
 * Expanded and improved command-line help (#741)
-* Added dapptest support: compatibility mode to run foundry and dapptool fuzz tests
+* Added dapptest support: compatibility mode to run foundry and dapptool fuzz tests (#733, #745)
 * Generate more values closer to the maximum (#736) 
 * Fix TERMINFO path for Nix release builds (#731)
 * Mitigate large memory consumption when replaying corpus (#725)
 * Fix --shrink-limit to change shrink limit instead of test limit (#728)
 * Correctly show lines with multiple types of coverage
-* Restored nix support
+* Restored nix support (#717, #743)
 
 ## 2.0.0
 
