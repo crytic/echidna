@@ -73,8 +73,8 @@ getCorpusMutation (RandomPrepend m) = mut (mutator m)
 getCorpusMutation RandomSplice = selectAndCombine spliceAtRandom
 getCorpusMutation RandomInterleave = selectAndCombine interleaveAtRandom
 
-seqMutators :: MonadRandom m => MutationConsts Rational -> m CorpusMutation
-seqMutators (c1, c2, c3, c4) = weighted
+seqMutatorsStateful :: MonadRandom m => MutationConsts Rational -> m CorpusMutation
+seqMutatorsStateful (c1, c2, c3, c4) = weighted
   [(RandomAppend Identity,   800),
    (RandomPrepend Identity,  200),
 
@@ -93,3 +93,15 @@ seqMutators (c1, c2, c3, c4) = weighted
    (RandomSplice,            c4),
    (RandomInterleave,        c4)
  ]
+
+seqMutatorsStateless :: MonadRandom m => MutationConsts Rational -> m CorpusMutation
+seqMutatorsStateless (c1, c2, _, _) = weighted
+  [(RandomAppend Identity,   800),
+   (RandomPrepend Identity,  200),
+
+   (RandomAppend Shrinking,  c1),
+   (RandomAppend Mutation,   c2),
+
+   (RandomPrepend Shrinking, c1),
+   (RandomPrepend Mutation,  c2)
+  ]
