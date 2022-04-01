@@ -2,6 +2,7 @@
 
 ## 2.0.1
 
+* Optimized stateless mutators (#747)
 * Expanded and improved command-line help (#741)
 * Added dapptest support: compatibility mode to run foundry and dapptool fuzz tests (#733, #745)
 * Generate more values closer to the maximum (#736) 
