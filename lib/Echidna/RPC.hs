@@ -108,15 +108,15 @@ matchSignatureAndCreateTx _ _                                = []
 
 -- | Main function: takes a filepath where the initialization sequence lives and returns
 -- | the initialized VM along with a list of Addr's to put in GenConf
-loadEthenoBatch :: FilePath -> IO VM
-loadEthenoBatch fp = do
+loadEthenoBatch :: Bool -> FilePath -> IO VM
+loadEthenoBatch ffi fp = do
   bs <- eitherDecodeFileStrict fp
   case bs of
     Left e -> throwM $ EthenoException e
     Right (ethenoInit :: [Etheno]) -> do
       -- Execute contract creations and initial transactions,
       let initVM = mapM execEthenoTxs ethenoInit
-      execStateT initVM (initialVM False) -- No FFI is allowed here
+      execStateT initVM (initialVM ffi)
 
 initAddress :: MonadState VM m => Addr -> m ()
 initAddress addr = do

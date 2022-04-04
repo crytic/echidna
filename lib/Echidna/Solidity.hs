@@ -184,7 +184,7 @@ loadSpecified solConf name cs = do
   -- need to use snd to add to ABI dict
   let vm = initialVM ffi & block . gaslimit .~ fromInteger unlimitedGasPerBlock
                          & block . maxCodeSize .~ fromInteger mcs
-  blank' <- maybe (pure vm) loadEthenoBatch fp
+  blank' <- maybe (pure vm) (loadEthenoBatch ffi) fp
   let blank = populateAddresses (Set.insert d ads) bala blank'
 
   unless (null con || isJust fp) (throwM $ ConstructorArgs (show con))
