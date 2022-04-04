@@ -13,10 +13,16 @@ import Data.Set qualified as S
 import Data.Word (Word64)
 
 import EVM
-import EVM.Exec (exec, ethrunAddress)
-import EVM.Types (Expr(ConcreteBuf, Lit))
-import EVM.FeeSchedule (berlin)
+import EVM.ABI
 import EVM.Concrete (createAddress)
+import EVM.Exec (exec, ethrunAddress)
+import EVM.Expr (litAddr)
+import EVM.Types (Expr(ConcreteBuf, Lit), hexText)
+import EVM.FeeSchedule
+import Data.Text qualified as T
+import Data.Vector qualified as V
+import System.Process (readProcessWithExitCode)
+import System.IO.Unsafe (unsafePerformIO)
 
 import Echidna.Events (emptyEvents)
 import Echidna.Transaction
@@ -26,7 +32,6 @@ import Echidna.Types.Campaign
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Signature (BytecodeMemo, lookupBytecodeMetadata)
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
-import EVM.Expr (litAddr)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
@@ -99,6 +104,13 @@ checkAndHandleQuery l vmBeforeTx vmResult' onErr executeTx tx' gasLeftBeforeTx g
       Just (PleaseFetchSlot _ _ continuation) -> do
         -- Use the zero slot
         l %= execState (continuation 0)
+        continueAfterQuery
+
+      -- Execute a FFI call
+      Just (PleaseDoFFI (cmd : args) continuation) -> do
+        -- WARNING: this uses unsafePerformIO to avoid using IO here explicitely
+        let (_, stdout, _) = unsafePerformIO $ readProcessWithExitCode cmd args ""
+        l %= execState (continuation $ encodeAbiValue $ AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.pack $ stdout]))
         continueAfterQuery
 
       -- No queries to answer
