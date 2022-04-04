@@ -116,7 +116,7 @@ loadEthenoBatch fp = do
     Right (ethenoInit :: [Etheno]) -> do
       -- Execute contract creations and initial transactions,
       let initVM = mapM execEthenoTxs ethenoInit
-      execStateT initVM initialVM
+      execStateT initVM (initialVM False) -- No FFI is allowed here
 
 initAddress :: MonadState VM m => Addr -> m ()
 initAddress addr = do

@@ -13,8 +13,10 @@ import Data.Set qualified as S
 import Data.Word (Word64)
 
 import EVM
-import EVM.Exec (exec, vmForEthrunCreation)
+import EVM.Exec (exec, ethrunAddress)
 import EVM.Types (Expr(ConcreteBuf, Lit))
+import EVM.FeeSchedule (berlin)
+import EVM.Concrete (createAddress)
 
 import Echidna.Events (emptyEvents)
 import Echidna.Transaction
@@ -24,6 +26,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Signature (BytecodeMemo, lookupBytecodeMetadata)
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
+import EVM.Expr (litAddr)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
@@ -174,7 +177,36 @@ execTxWithCov memo = do
       bc <- viewBuffer buffer
       pure $ lookupBytecodeMetadata memo bc
 
-initialVM :: VM
-initialVM = vmForEthrunCreation mempty & block . timestamp .~ Lit initialTimestamp
-                                       & block . number .~ initialBlockNumber
-                                       & env . contracts .~ mempty       -- fixes weird nonce issues
+initialVM :: Bool -> VM
+initialVM ffi = vmForEthrunCreation ffi
+  & block . timestamp .~ Lit initialTimestamp
+  & block . number .~ initialBlockNumber
+  & env . contracts .~ mempty       -- fixes weird nonce issues
+
+vmForEthrunCreation :: Bool -> VM
+vmForEthrunCreation ffi =
+  makeVm $ VMOpts
+    { vmoptContract = initialContract (InitCode mempty mempty)
+    , vmoptCalldata = mempty
+    , vmoptValue = Lit 0
+    , vmoptStorageBase = Concrete
+    , vmoptAddress = createAddress ethrunAddress 1
+    , vmoptCaller = litAddr ethrunAddress
+    , vmoptOrigin = ethrunAddress
+    , vmoptCoinbase = 0
+    , vmoptNumber = 0
+    , vmoptTimestamp = Lit 0
+    , vmoptBlockGaslimit = 0
+    , vmoptGasprice = 0
+    , vmoptPrevRandao = 42069
+    , vmoptGas = 0xffffffffffffffff
+    , vmoptGaslimit = 0xffffffffffffffff
+    , vmoptBaseFee = 0
+    , vmoptPriorityFee = 0
+    , vmoptMaxCodeSize = 0xffffffff
+    , vmoptSchedule = EVM.FeeSchedule.berlin
+    , vmoptChainId = 1
+    , vmoptCreate = False
+    , vmoptTxAccessList = mempty
+    , vmoptAllowFFI = ffi
+    }

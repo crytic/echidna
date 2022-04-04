@@ -77,6 +77,7 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
                        , _testMode        :: String           -- ^ Testing mode
                        , _testDestruction :: Bool             -- ^ Whether or not to add a property to detect contract destruction
+                       , _allowFFI        :: Bool             -- ^ Whether or not to allow FFI hevm cheatcode
                        , _methodFilter    :: Filter           -- ^ List of methods to avoid or include calling during a campaign
                        }
 makeLenses ''SolConf
