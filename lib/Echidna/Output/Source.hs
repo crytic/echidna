@@ -96,6 +96,6 @@ srcMapCodePosResult sc (n, r) = case srcMapCodePos sc n of
 
 -- | Given a contract, and tuple as coverage, return the corresponding mapped line (if any)
 srcMapForOpLocation :: SolcContract -> CoverageInfo -> Maybe (SrcMap, (TxResult, TxEnded))
-srcMapForOpLocation c (_,n,_,r,b) = case preview (ix n) (c ^. runtimeSrcmap <> c ^. creationSrcmap) of
+srcMapForOpLocation c (_,n,_,r,b,_) = case preview (ix n) (c ^. runtimeSrcmap <> c ^. creationSrcmap) of
   Just sm -> Just (sm,(r,b))
   _       -> Nothing
