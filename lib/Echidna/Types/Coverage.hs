@@ -13,8 +13,12 @@ type PC = Int
 type OpIx = Int
 -- Stack size from the EVM
 type FrameCount = Int
+-- Has the transaction ended
+type TxEnded = Bool
+-- How many reverts we skipped
+type RevertsSkipped = Int
 -- Basic coverage information
-type CoverageInfo = (PC, OpIx, FrameCount, TxResult)
+type CoverageInfo = (PC, OpIx, FrameCount, TxResult, TxEnded, RevertsSkipped)
 -- Map with the coverage information needed for fuzzing and source code printing 
 type CoverageMap = Map ByteString (Set CoverageInfo)
 

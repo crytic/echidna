@@ -14,7 +14,8 @@ import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import EVM
 import EVM.Exec (exec, vmForEthrunCreation)
-import EVM.Types (Buffer(..))
+import EVM.Types (Buffer(..), maybeLitWord)
+import EVM.Op (Op(..))
 import EVM.Symbolic (litWord)
 
 import qualified Data.Map as M
@@ -22,7 +23,7 @@ import qualified Data.Set as S
 
 import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
-import Echidna.Types.Coverage (CoverageMap)
+import Echidna.Types.Coverage (CoverageMap, RevertsSkipped)
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
 
 import Echidna.Types.Signature (BytecodeMemo, lookupBytecodeMetadata)
@@ -148,34 +149,47 @@ handleErrorsAndConstruction onErr vmResult' vmBeforeTx tx' = case (vmResult', tx
 execTx :: (MonadState x m, Has VM x, MonadThrow m) => Tx -> m (VMResult, Int)
 execTx = execTxWith vmExcept $ liftSH exec
 
+skipRevert :: VM -> VM
+skipRevert jvm = case stk of
+  (x:y:xs) -> case maybeLitWord y of
+                    Just y' -> chstk jvm (x : litWord (1 - y') : xs)
+                    _       -> error "symbolic value?"
+  _        -> error "invalid stack?"
+  where stk = jvm ^. state . stack
+        chstk vm xs = set (state . stack) xs vm
+
+willJumpi :: VM -> Bool
+willJumpi vm = vmOp vm == Just OpJumpi
+
 -- | Execute a transaction, logging coverage at every step.
 execTxWithCov :: (MonadState x m, Has VM x) => BytecodeMemo -> Lens' x CoverageMap -> m VMResult
 execTxWithCov memo l = do
   vm :: VM          <- use hasLens
   cm :: CoverageMap <- use l
-  let (r, vm', cm') = loop vm cm
+  let (r, vm', cm') = loop vm vm 0 cm
   hasLens .= vm'
   l       .= cm'
   return r
   where
     -- | Repeatedly exec a step and add coverage until we have an end result
-    loop :: VM -> CoverageMap -> (VMResult, VM, CoverageMap)
-    loop vm cm = case _result vm of
-      Nothing  -> loop (stepVM vm) (addCoverage vm cm)
-      Just r   -> (r, vm, cm)
+    loop :: VM -> VM -> RevertsSkipped -> CoverageMap -> (VMResult, VM, CoverageMap)
+    loop jvm vm rs cm = case _result vm of
+      Nothing                                       -> loop (if willJumpi vm then vm else jvm) (stepVM vm) rs (addCoverage vm False rs cm)
+      Just f@(VMFailure (Revert _)) | willJumpi jvm -> let (_, x, y) = loop vm (stepVM $ skipRevert jvm) (rs+1) (addCoverage jvm False (rs+1) cm) in (f, x, y)
+      Just r                                        -> (r, vm, addCoverage vm True rs cm)
 
     -- | Execute one instruction on the EVM
     stepVM :: VM -> VM
     stepVM = execState exec1
 
     -- | Add current location to the CoverageMap
-    addCoverage :: VM -> CoverageMap -> CoverageMap
-    addCoverage vm = M.alter
-                       (Just . maybe mempty (S.insert $ currentCovLoc vm))
+    addCoverage :: VM -> Bool -> RevertsSkipped -> CoverageMap -> CoverageMap
+    addCoverage vm ends rs = M.alter
+                       (Just . maybe mempty (S.insert $ currentCovLoc vm ends rs))
                        (currentMeta vm)
 
     -- | Get the VM's current execution location
-    currentCovLoc vm = (vm ^. state . pc, fromMaybe 0 $ vmOpIx vm, length $ vm ^. frames, Stop)
+    currentCovLoc vm ends rs = (vm ^. state . pc, fromMaybe 0 $ vmOpIx vm, length $ vm ^. frames, Stop, ends, rs)
 
     -- | Get the current contract's bytecode metadata
     currentMeta vm = fromMaybe (error "no contract information on coverage") $ do
