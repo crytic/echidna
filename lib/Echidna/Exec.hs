@@ -14,9 +14,9 @@ import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import EVM
 import EVM.Exec (exec, vmForEthrunCreation)
-import EVM.Types (Buffer(..), SymWord(..), maybeLitWord)
+import EVM.Types (Buffer(..), maybeLitWord)
 import EVM.Op (Op(..))
-import EVM.Symbolic (litWord, forceLit)
+import EVM.Symbolic (litWord)
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -152,11 +152,11 @@ execTx = execTxWith vmExcept $ liftSH exec
 skipRevert :: VM -> VM
 skipRevert jvm = case stk of
   (x:y:xs) -> case maybeLitWord y of
-                    Just y' -> if (y' == 0) then chstk jvm (x:(litWord 1):xs) else chstk jvm (x:(litWord 0):xs)
+                    Just y' -> chstk jvm (x : litWord (1 - y') : xs)
                     _       -> error "symbolic value?"
   _        -> error "invalid stack?"
-  where stk = jvm ^. state ^. stack
-        chstk vm xs = vm { _state = ((vm ^. state) { _stack = xs }) } 
+  where stk = jvm ^. state . stack
+        chstk vm xs = set (state . stack) xs vm
 
 willJumpi :: VM -> Bool
 willJumpi vm = vmOp vm == Just OpJumpi
