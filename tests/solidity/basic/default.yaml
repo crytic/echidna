@@ -50,6 +50,8 @@ cryticArgs: []
 quiet: false
 #initialize the blockchain with some data
 initialize: null
+#initialize the blockchain with some predeployed contracts in some addresses
+deploy: []
 #whether ot not to use the multi-abi mode of testing
 multi-abi: false
 #timeout controls test timeout settings

@@ -112,6 +112,7 @@ instance FromJSON EConfigWithUsage where
                              <*> v ..:? "solcLibs"        ..!= []
                              <*> v ..:? "quiet"           ..!= False
                              <*> v ..:? "initialize"      ..!= Nothing
+                             <*> v ..:? "deploy"          ..!= []
                              <*> v ..:? "multi-abi"       ..!= False
                              <*> mode
                              <*> v ..:? "testDestruction" ..!= False

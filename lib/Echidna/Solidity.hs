@@ -170,7 +170,7 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  SolConf ca d ads bala balc mcs pref _ _ libs _ fp ma tm _ fs <- view hasLens
+  SolConf ca d ads bala balc mcs pref _ _ libs _ fp dp ma tm _ fs <- view hasLens
   TestConf _ _ <- view hasLens
 
   -- generate the complete abi mapping
@@ -216,19 +216,21 @@ loadSpecified name cs = do
       --(ctd, _) <- if null atd then return ([], []) else contracts $ NE.fromList $ map show atd
       --let mainContract = head $ map (\x -> head $ T.splitOn "." $ last $ T.splitOn "-" $ head $ T.splitOn ":" (view contractName x)) ctd
       --let ctd' = filter (\x -> (last $ T.splitOn ":" (view contractName x)) == mainContract) ctd
-      --vm' <- deployContracts (zip atd ctd') ca vm
+      -- additional contract deployment
+      cs' <- mapM (\n -> choose cs (Just n)) $ map (T.pack . snd) dp
+      vm1 <- deployContracts (zip (map fst dp) cs') ca vm0
       -- main contract deployment
       let deployment = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
-      vm1 <- execStateT deployment vm0
-      when (isNothing $ currentContract vm1) (throwM $ DeploymentFailed ca)
+      vm2 <- execStateT deployment vm1
+      when (isNothing $ currentContract vm2) (throwM $ DeploymentFailed ca)
 
       -- Run
       let transaction = execTx $ uncurry basicTx setUpFunction d ca (fromInteger unlimitedGasPerBlock) (0, 0)
-      vm2 <- if isDapptestMode tm && setUpFunction `elem` abi then execStateT transaction vm1 else return vm1
+      vm3 <- if isDapptestMode tm && setUpFunction `elem` abi then execStateT transaction vm2 else return vm2
 
       case vm2 ^. result of
         Just (VMFailure _) -> throwM SetUpCallFailed
-        _                  -> return (vm2, unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
+        _                  -> return (vm3, unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
