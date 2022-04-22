@@ -217,7 +217,7 @@ loadSpecified name cs = do
       --let mainContract = head $ map (\x -> head $ T.splitOn "." $ last $ T.splitOn "-" $ head $ T.splitOn ":" (view contractName x)) ctd
       --let ctd' = filter (\x -> (last $ T.splitOn ":" (view contractName x)) == mainContract) ctd
       -- additional contract deployment
-      cs' <- mapM (\n -> choose cs (Just n)) $ map (T.pack . snd) dp
+      cs' <- mapM ((choose cs . Just) . T.pack . snd) dp
       vm1 <- deployContracts (zip (map fst dp) cs') ca vm0
       -- main contract deployment
       let deployment = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
