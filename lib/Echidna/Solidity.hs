@@ -228,7 +228,7 @@ loadSpecified name cs = do
       let transaction = execTx $ uncurry basicTx setUpFunction d ca (fromInteger unlimitedGasPerBlock) (0, 0)
       vm3 <- if isDapptestMode tm && setUpFunction `elem` abi then execStateT transaction vm2 else return vm2
 
-      case vm2 ^. result of
+      case vm3 ^. result of
         Just (VMFailure _) -> throwM SetUpCallFailed
         _                  -> return (vm3, unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
 
