@@ -77,7 +77,7 @@ Our tool signals each execution trace in the corpus with the following "line mar
 
 ### Support for smart contract build systems
 
-Echidna can test contracts compiled with different smart contract build systems, including [Truffle](https://truffleframework.com/) or [hardhat](https://hardhat.org/) using [crytic-compile](https://github.com/crytic/crytic-compile). To invoke echidna with the current compilation framework, use `echidna-test .`. 
+Echidna can test contracts compiled with different smart contract build systems, including [Truffle](https://truffleframework.com/) or [hardhat](https://hardhat.org/) using [crytic-compile](https://github.com/crytic/crytic-compile). To invoke echidna with the current compilation framework, use `echidna-test .`.
 
 On top of that, Echidna supports two modes of testing complex contracts. Firstly, one can [describe an initialization procedure with Truffle and Etheno](https://github.com/crytic/building-secure-contracts/blob/master/program-analysis/echidna/end-to-end-testing.md) and use that as the base state for Echidna. Secondly, echidna can call into any contract with a known ABI by passing in the corresponding solidity source in the CLI. Use `multi-abi: true` in your config to turn this on.
 
@@ -285,7 +285,7 @@ We can also use Echidna to reproduce research examples from smart contract fuzzi
 | Paper Title | Venue | Publication Date |
 | --- | --- | --- |
 | [echidna-parade: Diverse multicore smart contract fuzzing](https://agroce.github.io/issta21.pdf) | [ISSTA 2021](https://conf.researchr.org/home/issta-2021) | July 2021 |
-| [Echidna: Effective, usable, and fast fuzzing for smart contracts](papers/echidna_issta2020.pdf) | [ISSTA 2020](https://conf.researchr.org/home/issta-2020) | July 2020 |
+| [Echidna: Effective, usable, and fast fuzzing for smart contracts](https://agroce.github.io/issta20.pdf) | [ISSTA 2020](https://conf.researchr.org/home/issta-2020) | July 2020 |
 | [Echidna: A Practical Smart Contract Fuzzer](papers/echidna_fc_poster.pdf) | [FC 2020](https://fc20.ifca.ai/program.html) | Feb 2020 |
 
 If you are using Echidna for academic work, consider applying to the [Crytic $10k Research Prize](https://blog.trailofbits.com/2019/11/13/announcing-the-crytic-10k-research-prize/).
