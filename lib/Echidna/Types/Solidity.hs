@@ -9,7 +9,6 @@ module Echidna.Types.Solidity where
 
 import Control.Lens
 import Control.Exception (Exception)
-import Data.ByteString   (ByteString)
 import Data.Text         (Text)
 
 import EVM.Solidity
