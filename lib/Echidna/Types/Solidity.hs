@@ -74,7 +74,7 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
                        , _initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
                        , _deployContracts :: [(Addr, String)] -- ^ List of contracts to deploy in specific addresses
-                       , _deployBytecodes :: [(Addr, ByteString)] -- ^ List of contracts to deploy in specific addresses 
+                       , _deployBytecodes :: [(Addr, Text)]   -- ^ List of contracts to deploy in specific addresses 
                        , _multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
                        , _testMode        :: String           -- ^ Testing mode
                        , _testDestruction :: Bool             -- ^ Whether or not to add a property to detect contract destruction
