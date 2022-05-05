@@ -9,6 +9,7 @@ module Echidna.Types.Solidity where
 
 import Control.Lens
 import Control.Exception (Exception)
+import Data.ByteString   (ByteString)
 import Data.Text         (Text)
 
 import EVM.Solidity
@@ -72,7 +73,8 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _solcLibs        :: [String]         -- ^ List of libraries to load, in order.
                        , _quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
                        , _initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
-                       , _deploy          :: [(Addr, String)] -- ^ List of contracts to deploy in specific addresses
+                       , _deployContracts :: [(Addr, String)] -- ^ List of contracts to deploy in specific addresses
+                       , _deployBytecodes :: [(Addr, ByteString)] -- ^ List of contracts to deploy in specific addresses 
                        , _multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
                        , _testMode        :: String           -- ^ Testing mode
                        , _testDestruction :: Bool             -- ^ Whether or not to add a property to detect contract destruction

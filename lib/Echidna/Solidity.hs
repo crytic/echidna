@@ -30,12 +30,12 @@ import Echidna.Exec               (execTx, initialVM)
 import Echidna.Events             (EventMap)
 import Echidna.Test               (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
 import Echidna.RPC                (loadEthenoBatch)
-import Echidna.Types.Solidity
+import Echidna.Types.Solidity     hiding (deployBytecodes, deployContracts)
 import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
 import Echidna.Types.Tx           (TxConf, basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.Test         (TestConf(..), EchidnaTest(..))
 import Echidna.Types.World        (World(..))
-import Echidna.Fetch              (deployContracts)
+import Echidna.Fetch              (deployContracts, deployBytecodes)
 import Echidna.Processor
 
 import EVM hiding (contracts, path)
@@ -170,7 +170,7 @@ loadSpecified name cs = do
     unless q . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  SolConf ca d ads bala balc mcs pref _ _ libs _ fp dp ma tm _ fs <- view hasLens
+  SolConf ca d ads bala balc mcs pref _ _ libs _ fp dpc dpb ma tm _ fs <- view hasLens
   TestConf _ _ <- view hasLens
 
   -- generate the complete abi mapping
@@ -212,25 +212,26 @@ loadSpecified name cs = do
     Nothing    -> do
       -- library deployment
       vm0 <- deployContracts (zip [addrLibrary ..] ls) d blank
-      -- additional contracts deployment
-      --(ctd, _) <- if null atd then return ([], []) else contracts $ NE.fromList $ map show atd
-      --let mainContract = head $ map (\x -> head $ T.splitOn "." $ last $ T.splitOn "-" $ head $ T.splitOn ":" (view contractName x)) ctd
-      --let ctd' = filter (\x -> (last $ T.splitOn ":" (view contractName x)) == mainContract) ctd
-      -- additional contract deployment
-      cs' <- mapM ((choose cs . Just) . T.pack . snd) dp
-      vm1 <- deployContracts (zip (map fst dp) cs') ca vm0
+
+      -- additional contract deployment (by name)
+      cs' <- mapM ((choose cs . Just) . T.pack . snd) dpc
+      vm1 <- deployContracts (zip (map fst dpc) cs') d vm0
+
+      -- additional contract deployment (bytecode)
+      vm2 <- deployBytecodes dpb d vm1
+
       -- main contract deployment
       let deployment = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
-      vm2 <- execStateT deployment vm1
+      vm3 <- execStateT deployment vm2
       when (isNothing $ currentContract vm2) (throwM $ DeploymentFailed ca)
 
       -- Run
       let transaction = execTx $ uncurry basicTx setUpFunction d ca (fromInteger unlimitedGasPerBlock) (0, 0)
-      vm3 <- if isDapptestMode tm && setUpFunction `elem` abi then execStateT transaction vm2 else return vm2
+      vm4 <- if isDapptestMode tm && setUpFunction `elem` abi then execStateT transaction vm3 else return vm3
 
-      case vm3 ^. result of
+      case vm4 ^. result of
         Just (VMFailure _) -> throwM SetUpCallFailed
-        _                  -> return (vm3, unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
+        _                  -> return (vm4, unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
