@@ -14,12 +14,12 @@ import Tests.Overflow (overflowTests)
 import Tests.Research (researchTests)
 import Tests.Values (valuesTests)
 import Tests.Seed (seedTests)
+import Tests.Dapptest (dapptestTests)
 
 main :: IO ()
 main = withCurrentDirectory "./tests/solidity" . defaultMain $
          testGroup "Echidna"
            [ configTests
-           , researchTests
            , compilationTests
            , seedTests
            , integrationTests
@@ -30,5 +30,6 @@ main = withCurrentDirectory "./tests/solidity" . defaultMain $
            , overflowTests
            , optimizationTests
            , researchTests
+           , dapptestTests
            , encodingJSONTests
            ]

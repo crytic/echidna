@@ -38,6 +38,7 @@ data SolException = BadAddr Addr
                   | OnlyTests
                   | ConstructorArgs String
                   | DeploymentFailed Addr
+                  | SetUpCallFailed 
                   | NoCryticCompile
                   | InvalidMethodFilters Filter
                   | OutdatedSolcVersion Version
@@ -58,6 +59,7 @@ instance Show SolException where
     (ConstructorArgs s)      -> "Constructor arguments are required: " ++ s
     NoCryticCompile          -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
     (InvalidMethodFilters f) -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
+    SetUpCallFailed          -> "Calling the setUp() funciton failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
     (DeploymentFailed a)     -> "Deploying the contract " ++ show a ++ " failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
     OutdatedSolcVersion v    -> "Solc version " ++ toString v ++ " detected. Echidna doesn't support versions of solc before " ++ toString minSupportedSolcVersion ++ ". Please use a newer version."
 
@@ -87,4 +89,8 @@ makeLenses ''SolConf
 -- | List of contract names from every source cache
 type SourceCaches = [([ContractName], SourceCache)]
 
+defaultContractAddr :: Addr
+defaultContractAddr = 0x00a329c0648769a73afac7f9381e08fb43dbea72
 
+defaultDeployerAddr :: Addr
+defaultDeployerAddr = 0x30000 

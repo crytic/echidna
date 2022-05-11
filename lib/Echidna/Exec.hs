@@ -123,14 +123,16 @@ handleErrorsAndConstruction onErr vmResult' vmBeforeTx tx' = case (vmResult', tx
   (Reversion, _) -> do
     tracesBeforeVMReset <- use $ hasLens . traces
     codeContractBeforeVMReset <- use $ hasLens . state . codeContract
-    calldataBeforeReset <- use $ hasLens . state . calldata
+    calldataBeforeVMReset <- use $ hasLens . state . calldata
+    callvalueBeforeVMReset <- use $ hasLens . state . callvalue
     -- If a transaction reverts reset VM to state before the transaction.
     hasLens .= vmBeforeTx
     -- Undo reset of some of the VM state.
     -- Otherwise we'd loose all information about the reverted transaction like
     -- contract address, calldata, result and traces.
     hasLens . result ?= vmResult'
-    hasLens . state . calldata .= calldataBeforeReset
+    hasLens . state . calldata .= calldataBeforeVMReset
+    hasLens . state . callvalue .= callvalueBeforeVMReset 
     hasLens . traces .= tracesBeforeVMReset
     hasLens . state . codeContract .= codeContractBeforeVMReset
   (VMFailure x, _) -> onErr x

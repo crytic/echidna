@@ -89,9 +89,9 @@ genValue mv ds ps sc =
     g <- oftenUsually randValue $ rElem (0 NE.:| ds')
     fromIntegral <$> g
   else do
-    g <- usuallyRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
+    g <- usuallyVeryRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
     fromIntegral <$> g
-  where randValue = getRandomR (1 :: Integer, fromIntegral mv)
+  where randValue = getRandomR (0 :: Integer, fromIntegral mv)
         sig = (hashSig . encodeSig . signatureCall) sc
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).

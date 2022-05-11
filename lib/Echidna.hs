@@ -16,7 +16,7 @@ import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Solidity (SourceCache, SolcContract)
 
 import Echidna.ABI
-import Echidna.Config hiding (cfg)
+import Echidna.Types.Config hiding (cfg)
 import Echidna.Types.Solidity
 import Echidna.Types.Campaign
 import Echidna.Types.Random

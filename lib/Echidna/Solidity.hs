@@ -28,11 +28,11 @@ import System.FilePath.Posix      ((</>))
 import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec               (execTx, initialVM)
 import Echidna.Events             (EventMap)
-import Echidna.Test               (createTests, isAssertionMode, isPropertyMode)
+import Echidna.Test               (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
 import Echidna.RPC                (loadEthenoBatch)
 import Echidna.Types.Solidity
 import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
-import Echidna.Types.Tx           (TxConf, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
+import Echidna.Types.Tx           (TxConf, basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.Test         (TestConf(..), EchidnaTest(..))
 import Echidna.Types.World        (World(..))
 import Echidna.Fetch              (deployContracts)
@@ -134,6 +134,7 @@ linkLibraries [] = ""
 linkLibraries ls = "--libraries " ++
   iconcatMap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls
 
+-- | Filter methods using a whitelist/blacklist
 filterMethods :: Text -> Filter -> NE.NonEmpty SolSignature -> NE.NonEmpty SolSignature
 filterMethods _  f@(Whitelist [])  _ = error $ show $ InvalidMethodFilters f
 filterMethods cn f@(Whitelist ic) ms = case NE.filter (\s -> encodeSigWithName cn s `elem` ic) ms of
@@ -142,6 +143,12 @@ filterMethods cn f@(Whitelist ic) ms = case NE.filter (\s -> encodeSigWithName c
 filterMethods cn f@(Blacklist ig) ms = case NE.filter (\s -> encodeSigWithName cn s `notElem` ig) ms of
                                          [] -> error $ show $ InvalidMethodFilters f
                                          fs -> NE.fromList fs
+
+-- | Filter methods with arguments, used for dapptest mode
+filterMethodsWithArgs :: NE.NonEmpty SolSignature -> NE.NonEmpty SolSignature
+filterMethodsWithArgs ms = case NE.filter (\(_, xs) -> not $ null xs) ms of
+                             [] -> error "No dapptest tests found" 
+                             fs -> NE.fromList fs
 
 abiOf :: Text -> SolcContract -> NE.NonEmpty SolSignature
 abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^. abiMap) <&> \m -> (m ^. methodName, m ^.. methodInputs . traverse . _2))
@@ -174,13 +181,13 @@ loadSpecified name cs = do
 
 
   -- Filter ABI according to the config options
-  let fabiOfc = filterMethods (c ^. contractName) fs $ abiOf pref c
-  -- Filter again for assertions checking if enabled
+  let fabiOfc = if isDapptestMode tm then filterMethodsWithArgs (abiOf pref c) else filterMethods (c ^. contractName) fs $ abiOf pref c
+  -- Filter again for dapptest tests or assertions checking if enabled
   let neFuns = filterMethods (c ^. contractName) fs (fallback NE.:| funs)
-
   -- Construct ABI mapping for World
   let abiMapping = if ma then M.fromList $ cs <&> \cc -> (getBytecodeMetadata $ cc ^. runtimeCode,  filterMethods (cc ^. contractName) fs $ abiOf pref cc)
                          else M.singleton (getBytecodeMetadata $ c ^. runtimeCode) fabiOfc
+
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
@@ -195,29 +202,40 @@ loadSpecified name cs = do
 
   -- Make sure everything is ready to use, then ship it
   when (null abi) $ throwM NoFuncs                              -- < ABI checks
-  when (null tests && isPropertyMode tm) $ throwM NoTests       -- < Test checks
+  when (null tests && isPropertyMode tm)                        -- < Properties checks
+    $ throwM NoTests
+  when (null abiMapping && isDapptestMode tm)                   -- < Dapptests checks
+    $ throwM NoTests
   when (bc == mempty) $ throwM (NoBytecode $ c ^. contractName) -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       -- library deployment
-      vm <- deployContracts (zip [addrLibrary ..] ls) d blank
+      vm0 <- deployContracts (zip [addrLibrary ..] ls) d blank
       -- additional contracts deployment
       --(ctd, _) <- if null atd then return ([], []) else contracts $ NE.fromList $ map show atd
       --let mainContract = head $ map (\x -> head $ T.splitOn "." $ last $ T.splitOn "-" $ head $ T.splitOn ":" (view contractName x)) ctd
       --let ctd' = filter (\x -> (last $ T.splitOn ":" (view contractName x)) == mainContract) ctd
       --vm' <- deployContracts (zip atd ctd') ca vm
       -- main contract deployment
-      let transaction = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
-      vm'' <- execStateT transaction vm
-      case currentContract vm'' of
-        Just _  -> return (vm'', unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
-        Nothing -> throwM $ DeploymentFailed ca
+      let deployment = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
+      vm1 <- execStateT deployment vm0
+      when (isNothing $ currentContract vm1) (throwM $ DeploymentFailed ca)
+
+      -- Run
+      let transaction = execTx $ uncurry basicTx setUpFunction d ca (fromInteger unlimitedGasPerBlock) (0, 0)
+      vm2 <- if isDapptestMode tm && setUpFunction `elem` abi then execStateT transaction vm1 else return vm1
+
+      case vm2 ^. result of
+        Just (VMFailure _) -> throwM SetUpCallFailed
+        _                  -> return (vm2, unions $ map (view eventMap) cs, neFuns, fst <$> tests, abiMapping)
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
                                       find (Data.Text.isSuffixOf (if T.any (== ':') n then n else ":" `append` n) . view contractName) cs
+        setUpFunction = ("setUp", [])
+
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
 -- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
@@ -242,7 +260,7 @@ prepareForTest (vm, em, a, ts, m) c si = do
       a' = NE.toList a
       ps = filterResults c $ payableFunctions si
       as = if isAssertionMode tm then filterResults c $ asserts si else []
-      cs = filterResults c (constantFunctions si) \\ as
+      cs = if isDapptestMode tm then [] else filterResults c (constantFunctions si) \\ as
       (hm, lm) = prepareHashMaps cs as m
   pure (vm, World s hm lm ps em, createTests tm td ts r a')
 
