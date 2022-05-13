@@ -224,7 +224,7 @@ loadSpecified name cs = do
 
       -- Run
       let transaction = execTx $ uncurry basicTx setUpFunction d ca (fromInteger unlimitedGasPerBlock) (0, 0)
-      vm2 <- if isDapptestMode tm && setUpFunction `elem` abi then execStateT transaction vm1 else return vm1
+      vm2 <- if setUpFunction `elem` abi then execStateT transaction vm1 else return vm1
 
       case vm2 ^. result of
         Just (VMFailure _) -> throwM SetUpCallFailed
