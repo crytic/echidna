@@ -3,6 +3,19 @@ macos_instance:
 
 task:
   name: Build (macOS M1)
+  timeout_in: 120m
+
+  local_cache:
+    folder: $HOME/.local
+    fingerprint_script: echo $CIRRUS_OS && shasum .github/scripts/*
+
+  stack_cache:
+    folder: $HOME/.stack
+    fingerprint_script: echo $CIRRUS_OS
+
+  cabal_cache:
+    folder: $HOME/.cabal
+    fingerprint_script: echo $CIRRUS_OS
 
   install_dependencies_script: brew install automake libtool haskell-stack
   install_secp256k1_script: .github/scripts/install-libsecp256k1.sh
