@@ -1,0 +1,17 @@
+macos_instance:
+  image: ghcr.io/cirruslabs/macos-monterey-xcode:latest
+
+task:
+  name: Build (macOS M1)
+
+  install_dependencies_script: brew install automake libtool haskell-stack
+  install_secp256k1_script: .github/scripts/install-libsecp256k1.sh
+  install_libff_script: .github/scripts/install-libff.sh
+  install_ghc_script: stack --resolver=ghc-8.10.5 setup
+
+  build_dependencies_script: stack build --compiler=ghc-8.10.5 --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib --only-dependencies
+  build_echidna_script: stack install --compiler=ghc-8.10.5 --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+
+  build_release_script: .github/scripts/build-macos-release.sh
+  build_output_artifacts:
+    path: echidna-test.tar.gz
