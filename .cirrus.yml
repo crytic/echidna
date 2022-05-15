@@ -17,13 +17,13 @@ task:
     folder: $HOME/.cabal
     fingerprint_script: echo $CIRRUS_OS
 
-  install_dependencies_script: brew install automake libtool haskell-stack
+  install_dependencies_script: brew install automake libtool haskell-stack gmp
   install_secp256k1_script: .github/scripts/install-libsecp256k1.sh
   install_libff_script: .github/scripts/install-libff.sh
   install_ghc_script: stack --resolver=ghc-8.10.7 setup
 
-  build_dependencies_script: stack build -j 4 --compiler=ghc-8.10.7 --ghc-options="-Werror -j" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib --only-dependencies
-  build_echidna_script: stack install -j 4 --compiler=ghc-8.10.7 --ghc-options="-Werror -j" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+  build_dependencies_script: stack build -j 4 --compiler=ghc-8.10.7 --ghc-options="-Werror -j" --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib --only-dependencies
+  build_echidna_script: stack install -j 4 --compiler=ghc-8.10.7 --ghc-options="-Werror -j" --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib
 
   build_release_script: .github/scripts/build-macos-release.sh
   build_output_artifacts:
