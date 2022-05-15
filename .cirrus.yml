@@ -23,13 +23,13 @@ task:
   install_ghc_script: stack --resolver=ghc-8.10.7 setup
 
   build_dependencies_script: >
-    stack build --compiler=ghc-8.10.7 --ghc-options="-Werror"
-      --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include
-      --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib
+    stack build --compiler=ghc-8.10.7 --ghc-options="-Werror" \
+      --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include \
+      --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib \
       --only-dependencies
   build_echidna_script: >
-    stack install --compiler=ghc-8.10.7 --ghc-options="-Werror"
-      --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include
+    stack install --compiler=ghc-8.10.7 --ghc-options="-Werror" \
+      --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include \
       --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib
 
   build_release_script: .github/scripts/build-macos-release.sh
