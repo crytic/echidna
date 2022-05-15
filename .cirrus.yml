@@ -3,7 +3,7 @@ macos_instance:
 
 task:
   name: Build (macOS M1)
-  timeout_in: 120m
+  timeout_in: 60m
 
   local_cache:
     folder: $HOME/.local
@@ -22,8 +22,15 @@ task:
   install_libff_script: .github/scripts/install-libff.sh
   install_ghc_script: stack --resolver=ghc-8.10.7 setup
 
-  build_dependencies_script: stack build -j 4 --compiler=ghc-8.10.7 --ghc-options="-Werror -j" --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib --only-dependencies
-  build_echidna_script: stack install -j 4 --compiler=ghc-8.10.7 --ghc-options="-Werror -j" --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib
+  build_dependencies_script: >
+    stack build --compiler=ghc-8.10.7 --ghc-options="-Werror"
+      --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include
+      --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib
+      --only-dependencies
+  build_echidna_script: >
+    stack install --compiler=ghc-8.10.7 --ghc-options="-Werror"
+      --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include
+      --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib
 
   build_release_script: .github/scripts/build-macos-release.sh
   build_output_artifacts:
