@@ -13,10 +13,6 @@ task:
     folder: $HOME/.stack
     fingerprint_script: echo $CIRRUS_OS
 
-  cabal_cache:
-    folder: $HOME/.cabal
-    fingerprint_script: echo $CIRRUS_OS
-
   install_dependencies_script: brew install automake libtool haskell-stack gmp
   install_secp256k1_script: .github/scripts/install-libsecp256k1.sh
   install_libff_script: .github/scripts/install-libff.sh
