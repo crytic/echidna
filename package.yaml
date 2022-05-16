@@ -68,13 +68,16 @@ executables:
     source-dirs: src/
     dependencies: echidna
     when:
-        - condition: os(linux)
+        - condition: os(linux) && flag(static)
           ghc-options:
-            - -threaded
             - -static
             - -O2
           cc-options: -static
           ld-options: -static -pthread
+        - condition: os(linux)
+          ghc-options:
+            - -O2
+          ld-options: -pthread
 
 tests:
   echidna-testsuite:
@@ -86,10 +89,19 @@ tests:
       - tasty-hunit
       - tasty-quickcheck
     when:
-        - condition: os(linux)
+        - condition: os(linux) && flag(static)
           ghc-options:
-            - -threaded
             - -static
             - -O2
           cc-options: -static
           ld-options: -static -pthread
+        - condition: os(linux)
+          ghc-options:
+            - -O2
+          ld-options: -pthread
+
+flags:
+  static:
+    description: Pass -static to ghc when linking the stack binary.
+    manual: true
+    default: true
