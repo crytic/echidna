@@ -14,7 +14,7 @@ import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
 import EVM
 import EVM.Exec (exec, vmForEthrunCreation)
-import EVM.Types (Buffer(..))
+import EVM.Types (Buffer(..), Word)
 import EVM.Symbolic (litWord)
 
 import qualified Data.Map as M
@@ -85,15 +85,19 @@ execTxWith onErr executeTx tx' = do
     gasLeftBeforeTx <- use $ hasLens . state . gas
     vmResult' <- executeTx
     gasLeftAfterTx <- use $ hasLens . state . gas
+    checkAndHandleQuery vmBeforeTx vmResult' onErr executeTx tx' gasLeftBeforeTx gasLeftAfterTx
+
+checkAndHandleQuery :: (MonadState x m, Has VM x) => VM -> VMResult -> (Error -> m ()) -> m VMResult -> Tx -> EVM.Types.Word -> EVM.Types.Word -> m (VMResult, Int)
+checkAndHandleQuery vmBeforeTx vmResult' onErr executeTx tx' gasLeftBeforeTx gasLeftAfterTx =
         -- Continue transaction whose execution queried a contract or slot
     let continueAfterQuery = do
           -- Run remaining effects
           vmResult'' <- executeTx
           -- Correct gas usage
           gasLeftAfterTx' <- use $ hasLens . state . gas
-          handleErrorsAndConstruction onErr vmResult'' vmBeforeTx tx'
-          return (vmResult'', fromIntegral $ gasLeftBeforeTx - gasLeftAfterTx')
-    case getQuery vmResult' of
+          checkAndHandleQuery vmBeforeTx vmResult'' onErr executeTx tx' gasLeftBeforeTx gasLeftAfterTx'
+
+    in case getQuery vmResult' of
       -- A previously unknown contract is required
       Just (PleaseFetchContract _ _ continuation) -> do
         -- Use the empty contract
