@@ -10,6 +10,7 @@ module Echidna.Types.Solidity where
 import Control.Lens
 import Control.Exception (Exception)
 import Data.Text         (Text)
+import Data.SemVer       (Version, version, toString)
 
 import EVM.Solidity
 import EVM.Types         (Addr)
@@ -17,6 +18,9 @@ import EVM.Types         (Addr)
 import Echidna.Types.Signature    (ContractName)
 
 import qualified Data.List.NonEmpty  as NE
+
+minSupportedSolcVersion :: Version
+minSupportedSolcVersion = version 0 4 25 [] []
 
 data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
 
@@ -37,6 +41,7 @@ data SolException = BadAddr Addr
                   | SetUpCallFailed 
                   | NoCryticCompile
                   | InvalidMethodFilters Filter
+                  | OutdatedSolcVersion Version
 makePrisms ''SolException
 
 instance Show SolException where
@@ -56,6 +61,8 @@ instance Show SolException where
     (InvalidMethodFilters f) -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
     SetUpCallFailed          -> "Calling the setUp() funciton failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
     (DeploymentFailed a)     -> "Deploying the contract " ++ show a ++ " failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
+    OutdatedSolcVersion v    -> "Solc version " ++ toString v ++ " detected. Echidna doesn't support versions of solc before " ++ toString minSupportedSolcVersion ++ ". Please use a newer version."
+
 
 instance Exception SolException
 

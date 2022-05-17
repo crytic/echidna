@@ -8,11 +8,12 @@ module Echidna.Processor where
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Exception      (Exception)
 import Control.Monad.Catch    (MonadThrow(..))
-import Data.Aeson             ((.:), decode, parseJSON, withEmbeddedJSON, withObject)
+import Data.Aeson             ((.:), (.:?), decode, parseJSON, withEmbeddedJSON, withObject)
 import Data.Aeson.Types       (FromJSON, Parser, Value(String))
 import Data.List              (nub)
-import Data.Maybe             (catMaybes)
+import Data.Maybe             (catMaybes, fromMaybe)
 import Data.Text              (pack, isSuffixOf)
+import Data.SemVer            (Version, fromText)
 import Text.Read              (readMaybe)
 import System.Directory       (findExecutable)
 import System.Process         (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
@@ -66,10 +67,11 @@ data SlitherInfo = SlitherInfo
   , asserts :: M.HashMap ContractName [FunctionName]
   , constantValues  :: M.HashMap ContractName (M.HashMap FunctionName [AbiValue])
   , generationGraph :: M.HashMap ContractName (M.HashMap FunctionName [FunctionName])
+  , solcVersions :: [Version]
   } deriving (Show)
 
 noInfo :: SlitherInfo
-noInfo = SlitherInfo mempty mempty mempty mempty mempty
+noInfo = SlitherInfo mempty mempty mempty mempty mempty []
 
 instance FromJSON SlitherInfo where
   parseJSON = withObject "slitherOutput" $ \o -> do
@@ -92,6 +94,10 @@ instance FromJSON SlitherInfo where
         let constantValues = (fmap . fmap) (catMaybes . concat) constantValues'
         functionsRelations <- o .: "functions_relations"
         generationGraph <- (traverse . traverse) (withObject "relations" (.: "impacts")) functionsRelations
+        solcVersions' <- o .:? "solc_versions"
+        solcVersions <- case mapM (fromText . pack) (fromMaybe [] solcVersions') of
+          Left err -> fail $ "failed to parse solc version: " ++ err
+          Right versions -> pure versions
         pure SlitherInfo {..}
 
       parseConstant :: Value -> Parser (Maybe AbiValue)
