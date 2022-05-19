@@ -94,5 +94,9 @@ integrationTests = testGroup "Solidity Integration Testing"
   ,  checkConstructorConditions "basic/codesize.sol"
       "invalid codesize"
   , testContractV "basic/eip-170.sol" (Just (>= solcV (0,5,0))) (Just "basic/eip-170.yaml")
-      [ ("echidna_test passed",                    passed      "echidna_test") ]
+      [ ("echidna_test passed",                    passed      "echidna_test") ] 
+  , testContract' "basic/deploy.sol" (Just "Test") Nothing (Just "basic/deployContract.yaml") True
+      [ ("test passed",                    solved     "test") ]
+  , testContract' "basic/deploy.sol" (Just "Test") Nothing (Just "basic/deployBytecode.yaml") True
+      [ ("test passed",                    solved     "test") ]
   ]
