@@ -1,0 +1,2 @@
+testMode: assertion
+deployContracts: [["0x42", "A"]]
