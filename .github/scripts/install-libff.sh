@@ -12,11 +12,11 @@ fi
 if [ -d libff ]; then
   echo "$(pwd)/libff" already exists! Using it instead of re-cloning the repo.
 else
-  git clone https://github.com/scipr-lab/libff --recursive
+  git clone https://github.com/scipr-lab/libff -b v0.2.1 --recursive
 fi
 cd libff
-git submodule init && git submodule update
 git checkout v0.2.1
+git submodule init && git submodule update
 
 ARGS="-DCMAKE_INSTALL_PREFIX=$PREFIX -DWITH_PROCPS=OFF"
 CXXFLAGS=""
