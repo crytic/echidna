@@ -8,7 +8,7 @@ module Echidna.Processor where
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Exception      (Exception)
 import Control.Monad.Catch    (MonadThrow(..))
-import Data.Aeson             ((.:), (.:?), decode, parseJSON, withEmbeddedJSON, withObject)
+import Data.Aeson             ((.:), (.:?), (.!=), decode, parseJSON, withEmbeddedJSON, withObject)
 import Data.Aeson.Types       (FromJSON, Parser, Value(String))
 import Data.List              (nub)
 import Data.Maybe             (catMaybes, fromMaybe)
@@ -88,8 +88,8 @@ instance FromJSON SlitherInfo where
         payableFunctions <- o .: "payable"
         constantFunctions <- o .: "constant_functions"
         asserts <- o .: "assert"
-        fallbackDefined <- o .: "with_fallback"
-        receiveDefined <- o .: "with_receive"
+        fallbackDefined <- o .:? "with_fallback" .!= ["*"]
+        receiveDefined <- o .:? "with_receive" .!= ["*"]
         constantValues'
           -- the type annotation is needed
           :: M.HashMap ContractName (M.HashMap FunctionName [[Maybe AbiValue]])
