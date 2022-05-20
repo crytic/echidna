@@ -270,7 +270,7 @@ prepareForTest (vm, em, a, ts, m) c si = do
 
 filterFallbacks :: Maybe ContractName -> [ContractName] -> [ContractName] -> SignatureMap -> SignatureMap
 filterFallbacks _ [] [] sm = M.map f sm 
-  where f ss = NE.fromList $ case (NE.filter (/= fallback) ss) of 
+  where f ss = NE.fromList $ case NE.filter (/= fallback) ss of 
                 []  -> [fallback] -- No other alternative
                 ss' -> ss' 
 filterFallbacks _ _ _ sm = sm
