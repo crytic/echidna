@@ -68,10 +68,12 @@ data SlitherInfo = SlitherInfo
   , constantValues  :: M.HashMap ContractName (M.HashMap FunctionName [AbiValue])
   , generationGraph :: M.HashMap ContractName (M.HashMap FunctionName [FunctionName])
   , solcVersions :: [Version]
+  , fallbackDefined :: [ContractName]
+  , receiveDefined :: [ContractName]
   } deriving (Show)
 
 noInfo :: SlitherInfo
-noInfo = SlitherInfo mempty mempty mempty mempty mempty []
+noInfo = SlitherInfo mempty mempty mempty mempty mempty [] [] []
 
 instance FromJSON SlitherInfo where
   parseJSON = withObject "slitherOutput" $ \o -> do
@@ -86,6 +88,8 @@ instance FromJSON SlitherInfo where
         payableFunctions <- o .: "payable"
         constantFunctions <- o .: "constant_functions"
         asserts <- o .: "assert"
+        fallbackDefined <- o .: "with_fallback"
+        receiveDefined <- o .: "with_receive"
         constantValues'
           -- the type annotation is needed
           :: M.HashMap ContractName (M.HashMap FunctionName [[Maybe AbiValue]])

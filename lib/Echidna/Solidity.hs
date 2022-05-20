@@ -264,8 +264,16 @@ prepareForTest (vm, em, a, ts, m) c si = do
       ps = filterResults c $ payableFunctions si
       as = if isAssertionMode tm then filterResults c $ asserts si else []
       cs = if isDapptestMode tm then [] else filterResults c (constantFunctions si) \\ as
-      (hm, lm) = prepareHashMaps cs as m
+      (hm, lm) = prepareHashMaps cs as $ filterFallbacks c (fallbackDefined si) (receiveDefined si) m
   pure (vm, World s hm lm ps em, createTests tm td ts r a')
+
+
+filterFallbacks :: Maybe ContractName -> [ContractName] -> [ContractName] -> SignatureMap -> SignatureMap
+filterFallbacks _ [] [] sm = M.map f sm 
+  where f ss = NE.fromList $ case (NE.filter (/= fallback) ss) of 
+                []  -> [fallback] -- No other alternative
+                ss' -> ss' 
+filterFallbacks _ _ _ sm = sm
 
 -- this limited variant is used only in tests
 prepareForTest' :: (MonadReader x m, Has SolConf x)
