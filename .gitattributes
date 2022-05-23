@@ -1,1 +1,2 @@
 *.sol linguist-language=Solidity
+*.sh            eol=lf
