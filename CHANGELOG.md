@@ -1,5 +1,14 @@
 ## TODO
 
+## 2.0.2
+
+* Improved shrinking of dynamic arrays (#775)
+* Added support for deployment of certain contracts or bytecode in specific addresses (#758)
+* Fixed git attribute to support building docker containers in Windows (#773)
+* Fixed crash when the EVM execution triggers more than one query (#760)
+* Added support for detection and handling of ancient solc versions (#675)
+* Added explicit static flag and removed pthread one from ghc options (#768)
+ 
 ## 2.0.1
 
 * Optimized stateless mutators (#747)
