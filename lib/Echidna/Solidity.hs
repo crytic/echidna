@@ -299,13 +299,16 @@ mkLargeAbiInt i = AbiInt i $ 2 ^ (i - 1) - 1
 mkLargeAbiUInt :: Int -> AbiValue
 mkLargeAbiUInt i = AbiUInt i $ 2 ^ i - 1
 
+mkSmallAbiInt :: Int -> AbiValue
+mkSmallAbiInt i = AbiInt i $ -(2 ^ (i - 1))
+
 timeConstants :: [AbiValue]
 timeConstants = concatMap dec [initialTimestamp, initialBlockNumber]
   where dec i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral [i-1..i+1] in
                 catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
 
-largeConstants :: [AbiValue]
-largeConstants = concatMap (\i -> [mkLargeAbiInt i, mkLargeAbiUInt i]) commonTypeSizes
+extremeConstants :: [AbiValue]
+extremeConstants = concatMap (\i -> [mkSmallAbiInt i, mkLargeAbiInt i, mkLargeAbiUInt i]) commonTypeSizes
 
 returnTypes :: [SolcContract] -> Text -> Maybe AbiType
 returnTypes cs t = do
