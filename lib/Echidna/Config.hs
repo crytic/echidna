@@ -29,7 +29,7 @@ import qualified Data.Yaml as Y
 import Echidna.Test
 import Echidna.Types.Campaign 
 import Echidna.Mutator.Corpus (defaultMutationConsts)
-import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..))
+import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..), twoPower64)
 import Echidna.Types.Solidity
 import Echidna.Types.Tx  (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
 import Echidna.Types.Test  (TestConf(..))
@@ -62,14 +62,15 @@ instance FromJSON EConfigWithUsage where
             let useKey k = hasLens %= insert k
                 x ..:? k = useKey k >> lift (x .:? k)
                 x ..!= y = fromMaybe y <$> x
-                getWord s d = w256 . fromIntegral <$> v ..:? s ..!= (d :: Integer)
+                getWord s d = w256 . fromIntegral <$> v ..:? s ..!= (d :: Integer) 
+                getWordLim s d = w256 . min (fromIntegral twoPower64) . fromIntegral <$> v ..:? s ..!= (d :: Integer) 
 
                 -- TxConf
-                xc = TxConf <$> getWord "propMaxGas" maxGasPerBlock
-                            <*> getWord "testMaxGas" maxGasPerBlock
-                            <*> getWord "maxGasprice" 0
-                            <*> getWord "maxTimeDelay" defaultTimeDelay
-                            <*> getWord "maxBlockDelay" defaultBlockDelay
+                xc = TxConf <$> getWordLim "propMaxGas" maxGasPerBlock
+                            <*> getWordLim "testMaxGas" maxGasPerBlock
+                            <*> getWordLim "maxGasprice" 0
+                            <*> getWordLim "maxTimeDelay" defaultTimeDelay
+                            <*> getWordLim "maxBlockDelay" defaultBlockDelay
                             <*> getWord "maxValue" 100000000000000000000 -- 100 eth
 
                 -- TestConf
@@ -105,7 +106,7 @@ instance FromJSON EConfigWithUsage where
                              <*> v ..:? "sender"          ..!= (0x10000 NE.:| [0x20000, defaultDeployerAddr])
                              <*> v ..:? "balanceAddr"     ..!= 0xffffffff
                              <*> v ..:? "balanceContract" ..!= 0
-                             <*> v ..:? "codeSize"        ..!= 0x6000      -- 24576 (EIP-170)
+                             <*> v ..:? "codeSize"        ..!= 0x6000 -- 24576 (EIP-170)
                              <*> v ..:? "prefix"          ..!= "echidna_"
                              <*> v ..:? "cryticArgs"      ..!= []
                              <*> v ..:? "solcArgs"        ..!= ""
