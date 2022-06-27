@@ -14,6 +14,6 @@ coverageTests = testGroup "Coverage tests"
      -- [ ("echidna_state3 failed",                  solved      "echidna_state3") ]
       testContract "coverage/boolean.sol"       (Just "coverage/boolean.yaml")
       [ ("echidna_true failed",                    passed     "echidna_true")
-      , ("unexpected corpus count ",               countCorpus 5)]
+      , ("unexpected corpus count ",               countCorpus 4)]
 
   ]
