@@ -7,6 +7,12 @@
   tests ? true
 }:
 let
+  newerPkgs = import (builtins.fetchTarball {
+    name = "nixpkgs-22.05-darwin-2022-06-27";
+    url = "https://github.com/nixos/nixpkgs/archive/ce6aa13369b667ac2542593170993504932eb836.tar.gz";
+    sha256 = "sha256:0d643wp3l77hv2pmg2fi7vyxn4rwy0iyr8djcw1h5x72315ck9ik";
+  }) {};
+
   # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
   # would be great to integrate solc-select to be more flexible, improve this in future
   solc = pkgs.stdenv.mkDerivation {
@@ -31,7 +37,7 @@ let
 
   v = "2.0.2";
 
-  testInputs = [ pkgs.slither-analyzer solc ];
+  testInputs = [ newerPkgs.slither-analyzer solc ];
 
   f = { mkDerivation, aeson, ansi-terminal, base, base16-bytestring, binary
       , brick, bytestring, cborg, containers, data-dword, data-has, deepseq
@@ -59,7 +65,7 @@ let
         testHaskellDepends = [ tasty tasty-hunit tasty-quickcheck ];
         testToolDepends = testInputs;
         configureFlags = if profiling then [ "--enable-profiling" "--enable-library-profiling" ] else [];
-        libraryToolDepends = [ hpack pkgs.slither-analyzer solc ];
+        libraryToolDepends = [ hpack newerPkgs.slither-analyzer solc ];
         preConfigure = ''
           hpack
           # re-enable dynamic build for Linux
