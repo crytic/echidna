@@ -20,7 +20,7 @@ import Echidna.UI
 import Echidna.UI.Report
 
 twoPower64 :: Int
-twoPower64 = 2 ^ 64
+twoPower64 = 2 ^ (64 :: Int)
 
 -- | Our big glorious global config type, just a product of each local config.,
 data EConfig = EConfig { 
