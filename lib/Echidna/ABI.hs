@@ -64,7 +64,7 @@ makeNumAbiValues i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral ([i-1
 
 makeArrayAbiValues :: BS.ByteString -> [AbiValue]
 makeArrayAbiValues b = let size = BS.length b in [AbiString b, AbiBytesDynamic b] ++
- fmap (\n -> AbiBytes n . BS.append b $ BS.replicate (n - size) 0) [size..32]
+ fmap (\n -> AbiBytes n . BS.append b $ BS.replicate (n - size) 0) [size..150]
 
 -- | Pretty-print some 'AbiValue'.
 ppAbiValue :: AbiValue -> String
@@ -329,10 +329,10 @@ genAbiValueM genDict = genWithDict genDict (toList <$> genDict ^. constants) $ \
   AbiBoolType             -> AbiBool <$> getRandom
   (AbiBytesType n)        -> AbiBytes n . BS.pack . take n <$> getRandoms
   AbiBytesDynamicType     -> liftM2 (\n -> AbiBytesDynamic . BS.pack . take n)
-                                    (getRandomR (1, 32)) getRandoms
+                                    (getRandomR (1, 150)) getRandoms
   AbiStringType           -> liftM2 (\n -> AbiString       . BS.pack . take n)
-                                    (getRandomR (1, 32)) getRandoms
-  (AbiArrayDynamicType t) -> fmap (AbiArrayDynamic t) $ getRandomR (1, 32)
+                                    (getRandomR (1, 150)) getRandoms
+  (AbiArrayDynamicType t) -> fmap (AbiArrayDynamic t) $ getRandomR (1, 150)
                              >>= flip V.replicateM (genAbiValueM genDict t)
   (AbiArrayType n t)      -> AbiArray n t <$> V.replicateM n (genAbiValueM genDict t)
   (AbiTupleType v)        -> AbiTuple <$> traverse (genAbiValueM genDict) v
