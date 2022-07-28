@@ -3,16 +3,15 @@
     url = "https://github.com/nixos/nixpkgs/archive/1882c6b7368fd284ad01b0a5b5601ef136321292.tar.gz";
     sha256 = "sha256:0zg7ak2mcmwzi2kg29g4v9fvbvs0viykjsg2pwaphm1fi13s7s0i";
   }) {},
-  profiling ? false,
-  tests ? true
-}:
-let
-  newerPkgs = import (builtins.fetchTarball {
+  newerPkgs ? import (builtins.fetchTarball {
     name = "nixpkgs-22.05-darwin-2022-06-27";
     url = "https://github.com/nixos/nixpkgs/archive/ce6aa13369b667ac2542593170993504932eb836.tar.gz";
     sha256 = "sha256:0d643wp3l77hv2pmg2fi7vyxn4rwy0iyr8djcw1h5x72315ck9ik";
-  }) {};
-
+  }) {},
+  profiling ? false,
+  tests ? false
+}:
+let
   # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
   # would be great to integrate solc-select to be more flexible, improve this in future
   solc = pkgs.stdenv.mkDerivation {
@@ -74,6 +73,7 @@ let
         license = pkgs.lib.licenses.agpl3;
         doHaddock = false;
         doCheck = tests;
+        mainProgram = "echidna-test";
       };
 
   dapptools = pkgs.fetchFromGitHub {
