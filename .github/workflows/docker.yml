@@ -9,6 +9,9 @@ on:
     tags:
       - '*'
 
+env:
+  WORKFLOW_BUILD_DISTROLESS: false
+
 jobs:
   docker:
     runs-on: ubuntu-latest
@@ -36,6 +39,7 @@ jobs:
       - name: Set Docker metadata (Distroless variant)
         id: meta-distroless
         uses: docker/metadata-action@v4
+        if: ${{ env.WORKFLOW_BUILD_DISTROLESS }}
         with:
           images: ghcr.io/${{ github.repository }}/distroless
           tags: |
@@ -72,6 +76,7 @@ jobs:
 
       - name: Docker Build and Push (Distroless variant)
         uses: docker/build-push-action@v3
+        if: ${{ env.WORKFLOW_BUILD_DISTROLESS }}
         with:
           platforms: linux/amd64
           target: final-distroless
