@@ -1,10 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
 
 module Echidna.Config where
 
@@ -18,9 +15,9 @@ import Data.Bool (bool)
 import Data.Aeson
 import Data.Has (Has(..))
 import Data.HashMap.Strict (keys)
-import Data.HashSet (HashSet, fromList, insert, difference)
+import Data.HashSet (fromList, insert, difference)
 import Data.Maybe (fromMaybe)
-import Data.Text (Text, isPrefixOf)
+import Data.Text (isPrefixOf)
 import EVM (result)
 import EVM.Types (w256)
 
@@ -29,50 +26,15 @@ import qualified Data.ByteString as BS
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Yaml as Y
 
-import Echidna.Solidity
 import Echidna.Test
-import Echidna.Types.Campaign (CampaignConf(CampaignConf))
+import Echidna.Types.Campaign 
 import Echidna.Mutator.Corpus (defaultMutationConsts)
+import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..))
+import Echidna.Types.Solidity
 import Echidna.Types.Tx  (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
+import Echidna.Types.Test  (TestConf(..))
 import Echidna.UI
 import Echidna.UI.Report
-
--- | Our big glorious global config type, just a product of each local config.,
-data EConfig = EConfig { _cConf :: CampaignConf
-                       , _nConf :: Names
-                       , _sConf :: SolConf
-                       , _tConf :: TestConf
-                       , _xConf :: TxConf
-                       , _uConf :: UIConf
-                       }
-makeLenses ''EConfig
-
-data EConfigWithUsage = EConfigWithUsage { _econfig   :: EConfig
-                                         , _badkeys   :: HashSet Text
-                                         , _unsetkeys :: HashSet Text
-                                         }
-makeLenses ''EConfigWithUsage
-
-instance Has EConfig EConfigWithUsage where
-  hasLens = econfig
-
-instance Has CampaignConf EConfig where
-  hasLens = cConf
-
-instance Has Names EConfig where
-  hasLens = nConf
-
-instance Has SolConf EConfig where
-  hasLens = sConf
-
-instance Has TestConf EConfig where
-  hasLens = tConf
-
-instance Has TxConf EConfig where
-  hasLens = xConf
-
-instance Has UIConf EConfig where
-  hasLens = uConf
 
 instance FromJSON EConfig where
   -- retrieve the config from the key usage annotated parse
@@ -112,7 +74,7 @@ instance FromJSON EConfigWithUsage where
 
                 -- TestConf
                 tc = do
-                  psender <- v ..:? "psender" ..!= 0x00a329c0648769a73afac7f9381e08fb43dbea70
+                  psender <- v ..:? "psender" ..!= 0x10000
                   fprefix <- v ..:? "prefix"  ..!= "echidna_"
                   let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
                       classify fname vm = maybe ResOther classifyRes (vm ^. result) == goal fname
@@ -121,11 +83,11 @@ instance FromJSON EConfigWithUsage where
                 -- CampaignConf
                 cov = v ..:? "coverage" <&> \case Just False -> Nothing
                                                   _          -> Just mempty
-                cc = CampaignConf <$> v ..:? "testLimit"   ..!= 50000
+                cc = CampaignConf <$> v ..:? "testLimit"   ..!= defaultTestLimit
                                   <*> v ..:? "stopOnFail"  ..!= False
                                   <*> v ..:? "estimateGas" ..!= False
-                                  <*> v ..:? "seqLen"      ..!= 100
-                                  <*> v ..:? "shrinkLimit" ..!= 5000
+                                  <*> v ..:? "seqLen"      ..!= defaultSequenceLength
+                                  <*> v ..:? "shrinkLimit" ..!= defaultShrinkLimit
                                   <*> cov
                                   <*> v ..:? "seed"
                                   <*> v ..:? "dictFreq"    ..!= 0.40
@@ -133,13 +95,14 @@ instance FromJSON EConfigWithUsage where
                                   <*> v ..:? "mutConsts"   ..!= defaultMutationConsts
 
                 -- SolConf
-                defaultAddr     = 0x00a329c0648769a73afac7f9381e08fb43dbea72
-                defaultDeployer = 0x00a329c0648769a73afac7f9381e08fb43dbea70
                 fnFilter = bool Whitelist Blacklist <$> v ..:? "filterBlacklist" ..!= True
                                                     <*> v ..:? "filterFunctions" ..!= []
-                sc = SolConf <$> v ..:? "contractAddr"    ..!= defaultAddr
-                             <*> v ..:? "deployer"        ..!= defaultDeployer
-                             <*> v ..:? "sender"          ..!= (0x10000 NE.:| [0x20000, defaultDeployer])
+                mode = v ..:? "testMode" >>= \case
+                  Just s  -> pure $ validateTestMode s
+                  Nothing -> pure "property"
+                sc = SolConf <$> v ..:? "contractAddr"    ..!= defaultContractAddr
+                             <*> v ..:? "deployer"        ..!= defaultDeployerAddr
+                             <*> v ..:? "sender"          ..!= (0x10000 NE.:| [0x20000, defaultDeployerAddr])
                              <*> v ..:? "balanceAddr"     ..!= 0xffffffff
                              <*> v ..:? "balanceContract" ..!= 0
                              <*> v ..:? "codeSize"        ..!= 0x6000      -- 24576 (EIP-170)
@@ -149,21 +112,23 @@ instance FromJSON EConfigWithUsage where
                              <*> v ..:? "solcLibs"        ..!= []
                              <*> v ..:? "quiet"           ..!= False
                              <*> v ..:? "initialize"      ..!= Nothing
+                             <*> v ..:? "deployContracts" ..!= []
+                             <*> v ..:? "deployBytecodes" ..!= []
                              <*> v ..:? "multi-abi"       ..!= False
-                             <*> v ..:? "checkAsserts"    ..!= False
-                             <*> v ..:? "benchmarkMode"   ..!= False
+                             <*> mode
+                             <*> v ..:? "testDestruction" ..!= False
                              <*> fnFilter
                 names :: Names
                 names Sender = (" from: " ++) . show
                 names _      = const ""
-                mode = fromMaybe Interactive <$> (v ..:? "format" >>= \case
+                format = fromMaybe Interactive <$> (v ..:? "format" >>= \case
                   Just ("text" :: String) -> pure . Just . NonInteractive $ Text
                   Just "json"             -> pure . Just . NonInteractive $ JSON
                   Just "none"             -> pure . Just . NonInteractive $ None
                   Nothing -> pure Nothing
-                  _ -> M.fail "unrecognized format type (should be text, json, or none)") in
+                  _ -> M.fail "Unrecognized format type (should be text, json, or none)") in
             EConfig <$> cc <*> pure names <*> sc <*> tc <*> xc
-                    <*> (UIConf <$> v ..:? "timeout" <*> mode)
+                    <*> (UIConf <$> v ..:? "timeout" <*> format)
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
 defaultConfig :: EConfig

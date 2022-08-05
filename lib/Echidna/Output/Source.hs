@@ -10,7 +10,7 @@ import Data.Text (Text, pack, unpack)
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
-import Data.List (nub)
+import Data.List (nub, sort)
 import Text.Printf (printf)
 
 import EVM.Solidity (SourceCache, SrcMap, SolcContract, sourceLines, sourceFiles, runtimeCode, runtimeSrcmap, creationSrcmap)
@@ -57,12 +57,14 @@ markLines codeLines resultMap = V.map markLine (V.indexed codeLines)
   where
     markLine (i, codeLine) =
       let results = fromMaybe [] (M.lookup (i+1) resultMap)
-      in pack $ printf "%-4s| %s" (getMarker <$> results) (unpack codeLine)
+      in pack $ printf "%-4s| %s" (sort $ nub $ getMarker <$> results) (unpack codeLine)
 
 -- | Select the proper marker, according to the result of the transaction
 getMarker :: TxResult -> Char
-getMarker Success       = '*'
-getMarker ErrorRevert   = 'r'
+getMarker ReturnTrue    = '*'
+getMarker ReturnFalse   = '*'
+getMarker Stop          = '*'
+getMarker ErrorRevert   = 'r' 
 getMarker ErrorOutOfGas = 'o'
 getMarker _             = 'e'
 

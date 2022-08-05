@@ -7,10 +7,11 @@ import Common (runContract)
 import Control.Lens (view, (.~))
 import Control.Monad (liftM2)
 import Data.Function ((&))
-import Echidna.Config (defaultConfig, sConf, cConf)
-import Echidna.Solidity (quiet)
+import Echidna.Types.Config (sConf, cConf)
+import Echidna.Types.Solidity (quiet)
 import Echidna.Types.Campaign (CampaignConf(..), tests)
 import Echidna.Mutator.Corpus (defaultMutationConsts)
+import Echidna.Config (defaultConfig)
 
 seedTests :: TestTree
 seedTests =

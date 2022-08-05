@@ -17,18 +17,18 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Assert test
-        uses: ./action
+        uses: crytic/echidna-action@v1
         with:
-          files: "examples/solidity/basic/assert.sol"
+          files: "tests/solidity/basic/assert.sol"
           contract: "TestAssert"
-          config: "examples/solidity/basic/assert.yaml"
+          config: "tests/solidity/basic/assert.yaml"
           solc-version: 0.6.12
           negate-exit-status: 1
 
       - name: Multi-abi test
-        uses: ./action
+        uses: crytic/echidna-action@v1
         with:
-          files: "examples/solidity/basic/multi-abi.sol"
+          files: "tests/solidity/basic/multi-abi.sol"
           contract: "B"
           multi-abi: true
           solc-version: 0.7.6
