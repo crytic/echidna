@@ -11,7 +11,6 @@ on:
 
 env:
   WORKFLOW_BUILD_DISTROLESS: false
-  WORKFLOW_UBUNTU_PUBLISH_AS: "trailofbits/echidna"
 
 jobs:
   docker:
@@ -33,7 +32,7 @@ jobs:
           images: |
             ghcr.io/${{ github.repository }}/echidna
             ghcr.io/${{ github.repository }}/ubuntu
-            ${{ env.WORKFLOW_UBUNTU_PUBLISH_AS }}
+            name=trailofbits/echidna,enable=${{ github.repository == 'crytic/echidna' }}
           tags: |
             type=ref,event=tag
             type=ref,event=branch,prefix=testing-
@@ -42,7 +41,7 @@ jobs:
       - name: Set Docker metadata (Distroless variant)
         id: meta-distroless
         uses: docker/metadata-action@v4
-        if: ${{ env.WORKFLOW_BUILD_DISTROLESS }}
+        if: ${{ env.WORKFLOW_BUILD_DISTROLESS == true }}
         with:
           images: ghcr.io/${{ github.repository }}/distroless
           tags: |
@@ -79,7 +78,7 @@ jobs:
 
       - name: Docker Build and Push (Distroless variant)
         uses: docker/build-push-action@v3
-        if: ${{ env.WORKFLOW_BUILD_DISTROLESS }}
+        if: ${{ env.WORKFLOW_BUILD_DISTROLESS == true }}
         with:
           platforms: linux/amd64
           target: final-distroless
