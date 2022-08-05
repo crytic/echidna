@@ -1,4 +1,4 @@
-FROM debian:bullseye AS builder-echidna
+FROM ubuntu:jammy AS builder-echidna
 ENV LD_LIBRARY_PATH=/usr/local/lib PREFIX=/usr/local HOST_OS=Linux
 RUN apt-get update && \
     apt-get install -y --no-install-suggests --no-install-recommends \
@@ -19,12 +19,12 @@ RUN .github/scripts/install-libff.sh
 RUN stack upgrade && stack setup && stack install --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
 
 
-FROM debian:bullseye AS builder-python3
+FROM ubuntu:jammy AS builder-python3
 RUN apt-get update && \
     apt-get install -y --no-install-suggests --no-install-recommends \
         gcc \
-        python3.9-dev \
-        python3.9-venv
+        python3.10-dev \
+        python3.10-venv
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PIP_NO_CACHE_DIR=1
 RUN python3 -m venv /venv && /venv/bin/pip3 install --no-cache slither-analyzer solc-select
@@ -38,13 +38,12 @@ ENV PATH="$PATH:/venv/bin"
 ENTRYPOINT [ "/usr/local/bin/solc-install", "/usr/local/bin/echidna-test" ]
 
 
-FROM debian:bullseye-slim AS final-debian
+FROM ubuntu:jammy AS final-ubuntu
 RUN apt-get update && \
     apt-get install -y --no-install-suggests --no-install-recommends \
         ca-certificates \
         curl \
         python3 \
-        python3.9 \
         && \
     rm -rf /var/lib/apt/lists/*
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
