@@ -11,6 +11,7 @@ on:
 
 env:
   WORKFLOW_BUILD_DISTROLESS: false
+  WORKFLOW_UBUNTU_PUBLISH_AS: "trailofbits/echidna"
 
 jobs:
   docker:
@@ -30,7 +31,9 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: |
+            ghcr.io/${{ github.repository }}/echidna
             ghcr.io/${{ github.repository }}/ubuntu
+            ${{ env.WORKFLOW_UBUNTU_PUBLISH_AS }}
           tags: |
             type=ref,event=tag
             type=ref,event=branch,prefix=testing-
