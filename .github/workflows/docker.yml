@@ -31,7 +31,6 @@ jobs:
         with:
           images: |
             ghcr.io/${{ github.repository }}/echidna
-            ghcr.io/${{ github.repository }}/ubuntu
             name=trailofbits/echidna,enable=${{ github.repository == 'crytic/echidna' }}
           tags: |
             type=ref,event=tag
