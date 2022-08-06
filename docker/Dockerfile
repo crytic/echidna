@@ -27,7 +27,8 @@ RUN apt-get update && \
         python3.8-venv
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PIP_NO_CACHE_DIR=1
-RUN python3 -m venv /venv && /venv/bin/pip3 install --no-cache slither-analyzer solc-select
+RUN python3 -m venv /venv && /venv/bin/pip3 install --no-cache --upgrade setuptools pip
+RUN /venv/bin/pip3 install --no-cache slither-analyzer solc-select
 
 
 FROM gcr.io/distroless/python3-debian11:nonroot AS final-distroless
@@ -44,6 +45,7 @@ RUN apt-get update && \
         ca-certificates \
         curl \
         python3 \
+        python3-distutils \
         && \
     rm -rf /var/lib/apt/lists/*
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
