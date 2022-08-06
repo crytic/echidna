@@ -1,7 +1,7 @@
 FROM ubuntu:focal AS builder-echidna
 ENV LD_LIBRARY_PATH=/usr/local/lib PREFIX=/usr/local HOST_OS=Linux
 RUN apt-get update && \
-    apt-get install -y --no-install-suggests --no-install-recommends \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-suggests --no-install-recommends \
         cmake \
         curl \
         git \
@@ -21,7 +21,7 @@ RUN stack upgrade && stack setup && stack install --extra-include-dirs=/usr/loca
 
 FROM ubuntu:focal AS builder-python3
 RUN apt-get update && \
-    apt-get install -y --no-install-suggests --no-install-recommends \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-suggests --no-install-recommends \
         gcc \
         python3.8-dev \
         python3.8-venv
@@ -40,7 +40,7 @@ ENTRYPOINT [ "/usr/local/bin/solc-install", "/usr/local/bin/echidna-test" ]
 
 FROM ubuntu:focal AS final-ubuntu
 RUN apt-get update && \
-    apt-get install -y --no-install-suggests --no-install-recommends \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-suggests --no-install-recommends \
         ca-certificates \
         curl \
         python3 \
