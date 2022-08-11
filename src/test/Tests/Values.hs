@@ -20,6 +20,12 @@ valuesTests = testGroup "Value extraction tests"
       [ ("echidna_found_sender failed",            solved      "echidna_found_sender") ]
     , testContract "values/rconstants.sol"   Nothing
       [ ("echidna_found failed",                   solved      "echidna_found") ]
+    , testContract' "values/extreme.sol"   Nothing Nothing (Just "values/extreme.yaml") False
+      [ ("testMinInt8 passed",                   solved      "testMinInt8"),
+        ("testMinInt16 passed",                  solved      "testMinInt16"),
+        ("testMinInt64 passed",                  solved      "testMinInt32"),
+        ("testMinInt128 passed",                 solved      "testMinInt128")
+      ]
     , testContract' "values/create.sol" (Just "C") Nothing Nothing True
       [ ("echidna_state failed",                   solved      "echidna_state") ]
     , testContract "values/time.sol"         (Just "values/time.yaml")
