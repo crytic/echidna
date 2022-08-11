@@ -185,7 +185,7 @@ fixAbiUInt :: Int -> Word256 -> AbiValue
 fixAbiUInt n x = AbiUInt n (x `mod` ((2 ^ n) - 1))
 
 fixAbiInt :: Int -> Int256 -> AbiValue
-fixAbiInt n x = AbiInt n (x `mod` 2 ^ (n - 1))
+fixAbiInt n x = if x <= -(2 ^ (n - 1)) then AbiInt n (-(2 ^ n)) else AbiInt n (x `mod` (2 ^ (n - 1) - 1))
 
 -- | Given a way to generate random 'Word8's and a 'ByteString' b of length l,
 -- generate between 0 and 2l 'Word8's and add insert them into b at random indices.
