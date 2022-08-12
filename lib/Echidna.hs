@@ -69,7 +69,7 @@ prepareContract cfg fs c g = do
 
   ads <- addresses
   let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
-  let constants' = enhanceConstants si ++ timeConstants ++ largeConstants ++ NE.toList ads ++ ads'
+  let constants' = enhanceConstants si ++ timeConstants ++ extremeConstants ++ NE.toList ads ++ ads'
 
   -- load transactions from init sequence (if any)
   es' <- liftIO $ maybe (return []) loadEtheno it
