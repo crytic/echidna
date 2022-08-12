@@ -10,15 +10,17 @@ import Control.Exception      (Exception)
 import Control.Monad.Catch    (MonadThrow(..))
 import Data.Aeson             ((.:), (.:?), (.!=), decode, parseJSON, withEmbeddedJSON, withObject)
 import Data.Aeson.Types       (FromJSON, Parser, Value(String))
-import Data.List              (nub)
+import Data.List              (nub, isPrefixOf)
 import Data.Maybe             (catMaybes, fromMaybe)
 import Data.Text              (pack, isSuffixOf)
 import Data.SemVer            (Version, fromText)
+import Data.Either            (fromRight)
 import Text.Read              (readMaybe)
 import System.Directory       (findExecutable)
 import System.Process         (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit            (ExitCode(..))
 
+import qualified Data.ByteString.Base16 as BS16 (decode)
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import qualified Data.ByteString.UTF8 as BSU
 import qualified Data.List.NonEmpty as NE
@@ -28,6 +30,7 @@ import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
 import EVM.ABI (AbiValue(..))
 import EVM.Types (Addr(..))
 import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
+
 
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
@@ -120,7 +123,10 @@ instance FromJSON SlitherInfo where
               i -> pure i
 
           "string" ->
-            pure . Just . AbiString $ BSU.fromString v
+            pure . Just . AbiString $
+              if "0x" `isPrefixOf` v
+              then fromRight (error ("invalid b16 decoding of: " ++ show v)) $ BS16.decode $ BSU.fromString $ drop 2 v
+              else BSU.fromString v
 
           "address" ->
             case AbiAddress . Addr <$> readMaybe v of
