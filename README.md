@@ -40,12 +40,13 @@ function echidna_check_balance() public returns (bool) {
 
 To check these invariants, run:
 
-```
+```sh
 $ echidna-test myContract.sol
 ```
 
 An example contract with tests can be found [tests/solidity/basic/flags.sol](tests/solidity/basic/flags.sol). To run it, you should execute:
-```
+
+```sh
 $ echidna-test tests/solidity/basic/flags.sol
 ```
 
@@ -57,7 +58,7 @@ After finishing a campaign, Echidna can save a coverage maximizing **corpus** in
 
 If you run `tests/solidity/basic/flags.sol` example, Echidna will save a few files serialized transactions in the `coverage` directory and a `covered.$(date +%s).txt` file with the following lines:
 
-```
+```text
 *r  |  function set0(int val) public returns (bool){
 *   |    if (val % 100 == 0)
 *   |      flag0 = false;
@@ -70,10 +71,11 @@ If you run `tests/solidity/basic/flags.sol` example, Echidna will save a few fil
 ```
 
 Our tool signals each execution trace in the corpus with the following "line marker":
- - `*` if an execution ended with a STOP
- - `r` if an execution ended with a REVERT
- - `o` if an execution ended with an out-of-gas error
- - `e` if an execution ended with any other error (zero division, assertion failure, etc)
+
+* `*` if an execution ended with a STOP
+* `r` if an execution ended with a REVERT
+* `o` if an execution ended with an out-of-gas error
+* `e` if an execution ended with any other error (zero division, assertion failure, etc)
 
 ### Support for smart contract build systems
 
@@ -97,7 +99,7 @@ usage instructions and examples.
 Echidna's CLI can be used to choose the contract to test and load a
 configuration file.
 
-```
+```sh
 $ echidna-test contract.sol --contract TEST --config config.yaml
 ```
 
@@ -221,14 +223,15 @@ If you're getting errors building related to linking, try tinkering with `--extr
 ### Building using Nix (works natively on Apple M1 systems)
 
 [Nix users](https://nixos.org/download.html) can install the lastest Echidna with:
-```
+
+```sh
 $ nix-env -i -f https://github.com/crytic/echidna/tarball/master
 ```
 
 To build a standalone release for non-Nix macOS systems, the following will
 bundle Echidna and all linked dylibs in a tarball:
 
-```
+```sh
 $ nix-build macos-release.nix
 $ ll result/
 bin    echidna-1.7.3-aarch64-darwin.tar.gz
@@ -237,7 +240,8 @@ bin    echidna-1.7.3-aarch64-darwin.tar.gz
 It is possible to develop Echidna with Cabal inside `nix-shell`. Nix will automatically
 install all the dependencies required for development including `crytic-compile` and `solc`.
 A quick way to get GHCi with Echidna ready for work:
-```
+
+```sh
 $ git clone https://github.com/crytic/echidna
 $ cd echidna
 $ nix-shell
@@ -245,7 +249,8 @@ $ nix-shell
 ```
 
 Running the test suite:
-```
+
+```sh
 nix-shell --run 'cabal test'
 ```
 
