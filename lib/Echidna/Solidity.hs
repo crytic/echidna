@@ -15,7 +15,7 @@ import Control.Monad.State.Strict (execStateT)
 import Data.Foldable              (toList)
 import Data.Has                   (Has(..))
 import Data.List                  (find, partition, isSuffixOf, (\\))
-import Data.Map                   (Map, keys, elems, unions)
+import Data.Map                   (Map, keys, elems, unions, member)
 import Data.Maybe                 (isJust, isNothing, catMaybes, listToMaybe)
 import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text.Lens             (unpacked)
@@ -121,8 +121,9 @@ addresses = do
 
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm
-populateAddresses (a:as) b vm = populateAddresses as b (vm & set (env . EVM.contracts . at a) (Just account))
-  where account = initialContract (RuntimeCode mempty) & set nonce 0 & set balance (w256 $ fromInteger b)
+populateAddresses (a:as) b vm = if deployed then populateAddresses as b vm else populateAddresses as b (vm & set (env . EVM.contracts . at a) (Just account))
+  where account   = initialContract (RuntimeCode mempty) & set nonce 0 & set balance (w256 $ fromInteger b)
+        deployed = a `member` (vm ^. env . EVM.contracts)
 
 -- | Address to load the first library
 addrLibrary :: Addr
