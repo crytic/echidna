@@ -66,7 +66,7 @@ ppCoveredCode isHtml sc cs s | s == mempty = "Coverage map is empty"
   -- ^ Alter file contents, in the case of html encasing it in <code> and adding a line break
   in topHeader `T.append` T.unlines (map ppFile allFiles)
 
-getColor :: [Char] -> Text
+getColor :: String -> Text
 getColor markers = 
   case markers of
    []                      -> red
