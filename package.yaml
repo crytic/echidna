@@ -26,6 +26,7 @@ dependencies:
   - filepath
   - hashable
   - hevm
+  - html-entities
   - lens
   - lens-aeson
   - ListLike

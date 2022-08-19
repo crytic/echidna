@@ -12,6 +12,7 @@ import Data.Text.IO (writeFile)
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.List (nub, sort)
 import Text.Printf (printf)
+import qualified HTMLEntities.Text as HTML
 
 import EVM.Solidity (SourceCache, SrcMap, SolcContract, sourceLines, sourceFiles, runtimeCode, runtimeSrcmap, creationSrcmap)
 import EVM.Debug (srcMapCodePos)
@@ -29,17 +30,18 @@ import Echidna.Types.Signature (getBytecodeMetadata)
 
 type FilePathText = Text
 
-saveCoverage :: Maybe FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
-saveCoverage (Just d) sc cs s = let fn t = d ++ "/covered." ++ show t ++ ".txt"
-                                    cc = ppCoveredCode sc cs s
-                                in getSystemTime >>= \t -> writeFile (fn $ systemSeconds t) cc
-saveCoverage Nothing  _  _  _ = pure ()
+saveCoverage :: Bool -> Maybe FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
+saveCoverage isHtml (Just d) sc cs s = let filepath = if isHtml then ".html" else ".txt"
+                                           fn t = d ++ "/covered." ++ show t ++ filepath
+                                           cc = ppCoveredCode isHtml sc cs s
+                                       in getSystemTime >>= \t -> writeFile (fn $ systemSeconds t) cc
+saveCoverage _ Nothing  _  _  _ = pure ()
 
 
 -- | Pretty-print the covered code
-ppCoveredCode :: SourceCache -> [SolcContract] -> CoverageMap -> Text
-ppCoveredCode sc cs s | s == mempty = "Coverage map is empty"
-                      | otherwise   =
+ppCoveredCode :: Bool -> SourceCache -> [SolcContract] -> CoverageMap -> Text
+ppCoveredCode isHtml sc cs s | s == mempty = "Coverage map is empty"
+                             | otherwise   =
   let allFiles = zipWith (\(srcPath, _rawSource) srcLines -> (srcPath, V.map decodeUtf8 srcLines))
                    (sc ^. sourceFiles)
                    (sc ^. sourceLines)
@@ -47,17 +49,49 @@ ppCoveredCode sc cs s | s == mempty = "Coverage map is empty"
       covLines = srcMapCov sc s cs
   -- ^ List of covered lines during the fuzzing campaing
       ppFile (srcPath, srcLines) =
-        let marked = markLines srcLines (fromMaybe M.empty (M.lookup srcPath covLines))
-        in T.unlines (srcPath : V.toList marked)
-  in T.intercalate "\n" $ map ppFile allFiles
+        let marked = markLines isHtml srcLines (fromMaybe M.empty (M.lookup srcPath covLines))
+        in T.unlines (changeFileName srcPath : changeFileLines (V.toList marked))
+  -- ^ Pretty print individual file coverage
+      topHeader
+        | isHtml = "<style> code { white-space: pre-wrap; display: block; background-color: #aaa; } </style>"
+        | otherwise = ""
+  -- ^ Text to add to top of the file
+      changeFileName fn
+        | isHtml = "<b>" `T.append` HTML.text fn `T.append` "</b>"
+        | otherwise = fn
+  -- ^ Alter file name, in the case of html turning it into bold text
+      changeFileLines ls
+        | isHtml = "<code>" : ls ++ ["", "</code>","<br />"]
+        | otherwise = ls
+  -- ^ Alter file contents, in the case of html encasing it in <code> and adding a line break
+  in topHeader `T.append` T.unlines (map ppFile allFiles)
+
+getColor :: [Char] -> Text
+getColor markers = 
+  case markers of
+   []                      -> red
+   _  | '*' `elem` markers -> green
+   _                       -> yellow
+
+  where
+    green  = "afa"
+    yellow = "ffa"
+    red    = "faa"
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
-markLines :: V.Vector Text -> M.Map Int [TxResult] -> V.Vector Text
-markLines codeLines resultMap = V.map markLine (V.indexed codeLines)
+markLines :: Bool -> V.Vector Text -> M.Map Int [TxResult] -> V.Vector Text
+markLines isHtml codeLines resultMap = V.map markLine (V.indexed codeLines)
   where
+    codeLineLen = length . show . (+ 1) $ V.length codeLines
     markLine (i, codeLine) =
-      let results = fromMaybe [] (M.lookup (i+1) resultMap)
-      in pack $ printf "%-4s| %s" (sort $ nub $ getMarker <$> results) (unpack codeLine)
+      let ii = i+1
+          results  = fromMaybe [] (M.lookup ii resultMap)
+          markers = sort $ nub $ getMarker <$> results
+          linePost :: Text
+          linePost = if not isHtml then "" else "</span>"
+          linePre  :: Text
+          linePre  = if not isHtml then "" else "<span style='background-color: #" `T.append` getColor markers `T.append` ";'>"
+      in pack $ printf " %d%s | %-4s| %s%s%s" ii (replicate (codeLineLen - length (show ii)) ' ') markers linePre (unpack $ (if isHtml then HTML.text else id) codeLine) linePost
 
 -- | Select the proper marker, according to the result of the transaction
 getMarker :: TxResult -> Char
