@@ -21,3 +21,4 @@ cabal.project.local
 crytic-export/
 echidna.cabal
 *.swp
+profiles/

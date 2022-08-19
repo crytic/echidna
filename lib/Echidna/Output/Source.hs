@@ -10,7 +10,7 @@ import Data.Text (Text, pack, unpack)
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
-import Data.List (nub)
+import Data.List (nub, sort)
 import Text.Printf (printf)
 import qualified HTMLEntities.Text as HTML
 
@@ -78,12 +78,14 @@ markLines isHtml codeLines resultMap = V.map markLine (V.indexed codeLines)
           linePost = if not isHtml then "" else "</span>"
           linePre  :: Text
           linePre  = if not isHtml then "" else "<span style='background-color: #" `T.append` (if null results then "faa" else "afa") `T.append` ";'>"
-      in pack $ printf " %d%s | %-4s| %s%s%s" ii (replicate (codeLineLen - length (show ii)) ' ') (getMarker <$> results) linePre (unpack $ (if isHtml then HTML.text else id) codeLine) linePost
+      in pack $ printf " %d%s | %-4s| %s%s%s" ii (replicate (codeLineLen - length (show ii)) ' ') (sort $ nub $ getMarker <$> results) linePre (unpack $ (if isHtml then HTML.text else id) codeLine) linePost
 
 -- | Select the proper marker, according to the result of the transaction
 getMarker :: TxResult -> Char
-getMarker Success       = '*'
-getMarker ErrorRevert   = 'r'
+getMarker ReturnTrue    = '*'
+getMarker ReturnFalse   = '*'
+getMarker Stop          = '*'
+getMarker ErrorRevert   = 'r' 
 getMarker ErrorOutOfGas = 'o'
 getMarker _             = 'e'
 

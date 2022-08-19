@@ -1,0 +1,3 @@
+testMode: assertion
+filterBlacklist: false
+filterFunctions: ["Test.internal_assert(uint256)", "Test.direct_assert(uint256)"]

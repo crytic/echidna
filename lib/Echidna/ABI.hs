@@ -156,7 +156,7 @@ mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fma
 -- Generation (synthesis)
 
 getRandomUint :: MonadRandom m => Int -> m Integer
-getRandomUint n = join $ R.fromList [(getRandomR (0, 1023), 1), (getRandomR (0, 2 ^ n - 1), 9)]
+getRandomUint n = join $ R.fromList [(getRandomR (0, 1023), 1), (getRandomR (0, 2 ^ n - 5), 8), (getRandomR (2 ^ n - 5, 2 ^ n - 1), 1)]
 
 getRandomInt :: MonadRandom m => Int -> m Integer
 getRandomInt n = join $ R.fromList [(getRandomR (-1023, 1023), 1), (getRandomR (-1 * 2 ^ n, 2 ^ (n - 1)), 9)]
@@ -185,7 +185,7 @@ fixAbiUInt :: Int -> Word256 -> AbiValue
 fixAbiUInt n x = AbiUInt n (x `mod` ((2 ^ n) - 1))
 
 fixAbiInt :: Int -> Int256 -> AbiValue
-fixAbiInt n x = AbiInt n (x `mod` 2 ^ (n - 1))
+fixAbiInt n x = if x <= -(2 ^ (n - 1)) then AbiInt n (-(2 ^ n)) else AbiInt n (x `mod` (2 ^ (n - 1) - 1))
 
 -- | Given a way to generate random 'Word8's and a 'ByteString' b of length l,
 -- generate between 0 and 2l 'Word8's and add insert them into b at random indices.
@@ -262,7 +262,10 @@ shrinkAbiValue (AbiBytes n b)        = AbiBytes n <$> addNulls b
 shrinkAbiValue (AbiBytesDynamic b)   = fmap AbiBytesDynamic $ addNulls =<< shrinkBS b
 shrinkAbiValue (AbiString b)         = fmap AbiString       $ addNulls =<< shrinkBS b
 shrinkAbiValue (AbiArray n t l)      = AbiArray n t <$> traverse shrinkAbiValue l
-shrinkAbiValue (AbiArrayDynamic t l) = fmap (AbiArrayDynamic t) $ traverse shrinkAbiValue =<< shrinkV l
+shrinkAbiValue (AbiArrayDynamic t l) = getRandomR (0, 9 :: Int) >>= -- 10% of chance of shrinking all elements
+                                          \case
+                                            0 -> AbiArrayDynamic t <$> traverse shrinkAbiValue l
+                                            _ -> AbiArrayDynamic t <$> shrinkV l
 shrinkAbiValue (AbiTuple v)          = AbiTuple <$> traverse shrinkAbiValue' v
   where shrinkAbiValue' x = liftM3 bool (pure x) (shrinkAbiValue x) getRandom
 

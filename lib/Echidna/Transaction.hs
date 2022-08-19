@@ -32,7 +32,7 @@ import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
 import Echidna.Types.Buffer (viewBuffer)
-import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, getBytecodeMetadata)
+import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, BytecodeMemo, lookupBytecodeMetadata)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 
@@ -53,9 +53,10 @@ getSignatures hmm (Just lmm) = usuallyVeryRarely hmm lmm -- once in a while, thi
 
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
 genTxM :: (MonadRandom m, MonadReader x m, MonadState y m, Has TxConf x, Has World x, Has GenDict y)
-  => Map Addr Contract
+  => BytecodeMemo
+  -> Map Addr Contract
   -> m Tx
-genTxM m = do
+genTxM memo m = do
   TxConf _ g gp t b mv <- view hasLens
   World ss hmm lmm ps _ <- view hasLens
   genDict <- use hasLens
@@ -71,7 +72,8 @@ genTxM m = do
     toContractA :: SignatureMap -> (Addr, Contract) -> Maybe ContractA
     toContractA mm (addr, c) = do
       bc <- viewBuffer $ c ^. bytecode
-      (addr,) <$> M.lookup (getBytecodeMetadata bc) mm
+      let metadata = lookupBytecodeMetadata memo bc
+      (addr,) <$> M.lookup metadata mm
 
 genDelay :: MonadRandom m => Word -> [Integer] -> m Word
 genDelay mv ds = do
@@ -87,9 +89,9 @@ genValue mv ds ps sc =
     g <- oftenUsually randValue $ rElem (0 NE.:| ds')
     fromIntegral <$> g
   else do
-    g <- usuallyRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
+    g <- usuallyVeryRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
     fromIntegral <$> g
-  where randValue = getRandomR (1 :: Integer, fromIntegral mv)
+  where randValue = getRandomR (0 :: Integer, fromIntegral mv)
         sig = (hashSig . encodeSig . signatureCall) sc
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
