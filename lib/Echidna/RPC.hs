@@ -127,6 +127,11 @@ loadEthenoBatch fp = do
          (_, vm') <- runStateT initVM initialVM
          return vm'
 
+initAddress :: (MonadState s m, Has VM s) => Addr -> m ()
+initAddress addr = 
+  hasLens . env . contracts . at addr . _Just . contractcode .= InitCode (ConcreteBuffer "")
+ 
+
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
 -- | address containing echidna tests
 execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m, Has TxConf y, MonadReader y m, M.MonadFail m)
@@ -141,7 +146,7 @@ execEthenoTxs _ et = do
        (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
        (VMSuccess (ConcreteBuffer bc),
         ContractCreated _ ca _ _ _ _) -> do
-          hasLens . env . contracts . at ca . _Just . contractcode .= InitCode (ConcreteBuffer "")
+          initAddress ca
           liftSH (replaceCodeOfSelf (RuntimeCode (ConcreteBuffer bc)) >> loadContract ca)
           return ()
        _                              -> return ()
@@ -150,5 +155,7 @@ execEthenoTxs _ et = do
 setupEthenoTx :: (MonadState x m, Has VM x) => Etheno -> m ()
 setupEthenoTx (AccountCreated _) = pure ()
 setupEthenoTx (ContractCreated f c _ _ d v) = setupTx $ createTxWithValue d f c (fromInteger unlimitedGasPerBlock) (w256 v) (1, 1)
-setupEthenoTx (FunctionCall f t _ _ d v) = setupTx $ Tx (SolCalldata d) f t (fromInteger unlimitedGasPerBlock) 0 (w256 v) (1, 1)
+setupEthenoTx (FunctionCall f t _ _ d v) = do
+   initAddress f
+   setupTx $ Tx (SolCalldata d) f t (fromInteger unlimitedGasPerBlock) 0 (w256 v) (1, 1)
 setupEthenoTx (BlockMined n t) = setupTx $ Tx NoCall 0 0 0 0 0 (fromInteger t, fromInteger n)
