@@ -133,7 +133,20 @@ initAddress addr = do
   cs <- use (hasLens . env . EVM.contracts)
   if addr `member` cs then return ()
   else hasLens . env . EVM.contracts . at addr .= Just account
- where account = initialContract (RuntimeCode mempty) & set nonce 0 & set balance (w256 0xffffffff) -- default balance for EOA
+ where account = initialContract (RuntimeCode mempty) & set nonce 0 & set balance (w256 100000000000000000000) -- default balance for EOAs in etheno
+
+showQueryError :: (MonadState x m, Has VM x, MonadThrow m, Has TxConf y, MonadReader y m, M.MonadFail m) => Query -> Etheno -> m ()
+showQueryError q et =
+  case (q, et) of
+    (PleaseFetchContract addr _ _, FunctionCall f t _ _ _ _) ->
+      error ("Address " ++ show addr ++ " was used during function call from " ++ show f ++ " to " ++ show t ++ " but it was never defined as EOA or deployed as a contract")
+    (PleaseFetchContract addr _ _, ContractCreated f t _ _ _ _) ->
+      error ("Address " ++ show addr ++ " was used during the contract creation of " ++ show t ++ " from " ++ show f ++ " but it was never defined as EOA or deployed as a contract")
+    (PleaseFetchSlot slot _ _, FunctionCall f t _ _ _ _) ->
+      error ("Slot " ++ show slot ++ " was used during function call from " ++ show f ++ " to " ++ show t ++ " but it was never loaded")
+    (PleaseFetchSlot slot _ _, ContractCreated f t _ _ _ _) ->
+      error ("Slot " ++ show slot ++ " was used during the contract creation of " ++ show t ++ " from " ++ show f ++ " but it was never loaded")
+    _ -> error $ show (q, et)
 
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
 -- | address containing echidna tests
@@ -146,6 +159,7 @@ execEthenoTxs _ et = do
   case (res, et) of
        (_        , AccountCreated _)  -> return ()
        (Reversion,   _)               -> void $ put sb
+       (VMFailure (Query q), _)       -> showQueryError q et
        (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
        (VMSuccess (ConcreteBuffer bc),
         ContractCreated _ ca _ _ _ _) -> do
@@ -156,7 +170,7 @@ execEthenoTxs _ et = do
 
 -- | For an etheno txn, set up VM to execute txn
 setupEthenoTx :: (MonadState x m, Has VM x) => Etheno -> m ()
-setupEthenoTx (AccountCreated f) = initAddress f
+setupEthenoTx (AccountCreated f) = initAddress f -- TODO: improve etheno to include initial balance
 setupEthenoTx (ContractCreated f c _ _ d v) = setupTx $ createTxWithValue d f c (fromInteger unlimitedGasPerBlock) (w256 v) (1, 1)
 setupEthenoTx (FunctionCall f t _ _ d v) = setupTx $ Tx (SolCalldata d) f t (fromInteger unlimitedGasPerBlock) 0 (w256 v) (1, 1)
 setupEthenoTx (BlockMined n t) = setupTx $ Tx NoCall 0 0 0 0 0 (fromInteger t, fromInteger n)
