@@ -2,6 +2,7 @@
 
 ## 2.0.3
 
+* Clean up Docker containers (#706)
 * Avoid resetting accounts if there is a deployed contract (#795)
 * Fixed decoding non-utf8 strings from slither printer (#799) 
 * Fixed generation and mutation of extreme signed integers (#791) 
