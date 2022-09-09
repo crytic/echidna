@@ -17,6 +17,7 @@ import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
 import Data.ByteString.Char8 (ByteString)
 import Data.Has (Has(..))
 import Data.Text.Encoding (encodeUtf8)
+import Data.Map (member)
 
 import EVM
 import EVM.ABI (AbiType(..), AbiValue(..), decodeAbiValue, selector)
@@ -128,9 +129,11 @@ loadEthenoBatch fp = do
          return vm'
 
 initAddress :: (MonadState s m, Has VM s) => Addr -> m ()
-initAddress addr = 
-  hasLens . env . contracts . at addr . _Just . contractcode .= InitCode (ConcreteBuffer "")
- 
+initAddress addr = do
+  cs <- use (hasLens . env . EVM.contracts)
+  if addr `member` cs then return ()
+  else hasLens . env . EVM.contracts . at addr .= Just account
+ where account = initialContract (RuntimeCode mempty) & set nonce 0 & set balance (w256 0xffffffff) -- default balance for EOA
 
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
 -- | address containing echidna tests
@@ -146,16 +149,15 @@ execEthenoTxs _ et = do
        (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
        (VMSuccess (ConcreteBuffer bc),
         ContractCreated _ ca _ _ _ _) -> do
-          initAddress ca
+          hasLens . env . contracts . at ca . _Just . contractcode .= InitCode (ConcreteBuffer "")
           liftSH (replaceCodeOfSelf (RuntimeCode (ConcreteBuffer bc)) >> loadContract ca)
           return ()
        _                              -> return ()
 
 -- | For an etheno txn, set up VM to execute txn
 setupEthenoTx :: (MonadState x m, Has VM x) => Etheno -> m ()
-setupEthenoTx (AccountCreated _) = pure ()
+setupEthenoTx (AccountCreated f) = initAddress f
 setupEthenoTx (ContractCreated f c _ _ d v) = setupTx $ createTxWithValue d f c (fromInteger unlimitedGasPerBlock) (w256 v) (1, 1)
 setupEthenoTx (FunctionCall f t _ _ d v) = do
-   initAddress f
    setupTx $ Tx (SolCalldata d) f t (fromInteger unlimitedGasPerBlock) 0 (w256 v) (1, 1)
 setupEthenoTx (BlockMined n t) = setupTx $ Tx NoCall 0 0 0 0 0 (fromInteger t, fromInteger n)
