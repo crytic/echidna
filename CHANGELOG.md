@@ -1,5 +1,12 @@
 ## TODO
 
+## 2.0.3
+
+* Avoid resetting accounts if there is a deployed contract (#795)
+* Fixed decoding non-utf8 strings from slither printer (#799) 
+* Fixed generation and mutation of extreme signed integers (#791) 
+* Removed fallback from signature map when it is not defined (#772)
+
 ## 2.0.2
 
 * Improved shrinking of dynamic arrays (#775)
