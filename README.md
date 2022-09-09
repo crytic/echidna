@@ -162,13 +162,13 @@ checking for these would be a good place to start.
 
 ## Limitations and known issues
 
-EVM emulation and testing is hard. Echidna has a number of limitations in the latest release. Some of these are inherited from [hevm](https://github.com/dapphub/dapptools/tree/master/src/hevm) while some are results from design/performance decisions or simply bugs in our code. We list them here including their corresponding issue and the status ("wont fix", "in review", "fixed"). Issues that are "fixed" are expected to be included in the next Echidna release.
+EVM emulation and testing is hard. Echidna has a number of limitations in the latest release. Some of these are inherited from [hevm](https://github.com/dapphub/dapptools/tree/master/src/hevm) while some are results from design/performance decisions or simply bugs in our code. We list them here including their corresponding issue and the status ("wont fix", "on hold", "in review", "fixed"). Issues that are "fixed" are expected to be included in the next Echidna release.
 
 | Description |  Issue   | Status   |
 | :--- |     :---:              |         :---:   |
 | Vyper support is limited | [#652](https://github.com/crytic/echidna/issues/652) | *wont fix* |
 | Limited library support for testing | [#651](https://github.com/crytic/echidna/issues/651) | *wont fix* |
-
+| Lack of support for function pointers in Solidity | [#798](https://github.com/crytic/echidna/issues/798) | *on hold* |
 ## Installation
 
 ### Precompiled binaries
