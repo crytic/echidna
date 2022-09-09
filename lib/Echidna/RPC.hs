@@ -158,6 +158,5 @@ execEthenoTxs _ et = do
 setupEthenoTx :: (MonadState x m, Has VM x) => Etheno -> m ()
 setupEthenoTx (AccountCreated f) = initAddress f
 setupEthenoTx (ContractCreated f c _ _ d v) = setupTx $ createTxWithValue d f c (fromInteger unlimitedGasPerBlock) (w256 v) (1, 1)
-setupEthenoTx (FunctionCall f t _ _ d v) = do
-   setupTx $ Tx (SolCalldata d) f t (fromInteger unlimitedGasPerBlock) 0 (w256 v) (1, 1)
+setupEthenoTx (FunctionCall f t _ _ d v) = setupTx $ Tx (SolCalldata d) f t (fromInteger unlimitedGasPerBlock) 0 (w256 v) (1, 1)
 setupEthenoTx (BlockMined n t) = setupTx $ Tx NoCall 0 0 0 0 0 (fromInteger t, fromInteger n)
