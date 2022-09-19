@@ -66,9 +66,8 @@ makeLenses ''Campaign
 
 instance ToJSON Campaign where
   toJSON (Campaign ts co gi _ _ _ _ _) = object $ ("tests", toJSON $ map format ts)
-    : ((if co == mempty then [] else [
-    ("coverage",) . toJSON . mapKeys (("0x" <>) . (`showHex` "") . keccak) $ toList <$> co]) ++
-       [(("maxgas",) . toJSON . toList) gi | gi /= mempty]) where
+    : [("coverage",) . toJSON . mapKeys (("0x" <>) . (`showHex` "") . keccak) $ toList <$> co | co /= mempty] ++
+      [(("maxgas",) . toJSON . toList) gi | gi /= mempty] where
         format _ = "" :: String -- TODO: complete this format string
 
 instance Has GenDict Campaign where
