@@ -1,5 +1,3 @@
-{-# LANGUAGE Rank2Types #-}
-
 module Tests.Compile (compilationTests) where
 
 import Test.Tasty (TestTree, testGroup)

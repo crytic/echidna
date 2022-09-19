@@ -59,6 +59,17 @@ dependencies:
 
 default-extensions:
   - OverloadedStrings
+  # GHC2021 default extensions from 9.2
+  - FlexibleContexts
+  - FlexibleInstances
+  - ImportQualifiedPost
+  - LambdaCase
+  - MultiParamTypeClasses
+  - NamedFieldPuns
+  - RankNTypes
+  - ScopedTypeVariables
+  - StandaloneDeriving
+  - TupleSections
 
 library:
   source-dirs: lib/

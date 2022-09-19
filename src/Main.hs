@@ -6,16 +6,21 @@ import Control.Lens hiding (argument)
 import Control.Monad (unless)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
+import Data.List.NonEmpty qualified as NE
+import Data.Map (fromList)
 import Data.Maybe (fromMaybe)
+import Data.Set qualified as DS
 import Data.Text (Text, unpack)
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Version (showVersion)
-import Data.Map (fromList)
 import EVM.Types (Addr)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.IO (hPutStrLn, stderr)
+
+import EVM.Dapp (dappInfo)
+import EVM.Solidity (contractName)
 
 import Echidna
 import Echidna.Config
@@ -28,12 +33,6 @@ import Echidna.Campaign (isSuccess)
 import Echidna.UI
 import Echidna.Output.Source
 import Echidna.Output.Corpus
-
-import EVM.Dapp (dappInfo)
-import EVM.Solidity (contractName)
-
-import qualified Data.List.NonEmpty as NE
-import qualified Data.Set as DS
 
 data Options = Options
   { cliFilePath         :: NE.NonEmpty FilePath

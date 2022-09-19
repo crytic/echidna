@@ -1,8 +1,4 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Echidna.Exec where
@@ -11,22 +7,21 @@ import Control.Lens
 import Control.Monad.Catch (Exception, MonadThrow(..))
 import Control.Monad.State.Strict (MonadState, execState, execState)
 import Data.Has (Has(..))
+import Data.Map qualified as M
 import Data.Maybe (fromMaybe)
+import Data.Set qualified as S
+
 import EVM
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Types (Buffer(..), Word)
 import EVM.Symbolic (litWord)
 
-import qualified Data.Map as M
-import qualified Data.Set as S
-
+import Echidna.Events (emptyEvents)
 import Echidna.Transaction
 import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Coverage (CoverageMap)
-import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
-
 import Echidna.Types.Signature (BytecodeMemo, lookupBytecodeMetadata)
-import Echidna.Events (emptyEvents)
+import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
@@ -136,7 +131,7 @@ handleErrorsAndConstruction onErr vmResult' vmBeforeTx tx' = case (vmResult', tx
     -- contract address, calldata, result and traces.
     hasLens . result ?= vmResult'
     hasLens . state . calldata .= calldataBeforeVMReset
-    hasLens . state . callvalue .= callvalueBeforeVMReset 
+    hasLens . state . callvalue .= callvalueBeforeVMReset
     hasLens . traces .= tracesBeforeVMReset
     hasLens . state . codeContract .= codeContractBeforeVMReset
   (VMFailure x, _) -> onErr x

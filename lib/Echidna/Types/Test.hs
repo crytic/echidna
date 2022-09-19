@@ -7,6 +7,7 @@ import Data.Aeson (ToJSON(..), object)
 import Data.DoubleWord (Int256)
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
+
 import EVM (VM)
 import EVM.Types (Addr)
 import EVM.Dapp (DappInfo)
@@ -51,7 +52,7 @@ instance Show TestValue where
 data TestType = PropertyTest Text Addr
               | OptimizationTest Text Addr
               | AssertionTest Bool SolSignature Addr
-              | CallTest Text (DappInfo -> VM -> TestValue) 
+              | CallTest Text (DappInfo -> VM -> TestValue)
               | Exploration
 
 instance Eq TestType where
@@ -65,20 +66,20 @@ instance Eq TestType where
 
 instance Eq TestState where
   (Open i)  == (Open j)    = i == j
-  (Large i) == (Large j)   = i == j 
+  (Large i) == (Large j)   = i == j
   Passed    == Passed      = True
   Solved    == Solved      = True
   _         == _           = False
 
 -- | An Echidna test is represented with the following data record
-data EchidnaTest = EchidnaTest { 
+data EchidnaTest = EchidnaTest {
                                  _testState      :: TestState
                                , _testType       :: TestType
                                , _testValue      :: TestValue
                                , _testReproducer :: [Tx]
                                , _testResult     :: TxResult
-                               , _testEvents     :: Events 
-                               } deriving Eq  
+                               , _testEvents     :: Events
+                               } deriving Eq
 
 makeLenses ''EchidnaTest
 
@@ -87,17 +88,17 @@ isOpen t = case t ^. testState of
             Open _ -> True
             _      -> False
 
-didFailed :: EchidnaTest -> Bool 
+didFailed :: EchidnaTest -> Bool
 didFailed t = case t ^. testState of
               Large _ -> True
               Solved  -> True
               _       -> False
- 
-isPassed :: EchidnaTest -> Bool 
+
+isPassed :: EchidnaTest -> Bool
 isPassed t = case t ^. testState of
               Passed -> True
               _      -> False
- 
+
 
 instance ToJSON TestState where
   toJSON s = object $ ("passed", toJSON passed) : maybeToList desc where
