@@ -26,7 +26,7 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 
 ### Executing the test runner
 
-The core Echidna functionality is an executable called `echidna-test`. `echidna-test` takes a contract and a list of invariants (properties that should always remain true) as input. For each invariant, it generates random sequences of calls to the contract and checks if the invariant holds. If it can find some way to falsify the invariant, it prints the call sequence that does so. If it can't, you have some assurance the contract is safe.
+The core Echidna functionality is an executable called `echidna`. `echidna` takes a contract and a list of invariants (properties that should always remain true) as input. For each invariant, it generates random sequences of calls to the contract and checks if the invariant holds. If it can find some way to falsify the invariant, it prints the call sequence that does so. If it can't, you have some assurance the contract is safe.
 
 ### Writing invariants
 
@@ -41,13 +41,13 @@ function echidna_check_balance() public returns (bool) {
 To check these invariants, run:
 
 ```sh
-$ echidna-test myContract.sol
+$ echidna myContract.sol
 ```
 
 An example contract with tests can be found [tests/solidity/basic/flags.sol](tests/solidity/basic/flags.sol). To run it, you should execute:
 
 ```sh
-$ echidna-test tests/solidity/basic/flags.sol
+$ echidna tests/solidity/basic/flags.sol
 ```
 
 Echidna should find a call sequence that falsifies `echidna_sometimesfalse` and should be unable to find a falsifying input for `echidna_alwaystrue`.
@@ -79,7 +79,7 @@ Our tool signals each execution trace in the corpus with the following "line mar
 
 ### Support for smart contract build systems
 
-Echidna can test contracts compiled with different smart contract build systems, including [Truffle](https://truffleframework.com/) or [hardhat](https://hardhat.org/) using [crytic-compile](https://github.com/crytic/crytic-compile). To invoke echidna with the current compilation framework, use `echidna-test .`.
+Echidna can test contracts compiled with different smart contract build systems, including [Truffle](https://truffleframework.com/) or [hardhat](https://hardhat.org/) using [crytic-compile](https://github.com/crytic/crytic-compile). To invoke echidna with the current compilation framework, use `echidna .`.
 
 On top of that, Echidna supports two modes of testing complex contracts. Firstly, one can [describe an initialization procedure with Truffle and Etheno](https://github.com/crytic/building-secure-contracts/blob/master/program-analysis/echidna/end-to-end-testing.md) and use that as the base state for Echidna. Secondly, echidna can call into any contract with a known ABI by passing in the corresponding solidity source in the CLI. Use `multi-abi: true` in your config to turn this on.
 
@@ -89,7 +89,7 @@ Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-
 
 ### Using Echidna in a GitHub Actions workflow
 
-There is an Echidna action which can be used to run `echidna-test` as part of a
+There is an Echidna action which can be used to run `echidna` as part of a
 GitHub Actions workflow. Please refer to the
 [crytic/echidna-action](https://github.com/crytic/echidna-action) repository for
 usage instructions and examples.
@@ -100,7 +100,7 @@ Echidna's CLI can be used to choose the contract to test and load a
 configuration file.
 
 ```sh
-$ echidna-test contract.sol --contract TEST --config config.yaml
+$ echidna contract.sol --contract TEST --config config.yaml
 ```
 
 The configuration file allows users to choose EVM and test generation
@@ -149,14 +149,14 @@ will either be `property` or `assertion`, and `status` always takes on either
 
 ### Debugging Performance Problems
 
-The best way to deal with an Echidna performance issue is to run `echidna-test` with profiling on.
-This creates a text file, `echidna-test.prof`, which shows which functions take up the most CPU and memory usage.
+The best way to deal with an Echidna performance issue is to run `echidna` with profiling on.
+This creates a text file, `echidna.prof`, which shows which functions take up the most CPU and memory usage.
 
-To build a version of `echidna-test` that supports profiling, either Stack or Nix should be used.
+To build a version of `echidna` that supports profiling, either Stack or Nix should be used.
 With Stack, adding the flag `--profile` will make the build support profiling.
 With Nix, running `nix-build --arg profiling true` will make the build support profiling.
 
-To run with profiling on, add the flags `+RTS -p` to your original `echidna-test` command.
+To run with profiling on, add the flags `+RTS -p` to your original `echidna` command.
 
 Performance issues in the past have been because of functions getting called repeatedly when they could be memoized,
 and memory leaks related to Haskell's lazy evaluation;
@@ -192,7 +192,7 @@ If you prefer to use a pre-built Docker container, check out our [docker
 package](https://github.com/orgs/crytic/packages?repo_name=echidna), which is
 auto-built via GitHub Actions. The `echidna` container is based on
 `ubuntu:focal` and it is meant to be a small yet flexible enough image to use
-Echidna on. It provides a pre-built version of `echidna-test`, as well as
+Echidna on. It provides a pre-built version of `echidna`, as well as
 `slither`, `crytic-compile`, `solc-select` and `nvm` under 200 MB.
 
 Note that the container images currently only build on x86 systems. Running them
@@ -211,7 +211,7 @@ Different tags are available for the Docker container image:
 To run the container with the latest Echidna version interactively, you can use
 something like the following command. It will map the current directory as
 `/src` inside the container, and give you a shell where you can use
-`echidna-test`:
+`echidna`:
 
 ```sh
 $ docker run --rm -it -v `pwd`:/src ghcr.io/crytic/echidna/echidna
@@ -229,12 +229,12 @@ Then, you can run the `echidna` image locally. For example, to install solc
 0.5.7 and check `tests/solidity/basic/flags.sol`, you can run:
 
 ```sh
-$ docker run -it -v `pwd`:/src echidna bash -c "solc-select install 0.5.7 && solc-select use 0.5.7 && echidna-test /src/tests/solidity/basic/flags.sol"
+$ docker run -it -v `pwd`:/src echidna bash -c "solc-select install 0.5.7 && solc-select use 0.5.7 && echidna /src/tests/solidity/basic/flags.sol"
 ```
 
 ### Building using Stack
 
-If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/README/). `stack install` should build and compile `echidna-test` in `~/.local/bin`. You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choosing. You also need to install the latest release of [libff](https://github.com/scipr-lab/libff). Refer to our [CI tests](.github/scripts/install-libff.sh) for guidance.
+If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/README/). `stack install` should build and compile `echidna` in `~/.local/bin`. You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choosing. You also need to install the latest release of [libff](https://github.com/scipr-lab/libff). Refer to our [CI tests](.github/scripts/install-libff.sh) for guidance.
 
 Some Linux distributions do not ship static libraries for certain things that Haskell needs, e.g. Arch Linux, which will cause `stack build` to fail with linking errors because we use the `-static` flag. In that case, use `--flag echidna:-static` to produce a dynamically linked binary.
 
