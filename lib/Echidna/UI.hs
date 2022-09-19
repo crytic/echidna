@@ -57,6 +57,66 @@ makeLenses ''UIConf
 
 data CampaignEvent = CampaignUpdated Campaign | CampaignTimedout Campaign
 
+-- | Set up and run an Echidna 'Campaign' and display interactive UI or
+-- print non-interactive output in desired format at the end
+ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
+      , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x
+      , Has Names x, Has TxConf x, Has UIConf x, Has DappInfo x)
+   => VM             -- ^ Initial VM state
+   -> World          -- ^ Initial world state
+   -> [EchidnaTest]  -- ^ Tests to evaluate
+   -> Maybe GenDict
+   -> [[Tx]]
+   -> m Campaign
+ui vm world ts d txs = do
+  campaignConf <- view hasLens
+  ref <- liftIO $ newIORef defaultCampaign
+  let updateRef = use hasLens >>= liftIO . atomicWriteIORef ref
+      secToUsec = (* 1000000)
+      timeoutUsec = secToUsec $ fromMaybe (-1) (campaignConf ^. maxTime)
+      runCampaign = timeout timeoutUsec (campaign updateRef vm world ts d txs)
+  terminalPresent <- isTerminal
+  let effectiveMode = case campaignConf ^. operationMode of
+        Interactive | not terminalPresent -> NonInteractive Text
+        other -> other
+  case effectiveMode of
+    Interactive -> do
+      bc <- liftIO $ newBChan 100
+      let updateUI e = readIORef ref >>= writeBChan bc . e
+      ticker <- liftIO $ forkIO $ -- run UI update every 100ms
+        forever $ threadDelay 100000 >> updateUI CampaignUpdated
+      _ <- forkFinally -- run worker
+        (void $ runCampaign >>= \case
+          Nothing -> liftIO $ updateUI CampaignTimedout
+          Just _ -> liftIO $ updateUI CampaignUpdated
+        )
+        (const $ liftIO $ killThread ticker)
+      let vty = mkVty vtyConfig
+      initialVty <- liftIO vty
+      app <- customMain initialVty vty (Just bc) <$> monitor
+      liftIO $ void $ app (defaultCampaign, Uninitialized)
+      final <- liftIO $ readIORef ref
+      liftIO . putStrLn =<< ppCampaign final
+      pure final
+
+    NonInteractive outputFormat -> do
+      result <- runCampaign
+      (final, timedout) <- case result of
+        Nothing -> do
+          final <- liftIO $ readIORef ref
+          pure (final, True)
+        Just final ->
+          pure (final, False)
+      case outputFormat of
+        JSON ->
+          liftIO . BS.putStr $ Echidna.Output.JSON.encodeCampaign final
+        Text -> do
+          liftIO . putStrLn =<< ppCampaign final
+          when timedout $ liftIO $ putStrLn "TIMEOUT!"
+        None ->
+          pure ()
+      pure final
+
 vtyConfig :: Config
 vtyConfig = defaultConfig { inputMap = (Nothing, "\ESC[6;2~", EvKey KPageDown [MShift]) :
                                        (Nothing, "\ESC[5;2~", EvKey KPageUp [MShift]) :
@@ -81,61 +141,3 @@ monitor = do
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
 isTerminal :: MonadIO m => m Bool
 isTerminal = liftIO $ (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
-
--- | Set up and run an Echidna 'Campaign' and display interactive UI or
--- print non-interactive output in desired format at the end
-ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
-      , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x, Has Names x, Has TxConf x, Has UIConf x, Has DappInfo x)
-   => VM             -- ^ Initial VM state
-   -> World          -- ^ Initial world state
-   -> [EchidnaTest]      -- ^ Tests to evaluate
-   -> Maybe GenDict
-   -> [[Tx]]
-   -> m Campaign
-ui v w ts d txs = do
-  ref <- liftIO $ newIORef defaultCampaign
-  let updateRef = use hasLens >>= liftIO . atomicWriteIORef ref
-      secToUsec = (* 1000000)
-  timeoutUsec <- secToUsec . fromMaybe (-1) <$> view (hasLens . maxTime)
-  terminalPresent <- isTerminal
-  effectiveMode <- view (hasLens . operationMode) <&> \case
-    Interactive | not terminalPresent -> NonInteractive Text
-    other -> other
-  case effectiveMode of
-    Interactive -> do
-      bc <- liftIO $ newBChan 100
-      let updateUI e = readIORef ref >>= writeBChan bc . e
-      ticker <- liftIO $ forkIO $ -- run UI update every 100ms
-        forever $ threadDelay 100000 >> updateUI CampaignUpdated
-      _ <- forkFinally -- run worker
-        (void $ timeout timeoutUsec (campaign updateRef v w ts d txs) >>= \case
-          Nothing -> liftIO $ updateUI CampaignTimedout
-          Just _ -> liftIO $ updateUI CampaignUpdated
-        )
-        (const $ liftIO $ killThread ticker)
-      let vty = mkVty vtyConfig
-      initialVty <- liftIO vty
-      app <- customMain initialVty vty (Just bc) <$> monitor
-      liftIO $ void $ app (defaultCampaign, Uninitialized)
-      final <- liftIO $ readIORef ref
-      liftIO . putStrLn =<< ppCampaign final
-      pure final
-
-    NonInteractive outputFormat -> do
-      result <- timeout timeoutUsec (campaign updateRef v w ts d txs)
-      (final, timedout) <- case result of
-        Nothing -> do
-          final <- liftIO $ readIORef ref
-          pure (final, True)
-        Just final ->
-          pure (final, False)
-      case outputFormat of
-        JSON ->
-          liftIO . BS.putStr $ Echidna.Output.JSON.encodeCampaign final
-        Text -> do
-          liftIO . putStrLn =<< ppCampaign final
-          when timedout $ liftIO $ putStrLn "TIMEOUT!"
-        None ->
-          pure ()
-
-      pure final
