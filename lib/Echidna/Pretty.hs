@@ -5,7 +5,6 @@ module Echidna.Pretty where
 import Data.List (intercalate)
 import Data.Text (unpack)
 
-import Echidna.ABI (ppAbiValue)
 import Echidna.Types.Signature (SolCall)
 import Echidna.Types.Tx (TxCall(..))
 
@@ -14,7 +13,9 @@ import qualified Data.ByteString.Char8 as BSC8
 
 -- | Pretty-print some 'AbiCall'.
 ppSolCall :: SolCall -> String
-ppSolCall (t, vs) = (if t == "" then unpack "*fallback*" else unpack t) ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
+ppSolCall (t, vs) =
+  (if t == "" then "*fallback*" else unpack t)
+  ++ "(" ++ intercalate "," (show <$> vs) ++ ")"
 
 -- | Pretty-print some 'TxCall'
 ppTxCall :: TxCall -> String

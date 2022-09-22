@@ -19,7 +19,6 @@ import Data.Foldable (toList)
 import Data.Hashable (Hashable(..))
 import Data.HashMap.Strict (HashMap)
 import Data.HashSet (HashSet, fromList, union)
-import Data.List (intercalate)
 import Data.Maybe (fromMaybe, catMaybes)
 import Data.Text (Text)
 import Data.Text.Encoding (encodeUtf8)
@@ -27,7 +26,6 @@ import Data.Vector (Vector)
 import Data.Vector.Instances ()
 import Data.Word8 (Word8)
 import Data.DoubleWord (Int256, Word256)
-import Numeric (showHex)
 
 import EVM.ABI hiding (genAbiValue)
 import EVM.Types (Addr, abiKeccak)
@@ -65,22 +63,6 @@ makeNumAbiValues i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral ([i-1
 makeArrayAbiValues :: BS.ByteString -> [AbiValue]
 makeArrayAbiValues b = let size = BS.length b in [AbiString b, AbiBytesDynamic b] ++
  fmap (\n -> AbiBytes n . BS.append b $ BS.replicate (n - size) 0) [size..32]
-
--- | Pretty-print some 'AbiValue'.
-ppAbiValue :: AbiValue -> String
-ppAbiValue (AbiUInt _ n)         = show n
-ppAbiValue (AbiInt  _ n)         = show n
-ppAbiValue (AbiAddress n)        = "0x" ++ showHex n ""
-ppAbiValue (AbiBool b)           = if b then "true" else "false"
-ppAbiValue (AbiBytes      _ b)   = show b
-ppAbiValue (AbiBytesDynamic b)   = show b
-ppAbiValue (AbiString       s)   = show s
-ppAbiValue (AbiArrayDynamic _ v) =
-  "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
-ppAbiValue (AbiArray      _ _ v) =
-  "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
-ppAbiValue (AbiTuple v) =
-  "(" ++ intercalate ", " (ppAbiValue <$> toList v) ++ ")"
 
 -- Types
 
