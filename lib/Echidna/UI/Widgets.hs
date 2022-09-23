@@ -13,6 +13,7 @@ import Data.Has (Has(..))
 import Data.List (nub, intersperse, sortBy)
 import Data.Version (showVersion)
 import Text.Printf (printf)
+import Text.Wrap
 
 import qualified Brick.AttrMap as A
 import qualified Data.Text as T
@@ -78,7 +79,7 @@ summaryWidget c =
 
 failedFirst :: EchidnaTest -> EchidnaTest -> Ordering
 failedFirst t1 _ | didFailed t1 = LT
-                 | otherwise   = GT 
+                 | otherwise   = GT
 
 testsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
             => [EchidnaTest] -> m (Widget())
@@ -90,10 +91,10 @@ testWidget etest =
  case etest ^. testType of
       Exploration           -> widget tsWidget "exploration" ""
       PropertyTest n _      -> widget tsWidget n ""
-      OptimizationTest n _  -> widget optWidget n "optimizing " 
+      OptimizationTest n _  -> widget optWidget n "optimizing "
       AssertionTest _ s _   -> widget tsWidget (encodeSig s) "assertion in "
       CallTest n _          -> widget tsWidget n ""
- 
+
   where
   widget f n infront = do
     (status, details) <- f (etest ^. testState) etest
@@ -121,7 +122,10 @@ titleWidget :: Widget n
 titleWidget = str "Call sequence" <+> str ":"
 
 eventWidget :: Events -> Widget n
-eventWidget es = if null es then str "" else str "Event sequence" <+> str ":" <=> str (T.unpack $ T.intercalate "\n" es)
+eventWidget es =
+  if null es then str ""
+  else str "Event sequence" <+> str ":"
+       <=> strWrapWith wrapSettings (T.unpack $ T.intercalate "\n" es)
 
 failWidget :: (MonadReader x m, Has Names x, Has TxConf x)
            => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> TxResult -> m (Widget (), Widget ())
@@ -168,10 +172,13 @@ seqWidget xs = do
     let ordinals = str . printf "%d." <$> [1 :: Int ..]
     pure $
       foldl (<=>) emptyWidget $
-        zipWith (<+>) ordinals (withAttr "tx" . strWrap <$> ppTxs)
+        zipWith (<+>) ordinals (withAttr "tx" . strWrapWith wrapSettings <$> ppTxs)
 
 failureBadge :: Widget ()
 failureBadge = withAttr "failure" $ str "FAILED!"
 
 maximumBadge :: Widget ()
 maximumBadge = withAttr "maximum" $ str "OPTIMIZED!"
+
+wrapSettings :: WrapSettings
+wrapSettings = defaultWrapSettings { breakLongWords = True }
