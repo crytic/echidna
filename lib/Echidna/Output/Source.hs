@@ -57,7 +57,7 @@ ppCoveredCode isHtml sc cs s | s == mempty = "Coverage map is empty"
         in T.unlines (changeFileName srcPath : changeFileLines (V.toList marked))
       -- ^ Pretty print individual file coverage
       topHeader
-        | isHtml = "<style> code { white-space: pre-wrap; display: block; background-color: #aaa; } </style>"
+        | isHtml = "<style> code { white-space: pre-wrap; display: block; background-color: #eee; } </style>"
         | otherwise = ""
       -- ^ Text to add to top of the file
       changeFileName fn
@@ -87,7 +87,7 @@ markLines isHtml codeLines runtimeLines resultMap =
           | otherwise = line
           where
           color = if n `elem` runtimeLines then getColor markers else grey
-          grey = "aaa"
+          grey = "eee"
 
     in pack $ printf " %*d | %-4s| %s" lineNrSpan n markers (wrapLine codeLine)
   lineNrSpan = length . show $ V.length codeLines + 1
