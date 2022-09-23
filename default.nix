@@ -40,11 +40,12 @@ let
 
   f = { mkDerivation, aeson, ansi-terminal, base, base16-bytestring, binary
       , brick, bytestring, cborg, containers, data-dword, data-has, deepseq
-      , directory, exceptions, filepath, hashable, hevm, hpack, lens, lens-aeson
-      , megaparsec, MonadRandom, mtl, optparse-applicative, process, random
-      , semver, stm, tasty, tasty-hunit, tasty-quickcheck, temporary, text
-      , transformers, unix, unliftio, unliftio-core, unordered-containers, vector
-      , vector-instances, vty, wl-pprint-annotated, word8, yaml, extra, ListLike
+      , directory, exceptions, filepath, hashable, hevm, html-entities, hpack
+      , lens, lens-aeson, megaparsec, MonadRandom, mtl, optparse-applicative
+      , process, random, semver, stm, tasty, tasty-hunit, tasty-quickcheck
+      , temporary, text, transformers, unix, unliftio, unliftio-core
+      , unordered-containers, vector, vector-instances, vty, wl-pprint-annotated
+      , word8, yaml, extra, ListLike
       }:
       mkDerivation rec {
         pname = "echidna";
@@ -55,10 +56,11 @@ let
         libraryHaskellDepends = [
           aeson ansi-terminal base base16-bytestring binary brick bytestring
           cborg containers data-dword data-has deepseq directory exceptions
-          filepath hashable hevm lens lens-aeson ListLike megaparsec MonadRandom
-          mtl optparse-applicative process random semver stm temporary text
-          transformers unix unliftio unliftio-core unordered-containers vector
-          vector-instances vty wl-pprint-annotated word8 yaml extra ListLike
+          filepath hashable hevm html-entities lens lens-aeson megaparsec
+          MonadRandom mtl optparse-applicative process random stm temporary
+          text transformers unix unliftio unliftio-core unordered-containers
+          vector vector-instances vty wl-pprint-annotated word8 yaml extra
+          ListLike semver
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
         executableHaskellDepends = libraryHaskellDepends;
         testHaskellDepends = [ tasty tasty-hunit tasty-quickcheck ];
