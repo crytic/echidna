@@ -8,6 +8,7 @@ import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, unpack)
+import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Version (showVersion)
 import Data.Map (fromList)
 import EVM.Types (Addr)
@@ -133,9 +134,12 @@ main = do
   -- save corpus
   saveTxs cd (snd <$> DS.toList (cpg ^. corpus))
 
+  -- get current time to save coverage
+  t <- getSystemTime
+  let s = fromIntegral $ systemSeconds t
   -- save source coverage
-  saveCoverage False cd sc cs (cpg ^. coverage)
-  saveCoverage True  cd sc cs (cpg ^. coverage)
+  saveCoverage False s cd sc cs (cpg ^. coverage)
+  saveCoverage True  s cd sc cs (cpg ^. coverage)
 
   if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
 

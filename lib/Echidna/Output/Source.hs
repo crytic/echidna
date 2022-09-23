@@ -10,7 +10,6 @@ import Data.Maybe (fromMaybe, mapMaybe, catMaybes)
 import Data.Text (Text, pack)
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
-import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.List (nub, sort)
 import Text.Printf (printf)
 import qualified HTMLEntities.Text as HTML
@@ -31,12 +30,12 @@ import Echidna.Types.Signature (getBytecodeMetadata)
 
 type FilePathText = Text
 
-saveCoverage :: Bool -> Maybe FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
-saveCoverage isHtml (Just d) sc cs s = let filepath = if isHtml then ".html" else ".txt"
-                                           fn t = d ++ "/covered." ++ show t ++ filepath
-                                           cc = ppCoveredCode isHtml sc cs s
-                                       in getSystemTime >>= \t -> writeFile (fn $ systemSeconds t) cc
-saveCoverage _ Nothing  _  _  _ = pure ()
+saveCoverage :: Bool -> Int -> Maybe FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
+saveCoverage isHtml seed (Just d) sc cs s = let filepath = if isHtml then ".html" else ".txt"
+                                                fn = d ++ "/covered." ++ show seed ++ filepath
+                                                cc = ppCoveredCode isHtml sc cs s
+                                       in writeFile fn cc
+saveCoverage _ _ Nothing  _  _  _ = pure ()
 
 
 -- | Pretty-print the covered code
