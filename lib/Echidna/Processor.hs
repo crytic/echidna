@@ -103,7 +103,7 @@ instance FromJSON SlitherInfo where
         generationGraph <- (traverse . traverse) (withObject "relations" (.: "impacts")) functionsRelations
         solcVersions' <- o .:? "solc_versions"
         solcVersions <- case mapM (fromText . pack) (fromMaybe [] solcVersions') of
-          Left err -> fail $ "failed to parse solc version: " ++ err
+          Left err -> pure []
           Right versions -> pure versions
         pure SlitherInfo {..}
 
