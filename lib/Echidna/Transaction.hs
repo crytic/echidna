@@ -153,10 +153,12 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   , tx . gasprice .= gp, tx . origin .= s, state . caller .= litAddr s, state . callvalue .= litWord v
   , block . timestamp += litWord t, block . number += b, setup] where
     setup = case c of
-      SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (InitCode (ConcreteBuffer bc)) & set balance v) >> loadContract r >> state . code .= ConcreteBuffer bc
-      SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata (encode cd)
-      SolCalldata cd -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata cd
-      NoCall         -> error "NoCall"
+      SolCreate bc             -> assign (env . contracts . at r) (Just $ initialContract (InitCode (ConcreteBuffer bc)) & set balance v) >> loadContract r >> state . code .= ConcreteBuffer bc
+      SolCall ("*receive*",_)  -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata ""
+      SolCall ("*fallback*",_) -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata "\0"
+      SolCall cd               -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata (encode cd)
+      SolCalldata cd           -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata cd
+      NoCall                   -> error "NoCall"
     incrementBalance = (env . contracts . ix r . balance) += v
     encode (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
