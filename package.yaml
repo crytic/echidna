@@ -55,6 +55,7 @@ dependencies:
   - vty
   - wl-pprint-annotated
   - word8
+  - word-wrap
   - yaml
 
 default-extensions:
