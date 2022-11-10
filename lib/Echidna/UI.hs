@@ -1,9 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE ViewPatterns #-}
 
 module Echidna.UI where
 
@@ -16,11 +11,10 @@ import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader, runReader)
 import Control.Monad.Random.Strict (MonadRandom)
-import qualified Data.ByteString.Lazy as BS
+import Data.ByteString.Lazy qualified as BS
 import Data.Has (Has(..))
-import Data.Maybe (fromMaybe)
 import Data.IORef
-import EVM (VM)
+import Data.Maybe (fromMaybe)
 import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
@@ -28,9 +22,12 @@ import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (forkIO, forkFinally)
 import UnliftIO.Timeout (timeout)
 
-import Echidna.Campaign (campaign)
+import EVM (VM)
+import EVM.Dapp (DappInfo)
+
 import Echidna.ABI
-import qualified Echidna.Output.JSON
+import Echidna.Campaign (campaign)
+import Echidna.Output.JSON qualified
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Campaign
 import Echidna.Types.Test (TestConf(..), EchidnaTest)
@@ -38,8 +35,6 @@ import Echidna.Types.Tx (Tx, TxConf)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
 import Echidna.UI.Widgets
-
-import EVM.Dapp (DappInfo)
 
 data UIConf = UIConf { _maxTime       :: Maybe Int
                      , _operationMode :: OperationMode

@@ -1,9 +1,3 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Echidna.Transaction where
@@ -15,18 +9,17 @@ import Control.Monad (join, liftM2)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, runState, get, put)
+import Data.ByteString qualified as BS
+import Data.List.NonEmpty qualified as NE
 import Data.Has (Has(..))
+import Data.HashMap.Strict qualified as M
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
+import Data.Vector qualified as V
 import EVM hiding (value)
 import EVM.ABI (abiValueType)
-import EVM.Symbolic ( litWord, litAddr)
-import EVM.Types (Addr, Buffer(..),Word(..),w256, w256lit, SymWord)
-
-import qualified Data.ByteString as BS
-import qualified Data.HashMap.Strict as M
-import qualified Data.List.NonEmpty as NE
-import qualified Data.Vector as V
+import EVM.Symbolic (litWord, litAddr)
+import EVM.Types (Addr, Buffer(..), Word(..), w256, w256lit, SymWord)
 
 import Echidna.ABI
 import Echidna.Types.Random

@@ -1,55 +1,50 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase #-}
-
 module Echidna.Solidity where
 
 import Control.Lens
-import Control.Arrow              (first)
-import Control.Monad              (liftM2, when, unless, forM_)
-import Control.Monad.Catch        (MonadThrow(..))
-import Control.Monad.Extra        (whenM)
-import Control.Monad.IO.Class     (MonadIO(..))
-import Control.Monad.Reader       (MonadReader)
+import Control.Arrow (first)
+import Control.Monad (liftM2, when, unless, forM_)
+import Control.Monad.Catch (MonadThrow(..))
+import Control.Monad.Extra (whenM)
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Reader (MonadReader)
 import Control.Monad.State.Strict (execStateT)
-import Data.Foldable              (toList)
-import Data.Has                   (Has(..))
-import Data.List                  (find, partition, isSuffixOf, (\\))
-import Data.Map                   (Map, keys, elems, unions, member)
-import Data.Maybe                 (isJust, isNothing, catMaybes, listToMaybe)
-import Data.Text                  (Text, isPrefixOf, isSuffixOf, append)
-import Data.Text.Lens             (unpacked)
-import System.Process             (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
-import System.IO                  (openFile, IOMode(..))
-import System.Exit                (ExitCode(..))
-import System.Directory           (doesDirectoryExist, doesFileExist, findExecutable, listDirectory, removeFile)
-import System.FilePath.Posix      ((</>))
-
-import Echidna.ABI                (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
-import Echidna.Exec               (execTx, initialVM)
-import Echidna.Events             (EventMap)
-import Echidna.Test               (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
-import Echidna.RPC                (loadEthenoBatch)
-import Echidna.Types.Solidity     hiding (deployBytecodes, deployContracts)
-import Echidna.Types.Signature    (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
-import Echidna.Types.Tx           (TxConf, basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
-import Echidna.Types.Test         (TestConf(..), EchidnaTest(..))
-import Echidna.Types.World        (World(..))
-import Echidna.Fetch              (deployContracts, deployBytecodes)
-import Echidna.Processor
+import Data.Foldable (toList)
+import Data.Has (Has(..))
+import Data.HashMap.Strict qualified as M
+import Data.List (find, partition, isSuffixOf, (\\))
+import Data.List.NonEmpty qualified as NE
+import Data.List.NonEmpty.Extra qualified as NEE
+import Data.Map (Map, keys, elems, unions, member)
+import Data.Maybe (isJust, isNothing, catMaybes, listToMaybe)
+import Data.Text (Text, isPrefixOf, isSuffixOf, append)
+import Data.Text qualified as T
+import Data.Text.Lens (unpacked)
+import System.Directory (doesDirectoryExist, doesFileExist, findExecutable, listDirectory, removeFile)
+import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
+import System.Exit (ExitCode(..))
+import System.FilePath.Posix ((</>))
+import System.IO (openFile, IOMode(..))
 
 import EVM hiding (contracts, path)
-import qualified EVM (contracts)
+import EVM qualified (contracts)
 import EVM.ABI
 import EVM.Solidity
-import EVM.Types    (Addr, w256)
+import EVM.Types (Addr, w256)
 
-import qualified Data.List.NonEmpty  as NE
-import qualified Data.List.NonEmpty.Extra as NEE
-import qualified Data.HashMap.Strict as M
-import qualified Data.Text           as T
+import Echidna.ABI (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
+import Echidna.Exec (execTx, initialVM)
+import Echidna.Events (EventMap)
+import Echidna.Fetch (deployContracts, deployBytecodes)
+import Echidna.Processor
+import Echidna.RPC (loadEthenoBatch)
+import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
+import Echidna.Types.Signature (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
+import Echidna.Types.Solidity hiding (deployBytecodes, deployContracts)
+import Echidna.Types.Test (TestConf(..), EchidnaTest(..))
+import Echidna.Types.Tx (TxConf, basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
+import Echidna.Types.World (World(..))
 
--- | Given a list of source caches (SourceCaches) and an optional contract name, 
+-- | Given a list of source caches (SourceCaches) and an optional contract name,
 -- select one that includes that contract (if possible). Otherwise, use the first source
 -- cache available (or fail if it is empty)
 selectSourceCache :: Maybe ContractName -> SourceCaches -> SourceCache
@@ -148,7 +143,7 @@ filterMethods cn f@(Blacklist ig) ms = case NE.filter (\s -> encodeSigWithName c
 -- | Filter methods with arguments, used for dapptest mode
 filterMethodsWithArgs :: NE.NonEmpty SolSignature -> NE.NonEmpty SolSignature
 filterMethodsWithArgs ms = case NE.filter (\(_, xs) -> not $ null xs) ms of
-                             [] -> error "No dapptest tests found" 
+                             [] -> error "No dapptest tests found"
                              fs -> NE.fromList fs
 
 abiOf :: Text -> SolcContract -> NE.NonEmpty SolSignature
@@ -270,10 +265,10 @@ prepareForTest (vm, em, a, ts, m) c si = do
 
 
 filterFallbacks :: Maybe ContractName -> [ContractName] -> [ContractName] -> SignatureMap -> SignatureMap
-filterFallbacks _ [] [] sm = M.map f sm 
-  where f ss = NE.fromList $ case NE.filter (/= fallback) ss of 
+filterFallbacks _ [] [] sm = M.map f sm
+  where f ss = NE.fromList $ case NE.filter (/= fallback) ss of
                 []  -> [fallback] -- No other alternative
-                ss' -> ss' 
+                ss' -> ss'
 filterFallbacks _ _ _ sm = sm
 
 -- this limited variant is used only in tests
@@ -284,7 +279,7 @@ prepareForTest' (v, em, a, ts, _) = do
   SolConf{ _sender = s, _testMode = tm } <- view hasLens
   let r = v ^. state . contract
       a' = NE.toList a
-  pure (v, World s M.empty Nothing [] em, createTests tm True ts r a') 
+  pure (v, World s M.empty Nothing [] em, createTests tm True ts r a')
 
 prepareHashMaps :: [FunctionHash] -> [FunctionHash] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
 prepareHashMaps [] _  m = (m, Nothing)                                -- No constant functions detected

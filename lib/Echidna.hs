@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 module Echidna where
 
 import Control.Lens (view, (^.), to)
@@ -7,9 +5,10 @@ import Data.Has (Has(..))
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Reader (MonadReader, MonadIO, liftIO)
 import Control.Monad.Random (MonadRandom)
-import Data.Map.Strict (keys)
 import Data.HashMap.Strict (toList)
+import Data.Map.Strict (keys)
 import Data.List (nub, find)
+import Data.List.NonEmpty qualified as NE
 
 import EVM (env, contracts, VM)
 import EVM.ABI (AbiValue(AbiAddress))
@@ -28,8 +27,6 @@ import Echidna.Solidity
 import Echidna.Processor
 import Echidna.Output.Corpus
 import Echidna.RPC (loadEtheno, extractFromEtheno)
-
-import qualified Data.List.NonEmpty as NE
 
 -- | This function is used to prepare, process, compile and initialize smart contracts for testing.
 -- It takes:

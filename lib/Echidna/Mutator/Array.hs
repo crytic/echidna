@@ -1,10 +1,7 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 module Echidna.Mutator.Array where
 
 import Control.Monad.Random.Strict (fromList, MonadRandom, getRandomR)
-
-import qualified Data.ListLike as LL
+import Data.ListLike qualified as LL
 
 -- | A list of mutators to randomly select to perform a mutation of list-like values
 listMutators :: (LL.ListLike f i, MonadRandom m) => m (f -> m f)

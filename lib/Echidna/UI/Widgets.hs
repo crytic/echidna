@@ -1,24 +1,19 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Echidna.UI.Widgets where
 
 import Brick
+import Brick.AttrMap qualified as A
 import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Control.Lens
 import Control.Monad.Reader (MonadReader)
 import Data.Has (Has(..))
 import Data.List (nub, intersperse, sortBy)
+import Data.Text qualified as T
 import Data.Version (showVersion)
+import Graphics.Vty qualified as V
+import Paths_echidna qualified (version)
 import Text.Printf (printf)
 import Text.Wrap
-
-import qualified Brick.AttrMap as A
-import qualified Data.Text as T
-import qualified Graphics.Vty as V
-import qualified Paths_echidna (version)
 
 import Echidna.ABI
 import Echidna.Campaign (isDone)

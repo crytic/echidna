@@ -1,9 +1,4 @@
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Echidna.ABI where
@@ -11,35 +6,34 @@ module Echidna.ABI where
 import Control.Lens
 import Control.Monad (join, liftM2, liftM3, foldM, replicateM)
 import Control.Monad.Random.Strict (MonadRandom, getRandom, getRandoms, getRandomR, uniformMay)
+import Control.Monad.Random.Strict qualified as R
 import Data.Binary.Put (runPut, putWord32be)
 import Data.Bool (bool)
 import Data.ByteString.Lazy as BSLazy (toStrict)
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
+import Data.DoubleWord (Int256, Word256)
 import Data.Foldable (toList)
 import Data.Hashable (Hashable(..))
 import Data.HashMap.Strict (HashMap)
+import Data.HashMap.Strict qualified as M
 import Data.HashSet (HashSet, fromList, union)
+import Data.HashSet qualified as H
 import Data.List (intercalate)
+import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromMaybe, catMaybes)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Encoding (encodeUtf8)
+import Data.Text.Encoding qualified as TE
 import Data.Vector (Vector)
+import Data.Vector qualified as V
 import Data.Vector.Instances ()
 import Data.Word8 (Word8)
-import Data.DoubleWord (Int256, Word256)
 import Numeric (showHex)
 
 import EVM.ABI hiding (genAbiValue)
 import EVM.Types (Addr, abiKeccak)
-
-import qualified Control.Monad.Random.Strict as R
-import qualified Data.ByteString as BS
-import qualified Data.HashMap.Strict as M
-import qualified Data.List.NonEmpty as NE
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
-import qualified Data.Vector as V
-import qualified Data.HashSet as H
 
 import Echidna.Mutator.Array (mutateLL, replaceAt)
 import Echidna.Types.Random
