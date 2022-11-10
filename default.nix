@@ -39,13 +39,12 @@ let
   testInputs = [ newerPkgs.slither-analyzer solc ];
 
   f = { mkDerivation, aeson, ansi-terminal, base, base16-bytestring, binary
-      , brick, bytestring, cborg, containers, data-dword, data-has, deepseq
-      , directory, exceptions, filepath, hashable, hevm, html-entities, hpack
-      , lens, lens-aeson, megaparsec, MonadRandom, mtl, optparse-applicative
-      , process, random, semver, stm, tasty, tasty-hunit, tasty-quickcheck
-      , temporary, text, transformers, unix, unliftio, unliftio-core
-      , unordered-containers, vector, vector-instances, vty, wl-pprint-annotated
-      , word8, yaml, extra, ListLike
+      , brick, bytestring, containers, data-dword, data-has, deepseq
+      , directory, exceptions, filepath, hashable, hevm, hpack, html-entities
+      , lens, lens-aeson, MonadRandom, mtl, optparse-applicative, process
+      , random, semver, tasty, tasty-hunit, tasty-quickcheck, temporary, text
+      , transformers, unix, unliftio, unordered-containers, vector
+      , vector-instances, vty, word8, yaml, extra, ListLike
       }:
       mkDerivation rec {
         pname = "echidna";
@@ -55,12 +54,11 @@ let
         isExecutable = true;
         libraryHaskellDepends = [
           aeson ansi-terminal base base16-bytestring binary brick bytestring
-          cborg containers data-dword data-has deepseq directory exceptions
-          filepath hashable hevm html-entities lens lens-aeson megaparsec
-          MonadRandom mtl optparse-applicative process random stm temporary
-          text transformers unix unliftio unliftio-core unordered-containers
-          vector vector-instances vty wl-pprint-annotated word8 yaml extra
-          ListLike semver
+          containers data-dword data-has deepseq directory exceptions
+          filepath hashable hevm html-entities lens lens-aeson ListLike
+          MonadRandom mtl optparse-applicative process random semver temporary
+          text transformers unix unliftio unordered-containers vector
+          vector-instances vty word8 yaml extra ListLike
         ] ++ (if pkgs.lib.inNixShell then testHaskellDepends else []);
         executableHaskellDepends = libraryHaskellDepends;
         testHaskellDepends = [ tasty tasty-hunit tasty-quickcheck ];
