@@ -1,6 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Echidna.UI.Report where
 
 import Control.Lens
@@ -10,16 +7,16 @@ import Data.List (intercalate, nub, sortOn)
 import Data.Map (toList)
 import Data.Maybe (catMaybes)
 import Data.Text (Text, unpack)
+import Data.Text qualified as T
+
 import EVM.Types (Addr)
 
-import qualified Data.Text as T
-
 import Echidna.ABI (defSeed, encodeSig)
-import Echidna.Types.Coverage (CoverageMap, scoveragePoints)
 import Echidna.Events (Events)
 import Echidna.Pretty (ppTxCall)
 import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
+import Echidna.Types.Coverage (CoverageMap, scoveragePoints)
 import Echidna.Types.Test (testEvents, testState, TestState(..), testType, TestType(..), testReproducer, testValue)
 import Echidna.Types.Tx (Tx(Tx), TxCall(..), TxConf, txGas, src)
 
@@ -106,7 +103,7 @@ ppTests Campaign { _tests = ts } = unlines . catMaybes <$> mapM pp ts where
          CallTest n _          ->  Just . ((T.unpack n ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
          AssertionTest _ s _   ->  Just . ((T.unpack (encodeSig s) ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
          OptimizationTest n _  ->  Just . ((T.unpack n ++ ": max value: " ++ show (t ^. testValue)) ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
-         Exploration           ->  return Nothing 
+         Exploration           ->  return Nothing
 
 ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
 ppCampaign c = do

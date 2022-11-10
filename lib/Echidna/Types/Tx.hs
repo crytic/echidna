@@ -8,9 +8,10 @@ import Control.Lens.TH (makePrisms, makeLenses)
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.ByteString (ByteString)
 import Data.Text (Text)
+
 import EVM (VMResult(..), Error(..))
-import EVM.Types (Addr, W256, Word, w256)
 import EVM.ABI (encodeAbiValue, AbiValue(..))
+import EVM.Types (Addr, W256, Word, w256)
 
 import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Orphans.JSON ()
@@ -96,7 +97,7 @@ createTxWithValue bc s d g = Tx (SolCreate bc) s d g 0
 data TxResult = ReturnTrue
               | ReturnFalse
               | Stop
-              | ErrorBalanceTooLow 
+              | ErrorBalanceTooLow
               | ErrorUnrecognizedOpcode
               | ErrorSelfDestruction
               | ErrorStackUnderrun

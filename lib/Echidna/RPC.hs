@@ -1,7 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Echidna.RPC where
 
 import Prelude hiding (Word)
@@ -10,32 +6,30 @@ import Control.Exception (Exception)
 import Control.Lens
 import Control.Monad (foldM, void)
 import Control.Monad.Catch (MonadThrow, throwM)
+import Control.Monad.Fail qualified as M (MonadFail(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Strict (MonadState, runStateT, get, put)
 import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
+import Data.ByteString.Base16 qualified as BS16 (decode)
 import Data.ByteString.Char8 (ByteString)
+import Data.ByteString.Char8 qualified as BS
+import Data.ByteString.Lazy qualified as LBS
 import Data.Has (Has(..))
+import Data.Text qualified as T (drop)
 import Data.Text.Encoding (encodeUtf8)
+import Data.Vector qualified as V (fromList, toList)
+import Text.Read (readMaybe)
 
 import EVM
 import EVM.ABI (AbiType(..), AbiValue(..), decodeAbiValue, selector)
 import EVM.Exec (exec)
 import EVM.Types (Addr, Buffer(..), W256, w256)
-import Text.Read (readMaybe)
-
-import qualified Control.Monad.Fail as M (MonadFail(..))
-import qualified Data.ByteString.Base16 as BS16 (decode)
-import qualified Data.Text as T (drop)
-import qualified Data.Vector as V (fromList, toList)
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy as LBS
 
 import Echidna.Exec
 import Echidna.Transaction
 import Echidna.Types.Signature (SolSignature)
 import Echidna.ABI (encodeSig)
-
 import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, makeSingleTx, createTxWithValue, unlimitedGasPerBlock)
 
 -- | During initialization we can either call a function or create an account or contract

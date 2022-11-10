@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 module Echidna.Shrink where
 
 import Control.Lens
@@ -11,6 +9,7 @@ import Control.Monad.State.Strict (MonadState(get, put))
 import Data.Foldable (traverse_)
 import Data.Has (Has(..))
 import Data.Maybe (fromMaybe)
+
 import EVM (VM)
 
 import Echidna.Exec
@@ -32,7 +31,7 @@ shrinkSeq f (v,es,r) xs = do
   xs' <- strategy
   (value, events, result) <- check xs'
   -- if the test passed it means we didn't shrink successfully
-  pure $ case (value,v) of 
+  pure $ case (value,v) of
     (BoolValue False, _)               ->  (xs', value, events, result)
     (IntValue x, IntValue y) | x >= y  ->  (xs', value, events, result)
     _                                  ->  (xs, v, es, r)

@@ -1,18 +1,15 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 module Echidna.Mutator.Corpus where
 
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, weighted)
 import Control.Monad.State.Strict (MonadState(..))
+import Control.Monad.Random.Strict (MonadRandom, getRandomR, weighted)
 import Data.Has (Has(..))
+import Data.Set qualified as DS
 
-import qualified Data.Set as DS
-
-import Echidna.Types.Tx (Tx)
-import Echidna.Types.Corpus
-import Echidna.Transaction (mutateTx, shrinkTx)
 import Echidna.ABI (GenDict)
 import Echidna.Mutator.Array
+import Echidna.Transaction (mutateTx, shrinkTx)
+import Echidna.Types.Tx (Tx)
+import Echidna.Types.Corpus
 
 type MutationConsts a = (a, a, a, a)
 defaultMutationConsts :: Num a => MutationConsts a
