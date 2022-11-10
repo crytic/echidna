@@ -30,7 +30,6 @@ dependencies:
   - lens
   - lens-aeson
   - ListLike
-  - megaparsec
   - MonadRandom
   - mtl
   - optparse-applicative
@@ -39,7 +38,6 @@ dependencies:
   - rosezipper
   - semver
   - sbv
-  - stm
   - split
   - temporary
   - text
@@ -47,13 +45,11 @@ dependencies:
   - time
   - unix
   - unliftio
-  - unliftio-core
   - utf8-string
   - unordered-containers
   - vector
   - vector-instances
   - vty
-  - wl-pprint-annotated
   - word8
   - word-wrap
   - yaml
