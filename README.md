@@ -4,7 +4,7 @@
 
 Echidna is a weird creature that eats bugs and is highly electrosensitive (with apologies to Jacob Stanley)
 
-More seriously, Echidna is a Haskell program designed for fuzzing/property-based testing of Ethereum smarts contracts. It uses sophisticated grammar-based fuzzing campaigns based on a [contract ABI](https://solidity.readthedocs.io/en/develop/abi-spec.html) to falsify user-defined predicates or [Solidity assertions](https://solidity.readthedocs.io/en/develop/control-structures.html#id4). We designed Echidna with modularity in mind, so it can be easily extended to include new mutations or test specific contracts in specific cases.
+More seriously, Echidna is a Haskell program designed for fuzzing/property-based testing of Ethereum smart contracts. It uses sophisticated grammar-based fuzzing campaigns based on a [contract ABI](https://solidity.readthedocs.io/en/develop/abi-spec.html) to falsify user-defined predicates or [Solidity assertions](https://solidity.readthedocs.io/en/develop/control-structures.html#id4). We designed Echidna with modularity in mind, so it can be easily extended to include new mutations or test specific contracts in specific cases.
 
 ## Features
 
@@ -234,7 +234,7 @@ If you're getting errors building related to linking, try tinkering with `--extr
 
 ### Building using Nix (works natively on Apple M1 systems)
 
-[Nix users](https://nixos.org/download.html) can install the lastest Echidna with:
+[Nix users](https://nixos.org/download.html) can install the latest Echidna with:
 
 ```sh
 $ nix-env -i -f https://github.com/crytic/echidna/tarball/master
