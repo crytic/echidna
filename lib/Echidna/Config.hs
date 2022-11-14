@@ -8,11 +8,11 @@ import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Control.Monad.State (StateT(..), runStateT)
 import Control.Monad.Trans (lift)
 import Data.Aeson
+import Data.Aeson.KeyMap (keys)
 import Data.Bool (bool)
 import Data.ByteString qualified as BS
 import Data.List.NonEmpty qualified as NE
 import Data.Has (Has(..))
-import Data.HashMap.Strict (keys)
 import Data.HashSet (fromList, insert, difference)
 import Data.Maybe (fromMaybe)
 import Data.Text (isPrefixOf)
