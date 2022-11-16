@@ -173,9 +173,13 @@ EVM emulation and testing is hard. Echidna has a number of limitations in the la
 | Lack of support for function pointers in Solidity | [#798](https://github.com/crytic/echidna/issues/798) | *on hold* |
 ## Installation
 
-### Building using Homebrew (MacOS)
+### Homebrew (macOS / Linux)
 
-You can install Echidna with `brew install echidna`.
+If you have Homebrew installed on your Mac or Linux machine, you can install Echidna and all of its dependencies (Slither, crytic-compile) by running `brew install echidna`.
+
+You can also compile and install the latest `master` branch code by running `brew install --HEAD echidna`
+
+You can get further information in the [`echidna` Homebrew Formula](https://formulae.brew.sh/formula/echidna) page. The formula itself is maintained as part of the [homebrew-core repository](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/echidna.rb)
 
 ### Precompiled binaries
 
