@@ -173,6 +173,10 @@ EVM emulation and testing is hard. Echidna has a number of limitations in the la
 | Lack of support for function pointers in Solidity | [#798](https://github.com/crytic/echidna/issues/798) | *on hold* |
 ## Installation
 
+### Building using Homebrew (MacOS)
+
+You can install Echidna with `brew install echidna`.
+
 ### Precompiled binaries
 
 Before starting, make sure Slither is [installed](https://github.com/crytic/slither) (`pip3 install slither-analyzer --user`).
