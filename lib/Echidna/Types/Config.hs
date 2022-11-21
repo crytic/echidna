@@ -3,9 +3,9 @@
 module Echidna.Types.Config where
 
 import Control.Lens
+import Data.Aeson.Key (Key)
 import Data.Has (Has(..))
 import Data.HashSet (HashSet)
-import Data.Text (Text)
 
 import EVM.Dapp (DappInfo)
 
@@ -30,8 +30,8 @@ makeLenses ''EConfig
 
 data EConfigWithUsage = EConfigWithUsage {
   _econfig   :: EConfig,
-  _badkeys   :: HashSet Text,
-  _unsetkeys :: HashSet Text
+  _badkeys   :: HashSet Key,
+  _unsetkeys :: HashSet Key
 }
 
 makeLenses ''EConfigWithUsage
