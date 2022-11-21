@@ -29,4 +29,4 @@ fix_path "$BINARY" libff "@rpath/libff.dylib"
 fix_path "$BUILD/libff.dylib" libgmp "@rpath/libgmp.dylib"
 fix_path "$BUILD/libsecp256k1.dylib" libgmp "@rpath/libgmp.dylib"
 
-GZIP=-9 tar -czf echidna-test.tar.gz -C "$BUILD/.." echidna-test
+GZIP=-9 tar -czf echidna.tar.gz -C "$BUILD/.." echidna
