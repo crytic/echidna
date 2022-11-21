@@ -173,6 +173,11 @@ EVM emulation and testing is hard. Echidna has a number of limitations in the la
 | Lack of support for function pointers in Solidity | [#798](https://github.com/crytic/echidna/issues/798) | *on hold* |
 ## Installation
 
+### Precompiled binaries
+
+Before starting, make sure Slither is [installed](https://github.com/crytic/slither) (`pip3 install slither-analyzer --user`).
+If you want to quickly test Echidna in Linux or MacOS, we provide statically linked Linux binaries built on Ubuntu and mostly static MacOS binaries on our [releases page](https://github.com/crytic/echidna/releases). You can also grab the same type of binaries from our [CI pipeline](https://github.com/crytic/echidna/actions?query=workflow%3ACI+branch%3Amaster+event%3Apush), just click the commit to find binaries for Linux or MacOS.
+
 ### Homebrew (macOS / Linux)
 
 If you have Homebrew installed on your Mac or Linux machine, you can install Echidna and all of its dependencies (Slither, crytic-compile) by running `brew install echidna`.
@@ -180,11 +185,6 @@ If you have Homebrew installed on your Mac or Linux machine, you can install Ech
 You can also compile and install the latest `master` branch code by running `brew install --HEAD echidna`
 
 You can get further information in the [`echidna` Homebrew Formula](https://formulae.brew.sh/formula/echidna) page. The formula itself is maintained as part of the [homebrew-core repository](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/echidna.rb)
-
-### Precompiled binaries
-
-Before starting, make sure Slither is [installed](https://github.com/crytic/slither) (`pip3 install slither-analyzer --user`).
-If you want to quickly test Echidna in Linux or MacOS, we provide statically linked Linux binaries built on Ubuntu and mostly static MacOS binaries on our [releases page](https://github.com/crytic/echidna/releases). You can also grab the same type of binaries from our [CI pipeline](https://github.com/crytic/echidna/actions?query=workflow%3ACI+branch%3Amaster+event%3Apush), just click the commit to find binaries for Linux or MacOS.
 
 ### Docker container
 
