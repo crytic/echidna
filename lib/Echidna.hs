@@ -4,7 +4,6 @@ import Control.Lens (view, (^.), to)
 import Data.Has (Has(..))
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Reader (MonadReader, MonadIO, liftIO)
-import Control.Monad.Random (MonadRandom)
 import Data.HashMap.Strict (toList)
 import Data.Map.Strict (keys)
 import Data.List (nub, find)
@@ -40,8 +39,7 @@ import Echidna.RPC (loadEtheno, extractFromEtheno)
 -- * A list of Echidna tests to check
 -- * A prepopulated dictionary (if any)
 -- * A list of transaction sequences to initialize the corpus
-prepareContract :: (MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, MonadFail m,
-                    Has TestConf x, Has TxConf x, Has SolConf x)
+prepareContract :: (MonadCatch m, MonadReader x m, MonadIO m, MonadFail m, Has SolConf x)
                 => EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
                 -> m (VM, SourceCache, [SolcContract], World, [EchidnaTest], Maybe GenDict, [[Tx]])
 prepareContract cfg fs c g = do

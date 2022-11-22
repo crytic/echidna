@@ -170,7 +170,7 @@ checkOptimization (f,a) = do
   pure (getIntFromResult (vm' ^. result), extractEvents dappInfo vm', getResultFromVM vm')
 
 
-checkStatefullAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+checkStatefullAssertion :: (MonadReader x m, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
            => (SolSignature, Addr) -> m (TestValue, Events, TxResult)
 checkStatefullAssertion (sig, addr) = do
   dappInfo <- view hasLens
@@ -196,7 +196,7 @@ checkStatefullAssertion (sig, addr) = do
 assumeMagicReturnCode :: BS.ByteString
 assumeMagicReturnCode = "FOUNDRY::ASSUME\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
 
-checkDapptestAssertion :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+checkDapptestAssertion :: (MonadReader x m, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
            => (SolSignature, Addr) -> m (TestValue, Events, TxResult)
 checkDapptestAssertion (sig, addr) = do
   dappInfo <- view hasLens
@@ -218,7 +218,7 @@ checkDapptestAssertion (sig, addr) = do
   pure (BoolValue (not isFailure), events, getResultFromVM vm)
 
 
-checkCall :: (MonadReader x m, Has TestConf x, Has TxConf x, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
+checkCall :: (MonadReader x m, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
            => (DappInfo -> VM -> TestValue) -> m (TestValue, Events, TxResult)
 checkCall f = do
   dappInfo <- view hasLens
