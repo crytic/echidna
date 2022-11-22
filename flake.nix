@@ -46,6 +46,7 @@
           (haskellPackages.callCabal2nix "echidna" ./. {})
           [
             (haskell.lib.compose.addTestToolDepends [ haskellPackages.hpack slither-analyzer solc ])
+            (haskell.lib.compose.disableCabalFlag "static")
           ];
       in rec {
         packages.echidna = echidna;
