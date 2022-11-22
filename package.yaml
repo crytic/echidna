@@ -50,7 +50,6 @@ dependencies:
   - vector
   - vector-instances
   - vty
-  - word8
   - word-wrap
   - yaml
 
