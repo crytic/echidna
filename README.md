@@ -280,6 +280,7 @@ nix-shell --run 'cabal test'
 
 This is a partial list of smart contracts projects that use Echidna for testing:
 
+* [Primitive](https://github.com/primitivefinance/rmm-core/tree/main/contracts/crytic)
 * [Uniswap-v3](https://github.com/search?q=org%3AUniswap+echidna&type=commits)
 * [Balancer](https://github.com/balancer-labs/balancer-core/tree/master/echidna)
 * [MakerDAO vest](https://github.com/makerdao/dss-vest/pull/16)
