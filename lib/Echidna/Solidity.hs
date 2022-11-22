@@ -40,8 +40,8 @@ import Echidna.RPC (loadEthenoBatch)
 import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
 import Echidna.Types.Signature (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
 import Echidna.Types.Solidity hiding (deployBytecodes, deployContracts)
-import Echidna.Types.Test (TestConf(..), EchidnaTest(..))
-import Echidna.Types.Tx (TxConf, basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
+import Echidna.Types.Test (EchidnaTest(..))
+import Echidna.Types.Tx (basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.World (World(..))
 
 -- | Given a list of source caches (SourceCaches) and an optional contract name,
@@ -154,7 +154,7 @@ abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc ^
 -- testing and extract an ABI and list of tests. Throws exceptions if anything returned doesn't look
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
-loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has SolConf x, Has TestConf x, Has TxConf x, MonadFail m)
+loadSpecified :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, MonadFail m)
               => Maybe Text -> [SolcContract] -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
 loadSpecified name cs = do
   -- Pick contract to load
@@ -167,7 +167,6 @@ loadSpecified name cs = do
 
   -- Local variables
   SolConf ca d ads bala balc mcs pref _ _ libs _ fp dpc dpb ma tm _ fs <- view hasLens
-  TestConf _ _ <- view hasLens
 
   -- generate the complete abi mapping
   let bc = c ^. creationCode
@@ -187,9 +186,9 @@ loadSpecified name cs = do
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
-  blank' <- maybe (pure (initialVM & block . gaslimit .~ fromInteger unlimitedGasPerBlock & block . maxCodeSize .~ w256 (fromInteger mcs)))
-                  loadEthenoBatch
-                  fp
+  let vm = initialVM & block . gaslimit .~ fromInteger unlimitedGasPerBlock
+                     & block . maxCodeSize .~ w256 (fromInteger mcs)
+  blank' <- liftIO $ maybe (pure vm) loadEthenoBatch fp
   let blank = populateAddresses (NE.toList ads |> d) bala blank'
 
   unless (null con || isJust fp) (throwM $ ConstructorArgs (show con))
@@ -241,7 +240,7 @@ loadSpecified name cs = do
 -- the first contract in the file. Take said contract and return an initial VM state with it loaded,
 -- its ABI (as 'SolSignature's), and the names of its Echidna tests. NOTE: unlike 'loadSpecified',
 -- contract names passed here don't need the file they occur in specified.
-loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TestConf x, Has TxConf x, MonadFail m)
+loadWithCryticCompile :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, MonadFail m)
                       => NE.NonEmpty FilePath -> Maybe Text -> m (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
 loadWithCryticCompile fp name = contracts fp >>= \(cs, _) -> loadSpecified name cs
 
@@ -293,7 +292,7 @@ prepareHashMaps cs as m =
 
 -- | Basically loadSolidity, but prepares the results to be passed directly into
 -- a testing function.
-loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, Has TestConf x, Has TxConf x, MonadFail m)
+loadSolTests :: (MonadIO m, MonadThrow m, MonadReader x m, Has SolConf x, MonadFail m)
              => NE.NonEmpty FilePath -> Maybe Text -> m (VM, World, [EchidnaTest])
 loadSolTests fp name = loadWithCryticCompile fp name >>= prepareForTest'
 

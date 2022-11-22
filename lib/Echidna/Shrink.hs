@@ -16,14 +16,13 @@ import Echidna.Exec
 import Echidna.Transaction
 import Echidna.Events (Events)
 import Echidna.Types.Solidity (SolConf(..), sender)
-import Echidna.Types.Test (TestConf(..), TestValue(..))
-import Echidna.Types.Tx (Tx, TxConf, TxResult, src)
+import Echidna.Types.Test (TestValue(..))
+import Echidna.Types.Tx (Tx, TxResult, src)
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
 -- still solves that test.
 shrinkSeq :: ( MonadRandom m, MonadReader x m, MonadThrow m
-             , Has SolConf x, Has TestConf x, Has TxConf x, MonadState y m
-             , Has VM y)
+             , Has SolConf x, MonadState y m, Has VM y)
           => m (TestValue, Events, TxResult) -> (TestValue, Events, TxResult) -> [Tx] -> m ([Tx], TestValue, Events, TxResult)
 shrinkSeq f (v,es,r) xs = do
   strategies <- sequence [shorten, shrunk]

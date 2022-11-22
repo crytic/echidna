@@ -56,7 +56,7 @@ data CampaignEvent = CampaignUpdated Campaign | CampaignTimedout Campaign
 -- print non-interactive output in desired format at the end
 ui :: ( MonadCatch m, MonadRandom m, MonadReader x m, MonadUnliftIO m
       , Has SolConf x, Has TestConf x, Has TxConf x, Has CampaignConf x
-      , Has Names x, Has TxConf x, Has UIConf x, Has DappInfo x)
+      , Has Names x, Has UIConf x, Has DappInfo x)
    => VM             -- ^ Initial VM state
    -> World          -- ^ Initial world state
    -> [EchidnaTest]  -- ^ Tests to evaluate
