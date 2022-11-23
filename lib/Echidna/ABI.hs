@@ -29,7 +29,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Vector (Vector)
 import Data.Vector qualified as V
 import Data.Vector.Instances ()
-import Data.Word8 (Word8)
+import Data.Word (Word8)
 import Numeric (showHex)
 
 import EVM.ABI hiding (genAbiValue)
