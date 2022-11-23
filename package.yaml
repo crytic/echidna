@@ -10,16 +10,13 @@ ghc-options: -Wall -fno-warn-orphans -O2 -threaded +RTS -N -RTS
 dependencies:
   - base
   - aeson
-  - ansi-terminal
   - base16-bytestring
   - binary
   - brick
-  - base16-bytestring
   - bytestring
   - containers
   - data-dword
   - data-has
-  - deepseq
   - extra
   - directory
   - exceptions
@@ -28,7 +25,6 @@ dependencies:
   - hevm
   - html-entities
   - lens
-  - lens-aeson
   - ListLike
   - MonadRandom
   - mtl
@@ -37,12 +33,9 @@ dependencies:
   - random
   - rosezipper
   - semver
-  - sbv
   - split
-  - temporary
   - text
   - transformers
-  - time
   - unix
   - unliftio
   - utf8-string
@@ -54,12 +47,12 @@ dependencies:
   - yaml
 
 default-extensions:
+  - LambdaCase
   - OverloadedStrings
   # GHC2021 default extensions from 9.2
   - FlexibleContexts
   - FlexibleInstances
   - ImportQualifiedPost
-  - LambdaCase
   - MultiParamTypeClasses
   - NamedFieldPuns
   - RankNTypes
