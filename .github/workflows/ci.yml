@@ -4,6 +4,7 @@ on:
   push:
     branches:
     - master
+    - elopez/*
   pull_request:
     branches:
     - master
