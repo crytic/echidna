@@ -1,5 +1,15 @@
 ## TODO
 
+## 2.0.4
+
+* Added colored html for coverage output code (#816)
+* Fixed crash when parsing solc versions (#835) 
+* Fixed long transactions and event lines in UI (#832)
+* Added Homebrew installation instructions (#848) 
+* Moved all nix stuff to flake and use nix-bundle-exe for macOS release (#851)
+* Updated codebase to GHC 9.0.2 (#846) 
+* Refactored code and removed useless dependencies (#854, #853, #829, #827, #828)
+
 ## 2.0.3
 
 * Clean up Docker containers (#706)
