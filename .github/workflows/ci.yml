@@ -111,6 +111,8 @@ jobs:
             experimental: true
           - solc: "0.7.5"
             experimental: true
+          - solc: "0.8.17"
+            experimental: true
 
     steps:
       - name: Checkout
