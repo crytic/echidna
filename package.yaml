@@ -36,6 +36,7 @@ dependencies:
   - split
   - text
   - transformers
+  - time
   - unix
   - unliftio
   - utf8-string
