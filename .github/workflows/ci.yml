@@ -14,21 +14,56 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os:
-          - ubuntu-20.04
-          - macos-latest
         include:
           - os: ubuntu-20.04
             apt-get: autoconf automake libtool
+            shell: bash
           - os: macos-latest
             brew: automake
+            shell: bash
+          - os: windows-latest
+            shell: msys2 {0}
+
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
 
     steps:
       - name: Get Packages
         uses: mstksg/get-package@v1
+        if: runner.os != 'Windows'
         with:
           brew: ${{ matrix.brew }}
           apt-get: ${{ matrix.apt-get }}
+
+      - name: Get Packages (Windows)
+        uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          update: true
+          install: >-
+            base-devel
+            gmp-devel
+            openssl-devel
+            git
+            unzip
+          pacboy: >-
+            cmake:p
+            ninja:p
+            gcc:p
+            autotools:p
+            gmp:p
+            openssl:p
+
+      - name: Install Stack
+        uses: haskell/actions/setup@v2
+        id: stack
+        with:
+          ghc-version: '9.2'
+          enable-stack: true
+          stack-version: 'latest'
 
       - name: Checkout
         uses: actions/checkout@v3
