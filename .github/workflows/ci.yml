@@ -24,12 +24,6 @@ jobs:
             brew: automake
          
     steps:
-      - name: Workaround for actions/cache#403
-        if: runner.os == 'macOS'
-        run: |
-          brew install gnu-tar
-          echo PATH="/usr/local/opt/gnu-tar/libexec/gnubin:$PATH" >> $GITHUB_ENV
-
       - name: Get Packages
         uses: mstksg/get-package@v1
         with:
