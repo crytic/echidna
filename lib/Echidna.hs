@@ -43,7 +43,9 @@ prepareContract :: (MonadCatch m, MonadReader x m, MonadIO m, MonadFail m, Has S
                 => EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
                 -> m (VM, SourceCache, [SolcContract], World, [EchidnaTest], Maybe GenDict, [[Tx]])
 prepareContract cfg fs c g = do
-  ctxs <- liftIO $ loadTxs cd
+  ctxs1 <- liftIO $ loadTxs (fmap (++ "/reproducers/") cd)
+  ctxs2 <- liftIO $ loadTxs (fmap (++ "/coverage/") cd)
+  let ctxs = ctxs1 ++ ctxs2
 
   -- compile and load contracts
   (cs, scs) <- Echidna.Solidity.contracts fs
