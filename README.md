@@ -23,7 +23,7 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 <a href="https://i.imgur.com/saFWti4.png"><img src="https://i.imgur.com/saFWti4.png" width="650"/></a>
 
 ## Usage
-
+// add install echidna  process in windows and linux 
 ### Executing the test runner
 
 The core Echidna functionality is an executable called `echidna-test`. `echidna-test` takes a contract and a list of invariants (properties that should always remain true) as input. For each invariant, it generates random sequences of calls to the contract and checks if the invariant holds. If it can find some way to falsify the invariant, it prints the call sequence that does so. If it can't, you have some assurance the contract is safe.
