@@ -48,19 +48,19 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ~/.local/
-          key: ${{ runner.os }}-local-v3
+          key: ${{ runner.os }}-local-v4
 
       - name: Cache Stack
         uses: actions/cache@v2
         with:
           path: ~/.stack
-          key: ${{ runner.os }}-stack-v3
+          key: ${{ runner.os }}-stack-v4
 
       - name: Cache Cabal
         uses: actions/cache@v2
         with:
           path: ~/.cabal
-          key: ${{ runner.os }}-cabal-v3
+          key: ${{ runner.os }}-cabal-v4
 
       - name: Build Libraries
         run: |
