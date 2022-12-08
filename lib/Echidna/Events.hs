@@ -9,10 +9,11 @@ import Data.Tree.Zipper (fromForest, TreePos, Empty)
 import Data.Text (pack, Text)
 import Data.Map qualified as M
 import Data.Maybe (listToMaybe)
+import Data.Vector (fromList)
 import Control.Lens
 
 import EVM
-import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, AbiType(AbiUIntType))
+import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, AbiType(AbiUIntType, AbiTupleType, AbiStringType))
 import EVM.Concrete (wordValue)
 import EVM.Dapp
 import EVM.Format (showValues, showError, contractNamePart)
@@ -71,6 +72,6 @@ decodeRevert vm =
 
 decodeRevertMsg :: BS.ByteString -> Events
 decodeRevertMsg bs = case BS.splitAt 4 bs of
-                          --"\x08\xc3\x79\xa0" -> Just $ "Error(" ++ (show $ decodeAbiValue AbiStringType (fromStrict $ BS.drop 4 bs)) ++ ")"
+                          ("\x08\xc3\x79\xa0",d) -> ["Error(" <> (pack . show $ decodeAbiValue (AbiTupleType (fromList [AbiStringType])) (fromStrict d)) <> ")"]
                           ("\x4e\x48\x7b\x71",d) -> ["Panic(" <> (pack . show $ decodeAbiValue (AbiUIntType 256) (fromStrict d)) <> ")"]
                           _                      -> []
