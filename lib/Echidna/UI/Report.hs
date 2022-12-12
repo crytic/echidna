@@ -127,7 +127,7 @@ ppTests Campaign { _tests = ts } = unlines . catMaybes <$> mapM pp ts where
          PropertyTest n _      ->  Just . ((T.unpack n ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
          CallTest n _          ->  Just . ((T.unpack n ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
          AssertionTest _ s _   ->  Just . ((T.unpack (encodeSig s) ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
-         OptimizationTest n _  ->  Just . ((T.unpack n ++ ": max value: " ++ (show (t ^. testValue)) ++ "\n") ++) <$> ppOPT (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
+         OptimizationTest n _  ->  Just . ((T.unpack n ++ ": max value: " ++ show (t ^. testValue) ++ "\n") ++) <$> ppOPT (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
          Exploration           ->  return Nothing
 
 ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
