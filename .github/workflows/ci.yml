@@ -15,10 +15,10 @@ jobs:
     strategy:
       matrix:
         os:
-          - ubuntu-latest
+          - ubuntu-20.04
           - macos-latest
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             apt-get: autoconf automake libtool
           - os: macos-latest
             brew: automake
