@@ -1,28 +1,23 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Echidna.Output.Source where
+
+import Prelude hiding (writeFile)
 
 import Control.Lens
 import Data.Foldable
-import Data.Maybe (fromMaybe, mapMaybe, catMaybes)
+import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
+import Data.List (nub, sort)
+import Data.Map qualified as M
+import Data.Set qualified as S
 import Data.Text (Text, pack)
+import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
-import Data.List (nub, sort)
+import Data.Vector qualified as V
+import HTMLEntities.Text qualified as HTML
 import Text.Printf (printf)
-import qualified HTMLEntities.Text as HTML
 
-import EVM.Solidity (SourceCache, SrcMap, SolcContract, sourceLines, sourceFiles, runtimeCode, runtimeSrcmap, creationSrcmap)
 import EVM.Debug (srcMapCodePos)
-import Prelude hiding (writeFile)
-
-import qualified Data.Vector as V
-
-import qualified Data.Map as M
-import qualified Data.Set as S
-import qualified Data.Text as T
+import EVM.Solidity (SourceCache, SrcMap, SolcContract, sourceLines, sourceFiles, runtimeCode, runtimeSrcmap, creationSrcmap)
 
 import Echidna.Types.Coverage (CoverageMap, CoverageInfo)
 import Echidna.Types.Tx (TxResult(..))

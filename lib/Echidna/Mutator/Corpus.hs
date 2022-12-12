@@ -1,18 +1,12 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 module Echidna.Mutator.Corpus where
 
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, weighted)
-import Control.Monad.State.Strict (MonadState(..))
-import Data.Has (Has(..))
+import Data.Set qualified as DS
 
-import qualified Data.Set as DS
-
+import Echidna.Mutator.Array
+import Echidna.Transaction (mutateTx, shrinkTx)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Corpus
-import Echidna.Transaction (mutateTx, shrinkTx)
-import Echidna.ABI (GenDict)
-import Echidna.Mutator.Array
 
 type MutationConsts a = (a, a, a, a)
 defaultMutationConsts :: Num a => MutationConsts a
@@ -59,7 +53,7 @@ selectAndCombine f ql ctxs gtxs = do
   return . take ql $ txs ++ gtxs
     where selectFromCorpus = weighted $ map (\(i, txs) -> (txs, fromInteger i)) $ DS.toDescList ctxs
 
-getCorpusMutation :: (MonadRandom m, Has GenDict x, MonadState x m)
+getCorpusMutation :: MonadRandom m
                   => CorpusMutation -> (Int -> Corpus -> [Tx] -> m [Tx])
 getCorpusMutation (RandomAppend m) = mut (mutator m)
  where mut f ql ctxs gtxs = do

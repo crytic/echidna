@@ -3,23 +3,20 @@ name: echidna
 author: Trail of Bits <echidna-dev@trailofbits.com>
 maintainer: Trail of Bits <echidna-dev@trailofbits.com>
 
-version: 2.0.3
+version: 2.0.4
 
 ghc-options: -Wall -fno-warn-orphans -O2 -threaded +RTS -N -RTS
 
 dependencies:
   - base
   - aeson
-  - ansi-terminal
   - base16-bytestring
   - binary
   - brick
-  - base16-bytestring
   - bytestring
   - containers
   - data-dword
   - data-has
-  - deepseq
   - extra
   - directory
   - exceptions
@@ -28,9 +25,7 @@ dependencies:
   - hevm
   - html-entities
   - lens
-  - lens-aeson
   - ListLike
-  - megaparsec
   - MonadRandom
   - mtl
   - optparse-applicative
@@ -38,27 +33,33 @@ dependencies:
   - random
   - rosezipper
   - semver
-  - sbv
-  - stm
   - split
-  - temporary
   - text
   - transformers
   - time
   - unix
   - unliftio
-  - unliftio-core
   - utf8-string
   - unordered-containers
   - vector
   - vector-instances
   - vty
-  - wl-pprint-annotated
-  - word8
+  - word-wrap
   - yaml
 
 default-extensions:
+  - LambdaCase
   - OverloadedStrings
+  # GHC2021 default extensions from 9.2
+  - FlexibleContexts
+  - FlexibleInstances
+  - ImportQualifiedPost
+  - MultiParamTypeClasses
+  - NamedFieldPuns
+  - RankNTypes
+  - ScopedTypeVariables
+  - StandaloneDeriving
+  - TupleSections
 
 library:
   source-dirs: lib/
