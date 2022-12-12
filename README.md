@@ -4,7 +4,7 @@
 
 Echidna is a weird creature that eats bugs and is highly electrosensitive (with apologies to Jacob Stanley)
 
-More seriously, Echidna is a Haskell program designed for fuzzing/property-based testing of Ethereum smarts contracts. It uses sophisticated grammar-based fuzzing campaigns based on a [contract ABI](https://solidity.readthedocs.io/en/develop/abi-spec.html) to falsify user-defined predicates or [Solidity assertions](https://solidity.readthedocs.io/en/develop/control-structures.html#id4). We designed Echidna with modularity in mind, so it can be easily extended to include new mutations or test specific contracts in specific cases.
+More seriously, Echidna is a Haskell program designed for fuzzing/property-based testing of Ethereum smart contracts. It uses sophisticated grammar-based fuzzing campaigns based on a [contract ABI](https://solidity.readthedocs.io/en/develop/abi-spec.html) to falsify user-defined predicates or [Solidity assertions](https://solidity.readthedocs.io/en/develop/control-structures.html#id4). We designed Echidna with modularity in mind, so it can be easily extended to include new mutations or test specific contracts in specific cases.
 
 ## Features
 
@@ -13,7 +13,7 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 * Powered by [Slither](https://github.com/crytic/slither) to extract useful information before the fuzzing campaign
 * Source code integration to identify which lines are covered after the fuzzing campaign
 * Curses-based retro UI, text-only or JSON output
-* Automatic testcase minimization for quick triage
+* Automatic test case minimization for quick triage
 * Seamless integration into the development workflow
 * Maximum gas usage reporting of the fuzzing campaign
 * Support for a complex contract initialization with [Etheno](https://github.com/crytic/etheno) and Truffle
@@ -140,10 +140,10 @@ Transaction = {
 }
 ```
 
-`Coverage` is a dict describing certain coverage increasing calls.
+`Coverage` is a dict describing certain coverage-increasing calls.
 Each `GasInfo` entry is a tuple that describes how maximal
-gas usage was achieved, and also not too important. These interfaces are
-subject to change to be slightly more user friendly at a later date. `testType`
+gas usage was achieved, and is also not too important. These interfaces are
+subject to change to be slightly more user-friendly at a later date. `testType`
 will either be `property` or `assertion`, and `status` always takes on either
 `fuzzing`, `shrinking`, `solved`, `passed`, or `error`.
 
@@ -164,7 +164,7 @@ checking for these would be a good place to start.
 
 ## Limitations and known issues
 
-EVM emulation and testing is hard. Echidna has a number of limitations in the latest release. Some of these are inherited from [hevm](https://github.com/dapphub/dapptools/tree/master/src/hevm) while some are results from design/performance decisions or simply bugs in our code. We list them here including their corresponding issue and the status ("wont fix", "on hold", "in review", "fixed"). Issues that are "fixed" are expected to be included in the next Echidna release.
+EVM emulation and testing are hard. Echidna has some limitations in the latest release. Some of these are inherited from [hevm](https://github.com/dapphub/dapptools/tree/master/src/hevm) while some are results from design/performance decisions or simply bugs in our code. We list them here including their corresponding issue and the status ("wont fix", "on hold", "in review", "fixed"). Issues that are "fixed" are expected to be included in the next Echidna release.
 
 | Description |  Issue   | Status   |
 | :--- |     :---:              |         :---:   |
@@ -178,11 +178,19 @@ EVM emulation and testing is hard. Echidna has a number of limitations in the la
 Before starting, make sure Slither is [installed](https://github.com/crytic/slither) (`pip3 install slither-analyzer --user`).
 If you want to quickly test Echidna in Linux or MacOS, we provide statically linked Linux binaries built on Ubuntu and mostly static MacOS binaries on our [releases page](https://github.com/crytic/echidna/releases). You can also grab the same type of binaries from our [CI pipeline](https://github.com/crytic/echidna/actions?query=workflow%3ACI+branch%3Amaster+event%3Apush), just click the commit to find binaries for Linux or MacOS.
 
+### Homebrew (macOS / Linux)
+
+If you have Homebrew installed on your Mac or Linux machine, you can install Echidna and all of its dependencies (Slither, crytic-compile) by running `brew install echidna`.
+
+You can also compile and install the latest `master` branch code by running `brew install --HEAD echidna`
+
+You can get further information in the [`echidna` Homebrew Formula](https://formulae.brew.sh/formula/echidna) page. The formula itself is maintained as part of the [homebrew-core repository](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/echidna.rb)
+
 ### Docker container
 
 If you prefer to use a pre-built Docker container, check out our [docker
 package](https://github.com/orgs/crytic/packages?repo_name=echidna), which is
-auto-built via Github Actions. The `echidna` container is based on
+auto-built via GitHub Actions. The `echidna` container is based on
 `ubuntu:focal` and it is meant to be a small yet flexible enough image to use
 Echidna on. It provides a pre-built version of `echidna-test`, as well as
 `slither`, `crytic-compile`, `solc-select` and `nvm` under 200 MB.
@@ -234,7 +242,7 @@ If you're getting errors building related to linking, try tinkering with `--extr
 
 ### Building using Nix (works natively on Apple M1 systems)
 
-[Nix users](https://nixos.org/download.html) can install the lastest Echidna with:
+[Nix users](https://nixos.org/download.html) can install the latest Echidna with:
 
 ```sh
 $ nix-env -i -f https://github.com/crytic/echidna/tarball/master
@@ -272,6 +280,7 @@ nix-shell --run 'cabal test'
 
 This is a partial list of smart contracts projects that use Echidna for testing:
 
+* [Primitive](https://github.com/primitivefinance/rmm-core/tree/main/contracts/crytic)
 * [Uniswap-v3](https://github.com/search?q=org%3AUniswap+echidna&type=commits)
 * [Balancer](https://github.com/balancer-labs/balancer-core/tree/master/echidna)
 * [MakerDAO vest](https://github.com/makerdao/dss-vest/pull/16)
@@ -307,7 +316,7 @@ The following security vulnerabilities were found by Echidna. If you found a sec
 
 ### Research
 
-We can also use Echidna to reproduce research examples from smart contract fuzzing papers to show how quickly it can find the solution. All these can be solved, from a few seconds to one or two minutes on a laptop computer.
+We can also use Echidna to reproduce research examples from smart contract fuzzing papers to show how quickly it can find the solution. All of these can be solved, in a few seconds to one or two minutes on a laptop computer.
 
 | Source | Code
 |--|--

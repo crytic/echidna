@@ -1,15 +1,13 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 module Echidna where
 
 import Control.Lens (view, (^.), to)
 import Data.Has (Has(..))
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Reader (MonadReader, MonadIO, liftIO)
-import Control.Monad.Random (MonadRandom)
-import Data.Map.Strict (keys)
 import Data.HashMap.Strict (toList)
+import Data.Map.Strict (keys)
 import Data.List (nub, find)
+import Data.List.NonEmpty qualified as NE
 
 import EVM (env, contracts, VM)
 import EVM.ABI (AbiValue(AbiAddress))
@@ -29,8 +27,6 @@ import Echidna.Processor
 import Echidna.Output.Corpus
 import Echidna.RPC (loadEtheno, extractFromEtheno)
 
-import qualified Data.List.NonEmpty as NE
-
 -- | This function is used to prepare, process, compile and initialize smart contracts for testing.
 -- It takes:
 -- * A config record
@@ -43,8 +39,7 @@ import qualified Data.List.NonEmpty as NE
 -- * A list of Echidna tests to check
 -- * A prepopulated dictionary (if any)
 -- * A list of transaction sequences to initialize the corpus
-prepareContract :: (MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, MonadFail m,
-                    Has TestConf x, Has TxConf x, Has SolConf x)
+prepareContract :: (MonadCatch m, MonadReader x m, MonadIO m, MonadFail m, Has SolConf x)
                 => EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
                 -> m (VM, SourceCache, [SolcContract], World, [EchidnaTest], Maybe GenDict, [[Tx]])
 prepareContract cfg fs c g = do

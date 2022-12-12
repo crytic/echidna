@@ -1,23 +1,17 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE ViewPatterns #-}
 
 module Echidna.Types.Solidity where
 
-import Control.Lens
 import Control.Exception (Exception)
-import Data.Text         (Text)
-import Data.SemVer       (Version, version, toString)
+import Control.Lens
+import Data.List.NonEmpty qualified as NE
+import Data.SemVer (Version, version, toString)
+import Data.Text (Text)
 
 import EVM.Solidity
-import EVM.Types         (Addr)
+import EVM.Types (Addr)
 
-import Echidna.Types.Signature    (ContractName)
-
-import qualified Data.List.NonEmpty  as NE
+import Echidna.Types.Signature (ContractName)
 
 minSupportedSolcVersion :: Version
 minSupportedSolcVersion = version 0 4 25 [] []
@@ -38,7 +32,7 @@ data SolException = BadAddr Addr
                   | OnlyTests
                   | ConstructorArgs String
                   | DeploymentFailed Addr
-                  | SetUpCallFailed 
+                  | SetUpCallFailed
                   | NoCryticCompile
                   | InvalidMethodFilters Filter
                   | OutdatedSolcVersion Version
@@ -80,7 +74,7 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
                        , _initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
                        , _deployContracts :: [(Addr, String)] -- ^ List of contracts to deploy in specific addresses
-                       , _deployBytecodes :: [(Addr, Text)]   -- ^ List of contracts to deploy in specific addresses 
+                       , _deployBytecodes :: [(Addr, Text)]   -- ^ List of contracts to deploy in specific addresses
                        , _multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
                        , _testMode        :: String           -- ^ Testing mode
                        , _testDestruction :: Bool             -- ^ Whether or not to add a property to detect contract destruction
@@ -95,4 +89,4 @@ defaultContractAddr :: Addr
 defaultContractAddr = 0x00a329c0648769a73afac7f9381e08fb43dbea72
 
 defaultDeployerAddr :: Addr
-defaultDeployerAddr = 0x30000 
+defaultDeployerAddr = 0x30000

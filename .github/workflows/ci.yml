@@ -24,12 +24,6 @@ jobs:
             brew: automake
          
     steps:
-      - name: Workaround for actions/cache#403
-        if: runner.os == 'macOS'
-        run: |
-          brew install gnu-tar
-          echo PATH="/usr/local/opt/gnu-tar/libexec/gnubin:$PATH" >> $GITHUB_ENV
-
       - name: Get Packages
         uses: mstksg/get-package@v1
         with:
@@ -37,30 +31,25 @@ jobs:
           apt-get: ${{ matrix.apt-get }}
 
       - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Setup Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.6'
+        uses: actions/checkout@v3
 
       - name: Cache Local
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ~/.local/
-          key: ${{ runner.os }}-local-v3
+          key: ${{ runner.os }}-local-v4
 
       - name: Cache Stack
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ~/.stack
-          key: ${{ runner.os }}-stack-v3
+          key: ${{ runner.os }}-stack-v4
 
       - name: Cache Cabal
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ~/.cabal
-          key: ${{ runner.os }}-cabal-v3
+          key: ${{ runner.os }}-cabal-v4
 
       - name: Build Libraries
         run: |
@@ -86,7 +75,7 @@ jobs:
         run: GZIP=-9 tar -czf echidna-test.tar.gz -C $HOME/.local/bin/ echidna-test
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: echidna-test-${{ runner.os }}
           path: echidna-test.tar.gz
@@ -99,7 +88,7 @@ jobs:
 
       - name: Upload testsuite
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: echidna-testsuite
           path: echidna-testsuite
@@ -125,12 +114,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Setup Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.6'
+          python-version: '3.8'
 
       - name: Install dependencies
         run: |
@@ -141,7 +130,7 @@ jobs:
           SOLC_VER: ${{ matrix.solc }}
 
       - name: Download testsuite
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
          name: echidna-testsuite
 

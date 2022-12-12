@@ -12,7 +12,7 @@ fix_path()
     BINARY="$1"
     MATCH="$2"
     NEW="$3"
-    OLD=$(otool -L "$BINARY" | grep "$MATCH" | awk '{print $1}')
+    OLD=$(otool -L "$BINARY" | grep "${MATCH}\." | awk '{print $1}')
     install_name_tool -change "$OLD" "$NEW" "$BINARY"
     cp -n "$OLD" "$(dirname "$BINARY")/$(basename "$NEW")" || true
 }

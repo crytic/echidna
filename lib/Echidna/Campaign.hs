@@ -1,12 +1,5 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Echidna.Campaign where
@@ -22,20 +15,20 @@ import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
+import Data.Has (Has(..))
+import Data.HashMap.Strict qualified as H
+import Data.HashSet qualified as S
 import Data.Map (Map, unionWith, (\\), elems, keys, lookup, insert, mapWithKey)
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Ord (comparing)
-import Data.Has (Has(..))
+import Data.Set qualified as DS
 import Data.Text (Text)
+import System.Random (mkStdGen)
+
 import EVM
 import EVM.Dapp (DappInfo)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (Addr, Buffer(..))
-import System.Random (mkStdGen)
-
-import qualified Data.HashMap.Strict as H
-import qualified Data.HashSet as S
-import qualified Data.Set as DS
 
 import Echidna.ABI
 import Echidna.Exec
@@ -97,8 +90,8 @@ updateTest w vm (Just (vm', xs)) test = do
     Open i | i >= tl -> case test ^. testType of
                           OptimizationTest _ _ -> pure $ test { _testState = Large (-1) }
                           _                    -> pure $ test { _testState = Passed }
-    Open i           -> do r <- evalStateT (checkETest test) vm' 
-                           pure $ updateOpenTest test xs i r 
+    Open i           -> do r <- evalStateT (checkETest test) vm'
+                           pure $ updateOpenTest test xs i r
     _                -> updateTest w vm Nothing test
 
 updateTest _ vm Nothing test = do
@@ -112,7 +105,7 @@ updateTest _ vm Nothing test = do
     Large i | i >= sl -> pure $ test { _testState =  Solved, _testReproducer = x }
     Large i           -> if length x > 1 || any canShrinkTx x
                              then do (txs, val, evs, r) <- evalStateT (shrinkSeq (checkETest test) (v, es, res) x) vm
-                                     pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r, _testValue = val} 
+                                     pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r, _testValue = val}
                              else pure $ test { _testState = if isOptimizationTest t then Large (i + 1) else Solved, _testReproducer = x}
     _                   -> pure test
 
