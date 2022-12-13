@@ -83,6 +83,10 @@ data EchidnaTest = EchidnaTest {
 
 makeLenses ''EchidnaTest
 
+isOptimizationTest :: TestType -> Bool
+isOptimizationTest (OptimizationTest _ _) = True
+isOptimizationTest _                      = False
+
 isOpen :: EchidnaTest -> Bool
 isOpen t = case t ^. testState of
             Open _ -> True
