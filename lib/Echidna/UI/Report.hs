@@ -100,9 +100,6 @@ ppOPT :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Tes
 ppOPT (Failed e) _ _  = pure $ "could not evaluate ☣\n  " ++ show e
 ppOPT Solved     es l = ppOptimized Nothing es l
 ppOPT Passed     _ _  = pure " passed! 🎉"
-ppOPT (Open i)   es [] = do
-  t <- view (hasLens .  testLimit)
-  if i >= t then ppOPT Passed es [] else pure $ " optimizing " ++ progress i t
 ppOPT (Open _)   es r = ppOptimized Nothing es r 
 ppOPT (Large n) es l  = do
   m <- view (hasLens . shrinkLimit)
@@ -111,7 +108,7 @@ ppOPT (Large n) es l  = do
 
 -- | Pretty-print the status of a optimized test.
 ppOptimized :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> Events -> [Tx] -> m String
-ppOptimized _ _ []  = pure "(no transactions)"
+ppOptimized _ _ []  = pure "Call sequence:\n(no transactions)"
 ppOptimized b es xs = let status = case b of
                                 Nothing    -> ""
                                 Just (n,m) -> ", shrinking " ++ progress n m
