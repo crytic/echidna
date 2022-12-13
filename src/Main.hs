@@ -133,7 +133,7 @@ main = do
       return (sc, cs, r)
 
   -- save corpus
-  saveTxs (fmap (++ "/reproducers/") cd) (map (^. testReproducer) $ cpg ^. tests)
+  saveTxs (fmap (++ "/reproducers/") cd) (filter (not . null) $ map (^. testReproducer) $ cpg ^. tests)
   saveTxs (fmap (++ "/coverage/") cd) (snd <$> DS.toList (cpg ^. corpus))
 
   -- get current time to save coverage
