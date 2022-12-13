@@ -100,12 +100,13 @@ updateTest _ vm Nothing test = do
       res = test ^. testResult
       x = test ^. testReproducer
       v = test ^. testValue
+      t = test ^. testType
   case test ^. testState of
     Large i | i >= sl -> pure $ test { _testState =  Solved, _testReproducer = x }
     Large i           -> if length x > 1 || any canShrinkTx x
                              then do (txs, val, evs, r) <- evalStateT (shrinkSeq (checkETest test) (v, es, res) x) vm
                                      pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r, _testValue = val}
-                             else pure $ test { _testState = Solved, _testReproducer = x}
+                             else pure $ test { _testState = if isOptimizationTest t then Large (i + 1) else Solved, _testReproducer = x}
     _                   -> pure test
 
 
