@@ -120,12 +120,12 @@ loadEthenoBatch fp = do
 initAddress :: MonadState VM m => Addr -> m ()
 initAddress addr = do
   cs <- use (env . EVM.contracts)
-  if addr `member` cs then return ()
+  if addr `member` cs then pure ()
   else env . EVM.contracts . at addr .= Just account
  where account = initialContract (RuntimeCode mempty) & set nonce 0 & set balance (w256 100000000000000000000) -- default balance for EOAs in etheno
 
-showQueryError :: (MonadState VM m, MonadFail m, MonadThrow m) => Query -> Etheno -> m ()
-showQueryError q et =
+crashWithQueryError :: (MonadState VM m, MonadFail m, MonadThrow m) => Query -> Etheno -> m ()
+crashWithQueryError q et =
   case (q, et) of
     (PleaseFetchContract addr _ _, FunctionCall f t _ _ _ _) ->
       error ("Address " ++ show addr ++ " was used during function call from " ++ show f ++ " to " ++ show t ++ " but it was never defined as EOA or deployed as a contract")
@@ -147,7 +147,7 @@ execEthenoTxs et = do
   case (res, et) of
        (_        , AccountCreated _)  -> return ()
        (Reversion,   _)               -> void $ put vm
-       (VMFailure (Query q), _)       -> showQueryError q et
+       (VMFailure (Query q), _)       -> crashWithQueryError q et
        (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
        (VMSuccess (ConcreteBuffer bc),
         ContractCreated _ ca _ _ _ _) -> do
