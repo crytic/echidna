@@ -1,6 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Echidna.UI.Report where
 
 import Control.Lens
@@ -10,16 +7,16 @@ import Data.List (intercalate, nub, sortOn)
 import Data.Map (toList)
 import Data.Maybe (catMaybes)
 import Data.Text (Text, unpack)
+import Data.Text qualified as T
+
 import EVM.Types (Addr)
 
-import qualified Data.Text as T
-
 import Echidna.ABI (defSeed, encodeSig)
-import Echidna.Types.Coverage (CoverageMap, scoveragePoints)
 import Echidna.Events (Events)
 import Echidna.Pretty (ppTxCall)
 import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
+import Echidna.Types.Coverage (CoverageMap, scoveragePoints)
 import Echidna.Types.Test (testEvents, testState, TestState(..), testType, TestType(..), testReproducer, testValue)
 import Echidna.Types.Tx (Tx(Tx), TxCall(..), TxConf, txGas, src)
 
@@ -93,10 +90,32 @@ ppTS Passed     _ _  = pure " passed! 🎉"
 ppTS (Open i)   es [] = do
   t <- view (hasLens .  testLimit)
   if i >= t then ppTS Passed es [] else pure $ " fuzzing " ++ progress i t
-ppTS (Open _)   es r = ppFail Nothing es r -- Only reachable with optimization
+ppTS (Open _)   es r = ppFail Nothing es r
 ppTS (Large n) es l  = do
   m <- view (hasLens . shrinkLimit)
   ppFail (if n < m then Just (n, m) else Nothing) es l
+
+
+ppOPT :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => TestState -> Events -> [Tx] -> m String
+ppOPT (Failed e) _ _  = pure $ "could not evaluate ☣\n  " ++ show e
+ppOPT Solved     es l = ppOptimized Nothing es l
+ppOPT Passed     _ _  = pure " passed! 🎉"
+ppOPT (Open _)   es r = ppOptimized Nothing es r 
+ppOPT (Large n) es l  = do
+  m <- view (hasLens . shrinkLimit)
+  ppOptimized (if n < m then Just (n, m) else Nothing) es l
+
+
+-- | Pretty-print the status of a optimized test.
+ppOptimized :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> Events -> [Tx] -> m String
+ppOptimized _ _ []  = pure "Call sequence:\n(no transactions)"
+ppOptimized b es xs = let status = case b of
+                                Nothing    -> ""
+                                Just (n,m) -> ", shrinking " ++ progress n m
+                          pxs = mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs in
+ do s <- (("\n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> pxs
+    return (s ++ "\n" ++ ppEvents es)
+
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
@@ -105,8 +124,8 @@ ppTests Campaign { _tests = ts } = unlines . catMaybes <$> mapM pp ts where
          PropertyTest n _      ->  Just . ((T.unpack n ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
          CallTest n _          ->  Just . ((T.unpack n ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
          AssertionTest _ s _   ->  Just . ((T.unpack (encodeSig s) ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
-         OptimizationTest n _  ->  Just . ((T.unpack n ++ ": max value: " ++ show (t ^. testValue)) ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
-         Exploration           ->  return Nothing 
+         OptimizationTest n _  ->  Just . ((T.unpack n ++ ": max value: " ++ show (t ^. testValue) ++ "\n") ++) <$> ppOPT (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
+         Exploration           ->  return Nothing
 
 ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
 ppCampaign c = do

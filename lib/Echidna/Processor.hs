@@ -1,37 +1,32 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
 module Echidna.Processor where
 
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Exception      (Exception)
-import Control.Monad.Catch    (MonadThrow(..))
-import Data.Aeson             ((.:), (.:?), (.!=), decode, parseJSON, withEmbeddedJSON, withObject)
-import Data.Aeson.Types       (FromJSON, Parser, Value(String))
-import Data.List              (nub, isPrefixOf)
-import Data.Maybe             (catMaybes, fromMaybe)
-import Data.Text              (pack, isSuffixOf)
-import Data.SemVer            (Version, fromText)
-import Data.Either            (fromRight)
-import Text.Read              (readMaybe)
-import System.Directory       (findExecutable)
-import System.Process         (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
-import System.Exit            (ExitCode(..))
+import Control.Exception (Exception)
+import Control.Monad.Catch (MonadThrow(..))
+import Data.Aeson ((.:), (.:?), (.!=), decode, parseJSON, withEmbeddedJSON, withObject)
+import Data.Aeson.Types (FromJSON, Parser, Value(String))
+import Data.ByteString.Base16 qualified as BS16 (decode)
+import Data.ByteString.Lazy.Char8 qualified as BSL
+import Data.ByteString.UTF8 qualified as BSU
+import Data.Either (fromRight)
+import Data.HashMap.Strict qualified as M
+import Data.List (nub, isPrefixOf)
+import Data.List.NonEmpty qualified as NE
+import Data.Maybe (catMaybes, fromMaybe)
+import Data.SemVer (Version, fromText)
+import Data.Text (pack, isSuffixOf)
+import System.Directory (findExecutable)
+import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
+import System.Exit (ExitCode(..))
+import Text.Read (readMaybe)
 
-import qualified Data.ByteString.Base16 as BS16 (decode)
-import qualified Data.ByteString.Lazy.Char8 as BSL
-import qualified Data.ByteString.UTF8 as BSU
-import qualified Data.List.NonEmpty as NE
-import qualified Data.HashMap.Strict as M
-
-import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
 import EVM.ABI (AbiValue(..))
 import EVM.Types (Addr(..))
+
 import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
-
-
+import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
 -- instance for more detailed explanations.
@@ -103,7 +98,7 @@ instance FromJSON SlitherInfo where
         generationGraph <- (traverse . traverse) (withObject "relations" (.: "impacts")) functionsRelations
         solcVersions' <- o .:? "solc_versions"
         solcVersions <- case mapM (fromText . pack) (fromMaybe [] solcVersions') of
-          Left err -> fail $ "failed to parse solc version: " ++ err
+          Left _ -> pure []
           Right versions -> pure versions
         pure SlitherInfo {..}
 

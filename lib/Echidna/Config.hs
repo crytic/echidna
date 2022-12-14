@@ -1,38 +1,33 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Echidna.Config where
 
 import Control.Lens
 import Control.Monad.Catch (MonadThrow)
+import Control.Monad.Fail qualified as M (MonadFail(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Control.Monad.State (StateT(..), runStateT)
 import Control.Monad.Trans (lift)
-import Data.Bool (bool)
 import Data.Aeson
+import Data.Aeson.KeyMap (keys)
+import Data.Bool (bool)
+import Data.ByteString qualified as BS
+import Data.List.NonEmpty qualified as NE
 import Data.Has (Has(..))
-import Data.HashMap.Strict (keys)
 import Data.HashSet (fromList, insert, difference)
 import Data.Maybe (fromMaybe)
 import Data.Text (isPrefixOf)
+import Data.Yaml qualified as Y
+
 import EVM (result)
 import EVM.Types (w256)
 
-import qualified Control.Monad.Fail as M (MonadFail(..))
-import qualified Data.ByteString as BS
-import qualified Data.List.NonEmpty as NE
-import qualified Data.Yaml as Y
-
 import Echidna.Test
-import Echidna.Types.Campaign 
+import Echidna.Types.Campaign
 import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..))
 import Echidna.Types.Solidity
-import Echidna.Types.Tx  (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
-import Echidna.Types.Test  (TestConf(..))
+import Echidna.Types.Tx (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
+import Echidna.Types.Test (TestConf(..))
 import Echidna.UI
 import Echidna.UI.Report
 

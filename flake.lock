@@ -1,27 +1,59 @@
 {
   "nodes": {
-    "newerNixpkgs": {
+    "flake-compat": {
+      "flake": false,
       "locked": {
-        "lastModified": 1659009481,
-        "narHash": "sha256-BRM5R7AMKa58NAJnZsmWsVhDxuGllnhTvpVEZ+sP49I=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "2d9b7cb5f0a41da95fccc120acf730fd20d8598d",
+        "lastModified": 1668681692,
+        "narHash": "sha256-Ht91NGdewz8IQLtWZ9LCeNXMSXHUss+9COoqu6JLmXU=",
+        "owner": "edolstra",
+        "repo": "flake-compat",
+        "rev": "009399224d5e398d03b22badca40a37ac85412a1",
         "type": "github"
       },
       "original": {
-        "owner": "NixOS",
-        "repo": "nixpkgs",
+        "owner": "edolstra",
+        "repo": "flake-compat",
+        "type": "github"
+      }
+    },
+    "flake-utils": {
+      "locked": {
+        "lastModified": 1667395993,
+        "narHash": "sha256-nuEHfE/LcWyuSWnS8t12N1wc105Qtau+/OdUAjtQ0rA=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "5aed5285a952e0b949eb3ba02c12fa4fcfef535f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "nix-bundle-exe": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1660176694,
+        "narHash": "sha256-cJGZ/3CjVkoyk1W9mFVs6P/5LbJ8C+42chGYiB/wB/A=",
+        "owner": "3noch",
+        "repo": "nix-bundle-exe",
+        "rev": "91416cec283a33ae3448aacdc5cabdece9c08793",
+        "type": "github"
+      },
+      "original": {
+        "owner": "3noch",
+        "repo": "nix-bundle-exe",
         "type": "github"
       }
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1659009481,
-        "narHash": "sha256-EeijR4guVHgVv+JpOX3cQO+1XdrkJfGmiJ9XVsVU530=",
+        "lastModified": 1669063728,
+        "narHash": "sha256-xkaGi5mXSfRUjNCzbyBX2AOuweg14sNMRqawpO/GJCU=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "1882c6b7368fd284ad01b0a5b5601ef136321292",
+        "rev": "aee7510bf1c4942b3ce0f73ed69476c21b896fc4",
         "type": "github"
       },
       "original": {
@@ -32,7 +64,9 @@
     },
     "root": {
       "inputs": {
-        "newerNixpkgs": "newerNixpkgs",
+        "flake-compat": "flake-compat",
+        "flake-utils": "flake-utils",
+        "nix-bundle-exe": "nix-bundle-exe",
         "nixpkgs": "nixpkgs"
       }
     }

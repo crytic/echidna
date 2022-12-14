@@ -1,23 +1,19 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Echidna.UI.Widgets where
 
 import Brick
+import Brick.AttrMap qualified as A
 import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Control.Lens
 import Control.Monad.Reader (MonadReader)
 import Data.Has (Has(..))
 import Data.List (nub, intersperse, sortBy)
+import Data.Text qualified as T
 import Data.Version (showVersion)
+import Graphics.Vty qualified as V
+import Paths_echidna qualified (version)
 import Text.Printf (printf)
-
-import qualified Brick.AttrMap as A
-import qualified Data.Text as T
-import qualified Graphics.Vty as V
-import qualified Paths_echidna (version)
+import Text.Wrap
 
 import Echidna.ABI
 import Echidna.Campaign (isDone)
@@ -78,7 +74,7 @@ summaryWidget c =
 
 failedFirst :: EchidnaTest -> EchidnaTest -> Ordering
 failedFirst t1 _ | didFailed t1 = LT
-                 | otherwise   = GT 
+                 | otherwise   = GT
 
 testsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
             => [EchidnaTest] -> m (Widget())
@@ -90,10 +86,10 @@ testWidget etest =
  case etest ^. testType of
       Exploration           -> widget tsWidget "exploration" ""
       PropertyTest n _      -> widget tsWidget n ""
-      OptimizationTest n _  -> widget optWidget n "optimizing " 
+      OptimizationTest n _  -> widget optWidget n "optimizing "
       AssertionTest _ s _   -> widget tsWidget (encodeSig s) "assertion in "
       CallTest n _          -> widget tsWidget n ""
- 
+
   where
   widget f n infront = do
     (status, details) <- f (etest ^. testState) etest
@@ -121,7 +117,10 @@ titleWidget :: Widget n
 titleWidget = str "Call sequence" <+> str ":"
 
 eventWidget :: Events -> Widget n
-eventWidget es = if null es then str "" else str "Event sequence" <+> str ":" <=> str (T.unpack $ T.intercalate "\n" es)
+eventWidget es =
+  if null es then str ""
+  else str "Event sequence" <+> str ":"
+       <=> strWrapWith wrapSettings (T.unpack $ T.intercalate "\n" es)
 
 failWidget :: (MonadReader x m, Has Names x, Has TxConf x)
            => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> TxResult -> m (Widget (), Widget ())
@@ -168,10 +167,13 @@ seqWidget xs = do
     let ordinals = str . printf "%d." <$> [1 :: Int ..]
     pure $
       foldl (<=>) emptyWidget $
-        zipWith (<+>) ordinals (withAttr "tx" . strWrap <$> ppTxs)
+        zipWith (<+>) ordinals (withAttr "tx" . strWrapWith wrapSettings <$> ppTxs)
 
 failureBadge :: Widget ()
 failureBadge = withAttr "failure" $ str "FAILED!"
 
 maximumBadge :: Widget ()
 maximumBadge = withAttr "maximum" $ str "OPTIMIZED!"
+
+wrapSettings :: WrapSettings
+wrapSettings = defaultWrapSettings { breakLongWords = True }

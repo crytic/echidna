@@ -1,16 +1,13 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Echidna.Pretty where
 
+import Data.ByteString.Base16 qualified as BS16
+import Data.ByteString.Char8 qualified as BSC8
 import Data.List (intercalate)
 import Data.Text (unpack)
 
 import Echidna.ABI (ppAbiValue)
 import Echidna.Types.Signature (SolCall)
 import Echidna.Types.Tx (TxCall(..))
-
-import qualified Data.ByteString.Base16 as BS16
-import qualified Data.ByteString.Char8 as BSC8
 
 -- | Pretty-print some 'AbiCall'.
 ppSolCall :: SolCall -> String

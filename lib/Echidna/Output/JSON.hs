@@ -4,21 +4,23 @@
 module Echidna.Output.JSON where
 
 import Control.Lens ((^.))
-import Echidna.ABI (ppAbiValue, GenDict(..))
-import Echidna.Types.Coverage (CoverageInfo)
-import qualified Echidna.Types.Campaign as C
-import qualified Echidna.Types.Test as T
-import Echidna.Types.Test (EchidnaTest, testState, testReproducer)
-import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Data.Aeson hiding (Error)
-import qualified Data.ByteString.Base16 as BS16
+import Data.ByteString.Base16 qualified as BS16
 import Data.ByteString.Lazy (ByteString)
+import Data.Foldable qualified as DF
+import Data.Map
 import Data.Text
 import Data.Text.Encoding (decodeUtf8)
-import Data.Map
-import EVM.Types (keccak)
-import qualified Data.Foldable as DF
 import Numeric (showHex)
+
+import EVM.Types (keccak)
+
+import Echidna.ABI (ppAbiValue, GenDict(..))
+import Echidna.Types.Coverage (CoverageInfo)
+import Echidna.Types.Campaign qualified as C
+import Echidna.Types.Test qualified as T
+import Echidna.Types.Test (EchidnaTest, testState, testReproducer)
+import Echidna.Types.Tx (Tx(..), TxCall(..))
 
 data Campaign = Campaign
   { _success :: Bool
@@ -104,13 +106,13 @@ encodeCampaign C.Campaign{..} = encode
 mapTest :: EchidnaTest -> Test
 mapTest echidnaTest =
   let tst = echidnaTest ^. testState
-      txs = echidnaTest ^. testReproducer 
+      txs = echidnaTest ^. testReproducer
       (status, transactions, err) = mapTestState tst txs in
   Test { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
        , name = "name" --TODO add a proper name here
        , status = status
        , _error = err
-       , testType = Property 
+       , testType = Property
        , transactions = transactions
        }
   where

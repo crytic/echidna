@@ -4,11 +4,10 @@ import Prelude hiding (Word)
 
 import Control.Monad (unless)
 import Data.Aeson (ToJSON(..), decodeStrict, encodeFile)
+import Data.ByteString qualified as BS
 import Data.Hashable (hash)
 import Data.Maybe (catMaybes)
 import System.Directory (createDirectoryIfMissing, makeRelativeToCurrentDirectory, doesFileExist)
-
-import qualified Data.ByteString as BS
 
 import Echidna.Types.Tx
 import Echidna.Output.Utils
@@ -23,7 +22,7 @@ saveTxs Nothing  _   = pure ()
 loadTxs :: Maybe FilePath -> IO [[Tx]]
 loadTxs (Just d) = do
   let d' = d ++ "/coverage"
-  createDirectoryIfMissing True d' 
+  createDirectoryIfMissing True d'
   fs <- listDirectory d'
   css <- mapM readCall <$> mapM makeRelativeToCurrentDirectory fs
   txs <- catMaybes <$> withCurrentDirectory d' css

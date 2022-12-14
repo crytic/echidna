@@ -6,15 +6,22 @@ import Control.Lens hiding (argument)
 import Control.Monad (unless)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
-import Data.Maybe (fromMaybe)
-import Data.Text (Text, unpack)
-import Data.Version (showVersion)
+import Data.Aeson.Key qualified as Aeson.Key
+import Data.List.NonEmpty qualified as NE
 import Data.Map (fromList)
+import Data.Maybe (fromMaybe)
+import Data.Set qualified as DS
+import Data.Text (Text)
+import Data.Time.Clock.System (getSystemTime, systemSeconds)
+import Data.Version (showVersion)
 import EVM.Types (Addr)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.IO (hPutStrLn, stderr)
+
+import EVM.Dapp (dappInfo)
+import EVM.Solidity (contractName)
 
 import Echidna
 import Echidna.Config
@@ -27,12 +34,6 @@ import Echidna.Campaign (isSuccess)
 import Echidna.UI
 import Echidna.Output.Source
 import Echidna.Output.Corpus
-
-import EVM.Dapp (dappInfo)
-import EVM.Solidity (contractName)
-
-import qualified Data.List.NonEmpty as NE
-import qualified Data.Set as DS
 
 data Options = Options
   { cliFilePath         :: NE.NonEmpty FilePath
@@ -116,7 +117,8 @@ main = do
   g <- getRandom
   EConfigWithUsage loadedCfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
   let cfg = overrideConfig loadedCfg opts
-  unless (cfg ^. sConf . quiet) $ mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . unpack) ks
+  unless (cfg ^. sConf . quiet) $
+    mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString) ks
   let cd = cfg ^. cConf . corpusDir
 
   (sc, cs, cpg) <- flip runReaderT cfg $ do
@@ -133,8 +135,12 @@ main = do
   -- save corpus
   saveTxs cd (snd <$> DS.toList (cpg ^. corpus))
 
+  -- get current time to save coverage
+  t <- getSystemTime
+  let s = fromIntegral $ systemSeconds t
   -- save source coverage
-  saveCoverage cd sc cs (cpg ^. coverage)
+  saveCoverage False s cd sc cs (cpg ^. coverage)
+  saveCoverage True  s cd sc cs (cpg ^. coverage)
 
   if not . isSuccess $ cpg then exitWith $ ExitFailure 1 else exitSuccess
 

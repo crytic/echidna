@@ -1,5 +1,23 @@
 ## TODO
 
+## 2.0.4
+
+* Added colored html for coverage output code (#816)
+* Fixed crash when parsing solc versions (#835) 
+* Fixed long transactions and event lines in UI (#832)
+* Added Homebrew installation instructions (#848) 
+* Moved all nix stuff to flake and use nix-bundle-exe for macOS release (#851)
+* Updated codebase to GHC 9.0.2 (#846) 
+* Refactored code and removed useless dependencies (#854, #853, #829, #827, #828)
+
+## 2.0.3
+
+* Clean up Docker containers (#706)
+* Avoid resetting accounts if there is a deployed contract (#795)
+* Fixed decoding non-utf8 strings from slither printer (#799) 
+* Fixed generation and mutation of extreme signed integers (#791) 
+* Removed fallback from signature map when it is not defined (#772)
+
 ## 2.0.2
 
 * Improved shrinking of dynamic arrays (#775)
