@@ -29,7 +29,7 @@ deployBytecodes' di ((a, bc):cs) d vm = deployBytecodes' di cs d =<< loadRest
         loadRest = do vm' <- execStateT (execTx $ createTx (bc `append` zeros) d a (fromInteger unlimitedGasPerBlock) (0, 0)) vm
                       case vm' ^. result of
                        (Just (VMSuccess _)) -> return vm'
-                       _                    -> throwM $ DeploymentFailed a (Data.Text.unlines $ extractEvents di vm')
+                       _                    -> throwM $ DeploymentFailed a (Data.Text.unlines $ extractEvents True di vm')
 
 deployContracts :: (MonadIO m, MonadThrow m)
                        => DappInfo -> [(Addr, SolcContract)] -> Addr -> VM -> m VM

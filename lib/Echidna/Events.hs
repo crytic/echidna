@@ -31,8 +31,8 @@ maybeContractNameFromCodeHash codeHash = fmap contractToName maybeContract
   where maybeContract = preview (contextInfo . dappSolcByHash . ix codeHash . _2) ?context
         contractToName = view (contractName . to contractNamePart)
 
-extractEvents :: DappInfo -> VM -> Events
-extractEvents dappInfo' vm =
+extractEvents :: Bool -> DappInfo -> VM -> Events
+extractEvents decodeErrors dappInfo' vm =
   let eventMap = dappInfo' ^. dappEventMap
       forest = traceForest vm
       showTrace trace =
@@ -61,17 +61,18 @@ extractEvents dappInfo' vm =
               _ -> ["merror " <> pack (show e)]
 
           _ -> []
-  in decodeRevert vm ++ concat (concatMap flatten $ fmap (fmap showTrace) forest)
+  in decodeRevert decodeErrors vm ++ concat (concatMap flatten $ fmap (fmap showTrace) forest)
 
 
-decodeRevert :: VM -> Events
-decodeRevert vm =
+decodeRevert :: Bool -> VM -> Events
+decodeRevert decodeErrors vm =
   case vm ^. result of
-    Just (VMFailure (Revert bs)) -> decodeRevertMsg bs
+    Just (VMFailure (Revert bs)) -> decodeRevertMsg decodeErrors bs
     _                            -> []
 
-decodeRevertMsg :: BS.ByteString -> Events
-decodeRevertMsg bs = case BS.splitAt 4 bs of
-                          ("\x08\xc3\x79\xa0",d) -> ["Error(" <> (pack . show $ decodeAbiValue (AbiTupleType (fromList [AbiStringType])) (fromStrict d)) <> ")"]
-                          ("\x4e\x48\x7b\x71",d) -> ["Panic(" <> (pack . show $ decodeAbiValue (AbiUIntType 256) (fromStrict d)) <> ")"]
-                          _                      -> []
+decodeRevertMsg :: Bool -> BS.ByteString -> Events
+decodeRevertMsg decodeErrors bs =
+  case BS.splitAt 4 bs of
+    ("\x08\xc3\x79\xa0",d) | decodeErrors -> ["Error" <> (pack . show $ decodeAbiValue (AbiTupleType (fromList [AbiStringType])) (fromStrict d))]
+    ("\x4e\x48\x7b\x71",d)                -> ["Panic(" <> (pack . show $ decodeAbiValue (AbiUIntType 256) (fromStrict d)) <> ")"]
+    _                                     -> []
