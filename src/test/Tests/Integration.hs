@@ -99,4 +99,6 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("test passed",                    solved     "test") ]
   , testContract' "basic/deploy.sol" (Just "Test") Nothing (Just "basic/deployBytecode.yaml") True
       [ ("test passed",                    solved     "test") ]
+  , testContract "basic/flags.sol" (Just "basic/etheno-query-error.yaml")
+      [] -- Just check if the etheno config does not crash Echidna
   ]
