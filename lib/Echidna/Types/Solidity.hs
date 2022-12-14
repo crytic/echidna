@@ -6,7 +6,7 @@ import Control.Exception (Exception)
 import Control.Lens
 import Data.List.NonEmpty qualified as NE
 import Data.SemVer (Version, version, toString)
-import Data.Text (Text)
+import Data.Text (Text, unpack)
 
 import EVM.Solidity
 import EVM.Types (Addr)
@@ -31,7 +31,7 @@ data SolException = BadAddr Addr
                   | NoTests
                   | OnlyTests
                   | ConstructorArgs String
-                  | DeploymentFailed Addr
+                  | DeploymentFailed Addr Text
                   | SetUpCallFailed
                   | NoCryticCompile
                   | InvalidMethodFilters Filter
@@ -54,7 +54,7 @@ instance Show SolException where
     NoCryticCompile          -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
     (InvalidMethodFilters f) -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
     SetUpCallFailed          -> "Calling the setUp() funciton failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
-    (DeploymentFailed a)     -> "Deploying the contract " ++ show a ++ " failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
+    (DeploymentFailed a t)   -> "Deploying the contract " ++ show a ++ " failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.):\n" ++ unpack t
     OutdatedSolcVersion v    -> "Solc version " ++ toString v ++ " detected. Echidna doesn't support versions of solc before " ++ toString minSupportedSolcVersion ++ ". Please use a newer version."
 
 

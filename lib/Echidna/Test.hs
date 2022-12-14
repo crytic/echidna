@@ -148,7 +148,7 @@ checkProperty' (f,a) = do
   (vm, vm') <- runTx f s a
   b  <- gets $ p f . getter
   put vm -- restore EVM state
-  pure (BoolValue b, extractEvents dappInfo vm', getResultFromVM vm')
+  pure (BoolValue b, extractEvents False dappInfo vm', getResultFromVM vm')
 
 --- | Extract a test value from an execution.
 getIntFromResult :: Maybe VMResult -> TestValue
@@ -167,7 +167,7 @@ checkOptimization (f,a) = do
   dappInfo <- view hasLens
   (vm, vm') <- runTx f s a
   put vm -- restore EVM state
-  pure (getIntFromResult (vm' ^. result), extractEvents dappInfo vm', getResultFromVM vm')
+  pure (getIntFromResult (vm' ^. result), extractEvents False dappInfo vm', getResultFromVM vm')
 
 
 checkStatefullAssertion :: (MonadReader x m, Has DappInfo x, MonadState y m, Has VM y, MonadThrow m)
@@ -188,7 +188,7 @@ checkStatefullAssertion (sig, addr) = do
         _ -> False
       -- Test always passes if it doesn't target the last executed contract and function.
       -- Otherwise it passes if it doesn't cause an assertion failure.
-      events = extractEvents dappInfo vm
+      events = extractEvents False dappInfo vm
       eventFailure = not (null events) && (checkAssertionEvent events || checkPanicEvent "1" events)
       isFailure = isCorrectTarget && (eventFailure || isAssertionFailure)
   pure (BoolValue (not isFailure), events, getResultFromVM vm)
@@ -213,7 +213,7 @@ checkDapptestAssertion (sig, addr) = do
         _                            -> False
       isCorrectAddr = addr == vm ^. state . codeContract
       isCorrectTarget = isCorrectFn && isCorrectAddr
-      events = extractEvents dappInfo vm
+      events = extractEvents False dappInfo vm
       isFailure = not hasValue && (isCorrectTarget && isAssertionFailure)
   pure (BoolValue (not isFailure), events, getResultFromVM vm)
 
@@ -223,11 +223,11 @@ checkCall :: (MonadReader x m, Has DappInfo x, MonadState y m, Has VM y, MonadTh
 checkCall f = do
   dappInfo <- view hasLens
   vm <- use hasLens
-  pure (f dappInfo vm, extractEvents dappInfo vm, getResultFromVM vm)
+  pure (f dappInfo vm, extractEvents False dappInfo vm, getResultFromVM vm)
 
 checkAssertionTest :: DappInfo -> VM -> TestValue
 checkAssertionTest dappInfo vm =
-  let events = extractEvents dappInfo vm
+  let events = extractEvents False dappInfo vm
   in BoolValue $ null events || not (checkAssertionEvent events)
 
 checkAssertionEvent :: Events -> Bool
@@ -248,5 +248,5 @@ checkPanicEvent n = any (T.isPrefixOf ("Panic(" <> n <> ")"))
 
 checkOverflowTest :: DappInfo -> VM -> TestValue
 checkOverflowTest dappInfo vm =
-  let es = extractEvents dappInfo vm
+  let es = extractEvents False dappInfo vm
   in BoolValue $ null es || not (checkPanicEvent "17" es)

@@ -15,6 +15,7 @@ import Data.List (find, partition, isSuffixOf, (\\))
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NEE
 import Data.Map (Map, keys, elems, unions, member)
+import Data.Map qualified as Map
 import Data.Maybe (isJust, isNothing, catMaybes, listToMaybe)
 import Data.Text (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text qualified as T
@@ -30,10 +31,11 @@ import EVM qualified (contracts)
 import EVM.ABI
 import EVM.Solidity
 import EVM.Types (Addr, w256)
+import EVM.Dapp (dappInfo)
 
 import Echidna.ABI (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec (execTx, initialVM)
-import Echidna.Events (EventMap)
+import Echidna.Events (EventMap, extractEvents)
 import Echidna.Fetch (deployContracts, deployBytecodes)
 import Echidna.Processor
 import Echidna.RPC (loadEthenoBatch)
@@ -205,20 +207,23 @@ loadSpecified name cs = do
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
+      -- dappinfo for debugging in case of failure
+      let di = dappInfo "/" (Map.fromList $ map (\x -> (x ^. contractName, x)) cs) mempty
+
       -- library deployment
-      vm0 <- deployContracts (zip [addrLibrary ..] ls) d blank
+      vm0 <- deployContracts di (zip [addrLibrary ..] ls) d blank
 
       -- additional contract deployment (by name)
       cs' <- mapM ((choose cs . Just) . T.pack . snd) dpc
-      vm1 <- deployContracts (zip (map fst dpc) cs') d vm0
+      vm1 <- deployContracts di (zip (map fst dpc) cs') d vm0
 
       -- additional contract deployment (bytecode)
-      vm2 <- deployBytecodes dpb d vm1
+      vm2 <- deployBytecodes di dpb d vm1
 
       -- main contract deployment
       let deployment = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
       vm3 <- execStateT deployment vm2
-      when (isNothing $ currentContract vm3) (throwM $ DeploymentFailed ca)
+      when (isNothing $ currentContract vm3) (throwM $ DeploymentFailed ca $ T.unlines $ extractEvents True di vm3)
 
       -- Run
       let transaction = execTx $ uncurry basicTx setUpFunction d ca (fromInteger unlimitedGasPerBlock) (0, 0)

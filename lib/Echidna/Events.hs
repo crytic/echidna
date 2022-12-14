@@ -9,10 +9,11 @@ import Data.Tree.Zipper (fromForest, TreePos, Empty)
 import Data.Text (pack, Text)
 import Data.Map qualified as M
 import Data.Maybe (listToMaybe)
+import Data.Vector (fromList)
 import Control.Lens
 
 import EVM
-import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, AbiType(AbiUIntType))
+import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, AbiType(AbiUIntType, AbiTupleType, AbiStringType))
 import EVM.Concrete (wordValue)
 import EVM.Dapp
 import EVM.Format (showValues, showError, contractNamePart)
@@ -30,8 +31,8 @@ maybeContractNameFromCodeHash codeHash = fmap contractToName maybeContract
   where maybeContract = preview (contextInfo . dappSolcByHash . ix codeHash . _2) ?context
         contractToName = view (contractName . to contractNamePart)
 
-extractEvents :: DappInfo -> VM -> Events
-extractEvents dappInfo' vm =
+extractEvents :: Bool -> DappInfo -> VM -> Events
+extractEvents decodeErrors dappInfo' vm =
   let eventMap = dappInfo' ^. dappEventMap
       forest = traceForest vm
       showTrace trace =
@@ -60,17 +61,18 @@ extractEvents dappInfo' vm =
               _ -> ["merror " <> pack (show e)]
 
           _ -> []
-  in decodeRevert vm ++ concat (concatMap flatten $ fmap (fmap showTrace) forest)
+  in decodeRevert decodeErrors vm ++ concat (concatMap flatten $ fmap (fmap showTrace) forest)
 
 
-decodeRevert :: VM -> Events
-decodeRevert vm =
+decodeRevert :: Bool -> VM -> Events
+decodeRevert decodeErrors vm =
   case vm ^. result of
-    Just (VMFailure (Revert bs)) -> decodeRevertMsg bs
+    Just (VMFailure (Revert bs)) -> decodeRevertMsg decodeErrors bs
     _                            -> []
 
-decodeRevertMsg :: BS.ByteString -> Events
-decodeRevertMsg bs = case BS.splitAt 4 bs of
-                          --"\x08\xc3\x79\xa0" -> Just $ "Error(" ++ (show $ decodeAbiValue AbiStringType (fromStrict $ BS.drop 4 bs)) ++ ")"
-                          ("\x4e\x48\x7b\x71",d) -> ["Panic(" <> (pack . show $ decodeAbiValue (AbiUIntType 256) (fromStrict d)) <> ")"]
-                          _                      -> []
+decodeRevertMsg :: Bool -> BS.ByteString -> Events
+decodeRevertMsg decodeErrors bs =
+  case BS.splitAt 4 bs of
+    ("\x08\xc3\x79\xa0",d) | decodeErrors -> ["Error" <> (pack . show $ decodeAbiValue (AbiTupleType (fromList [AbiStringType])) (fromStrict d))]
+    ("\x4e\x48\x7b\x71",d)                -> ["Panic(" <> (pack . show $ decodeAbiValue (AbiUIntType 256) (fromStrict d)) <> ")"]
+    _                                     -> []
