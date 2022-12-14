@@ -28,7 +28,7 @@ import Echidna.Config
 import Echidna.Types.Config hiding (cfg)
 import Echidna.Types.Solidity
 import Echidna.Types.Campaign
-import Echidna.Types.Test (TestMode)
+import Echidna.Types.Test (TestMode, testReproducer)
 import Echidna.Test (validateTestMode)
 import Echidna.Campaign (isSuccess)
 import Echidna.UI
@@ -133,7 +133,8 @@ main = do
       return (sc, cs, r)
 
   -- save corpus
-  saveTxs cd (snd <$> DS.toList (cpg ^. corpus))
+  saveTxs (fmap (++ "/reproducers/") cd) (filter (not . null) $ map (^. testReproducer) $ cpg ^. tests)
+  saveTxs (fmap (++ "/coverage/") cd) (snd <$> DS.toList (cpg ^. corpus))
 
   -- get current time to save coverage
   t <- getSystemTime
