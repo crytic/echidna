@@ -51,7 +51,12 @@ ppCoveredCode isHtml sc cs s | s == mempty = "Coverage map is empty"
         in T.unlines (changeFileName srcPath : changeFileLines (V.toList marked))
       -- ^ Pretty print individual file coverage
       topHeader
-        | isHtml = "<style> code { white-space: pre-wrap; display: block; background-color: #eee; } </style>"
+        | isHtml = "<style> code { white-space: pre-wrap; display: block; background-color: #eee; }" <>
+                   ".executed { background-color: #afa; }" <>
+                   ".reverted { background-color: #ffa; }" <>
+                   ".unexecuted { background-color: #faa; }" <>
+                   ".neutral { background-color: #eee; }" <>
+                   "</style>"
         | otherwise = ""
       -- ^ Text to add to top of the file
       changeFileName fn
@@ -75,28 +80,22 @@ markLines isHtml codeLines runtimeLines resultMap =
         markers = sort $ nub $ getMarker <$> results
         wrapLine :: Text -> Text
         wrapLine line
-          | isHtml = "<span style='background-color: #" <> color <> ";'>" <>
+          | isHtml = "<span class='" <> cssClass <> "'>" <>
                         HTML.text line <>
                      "</span>"
           | otherwise = line
           where
-          color = if n `elem` runtimeLines then getColor markers else grey
-          grey = "eee"
+          cssClass = if n `elem` runtimeLines then getCSSClass markers else "neutral"
 
     in pack $ printf " %*d | %-4s| %s" lineNrSpan n markers (wrapLine codeLine)
   lineNrSpan = length . show $ V.length codeLines + 1
 
-getColor :: String -> Text
-getColor markers =
+getCSSClass :: String -> Text
+getCSSClass markers =
   case markers of
-   []                      -> red
-   _  | '*' `elem` markers -> green
-   _                       -> yellow
-
-  where
-    green  = "afa"
-    yellow = "ffa"
-    red    = "faa"
+   []                      -> "unexecuted"
+   _  | '*' `elem` markers -> "executed"
+   _                       -> "reverted"
 
 -- | Select the proper marker, according to the result of the transaction
 getMarker :: TxResult -> Char
