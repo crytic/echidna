@@ -1,6 +1,7 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE GADTs #-}
 
 module Echidna.Campaign where
 
@@ -28,7 +29,7 @@ import System.Random (mkStdGen)
 import EVM
 import EVM.Dapp (DappInfo)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
-import EVM.Types (Addr, Buffer(..))
+import EVM.Types (Addr, Expr(ConcreteBuf))
 
 import Echidna.ABI
 import Echidna.Exec
@@ -257,7 +258,7 @@ callseq ic v w ql = do
     -- type for each function called, and if we do, tries to parse the return value as a value of that
     -- type. It returns a 'GenDict' style HashMap.
     parse l rt = H.fromList . flip mapMaybe l $ \(x, r) -> case (rt =<< x ^? call . _SolCall . _1, r) of
-      (Just ty, VMSuccess (ConcreteBuffer b)) ->
+      (Just ty, VMSuccess (ConcreteBuf b)) ->
         (ty,) . S.fromList . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
       _ -> Nothing
 

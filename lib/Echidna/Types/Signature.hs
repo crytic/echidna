@@ -1,3 +1,5 @@
+{-# LANGUAGE GADTs #-}
+
 module Echidna.Types.Signature where
 
 import Data.ByteString (ByteString)

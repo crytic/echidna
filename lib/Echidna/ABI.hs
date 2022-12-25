@@ -33,7 +33,7 @@ import Data.Word (Word8)
 import Numeric (showHex)
 
 import EVM.ABI hiding (genAbiValue)
-import EVM.Types (Addr, abiKeccak)
+import EVM.Types (Addr, abiKeccak, W256)
 
 import Echidna.Mutator.Array (mutateLL, replaceAt)
 import Echidna.Types.Random
@@ -123,10 +123,10 @@ gaddCalls c = wholeCalls <>~ hashMapBy (fmap $ fmap abiValueType) c
 defaultDict :: GenDict
 defaultDict = mkGenDict 0 [] [] 0 (const Nothing)
 
-dictValues :: GenDict -> [Integer]
+dictValues :: GenDict -> [W256]
 dictValues g = catMaybes $ concatMap (\(_,h) -> map fromValue $ H.toList h) $ M.toList $ g ^. constants
-  where fromValue (AbiUInt _ n) = Just (toInteger n)
-        fromValue (AbiInt  _ n) = Just (toInteger n)
+  where fromValue (AbiUInt _ n) = Just (fromIntegral n)
+        fromValue (AbiInt  _ n) = Just (fromIntegral n)
         fromValue _             = Nothing
 
 -- This instance is the only way for mkConf to work nicely, and is well-formed.
