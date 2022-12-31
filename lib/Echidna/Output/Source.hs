@@ -4,7 +4,7 @@ import Prelude hiding (writeFile)
 
 import Control.Lens
 import Data.Foldable
-import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.List (nub, sort)
 import Data.Map qualified as M
 import Data.Set qualified as S
@@ -140,7 +140,7 @@ srcMapForOpLocation contract (_,n,_,r) =
 buildRuntimeLinesMap :: SourceCache -> [SolcContract] -> M.Map Text (S.Set Int)
 buildRuntimeLinesMap sc contracts =
   M.fromListWith (<>)
-    [(k, S.singleton v) | (k, v) <- catMaybes $ srcMapCodePos sc <$> srcMaps]
+    [(k, S.singleton v) | (k, v) <- mapMaybe (srcMapCodePos sc) srcMaps]
   where
   srcMaps = concatMap
     (\c -> toList $ c ^. runtimeSrcmap <> c ^. creationSrcmap) contracts
