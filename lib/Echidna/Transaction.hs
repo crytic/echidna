@@ -1,5 +1,6 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Echidna.Transaction where
 
@@ -16,11 +17,12 @@ import Data.Maybe (mapMaybe)
 import Data.Vector qualified as V
 import EVM hiding (value)
 import EVM.ABI (abiValueType)
-import EVM.Types (Expr(ConcreteBuf, Lit), Addr, W256)
+import EVM.Types (Expr(ConcreteBuf, Lit), EType(EWord), Addr, W256)
 
 import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
+import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, BytecodeMemo, lookupBytecodeMetadata)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
@@ -59,10 +61,10 @@ genTxM memo m = do
   pure $ Tx (SolCall c') s' (fst r') g gp v' (level t')
   where
     toContractA :: SignatureMap -> (Addr, Contract) -> Maybe ContractA
-    toContractA mm (addr, c) =
-      let ConcreteBuf bc = c ^. bytecode
-          metadata = lookupBytecodeMetadata memo bc
-      in (addr,) <$> M.lookup metadata mm
+    toContractA mm (addr, c) = do
+      bc <- viewBuffer $ c ^. bytecode
+      let metadata = lookupBytecodeMetadata memo bc
+      (addr,) <$> M.lookup metadata mm
 
 genDelay :: MonadRandom m => W256 -> [W256] -> m W256
 genDelay mv ds = do
@@ -137,12 +139,12 @@ liftSH = stateST . runState . zoom hasLens
 setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
 setupTx (Tx NoCall _ r _ _ _ (t, b)) = liftSH . sequence_ $
   [ state . pc .= 0, state . stack .= mempty, state . memory .= mempty
-  , block . timestamp %= (\(Lit x) -> Lit (x+t)), block . number += b, loadContract r]
+  , block . timestamp %= (\x -> Lit (forceLit x + t)), block . number += b, loadContract r]
 
 setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty, state . gas .= g
   , tx . gasprice .= gp, tx . origin .= s, state . caller .= Lit (fromIntegral s), state . callvalue .= Lit v
-  , block . timestamp %= (\(Lit x) -> Lit (x+t)), block . number += b, setup] where
+  , block . timestamp %= (\x -> Lit (forceLit x + t)), block . number += b, setup] where
     setup = case c of
       SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (InitCode bc mempty) & set balance v) >> loadContract r >> state . code .= RuntimeCode (ConcreteRuntimeCode bc)
       SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= ConcreteBuf (encode cd)
@@ -150,3 +152,8 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
     incrementBalance = (env . contracts . ix r . balance) += v
     encode (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
+
+forceLit :: Expr 'EWord -> W256
+forceLit x = case x of
+  Lit x' -> x'
+  _ -> error "expected Lit"

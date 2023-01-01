@@ -9,7 +9,7 @@ import Data.Tree (flatten)
 import Data.Tree.Zipper (fromForest, TreePos, Empty)
 import Data.Text (pack, Text)
 import Data.Map qualified as M
-import Data.Maybe (listToMaybe)
+import Data.Maybe (listToMaybe, fromJust)
 import Data.Vector (fromList)
 import Control.Lens
 
@@ -17,7 +17,7 @@ import EVM
 import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, AbiType(AbiUIntType, AbiTupleType, AbiStringType))
 import EVM.Dapp
 import EVM.Format (showValues, showError, contractNamePart)
-import EVM.Types (Expr(Lit,ConcreteBuf), W256, maybeLitWord)
+import EVM.Types (Expr(ConcreteBuf), W256, maybeLitWord)
 import EVM.Solidity (contractName)
 
 type EventMap = M.Map W256 Event
@@ -37,7 +37,7 @@ extractEvents decodeErrors dappInfo' vm =
       forest = traceForest vm
       showTrace trace =
         let ?context = DappContext { _contextInfo = dappInfo', _contextEnv = vm ^?! EVM.env . EVM.contracts } in
-        let Lit codehash' = trace ^. traceContract . codehash
+        let codehash' = fromJust $ maybeLitWord (trace ^. traceContract . codehash)
             maybeContractName = maybeContractNameFromCodeHash codehash'
         in
         case trace ^. traceData of
