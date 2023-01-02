@@ -253,6 +253,7 @@ callseq ic v w ql = do
       additions = H.unionWith S.union diffs results
   -- append to the constants dictionary
   modifying (hasLens . genDict . constants) . H.unionWith S.union $ additions
+  modifying (hasLens . genDict . dictValues) . DS.union $ mkDictValues $ S.toList $ S.unions $ H.elems additions
   where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
     -- type for each function called, and if we do, tries to parse the return value as a value of that

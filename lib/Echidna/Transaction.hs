@@ -14,6 +14,7 @@ import Data.Has (Has(..))
 import Data.HashMap.Strict qualified as M
 import Data.Map (Map, toList)
 import Data.Maybe (mapMaybe)
+import Data.Set (Set)
 import Data.Vector qualified as V
 import EVM hiding (value)
 import EVM.ABI (abiValueType)
@@ -52,7 +53,7 @@ genTxM memo m = do
   World ss hmm lmm ps _ <- view hasLens
   genDict <- use hasLens
   mm <- getSignatures hmm lmm
-  let ns = dictValues genDict
+  let ns = _dictValues genDict
   s' <- rElem ss
   r' <- rElem $ NE.fromList (mapMaybe (toContractA mm) (toList m))
   c' <- genInteractionsM genDict (snd r')
@@ -66,26 +67,21 @@ genTxM memo m = do
       let metadata = lookupBytecodeMetadata memo bc
       (addr,) <$> M.lookup metadata mm
 
-genDelay :: MonadRandom m => W256 -> [W256] -> m W256
+genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
 genDelay mv ds = do
-  let ds' = (`mod` (mv + 1)) <$> ds
-  x <- rElem (0 NE.:| ds')
-  y <- randValue
-  fromIntegral <$> oftenUsually x (fromIntegral y)
-  where randValue = getRandomR (1 :: Integer, fromIntegral mv)
+  join $ oftenUsually fromDict randValue
+  where randValue = fromIntegral <$> getRandomR (1 :: Integer, fromIntegral mv)
+        fromDict = (`mod` (mv + 1)) <$> rElem' ds
 
-genValue :: MonadRandom m => W256 -> [W256] -> [FunctionHash] -> SolCall -> m W256
+genValue :: MonadRandom m => W256 -> Set W256 -> [FunctionHash] -> SolCall -> m W256
 genValue mv ds ps sc =
-  if sig `elem` ps then do
-    let ds' = (`mod` (mv + 1)) <$> ds
-    x <- rElem (0 NE.:| ds')
-    y <- randValue
-    fromIntegral <$> oftenUsually x (fromIntegral y)
+  if sig `elem` ps then
+    join $ oftenUsually fromDict randValue
   else do
-    g <- usuallyVeryRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
-    fromIntegral <$> g
-  where randValue = getRandomR (0 :: Integer, fromIntegral mv)
+    join $ usuallyVeryRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
+  where randValue = fromIntegral <$> getRandomR (0 :: Integer, fromIntegral mv)
         sig = (hashSig . encodeSig . signatureCall) sc
+        fromDict = (`mod` (mv + 1)) <$> rElem' ds
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool
