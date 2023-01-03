@@ -16,15 +16,15 @@ task:
   install_dependencies_script: brew install automake libtool haskell-stack gmp
   install_secp256k1_script: .github/scripts/install-libsecp256k1.sh
   install_libff_script: .github/scripts/install-libff.sh
-  install_ghc_script: stack --resolver=ghc-8.10.7 setup
+  install_ghc_script: stack --resolver=lts-20.05 setup
 
   build_dependencies_script: >
-    stack build --compiler=ghc-8.10.7 --ghc-options="-Werror" \
+    stack build --ghc-options="-Werror" \
       --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include \
       --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib \
       --only-dependencies
   build_echidna_script: >
-    stack install --compiler=ghc-8.10.7 --ghc-options="-Werror" \
+    stack install --ghc-options="-Werror" \
       --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include \
       --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib
 
