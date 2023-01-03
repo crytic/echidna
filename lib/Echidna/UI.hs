@@ -125,13 +125,13 @@ monitor = do
   let cs :: (CampaignConf, Names, TxConf) -> (Campaign, UIState) -> Widget ()
       cs s c = runReader (campaignStatus c) s
 
-      se _ (AppEvent (CampaignUpdated c')) = continue (c', Running)
-      se _ (AppEvent (CampaignTimedout c')) = continue (c', Timedout)
-      se c (VtyEvent (EvKey KEsc _))                         = halt c
-      se c (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = halt c
-      se c _                                                 = continue c
+      se (AppEvent (CampaignUpdated c')) = put (c', Running)
+      se (AppEvent (CampaignTimedout c')) = put (c', Timedout)
+      se (VtyEvent (EvKey KEsc _))                         = halt
+      se (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = halt
+      se _                                                 = pure ()
   s <- (,,) <$> view hasLens <*> view hasLens <*> view hasLens
-  pure $ App (pure . cs s) neverShowCursor se pure (const attrs)
+  pure $ App (pure . cs s) neverShowCursor se (pure ()) (const attrs)
 
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
 isTerminal :: MonadIO m => m Bool

@@ -19,7 +19,6 @@ import Data.Text (isPrefixOf)
 import Data.Yaml qualified as Y
 
 import EVM (result)
-import EVM.Types (w256)
 
 import Echidna.Test
 import Echidna.Types.Campaign
@@ -57,7 +56,7 @@ instance FromJSON EConfigWithUsage where
             let useKey k = hasLens %= insert k
                 x ..:? k = useKey k >> lift (x .:? k)
                 x ..!= y = fromMaybe y <$> x
-                getWord s d = w256 . fromIntegral <$> v ..:? s ..!= (d :: Integer)
+                getWord s d = fromIntegral <$> v ..:? s ..!= (d :: Integer)
 
                 -- TxConf
                 xc = TxConf <$> getWord "propMaxGas" maxGasPerBlock

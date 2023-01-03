@@ -42,8 +42,17 @@
             chmod +x $out/bin/solc
           '';
         };
+
+        hevm = pkgs.haskell.lib.dontCheck (
+          pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
+            owner = "ethereum";
+            repo = "hevm";
+            rev = "0.50.1";
+            sha256 = "sha256-fgseeQNxWh13PVLsfvyAdZZwtqzELbTivPOiRc6cox8=";
+        }) { secp256k1 = pkgs.secp256k1; });
+
         echidna = with pkgs; lib.pipe
-          (haskellPackages.callCabal2nix "echidna" ./. {})
+          (haskellPackages.callCabal2nix "echidna" ./. { inherit hevm; })
           [
             (haskell.lib.compose.addTestToolDepends [ haskellPackages.hpack slither-analyzer solc ])
             (haskell.lib.compose.disableCabalFlag "static")

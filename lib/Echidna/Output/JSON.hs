@@ -13,7 +13,7 @@ import Data.Text
 import Data.Text.Encoding (decodeUtf8)
 import Numeric (showHex)
 
-import EVM.Types (keccak)
+import EVM.Types (keccak')
 
 import Echidna.ABI (ppAbiValue, GenDict(..))
 import Echidna.Types.Coverage (CoverageInfo)
@@ -99,7 +99,7 @@ encodeCampaign C.Campaign{..} = encode
            , _error = Nothing
            , _tests = mapTest <$> _tests
            , seed = _defSeed _genDict
-           , coverage = mapKeys (("0x" ++) . (`showHex` "") . keccak) $ DF.toList <$> _coverage
+           , coverage = mapKeys (("0x" ++) . (`showHex` "") . keccak') $ DF.toList <$>_coverage
            , gasInfo = toList _gasInfo
            }
 
