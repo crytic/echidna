@@ -13,18 +13,18 @@ task:
     folder: $HOME/.stack
     fingerprint_script: echo $CIRRUS_OS
 
-  install_dependencies_script: brew install automake libtool haskell-stack gmp
+  install_dependencies_script: brew install automake libtool haskell-stack hpack gmp
   install_secp256k1_script: .github/scripts/install-libsecp256k1.sh
   install_libff_script: .github/scripts/install-libff.sh
-  install_ghc_script: stack --resolver=lts-20.05 setup
+  install_ghc_script: stack --resolver=lts-20.05 --with-hpack hpack setup
 
   build_dependencies_script: >
-    stack build --ghc-options="-Werror" \
+    stack build --with-hpack hpack --ghc-options="-Werror" \
       --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include \
       --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib \
       --only-dependencies
   build_echidna_script: >
-    stack install --ghc-options="-Werror" \
+    stack install --with-hpack hpack --ghc-options="-Werror" \
       --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include \
       --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib
 
