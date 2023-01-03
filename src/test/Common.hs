@@ -69,14 +69,18 @@ withSolcVersion :: Maybe SolcVersionComp -> IO () -> IO ()
 withSolcVersion Nothing t = t
 withSolcVersion (Just f) t = do
   sv <- readProcess "solc" ["--version"] ""
-  let (_:sv':_) = splitOn "Version: " sv
-  let (sv'':_) = splitOn "+" sv'
+  let sv' = case splitOn "Version: " sv of
+              _:x:_ -> x
+              _ -> error "unexpected output"
+  let sv'' = case splitOn "+" sv' of
+               x:_ -> x
+               _ -> error "unexpected output"
   case fromText $ pack sv'' of
     Right v' -> if f v' then t else assertBool "skip" True
     Left e   -> error $ show e
 
 runContract :: FilePath -> Maybe ContractName -> EConfig -> IO Campaign
-runContract f mc cfg = 
+runContract f mc cfg =
   flip runReaderT cfg $ do
     g <- getRandom
     (v, sc, cs, w, ts, d, txs) <- prepareContract cfg (f :| []) mc g
@@ -109,11 +113,13 @@ checkConstructorConditions fp as = testCase fp $ do
     let env = Env { _cfg = testConfig, _dapp = emptyDapp }
     flip runReaderT env $
       mapM (\u -> evalStateT (checkETest u) v) t
-  mapM_ (\(BoolValue b,_,_) -> assertBool as b) r
+  mapM_ (\(x,_,_) -> assertBool as (forceBool x)) r
+  where forceBool (BoolValue b) = b
+        forceBool _ = error "BoolValue expected"
 
 
 getResult :: Text -> Campaign -> Maybe EchidnaTest
-getResult n c = 
+getResult n c =
   case filter findTest $ view tests c of
     []  -> Nothing
     [x] -> Just x
@@ -124,7 +130,7 @@ getResult n c =
                           AssertionTest _ (t,_) _ -> t == n
                           CallTest t _            -> t == n
                           OptimizationTest t _    -> t == n
-                          _                       -> False 
+                          _                       -> False
 
 optnFor :: Text -> Campaign -> Maybe TestValue
 optnFor n c = case getResult n c of
@@ -139,7 +145,7 @@ optimized n v c = case optnFor n c of
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor n c = case getResult n c of
-  Just t -> if null $ t ^. testReproducer then Nothing else Just $ t ^. testReproducer 
+  Just t -> if null $ t ^. testReproducer then Nothing else Just $ t ^. testReproducer
   _      -> Nothing
 
 solved :: Text -> Campaign -> Bool

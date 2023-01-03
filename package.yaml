@@ -47,22 +47,19 @@ dependencies:
   - word-wrap
   - yaml
 
+language: GHC2021
+
 default-extensions:
   - LambdaCase
   - OverloadedStrings
-  # GHC2021 default extensions from 9.2
-  - FlexibleContexts
-  - FlexibleInstances
-  - ImportQualifiedPost
-  - MultiParamTypeClasses
-  - NamedFieldPuns
-  - RankNTypes
-  - ScopedTypeVariables
-  - StandaloneDeriving
-  - TupleSections
 
 library:
   source-dirs: lib/
+
+when:
+  - condition: os(darwin)
+    extra-libraries: c++
+    ld-options: -Wl,-keep_dwarf_unwind
 
 executables:
   echidna-test:

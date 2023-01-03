@@ -30,7 +30,7 @@ import EVM hiding (contracts, path)
 import EVM qualified (contracts)
 import EVM.ABI
 import EVM.Solidity
-import EVM.Types (Addr, w256)
+import EVM.Types (Addr)
 import EVM.Dapp (dappInfo)
 
 import Echidna.ABI (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
@@ -119,7 +119,7 @@ addresses = do
 populateAddresses :: [Addr] -> Integer -> VM -> VM
 populateAddresses []     _ vm = vm
 populateAddresses (a:as) b vm = if deployed then populateAddresses as b vm else populateAddresses as b (vm & set (env . EVM.contracts . at a) (Just account))
-  where account   = initialContract (RuntimeCode mempty) & set nonce 0 & set balance (w256 $ fromInteger b)
+  where account   = initialContract (RuntimeCode (ConcreteRuntimeCode mempty)) & set nonce 0 & set balance (fromInteger b)
         deployed = a `member` (vm ^. env . EVM.contracts)
 
 -- | Address to load the first library
@@ -189,7 +189,7 @@ loadSpecified name cs = do
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
   let vm = initialVM & block . gaslimit .~ fromInteger unlimitedGasPerBlock
-                     & block . maxCodeSize .~ w256 (fromInteger mcs)
+                     & block . maxCodeSize .~ fromInteger mcs
   blank' <- liftIO $ maybe (pure vm) loadEthenoBatch fp
   let blank = populateAddresses (NE.toList ads |> d) bala blank'
 
@@ -221,7 +221,7 @@ loadSpecified name cs = do
       vm2 <- deployBytecodes di dpb d vm1
 
       -- main contract deployment
-      let deployment = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (w256 $ fromInteger balc) (0, 0)
+      let deployment = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (fromInteger balc) (0, 0)
       vm3 <- execStateT deployment vm2
       when (isNothing $ currentContract vm3) (throwM $ DeploymentFailed ca $ T.unlines $ extractEvents True di vm3)
 

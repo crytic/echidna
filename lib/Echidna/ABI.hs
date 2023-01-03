@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Echidna.ABI where
@@ -18,10 +19,11 @@ import Data.Hashable (Hashable(..))
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as M
 import Data.HashSet (HashSet, fromList, union)
-import Data.HashSet qualified as H
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.List (intercalate)
 import Data.List.NonEmpty qualified as NE
-import Data.Maybe (fromMaybe, catMaybes)
+import Data.Maybe (fromMaybe, catMaybes, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (encodeUtf8)
@@ -33,7 +35,7 @@ import Data.Word (Word8)
 import Numeric (showHex)
 
 import EVM.ABI hiding (genAbiValue)
-import EVM.Types (Addr, abiKeccak)
+import EVM.Types (Addr, abiKeccak, W256)
 
 import Echidna.Mutator.Array (mutateLL, replaceAt)
 import Echidna.Types.Random
@@ -107,6 +109,8 @@ data GenDict = GenDict { _pSynthA    :: Float
                          -- ^ Default seed to use if one is not provided in EConfig
                        , _rTypes     :: Text -> Maybe AbiType
                          -- ^ Return types of any methods we scrape return values from
+                       , _dictValues :: Set W256
+                         -- ^ A set of int/uint constants for better performance
                        }
 
 makeLenses 'GenDict
@@ -114,27 +118,15 @@ makeLenses 'GenDict
 hashMapBy :: (Hashable k, Hashable a, Eq k, Ord a) => (a -> k) -> [a] -> HashMap k (HashSet a)
 hashMapBy f = M.fromListWith union . fmap (\v -> (f v, fromList [v]))
 
-gaddConstants :: [AbiValue] -> GenDict -> GenDict
-gaddConstants l = constants <>~ hashMapBy abiValueType l
-
 gaddCalls :: [SolCall] -> GenDict -> GenDict
 gaddCalls c = wholeCalls <>~ hashMapBy (fmap $ fmap abiValueType) c
 
 defaultDict :: GenDict
 defaultDict = mkGenDict 0 [] [] 0 (const Nothing)
 
-dictValues :: GenDict -> [Integer]
-dictValues g = catMaybes $ concatMap (\(_,h) -> map fromValue $ H.toList h) $ M.toList $ g ^. constants
-  where fromValue (AbiUInt _ n) = Just (toInteger n)
-        fromValue (AbiInt  _ n) = Just (toInteger n)
-        fromValue _             = Nothing
-
--- This instance is the only way for mkConf to work nicely, and is well-formed.
-{-# ANN module ("HLint: ignore Unused LANGUAGE pragma" :: String) #-}
--- We need the above since hlint doesn't notice DeriveAnyClass in StandaloneDeriving.
-deriving instance Hashable AbiType
-deriving instance Hashable AbiValue
-deriving instance Hashable Addr
+deriving anyclass instance Hashable AbiType
+deriving anyclass instance Hashable AbiValue
+deriving anyclass instance Hashable Addr
 
 -- | Construct a 'GenDict' from some dictionaries, a 'Float', a default seed, and a typing rule for
 -- return values
@@ -145,7 +137,14 @@ mkGenDict :: Float      -- ^ Percentage of time to mutate instead of synthesize.
           -> (Text -> Maybe AbiType)
           -- ^ A return value typing rule
           -> GenDict
-mkGenDict p vs cs = GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fmap abiValueType) cs)
+mkGenDict p vs cs s tr =
+  GenDict p (hashMapBy abiValueType vs) (hashMapBy (fmap $ fmap abiValueType) cs) s tr (mkDictValues vs)
+
+mkDictValues :: [AbiValue] -> Set W256
+mkDictValues vs = Set.fromList $ mapMaybe fromValue vs
+  where fromValue (AbiUInt _ n) = Just (fromIntegral n)
+        fromValue (AbiInt  _ n) = Just (fromIntegral n)
+        fromValue _             = Nothing
 
 -- Generation (synthesis)
 

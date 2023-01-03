@@ -1,25 +1,24 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Echidna.Transaction where
-
-import Prelude hiding (Word)
 
 import Control.Lens
 import Control.Monad (join, liftM2)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.State.Strict (MonadState, State, runState, get, put)
-import Data.ByteString qualified as BS
 import Data.List.NonEmpty qualified as NE
 import Data.Has (Has(..))
 import Data.HashMap.Strict qualified as M
 import Data.Map (Map, toList)
-import Data.Maybe (catMaybes)
+import Data.Maybe (mapMaybe)
+import Data.Set (Set)
 import Data.Vector qualified as V
 import EVM hiding (value)
 import EVM.ABI (abiValueType)
-import EVM.Symbolic (litWord, litAddr)
-import EVM.Types (Addr, Buffer(..), Word(..), w256, w256lit, SymWord)
+import EVM.Types (Expr(ConcreteBuf, Lit), EType(EWord), Addr, W256)
 
 import Echidna.ABI
 import Echidna.Types.Random
@@ -54,9 +53,9 @@ genTxM memo m = do
   World ss hmm lmm ps _ <- view hasLens
   genDict <- use hasLens
   mm <- getSignatures hmm lmm
-  let ns = dictValues genDict
+  let ns = _dictValues genDict
   s' <- rElem ss
-  r' <- rElem $ NE.fromList . catMaybes $ toContractA mm <$> toList m
+  r' <- rElem $ NE.fromList (mapMaybe (toContractA mm) (toList m))
   c' <- genInteractionsM genDict (snd r')
   v' <- genValue mv ns ps c'
   t' <- (,) <$> genDelay t ns <*> genDelay b ns
@@ -68,24 +67,21 @@ genTxM memo m = do
       let metadata = lookupBytecodeMetadata memo bc
       (addr,) <$> M.lookup metadata mm
 
-genDelay :: MonadRandom m => Word -> [Integer] -> m Word
+genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
 genDelay mv ds = do
-  let ds' = map (`mod` (fromIntegral mv + 1)) ds
-  g <- oftenUsually randValue $ rElem (0 NE.:| ds')
-  w256 . fromIntegral <$> g
-  where randValue = getRandomR (1 :: Integer, fromIntegral mv)
+  join $ oftenUsually fromDict randValue
+  where randValue = fromIntegral <$> getRandomR (1 :: Integer, fromIntegral mv)
+        fromDict = (`mod` (mv + 1)) <$> rElem' ds
 
-genValue :: MonadRandom m => Word -> [Integer] -> [FunctionHash] -> SolCall -> m Word
+genValue :: MonadRandom m => W256 -> Set W256 -> [FunctionHash] -> SolCall -> m W256
 genValue mv ds ps sc =
-  if sig `elem` ps then do
-    let ds' = map (`mod` (fromIntegral mv + 1)) ds
-    g <- oftenUsually randValue $ rElem (0 NE.:| ds')
-    fromIntegral <$> g
+  if sig `elem` ps then
+    join $ oftenUsually fromDict randValue
   else do
-    g <- usuallyVeryRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
-    fromIntegral <$> g
-  where randValue = getRandomR (0 :: Integer, fromIntegral mv)
+    join $ usuallyVeryRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
+  where randValue = fromIntegral <$> getRandomR (0 :: Integer, fromIntegral mv)
         sig = (hashSig . encodeSig . signatureCall) sc
+        fromDict = (`mod` (mv + 1)) <$> rElem' ds
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool
@@ -101,13 +97,13 @@ removeCallTx (Tx _ _ r _ _ _ d) = Tx NoCall 0 r 0 0 0 d
 -- | Given a 'Transaction', generate a random \"smaller\" 'Transaction', preserving origin,
 -- destination, value, and call signature.
 shrinkTx :: MonadRandom m => Tx -> m Tx
-shrinkTx tx'@(Tx c _ _ _ gp (C _ v) (C _ t, C _ b)) = let
+shrinkTx tx'@(Tx c _ _ _ gp v (t, b)) = let
   c' = case c of
          SolCall sc -> SolCall <$> shrinkAbiCall sc
          _ -> pure c
-  lower 0 = pure $ w256 0
+  lower 0 = pure 0
   lower x = (getRandomR (0 :: Integer, fromIntegral x)
-              >>= (\r -> uniform [0, r]) . w256 . fromIntegral)  -- try 0 quicker
+              >>= (\r -> uniform [0, r]) . fromIntegral)  -- try 0 quicker
   possibilities =
     [ set call      <$> c'
     , set value     <$> lower v
@@ -139,20 +135,21 @@ liftSH = stateST . runState . zoom hasLens
 setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
 setupTx (Tx NoCall _ r _ _ _ (t, b)) = liftSH . sequence_ $
   [ state . pc .= 0, state . stack .= mempty, state . memory .= mempty
-  , block . timestamp += litWord t, block . number += b, loadContract r]
+  , block . timestamp %= (\x -> Lit (forceLit x + t)), block . number += b, loadContract r]
 
 setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty, state . gas .= g
-  , tx . gasprice .= gp, tx . origin .= s, state . caller .= litAddr s, state . callvalue .= litWord v
-  , block . timestamp += litWord t, block . number += b, setup] where
+  , tx . gasprice .= gp, tx . origin .= s, state . caller .= Lit (fromIntegral s), state . callvalue .= Lit v
+  , block . timestamp %= (\x -> Lit (forceLit x + t)), block . number += b, setup] where
     setup = case c of
-      SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (InitCode (ConcreteBuffer bc)) & set balance v) >> loadContract r >> state . code .= ConcreteBuffer bc
-      SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata (encode cd)
-      SolCalldata cd -> incrementBalance >> loadContract r >> state . calldata .= concreteCalldata cd
-      NoCall         -> error "NoCall"
+      SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (InitCode bc mempty) & set balance v) >> loadContract r >> state . code .= RuntimeCode (ConcreteRuntimeCode bc)
+      SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= ConcreteBuf (encode cd)
+      SolCalldata cd -> incrementBalance >> loadContract r >> state . calldata .= ConcreteBuf cd
     incrementBalance = (env . contracts . ix r . balance) += v
     encode (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
 
-concreteCalldata :: BS.ByteString -> (Buffer, SymWord)
-concreteCalldata cd = (ConcreteBuffer cd, w256lit . fromIntegral . BS.length $ cd)
+forceLit :: Expr 'EWord -> W256
+forceLit x = case x of
+  Lit x' -> x'
+  _ -> error "expected Lit"

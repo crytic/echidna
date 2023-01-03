@@ -27,12 +27,12 @@ data UIState = Uninitialized | Running | Timedout
 
 attrs :: A.AttrMap
 attrs = A.attrMap (V.white `on` V.black)
-  [ ("failure", fg V.brightRed)
-  , ("maximum", fg V.brightBlue)
-  , ("bold", fg V.white `V.withStyle` V.bold)
-  , ("tx", fg V.brightWhite)
-  , ("working", fg V.brightBlue)
-  , ("success", fg V.brightGreen)
+  [ (attrName "failure", fg V.brightRed)
+  , (attrName "maximum", fg V.brightBlue)
+  , (attrName "bold", fg V.white `V.withStyle` V.bold)
+  , (attrName "tx", fg V.brightWhite)
+  , (attrName "working", fg V.brightBlue)
+  , (attrName "success", fg V.brightGreen)
   ]
 
 -- | Render 'Campaign' progress as a 'Widget'.
@@ -53,7 +53,7 @@ campaignStatus (c@Campaign{_tests, _coverage, _ncallseqs}, uiState) = do
       <=>
       hCenter underneath
     wrapInner inner =
-      borderWithLabel (withAttr "bold" $ str title) $
+      borderWithLabel (withAttr (attrName "bold") $ str title) $
       summaryWidget c
       <=>
       hBorderWithLabel (str "Tests")
@@ -96,19 +96,19 @@ testWidget etest =
     pure $ padLeft (Pad 1) $
       str infront <+> name n <+> str ": " <+> status
       <=> padTop (Pad 1) details
-  name n = withAttr "bold" $ str (T.unpack n)
+  name n = withAttr (attrName "bold") $ str (T.unpack n)
 
 tsWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
          => TestState -> EchidnaTest -> m (Widget (), Widget ())
 tsWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 tsWidget Solved     t = failWidget Nothing (t ^. testReproducer) (t ^. testEvents) (t ^. testValue) (t  ^. testResult)
-tsWidget Passed     _ = pure (withAttr "success" $ str "PASSED!", emptyWidget)
+tsWidget Passed     _ = pure (withAttr (attrName "success") $ str "PASSED!", emptyWidget)
 tsWidget (Open i)   t = do
   n <- view (hasLens . testLimit)
   if i >= n then
     tsWidget Passed t
   else
-    pure (withAttr "working" $ str $ "fuzzing " ++ progress i n, emptyWidget)
+    pure (withAttr (attrName "working") $ str $ "fuzzing " ++ progress i n, emptyWidget)
 tsWidget (Large n)  t = do
   m <- view (hasLens . shrinkLimit)
   failWidget (if n < m then Just (n,m) else Nothing) (t ^. testReproducer) (t ^. testEvents) (t ^. testValue) (t  ^. testResult)
@@ -131,7 +131,7 @@ failWidget b xs es _ r = do
   where
   status = case b of
     Nothing    -> emptyWidget
-    Just (n,m) -> str "Current action: " <+> withAttr "working" (str ("shrinking " ++ progress n m))
+    Just (n,m) -> str "Current action: " <+> withAttr (attrName "working") (str ("shrinking " ++ progress n m))
 
 
 optWidget :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x)
@@ -144,7 +144,7 @@ optWidget (Open i)   t = do
   if i >= n then
     optWidget Passed t
   else
-    pure (withAttr "working" $ str $ "optimizing " ++ progress i n ++ ", current max value: " ++ show (t ^. testValue), emptyWidget)
+    pure (withAttr (attrName "working") $ str $ "optimizing " ++ progress i n ++ ", current max value: " ++ show (t ^. testValue), emptyWidget)
 optWidget (Large n)  t = do
   m <- view (hasLens . shrinkLimit)
   maxWidget (if n < m then Just (n,m) else Nothing) (t ^. testReproducer) (t ^. testEvents) (t ^. testValue)
@@ -158,7 +158,7 @@ maxWidget b xs es v = do
   where
   status = case b of
     Nothing    -> emptyWidget
-    Just (n,m) -> str "Current action: " <+> withAttr "working" (str ("shrinking " ++ progress n m))
+    Just (n,m) -> str "Current action: " <+> withAttr (attrName "working") (str ("shrinking " ++ progress n m))
 
 
 seqWidget :: (MonadReader x m, Has Names x, Has TxConf x) => [Tx] -> m (Widget ())
@@ -167,13 +167,13 @@ seqWidget xs = do
     let ordinals = str . printf "%d." <$> [1 :: Int ..]
     pure $
       foldl (<=>) emptyWidget $
-        zipWith (<+>) ordinals (withAttr "tx" . strWrapWith wrapSettings <$> ppTxs)
+        zipWith (<+>) ordinals (withAttr (attrName "tx") . strWrapWith wrapSettings <$> ppTxs)
 
 failureBadge :: Widget ()
-failureBadge = withAttr "failure" $ str "FAILED!"
+failureBadge = withAttr (attrName "failure") $ str "FAILED!"
 
 maximumBadge :: Widget ()
-maximumBadge = withAttr "maximum" $ str "OPTIMIZED!"
+maximumBadge = withAttr (attrName "maximum") $ str "OPTIMIZED!"
 
 wrapSettings :: WrapSettings
 wrapSettings = defaultWrapSettings { breakLongWords = True }

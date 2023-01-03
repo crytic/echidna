@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 module Echidna.Test where
 
 import Prelude hiding (Word)
@@ -15,8 +16,7 @@ import Data.Text qualified as T
 import EVM (Error(..), VMResult(..), VM, calldata, callvalue, codeContract, result, tx, state, substate, selfdestructs)
 import EVM.ABI (AbiValue(..), AbiType(..), encodeAbiValue, decodeAbiValue, )
 import EVM.Dapp (DappInfo)
-import EVM.Types (Addr)
-import EVM.Symbolic (forceLit)
+import EVM.Types (Addr, Expr (ConcreteBuf, Lit))
 
 import Echidna.ABI
 import Echidna.Events (Events, extractEvents)
@@ -176,7 +176,7 @@ checkStatefullAssertion (sig, addr) = do
   dappInfo <- view hasLens
   vm <- use hasLens
       -- Whether the last transaction called the function `sig`.
-  let isCorrectFn = case viewBuffer $ vm ^. state . calldata . _1 of
+  let isCorrectFn = case viewBuffer $ vm ^. state . calldata of
         Just cd -> BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) cd
         Nothing -> False
       -- Whether the last transaction executed a function on the contract `addr`.
@@ -202,13 +202,13 @@ checkDapptestAssertion (sig, addr) = do
   dappInfo <- view hasLens
   vm <- use hasLens
   -- Whether the last transaction has any value
-  let hasValue = forceLit (vm ^. state . callvalue) /= 0
+  let hasValue = vm ^. state . callvalue /= Lit 0
       -- Whether the last transaction called the function `sig`.
-  let isCorrectFn = case viewBuffer $ vm ^. state . calldata . _1 of
+  let isCorrectFn = case viewBuffer $ vm ^. state . calldata of
         Just cd -> BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) cd
         Nothing -> False
       isAssertionFailure = case vm ^. result of
-        Just (VMFailure (Revert bs)) -> not $ BS.isSuffixOf assumeMagicReturnCode bs
+        Just (VMFailure (Revert (ConcreteBuf bs))) -> not $ BS.isSuffixOf assumeMagicReturnCode bs
         Just (VMFailure _)           -> True
         _                            -> False
       isCorrectAddr = addr == vm ^. state . codeContract

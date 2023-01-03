@@ -1,6 +1,7 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE GADTs #-}
 
 module Echidna.Campaign where
 
@@ -28,7 +29,7 @@ import System.Random (mkStdGen)
 import EVM
 import EVM.Dapp (DappInfo)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
-import EVM.Types (Addr, Buffer(..))
+import EVM.Types (Addr, Expr(ConcreteBuf))
 
 import Echidna.ABI
 import Echidna.Exec
@@ -252,12 +253,13 @@ callseq ic v w ql = do
       additions = H.unionWith S.union diffs results
   -- append to the constants dictionary
   modifying (hasLens . genDict . constants) . H.unionWith S.union $ additions
+  modifying (hasLens . genDict . dictValues) . DS.union $ mkDictValues $ S.toList $ S.unions $ H.elems additions
   where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
     -- type for each function called, and if we do, tries to parse the return value as a value of that
     -- type. It returns a 'GenDict' style HashMap.
     parse l rt = H.fromList . flip mapMaybe l $ \(x, r) -> case (rt =<< x ^? call . _SolCall . _1, r) of
-      (Just ty, VMSuccess (ConcreteBuffer b)) ->
+      (Just ty, VMSuccess (ConcreteBuf b)) ->
         (ty,) . S.fromList . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
       _ -> Nothing
 
