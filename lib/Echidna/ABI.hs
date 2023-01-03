@@ -110,6 +110,7 @@ data GenDict = GenDict { _pSynthA    :: Float
                        , _rTypes     :: Text -> Maybe AbiType
                          -- ^ Return types of any methods we scrape return values from
                        , _dictValues :: Set W256
+                         -- ^ A set of int/uint constants for better performance
                        }
 
 makeLenses 'GenDict
