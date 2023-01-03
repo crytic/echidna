@@ -1,6 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GADTs #-}
 
 module Echidna.RPC where
 
@@ -8,35 +6,32 @@ import Prelude hiding (Word)
 
 import Control.Exception (Exception)
 import Control.Lens
-import Control.Monad (foldM, void)
+import Control.Monad (void)
 import Control.Monad.Catch (MonadThrow, throwM)
+import Control.Monad.Fail qualified as M (MonadFail(..))
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Reader.Class (MonadReader(..))
-import Control.Monad.State.Strict (MonadState, runStateT, get, put)
+import Control.Monad.State.Strict (MonadState, get, put, execStateT)
 import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
+import Data.ByteString.Base16 qualified as BS16 (decode)
 import Data.ByteString.Char8 (ByteString)
-import Data.Has (Has(..))
+import Data.ByteString.Char8 qualified as BS
+import Data.ByteString.Lazy qualified as LBS
+import Data.Text qualified as T (drop)
 import Data.Text.Encoding (encodeUtf8)
+import Data.Map (member)
+import Data.Vector qualified as V (fromList, toList)
+import Text.Read (readMaybe)
 
 import EVM
 import EVM.ABI (AbiType(..), AbiValue(..), decodeAbiValue, selector)
 import EVM.Exec (exec)
-import EVM.Types (Addr, Buffer(..), W256, w256)
-import Text.Read (readMaybe)
-
-import qualified Control.Monad.Fail as M (MonadFail(..))
-import qualified Data.ByteString.Base16 as BS16 (decode)
-import qualified Data.Text as T (drop)
-import qualified Data.Vector as V (fromList, toList)
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy as LBS
+import EVM.Types (Addr, W256, Expr(ConcreteBuf))
 
 import Echidna.Exec
 import Echidna.Transaction
 import Echidna.Types.Signature (SolSignature)
 import Echidna.ABI (encodeSig)
-
-import Echidna.Types.Tx (TxCall(..), Tx(..), TxConf, makeSingleTx, createTxWithValue, unlimitedGasPerBlock)
+import Echidna.Types.Tx (TxCall(..), Tx(..), makeSingleTx, createTxWithValue, unlimitedGasPerBlock)
 
 -- | During initialization we can either call a function or create an account or contract
 data Etheno = AccountCreated Addr                                       -- ^ Registers an address with the echidna runtime
@@ -114,41 +109,58 @@ matchSignatureAndCreateTx _ _                                = []
 
 -- | Main function: takes a filepath where the initialization sequence lives and returns
 -- | the initialized VM along with a list of Addr's to put in GenConf
-loadEthenoBatch :: (MonadThrow m, MonadIO m, Has TxConf y, MonadReader y m, M.MonadFail m)
-                => FilePath -> m VM
+loadEthenoBatch :: FilePath -> IO VM
 loadEthenoBatch fp = do
-  bs <- liftIO $ eitherDecodeFileStrict fp
-
+  bs <- eitherDecodeFileStrict fp
   case bs of
-       (Left e) -> throwM $ EthenoException e
-       (Right (ethenoInit :: [Etheno])) -> do
-         -- Execute contract creations and initial transactions,
-         let initVM = foldM execEthenoTxs () ethenoInit
-         (_, vm') <- runStateT initVM initialVM
-         return vm'
+    Left e -> throwM $ EthenoException e
+    Right (ethenoInit :: [Etheno]) -> do
+      -- Execute contract creations and initial transactions,
+      let initVM = mapM execEthenoTxs ethenoInit
+      execStateT initVM initialVM
+
+initAddress :: MonadState VM m => Addr -> m ()
+initAddress addr = do
+  cs <- use (env . EVM.contracts)
+  if addr `member` cs then pure ()
+  else env . EVM.contracts . at addr .= Just account
+ where account = initialContract (RuntimeCode (ConcreteRuntimeCode mempty)) & set nonce 0 & set balance 100000000000000000000 -- default balance for EOAs in etheno
+
+crashWithQueryError :: (MonadState VM m, MonadFail m, MonadThrow m) => Query -> Etheno -> m ()
+crashWithQueryError q et =
+  case (q, et) of
+    (PleaseFetchContract addr _, FunctionCall f t _ _ _ _) ->
+      error ("Address " ++ show addr ++ " was used during function call from " ++ show f ++ " to " ++ show t ++ " but it was never defined as EOA or deployed as a contract")
+    (PleaseFetchContract addr _, ContractCreated f t _ _ _ _) ->
+      error ("Address " ++ show addr ++ " was used during the contract creation of " ++ show t ++ " from " ++ show f ++ " but it was never defined as EOA or deployed as a contract")
+    (PleaseFetchSlot slot _ _, FunctionCall f t _ _ _ _) ->
+      error ("Slot " ++ show slot ++ " was used during function call from " ++ show f ++ " to " ++ show t ++ " but it was never loaded")
+    (PleaseFetchSlot slot _ _, ContractCreated f t _ _ _ _) ->
+      error ("Slot " ++ show slot ++ " was used during the contract creation of " ++ show t ++ " from " ++ show f ++ " but it was never loaded")
+    _ -> error $ show (q, et)
 
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
 -- | address containing echidna tests
-execEthenoTxs :: (MonadState x m, Has VM x, MonadThrow m, Has TxConf y, MonadReader y m, M.MonadFail m)
-              => () -> Etheno -> m ()
-execEthenoTxs _ et = do
+execEthenoTxs :: (MonadState VM m, MonadFail m, MonadThrow m) => Etheno -> m ()
+execEthenoTxs et = do
   setupEthenoTx et
-  sb <- get
-  res <- liftSH exec
+  vm <- get
+  res <- exec
   case (res, et) of
        (_        , AccountCreated _)  -> return ()
-       (Reversion,   _)               -> void $ put sb
+       (Reversion,   _)               -> void $ put vm
+       (VMFailure (Query q), _)       -> crashWithQueryError q et
        (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
-       (VMSuccess (ConcreteBuffer bc),
+       (VMSuccess (ConcreteBuf bc),
         ContractCreated _ ca _ _ _ _) -> do
-          hasLens . env . contracts . at ca . _Just . contractcode .= InitCode (ConcreteBuffer "")
-          liftSH (replaceCodeOfSelf (RuntimeCode (ConcreteBuffer bc)) >> loadContract ca)
+          env . contracts . at ca . _Just . contractcode .= InitCode mempty mempty
+          liftSH (replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bc)) >> loadContract ca)
           return ()
        _                              -> return ()
 
 -- | For an etheno txn, set up VM to execute txn
-setupEthenoTx :: (MonadState x m, Has VM x) => Etheno -> m ()
-setupEthenoTx (AccountCreated _) = pure ()
-setupEthenoTx (ContractCreated f c _ _ d v) = setupTx $ createTxWithValue d f c (fromInteger unlimitedGasPerBlock) (w256 v) (1, 1)
-setupEthenoTx (FunctionCall f t _ _ d v) = setupTx $ Tx (SolCalldata d) f t (fromInteger unlimitedGasPerBlock) 0 (w256 v) (1, 1)
+setupEthenoTx :: MonadState VM m => Etheno -> m ()
+setupEthenoTx (AccountCreated f) = initAddress f -- TODO: improve etheno to include initial balance
+setupEthenoTx (ContractCreated f c _ _ d v) = setupTx $ createTxWithValue d f c (fromInteger unlimitedGasPerBlock) v (1, 1)
+setupEthenoTx (FunctionCall f t _ _ d v) = setupTx $ Tx (SolCalldata d) f t (fromInteger unlimitedGasPerBlock) 0 v (1, 1)
 setupEthenoTx (BlockMined n t) = setupTx $ Tx NoCall 0 0 0 0 0 (fromInteger t, fromInteger n)

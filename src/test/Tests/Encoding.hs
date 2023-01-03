@@ -1,19 +1,17 @@
 module Tests.Encoding (encodingJSONTests) where
 
-import Prelude hiding (Word)
-
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (Arbitrary(..), Gen, (===), property, testProperty, resize)
 
 import Data.Aeson (encode, decode)
 import Data.Text (pack)
 import Echidna.Types.Tx (TxCall(..), Tx(..))
-import EVM.Types (Addr, Word)
+import EVM.Types (Addr, W256)
 
 instance Arbitrary Addr where
   arbitrary = fromInteger <$> arbitrary
 
-instance Arbitrary Word where
+instance Arbitrary W256 where
   arbitrary = fromInteger <$> arbitrary
 
 instance Arbitrary TxCall where

@@ -1,9 +1,10 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
 module Echidna.Types.Buffer where
 
 import Data.ByteString (ByteString)
-import EVM.Types (Buffer(..))
-import EVM.Symbolic (maybeLitBytes)
+import EVM.Types (Expr(ConcreteBuf), EType(Buf))
 
-viewBuffer :: Buffer -> Maybe ByteString
-viewBuffer (ConcreteBuffer b) = Just b
-viewBuffer (SymbolicBuffer b) = maybeLitBytes b
+viewBuffer :: Expr 'Buf -> Maybe ByteString
+viewBuffer (ConcreteBuf b) = Just b
+viewBuffer _ = Nothing

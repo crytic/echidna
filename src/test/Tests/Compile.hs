@@ -1,5 +1,3 @@
-{-# LANGUAGE Rank2Types #-}
-
 module Tests.Compile (compilationTests) where
 
 import Test.Tasty (TestTree, testGroup)
@@ -7,6 +5,7 @@ import Test.Tasty.HUnit (testCase, assertBool)
 
 import Common (testConfig)
 import Control.Lens (Prism', preview)
+import Control.Monad (void)
 import Control.Monad.Catch (catch)
 import Control.Monad.Reader (runReaderT)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -39,7 +38,7 @@ compilationTests = testGroup "Compilation and loading tests"
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
-  tryLoad = runReaderT (loadWithCryticCompile (fp :| []) c >> pure ()) testConfig
+  tryLoad = runReaderT (void (loadWithCryticCompile (fp :| []) c)) testConfig
 
 pmatch :: Prism' s a -> s -> Bool
 pmatch p = isJust . preview p

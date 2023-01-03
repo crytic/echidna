@@ -3,33 +3,29 @@ name: echidna
 author: Trail of Bits <echidna-dev@trailofbits.com>
 maintainer: Trail of Bits <echidna-dev@trailofbits.com>
 
-version: 2.0.1
+version: 2.0.4
 
 ghc-options: -Wall -fno-warn-orphans -O2 -threaded +RTS -N -RTS
 
 dependencies:
   - base
   - aeson
-  - ansi-terminal
   - base16-bytestring
   - binary
   - brick
-  - base16-bytestring
   - bytestring
   - containers
   - data-dword
   - data-has
-  - deepseq
   - extra
   - directory
   - exceptions
   - filepath
   - hashable
   - hevm
+  - html-entities
   - lens
-  - lens-aeson
   - ListLike
-  - megaparsec
   - MonadRandom
   - mtl
   - optparse-applicative
@@ -37,30 +33,33 @@ dependencies:
   - random
   - rosezipper
   - semver
-  - sbv
-  - stm
   - split
-  - temporary
   - text
   - transformers
   - time
   - unix
   - unliftio
-  - unliftio-core
   - utf8-string
   - unordered-containers
   - vector
   - vector-instances
   - vty
-  - wl-pprint-annotated
-  - word8
+  - word-wrap
   - yaml
 
+language: GHC2021
+
 default-extensions:
+  - LambdaCase
   - OverloadedStrings
 
 library:
   source-dirs: lib/
+
+when:
+  - condition: os(darwin)
+    extra-libraries: c++
+    ld-options: -Wl,-keep_dwarf_unwind
 
 executables:
   echidna-test:
@@ -68,13 +67,16 @@ executables:
     source-dirs: src/
     dependencies: echidna
     when:
-        - condition: os(linux)
+        - condition: os(linux) && flag(static)
           ghc-options:
-            - -threaded
             - -static
             - -O2
           cc-options: -static
           ld-options: -static -pthread
+        - condition: os(linux)
+          ghc-options:
+            - -O2
+          ld-options: -pthread
 
 tests:
   echidna-testsuite:
@@ -86,10 +88,19 @@ tests:
       - tasty-hunit
       - tasty-quickcheck
     when:
-        - condition: os(linux)
+        - condition: os(linux) && flag(static)
           ghc-options:
-            - -threaded
             - -static
             - -O2
           cc-options: -static
           ld-options: -static -pthread
+        - condition: os(linux)
+          ghc-options:
+            - -O2
+          ld-options: -pthread
+
+flags:
+  static:
+    description: Pass -static to ghc when linking the stack binary.
+    manual: true
+    default: true

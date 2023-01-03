@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE GADTs #-}
 
 module Echidna.Types.Tx where
 
@@ -8,12 +9,14 @@ import Control.Lens.TH (makePrisms, makeLenses)
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.ByteString (ByteString)
 import Data.Text (Text)
-import EVM (VMResult(..), Error(..))
-import EVM.Types (Addr, W256, Word, w256)
-import EVM.ABI (encodeAbiValue, AbiValue(..))
+import Data.Word (Word64)
 
-import Echidna.Types.Buffer (viewBuffer)
+import EVM (VMResult(..), Error(..))
+import EVM.ABI (encodeAbiValue, AbiValue(..))
+import EVM.Types (Addr, W256)
+
 import Echidna.Orphans.JSON ()
+import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Signature (SolCall)
 
 -- | A transaction call is either a @CREATE@, a fully instrumented 'SolCall', or
@@ -38,10 +41,10 @@ defaultTimeDelay = 604800
 defaultBlockDelay :: Integer
 defaultBlockDelay = 60480
 
-initialTimestamp :: Word
+initialTimestamp :: W256
 initialTimestamp = 1524785992 -- Thu Apr 26 23:39:52 UTC 2018
 
-initialBlockNumber :: Word
+initialBlockNumber :: W256
 initialBlockNumber = 4370000  -- Initial byzantium block
 
 -- | A transaction is either a @CREATE@ or a regular call with an origin, destination, and value.
@@ -49,10 +52,10 @@ initialBlockNumber = 4370000  -- Initial byzantium block
 data Tx = Tx { _call  :: TxCall       -- | Call
              , _src   :: Addr         -- | Origin
              , _dst   :: Addr         -- | Destination
-             , _gas'  :: Word         -- | Gas
-             , _gasprice' :: Word     -- | Gas price
-             , _value :: Word         -- | Value
-             , _delay :: (Word, Word) -- | (Time, # of blocks since last call)
+             , _gas'  :: Word64       -- | Gas
+             , _gasprice' :: W256     -- | Gas price
+             , _value :: W256         -- | Value
+             , _delay :: (W256, W256) -- | (Time, # of blocks since last call)
              } deriving (Eq, Ord, Show)
 makeLenses ''Tx
 $(deriveJSON defaultOptions ''Tx)
@@ -61,8 +64,8 @@ basicTx :: Text         -- | Function name
         -> [AbiValue]   -- | Function args
         -> Addr         -- | Sender
         -> Addr         -- | Destination contract
-        -> Word         -- | Gas limit
-        -> (Word, Word) -- | Block increment
+        -> Word64       -- | Gas limit
+        -> (W256, W256) -- | Block increment
         -> Tx
 basicTx f a s d g = basicTxWithValue f a s d g 0
 
@@ -70,33 +73,33 @@ basicTxWithValue :: Text         -- | Function name
                  -> [AbiValue]   -- | Function args
                  -> Addr         -- | Sender
                  -> Addr         -- | Destination contract
-                 -> Word         -- | Gas limit
-                 -> Word         -- | Value
-                 -> (Word, Word) -- | Block increment
+                 -> Word64       -- | Gas limit
+                 -> W256         -- | Value
+                 -> (W256, W256) -- | Block increment
                  -> Tx
 basicTxWithValue f a s d g = Tx (SolCall (f, a)) s d g 0
 
 createTx :: ByteString   -- | Constructor bytecode
          -> Addr         -- | Creator
          -> Addr         -- | Destination address
-         -> Word         -- | Gas limit
-         -> (Word, Word) -- | Block increment
+         -> Word64       -- | Gas limit
+         -> (W256, W256) -- | Block increment
          -> Tx
 createTx bc s d g = createTxWithValue bc s d g 0
 
 createTxWithValue :: ByteString   -- | Constructor bytecode
                   -> Addr         -- | Creator
                   -> Addr         -- | Destination address
-                  -> Word         -- | Gas limit
-                  -> Word         -- | Value
-                  -> (Word, Word) -- | Block increment
+                  -> Word64       -- | Gas limit
+                  -> W256         -- | Value
+                  -> (W256, W256) -- | Block increment
                   -> Tx
 createTxWithValue bc s d g = Tx (SolCreate bc) s d g 0
 
 data TxResult = ReturnTrue
               | ReturnFalse
               | Stop
-              | ErrorBalanceTooLow 
+              | ErrorBalanceTooLow
               | ErrorUnrecognizedOpcode
               | ErrorSelfDestruction
               | ErrorStackUnderrun
@@ -119,20 +122,21 @@ data TxResult = ReturnTrue
               | ErrorWhiffNotUnique
               | ErrorSMTTimeout
               | ErrorFFI
+              | ErrorNonceOverflow
   deriving (Eq, Ord, Show)
 $(deriveJSON defaultOptions ''TxResult)
 
-data TxConf = TxConf { _propGas       :: Word
+data TxConf = TxConf { _propGas       :: Word64
                      -- ^ Gas to use evaluating echidna properties
-                     , _txGas         :: Word
+                     , _txGas         :: Word64
                      -- ^ Gas to use in generated transactions
-                     , _maxGasprice   :: Word
+                     , _maxGasprice   :: W256
                      -- ^ Maximum gasprice to be checked for a transaction
-                     , _maxTimeDelay  :: Word
+                     , _maxTimeDelay  :: W256
                      -- ^ Maximum time delay between transactions (seconds)
-                     , _maxBlockDelay :: Word
+                     , _maxBlockDelay :: W256
                      -- ^ Maximum block delay between transactions
-                     , _maxValue      :: Word
+                     , _maxValue      :: W256
                      -- ^ Maximum value to use in transactions
                      }
 makeLenses 'TxConf
@@ -159,13 +163,14 @@ getResult (VMFailure InvalidMemoryAccess)       = ErrorInvalidMemoryAccess
 getResult (VMFailure CallDepthLimitReached)     = ErrorCallDepthLimitReached
 getResult (VMFailure (MaxCodeSizeExceeded _ _)) = ErrorMaxCodeSizeExceeded
 getResult (VMFailure PrecompileFailure)         = ErrorPrecompileFailure
-getResult (VMFailure UnexpectedSymbolicArg)     = ErrorUnexpectedSymbolic
+getResult (VMFailure (UnexpectedSymbolicArg{})) = ErrorUnexpectedSymbolic
 getResult (VMFailure DeadPath)                  = ErrorDeadPath
 getResult (VMFailure (Choose _))                = ErrorChoose -- not entirely sure what this is
 getResult (VMFailure (NotUnique _))             = ErrorWhiffNotUnique
 getResult (VMFailure SMTTimeout)                = ErrorSMTTimeout
 getResult (VMFailure (FFI _))                   = ErrorFFI
+getResult (VMFailure NonceOverflow)             = ErrorNonceOverflow
 
 makeSingleTx :: Addr -> Addr -> W256 -> TxCall -> [Tx]
-makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d (fromInteger maxGasPerBlock) 0 (w256 v) (0, 0)]
+makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d (fromInteger maxGasPerBlock) 0 v (0, 0)]
 makeSingleTx _ _ _ _           = error "invalid usage of makeSingleTx"

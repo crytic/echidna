@@ -1,14 +1,11 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Echidna.Types.Config where
 
 import Control.Lens
-import Data.HashSet (HashSet)
-import Data.Text (Text)
+import Data.Aeson.Key (Key)
 import Data.Has (Has(..))
+import Data.HashSet (HashSet)
 
 import EVM.Dapp (DappInfo)
 
@@ -20,7 +17,7 @@ import Echidna.UI
 import Echidna.UI.Report
 
 -- | Our big glorious global config type, just a product of each local config.,
-data EConfig = EConfig { 
+data EConfig = EConfig {
   _cConf :: CampaignConf,
   _nConf :: Names,
   _sConf :: SolConf,
@@ -31,10 +28,10 @@ data EConfig = EConfig {
 
 makeLenses ''EConfig
 
-data EConfigWithUsage = EConfigWithUsage { 
+data EConfigWithUsage = EConfigWithUsage {
   _econfig   :: EConfig,
-  _badkeys   :: HashSet Text,
-  _unsetkeys :: HashSet Text
+  _badkeys   :: HashSet Key,
+  _unsetkeys :: HashSet Key
 }
 
 makeLenses ''EConfigWithUsage

@@ -1,13 +1,7 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE GADTs #-}
 
 module Echidna.Campaign where
 
@@ -22,20 +16,20 @@ import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Binary.Get (runGetOrFail)
 import Data.Bool (bool)
+import Data.Has (Has(..))
+import Data.HashMap.Strict qualified as H
+import Data.HashSet qualified as S
 import Data.Map (Map, unionWith, (\\), elems, keys, lookup, insert, mapWithKey)
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Ord (comparing)
-import Data.Has (Has(..))
+import Data.Set qualified as DS
 import Data.Text (Text)
+import System.Random (mkStdGen)
+
 import EVM
 import EVM.Dapp (DappInfo)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
-import EVM.Types (Addr, Buffer(..))
-import System.Random (mkStdGen)
-
-import qualified Data.HashMap.Strict as H
-import qualified Data.HashSet as S
-import qualified Data.Set as DS
+import EVM.Types (Addr, Expr(ConcreteBuf))
 
 import Echidna.ABI
 import Echidna.Exec
@@ -97,8 +91,8 @@ updateTest w vm (Just (vm', xs)) test = do
     Open i | i >= tl -> case test ^. testType of
                           OptimizationTest _ _ -> pure $ test { _testState = Large (-1) }
                           _                    -> pure $ test { _testState = Passed }
-    Open i           -> do r <- evalStateT (checkETest test) vm' 
-                           pure $ updateOpenTest test xs i r 
+    Open i           -> do r <- evalStateT (checkETest test) vm'
+                           pure $ updateOpenTest test xs i r
     _                -> updateTest w vm Nothing test
 
 updateTest _ vm Nothing test = do
@@ -107,12 +101,13 @@ updateTest _ vm Nothing test = do
       res = test ^. testResult
       x = test ^. testReproducer
       v = test ^. testValue
+      t = test ^. testType
   case test ^. testState of
     Large i | i >= sl -> pure $ test { _testState =  Solved, _testReproducer = x }
     Large i           -> if length x > 1 || any canShrinkTx x
                              then do (txs, val, evs, r) <- evalStateT (shrinkSeq (checkETest test) (v, es, res) x) vm
-                                     pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r, _testValue = val} 
-                             else pure $ test { _testState = Solved, _testReproducer = x}
+                                     pure $ test { _testState = Large (i + 1), _testReproducer = txs, _testEvents = evs, _testResult = r, _testValue = val}
+                             else pure $ test { _testState = if isOptimizationTest t then Large (i + 1) else Solved, _testReproducer = x}
     _                   -> pure test
 
 
@@ -258,12 +253,13 @@ callseq ic v w ql = do
       additions = H.unionWith S.union diffs results
   -- append to the constants dictionary
   modifying (hasLens . genDict . constants) . H.unionWith S.union $ additions
+  modifying (hasLens . genDict . dictValues) . DS.union $ mkDictValues $ S.toList $ S.unions $ H.elems additions
   where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
     -- type for each function called, and if we do, tries to parse the return value as a value of that
     -- type. It returns a 'GenDict' style HashMap.
     parse l rt = H.fromList . flip mapMaybe l $ \(x, r) -> case (rt =<< x ^? call . _SolCall . _1, r) of
-      (Just ty, VMSuccess (ConcreteBuffer b)) ->
+      (Just ty, VMSuccess (ConcreteBuf b)) ->
         (ty,) . S.fromList . pure <$> runGetOrFail (getAbi ty) (b ^. lazy) ^? _Right . _3
       _ -> Nothing
 

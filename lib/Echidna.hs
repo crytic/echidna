@@ -1,15 +1,13 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 module Echidna where
 
 import Control.Lens (view, (^.), to)
 import Data.Has (Has(..))
-import Control.Monad.Catch (MonadCatch(..))
+import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Reader (MonadReader, MonadIO, liftIO)
-import Control.Monad.Random (MonadRandom)
-import Data.Map.Strict (keys)
 import Data.HashMap.Strict (toList)
-import Data.List (nub)
+import Data.Map.Strict (keys)
+import Data.List (nub, find)
+import Data.List.NonEmpty qualified as NE
 
 import EVM (env, contracts, VM)
 import EVM.ABI (AbiValue(AbiAddress))
@@ -17,7 +15,6 @@ import EVM.Solidity (SourceCache, SolcContract)
 
 import Echidna.ABI
 import Echidna.Types.Config hiding (cfg)
-import Echidna.Solidity
 import Echidna.Types.Solidity
 import Echidna.Types.Campaign
 import Echidna.Types.Random
@@ -25,11 +22,10 @@ import Echidna.Types.Signature
 import Echidna.Types.Test
 import Echidna.Types.Tx
 import Echidna.Types.World
+import Echidna.Solidity
 import Echidna.Processor
 import Echidna.Output.Corpus
 import Echidna.RPC (loadEtheno, extractFromEtheno)
-
-import qualified Data.List.NonEmpty as NE
 
 -- | This function is used to prepare, process, compile and initialize smart contracts for testing.
 -- It takes:
@@ -43,12 +39,13 @@ import qualified Data.List.NonEmpty as NE
 -- * A list of Echidna tests to check
 -- * A prepopulated dictionary (if any)
 -- * A list of transaction sequences to initialize the corpus
-prepareContract :: (MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, MonadFail m,
-                    Has TestConf x, Has TxConf x, Has SolConf x)
+prepareContract :: (MonadCatch m, MonadReader x m, MonadIO m, MonadFail m, Has SolConf x)
                 => EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
                 -> m (VM, SourceCache, [SolcContract], World, [EchidnaTest], Maybe GenDict, [[Tx]])
 prepareContract cfg fs c g = do
-  ctxs <- liftIO $ loadTxs cd
+  ctxs1 <- liftIO $ loadTxs (fmap (++ "/reproducers/") cd)
+  ctxs2 <- liftIO $ loadTxs (fmap (++ "/coverage/") cd)
+  let ctxs = ctxs1 ++ ctxs2
 
   -- compile and load contracts
   (cs, scs) <- Echidna.Solidity.contracts fs
@@ -57,6 +54,9 @@ prepareContract cfg fs c g = do
   -- run processors
   ca <- view (hasLens . cryticArgs)
   si <- runSlither (NE.head fs) ca
+  case find (< minSupportedSolcVersion) $ solcVersions si of
+    Just outdatedVersion -> throwM $ OutdatedSolcVersion outdatedVersion
+    Nothing -> return ()
 
   -- load tests
   (v, w, ts) <- prepareForTest p c si
@@ -66,7 +66,7 @@ prepareContract cfg fs c g = do
 
   ads <- addresses
   let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
-  let constants' = enhanceConstants si ++ timeConstants ++ largeConstants ++ NE.toList ads ++ ads'
+  let constants' = enhanceConstants si ++ timeConstants ++ extremeConstants ++ NE.toList ads ++ ads'
 
   -- load transactions from init sequence (if any)
   es' <- liftIO $ maybe (return []) loadEtheno it

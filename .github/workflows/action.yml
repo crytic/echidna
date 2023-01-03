@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - master
-      - nix
   pull_request:
     branches:
       - master
@@ -14,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Assert test
-        uses: crytic/echidna-action@v1
+        uses: crytic/echidna-action@v2
         with:
           files: "tests/solidity/basic/assert.sol"
           contract: "TestAssert"
@@ -26,7 +25,7 @@ jobs:
           negate-exit-status: 1
 
       - name: Multi-abi test
-        uses: crytic/echidna-action@v1
+        uses: crytic/echidna-action@v2
         with:
           files: "tests/solidity/basic/multi-abi.sol"
           contract: "B"

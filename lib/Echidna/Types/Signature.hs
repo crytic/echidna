@@ -1,17 +1,19 @@
+{-# LANGUAGE GADTs #-}
+
 module Echidna.Types.Signature where
 
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.Foldable (find)
 import Data.HashMap.Strict (HashMap)
 import Data.List.NonEmpty (NonEmpty)
+import Data.Map qualified as M
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import EVM.ABI (AbiType, AbiValue)
-import EVM.Types (Addr)
 import GHC.Word (Word32)
 
-import qualified Data.Map as M
-import qualified Data.ByteString as BS
+import EVM.ABI (AbiType, AbiValue)
+import EVM.Types (Addr)
 
 -- | Name of the contract
 type ContractName = Text

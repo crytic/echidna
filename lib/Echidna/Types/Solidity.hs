@@ -1,22 +1,20 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE ViewPatterns #-}
 
 module Echidna.Types.Solidity where
 
-import Control.Lens
 import Control.Exception (Exception)
-import Data.Text         (Text)
+import Control.Lens
+import Data.List.NonEmpty qualified as NE
+import Data.SemVer (Version, version, toString)
+import Data.Text (Text, unpack)
 
 import EVM.Solidity
-import EVM.Types         (Addr)
+import EVM.Types (Addr)
 
-import Echidna.Types.Signature    (ContractName)
+import Echidna.Types.Signature (ContractName)
 
-import qualified Data.List.NonEmpty  as NE
+minSupportedSolcVersion :: Version
+minSupportedSolcVersion = version 0 4 25 [] []
 
 data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
 
@@ -33,10 +31,11 @@ data SolException = BadAddr Addr
                   | NoTests
                   | OnlyTests
                   | ConstructorArgs String
-                  | DeploymentFailed Addr
-                  | SetUpCallFailed 
+                  | DeploymentFailed Addr Text
+                  | SetUpCallFailed
                   | NoCryticCompile
                   | InvalidMethodFilters Filter
+                  | OutdatedSolcVersion Version
 makePrisms ''SolException
 
 instance Show SolException where
@@ -55,7 +54,9 @@ instance Show SolException where
     NoCryticCompile          -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
     (InvalidMethodFilters f) -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
     SetUpCallFailed          -> "Calling the setUp() funciton failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
-    (DeploymentFailed a)     -> "Deploying the contract " ++ show a ++ " failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
+    (DeploymentFailed a t)   -> "Deploying the contract " ++ show a ++ " failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.):\n" ++ unpack t
+    OutdatedSolcVersion v    -> "Solc version " ++ toString v ++ " detected. Echidna doesn't support versions of solc before " ++ toString minSupportedSolcVersion ++ ". Please use a newer version."
+
 
 instance Exception SolException
 
@@ -72,6 +73,8 @@ data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract addr
                        , _solcLibs        :: [String]         -- ^ List of libraries to load, in order.
                        , _quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
                        , _initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
+                       , _deployContracts :: [(Addr, String)] -- ^ List of contracts to deploy in specific addresses
+                       , _deployBytecodes :: [(Addr, Text)]   -- ^ List of contracts to deploy in specific addresses
                        , _multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
                        , _testMode        :: String           -- ^ Testing mode
                        , _testDestruction :: Bool             -- ^ Whether or not to add a property to detect contract destruction
@@ -86,4 +89,4 @@ defaultContractAddr :: Addr
 defaultContractAddr = 0x00a329c0648769a73afac7f9381e08fb43dbea72
 
 defaultDeployerAddr :: Addr
-defaultDeployerAddr = 0x30000 
+defaultDeployerAddr = 0x30000

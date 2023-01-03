@@ -1,38 +1,32 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Echidna.Config where
 
 import Control.Lens
 import Control.Monad.Catch (MonadThrow)
+import Control.Monad.Fail qualified as M (MonadFail(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Control.Monad.State (StateT(..), runStateT)
 import Control.Monad.Trans (lift)
-import Data.Bool (bool)
 import Data.Aeson
+import Data.Aeson.KeyMap (keys)
+import Data.Bool (bool)
+import Data.ByteString qualified as BS
+import Data.List.NonEmpty qualified as NE
 import Data.Has (Has(..))
-import Data.HashMap.Strict (keys)
 import Data.HashSet (fromList, insert, difference)
 import Data.Maybe (fromMaybe)
 import Data.Text (isPrefixOf)
-import EVM (result)
-import EVM.Types (w256)
+import Data.Yaml qualified as Y
 
-import qualified Control.Monad.Fail as M (MonadFail(..))
-import qualified Data.ByteString as BS
-import qualified Data.List.NonEmpty as NE
-import qualified Data.Yaml as Y
+import EVM (result)
 
 import Echidna.Test
-import Echidna.Types.Campaign 
+import Echidna.Types.Campaign
 import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..))
 import Echidna.Types.Solidity
-import Echidna.Types.Tx  (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
-import Echidna.Types.Test  (TestConf(..))
+import Echidna.Types.Tx (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
+import Echidna.Types.Test (TestConf(..))
 import Echidna.UI
 import Echidna.UI.Report
 
@@ -62,7 +56,7 @@ instance FromJSON EConfigWithUsage where
             let useKey k = hasLens %= insert k
                 x ..:? k = useKey k >> lift (x .:? k)
                 x ..!= y = fromMaybe y <$> x
-                getWord s d = w256 . fromIntegral <$> v ..:? s ..!= (d :: Integer)
+                getWord s d = fromIntegral <$> v ..:? s ..!= (d :: Integer)
 
                 -- TxConf
                 xc = TxConf <$> getWord "propMaxGas" maxGasPerBlock
@@ -112,6 +106,8 @@ instance FromJSON EConfigWithUsage where
                              <*> v ..:? "solcLibs"        ..!= []
                              <*> v ..:? "quiet"           ..!= False
                              <*> v ..:? "initialize"      ..!= Nothing
+                             <*> v ..:? "deployContracts" ..!= []
+                             <*> v ..:? "deployBytecodes" ..!= []
                              <*> v ..:? "multi-abi"       ..!= False
                              <*> mode
                              <*> v ..:? "testDestruction" ..!= False

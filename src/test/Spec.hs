@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 import Test.Tasty (defaultMain, testGroup)
 import System.Directory (withCurrentDirectory)
 import Tests.ABIv2 (abiv2Tests)

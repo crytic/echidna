@@ -1,27 +1,23 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Echidna.Output.Source where
 
-import Control.Lens
-import Data.Maybe (fromMaybe, mapMaybe)
-import Data.Text (Text, pack, unpack)
-import Data.Text.Encoding (decodeUtf8)
-import Data.Text.IO (writeFile)
-import Data.Time.Clock.System (getSystemTime, systemSeconds)
-import Data.List (nub, sort)
-import Text.Printf (printf)
-
-import EVM.Solidity (SourceCache, SrcMap, SolcContract, sourceLines, sourceFiles, runtimeCode, runtimeSrcmap, creationSrcmap)
-import EVM.Debug (srcMapCodePos)
 import Prelude hiding (writeFile)
 
-import qualified Data.Vector as V
+import Control.Lens
+import Data.Foldable
+import Data.Maybe (fromMaybe, mapMaybe)
+import Data.List (nub, sort)
+import Data.Map qualified as M
+import Data.Set qualified as S
+import Data.Text (Text, pack)
+import Data.Text qualified as T
+import Data.Text.Encoding (decodeUtf8)
+import Data.Text.IO (writeFile)
+import Data.Vector qualified as V
+import HTMLEntities.Text qualified as HTML
+import Text.Printf (printf)
 
-import qualified Data.Map as M
-import qualified Data.Set as S
-import qualified Data.Text as T
+import EVM.Debug (srcMapCodePos)
+import EVM.Solidity (SourceCache, SrcMap, SolcContract, sourceLines, sourceFiles, runtimeCode, runtimeSrcmap, creationSrcmap)
 
 import Echidna.Types.Coverage (CoverageMap, CoverageInfo)
 import Echidna.Types.Tx (TxResult(..))
@@ -29,42 +25,84 @@ import Echidna.Types.Signature (getBytecodeMetadata)
 
 type FilePathText = Text
 
-saveCoverage :: Maybe FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
-saveCoverage (Just d) sc cs s = let fn t = d ++ "/covered." ++ show t ++ ".txt"
-                                    cc = ppCoveredCode sc cs s
-                                in getSystemTime >>= \t -> writeFile (fn $ systemSeconds t) cc
-saveCoverage Nothing  _  _  _ = pure ()
+saveCoverage :: Bool -> Int -> Maybe FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
+saveCoverage isHtml seed (Just d) sc cs s = let filepath = if isHtml then ".html" else ".txt"
+                                                fn = d ++ "/covered." ++ show seed ++ filepath
+                                                cc = ppCoveredCode isHtml sc cs s
+                                       in writeFile fn cc
+saveCoverage _ _ Nothing  _  _  _ = pure ()
 
 
 -- | Pretty-print the covered code
-ppCoveredCode :: SourceCache -> [SolcContract] -> CoverageMap -> Text
-ppCoveredCode sc cs s | s == mempty = "Coverage map is empty"
-                      | otherwise   =
+ppCoveredCode :: Bool -> SourceCache -> [SolcContract] -> CoverageMap -> Text
+ppCoveredCode isHtml sc cs s | s == mempty = "Coverage map is empty"
+                             | otherwise   =
   let allFiles = zipWith (\(srcPath, _rawSource) srcLines -> (srcPath, V.map decodeUtf8 srcLines))
                    (sc ^. sourceFiles)
                    (sc ^. sourceLines)
-  -- ^ Collect all the possible lines from all the files
+      -- ^ Collect all the possible lines from all the files
       covLines = srcMapCov sc s cs
-  -- ^ List of covered lines during the fuzzing campaing
+      -- ^ List of covered lines during the fuzzing campaing
+      runtimeLinesMap = buildRuntimeLinesMap sc cs
+      -- ^ Excludes lines such as comments or blanks
       ppFile (srcPath, srcLines) =
-        let marked = markLines srcLines (fromMaybe M.empty (M.lookup srcPath covLines))
-        in T.unlines (srcPath : V.toList marked)
-  in T.intercalate "\n" $ map ppFile allFiles
+        let runtimeLines = fromMaybe mempty $ M.lookup srcPath runtimeLinesMap
+            marked = markLines isHtml srcLines runtimeLines (fromMaybe M.empty (M.lookup srcPath covLines))
+        in T.unlines (changeFileName srcPath : changeFileLines (V.toList marked))
+      -- ^ Pretty print individual file coverage
+      topHeader
+        | isHtml = "<style> code { white-space: pre-wrap; display: block; background-color: #eee; }" <>
+                   ".executed { background-color: #afa; }" <>
+                   ".reverted { background-color: #ffa; }" <>
+                   ".unexecuted { background-color: #faa; }" <>
+                   ".neutral { background-color: #eee; }" <>
+                   "</style>"
+        | otherwise = ""
+      -- ^ Text to add to top of the file
+      changeFileName fn
+        | isHtml = "<b>" <> HTML.text fn <> "</b>"
+        | otherwise = fn
+      -- ^ Alter file name, in the case of html turning it into bold text
+      changeFileLines ls
+        | isHtml = "<code>" : ls ++ ["", "</code>","<br />"]
+        | otherwise = ls
+      -- ^ Alter file contents, in the case of html encasing it in <code> and adding a line break
+  in topHeader <> T.unlines (map ppFile allFiles)
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
-markLines :: V.Vector Text -> M.Map Int [TxResult] -> V.Vector Text
-markLines codeLines resultMap = V.map markLine (V.indexed codeLines)
+markLines :: Bool -> V.Vector Text -> S.Set Int -> M.Map Int [TxResult] -> V.Vector Text
+markLines isHtml codeLines runtimeLines resultMap =
+  V.map markLine (V.indexed codeLines)
   where
-    markLine (i, codeLine) =
-      let results = fromMaybe [] (M.lookup (i+1) resultMap)
-      in pack $ printf "%-4s| %s" (sort $ nub $ getMarker <$> results) (unpack codeLine)
+  markLine (i, codeLine) =
+    let n = i + 1
+        results  = fromMaybe [] (M.lookup n resultMap)
+        markers = sort $ nub $ getMarker <$> results
+        wrapLine :: Text -> Text
+        wrapLine line
+          | isHtml = "<span class='" <> cssClass <> "'>" <>
+                        HTML.text line <>
+                     "</span>"
+          | otherwise = line
+          where
+          cssClass = if n `elem` runtimeLines then getCSSClass markers else "neutral"
+
+    in pack $ printf " %*d | %-4s| %s" lineNrSpan n markers (wrapLine codeLine)
+  lineNrSpan = length . show $ V.length codeLines + 1
+
+getCSSClass :: String -> Text
+getCSSClass markers =
+  case markers of
+   []                      -> "unexecuted"
+   _  | '*' `elem` markers -> "executed"
+   _                       -> "reverted"
 
 -- | Select the proper marker, according to the result of the transaction
 getMarker :: TxResult -> Char
 getMarker ReturnTrue    = '*'
 getMarker ReturnFalse   = '*'
 getMarker Stop          = '*'
-getMarker ErrorRevert   = 'r' 
+getMarker ErrorRevert   = 'r'
 getMarker ErrorOutOfGas = 'o'
 getMarker _             = 'e'
 
@@ -91,6 +129,17 @@ srcMapCodePosResult sc (n, r) = case srcMapCodePos sc n of
 
 -- | Given a contract, and tuple as coverage, return the corresponding mapped line (if any)
 srcMapForOpLocation :: SolcContract -> CoverageInfo -> Maybe (SrcMap, TxResult)
-srcMapForOpLocation c (_,n,_,r) = case preview (ix n) (c ^. runtimeSrcmap <> c ^. creationSrcmap) of
-  Just sm -> Just (sm,r)
-  _       -> Nothing
+srcMapForOpLocation contract (_,n,_,r) =
+  case preview (ix n) (contract ^. runtimeSrcmap <> contract ^. creationSrcmap) of
+    Just sm -> Just (sm,r)
+    _       -> Nothing
+
+-- | Builds a Map from file paths to lines that can be executed, this excludes
+-- for example lines with comments
+buildRuntimeLinesMap :: SourceCache -> [SolcContract] -> M.Map Text (S.Set Int)
+buildRuntimeLinesMap sc contracts =
+  M.fromListWith (<>)
+    [(k, S.singleton v) | (k, v) <- mapMaybe (srcMapCodePos sc) srcMaps]
+  where
+  srcMaps = concatMap
+    (\c -> toList $ c ^. runtimeSrcmap <> c ^. creationSrcmap) contracts
