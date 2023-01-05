@@ -154,7 +154,7 @@ getRandomPow n = if n <= 0 then return 0 else
    mexp <- getRandomR (1, n)
    frac <- getRandomR (1, 100000)
    let bound = 2 ^ mexp
-   return (if bound < frac then bound else (frac * bound) `div` frac)
+   return ((frac * bound) `div` frac)
 
 getRandomUint :: MonadRandom m => Int -> m Integer
 getRandomUint n = join $ R.fromList [(getRandomR (0, 1023), 1), (getRandomPow (2 ^ n - 5), 8), (getRandomR (2 ^ n - 5, 2 ^ n - 1), 1)]
