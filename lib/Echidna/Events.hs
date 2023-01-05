@@ -20,6 +20,8 @@ import EVM.Format (showValues, showError, contractNamePart)
 import EVM.Types (Expr(ConcreteBuf), W256, maybeLitWord)
 import EVM.Solidity (contractName)
 
+import Echidna.Types.Buffer (forceLit)
+
 type EventMap = M.Map W256 Event
 type Events = [Text]
 
@@ -53,7 +55,7 @@ extractEvents decodeErrors dappInfo' vm =
                                 showValues [t | (_, t, NotIndexed) <- types] bytes <>
                                 pack " from: " <>
                                 maybe mempty (\ x -> x <> pack "@") maybeContractName <>
-                                pack (show addr)]
+                                pack (show $ forceLit addr)]
                              Nothing -> [pack $ show word]
           ErrorTrace e ->
             case e of
