@@ -148,8 +148,15 @@ mkDictValues = Set.foldl' (\acc e -> maybe acc (`Set.insert` acc) (fromValue e))
 
 -- Generation (synthesis)
 
+getRandomPow :: (MonadRandom m) => Int -> m Integer
+getRandomPow n = do
+   mexp <- getRandomR (1, n - 5)
+   frac <- getRandomR (1, 100000)
+   let bound = 2 ^ mexp
+   return (if bound < frac then bound else frac * (bound `div` frac))
+
 getRandomUint :: MonadRandom m => Int -> m Integer
-getRandomUint n = join $ R.fromList [(getRandomR (0, 1023), 1), (getRandomR (0, 2 ^ n - 5), 8), (getRandomR (2 ^ n - 5, 2 ^ n - 1), 1)]
+getRandomUint n = join $ R.fromList [(getRandomR (0, 1023), 1), (getRandomPow (2 ^ n - 5), 8), (getRandomR (2 ^ n - 5, 2 ^ n - 1), 1)]
 
 getRandomInt :: MonadRandom m => Int -> m Integer
 getRandomInt n = join $ R.fromList [(getRandomR (-1023, 1023), 1), (getRandomR (-1 * 2 ^ n, 2 ^ (n - 1)), 9)]
