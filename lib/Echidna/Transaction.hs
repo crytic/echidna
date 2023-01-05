@@ -18,12 +18,12 @@ import Data.Set (Set)
 import Data.Vector qualified as V
 import EVM hiding (value)
 import EVM.ABI (abiValueType)
-import EVM.Types (Expr(ConcreteBuf, Lit), EType(EWord), Addr, W256)
+import EVM.Types (Expr(ConcreteBuf, Lit), Addr, W256)
 
 import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
-import Echidna.Types.Buffer (viewBuffer)
+import Echidna.Types.Buffer (viewBuffer, forceLit)
 import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, BytecodeMemo, lookupBytecodeMetadata)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
@@ -148,8 +148,3 @@ setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
     incrementBalance = (env . contracts . ix r . balance) += v
     encode (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
-
-forceLit :: Expr 'EWord -> W256
-forceLit x = case x of
-  Lit x' -> x'
-  _ -> error "expected Lit"
