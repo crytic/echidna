@@ -2,15 +2,15 @@
 
 ![Build Status](https://github.com/crytic/echidna/workflows/CI/badge.svg)
 
-Echidna is a weird creature that eats bugs and is highly electrosensitive (with apologies to Jacob Stanley)
+Echidna is a weird creature that eat bugs and is highly electrosensitive (with apologies to Jacob Stanley)
 
-More seriously, Echidna is a Haskell program designed for fuzzing/property-based testing of Ethereum smart contracts. It uses sophisticated grammar-based fuzzing campaigns based on a [contract ABI](https://solidity.readthedocs.io/en/develop/abi-spec.html) to falsify user-defined predicates or [Solidity assertions](https://solidity.readthedocs.io/en/develop/control-structures.html#id4). We designed Echidna with modularity in mind, so it can be easily extended to include new mutations or test specific contracts in specific cases.
+On a more serious note, Echidna is a Haskell program designed for fuzzing/property-based testing of Ethereum smart contracts. It uses sophisticated grammar-based fuzzing campaigns based on a [contract ABI](https://solidity.readthedocs.io/en/develop/abi-spec.html) to falsify user-defined predicates or [Solidity assertions](https://solidity.readthedocs.io/en/develop/control-structures.html#id4). We designed Echidna with modularity in mind, so it can be easily extended to include new mutations or test specific contracts in specific cases.
 
-## Features
+## Features of Echidna
 
-* Generates inputs tailored to your actual code
+* It generate inputs tailored to your actual code
 * Optional corpus collection, mutation and coverage guidance to find deeper bugs
-* Powered by [Slither](https://github.com/crytic/slither) to extract useful information before the fuzzing campaign
+* It is powered by [Slither](https://github.com/crytic/slither) to extract useful information before the fuzzing campaign
 * Source code integration to identify which lines are covered after the fuzzing campaign
 * Curses-based retro UI, text-only or JSON output
 * Automatic test case minimization for quick triage
@@ -28,9 +28,9 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 
 The core Echidna functionality is an executable called `echidna-test`. `echidna-test` takes a contract and a list of invariants (properties that should always remain true) as input. For each invariant, it generates random sequences of calls to the contract and checks if the invariant holds. If it can find some way to falsify the invariant, it prints the call sequence that does so. If it can't, you have some assurance the contract is safe.
 
-### Writing invariants
+### Writing Invariants
 
-Invariants are expressed as Solidity functions with names that begin with `echidna_`, have no arguments, and return a boolean. For example, if you have some `balance` variable that should never go below `20`, you can write an extra function in your contract like this one:
+Invariants are expressed as Solidity functions with names that begin with `echidna_`, they have no arguments, and they return a boolean. For example, if you have some `balance` variable that should never go below `20`, you can write an extra function in your contract like this one:
 
 ```solidity
 function echidna_check_balance() public returns (bool) {
@@ -44,7 +44,7 @@ To check these invariants, run:
 $ echidna-test myContract.sol
 ```
 
-An example contract with tests can be found [tests/solidity/basic/flags.sol](tests/solidity/basic/flags.sol). To run it, you should execute:
+An example contract with tests can be found in [tests/solidity/basic/flags.sol](tests/solidity/basic/flags.sol). To run it, you should execute:
 
 ```sh
 $ echidna-test tests/solidity/basic/flags.sol
@@ -52,9 +52,11 @@ $ echidna-test tests/solidity/basic/flags.sol
 
 Echidna should find a call sequence that falsifies `echidna_sometimesfalse` and should be unable to find a falsifying input for `echidna_alwaystrue`.
 
-### Collecting and visualizing coverage
+### Collecting and Visualizing Coverage
 
-After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain two entries: (1) a directory named `coverage` with JSON files that can be replayed by Echidna and (2) a plain-text file named `covered.txt`, a copy of the source code with coverage annotations.
+After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain two entries: 
+(1) a directory named `coverage` with JSON files that can be replayed by Echidna  and 
+(2) a plain-text file named `covered.txt`, a copy of the source code with coverage annotations.
 
 If you run `tests/solidity/basic/flags.sol` example, Echidna will save a few files serialized transactions in the `coverage` directory and a `covered.$(date +%s).txt` file with the following lines:
 
@@ -77,24 +79,24 @@ Our tool signals each execution trace in the corpus with the following "line mar
 * `o` if an execution ended with an out-of-gas error
 * `e` if an execution ended with any other error (zero division, assertion failure, etc)
 
-### Support for smart contract build systems
+### Support for Smart Contract Build Systems
 
 Echidna can test contracts compiled with different smart contract build systems, including [Truffle](https://truffleframework.com/) or [hardhat](https://hardhat.org/) using [crytic-compile](https://github.com/crytic/crytic-compile). To invoke echidna with the current compilation framework, use `echidna-test .`.
 
-On top of that, Echidna supports two modes of testing complex contracts. Firstly, one can [describe an initialization procedure with Truffle and Etheno](https://github.com/crytic/building-secure-contracts/blob/master/program-analysis/echidna/end-to-end-testing.md) and use that as the base state for Echidna. Secondly, echidna can call into any contract with a known ABI by passing in the corresponding solidity source in the CLI. Use `multi-abi: true` in your config to turn this on.
+On top of that, Echidna supports two modes of testing complex contracts. At first, one can [describe an initialization procedure with Truffle and Etheno](https://github.com/crytic/building-secure-contracts/blob/master/program-analysis/echidna/end-to-end-testing.md), and use that as the base state for Echidna. Secondly, echidna can call into any contract with a known ABI by passing in the corresponding solidity source in the CLI. Use `multi-abi: true` in your config to turn this on.
 
-### Crash course on Echidna
+### Crash Course on Echidna
 
 Our [Building Secure Smart Contracts](https://github.com/crytic/building-secure-contracts/tree/master/program-analysis/echidna#echidna-tutorial) repository contains a crash course on Echidna, including examples, lessons and exercises.
 
-### Using Echidna in a GitHub Actions workflow
+### Using Echidna in a GitHub Actions Workflow
 
 There is an Echidna action which can be used to run `echidna-test` as part of a
 GitHub Actions workflow. Please refer to the
 [crytic/echidna-action](https://github.com/crytic/echidna-action) repository for
 usage instructions and examples.
 
-### Configuration options
+### Configuration Options
 
 Echidna's CLI can be used to choose the contract to test and load a
 configuration file.
@@ -150,7 +152,7 @@ will either be `property` or `assertion`, and `status` always takes on either
 ### Debugging Performance Problems
 
 The best way to deal with an Echidna performance issue is to run `echidna-test` with profiling on.
-This creates a text file, `echidna-test.prof`, which shows which functions take up the most CPU and memory usage.
+This creates a text file, `echidna-test.prof`, which shows the functions that take up the most CPU and memory usage.
 
 To build a version of `echidna-test` that supports profiling, either Stack or Nix should be used.
 With Stack, adding the flag `--profile` will make the build support profiling.
@@ -160,11 +162,11 @@ To run with profiling on, add the flags `+RTS -p` to your original `echidna-test
 
 Performance issues in the past have been because of functions getting called repeatedly when they could be memoized,
 and memory leaks related to Haskell's lazy evaluation;
-checking for these would be a good place to start.
+Checking for these would be a good place to start.
 
 ## Limitations and known issues
 
-EVM emulation and testing are hard. Echidna has some limitations in the latest release. Some of these are inherited from [hevm](https://github.com/dapphub/dapptools/tree/master/src/hevm) while some are results from design/performance decisions or simply bugs in our code. We list them here including their corresponding issue and the status ("wont fix", "on hold", "in review", "fixed"). Issues that are "fixed" are expected to be included in the next Echidna release.
+EVM emulations and testing are hard. Echidna has some limitations in the latest release. Some of these are inherited from [hevm](https://github.com/dapphub/dapptools/tree/master/src/hevm) while some are results from design/performance decisions or simply bugs in our code. We list them here including their corresponding issue and the status ("wont fix", "on hold", "in review", "fixed"). Issues that are "fixed" are expected to be included in the next Echidna release.
 
 | Description |  Issue   | Status   |
 | :--- |     :---:              |         :---:   |
@@ -173,7 +175,7 @@ EVM emulation and testing are hard. Echidna has some limitations in the latest r
 | Lack of support for function pointers in Solidity | [#798](https://github.com/crytic/echidna/issues/798) | *on hold* |
 ## Installation
 
-### Precompiled binaries
+### Precompiled Binaries
 
 Before starting, make sure Slither is [installed](https://github.com/crytic/slither) (`pip3 install slither-analyzer --user`).
 If you want to quickly test Echidna in Linux or MacOS, we provide statically linked Linux binaries built on Ubuntu and mostly static MacOS binaries on our [releases page](https://github.com/crytic/echidna/releases). You can also grab the same type of binaries from our [CI pipeline](https://github.com/crytic/echidna/actions?query=workflow%3ACI+branch%3Amaster+event%3Apush), just click the commit to find binaries for Linux or MacOS.
@@ -186,7 +188,7 @@ You can also compile and install the latest `master` branch code by running `bre
 
 You can get further information in the [`echidna` Homebrew Formula](https://formulae.brew.sh/formula/echidna) page. The formula itself is maintained as part of the [homebrew-core repository](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/echidna.rb)
 
-### Docker container
+### Docker Container
 
 If you prefer to use a pre-built Docker container, check out our [docker
 package](https://github.com/orgs/crytic/packages?repo_name=echidna), which is
@@ -234,7 +236,7 @@ $ docker run -it -v `pwd`:/src echidna bash -c "solc-select install 0.5.7 && sol
 
 ### Building using Stack
 
-If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/README/). `stack install` should build and compile `echidna-test` in `~/.local/bin`. You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choosing. You also need to install the latest release of [libff](https://github.com/scipr-lab/libff). Refer to our [CI tests](.github/scripts/install-libff.sh) for guidance.
+If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/README/). `stack install` should build and compile `echidna-test` in `~/.local/bin`. You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choice. You also need to install the latest release of [libff](https://github.com/scipr-lab/libff). Refer to our [CI tests](.github/scripts/install-libff.sh) for guidance.
 
 Some Linux distributions do not ship static libraries for certain things that Haskell needs, e.g. Arch Linux, which will cause `stack build` to fail with linking errors because we use the `-static` flag. In that case, use `--flag echidna:-static` to produce a dynamically linked binary.
 
