@@ -1,12 +1,16 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Echidna.Types.Tx where
 
 import Prelude hiding (Word)
 
+import Control.Applicative ((<|>))
 import Control.Lens.TH (makePrisms, makeLenses)
+import Data.Aeson (FromJSON, ToJSON, parseJSON, toJSON, object, withObject, (.=), (.:))
 import Data.Aeson.TH (deriveJSON, defaultOptions)
+import Data.Aeson.Types (Parser)
 import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Data.Word (Word64)
@@ -58,7 +62,41 @@ data Tx = Tx { _call  :: TxCall       -- | Call
              , _delay :: (W256, W256) -- | (Time, # of blocks since last call)
              } deriving (Eq, Ord, Show)
 makeLenses ''Tx
-$(deriveJSON defaultOptions ''Tx)
+
+instance ToJSON Tx where
+  toJSON Tx{..} = object
+    [ "call" .= _call
+    , "src" .= _src
+    , "dst" .= _dst
+    , "gas" .= _gas'
+    , "gasprice" .= _gasprice'
+    , "value" .= _value
+    , "delay" .= _delay
+    ]
+
+instance FromJSON Tx where
+  -- For compatibility we try to parse the old corpus format. Will be removed
+  -- in the next major release.
+  parseJSON = withObject "Tx" $ \o -> legacyParseTx o <|> parseTx o
+    where
+    parseTx o =
+      Tx <$> o .: "call"
+         <*> o .: "src"
+         <*> o .: "dst"
+         <*> o .: "gas"
+         <*> o .: "gasprice"
+         <*> o .: "value"
+         <*> o .: "delay"
+    legacyParseTx o =
+      Tx <$> o .: "_call"
+         <*> o .: "_src"
+         <*> o .: "_dst"
+         -- We changed gas to Word64, keep compatible with already existing
+         -- corpuses that still store gas as a hex string
+         <*> (fromIntegral <$> (o .: "_gas'" :: Parser W256))
+         <*> o .: "_gasprice'"
+         <*> o .: "_value"
+         <*> o .: "_delay"
 
 basicTx :: Text         -- | Function name
         -> [AbiValue]   -- | Function args
