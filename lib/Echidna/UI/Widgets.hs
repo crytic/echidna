@@ -34,8 +34,14 @@ attrs = A.attrMap (V.white `on` V.black)
   , (attrName "success", fg V.brightGreen)
   ]
 
+data Name =
+  TestsViewPort
+  | SBClick ClickableScrollbarElement Name
+  deriving (Ord, Show, Eq)
+
 -- | Render 'Campaign' progress as a 'Widget'.
-campaignStatus :: MonadReader EConfig m => (Campaign, UIState) -> m (Widget ())
+campaignStatus :: MonadReader EConfig m
+               => (Campaign, UIState) -> m (Widget Name)
 campaignStatus (c@Campaign{_tests, _coverage, _ncallseqs}, uiState) = do
   done <- isDone c
   case (uiState, done) of
@@ -44,7 +50,7 @@ campaignStatus (c@Campaign{_tests, _coverage, _ncallseqs}, uiState) = do
     (_, True)          -> mainbox <$> testsWidget _tests <*> pure (str "Campaign complete, C-c or esc to exit")
     _                  -> mainbox <$> testsWidget _tests <*> pure emptyWidget
   where
-    mainbox :: Widget () -> Widget () -> Widget ()
+    mainbox :: Widget Name -> Widget Name -> Widget Name
     mainbox inner underneath =
       padTop (Pad 1) $ hCenter $ hLimit 120 $
       wrapInner inner
@@ -59,7 +65,7 @@ campaignStatus (c@Campaign{_tests, _coverage, _ncallseqs}, uiState) = do
       inner
     title = "Echidna " ++ showVersion Paths_echidna.version
 
-summaryWidget :: Campaign -> Widget ()
+summaryWidget :: Campaign -> Widget Name
 summaryWidget c =
   padLeft (Pad 1) (
       str ("Tests found: " ++ show (length $ c._tests)) <=>
@@ -74,10 +80,16 @@ failedFirst :: EchidnaTest -> EchidnaTest -> Ordering
 failedFirst t1 _ | didFailed t1 = LT
                  | otherwise   = GT
 
-testsWidget :: MonadReader EConfig m => [EchidnaTest] -> m (Widget())
-testsWidget tests' = foldl (<=>) emptyWidget . intersperse hBorder <$> traverse testWidget (sortBy failedFirst tests')
+testsWidget :: MonadReader EConfig m => [EchidnaTest] -> m (Widget Name)
+testsWidget tests' =
+  withClickableVScrollBars SBClick .
+  withVScrollBars OnRight .
+  withVScrollBarHandles .
+  viewport TestsViewPort Vertical .
+  foldl (<=>) emptyWidget . intersperse hBorder <$>
+    traverse testWidget (sortBy failedFirst tests')
 
-testWidget :: MonadReader EConfig m => EchidnaTest -> m (Widget ())
+testWidget :: MonadReader EConfig m => EchidnaTest -> m (Widget Name)
 testWidget etest =
  case etest._testType of
       Exploration           -> widget tsWidget "exploration" ""
@@ -94,7 +106,8 @@ testWidget etest =
       <=> padTop (Pad 1) details
   name n = withAttr (attrName "bold") $ str (T.unpack n)
 
-tsWidget :: MonadReader EConfig m => TestState -> EchidnaTest -> m (Widget (), Widget ())
+tsWidget :: MonadReader EConfig m
+         => TestState -> EchidnaTest -> m (Widget Name, Widget Name)
 tsWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 tsWidget Solved     t = failWidget Nothing t._testReproducer t._testEvents t._testValue t._testResult
 tsWidget Passed     _ = pure (withAttr (attrName "success") $ str "PASSED!", emptyWidget)
@@ -117,7 +130,8 @@ eventWidget es =
   else str "Event sequence" <+> str ":"
        <=> strWrapWith wrapSettings (T.unpack $ T.intercalate "\n" es)
 
-failWidget :: MonadReader EConfig m => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> TxResult -> m (Widget (), Widget ())
+failWidget :: MonadReader EConfig m
+           => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> TxResult -> m (Widget Name, Widget Name)
 failWidget _ [] _  _  _= pure (failureBadge, str "*no transactions made*")
 failWidget b xs es _ r = do
   s <- seqWidget xs
@@ -127,8 +141,8 @@ failWidget b xs es _ r = do
     Nothing    -> emptyWidget
     Just (n,m) -> str "Current action: " <+> withAttr (attrName "working") (str ("shrinking " ++ progress n m))
 
-
-optWidget :: MonadReader EConfig m => TestState -> EchidnaTest -> m (Widget (), Widget ())
+optWidget :: MonadReader EConfig m
+          => TestState -> EchidnaTest -> m (Widget Name, Widget Name)
 optWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 optWidget Solved     _ = error "optimization tests cannot be solved"
 optWidget Passed     t = pure (str $ "max value found: " ++ show t._testValue, emptyWidget)
@@ -142,7 +156,8 @@ optWidget (Large n)  t = do
   m <- asks (._cConf._shrinkLimit)
   maxWidget (if n < m then Just (n,m) else Nothing) t._testReproducer t._testEvents t._testValue
 
-maxWidget :: MonadReader EConfig m => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> m (Widget (), Widget ())
+maxWidget :: MonadReader EConfig m
+           => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> m (Widget Name, Widget Name)
 maxWidget _ [] _  _ = pure (failureBadge, str "*no transactions made*")
 maxWidget b xs es v = do
   s <- seqWidget xs
@@ -152,8 +167,7 @@ maxWidget b xs es v = do
     Nothing    -> emptyWidget
     Just (n,m) -> str "Current action: " <+> withAttr (attrName "working") (str ("shrinking " ++ progress n m))
 
-
-seqWidget :: MonadReader EConfig m => [Tx] -> m (Widget ())
+seqWidget :: MonadReader EConfig m => [Tx] -> m (Widget Name)
 seqWidget xs = do
     ppTxs <- mapM (ppTx $ length (nub $ (._src) <$> xs) /= 1) xs
     let ordinals = str . printf "%d." <$> [1 :: Int ..]
@@ -161,10 +175,10 @@ seqWidget xs = do
       foldl (<=>) emptyWidget $
         zipWith (<+>) ordinals (withAttr (attrName "tx") . strWrapWith wrapSettings <$> ppTxs)
 
-failureBadge :: Widget ()
+failureBadge :: Widget Name
 failureBadge = withAttr (attrName "failure") $ str "FAILED!"
 
-maximumBadge :: Widget ()
+maximumBadge :: Widget Name
 maximumBadge = withAttr (attrName "maximum") $ str "OPTIMIZED!"
 
 wrapSettings :: WrapSettings
