@@ -151,13 +151,11 @@ mkDictValues = Set.foldl' (\acc e -> maybe acc (`Set.insert` acc) (fromValue e))
 getRandomPow :: (MonadRandom m) => Int -> m Integer
 getRandomPow n = if n <= 0 then return 0 else
   do
-   mexp <- getRandomR (1, n)
-   frac <- getRandomR (1, 100000)
-   let bound = 2 ^ mexp
-   return ((frac * bound) `div` frac)
+   mexp <- getRandomR (20, n)
+   getRandomR (2 ^ (mexp `div` 2), 2 ^ mexp)
 
 getRandomUint :: MonadRandom m => Int -> m Integer
-getRandomUint n = join $ R.fromList [(getRandomR (0, 1023), 1), (getRandomPow (2 ^ n - 5), 8), (getRandomR (2 ^ n - 5, 2 ^ n - 1), 1)]
+getRandomUint n = join $ R.fromList [(getRandomR (0, 1023), 1), (getRandomPow (n - 5), 8), (getRandomR (2 ^ n - 5, 2 ^ n - 1), 1)]
 
 getRandomInt :: MonadRandom m => Int -> m Integer
 getRandomInt n = join $ R.fromList [(getRandomR (-1023, 1023), 1), (getRandomR (-1 * 2 ^ n, 2 ^ (n - 1)), 9)]
