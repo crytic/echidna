@@ -43,16 +43,8 @@
           '';
         };
 
-        hevm = pkgs.haskell.lib.dontCheck (
-          pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
-            owner = "ethereum";
-            repo = "hevm";
-            rev = "release/0.50.2";
-            sha256 = "sha256-RjGmlm+lbbzT9tC0s3KeqjRsN6BvX5K0M3/NpqaWNs8=";
-        }) { secp256k1 = pkgs.secp256k1; });
-
         echidna = with pkgs; lib.pipe
-          (haskellPackages.callCabal2nix "echidna" ./. { inherit hevm; })
+          (haskellPackages.callCabal2nix "echidna" ./. { })
           [
             (haskell.lib.compose.addTestToolDepends [ haskellPackages.hpack slither-analyzer solc ])
             (haskell.lib.compose.disableCabalFlag "static")
