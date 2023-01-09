@@ -10,9 +10,10 @@ import Data.Aeson.Types (FromJSON, Parser, Value(String))
 import Data.ByteString.Base16 qualified as BS16 (decode)
 import Data.ByteString.Lazy.Char8 qualified as BSL
 import Data.ByteString.UTF8 qualified as BSU
+import Data.Containers.ListUtils (nubOrd)
 import Data.Either (fromRight)
 import Data.HashMap.Strict qualified as M
-import Data.List (nub, isPrefixOf)
+import Data.List (isPrefixOf)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.SemVer (Version, fromText)
@@ -51,7 +52,7 @@ filterResults Nothing rs = hashSig <$> (concat . M.elems) rs
 
 enhanceConstants :: SlitherInfo -> [AbiValue]
 enhanceConstants si =
-  nub . concatMap enh . concat . concat . M.elems $ M.elems <$> constantValues si
+  nubOrd . concatMap enh . concat . concat . M.elems $ M.elems <$> constantValues si
   where
     enh (AbiUInt _ n) = makeNumAbiValues (fromIntegral n)
     enh (AbiInt _ n) = makeNumAbiValues (fromIntegral n)
