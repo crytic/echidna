@@ -5,8 +5,9 @@ import Test.Tasty.HUnit (testCase, assertBool)
 
 import Common (runContract, overrideQuiet)
 import Data.Function ((&))
+import Data.IORef (readIORef)
 import Echidna.Output.Source (CoverageFileType(..))
-import Echidna.Types.Config (EConfig(..))
+import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Campaign
 import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Config (defaultConfig)
@@ -31,10 +32,11 @@ seedTests =
         , corpusDir = Nothing
         , mutConsts = defaultMutationConsts
         , coverageFormats = [Txt,Html,Lcov]
+        , jobs = Nothing
         }
       }
       & overrideQuiet
     gen s = do
-      camp <- runContract "basic/flags.sol" Nothing (cfg s)
-      pure camp.tests
+      (env, _) <- runContract "basic/flags.sol" Nothing (cfg s)
+      readIORef env.testsRef
     same s t = (==) <$> gen s <*> gen t

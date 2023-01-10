@@ -16,8 +16,8 @@ import EVM.Types (keccak')
 
 import Echidna.ABI (ppAbiValue, GenDict(..))
 import Echidna.Types (Gas)
+import Echidna.Types.Campaign (WorkerState(..))
 import Echidna.Types.Coverage (CoverageInfo)
-import Echidna.Types.Campaign qualified as C
 import Echidna.Types.Test qualified as T
 import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
@@ -93,16 +93,17 @@ instance ToJSON Transaction where
     , "gasprice" .= gasprice
     ]
 
-encodeCampaign :: C.Campaign -> IO ByteString
-encodeCampaign C.Campaign{..} = do
-  frozenCov <- mapM VU.freeze coverage
+encodeCampaign :: [WorkerState] -> IO ByteString
+encodeCampaign workerStates = do
+  let frozenCov = mempty -- coverage
+      worker0 = Prelude.head workerStates
   pure $ encode Campaign
     { _success = True
     , _error = Nothing
-    , _tests = mapTest <$> tests
-    , seed = genDict.defSeed
+    , _tests = [] -- TODO: mapTest <$> tests
+    , seed = worker0.genDict.defSeed
     , coverage = Map.mapKeys (("0x" ++) . (`showHex` "") . keccak') $ VU.toList <$> frozenCov
-    , gasInfo = Map.toList gasInfo
+    , gasInfo = Map.toList $ Map.unionsWith max ((.gasInfo) <$> workerStates)
     }
 
 mapTest :: EchidnaTest -> Test
@@ -117,7 +118,7 @@ mapTest test =
     , transactions = transactions
     }
   where
-  mapTestState (T.Open _) _ = (Fuzzing, Nothing, Nothing)
+  mapTestState T.Open _ = (Fuzzing, Nothing, Nothing)
   mapTestState T.Passed _ = (Passed, Nothing, Nothing)
   mapTestState T.Solved txs = (Solved, Just $ mapTx <$> txs, Nothing)
   mapTestState (T.Large _) txs = (Shrinking, Just $ mapTx <$> txs, Nothing)

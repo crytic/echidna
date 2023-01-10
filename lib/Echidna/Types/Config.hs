@@ -1,21 +1,25 @@
 module Echidna.Types.Config where
 
+import Control.Concurrent (Chan)
 import Data.Aeson.Key (Key)
 import Data.IORef (IORef)
 import Data.Map (Map)
 import Data.Set (Set)
 import Data.Text (Text)
+import Data.Time (LocalTime)
 import Data.Word (Word64)
 
 import EVM (Contract)
 import EVM.Dapp (DappInfo)
 import EVM.Types (Addr, W256)
 
-import Echidna.Types.Campaign (CampaignConf)
+import Echidna.Types.Campaign (CampaignConf, CampaignEvent)
+import Echidna.Types.Corpus (Corpus)
+import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Signature (MetadataCache)
 import Echidna.Types.Solidity (SolConf)
-import Echidna.Types.Tx  (TxConf)
-import Echidna.Types.Test  (TestConf)
+import Echidna.Types.Tx (TxConf)
+import Echidna.Types.Test (TestConf, EchidnaTest)
 
 data OperationMode = Interactive | NonInteractive OutputFormat deriving (Show, Eq)
 data OutputFormat = Text | JSON | None deriving (Show, Eq)
@@ -59,6 +63,15 @@ data EConfigWithUsage = EConfigWithUsage
 data Env = Env
   { cfg :: EConfig
   , dapp :: DappInfo
+
+  -- | Shared between all workers. Events are fairly rare so contention should
+  -- be minimal. Alternatively, think about a per-worker queue and listening
+  -- on all channels somehow.
+  , eventQueue :: Chan (Int, LocalTime, CampaignEvent)
+
+  , testsRef :: IORef [EchidnaTest]
+  , coverageRef :: IORef CoverageMap
+  , corpusRef :: IORef Corpus
 
   , metadataCache :: IORef MetadataCache
   , fetchContractCache :: IORef (Map Addr (Maybe Contract))

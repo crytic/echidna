@@ -4,6 +4,7 @@ module Main where
 
 import Optics.Core (view)
 
+import Control.Concurrent (newChan)
 import Control.Monad (unless, forM_, when)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
@@ -24,6 +25,7 @@ import Data.Text qualified as Text
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Vector qualified as Vector
 import Data.Version (showVersion)
+import Data.Word (Word8)
 import Main.Utf8 (withUtf8)
 import Options.Applicative
 import Paths_echidna (version)
@@ -90,28 +92,40 @@ main = withUtf8 $ withCP65001 $ do
   cacheSlotsRef <- newIORef $ fromMaybe mempty loadedSlotsCache
   cacheMetaRef <- newIORef mempty
   chainId <- RPC.fetchChainId cfg.rpcUrl
+  eventQueue <- newChan
+  coverageRef <- newIORef mempty
+  corpusRef <- newIORef mempty
+  testsRef <- newIORef mempty
 
   let
     sourceCache = selectSourceCache cliSelectedContract sourceCaches
     solcByName = Map.fromList [(c.contractName, c) | c <- contracts]
-    env = Env { cfg = cfg
+    env = Env { cfg
                 -- TODO put in real path
               , dapp = dappInfo "/" solcByName sourceCache
               , metadataCache = cacheMetaRef
               , fetchContractCache = cacheContractsRef
               , fetchSlotCache = cacheSlotsRef
               , chainId = chainId
+              , eventQueue
+              , coverageRef
+              , corpusRef
+              , testsRef
               }
 
-  seed <- getRandomR (0, maxBound)
-  (vm, world, echidnaTests, dict) <- prepareContract env contracts cliFilePath cliSelectedContract seed
+  -- take the seed from config, otherwise generate a new one
+  seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
+  (vm, world, dict) <-
+    prepareContract env contracts cliFilePath cliSelectedContract seed
 
   initialCorpus <- loadInitialCorpus env world
   -- start ui and run tests
-  campaign <- runReaderT (ui vm world echidnaTests dict initialCorpus) env
+  _campaign <- runReaderT (ui vm world dict initialCorpus) env
 
   contractsCache <- readIORef cacheContractsRef
   slotsCache <- readIORef cacheSlotsRef
+
+  tests <- readIORef testsRef
 
   -- save corpus
   case cfg.campaignConf.corpusDir of
@@ -129,9 +143,10 @@ main = withUtf8 $ withCP65001 $ do
           pure ()
 
       measureIO cfg.solConf.quiet "Saving test reproducers" $
-        saveTxs (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> campaign.tests)
-      measureIO cfg.solConf.quiet "Saving corpus" $
-        saveTxs (dir </> "coverage") (snd <$> Set.toList campaign.corpus)
+        saveTxs (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> tests)
+      measureIO cfg.solConf.quiet "Saving corpus" $ do
+        corpus <- readIORef corpusRef
+        saveTxs (dir </> "coverage") (snd <$> Set.toList corpus)
 
       -- TODO: We use the corpus dir to save coverage reports which is confusing.
       -- Add config option to pass dir for saving coverage report and decouple it
@@ -141,6 +156,8 @@ main = withUtf8 $ withCP65001 $ do
         -- don't collide with the next runs. We use the current time for this
         -- as it orders the runs chronologically.
         runId <- fromIntegral . systemSeconds <$> getSystemTime
+
+        coverage <- readIORef coverageRef
 
         -- coverage reports for external contracts, we only support
         -- Ethereum Mainnet for now
@@ -152,14 +169,14 @@ main = withUtf8 $ withCP65001 $ do
                 case r of
                   Just (externalSourceCache, solcContract) -> do
                     let dir' = dir </> show addr
-                    saveCoverages cfg.campaignConf.coverageFormats runId dir' externalSourceCache [solcContract] campaign.coverage
+                    saveCoverages cfg.campaignConf.coverageFormats runId dir' externalSourceCache [solcContract] coverage
                   Nothing -> pure ()
               Nothing -> pure ()
 
         -- save source coverage reports
-        saveCoverages cfg.campaignConf.coverageFormats runId dir sourceCache contracts campaign.coverage
+        saveCoverages cfg.campaignConf.coverageFormats runId dir sourceCache contracts coverage
 
-  if isSuccessful campaign then exitSuccess else exitWith (ExitFailure 1)
+  if isSuccessful tests then exitSuccess else exitWith (ExitFailure 1)
 
   where
 
@@ -206,12 +223,14 @@ readFileIfExists path = do
 
 data Options = Options
   { cliFilePath         :: NE.NonEmpty FilePath
+  , cliJobs             :: Maybe Word8
   , cliSelectedContract :: Maybe Text
   , cliConfigFilepath   :: Maybe FilePath
   , cliOutputFormat     :: Maybe OutputFormat
   , cliCorpusDir        :: Maybe FilePath
   , cliTestMode         :: Maybe TestMode
   , cliAllContracts     :: Bool
+  , cliTimeout          :: Maybe Int
   , cliTestLimit        :: Maybe Int
   , cliShrinkLimit      :: Maybe Int
   , cliSeqLen           :: Maybe Int
@@ -232,6 +251,9 @@ options :: Parser Options
 options = Options
   <$> (NE.fromList <$> some (argument str (metavar "FILES"
     <> help "Solidity files to analyze")))
+  <*> optional (option auto $ long "jobs"
+    <> metavar "N"
+    <> help "Number of workers to run")
   <*> optional (option str $ long "contract"
     <> metavar "CONTRACT"
     <> help "Contract to analyze")
@@ -248,6 +270,9 @@ options = Options
     <> help "Test mode to use. Either 'property', 'assertion', 'dapptest', 'optimization', 'overflow' or 'exploration'" )
   <*> switch (long "all-contracts"
     <> help "Generate calls to all deployed contracts.")
+  <*> optional (option auto $ long "timeout"
+    <> metavar "INTEGER"
+    <> help "Timeout given in seconds.")
   <*> optional (option auto $ long "test-limit"
     <> metavar "INTEGER"
     <> help ("Number of sequences of transactions to generate during testing. Default is " ++ show defaultTestLimit))
@@ -288,11 +313,16 @@ overrideConfig config Options{..} = do
   pure $
     config { solConf = overrideSolConf config.solConf
            , campaignConf = overrideCampaignConf config.campaignConf
+           , uiConf = overrideUiConf config.uiConf
            , rpcUrl = rpcUrl <|> config.rpcUrl
            , rpcBlock = rpcBlock <|> config.rpcBlock
            }
            & overrideFormat
   where
+    overrideUiConf uiConf = uiConf
+      { maxTime = cliTimeout <|> uiConf.maxTime
+      }
+
     overrideFormat cfg =
       case maybe cfg.uiConf.operationMode NonInteractive cliOutputFormat of
         Interactive -> cfg
@@ -307,6 +337,7 @@ overrideConfig config Options{..} = do
       , shrinkLimit = fromMaybe campaignConf.shrinkLimit cliShrinkLimit
       , seqLen = fromMaybe campaignConf.seqLen cliSeqLen
       , seed = cliSeed <|> campaignConf.seed
+      , jobs = cliJobs <|> campaignConf.jobs
       }
 
     overrideSolConf solConf = solConf
@@ -318,3 +349,4 @@ overrideConfig config Options{..} = do
       , testMode = maybe solConf.testMode validateTestMode cliTestMode
       , allContracts = cliAllContracts || solConf.allContracts
       }
+

@@ -1,6 +1,7 @@
 module Echidna where
 
 import Control.Monad.Catch (MonadThrow(..))
+import Data.IORef (writeIORef)
 import Data.List (find)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
@@ -18,12 +19,11 @@ import Echidna.Output.Corpus
 import Echidna.Processor
 import Echidna.Solidity
 import Echidna.Test (createTests)
-import Echidna.Types.Campaign hiding (corpus)
+import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Random
 import Echidna.Types.Signature
 import Echidna.Types.Solidity
-import Echidna.Types.Test
 import Echidna.Types.Tx
 import Echidna.Types.World
 
@@ -44,7 +44,7 @@ prepareContract
   -> NonEmpty FilePath
   -> Maybe ContractName
   -> Seed
-  -> IO (VM, World, [EchidnaTest], GenDict)
+  -> IO (VM, World, GenDict)
 prepareContract env contracts solFiles specifiedContract seed = do
   let solConf = env.cfg.solConf
 
@@ -82,7 +82,8 @@ prepareContract env contracts solFiles specifiedContract seed = do
                      seed
                      (returnTypes contracts)
 
-  pure (vm, world, echidnaTests, dict)
+  writeIORef env.testsRef echidnaTests
+  pure (vm, world, dict)
 
 loadInitialCorpus :: Env -> World -> IO [[Tx]]
 loadInitialCorpus env world = do
