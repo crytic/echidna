@@ -12,8 +12,8 @@ import EVM (VM)
 import EVM.Types (Addr)
 import EVM.Dapp (DappInfo)
 
-import Echidna.Exec (ExecException)
 import Echidna.Events (Events)
+import Echidna.Types
 import Echidna.Types.Tx (Tx, TxResult)
 import Echidna.Types.Signature (SolSignature)
 

@@ -5,19 +5,18 @@ module Echidna.Types.Campaign where
 import Control.Lens
 import Data.Aeson (ToJSON(..), object)
 import Data.Foldable (toList)
-import Data.Has (Has(..))
 import Data.Map (Map, mapKeys)
 import Data.Text (Text)
 import EVM.Types (keccak')
 import Numeric (showHex)
 
 import Echidna.ABI (GenDict, defaultDict)
+import Echidna.Types
+import Echidna.Types.Corpus
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Test (EchidnaTest)
 import Echidna.Types.Signature (BytecodeMemo)
 import Echidna.Types.Tx (Tx)
-import Echidna.Types.Corpus
-import Echidna.Mutator.Corpus
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf { _testLimit     :: Int
@@ -69,9 +68,6 @@ instance ToJSON Campaign where
     : [("coverage",) . toJSON . mapKeys (("0x" <>) . (`showHex` "") . keccak') $ toList <$> co | co /= mempty] ++
       [(("maxgas",) . toJSON . toList) gi | gi /= mempty] where
         format _ = "" :: String -- TODO: complete this format string
-
-instance Has GenDict Campaign where
-  hasLens = genDict
 
 defaultCampaign :: Campaign
 defaultCampaign = Campaign mempty mempty mempty defaultDict False mempty 0 mempty

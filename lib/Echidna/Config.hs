@@ -5,14 +5,13 @@ import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Fail qualified as M (MonadFail(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)
-import Control.Monad.State (StateT(..), runStateT)
+import Control.Monad.State (StateT(..), runStateT, modify')
 import Control.Monad.Trans (lift)
 import Data.Aeson
 import Data.Aeson.KeyMap (keys)
 import Data.Bool (bool)
 import Data.ByteString qualified as BS
 import Data.List.NonEmpty qualified as NE
-import Data.Has (Has(..))
 import Data.HashSet (fromList, insert, difference)
 import Data.Maybe (fromMaybe)
 import Data.Text (isPrefixOf)
@@ -23,16 +22,14 @@ import EVM (result)
 import Echidna.Test
 import Echidna.Types.Campaign
 import Echidna.Mutator.Corpus (defaultMutationConsts)
-import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..))
 import Echidna.Types.Solidity
 import Echidna.Types.Tx (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
 import Echidna.Types.Test (TestConf(..))
-import Echidna.UI
-import Echidna.UI.Report
+import Echidna.Types.Config
 
 instance FromJSON EConfig where
   -- retrieve the config from the key usage annotated parse
-  parseJSON = fmap _econfig . parseJSON
+  parseJSON = fmap econfig . parseJSON
 
 instance FromJSON EConfigWithUsage where
   -- this runs the parser in a StateT monad which keeps track of the keys
@@ -53,7 +50,7 @@ instance FromJSON EConfigWithUsage where
     -- x .!= v (Parser) <==> x ..!= v (StateT)
     -- tl;dr use an extra initial . to lift into the StateT parser
     where parser v =
-            let useKey k = hasLens %= insert k
+            let useKey k = modify' $ insert k
                 x ..:? k = useKey k >> lift (x .:? k)
                 x ..!= y = fromMaybe y <$> x
                 getWord s d = fromIntegral <$> v ..:? s ..!= (d :: Integer)

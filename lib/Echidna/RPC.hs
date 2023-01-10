@@ -154,7 +154,7 @@ execEthenoTxs et = do
        (VMSuccess (ConcreteBuf bc),
         ContractCreated _ ca _ _ _ _) -> do
           env . contracts . at ca . _Just . contractcode .= InitCode mempty mempty
-          liftSH (replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bc)) >> loadContract ca)
+          fromEVM (replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bc)) >> loadContract ca)
           return ()
        _                              -> return ()
 

@@ -7,16 +7,15 @@ module Echidna.Transaction where
 import Control.Lens
 import Control.Monad (join, liftM2)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
-import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.State.Strict (MonadState, State, runState, get, put)
+import Control.Monad.Reader.Class (MonadReader, asks)
+import Control.Monad.State.Strict (MonadState, runState, get, put, gets)
 import Data.List.NonEmpty qualified as NE
-import Data.Has (Has(..))
 import Data.HashMap.Strict qualified as M
 import Data.Map (Map, toList)
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Vector qualified as V
-import EVM hiding (value)
+import EVM hiding (Env, value)
 import EVM.ABI (abiValueType)
 import EVM.Types (Expr(ConcreteBuf, Lit), Addr, W256)
 
@@ -27,11 +26,10 @@ import Echidna.Types.Buffer (viewBuffer, forceLit)
 import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, BytecodeMemo, lookupBytecodeMetadata)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
+import Echidna.Types.Campaign (Campaign, _genDict)
 
-hasSelfdestructed :: (MonadState y m, Has VM y) => Addr -> m Bool
-hasSelfdestructed a = do
-  sd <- use $ hasLens . tx . substate . selfdestructs
-  return $ a `elem` sd
+hasSelfdestructed :: VM -> Addr -> Bool
+hasSelfdestructed vm addr = addr `elem` vm._tx._substate._selfdestructs
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating delays, since block number
 -- only goes up with timestamp
@@ -44,14 +42,14 @@ getSignatures hmm Nothing = return hmm
 getSignatures hmm (Just lmm) = usuallyVeryRarely hmm lmm -- once in a while, this will use the low-priority signature for the input generation
 
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
-genTxM :: (MonadRandom m, MonadReader x m, MonadState y m, Has TxConf x, Has World x, Has GenDict y)
+genTxM :: (MonadRandom m, MonadReader (World, TxConf) m, MonadState Campaign m)
   => BytecodeMemo
   -> Map Addr Contract
   -> m Tx
 genTxM memo m = do
-  TxConf _ g gp t b mv <- view hasLens
-  World ss hmm lmm ps _ <- view hasLens
-  genDict <- use hasLens
+  TxConf _ g gp t b mv <- asks snd
+  World ss hmm lmm ps _ <- asks fst
+  genDict <- gets (._genDict)
   mm <- getSignatures hmm lmm
   let ns = _dictValues genDict
   s' <- rElem ss
@@ -119,25 +117,23 @@ mutateTx t@(Tx (SolCall c) _ _ _ _ _ _) = do f <- oftenUsually skip mutate
                                                  skip    _ = pure t
 mutateTx t                              = pure t
 
--- | Lift an action in the context of a component of some 'MonadState' to an action in the
--- 'MonadState' itself.
-liftSH :: (MonadState a m, Has b a) => State b x -> m x
-liftSH = stateST . runState . zoom hasLens
-  -- This is the default state function written in terms of get and set:
-  where stateST f = do
-          s <- get
-          let ~(a, s') = f s
-          put s'
-          return a
+
+-- | Transform an EVM action from HEVM to our MonadState VM
+fromEVM :: MonadState VM m => EVM a -> m a
+fromEVM evmAction = do
+  vm <- get
+  let (r, vm') = runState evmAction vm
+  put vm'
+  pure r
 
 -- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
 -- 'Transaction's \"on-chain\".
-setupTx :: (MonadState x m, Has VM x) => Tx -> m ()
-setupTx (Tx NoCall _ r _ _ _ (t, b)) = liftSH . sequence_ $
+setupTx :: MonadState VM m => Tx -> m ()
+setupTx (Tx NoCall _ r _ _ _ (t, b)) = fromEVM . sequence_ $
   [ state . pc .= 0, state . stack .= mempty, state . memory .= mempty
   , block . timestamp %= (\x -> Lit (forceLit x + t)), block . number += b, loadContract r]
 
-setupTx (Tx c s r g gp v (t, b)) = liftSH . sequence_ $
+setupTx (Tx c s r g gp v (t, b)) = fromEVM . sequence_ $
   [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty, state . gas .= g
   , tx . gasprice .= gp, tx . origin .= s, state . caller .= Lit (fromIntegral s), state . callvalue .= Lit v
   , block . timestamp %= (\x -> Lit (forceLit x + t)), block . number += b, setup] where
