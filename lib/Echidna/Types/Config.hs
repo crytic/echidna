@@ -4,7 +4,6 @@ module Echidna.Types.Config where
 
 import Control.Lens
 import Data.Aeson.Key (Key)
-import Data.Has (Has(..))
 import Data.HashSet (HashSet)
 
 import EVM.Dapp (DappInfo)
@@ -13,8 +12,19 @@ import Echidna.Types.Campaign (CampaignConf)
 import Echidna.Types.Solidity (SolConf)
 import Echidna.Types.Tx  (TxConf)
 import Echidna.Types.Test  (TestConf)
-import Echidna.UI
-import Echidna.UI.Report
+import EVM.Types (Addr)
+
+data OperationMode = Interactive | NonInteractive OutputFormat deriving Show
+data OutputFormat = Text | JSON | None deriving Show
+data UIConf = UIConf { maxTime       :: Maybe Int
+                     , operationMode :: OperationMode
+                     }
+
+-- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.
+data Role = Sender | Receiver | Ambiguous
+
+-- | Rules for pretty-printing addresses based on their role in a transaction.
+type Names = Role -> Addr -> String
 
 -- | Our big glorious global config type, just a product of each local config.,
 data EConfig = EConfig {
@@ -25,65 +35,22 @@ data EConfig = EConfig {
   _xConf :: TxConf,
   _uConf :: UIConf
 }
-
 makeLenses ''EConfig
 
+instance Read OutputFormat where
+  readsPrec _ = \case 't':'e':'x':'t':r -> [(Text, r)]
+                      'j':'s':'o':'n':r -> [(JSON, r)]
+                      'n':'o':'n':'e':r -> [(None, r)]
+                      _ -> []
+
+
 data EConfigWithUsage = EConfigWithUsage {
-  _econfig   :: EConfig,
-  _badkeys   :: HashSet Key,
-  _unsetkeys :: HashSet Key
+  econfig   :: EConfig,
+  badkeys   :: HashSet Key,
+  unsetkeys :: HashSet Key
 }
-
-makeLenses ''EConfigWithUsage
-
-instance Has EConfig EConfigWithUsage where
-  hasLens = econfig
-
-instance Has CampaignConf EConfig where
-  hasLens = cConf
-
-instance Has Names EConfig where
-  hasLens = nConf
-
-instance Has SolConf EConfig where
-  hasLens = sConf
-
-instance Has TestConf EConfig where
-  hasLens = tConf
-
-instance Has TxConf EConfig where
-  hasLens = xConf
-
-instance Has UIConf EConfig where
-  hasLens = uConf
 
 data Env = Env {
-  _cfg :: EConfig,
-  _dapp :: DappInfo
+  cfg :: EConfig,
+  dapp :: DappInfo
 }
-
-makeLenses ''Env
-
-instance Has EConfig Env where
-  hasLens = cfg
-
-instance Has CampaignConf Env where
-  hasLens = cfg . cConf
-
-instance Has Names Env where
-  hasLens = cfg . nConf
-
-instance Has SolConf Env where
-  hasLens = cfg . sConf
-
-instance Has TestConf Env where
-  hasLens = cfg . tConf
-
-instance Has TxConf Env where
-  hasLens = cfg . xConf
-
-instance Has UIConf Env where
-  hasLens = cfg . uConf
-
-instance Has DappInfo Env where
-  hasLens = dapp

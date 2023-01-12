@@ -15,7 +15,7 @@ configTests :: TestTree
 configTests = testGroup "Configuration tests" $
   [ testCase file . void $ parseConfig file | file <- files ] ++
   [ testCase "parse \"coverage: true\"" $ do
-      config <- _econfig <$> parseConfig "coverage/test.yaml"
+      config <- econfig <$> parseConfig "coverage/test.yaml"
       assertCoverage config $ Just mempty
   , testCase "coverage enabled by default" $
       assertCoverage defaultConfig $ Just mempty

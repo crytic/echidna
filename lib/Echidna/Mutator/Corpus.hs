@@ -5,10 +5,10 @@ import Data.Set qualified as DS
 
 import Echidna.Mutator.Array
 import Echidna.Transaction (mutateTx, shrinkTx)
+import Echidna.Types (MutationConsts)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Corpus
 
-type MutationConsts a = (a, a, a, a)
 defaultMutationConsts :: Num a => MutationConsts a
 defaultMutationConsts = (1, 1, 1, 1)
 
@@ -40,7 +40,7 @@ mutator Deletion = deleteRandList
 selectAndMutate :: MonadRandom m
                 => ([Tx] -> m [Tx]) -> Corpus -> m [Tx]
 selectAndMutate f ctxs = do
-  rtxs <- weighted $ map (\(i, txs) -> (txs, fromInteger i)) $ DS.toDescList ctxs
+  rtxs <- weighted $ map (\(i, txs) -> (txs, fromIntegral i)) $ DS.toDescList ctxs
   k <- getRandomR (0, length rtxs - 1)
   f $ take k rtxs
 
@@ -51,7 +51,7 @@ selectAndCombine f ql ctxs gtxs = do
   rtxs2 <- selectFromCorpus
   txs <- f rtxs1 rtxs2
   return . take ql $ txs ++ gtxs
-    where selectFromCorpus = weighted $ map (\(i, txs) -> (txs, fromInteger i)) $ DS.toDescList ctxs
+    where selectFromCorpus = weighted $ map (\(i, txs) -> (txs, fromIntegral i)) $ DS.toDescList ctxs
 
 getCorpusMutation :: MonadRandom m
                   => CorpusMutation -> (Int -> Corpus -> [Tx] -> m [Tx])

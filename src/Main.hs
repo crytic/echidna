@@ -25,7 +25,7 @@ import EVM.Solidity (contractName)
 
 import Echidna
 import Echidna.Config
-import Echidna.Types.Config hiding (cfg)
+import Echidna.Types.Config
 import Echidna.Types.Solidity
 import Echidna.Types.Campaign
 import Echidna.Types.Test (TestMode, testReproducer)
@@ -117,20 +117,17 @@ main = do
   g <- getRandom
   EConfigWithUsage loadedCfg ks _ <- maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
   let cfg = overrideConfig loadedCfg opts
-  unless (cfg ^. sConf . quiet) $
+  unless cfg._sConf._quiet $
     mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString) ks
-  let cd = cfg ^. cConf . corpusDir
+  let cd = cfg._cConf._corpusDir
 
-  (sc, cs, cpg) <- flip runReaderT cfg $ do
-    (v, sc, cs, w, ts, d, txs) <- prepareContract cfg cliFilePath cliSelectedContract g
-    let solcByName = fromList [(c ^. contractName, c) | c <- cs]
-    -- TODO put in real path
-    let dappInfo' = dappInfo "/" solcByName sc
-    let env = Env { _cfg = cfg, _dapp = dappInfo' }
-    flip runReaderT env $ do
-      -- start ui and run tests
-      r <- ui v w ts d txs
-      return (sc, cs, r)
+  (v, sc, cs, w, ts, d, txs) <- prepareContract cfg cliFilePath cliSelectedContract g
+  let solcByName = fromList [(c ^. contractName, c) | c <- cs]
+  -- TODO put in real path
+  let dappInfo' = dappInfo "/" solcByName sc
+  let env = Env { cfg = cfg, dapp = dappInfo' }
+  -- start ui and run tests
+  cpg <- runReaderT (ui v w ts d txs) env
 
   -- save corpus
   saveTxs (fmap (++ "/reproducers/") cd) (filter (not . null) $ map (^. testReproducer) $ cpg ^. tests)
@@ -163,11 +160,12 @@ overrideConfig config Options{..} =
                              ]
   where
     overrideFormat cfg =
-      case maybe (cfg ^. uConf . operationMode) NonInteractive cliOutputFormat of
+      case maybe cfg._uConf.operationMode NonInteractive cliOutputFormat of
         Interactive -> cfg
-        NonInteractive Text -> cfg & uConf . operationMode .~ NonInteractive Text
-        nonInteractive -> cfg & uConf . operationMode .~ nonInteractive
-                              & sConf . quiet .~ True
+        NonInteractive Text -> cfg { _uConf = cfg._uConf { operationMode = NonInteractive Text }}
+        nonInteractive -> cfg { _uConf = cfg._uConf { operationMode = nonInteractive }
+                              , _sConf = cfg._sConf { _quiet = True }
+                              }
 
     overrideCorpusDir cfg =
       cfg & cConf . corpusDir %~ (cliCorpusDir <|>)
