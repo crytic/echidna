@@ -31,6 +31,7 @@ import Echidna.Exec
 import Echidna.Transaction
 import Echidna.Types.Signature (SolSignature)
 import Echidna.ABI (encodeSig)
+import Echidna.Types (fromEVM)
 import Echidna.Types.Tx (TxCall(..), Tx(..), makeSingleTx, createTxWithValue, unlimitedGasPerBlock)
 
 -- | During initialization we can either call a function or create an account or contract

@@ -18,12 +18,12 @@ import EVM.Types (Expr(ConcreteBuf, Lit))
 
 import Echidna.Events (emptyEvents)
 import Echidna.Transaction
+import Echidna.Types (ExecException(..), fromEVM)
 import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Campaign
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Signature (BytecodeMemo, lookupBytecodeMetadata)
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
-import Echidna.Types (ExecException(..))
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE

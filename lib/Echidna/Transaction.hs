@@ -8,7 +8,7 @@ import Control.Lens
 import Control.Monad (join, liftM2)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import Control.Monad.State.Strict (MonadState, runState, get, put, gets)
+import Control.Monad.State.Strict (MonadState, gets)
 import Data.List.NonEmpty qualified as NE
 import Data.HashMap.Strict qualified as M
 import Data.Map (Map, toList)
@@ -22,6 +22,7 @@ import EVM.Types (Expr(ConcreteBuf, Lit), Addr, W256)
 import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
+import Echidna.Types (fromEVM)
 import Echidna.Types.Buffer (viewBuffer, forceLit)
 import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, BytecodeMemo, lookupBytecodeMetadata)
 import Echidna.Types.Tx
@@ -116,15 +117,6 @@ mutateTx t@(Tx (SolCall c) _ _ _ _ _ _) = do f <- oftenUsually skip mutate
                                            where mutate  z = mutateAbiCall z >>= \c' -> pure $ t { _call = SolCall c' }
                                                  skip    _ = pure t
 mutateTx t                              = pure t
-
-
--- | Transform an EVM action from HEVM to our MonadState VM
-fromEVM :: MonadState VM m => EVM a -> m a
-fromEVM evmAction = do
-  vm <- get
-  let (r, vm') = runState evmAction vm
-  put vm'
-  pure r
 
 -- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
 -- 'Transaction's \"on-chain\".
