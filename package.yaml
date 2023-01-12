@@ -51,6 +51,7 @@ language: GHC2021
 
 default-extensions:
   - LambdaCase
+  - OverloadedRecordDot
   - OverloadedStrings
 
 library:

@@ -7,10 +7,10 @@ import Common (testConfig)
 import Control.Lens (Prism', preview)
 import Control.Monad (void)
 import Control.Monad.Catch (catch)
-import Control.Monad.Reader (runReaderT)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Maybe (isJust)
 import Data.Text (Text)
+import Echidna.Types.Config
 import Echidna.Types.Solidity (SolException, _ContractNotFound, _NoBytecode, _NoFuncs, _NoTests, _OnlyTests, _TestArgsFound, _ConstructorArgs, _DeploymentFailed)
 import Echidna.Solidity (loadWithCryticCompile)
 
@@ -38,7 +38,7 @@ compilationTests = testGroup "Compilation and loading tests"
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
-  tryLoad = runReaderT (void (loadWithCryticCompile (fp :| []) c)) testConfig
+  tryLoad = void $ loadWithCryticCompile testConfig._sConf (fp :| []) c
 
 pmatch :: Prism' s a -> s -> Bool
 pmatch p = isJust . preview p

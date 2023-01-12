@@ -1,15 +1,12 @@
 module Echidna where
 
-import Control.Lens (view, (^.), to)
-import Data.Has (Has(..))
-import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
-import Control.Monad.Reader (MonadReader, MonadIO, liftIO)
+import Control.Monad.Catch (MonadThrow(..))
 import Data.HashMap.Strict (toList)
 import Data.Map.Strict (keys)
 import Data.List (nub, find)
 import Data.List.NonEmpty qualified as NE
 
-import EVM (env, contracts, VM)
+import EVM
 import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Solidity (SourceCache, SolcContract)
 
@@ -39,42 +36,42 @@ import Echidna.RPC (loadEtheno, extractFromEtheno)
 -- * A list of Echidna tests to check
 -- * A prepopulated dictionary (if any)
 -- * A list of transaction sequences to initialize the corpus
-prepareContract :: (MonadCatch m, MonadReader x m, MonadIO m, MonadFail m, Has SolConf x)
-                => EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
-                -> m (VM, SourceCache, [SolcContract], World, [EchidnaTest], Maybe GenDict, [[Tx]])
+prepareContract :: EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
+                -> IO (VM, SourceCache, [SolcContract], World, [EchidnaTest], Maybe GenDict, [[Tx]])
 prepareContract cfg fs c g = do
-  ctxs1 <- liftIO $ loadTxs (fmap (++ "/reproducers/") cd)
-  ctxs2 <- liftIO $ loadTxs (fmap (++ "/coverage/") cd)
+  ctxs1 <- loadTxs (fmap (++ "/reproducers/") cd)
+  ctxs2 <- loadTxs (fmap (++ "/coverage/") cd)
   let ctxs = ctxs1 ++ ctxs2
 
+  let solConf = cfg._sConf
+
   -- compile and load contracts
-  (cs, scs) <- Echidna.Solidity.contracts fs
-  p <- loadSpecified c cs
+  (cs, scs) <- Echidna.Solidity.contracts solConf fs
+  p <- loadSpecified solConf c cs
 
   -- run processors
-  ca <- view (hasLens . cryticArgs)
-  si <- runSlither (NE.head fs) ca
+  si <- runSlither (NE.head fs) solConf._cryticArgs
   case find (< minSupportedSolcVersion) $ solcVersions si of
     Just outdatedVersion -> throwM $ OutdatedSolcVersion outdatedVersion
     Nothing -> return ()
 
   -- load tests
-  (v, w, ts) <- prepareForTest p c si
+  let (v, w, ts) = prepareForTest solConf p c si
 
   -- get signatures
-  let sigs = nub $ concatMap (NE.toList . snd) (toList $ w ^. highSignatureMap)
+  let sigs = nub $ concatMap (NE.toList . snd) (toList $ w._highSignatureMap)
 
-  ads <- addresses
-  let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
+  let ads = addresses solConf
+  let ads' = AbiAddress <$> keys v._env._contracts
   let constants' = enhanceConstants si ++ timeConstants ++ extremeConstants ++ NE.toList ads ++ ads'
 
   -- load transactions from init sequence (if any)
-  es' <- liftIO $ maybe (return []) loadEtheno it
+  es' <- maybe (return []) loadEtheno it
   let txs = ctxs ++ maybe [] (const [extractFromEtheno es' sigs]) it
 
   -- start ui and run tests
   let sc = selectSourceCache c scs
-  return (v, sc, cs, w, ts, Just $ mkGenDict df constants' [] g (returnTypes cs), txs)
-  where cd = cfg ^. cConf . corpusDir
-        df = cfg ^. cConf . dictFreq
-        it = cfg ^. sConf . initialize
+  pure (v, sc, cs, w, ts, Just $ mkGenDict df constants' [] g (returnTypes cs), txs)
+  where cd = cfg._cConf._corpusDir
+        df = cfg._cConf._dictFreq
+        it = cfg._sConf._initialize

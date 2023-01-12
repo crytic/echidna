@@ -44,7 +44,7 @@ import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Campaign (campaign)
 import Echidna.Solidity (loadSolTests)
 import Echidna.Test (checkETest)
-import Echidna.Types.Config (Env(..), EConfig, _econfig, sConf, cConf)
+import Echidna.Types.Config (Env(..), EConfig(..), econfig, sConf, cConf)
 import Echidna.Types.Solidity (quiet)
 import Echidna.Types.Campaign (Campaign, testLimit, shrinkLimit, tests, gasInfo, corpus, coverage)
 import Echidna.Types.Signature (ContractName)
@@ -80,16 +80,14 @@ withSolcVersion (Just f) t = do
     Left e   -> error $ show e
 
 runContract :: FilePath -> Maybe ContractName -> EConfig -> IO Campaign
-runContract f mc cfg =
-  flip runReaderT cfg $ do
-    g <- getRandom
-    (v, sc, cs, w, ts, d, txs) <- prepareContract cfg (f :| []) mc g
-    let solcByName = fromList [(c ^. contractName, c) | c <- cs]
-    let dappInfo' = dappInfo "/" solcByName sc
-    let env = Env { _cfg = cfg, _dapp = dappInfo' }
-    flip runReaderT env $
-      -- start ui and run tests
-      campaign (pure ()) v w ts d txs
+runContract f mc cfg = do
+  g <- getRandom
+  (v, sc, cs, w, ts, d, txs) <- prepareContract cfg (f :| []) mc g
+  let solcByName = fromList [(c ^. contractName, c) | c <- cs]
+  let dappInfo' = dappInfo "/" solcByName sc
+  let env = Env { cfg = cfg, dapp = dappInfo' }
+  -- start ui and run tests
+  runReaderT (campaign (pure ()) v w ts d txs) env
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg = testContract' fp Nothing Nothing cfg True
@@ -99,7 +97,7 @@ testContractV fp v cfg = testContract' fp Nothing v cfg True
 
 testContract' :: FilePath -> Maybe ContractName -> Maybe SolcVersionComp -> Maybe FilePath -> Bool -> [(String, Campaign -> Bool)] -> TestTree
 testContract' fp n v cfg s as = testCase fp $ withSolcVersion v $ do
-  c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
+  c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap econfig . parseConfig) cfg
   let c' = c & sConf . quiet .~ True
              & (if s then cConf . testLimit .~ 10000 else id)
              & (if s then cConf . shrinkLimit .~ 4000 else id)
@@ -108,11 +106,10 @@ testContract' fp n v cfg s as = testCase fp $ withSolcVersion v $ do
 
 checkConstructorConditions :: FilePath -> String -> TestTree
 checkConstructorConditions fp as = testCase fp $ do
-  r <- flip runReaderT testConfig $ do
-    (v, _, t) <- loadSolTests (fp :| []) Nothing
-    let env = Env { _cfg = testConfig, _dapp = emptyDapp }
-    flip runReaderT env $
-      mapM (\u -> evalStateT (checkETest u) v) t
+  (v, _, t) <- loadSolTests testConfig._sConf (fp :| []) Nothing
+  let env = Env { cfg = testConfig, dapp = emptyDapp }
+  r <- flip runReaderT env $
+    mapM (\u -> evalStateT (checkETest u) v) t
   mapM_ (\(x,_,_) -> assertBool as (forceBool x)) r
   where forceBool (BoolValue b) = b
         forceBool _ = error "BoolValue expected"
