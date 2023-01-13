@@ -64,7 +64,7 @@ vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> Unknow
 execTxWith :: MonadState s m => Lens' s VM -> (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Int)
 execTxWith l onErr executeTx tx' = do
   vm <- use l
-  if hasSelfdestructed vm (tx'^. dst) then
+  if hasSelfdestructed vm tx'.dst then
     pure (VMFailure (Revert (ConcreteBuf "")), 0)
   else do
     l . traces .= emptyEvents
@@ -112,7 +112,7 @@ handleErrorsAndConstruction :: MonadState s m
                             -> VM
                             -> Tx
                             -> m ()
-handleErrorsAndConstruction l onErr vmResult' vmBeforeTx tx' = case (vmResult', tx' ^. call) of
+handleErrorsAndConstruction l onErr vmResult' vmBeforeTx tx' = case (vmResult', tx'.call) of
   (Reversion, _) -> do
     tracesBeforeVMReset <- use $ l . traces
     codeContractBeforeVMReset <- use $ l . state . codeContract
@@ -132,9 +132,9 @@ handleErrorsAndConstruction l onErr vmResult' vmBeforeTx tx' = case (vmResult', 
   (VMSuccess (ConcreteBuf bytecode'), SolCreate _) ->
     -- Handle contract creation.
     l %= execState (do
-      env . contracts . at (tx' ^. dst) . _Just . contractcode .= InitCode mempty mempty
+      env . contracts . at tx'.dst . _Just . contractcode .= InitCode mempty mempty
       replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bytecode'))
-      loadContract (tx' ^. dst))
+      loadContract tx'.dst)
   _ -> pure ()
 
 -- | Execute a transaction "as normal".
@@ -166,11 +166,11 @@ execTxWithCov memo = do
                        (currentMeta vm)
 
     -- | Get the VM's current execution location
-    currentCovLoc vm = (vm ^. state . pc, fromMaybe 0 $ vmOpIx vm, length $ vm ^. frames, Stop)
+    currentCovLoc vm = (vm._state._pc, fromMaybe 0 $ vmOpIx vm, length vm._frames, Stop)
 
     -- | Get the current contract's bytecode metadata
     currentMeta vm = fromMaybe (error "no contract information on coverage") $ do
-      buffer <- vm ^? env . contracts . at (vm ^. state . contract) . _Just . bytecode
+      buffer <- vm ^? env . contracts . at vm._state._contract . _Just . bytecode
       bc <- viewBuffer buffer
       pure $ lookupBytecodeMetadata memo bc
 

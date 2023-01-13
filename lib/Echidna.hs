@@ -1,10 +1,12 @@
 module Echidna where
 
 import Control.Monad.Catch (MonadThrow(..))
-import Data.HashMap.Strict (toList)
-import Data.Map.Strict (keys)
-import Data.List (nub, find)
+import Data.HashMap.Strict qualified as HM
+import Data.List (find)
 import Data.List.NonEmpty qualified as NE
+import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
+import System.FilePath ((</>))
 
 import EVM
 import EVM.ABI (AbiValue(AbiAddress))
@@ -34,14 +36,17 @@ import Echidna.RPC (loadEtheno, extractFromEtheno)
 -- * A VM with the contract deployed and ready for testing
 -- * A World with all the required data for generating random transctions
 -- * A list of Echidna tests to check
--- * A prepopulated dictionary (if any)
+-- * A prepopulated dictionary
 -- * A list of transaction sequences to initialize the corpus
 prepareContract :: EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
-                -> IO (VM, SourceCache, [SolcContract], World, [EchidnaTest], Maybe GenDict, [[Tx]])
+                -> IO (VM, SourceCache, [SolcContract], World, [EchidnaTest], GenDict, [[Tx]])
 prepareContract cfg fs c g = do
-  ctxs1 <- loadTxs (fmap (++ "/reproducers/") cd)
-  ctxs2 <- loadTxs (fmap (++ "/coverage/") cd)
-  let ctxs = ctxs1 ++ ctxs2
+  ctxs <- case cfg._cConf._corpusDir of
+            Nothing -> pure []
+            Just dir -> do
+              ctxs1 <- loadTxs (dir </> "reproducers")
+              ctxs2 <- loadTxs (dir </> "coverage")
+              pure (ctxs1 ++ ctxs2)
 
   let solConf = cfg._sConf
 
@@ -51,27 +56,36 @@ prepareContract cfg fs c g = do
 
   -- run processors
   si <- runSlither (NE.head fs) solConf._cryticArgs
-  case find (< minSupportedSolcVersion) $ solcVersions si of
+  case find (< minSupportedSolcVersion) si.solcVersions  of
     Just outdatedVersion -> throwM $ OutdatedSolcVersion outdatedVersion
     Nothing -> return ()
 
   -- load tests
-  let (v, w, ts) = prepareForTest solConf p c si
+  let (vm, world, ts) = prepareForTest solConf p c si
 
   -- get signatures
-  let sigs = nub $ concatMap (NE.toList . snd) (toList $ w._highSignatureMap)
+  let sigs = Set.fromList $ concatMap NE.toList (HM.elems world.highSignatureMap)
 
   let ads = addresses solConf
-  let ads' = AbiAddress <$> keys v._env._contracts
-  let constants' = enhanceConstants si ++ timeConstants ++ extremeConstants ++ NE.toList ads ++ ads'
+  let ads' = AbiAddress <$> Map.keys vm._env._contracts
+  let constants' = Set.fromList $ enhanceConstants si ++
+                                  timeConstants ++
+                                  extremeConstants ++
+                                  Set.toList ads ++
+                                  ads'
 
   -- load transactions from init sequence (if any)
-  es' <- maybe (return []) loadEtheno it
-  let txs = ctxs ++ maybe [] (const [extractFromEtheno es' sigs]) it
+  ethenoCorpus <-
+    case cfg._sConf._initialize of
+      Nothing -> pure []
+      Just fp -> do
+        es' <- loadEtheno fp
+        pure [extractFromEtheno es' sigs]
 
-  -- start ui and run tests
+  let corp = ctxs ++ ethenoCorpus
+
   let sc = selectSourceCache c scs
-  pure (v, sc, cs, w, ts, Just $ mkGenDict df constants' [] g (returnTypes cs), txs)
-  where cd = cfg._cConf._corpusDir
-        df = cfg._cConf._dictFreq
-        it = cfg._sConf._initialize
+
+  let dict = mkGenDict cfg._cConf._dictFreq constants' Set.empty g (returnTypes cs)
+
+  pure (vm, sc, cs, world, ts, dict, corp)

@@ -25,7 +25,7 @@ import Prelude hiding (lookup)
 import Test.Tasty (TestTree)
 import Test.Tasty.HUnit (testCase, assertBool)
 
-import Control.Lens (view, set, (.~), (^.))
+import Control.Lens (view, set, (.~))
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandom)
 import Control.Monad.State.Strict (evalStateT)
@@ -52,7 +52,7 @@ import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
 
 import EVM.Dapp (dappInfo, emptyDapp)
-import EVM.Solidity (contractName)
+import EVM.Solidity (SolcContract(..))
 
 testConfig :: EConfig
 testConfig = defaultConfig & sConf . quiet .~ True
@@ -83,11 +83,11 @@ runContract :: FilePath -> Maybe ContractName -> EConfig -> IO Campaign
 runContract f mc cfg = do
   g <- getRandom
   (v, sc, cs, w, ts, d, txs) <- prepareContract cfg (f :| []) mc g
-  let solcByName = fromList [(c ^. contractName, c) | c <- cs]
+  let solcByName = fromList [(c._contractName, c) | c <- cs]
   let dappInfo' = dappInfo "/" solcByName sc
   let env = Env { cfg = cfg, dapp = dappInfo' }
   -- start ui and run tests
-  runReaderT (campaign (pure ()) v w ts d txs) env
+  runReaderT (campaign (pure ()) v w ts (Just d) txs) env
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg = testContract' fp Nothing Nothing cfg True
@@ -97,7 +97,7 @@ testContractV fp v cfg = testContract' fp Nothing v cfg True
 
 testContract' :: FilePath -> Maybe ContractName -> Maybe SolcVersionComp -> Maybe FilePath -> Bool -> [(String, Campaign -> Bool)] -> TestTree
 testContract' fp n v cfg s as = testCase fp $ withSolcVersion v $ do
-  c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap econfig . parseConfig) cfg
+  c <- set (sConf . quiet) True <$> maybe (pure testConfig) ((fmap (.econfig)) . parseConfig) cfg
   let c' = c & sConf . quiet .~ True
              & (if s then cConf . testLimit .~ 10000 else id)
              & (if s then cConf . shrinkLimit .~ 4000 else id)
@@ -122,7 +122,7 @@ getResult n c =
     [x] -> Just x
     _   -> error "found more than one tests"
 
-  where findTest test = case view testType test of
+  where findTest test = case test.testType  of
                           PropertyTest t _        -> t == n
                           AssertionTest _ (t,_) _ -> t == n
                           CallTest t _            -> t == n
@@ -131,7 +131,7 @@ getResult n c =
 
 optnFor :: Text -> Campaign -> Maybe TestValue
 optnFor n c = case getResult n c of
-  Just t -> Just $ t ^. testValue
+  Just t -> Just t.testValue
   _      -> Nothing
 
 optimized :: Text -> Int256 -> Campaign -> Bool
@@ -142,7 +142,7 @@ optimized n v c = case optnFor n c of
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor n c = case getResult n c of
-  Just t -> if null $ t ^. testReproducer then Nothing else Just $ t ^. testReproducer
+  Just t -> if null t.testReproducer then Nothing else Just t.testReproducer
   _      -> Nothing
 
 solved :: Text -> Campaign -> Bool
@@ -159,16 +159,16 @@ solvedLen :: Int -> Text -> Campaign -> Bool
 solvedLen i t = (== Just i) . fmap length . solnFor t
 
 solvedUsing :: Text -> Text -> Campaign -> Bool
-solvedUsing f t = maybe False (any $ matchCall . view call) . solnFor t
+solvedUsing f t = maybe False (any $ matchCall . (.call)) . solnFor t
                  where matchCall (SolCall (f',_)) = f' == f
                        matchCall _                = False
 
 -- NOTE: this just verifies a call was found in the solution. Doesn't care about ordering/seq length
 solvedWith :: TxCall -> Text -> Campaign -> Bool
-solvedWith tx t = maybe False (any $ (== tx) . view call) . solnFor t
+solvedWith tx t = maybe False (any $ (== tx) . (.call)) . solnFor t
 
 solvedWithout :: TxCall -> Text -> Campaign -> Bool
-solvedWithout tx t = maybe False (all $ (/= tx) . view call) . solnFor t
+solvedWithout tx t = maybe False (all $ (/= tx) . (.call)) . solnFor t
 
 getGas :: Text -> Campaign -> Maybe (Int, [Tx])
 getGas t = lookup t . view gasInfo

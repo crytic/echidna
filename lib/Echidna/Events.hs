@@ -35,14 +35,14 @@ maybeContractNameFromCodeHash codeHash = fmap contractToName maybeContract
 
 extractEvents :: Bool -> DappInfo -> VM -> Events
 extractEvents decodeErrors dappInfo' vm =
-  let eventMap = dappInfo' ^. dappEventMap
+  let eventMap = dappInfo'._dappEventMap
       forest = traceForest vm
       showTrace trace =
         let ?context = DappContext { _contextInfo = dappInfo', _contextEnv = vm ^?! EVM.env . EVM.contracts } in
-        let codehash' = fromJust $ maybeLitWord (trace ^. traceContract . codehash)
+        let codehash' = fromJust $ maybeLitWord trace._traceContract._codehash
             maybeContractName = maybeContractNameFromCodeHash codehash'
         in
-        case trace ^. traceData of
+        case trace._traceData of
           EventTrace addr bytes topics ->
             case maybeLitWord =<< listToMaybe topics of
               Nothing   -> []
@@ -68,7 +68,7 @@ extractEvents decodeErrors dappInfo' vm =
 
 decodeRevert :: Bool -> VM -> Events
 decodeRevert decodeErrors vm =
-  case vm ^. result of
+  case vm._result of
     Just (VMFailure (Revert (ConcreteBuf bs))) -> decodeRevertMsg decodeErrors bs
     _                            -> []
 

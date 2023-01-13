@@ -33,6 +33,7 @@ import Echidna.Types.Signature (SolSignature)
 import Echidna.ABI (encodeSig)
 import Echidna.Types (fromEVM)
 import Echidna.Types.Tx (TxCall(..), Tx(..), makeSingleTx, createTxWithValue, unlimitedGasPerBlock)
+import Data.Set (Set)
 
 -- | During initialization we can either call a function or create an account or contract
 data Etheno = AccountCreated Addr                                       -- ^ Registers an address with the echidna runtime
@@ -81,8 +82,7 @@ instance Show EthenoException where
 
 instance Exception EthenoException
 
-loadEtheno :: (MonadThrow m, MonadIO m, M.MonadFail m)
-                => FilePath -> m [Etheno]
+loadEtheno :: FilePath -> IO [Etheno]
 loadEtheno fp = do
   bs <- liftIO $ eitherDecodeFileStrict fp
 
@@ -90,12 +90,12 @@ loadEtheno fp = do
        (Left e) -> throwM $ EthenoException e
        (Right (ethenoInit :: [Etheno])) -> return ethenoInit
 
-extractFromEtheno :: [Etheno] -> [SolSignature] -> [Tx]
+extractFromEtheno :: [Etheno] -> Set SolSignature -> [Tx]
 extractFromEtheno ess ss = case ess of
-                           (BlockMined ni ti :es)  -> Tx NoCall 0 0 0 0 0 (fromInteger ti, fromInteger ni) : extractFromEtheno es ss
-                           (c@FunctionCall{} :es)  -> concatMap (`matchSignatureAndCreateTx` c) ss ++ extractFromEtheno es ss
-                           (_:es)                  -> extractFromEtheno es ss
-                           _                       -> []
+  (BlockMined ni ti :es)  -> Tx NoCall 0 0 0 0 0 (fromInteger ti, fromInteger ni) : extractFromEtheno es ss
+  (c@FunctionCall{} :es)  -> concatMap (`matchSignatureAndCreateTx` c) ss ++ extractFromEtheno es ss
+  (_:es)                  -> extractFromEtheno es ss
+  _                       -> []
 
 matchSignatureAndCreateTx :: SolSignature -> Etheno -> [Tx]
 matchSignatureAndCreateTx ("", []) _ = [] -- Not sure if we should match this.

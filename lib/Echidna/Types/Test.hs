@@ -1,8 +1,5 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Echidna.Types.Test where
 
-import Control.Lens
 import Data.Aeson (ToJSON(..), object)
 import Data.DoubleWord (Int256)
 import Data.Maybe (maybeToList)
@@ -73,33 +70,31 @@ instance Eq TestState where
 
 -- | An Echidna test is represented with the following data record
 data EchidnaTest = EchidnaTest {
-                                 _testState      :: TestState
-                               , _testType       :: TestType
-                               , _testValue      :: TestValue
-                               , _testReproducer :: [Tx]
-                               , _testResult     :: TxResult
-                               , _testEvents     :: Events
+                                 testState      :: TestState
+                               , testType       :: TestType
+                               , testValue      :: TestValue
+                               , testReproducer :: [Tx]
+                               , testResult     :: TxResult
+                               , testEvents     :: Events
                                } deriving Eq
-
-makeLenses ''EchidnaTest
 
 isOptimizationTest :: TestType -> Bool
 isOptimizationTest (OptimizationTest _ _) = True
 isOptimizationTest _                      = False
 
 isOpen :: EchidnaTest -> Bool
-isOpen t = case t ^. testState of
+isOpen t = case t.testState of
             Open _ -> True
             _      -> False
 
 didFailed :: EchidnaTest -> Bool
-didFailed t = case t ^. testState of
+didFailed t = case t.testState of
               Large _ -> True
               Solved  -> True
               _       -> False
 
 isPassed :: EchidnaTest -> Bool
-isPassed t = case t ^. testState of
+isPassed t = case t.testState of
               Passed -> True
               _      -> False
 

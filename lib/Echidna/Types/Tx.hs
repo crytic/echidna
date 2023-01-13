@@ -7,7 +7,6 @@ module Echidna.Types.Tx where
 import Prelude hiding (Word)
 
 import Control.Applicative ((<|>))
-import Control.Lens.TH (makePrisms, makeLenses)
 import Data.Aeson (FromJSON, ToJSON, parseJSON, toJSON, object, withObject, (.=), (.:))
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.Aeson.Types (Parser)
@@ -30,7 +29,6 @@ data TxCall = SolCreate   ByteString
             | SolCalldata ByteString
             | NoCall
   deriving (Show, Ord, Eq)
-makePrisms ''TxCall
 $(deriveJSON defaultOptions ''TxCall)
 
 maxGasPerBlock :: Integer
@@ -53,25 +51,24 @@ initialBlockNumber = 4370000  -- Initial byzantium block
 
 -- | A transaction is either a @CREATE@ or a regular call with an origin, destination, and value.
 -- Note: I currently don't model nonces or signatures here.
-data Tx = Tx { _call  :: TxCall       -- | Call
-             , _src   :: Addr         -- | Origin
-             , _dst   :: Addr         -- | Destination
-             , _gas'  :: Word64       -- | Gas
-             , _gasprice' :: W256     -- | Gas price
-             , _value :: W256         -- | Value
-             , _delay :: (W256, W256) -- | (Time, # of blocks since last call)
+data Tx = Tx { call  :: TxCall       -- | Call
+             , src   :: Addr         -- | Origin
+             , dst   :: Addr         -- | Destination
+             , gas   :: Word64       -- | Gas
+             , gasprice :: W256     -- | Gas price
+             , value :: W256         -- | Value
+             , delay :: (W256, W256) -- | (Time, # of blocks since last call)
              } deriving (Eq, Ord, Show)
-makeLenses ''Tx
 
 instance ToJSON Tx where
   toJSON Tx{..} = object
-    [ "call" .= _call
-    , "src" .= _src
-    , "dst" .= _dst
-    , "gas" .= _gas'
-    , "gasprice" .= _gasprice'
-    , "value" .= _value
-    , "delay" .= _delay
+    [ "call" .= call
+    , "src" .= src
+    , "dst" .= dst
+    , "gas" .= gas
+    , "gasprice" .= gasprice
+    , "value" .= value
+    , "delay" .= delay
     ]
 
 instance FromJSON Tx where
@@ -164,20 +161,20 @@ data TxResult = ReturnTrue
   deriving (Eq, Ord, Show)
 $(deriveJSON defaultOptions ''TxResult)
 
-data TxConf = TxConf { _propGas       :: Word64
+data TxConf = TxConf { propGas       :: Word64
                      -- ^ Gas to use evaluating echidna properties
-                     , _txGas         :: Word64
+                     , txGas         :: Word64
                      -- ^ Gas to use in generated transactions
-                     , _maxGasprice   :: W256
+                     , maxGasprice   :: W256
                      -- ^ Maximum gasprice to be checked for a transaction
-                     , _maxTimeDelay  :: W256
+                     , maxTimeDelay  :: W256
                      -- ^ Maximum time delay between transactions (seconds)
-                     , _maxBlockDelay :: W256
+                     , maxBlockDelay :: W256
                      -- ^ Maximum block delay between transactions
-                     , _maxValue      :: W256
+                     , maxValue      :: W256
                      -- ^ Maximum value to use in transactions
                      }
-makeLenses 'TxConf
+
 -- | Transform a VMResult into a more hash friendly sum type
 getResult :: VMResult -> TxResult
 getResult (VMSuccess b) | viewBuffer b == Just (encodeAbiValue (AbiBool True))  = ReturnTrue

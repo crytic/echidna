@@ -18,7 +18,7 @@ import Echidna.Campaign (isDone)
 import Echidna.Events (Events)
 import Echidna.Types.Campaign
 import Echidna.Types.Test
-import Echidna.Types.Tx (Tx, TxResult(..), _src)
+import Echidna.Types.Tx (Tx(..), TxResult(..))
 import Echidna.UI.Report
 import Echidna.Types.Config
 
@@ -62,12 +62,12 @@ campaignStatus (c@Campaign{_tests, _coverage, _ncallseqs}, uiState) = do
 summaryWidget :: Campaign -> Widget ()
 summaryWidget c =
   padLeft (Pad 1) (
-      str ("Tests found: " ++ show (length $ c._tests)) <=>
-      str ("Seed: " ++ show (c._genDict._defSeed))
+      str ("Tests found: " ++ show (length c._tests)) <=>
+      str ("Seed: " ++ show c._genDict._defSeed)
     <=>
-    maybe emptyWidget str (ppCoverage $ c._coverage)
+    maybe emptyWidget str (ppCoverage c._coverage)
     <=>
-    maybe emptyWidget str (ppCorpus $ c._corpus)
+    maybe emptyWidget str (ppCorpus c._corpus)
   )
 
 failedFirst :: EchidnaTest -> EchidnaTest -> Ordering
@@ -79,7 +79,7 @@ testsWidget tests' = foldl (<=>) emptyWidget . intersperse hBorder <$> traverse 
 
 testWidget :: MonadReader EConfig m => EchidnaTest -> m (Widget ())
 testWidget etest =
- case etest._testType of
+ case etest.testType of
       Exploration           -> widget tsWidget "exploration" ""
       PropertyTest n _      -> widget tsWidget n ""
       OptimizationTest n _  -> widget optWidget n "optimizing "
@@ -88,7 +88,7 @@ testWidget etest =
 
   where
   widget f n infront = do
-    (status, details) <- f (etest._testState) etest
+    (status, details) <- f (etest.testState) etest
     pure $ padLeft (Pad 1) $
       str infront <+> name n <+> str ": " <+> status
       <=> padTop (Pad 1) details
@@ -96,7 +96,7 @@ testWidget etest =
 
 tsWidget :: MonadReader EConfig m => TestState -> EchidnaTest -> m (Widget (), Widget ())
 tsWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
-tsWidget Solved     t = failWidget Nothing t._testReproducer t._testEvents t._testValue t._testResult
+tsWidget Solved     t = failWidget Nothing t.testReproducer t.testEvents t.testValue t.testResult
 tsWidget Passed     _ = pure (withAttr (attrName "success") $ str "PASSED!", emptyWidget)
 tsWidget (Open i)   t = do
   n <- asks (._cConf._testLimit)
@@ -106,7 +106,7 @@ tsWidget (Open i)   t = do
     pure (withAttr (attrName "working") $ str $ "fuzzing " ++ progress i n, emptyWidget)
 tsWidget (Large n)  t = do
   m <- asks (._cConf._shrinkLimit)
-  failWidget (if n < m then Just (n,m) else Nothing) t._testReproducer t._testEvents t._testValue t._testResult
+  failWidget (if n < m then Just (n,m) else Nothing) t.testReproducer t.testEvents t.testValue t.testResult
 
 titleWidget :: Widget n
 titleWidget = str "Call sequence" <+> str ":"
@@ -131,16 +131,16 @@ failWidget b xs es _ r = do
 optWidget :: MonadReader EConfig m => TestState -> EchidnaTest -> m (Widget (), Widget ())
 optWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 optWidget Solved     _ = error "optimization tests cannot be solved"
-optWidget Passed     t = pure (str $ "max value found: " ++ show t._testValue, emptyWidget)
+optWidget Passed     t = pure (str $ "max value found: " ++ show t.testValue, emptyWidget)
 optWidget (Open i)   t = do
   n <- asks (._cConf._testLimit)
   if i >= n then
     optWidget Passed t
   else
-    pure (withAttr (attrName "working") $ str $ "optimizing " ++ progress i n ++ ", current max value: " ++ show t._testValue, emptyWidget)
+    pure (withAttr (attrName "working") $ str $ "optimizing " ++ progress i n ++ ", current max value: " ++ show t.testValue, emptyWidget)
 optWidget (Large n)  t = do
   m <- asks (._cConf._shrinkLimit)
-  maxWidget (if n < m then Just (n,m) else Nothing) t._testReproducer t._testEvents t._testValue
+  maxWidget (if n < m then Just (n,m) else Nothing) t.testReproducer t.testEvents t.testValue
 
 maxWidget :: MonadReader EConfig m => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> m (Widget (), Widget ())
 maxWidget _ [] _  _ = pure (failureBadge, str "*no transactions made*")
@@ -155,7 +155,7 @@ maxWidget b xs es v = do
 
 seqWidget :: MonadReader EConfig m => [Tx] -> m (Widget ())
 seqWidget xs = do
-    ppTxs <- mapM (ppTx $ length (nub $ (._src) <$> xs) /= 1) xs
+    ppTxs <- mapM (ppTx $ length (nub $ (.src) <$> xs) /= 1) xs
     let ordinals = str . printf "%d." <$> [1 :: Int ..]
     pure $
       foldl (<=>) emptyWidget $

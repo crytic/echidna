@@ -52,7 +52,7 @@ filterResults Nothing rs = hashSig <$> (concat . M.elems) rs
 
 enhanceConstants :: SlitherInfo -> [AbiValue]
 enhanceConstants si =
-  nubOrd . concatMap enh . concat . concat . M.elems $ M.elems <$> constantValues si
+  nubOrd . concatMap enh . concat . concat . M.elems $ M.elems <$> si.constantValues
   where
     enh (AbiUInt _ n) = makeNumAbiValues (fromIntegral n)
     enh (AbiInt _ n) = makeNumAbiValues (fromIntegral n)
