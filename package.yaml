@@ -15,6 +15,7 @@ dependencies:
   - brick
   - bytestring
   - containers
+  - data-bword
   - data-dword
   - data-has
   - extra

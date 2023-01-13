@@ -9,6 +9,8 @@ import Control.Monad (join, liftM2, liftM3, foldM, replicateM)
 import Control.Monad.Random.Strict (MonadRandom, getRandom, getRandoms, getRandomR, uniformMay)
 import Control.Monad.Random.Strict qualified as R
 import Data.Binary.Put (runPut, putWord32be)
+import Data.BinaryWord (unsignedWord)
+import Data.Bits (bit)
 import Data.Bool (bool)
 import Data.ByteString.Lazy as BSLazy (toStrict)
 import Data.ByteString (ByteString)
@@ -49,10 +51,11 @@ commonTypeSizes :: [Int]
 commonTypeSizes = [8,16..256]
 
 mkValidAbiInt :: Int -> Int256 -> Maybe AbiValue
-mkValidAbiInt i x = if abs x <= 2 ^ (i - 1) - 1 then Just $ AbiInt i x else Nothing
+mkValidAbiInt i x = if unsignedWord (abs x) < bit (i - 1) then Just $ AbiInt i x else Nothing
 
 mkValidAbiUInt :: Int -> Word256 -> Maybe AbiValue
-mkValidAbiUInt i x = if x <= 2 ^ i - 1 then Just $ AbiUInt i x else Nothing
+mkValidAbiUInt 256 x = Just $ AbiUInt 256 x
+mkValidAbiUInt i x = if x < bit i then Just $ AbiUInt i x else Nothing
 
 makeNumAbiValues :: Integer -> [AbiValue]
 makeNumAbiValues i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral ([i-1..i+1] ++ [(-i)-1 .. (-i)+1]) in
