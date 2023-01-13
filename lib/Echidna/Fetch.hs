@@ -1,6 +1,5 @@
 module Echidna.Fetch where
 
-import Control.Lens
 import Control.Monad.Catch (MonadThrow(..), throwM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.State.Strict (execStateT)
