@@ -97,7 +97,7 @@ testContractV fp v cfg = testContract' fp Nothing v cfg True
 
 testContract' :: FilePath -> Maybe ContractName -> Maybe SolcVersionComp -> Maybe FilePath -> Bool -> [(String, Campaign -> Bool)] -> TestTree
 testContract' fp n v cfg s as = testCase fp $ withSolcVersion v $ do
-  c <- set (sConf . quiet) True <$> maybe (pure testConfig) ((fmap (.econfig)) . parseConfig) cfg
+  c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap (.econfig) . parseConfig) cfg
   let c' = c & sConf . quiet .~ True
              & (if s then cConf . testLimit .~ 10000 else id)
              & (if s then cConf . shrinkLimit .~ 4000 else id)
