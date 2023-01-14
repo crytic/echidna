@@ -5,7 +5,6 @@ import Control.Arrow (first)
 import Control.Monad (liftM2, when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Extra (whenM)
-import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.State.Strict (execStateT)
 import Data.Foldable (toList)
 import Data.HashMap.Strict qualified as M
@@ -80,9 +79,9 @@ contracts solConf fp = let usual = ["--solc-disable-warnings", "--export-format"
    Just path -> do
     let solargs = solConf._solcArgs ++ linkLibraries solConf._solcLibs & (usual ++) .
                   (\sa -> if null sa then [] else ["--solc-args", sa])
-        compileOne :: (MonadIO m, MonadThrow m) => FilePath -> m ([SolcContract], SourceCaches)
+        compileOne :: FilePath -> IO ([SolcContract], SourceCaches)
         compileOne x = do
-          mSolc <- liftIO $ do
+          mSolc <- do
             stderr <- if solConf._quiet then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
             (ec, out, err) <- readCreateProcessWithExitCode (proc path $ (solConf._cryticArgs ++ solargs) |> x) {std_err = stderr} ""
             case ec of
@@ -91,10 +90,11 @@ contracts solConf fp = let usual = ["--solc-disable-warnings", "--export-format"
 
           maybe (throwM SolcReadFailure) (pure . first toList) mSolc
     -- clean up previous artifacts
-    liftIO $ removeJsonFiles "crytic-export"
+    removeJsonFiles "crytic-export"
     cps <- mapM compileOne fp
     let (cs, ss) = NE.unzip cps
-    when (length ss > 1) $ liftIO $ putStrLn "WARNING: more than one SourceCaches was found after compile. Only the first one will be used."
+    when (length ss > 1) $
+      putStrLn "WARNING: more than one SourceCaches was found after compile. Only the first one will be used."
     pure (concat cs, NE.head ss)
 
 removeJsonFiles :: FilePath -> IO ()
@@ -157,10 +157,9 @@ loadSpecified :: SolConf -> Maybe Text -> [SolcContract] -> IO (VM, EventMap, NE
 loadSpecified solConf name cs = do
   -- Pick contract to load
   c <- choose cs name
-  liftIO $ do
-    when (isNothing name && length cs > 1 && not solConf._quiet) $
-      putStrLn "Multiple contracts found, only analyzing the first"
-    unless solConf._quiet . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
+  when (isNothing name && length cs > 1 && not solConf._quiet) $
+    putStrLn "Multiple contracts found, only analyzing the first"
+  unless solConf._quiet . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
   let SolConf ca d ads bala balc mcs pref _ _ libs _ fp dpc dpb ma tm _ fs = solConf
@@ -185,7 +184,7 @@ loadSpecified solConf name cs = do
   -- need to use snd to add to ABI dict
   let vm = initialVM & block . gaslimit .~ fromInteger unlimitedGasPerBlock
                      & block . maxCodeSize .~ fromInteger mcs
-  blank' <- liftIO $ maybe (pure vm) loadEthenoBatch fp
+  blank' <- maybe (pure vm) loadEthenoBatch fp
   let blank = populateAddresses (Set.insert d ads) bala blank'
 
   unless (null con || isJust fp) (throwM $ ConstructorArgs (show con))

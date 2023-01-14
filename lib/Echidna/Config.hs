@@ -1,9 +1,7 @@
 module Echidna.Config where
 
 import Control.Lens
-import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Fail qualified as M (MonadFail(..))
-import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Control.Monad.State (StateT(..), runStateT, modify')
 import Control.Monad.Trans (lift)
@@ -126,8 +124,8 @@ defaultConfig :: EConfig
 defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEither' ""
 
 -- | Try to parse an Echidna config file, throw an error if we can't.
-parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> m EConfigWithUsage
-parseConfig f = liftIO (BS.readFile f) >>= Y.decodeThrow
+parseConfig :: FilePath -> IO EConfigWithUsage
+parseConfig f = BS.readFile f >>= Y.decodeThrow
 
 -- | Run some action with the default configuration, useful in the REPL.
 withDefaultConfig :: ReaderT EConfig m a -> m a

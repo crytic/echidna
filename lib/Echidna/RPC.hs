@@ -84,8 +84,7 @@ instance Exception EthenoException
 
 loadEtheno :: FilePath -> IO [Etheno]
 loadEtheno fp = do
-  bs <- liftIO $ eitherDecodeFileStrict fp
-
+  bs <- eitherDecodeFileStrict fp
   case bs of
        (Left e) -> throwM $ EthenoException e
        (Right (ethenoInit :: [Etheno])) -> return ethenoInit
