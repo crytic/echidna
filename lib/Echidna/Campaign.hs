@@ -162,16 +162,16 @@ updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 -- transaction if it finds new coverage.
 execTxOptC :: (MonadIO m, MonadState (VM, Campaign) m, MonadThrow m) => Tx -> m (VMResult, Int)
 execTxOptC tx = do
-  (_, camp) <- get
+  (vm, Campaign{_bcMemo, _coverage = oldCov}) <- get
   let cov = _2 . coverage
-  og   <- cov <<.= mempty
-  res  <- execTxWith _1 vmExcept (execTxWithCov camp._bcMemo) tx
+  ((res, newCov), vm') <- runStateT (execTxWithCov _bcMemo tx) vm
+  _1 .= vm'
   let vmr = getResult $ fst res
   -- Update the coverage map with the proper binary according to the vm result
-  cov %= mapWithKey (\_ s -> DS.map (set _4 vmr) s)
+  cov .= mapWithKey (\_ s -> DS.map (set _4 vmr) s) newCov
   -- Update the global coverage map with the union of the result just obtained
-  cov %= unionWith DS.union og
-  grew <- (== LT) . comparing coveragePoints og <$> use cov
+  cov %= unionWith DS.union oldCov
+  grew <- (== LT) . comparing coveragePoints oldCov <$> use cov
   when grew $ do
     case tx.call of
       SolCall c -> _2 . genDict %= gaddCalls (Set.singleton c)
