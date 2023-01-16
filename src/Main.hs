@@ -198,7 +198,9 @@ overrideConfig config Options{..} =
       cfg & sConf . deployer %~ (`fromMaybe` cliDeployer)
 
     overrideSender cfg =
-      cfg & sConf . sender %~ (`fromMaybe` (Just $ Set.fromList cliSender))
+      cfg & sConf . sender %~ (`fromMaybe` (if null cliSender
+                                               then Nothing
+                                               else Just $ Set.fromList cliSender))
 
     overrideSeed cfg =
       cfg & cConf . seed %~ (cliSeed <|>)
