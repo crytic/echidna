@@ -9,7 +9,6 @@ import Control.Lens
 import Control.Monad (void)
 import Control.Monad.Catch (MonadThrow, throwM)
 import Control.Monad.Fail qualified as M (MonadFail(..))
-import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.State.Strict (MonadState, get, put, execStateT)
 import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
 import Data.ByteString.Base16 qualified as BS16 (decode)
