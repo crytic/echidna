@@ -2,7 +2,7 @@ TAG="$1"
 OS="$(lsb_release -is)-$(lsb_release -rs)"
 echo "Building binary..."
 echo "Compressing binary.."
-REPO="echidna-test"
+REPO="echidna"
 BIN="$(stack path --local-install-root)/bin/$REPO"
 echo $BIN
 BUNDLE_NAME="$REPO-$TAG-$OS.tar.gz"

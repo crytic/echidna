@@ -18,11 +18,11 @@ fix_path()
 }
 
 
-BUILD="$(mktemp -d)/echidna-test"
+BUILD="$(mktemp -d)/echidna"
 mkdir -p "$BUILD"
-cp "$HOME/.local/bin/echidna-test" "$BUILD"
+cp "$HOME/.local/bin/echidna" "$BUILD"
 
-BINARY="$BUILD/echidna-test"
+BINARY="$BUILD/echidna"
 add_rpath "$BINARY"
 fix_path "$BINARY" libsecp256k1 "@rpath/libsecp256k1.dylib"
 fix_path "$BINARY" libff "@rpath/libff.dylib"
