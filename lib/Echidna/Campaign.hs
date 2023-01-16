@@ -6,16 +6,15 @@
 module Echidna.Campaign where
 
 import Control.Lens
-import Control.Monad (replicateM, when, (<=<), ap, unless)
+import Control.Monad (replicateM, when, unless)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
-import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR, uniform)
+import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.Reader (runReaderT, asks)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT, gets, MonadIO)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Binary.Get (runGetOrFail)
-import Data.Bool (bool)
 import Data.ByteString.Lazy qualified as LBS
 import Data.HashMap.Strict qualified as H
 import Data.Map (Map, unionWith, (\\), elems, keys, lookup, insert, mapWithKey)
@@ -34,7 +33,7 @@ import Echidna.ABI
 import Echidna.Exec
 import Echidna.Test
 import Echidna.Transaction
-import Echidna.Shrink (shrinkSeq, shrinkSender)
+import Echidna.Shrink (shrinkTest)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (InitialCorpus)
@@ -46,6 +45,7 @@ import Echidna.Types.Tx (TxCall(..), Tx(..), getResult, call)
 import Echidna.Types.World (World)
 import Echidna.Mutator.Corpus
 import qualified Data.Set as Set
+import Echidna.Events (extractEvents)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -81,34 +81,24 @@ isSuccessful Campaign{_tests} =
 -- (3): The test is unshrunk, and we can shrink it
 -- Then update accordingly, keeping track of how many times we've tried to solve or shrink.
 updateTest :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
-           => World -> VM -> Maybe (VM, [Tx]) -> EchidnaTest -> m EchidnaTest
-
-
-updateTest w vm (Just (vm', xs)) test = do
+           => VM -> (VM, [Tx]) -> EchidnaTest -> m EchidnaTest
+updateTest vmForShrink (vm, xs) test = do
   tl <- asks (.cfg._cConf._testLimit)
+  dappInfo <- asks (.dapp)
   case test.testState of
     Open i | i >= tl -> case test.testType of
-                          OptimizationTest _ _ -> pure $ test { testState = Large (-1) }
-                          _                    -> pure $ test { testState = Passed }
-    Open i           -> do r <- evalStateT (checkETest test) vm'
-                           pure $ updateOpenTest test xs i r
-    _                -> updateTest w vm Nothing test
-
-updateTest _ vm Nothing test = do
-  sl <- asks (.cfg._cConf._shrinkLimit)
-  let es = test.testEvents
-      res = test.testResult
-      x = test.testReproducer
-      v = test.testValue
-      t = test.testType
-  case test.testState of
-    Large i | i >= sl -> pure $ test { testState =  Solved, testReproducer = x }
-    Large i           -> if length x > 1 || any canShrinkTx x
-                             then do (txs, val, evs, r) <- evalStateT (shrinkSeq (checkETest test) (v, es, res) x) vm
-                                     pure $ test { testState = Large (i + 1), testReproducer = txs, testEvents = evs, testResult = r, testValue = val}
-                             else pure $ test { testState = if isOptimizationTest t then Large (i + 1) else Solved, testReproducer = x}
-    _                   -> pure test
-
+      OptimizationTest _ _ -> pure $ test { testState = Large (-1) }
+      _                    -> pure $ test { testState = Passed }
+    Open i -> do
+      (testValue, vm') <- evalStateT (checkETest test) vm
+      let events = extractEvents False dappInfo vm'
+      let results = getResultFromVM vm'
+      pure $ updateOpenTest test xs i (testValue, events, results)
+    _ ->
+      -- TODO: We shrink already in `step`, but we shrink here too. It makes
+      -- shrink go faster when some tests are still fuzzed. It's not incorrect
+      -- but requires passing `vmForShrink` and feels a bit wrong.
+      shrinkTest vmForShrink test
 
 -- | Given a rule for updating a particular test's state, apply it to each test in a 'Campaign'.
 runUpdate :: (MonadReader Env m, MonadState Campaign m)
@@ -118,30 +108,14 @@ runUpdate f = let l = tests in use l >>= mapM f >>= (l .=)
 -- | Given an initial 'VM' state and a way to run transactions, evaluate a list of transactions, constantly
 -- checking if we've solved any tests or can shrink known solves.
 evalSeq :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m, MonadState (VM, Campaign) m)
-        => World -> VM -> (Tx -> m a) -> [Tx] -> m [(Tx, a)]
-evalSeq w v e = go [] where
+        => VM -> (Tx -> m a) -> [Tx] -> m [(Tx, a)]
+evalSeq vmForShrink e = go [] where
   go r xs = do
     (v', camp) <- get
-    camp' <- execStateT (runUpdate (updateTest w v $ Just (v', reverse r))) camp
+    camp' <- execStateT (runUpdate (updateTest vmForShrink (v', reverse r))) camp
     put (v', camp')
     case xs of []     -> pure []
                (y:ys) -> e y >>= \a -> ((y, a) :) <$> go (y:r) ys
-
--- | Given a call sequence that produces Tx with gas >= g for f, try to randomly generate
--- a smaller one that achieves at least that gas usage
-shrinkGasSeq :: (MonadIO m, MonadRandom m, MonadReader Env m, MonadThrow m, MonadState VM m)
-          => Text -> Int -> [Tx] -> m [Tx]
-shrinkGasSeq f g xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
-  callsF t =
-    case t.call of
-      SolCall (f', _) | f == f' -> True
-      _ -> False
-  check xs' | callsF $ last xs' = do
-    res <- traverse execTx xs'
-    pure $ (snd . head) res >= g
-  check _ = pure False
-  shrunk = mapM (shrinkSender <=< shrinkTx) xs
-  shorten = (\i -> take i xs ++ drop (i + 1) xs) <$> getRandomR (0, length xs)
 
 -- | Given current `gasInfo` and a sequence of executed transactions, updates information on highest
 -- gas usage for each call
@@ -230,7 +204,7 @@ callseq ic v w ql = do
   -- Then, we generate the actual transaction in the sequence
   is <- randseq ic ql old w
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
-  (res, (vm, camp)) <- runStateT (evalSeq w v ef is) (v, ca)
+  (res, (vm, camp)) <- runStateT (evalSeq v ef is) (v, ca)
   let new = vm._env._contracts
       -- compute the addresses not present in the old VM via set difference
       diff = keys $ new \\ old
@@ -291,11 +265,10 @@ campaign u vm w ts d txs = do
     (Campaign ts c mempty effectiveGenDict False DS.empty 0 memo)
   where
     -- "mapMaybe ..." is to get a list of all contracts
-    ic          = (length txs, txs)
     memo        = makeBytecodeMemo . mapMaybe (viewBuffer . (^. bytecode)) . elems $ vm._env._contracts
-    step        = runUpdate (updateTest w vm Nothing) >> lift u >> runCampaign
     runCampaign = gets (fmap (.testState) . (._tests)) >>= update
     update c    = do
+      let ic = (length txs, txs)
       CampaignConf{_testLimit, _stopOnFail, _seqLen, _shrinkLimit} <- asks (.cfg._cConf)
       Campaign{_ncallseqs} <- get
       if | _stopOnFail && any (\case Solved -> True; Failed _ -> True; _ -> False) c ->
@@ -308,3 +281,4 @@ campaign u vm w ts d txs = do
            callseq ic vm w _seqLen >> step
          | otherwise ->
            lift u
+    step = runUpdate (shrinkTest vm) >> lift u >> runCampaign

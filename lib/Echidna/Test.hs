@@ -96,37 +96,48 @@ createTests m td ts r ss = case m of
          sdat = createTest (CallTest "No contract can be self-destructed" checkAnySelfDestructed)
 
 updateOpenTest :: EchidnaTest -> [Tx] -> Int -> (TestValue, Events, TxResult) -> EchidnaTest
-updateOpenTest test txs _ (BoolValue False,es,r) = test { testState = Large (-1), testReproducer = txs, testEvents = es, testResult = r }
-updateOpenTest test _   i (BoolValue True,_,_)   = test { testState = Open (i + 1) }
-
-
-updateOpenTest test txs i (IntValue v',es,r) = if v' > v then test { testState = Open (i + 1), testReproducer = txs, testValue = IntValue v', testEvents = es, testResult = r }
-                                                         else test { testState = Open (i + 1) }
-                                                where v = case test.testValue of
-                                                           IntValue x -> x
-                                                           _          -> error "Invalid type of value for optimization"
-
-
-updateOpenTest _ _ _ _                       = error "Invalid type of test"
+updateOpenTest test txs _ (BoolValue False,es,r) =
+  test { testState = Large (-1), testReproducer = txs, testEvents = es, testResult = r }
+updateOpenTest test _   i (BoolValue True,_,_)   =
+  test { testState = Open (i + 1) }
+updateOpenTest test txs i (IntValue v',es,r) =
+  if v' > v then
+    test { testState = Open (i + 1)
+         , testReproducer = txs
+         , testValue = IntValue v'
+         , testEvents = es
+         , testResult = r }
+  else
+    test { testState = Open (i + 1) }
+  where v = case test.testValue of
+              IntValue x -> x
+              _          -> error "Invalid type of value for optimization"
+updateOpenTest _ _ _ _ = error "Invalid type of test"
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
-           => EchidnaTest -> m (TestValue, Events, TxResult)
+           => EchidnaTest -> m (TestValue, VM)
 checkETest test = case test.testType of
-                  Exploration           -> return (BoolValue True, [], Stop) -- These values are never used
-                  PropertyTest n a      -> checkProperty (n, a)
-                  OptimizationTest n a  -> checkOptimization (n, a)
-                  AssertionTest dt n a  -> if dt then checkDapptestAssertion (n, a) else checkStatefullAssertion (n, a)
-                  CallTest _ f          -> checkCall f
+  Exploration -> (BoolValue True,) <$> get -- These values are never used
+  PropertyTest n a -> checkProperty n a
+  OptimizationTest n a -> checkOptimization n a
+  AssertionTest dt n a -> if dt then checkDapptestAssertion n a
+                                else checkStatefullAssertion n a
+  CallTest _ f -> checkCall f
 
+-- | Given a property test, evaluate it and see if it currently passes.
 checkProperty :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
-              => (Text, Addr) -> m (TestValue, Events, TxResult)
-checkProperty t = do
-    r <- gets (._result)
-    case r of
-      Just (VMSuccess _) -> checkProperty' t
-      _                  -> return (BoolValue True, [], Stop) -- These values are never used
-
+              => Text -> Addr -> m (TestValue, VM)
+checkProperty f a = do
+  vm <- get
+  case vm._result of
+    Just (VMSuccess _) -> do
+      TestConf{classifier, testSender} <- asks (.cfg._tConf)
+      (_, vm') <- runTx f testSender a
+      b <- gets $ classifier f
+      put vm -- restore EVM state
+      pure (BoolValue b, vm')
+    _ -> pure (BoolValue True, vm) -- These values are never used
 
 runTx :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
       => Text -> (Addr -> Addr) -> Addr -> m (VM, VM)
@@ -138,41 +149,28 @@ runTx f s a = do
   vm' <- get
   return (vm, vm')
 
-
--- | Given a property test, evaluate it and see if it currently passes.
-checkProperty' :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
-               => (Text, Addr) -> m (TestValue, Events, TxResult)
-checkProperty' (f,a) = do
-  dappInfo <- asks (.dapp)
-  TestConf p s <- asks (.cfg._tConf)
-  (vm, vm') <- runTx f s a
-  b  <- gets $ p f
-  put vm -- restore EVM state
-  pure (BoolValue b, extractEvents False dappInfo vm', getResultFromVM vm')
-
 --- | Extract a test value from an execution.
 getIntFromResult :: Maybe VMResult -> TestValue
-getIntFromResult (Just (VMSuccess b)) = case viewBuffer b of
-                           Nothing -> error "invalid decode of buffer"
-                           Just bs -> case decodeAbiValue (AbiIntType 256) $ LBS.fromStrict bs of
-                                        AbiInt 256 n -> IntValue n
-                                        _            -> error ("invalid decode of int256: " ++ show bs)
+getIntFromResult (Just (VMSuccess b)) =
+  case viewBuffer b of
+    Nothing -> error "invalid decode of buffer"
+    Just bs -> case decodeAbiValue (AbiIntType 256) $ LBS.fromStrict bs of
+      AbiInt 256 n -> IntValue n
+      _ -> error ("invalid decode of int256: " ++ show bs)
 getIntFromResult _ = IntValue minBound
 
 -- | Given a property test, evaluate it and see if it currently passes.
 checkOptimization :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
-                  => (Text, Addr) -> m (TestValue, Events, TxResult)
-checkOptimization (f,a) = do
+                  => Text -> Addr -> m (TestValue, VM)
+checkOptimization f a = do
   TestConf _ s <- asks (.cfg._tConf)
-  dappInfo <- asks (.dapp)
   (vm, vm') <- runTx f s a
   put vm -- restore EVM state
-  pure (getIntFromResult (vm'._result), extractEvents False dappInfo vm', getResultFromVM vm')
-
+  pure (getIntFromResult (vm'._result), vm')
 
 checkStatefullAssertion :: (MonadReader Env m, MonadState VM m, MonadThrow m)
-                        => (SolSignature, Addr) -> m (TestValue, Events, TxResult)
-checkStatefullAssertion (sig, addr) = do
+                        => SolSignature -> Addr -> m (TestValue, VM)
+checkStatefullAssertion sig addr = do
   dappInfo <- asks (.dapp)
   vm <- get
       -- Whether the last transaction called the function `sig`.
@@ -191,15 +189,14 @@ checkStatefullAssertion (sig, addr) = do
       events = extractEvents False dappInfo vm
       eventFailure = not (null events) && (checkAssertionEvent events || checkPanicEvent "1" events)
       isFailure = isCorrectTarget && (eventFailure || isAssertionFailure)
-  pure (BoolValue (not isFailure), events, getResultFromVM vm)
+  pure (BoolValue (not isFailure), vm)
 
 assumeMagicReturnCode :: BS.ByteString
 assumeMagicReturnCode = "FOUNDRY::ASSUME\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
 
 checkDapptestAssertion :: (MonadReader Env m, MonadState VM m, MonadThrow m)
-                       => (SolSignature, Addr) -> m (TestValue, Events, TxResult)
-checkDapptestAssertion (sig, addr) = do
-  dappInfo <- asks (.dapp)
+                       => SolSignature -> Addr -> m (TestValue, VM)
+checkDapptestAssertion sig addr = do
   vm <- get
   -- Whether the last transaction has any value
   let hasValue = vm._state._callvalue /= Lit 0
@@ -213,17 +210,15 @@ checkDapptestAssertion (sig, addr) = do
         _                            -> False
       isCorrectAddr = addr == vm._state._codeContract
       isCorrectTarget = isCorrectFn && isCorrectAddr
-      events = extractEvents False dappInfo vm
       isFailure = not hasValue && (isCorrectTarget && isAssertionFailure)
-  pure (BoolValue (not isFailure), events, getResultFromVM vm)
-
+  pure (BoolValue (not isFailure), vm)
 
 checkCall :: (MonadReader Env m, MonadState VM m, MonadThrow m)
-          => (DappInfo -> VM -> TestValue) -> m (TestValue, Events, TxResult)
+          => (DappInfo -> VM -> TestValue) -> m (TestValue, VM)
 checkCall f = do
   dappInfo <- asks (.dapp)
   vm <- get
-  pure (f dappInfo vm, extractEvents False dappInfo vm, getResultFromVM vm)
+  pure (f dappInfo vm, vm)
 
 checkAssertionTest :: DappInfo -> VM -> TestValue
 checkAssertionTest dappInfo vm =
