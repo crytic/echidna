@@ -6,7 +6,7 @@ module Echidna.Exec where
 
 import Control.Lens
 import Control.Monad.Catch (MonadThrow(..))
-import Control.Monad.State.Strict (MonadState (get, put), execState, execState, MonadIO (liftIO))
+import Control.Monad.State.Strict (MonadState(get, put), execState, execState, MonadIO(liftIO), runStateT)
 import Data.Map qualified as M
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as S
@@ -23,7 +23,6 @@ import Echidna.Events (emptyEvents)
 import Echidna.Transaction
 import Echidna.Types (ExecException(..), fromEVM)
 import Echidna.Types.Buffer (viewBuffer)
-import Echidna.Types.Campaign
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Signature (BytecodeMemo, lookupBytecodeMetadata)
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
@@ -140,13 +139,24 @@ execTx :: (MonadIO m, MonadState VM m, MonadThrow m) => Tx -> m (VMResult, Int)
 execTx = execTxWith id vmExcept $ fromEVM exec
 
 -- | Execute a transaction, logging coverage at every step.
-execTxWithCov :: MonadState (VM, Campaign) m => BytecodeMemo -> m VMResult
-execTxWithCov memo = do
-  (vm, camp) <- get
-  let (r, vm', cm') = loop vm camp._coverage
-  put (vm', camp { _coverage = cm' })
-  pure r
+execTxWithCov
+  :: (MonadIO m, MonadState VM m, MonadThrow m)
+  => BytecodeMemo
+  -> Tx
+  -> m ((VMResult, Int), CoverageMap)
+execTxWithCov memo tx = do
+  vm <- get
+  (r, (vm', cm)) <- runStateT (execTxWith _1 vmExcept execCov tx) (vm, mempty)
+  put vm'
+  pure (r, cm)
   where
+    -- the same as EVM.exec but collects coverage, will stop on a query
+    execCov = do
+     (vm, cm) <- get
+     let (r, vm', cm') = loop vm cm
+     put (vm', cm')
+     pure r
+
     -- | Repeatedly exec a step and add coverage until we have an end result
     loop :: VM -> CoverageMap -> (VMResult, VM, CoverageMap)
     loop vm cm = case vm._result of
