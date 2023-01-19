@@ -1,5 +1,16 @@
 ## TODO
 
+## 2.0.5
+
+* Optimized constant generation (#898, #900)
+* Fixed how address are displayed in events (#891)
+* Update hevm to 0.50 (#884, #894, #896, #897, #901)
+* Added saving and loading of reproducers for every test (#858)
+* Added events and revert reasons for any failure in the constructor (#871)
+* Fixed uninitialized sender addresses from etheno transactions (#823) 
+* Fixed crash when minimizing inputs during optimization tests (#837) 
+* Refactored code and removed useless dependencies (#856, #857, #874, #878, #895, #903)
+
 ## 2.0.4
 
 * Added colored html for coverage output code (#816)
