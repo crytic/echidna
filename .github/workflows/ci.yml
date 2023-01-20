@@ -22,7 +22,7 @@ jobs:
             apt-get: autoconf automake libtool
           - os: macos-latest
             brew: automake
-         
+
     steps:
       - name: Get Packages
         uses: mstksg/get-package@v1
@@ -64,7 +64,7 @@ jobs:
 
       - name: Build and install echidna
         run: |
-          stack install --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+          stack install --flag echidna:static --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
 
       - name: Amend and compress binaries (macOS)
         if: runner.os == 'macOS'
@@ -83,7 +83,7 @@ jobs:
       - name: Build and copy test suite
         if: runner.os == 'Linux'
         run: |
-          stack build --test --no-run-tests --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+          stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
           cp "$(find "$PWD" -name echidna-testsuite -type f)" .
 
       - name: Upload testsuite
