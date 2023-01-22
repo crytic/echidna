@@ -16,7 +16,7 @@ RUN curl -sSL https://get.haskellstack.org/ | sh
 COPY . /echidna/
 WORKDIR /echidna
 RUN .github/scripts/install-libff.sh
-RUN stack upgrade && stack setup && stack install --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
+RUN stack upgrade && stack setup && stack install --flag echidna:static --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
 
 
 FROM ubuntu:focal AS builder-python3
