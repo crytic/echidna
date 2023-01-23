@@ -66,8 +66,8 @@ main = do
       t <- getSystemTime
       let s = fromIntegral $ systemSeconds t
       -- save source coverage
-      saveCoverage False s dir sc cs (cpg._coverage)
-      saveCoverage True  s dir sc cs (cpg._coverage)
+      saveCoverage False s dir sc cs cpg._coverage
+      saveCoverage True  s dir sc cs cpg._coverage
 
   if isSuccessful cpg then exitSuccess else exitWith (ExitFailure 1)
 

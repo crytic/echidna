@@ -27,8 +27,8 @@ import System.FilePath ((</>))
 type FilePathText = Text
 
 saveCoverage :: Bool -> Int -> FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
-saveCoverage isHtml seed d sc cs s = let filepath = if isHtml then ".html" else ".txt"
-                                         fn = d </> "covered." </> show seed </> filepath
+saveCoverage isHtml seed d sc cs s = let extension = if isHtml then ".html" else ".txt"
+                                         fn = d </> "covered." <> show seed <> extension
                                          cc = ppCoveredCode isHtml sc cs s
                                        in writeFile fn cc
 
