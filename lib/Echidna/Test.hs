@@ -132,7 +132,7 @@ checkProperty f a = do
   vm <- get
   case vm._result of
     Just (VMSuccess _) -> do
-      TestConf{classifier, testSender} <- asks (.cfg._tConf)
+      TestConf{classifier, testSender} <- asks (.cfg.testConf)
       (_, vm') <- runTx f testSender a
       b <- gets $ classifier f
       put vm -- restore EVM state
@@ -144,7 +144,7 @@ runTx :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
 runTx f s a = do
   vm <- get -- save EVM state
   -- Our test is a regular user-defined test, we exec it and check the result
-  g <- asks (.cfg._xConf.propGas)
+  g <- asks (.cfg.txConf.propGas)
   _  <- execTx $ basicTx f [] (s a) a g (0, 0)
   vm' <- get
   return (vm, vm')
@@ -163,7 +163,7 @@ getIntFromResult _ = IntValue minBound
 checkOptimization :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
                   => Text -> Addr -> m (TestValue, VM)
 checkOptimization f a = do
-  TestConf _ s <- asks (.cfg._tConf)
+  TestConf _ s <- asks (.cfg.testConf)
   (vm, vm') <- runTx f s a
   put vm -- restore EVM state
   pure (getIntFromResult (vm'._result), vm')

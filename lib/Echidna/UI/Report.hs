@@ -28,8 +28,8 @@ ppTx _ (Tx NoCall _ _ _ _ _ (t, b)) =
                     ++ (if b == 0    then "" else " Block delay: " ++ show (toInteger b))
 
 ppTx pn (Tx c s r g gp v (t, b)) = let sOf = ppTxCall in do
-  names <- asks (._nConf)
-  tGas  <- asks (._xConf.txGas)
+  names <- asks (.namesConf)
+  tGas  <- asks (.txConf.txGas)
   return $ sOf c ++ (if not pn    then "" else names Sender s ++ names Receiver r)
                  ++ (if g == tGas then "" else " Gas: "         ++ show g)
                  ++ (if gp == 0   then "" else " Gas price: "   ++ show gp)
@@ -79,11 +79,11 @@ ppTS (Failed e) _ _  = pure $ "could not evaluate ☣\n  " ++ show e
 ppTS Solved     es l = ppFail Nothing es l
 ppTS Passed     _ _  = pure " passed! 🎉"
 ppTS (Open i)   es [] = do
-  t <- asks (._cConf._testLimit)
+  t <- asks (.campaignConf.testLimit)
   if i >= t then ppTS Passed es [] else pure $ " fuzzing " ++ progress i t
 ppTS (Open _)   es r = ppFail Nothing es r
 ppTS (Large n) es l  = do
-  m <- asks (._cConf._shrinkLimit)
+  m <- asks (.campaignConf.shrinkLimit)
   ppFail (if n < m then Just (n, m) else Nothing) es l
 
 
@@ -93,7 +93,7 @@ ppOPT Solved     es l = ppOptimized Nothing es l
 ppOPT Passed     _ _  = pure " passed! 🎉"
 ppOPT (Open _)   es r = ppOptimized Nothing es r
 ppOPT (Large n) es l  = do
-  m <- asks (._cConf._shrinkLimit)
+  m <- asks (.campaignConf.shrinkLimit)
   ppOptimized (if n < m then Just (n, m) else Nothing) es l
 
 

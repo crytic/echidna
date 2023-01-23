@@ -41,21 +41,21 @@ import Echidna.RPC (loadEtheno, extractFromEtheno)
 prepareContract :: EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
                 -> IO (VM, SourceCache, [SolcContract], World, [EchidnaTest], GenDict, [[Tx]])
 prepareContract cfg fs c g = do
-  ctxs <- case cfg._cConf._corpusDir of
+  ctxs <- case cfg.campaignConf.corpusDir of
             Nothing -> pure []
             Just dir -> do
               ctxs1 <- loadTxs (dir </> "reproducers")
               ctxs2 <- loadTxs (dir </> "coverage")
               pure (ctxs1 ++ ctxs2)
 
-  let solConf = cfg._sConf
+  let solConf = cfg.solConf
 
   -- compile and load contracts
   (cs, scs) <- Echidna.Solidity.contracts solConf fs
   p <- loadSpecified solConf c cs
 
   -- run processors
-  si <- runSlither (NE.head fs) solConf._cryticArgs
+  si <- runSlither (NE.head fs) solConf.cryticArgs
   case find (< minSupportedSolcVersion) si.solcVersions  of
     Just outdatedVersion -> throwM $ OutdatedSolcVersion outdatedVersion
     Nothing -> return ()
@@ -76,7 +76,7 @@ prepareContract cfg fs c g = do
 
   -- load transactions from init sequence (if any)
   ethenoCorpus <-
-    case cfg._sConf._initialize of
+    case cfg.solConf.initialize of
       Nothing -> pure []
       Just fp -> do
         es' <- loadEtheno fp
@@ -86,6 +86,6 @@ prepareContract cfg fs c g = do
 
   let sc = selectSourceCache c scs
 
-  let dict = mkGenDict cfg._cConf._dictFreq constants' Set.empty g (returnTypes cs)
+  let dict = mkGenDict cfg.campaignConf.dictFreq constants' Set.empty g (returnTypes cs)
 
   pure (vm, sc, cs, world, ts, dict, corp)
