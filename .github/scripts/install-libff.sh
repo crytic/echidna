@@ -30,6 +30,10 @@ if [ "$HOST_OS" = "macOS" ]; then
   sed -i '' 's/STATIC/SHARED/' depends/CMakeLists.txt
 fi
 
+if [ "$HOST_OS" = "Linux" ] && [ "$(uname -m)" = "aarch64" ]; then
+  ARGS="$ARGS -DCURVE=ALT_BN128"
+fi
+
 mkdir -p build
 cd build
 CXXFLAGS="-fPIC $CXXFLAGS" cmake $ARGS ..
