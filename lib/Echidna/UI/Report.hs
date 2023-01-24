@@ -1,6 +1,5 @@
 module Echidna.UI.Report where
 
-import Control.Lens
 import Control.Monad.Reader (MonadReader, asks)
 import Data.List (intercalate, nub, sortOn)
 import Data.Map (toList)
@@ -8,14 +7,14 @@ import Data.Maybe (catMaybes)
 import Data.Text (Text, unpack)
 import Data.Text qualified as T
 
-import Echidna.ABI (defSeed, encodeSig)
+import Echidna.ABI (GenDict(..), encodeSig)
 import Echidna.Events (Events)
 import Echidna.Pretty (ppTxCall)
 import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (CoverageMap, scoveragePoints)
 import Echidna.Types.Test (testEvents, testState, TestState(..), testType, TestType(..), testReproducer, testValue)
-import Echidna.Types.Tx (Tx(Tx), TxCall(..), _txGas, src)
+import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
 import Echidna.Types.Config
 
 -- | Given a number of boxes checked and a number of total boxes, pretty-print progress in box-checking.
@@ -30,7 +29,7 @@ ppTx _ (Tx NoCall _ _ _ _ _ (t, b)) =
 
 ppTx pn (Tx c s r g gp v (t, b)) = let sOf = ppTxCall in do
   names <- asks (._nConf)
-  tGas  <- asks (._xConf._txGas)
+  tGas  <- asks (._xConf.txGas)
   return $ sOf c ++ (if not pn    then "" else names Sender s ++ names Receiver r)
                  ++ (if g == tGas then "" else " Gas: "         ++ show g)
                  ++ (if gp == 0   then "" else " Gas price: "   ++ show gp)
@@ -52,7 +51,7 @@ ppCorpus c | c == mempty = Nothing
 -- | Pretty-print the gas usage for a function.
 ppGasOne :: MonadReader EConfig m => (Text, (Int, [Tx])) -> m String
 ppGasOne ("", _)      = pure ""
-ppGasOne (f, (g, xs)) = let pxs = mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs in
+ppGasOne (f, (g, xs)) = let pxs = mapM (ppTx $ length (nub $ (.src) <$> xs) /= 1) xs in
  (("\n" ++ unpack f ++ " used a maximum of " ++ show g ++ " gas\n  Call sequence:\n") ++) . unlines . fmap ("    " ++) <$> pxs
 
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
@@ -66,7 +65,7 @@ ppFail _ _ []  = pure "failed with no transactions made ⁉️  "
 ppFail b es xs = let status = case b of
                                 Nothing    -> ""
                                 Just (n,m) -> ", shrinking " ++ progress n m
-                     pxs = mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs in
+                     pxs = mapM (ppTx $ length (nub $ (.src) <$> xs) /= 1) xs in
  do s <- (("failed!💥  \n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> pxs
     return (s ++ "\n" ++ ppEvents es)
 
@@ -104,7 +103,7 @@ ppOptimized _ _ []  = pure "Call sequence:\n(no transactions)"
 ppOptimized b es xs = let status = case b of
                                 Nothing    -> ""
                                 Just (n,m) -> ", shrinking " ++ progress n m
-                          pxs = mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs in
+                          pxs = mapM (ppTx $ length (nub $ (.src) <$> xs) /= 1) xs in
  do s <- (("\n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> pxs
     return (s ++ "\n" ++ ppEvents es)
 
@@ -112,20 +111,20 @@ ppOptimized b es xs = let status = case b of
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: MonadReader EConfig m => Campaign -> m String
 ppTests Campaign { _tests = ts } = unlines . catMaybes <$> mapM pp ts where
-  pp t = case t ^. testType of
-         PropertyTest n _      ->  Just . ((T.unpack n ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
-         CallTest n _          ->  Just . ((T.unpack n ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
-         AssertionTest _ s _   ->  Just . ((T.unpack (encodeSig s) ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
-         OptimizationTest n _  ->  Just . ((T.unpack n ++ ": max value: " ++ show (t ^. testValue) ++ "\n") ++) <$> ppOPT (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
+  pp t = case t.testType of
+         PropertyTest n _      ->  Just . ((T.unpack n ++ ": ") ++) <$> ppTS t.testState t.testEvents t.testReproducer
+         CallTest n _          ->  Just . ((T.unpack n ++ ": ") ++) <$> ppTS t.testState t.testEvents t.testReproducer
+         AssertionTest _ s _   ->  Just . ((T.unpack (encodeSig s) ++ ": ") ++) <$> ppTS t.testState t.testEvents t.testReproducer
+         OptimizationTest n _  ->  Just . ((T.unpack n ++ ": max value: " ++ show t.testValue ++ "\n") ++) <$> ppOPT t.testState t.testEvents t.testReproducer
          Exploration           ->  return Nothing
 
 ppCampaign :: MonadReader EConfig m => Campaign -> m String
 ppCampaign c = do
   testsPrinted <- ppTests c
   gasInfoPrinted <- ppGasInfo c
-  let coveragePrinted = maybe "" ("\n" ++) . ppCoverage $ c ^. coverage
-      corpusPrinted = maybe "" ("\n" ++) . ppCorpus $ c ^. corpus
-      seedPrinted = "\nSeed: " ++ show (c ^. genDict . defSeed)
+  let coveragePrinted = maybe "" ("\n" ++) . ppCoverage $ c._coverage
+      corpusPrinted = maybe "" ("\n" ++) . ppCorpus $ c._corpus
+      seedPrinted = "\nSeed: " ++ show c._genDict._defSeed
   pure $
     testsPrinted
     ++ gasInfoPrinted

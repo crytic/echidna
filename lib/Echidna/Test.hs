@@ -24,7 +24,7 @@ import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Config
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Test
-import Echidna.Types.Tx (Tx, basicTx, TxResult(..), getResult, _propGas)
+import Echidna.Types.Tx (Tx, TxConf(..), basicTx, TxResult(..), getResult)
 
 --- | Possible responses to a call to an Echidna test: @true@, @false@, @REVERT@, and ???.
 data CallRes = ResFalse | ResTrue | ResRevert | ResOther
@@ -96,13 +96,13 @@ createTests m td ts r ss = case m of
          sdat = createTest (CallTest "No contract can be self-destructed" checkAnySelfDestructed)
 
 updateOpenTest :: EchidnaTest -> [Tx] -> Int -> (TestValue, Events, TxResult) -> EchidnaTest
-updateOpenTest test txs _ (BoolValue False,es,r) = test { _testState = Large (-1), _testReproducer = txs, _testEvents = es, _testResult = r }
-updateOpenTest test _   i (BoolValue True,_,_)   = test { _testState = Open (i + 1) }
+updateOpenTest test txs _ (BoolValue False,es,r) = test { testState = Large (-1), testReproducer = txs, testEvents = es, testResult = r }
+updateOpenTest test _   i (BoolValue True,_,_)   = test { testState = Open (i + 1) }
 
 
-updateOpenTest test txs i (IntValue v',es,r) = if v' > v then test { _testState = Open (i + 1), _testReproducer = txs, _testValue = IntValue v', _testEvents = es, _testResult = r }
-                                                         else test { _testState = Open (i + 1) }
-                                                where v = case test._testValue of
+updateOpenTest test txs i (IntValue v',es,r) = if v' > v then test { testState = Open (i + 1), testReproducer = txs, testValue = IntValue v', testEvents = es, testResult = r }
+                                                         else test { testState = Open (i + 1) }
+                                                where v = case test.testValue of
                                                            IntValue x -> x
                                                            _          -> error "Invalid type of value for optimization"
 
@@ -112,7 +112,7 @@ updateOpenTest _ _ _ _                       = error "Invalid type of test"
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest :: (MonadReader Env m, MonadState VM m, MonadThrow m)
            => EchidnaTest -> m (TestValue, Events, TxResult)
-checkETest test = case test._testType of
+checkETest test = case test.testType of
                   Exploration           -> return (BoolValue True, [], Stop) -- These values are never used
                   PropertyTest n a      -> checkProperty (n, a)
                   OptimizationTest n a  -> checkOptimization (n, a)
@@ -133,7 +133,7 @@ runTx :: (MonadReader Env m, MonadState VM m, MonadThrow m)
 runTx f s a = do
   vm <- get -- save EVM state
   -- Our test is a regular user-defined test, we exec it and check the result
-  g <- asks (.cfg._xConf._propGas)
+  g <- asks (.cfg._xConf.propGas)
   _  <- execTx $ basicTx f [] (s a) a g (0, 0)
   vm' <- get
   return (vm, vm')

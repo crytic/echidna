@@ -12,21 +12,18 @@ import System.Directory (createDirectoryIfMissing, makeRelativeToCurrentDirector
 import Echidna.Types.Tx
 import Echidna.Output.Utils
 
-saveTxs :: Maybe FilePath -> [[Tx]] -> IO ()
-saveTxs (Just d) txs = mapM_ saveTx txs where
+saveTxs :: FilePath -> [[Tx]] -> IO ()
+saveTxs d = mapM_ saveTx where
   saveTx v = do let fn = d ++ (show . hash . show) v ++ ".txt"
                 b <- doesFileExist fn
                 unless b $ encodeFile fn (toJSON v)
-saveTxs Nothing  _   = pure ()
 
-loadTxs :: Maybe FilePath -> IO [[Tx]]
-loadTxs (Just d) = do
-  createDirectoryIfMissing True d
-  fs <- listDirectory d
+loadTxs :: FilePath -> IO [[Tx]]
+loadTxs dir = do
+  createDirectoryIfMissing True dir
+  fs <- listDirectory dir
   css <- mapM readCall <$> mapM makeRelativeToCurrentDirectory fs
-  txs <- catMaybes <$> withCurrentDirectory d css
-  putStrLn ("Loaded total of " ++ show (length txs) ++ " transactions from " ++ d)
+  txs <- catMaybes <$> withCurrentDirectory dir css
+  putStrLn ("Loaded total of " ++ show (length txs) ++ " transactions from " ++ dir)
   return txs
   where readCall f = decodeStrict <$> BS.readFile f
-
-loadTxs Nothing  = pure []

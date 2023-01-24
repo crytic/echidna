@@ -17,7 +17,6 @@ dependencies:
   - containers
   - data-bword
   - data-dword
-  - data-has
   - extra
   - directory
   - exceptions
@@ -52,8 +51,11 @@ language: GHC2021
 
 default-extensions:
   - LambdaCase
-  - OverloadedRecordDot
   - OverloadedStrings
+
+  - DuplicateRecordFields
+  - NoFieldSelectors
+  - OverloadedRecordDot
 
 library:
   source-dirs: lib/

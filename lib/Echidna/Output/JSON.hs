@@ -3,7 +3,6 @@
 
 module Echidna.Output.JSON where
 
-import Control.Lens ((^.))
 import Data.Aeson hiding (Error)
 import Data.ByteString.Base16 qualified as BS16
 import Data.ByteString.Lazy (ByteString)
@@ -98,15 +97,15 @@ encodeCampaign C.Campaign{..} = encode
   Campaign { _success = True
            , _error = Nothing
            , _tests = mapTest <$> _tests
-           , seed = _defSeed _genDict
+           , seed = _genDict._defSeed
            , coverage = mapKeys (("0x" ++) . (`showHex` "") . keccak') $ DF.toList <$>_coverage
            , gasInfo = toList _gasInfo
            }
 
 mapTest :: EchidnaTest -> Test
 mapTest echidnaTest =
-  let tst = echidnaTest ^. testState
-      txs = echidnaTest ^. testReproducer
+  let tst = echidnaTest.testState
+      txs = echidnaTest.testReproducer
       (status, transactions, err) = mapTestState tst txs in
   Test { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
        , name = "name" --TODO add a proper name here
@@ -122,13 +121,13 @@ mapTest echidnaTest =
   mapTestState (T.Large _) txs = (Shrinking, Just $ mapTx <$> txs, Nothing)
   mapTestState (T.Failed e) _ = (Error, Nothing, Just $ show e) -- TODO add (show e)
 
-  mapTx Tx{..} =
-    let (function, args) = mapCall _call in
+  mapTx tx =
+    let (function, args) = mapCall tx.call in
     Transaction { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
                 , function = function
                 , arguments = args
-                , gas = toInteger _gas'
-                , gasprice = toInteger _gasprice'
+                , gas = toInteger tx.gas
+                , gasprice = toInteger tx.gasprice
                 }
 
   mapCall (SolCreate _) = ("<CREATE>", Nothing)
