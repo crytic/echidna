@@ -11,6 +11,7 @@ import Control.Monad.Random.Strict (MonadRandom)
 import Data.ByteString.Lazy qualified as BS
 import Data.IORef
 import Data.Maybe (fromMaybe)
+import Graphics.Vty qualified as V
 import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
@@ -66,9 +67,12 @@ ui vm world ts d txs = do
           Just _ -> liftIO $ updateUI CampaignUpdated
         )
         (const $ liftIO $ killThread ticker)
-      let vty = mkVty vtyConfig
-      initialVty <- liftIO vty
-      app <- customMain initialVty vty (Just bc) <$> monitor
+      let buildVty = do
+            v <- mkVty =<< vtyConfig
+            V.setMode (V.outputIface v) V.Mouse True
+            pure v
+      initialVty <- liftIO buildVty
+      app <- customMain initialVty buildVty (Just bc) <$> monitor
       liftIO $ void $ app (defaultCampaign, Uninitialized)
       final <- liftIO $ readIORef ref
       liftIO . putStrLn $ runReader (ppCampaign final) conf
@@ -92,25 +96,44 @@ ui vm world ts d txs = do
           pure ()
       pure final
 
-vtyConfig :: Config
-vtyConfig = defaultConfig { inputMap = (Nothing, "\ESC[6;2~", EvKey KPageDown [MShift]) :
-                                       (Nothing, "\ESC[5;2~", EvKey KPageUp [MShift]) :
-                                       inputMap defaultConfig
-                          }
+vtyConfig :: IO Config
+vtyConfig = do
+  config <- V.standardIOConfig
+  pure config { inputMap = (Nothing, "\ESC[6;2~", EvKey KPageDown [MShift]) :
+                           (Nothing, "\ESC[5;2~", EvKey KPageUp [MShift]) :
+                           inputMap defaultConfig
+              }
 
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
-monitor :: MonadReader Env m => m (App (Campaign, UIState) CampaignEvent ())
+monitor :: MonadReader Env m => m (App (Campaign, UIState) CampaignEvent Name)
 monitor = do
-  let cs :: EConfig -> (Campaign, UIState) -> Widget ()
-      cs s c = runReader (campaignStatus c) s
+  let drawUI :: EConfig -> (Campaign, UIState) -> [Widget Name]
+      drawUI conf camp = [runReader (campaignStatus camp) conf]
 
-      se (AppEvent (CampaignUpdated c')) = put (c', Running)
-      se (AppEvent (CampaignTimedout c')) = put (c', Timedout)
-      se (VtyEvent (EvKey KEsc _))                         = halt
-      se (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = halt
-      se _                                                 = pure ()
+      onEvent (AppEvent (CampaignUpdated c')) = put (c', Running)
+      onEvent (AppEvent (CampaignTimedout c')) = put (c', Timedout)
+      onEvent (VtyEvent (EvKey KEsc _))                         = halt
+      onEvent (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = halt
+      onEvent (MouseDown (SBClick el n) _ _ _) =
+        case n of
+          TestsViewPort -> do
+            let vp = viewportScroll TestsViewPort
+            case el of
+              SBHandleBefore -> vScrollBy vp (-1)
+              SBHandleAfter  -> vScrollBy vp 1
+              SBTroughBefore -> vScrollBy vp (-10)
+              SBTroughAfter  -> vScrollBy vp 10
+              SBBar          -> pure ()
+          _ -> pure ()
+      onEvent _ = pure ()
+
   conf <- asks (.cfg)
-  pure $ App (pure . cs conf) neverShowCursor se (pure ()) (const attrs)
+  pure $ App { appDraw = drawUI conf
+             , appStartEvent = pure ()
+             , appHandleEvent = onEvent
+             , appAttrMap = const attrs
+             , appChooseCursor = neverShowCursor
+             }
 
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
 isTerminal :: IO Bool
