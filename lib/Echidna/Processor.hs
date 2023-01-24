@@ -25,7 +25,7 @@ import Text.Read (readMaybe)
 import EVM.ABI (AbiValue(..))
 import EVM.Types (Addr(..))
 
-import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
+import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues, makeBytes32AbiValues)
 import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
@@ -53,7 +53,7 @@ enhanceConstants :: SlitherInfo -> [AbiValue]
 enhanceConstants si =
   nubOrd . concatMap enh . concat . concat . M.elems $ M.elems <$> si.constantValues
   where
-    enh (AbiUInt _ n) = makeNumAbiValues (fromIntegral n)
+    enh (AbiUInt _ n) = makeNumAbiValues (fromIntegral n) ++ makeBytes32AbiValues (fromIntegral n)
     enh (AbiInt _ n) = makeNumAbiValues (fromIntegral n)
     enh (AbiString s) = makeArrayAbiValues s
     enh v = [v]

@@ -9,6 +9,7 @@ import Control.Monad (join, liftM2, liftM3, foldM, replicateM)
 import Control.Monad.Random.Strict (MonadRandom, getRandom, getRandoms, getRandomR)
 import Control.Monad.Random.Strict qualified as R
 import Data.Binary.Put (runPut, putWord32be)
+import Data.Binary (encode)
 import Data.BinaryWord (unsignedWord)
 import Data.Bits (bit)
 import Data.Bool (bool)
@@ -59,6 +60,11 @@ mkValidAbiUInt i x = if x < bit i then Just $ AbiUInt i x else Nothing
 makeNumAbiValues :: Integer -> [AbiValue]
 makeNumAbiValues i = let l f = f <$> commonTypeSizes <*> fmap fromIntegral ([i-1..i+1] ++ [(-i)-1 .. (-i)+1]) in
     catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
+
+makeBytes32AbiValues :: Integer -> [AbiValue]
+makeBytes32AbiValues i = let l f = f <$> fmap fromIntegral [i]
+                             bs n = (toStrict $ encode (n :: Int)) in
+                          l (\n -> AbiBytes 32 $ BS.append (bs n) (BS.replicate (32 - BS.length (bs n)) 0))
 
 makeArrayAbiValues :: BS.ByteString -> [AbiValue]
 makeArrayAbiValues b = let size = BS.length b in [AbiString b, AbiBytesDynamic b] ++
