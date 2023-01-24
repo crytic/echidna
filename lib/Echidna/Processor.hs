@@ -2,7 +2,6 @@
 
 module Echidna.Processor where
 
-import Control.Monad.IO.Class (MonadIO(..))
 import Control.Exception (Exception)
 import Control.Monad.Catch (MonadThrow(..))
 import Data.Aeson ((.:), (.:?), (.!=), decode, parseJSON, withEmbeddedJSON, withObject)
@@ -52,7 +51,7 @@ filterResults Nothing rs = hashSig <$> (concat . M.elems) rs
 
 enhanceConstants :: SlitherInfo -> [AbiValue]
 enhanceConstants si =
-  nubOrd . concatMap enh . concat . concat . M.elems $ M.elems <$> constantValues si
+  nubOrd . concatMap enh . concat . concat . M.elems $ M.elems <$> si.constantValues
   where
     enh (AbiUInt _ n) = makeNumAbiValues (fromIntegral n)
     enh (AbiInt _ n) = makeNumAbiValues (fromIntegral n)
@@ -134,12 +133,12 @@ instance FromJSON SlitherInfo where
         where failure v t = fail $ "failed to parse " ++ t ++ ": " ++ v
 
 -- Slither processing
-runSlither :: (MonadIO m, MonadThrow m) => FilePath -> [String] -> m SlitherInfo
+runSlither :: FilePath -> [String] -> IO SlitherInfo
 runSlither fp extraArgs = if ".vy" `isSuffixOf` pack fp then return noInfo else do
-  mp <- liftIO $ findExecutable "slither"
+  mp <- findExecutable "slither"
   case mp of
     Nothing -> throwM $ ProcessorNotFound "slither" "You should install it using 'pip3 install slither-analyzer --user'"
-    Just path -> liftIO $ do
+    Just path -> do
       let args = ["--ignore-compile", "--print", "echidna", "--json", "-"] ++ extraArgs ++ [fp]
       (ec, out, err) <- readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
       case ec of

@@ -50,7 +50,7 @@ ui vm world ts d txs = do
       secToUsec = (* 1000000)
       timeoutUsec = secToUsec $ fromMaybe (-1) uiConf.maxTime
       runCampaign = timeout timeoutUsec (campaign updateRef vm world ts d txs)
-  terminalPresent <- isTerminal
+  terminalPresent <- liftIO isTerminal
   let effectiveMode = case uiConf.operationMode of
         Interactive | not terminalPresent -> NonInteractive Text
         other -> other
@@ -113,5 +113,5 @@ monitor = do
   pure $ App (pure . cs conf) neverShowCursor se (pure ()) (const attrs)
 
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
-isTerminal :: MonadIO m => m Bool
-isTerminal = liftIO $ (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
+isTerminal :: IO Bool
+isTerminal = (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)

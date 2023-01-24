@@ -1,9 +1,7 @@
 module Echidna.Config where
 
 import Control.Lens
-import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Fail qualified as M (MonadFail(..))
-import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Control.Monad.State (StateT(..), runStateT, modify')
 import Control.Monad.Trans (lift)
@@ -11,13 +9,13 @@ import Data.Aeson
 import Data.Aeson.KeyMap (keys)
 import Data.Bool (bool)
 import Data.ByteString qualified as BS
-import Data.List.NonEmpty qualified as NE
 import Data.HashSet (fromList, insert, difference)
 import Data.Maybe (fromMaybe)
+import Data.Set qualified as Set
 import Data.Text (isPrefixOf)
 import Data.Yaml qualified as Y
 
-import EVM (result)
+import EVM (VM(..))
 
 import Echidna.Test
 import Echidna.Types.Campaign
@@ -29,7 +27,7 @@ import Echidna.Types.Config
 
 instance FromJSON EConfig where
   -- retrieve the config from the key usage annotated parse
-  parseJSON = fmap econfig . parseJSON
+  parseJSON x = (.econfig) <$> parseJSON @EConfigWithUsage x
 
 instance FromJSON EConfigWithUsage where
   -- this runs the parser in a StateT monad which keeps track of the keys
@@ -68,7 +66,7 @@ instance FromJSON EConfigWithUsage where
                   psender <- v ..:? "psender" ..!= 0x10000
                   fprefix <- v ..:? "prefix"  ..!= "echidna_"
                   let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
-                      classify fname vm = maybe ResOther classifyRes (vm ^. result) == goal fname
+                      classify fname vm = maybe ResOther classifyRes vm._result == goal fname
                   return $ TestConf classify (const psender)
 
                 -- CampaignConf
@@ -93,7 +91,7 @@ instance FromJSON EConfigWithUsage where
                   Nothing -> pure "property"
                 sc = SolConf <$> v ..:? "contractAddr"    ..!= defaultContractAddr
                              <*> v ..:? "deployer"        ..!= defaultDeployerAddr
-                             <*> v ..:? "sender"          ..!= (0x10000 NE.:| [0x20000, defaultDeployerAddr])
+                             <*> v ..:? "sender"          ..!= Set.fromList [0x10000, 0x20000, defaultDeployerAddr]
                              <*> v ..:? "balanceAddr"     ..!= 0xffffffff
                              <*> v ..:? "balanceContract" ..!= 0
                              <*> v ..:? "codeSize"        ..!= 0x6000      -- 24576 (EIP-170)
@@ -126,8 +124,8 @@ defaultConfig :: EConfig
 defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEither' ""
 
 -- | Try to parse an Echidna config file, throw an error if we can't.
-parseConfig :: (MonadThrow m, MonadIO m) => FilePath -> m EConfigWithUsage
-parseConfig f = liftIO (BS.readFile f) >>= Y.decodeThrow
+parseConfig :: FilePath -> IO EConfigWithUsage
+parseConfig f = BS.readFile f >>= Y.decodeThrow
 
 -- | Run some action with the default configuration, useful in the REPL.
 withDefaultConfig :: ReaderT EConfig m a -> m a

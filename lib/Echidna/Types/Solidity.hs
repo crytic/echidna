@@ -4,8 +4,8 @@ module Echidna.Types.Solidity where
 
 import Control.Exception (Exception)
 import Control.Lens
-import Data.List.NonEmpty qualified as NE
 import Data.SemVer (Version, version, toString)
+import Data.Set (Set)
 import Data.Text (Text, unpack)
 
 import EVM.Solidity
@@ -36,7 +36,6 @@ data SolException = BadAddr Addr
                   | NoCryticCompile
                   | InvalidMethodFilters Filter
                   | OutdatedSolcVersion Version
-makePrisms ''SolException
 
 instance Show SolException where
   show = \case
@@ -63,7 +62,7 @@ instance Exception SolException
 -- | Configuration for loading Solidity for Echidna testing.
 data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract address to use
                        , _deployer        :: Addr             -- ^ Contract deployer address to use
-                       , _sender          :: NE.NonEmpty Addr -- ^ Sender addresses to use
+                       , _sender          :: Set Addr         -- ^ Sender addresses to use
                        , _balanceAddr     :: Integer          -- ^ Initial balance of deployer and senders
                        , _balanceContract :: Integer          -- ^ Initial balance of contract to test
                        , _codeSize        :: Integer          -- ^ Max code size for deployed contratcs (default 24576, per EIP-170)

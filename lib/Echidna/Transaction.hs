@@ -5,17 +5,17 @@
 module Echidna.Transaction where
 
 import Control.Lens
-import Control.Monad (join, liftM2)
+import Control.Monad (join)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Control.Monad.State.Strict (MonadState, gets)
-import Data.List.NonEmpty qualified as NE
 import Data.HashMap.Strict qualified as M
 import Data.Map (Map, toList)
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Vector qualified as V
-import EVM hiding (Env, value)
+import EVM
 import EVM.ABI (abiValueType)
 import EVM.Types (Expr(ConcreteBuf, Lit), Addr, W256)
 
@@ -27,7 +27,7 @@ import Echidna.Types.Buffer (viewBuffer, forceLit)
 import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, BytecodeMemo, lookupBytecodeMetadata)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
-import Echidna.Types.Campaign (Campaign, _genDict)
+import Echidna.Types.Campaign (Campaign(..))
 
 hasSelfdestructed :: VM -> Addr -> Bool
 hasSelfdestructed vm addr = addr `elem` vm._tx._substate._selfdestructs
@@ -52,9 +52,9 @@ genTxM memo m = do
   World ss hmm lmm ps _ <- asks fst
   genDict <- gets (._genDict)
   mm <- getSignatures hmm lmm
-  let ns = _dictValues genDict
-  s' <- rElem ss
-  r' <- rElem $ NE.fromList (mapMaybe (toContractA mm) (toList m))
+  let ns = genDict._dictValues
+  s' <- rElem' ss
+  r' <- rElem' $ Set.fromList (mapMaybe (toContractA mm) (toList m))
   c' <- genInteractionsM genDict (snd r')
   v' <- genValue mv ns ps c'
   t' <- (,) <$> genDelay t ns <*> genDelay b ns
@@ -96,27 +96,33 @@ removeCallTx (Tx _ _ r _ _ _ d) = Tx NoCall 0 r 0 0 0 d
 -- | Given a 'Transaction', generate a random \"smaller\" 'Transaction', preserving origin,
 -- destination, value, and call signature.
 shrinkTx :: MonadRandom m => Tx -> m Tx
-shrinkTx tx'@(Tx c _ _ _ gp v (t, b)) = let
-  c' = case c of
-         SolCall sc -> SolCall <$> shrinkAbiCall sc
-         _ -> pure c
+shrinkTx tx' = let
+  shrinkCall = case tx'.call of
+   SolCall sc -> SolCall <$> shrinkAbiCall sc
+   _ -> pure tx'.call
   lower 0 = pure 0
   lower x = (getRandomR (0 :: Integer, fromIntegral x)
               >>= (\r -> uniform [0, r]) . fromIntegral)  -- try 0 quicker
   possibilities =
-    [ set call      <$> c'
-    , set value     <$> lower v
-    , set gasprice' <$> lower gp
-    , set delay     <$> fmap level (liftM2 (,) (lower t) (lower b))
+    [ do call' <- shrinkCall
+         pure tx' { call = call' }
+    , do value' <- lower tx'.value
+         pure tx' { Echidna.Types.Tx.value = value' }
+    , do gasprice' <- lower tx'.gasprice
+         pure tx' { Echidna.Types.Tx.gasprice = gasprice' }
+    , do let (time, blocks) = tx'.delay
+         delay' <- level <$> ((,) <$> lower time <*> lower blocks)
+         pure tx' { delay = delay' }
     ]
-  in join $ usuallyRarely (join (uniform possibilities) <*> pure tx') (pure $ removeCallTx tx')
+  in join $ usuallyRarely (join (uniform possibilities)) (pure $ removeCallTx tx')
 
 mutateTx :: (MonadRandom m) => Tx -> m Tx
-mutateTx t@(Tx (SolCall c) _ _ _ _ _ _) = do f <- oftenUsually skip mutate
-                                             f c
-                                           where mutate  z = mutateAbiCall z >>= \c' -> pure $ t { _call = SolCall c' }
-                                                 skip    _ = pure t
-mutateTx t                              = pure t
+mutateTx t@(Tx (SolCall c) _ _ _ _ _ _) = do
+  f <- oftenUsually skip mutate
+  f c
+  where mutate z = mutateAbiCall z >>= \c' -> pure $ t { call = SolCall c' }
+        skip _ = pure t
+mutateTx t = pure t
 
 -- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
 -- 'Transaction's \"on-chain\".
