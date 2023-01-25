@@ -6,7 +6,7 @@ module Echidna.Exec where
 
 import Control.Lens
 import Control.Monad.Catch (MonadThrow(..))
-import Control.Monad.State.Strict (MonadState (get, put), execState, execState)
+import Control.Monad.State.Strict (MonadState (get, put), execState, execState, MonadIO (liftIO))
 import Data.Map qualified as M
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as S
@@ -14,15 +14,11 @@ import Data.Word (Word64)
 
 import EVM
 import EVM.ABI
-import EVM.Concrete (createAddress)
-import EVM.Exec (exec, ethrunAddress)
-import EVM.Expr (litAddr)
+import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Types (Expr(ConcreteBuf, Lit), hexText)
-import EVM.FeeSchedule
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import System.Process (readProcessWithExitCode)
-import System.IO.Unsafe (unsafePerformIO)
 
 import Echidna.Events (emptyEvents)
 import Echidna.Transaction
@@ -69,7 +65,7 @@ vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> Unknow
 
 -- | Given an error handler `onErr`, an execution strategy `executeTx`, and a transaction `tx`,
 -- execute that transaction using the given execution strategy, calling `onErr` on errors.
-execTxWith :: MonadState s m => Lens' s VM -> (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Int)
+execTxWith :: (MonadIO m, MonadState s m) => Lens' s VM -> (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Int)
 execTxWith l onErr executeTx tx' = do
   vm <- use l
   if hasSelfdestructed vm tx'.dst then
@@ -83,7 +79,7 @@ execTxWith l onErr executeTx tx' = do
     gasLeftAfterTx <- use $ l . state . gas
     checkAndHandleQuery l vmBeforeTx vmResult' onErr executeTx tx' gasLeftBeforeTx gasLeftAfterTx
 
-checkAndHandleQuery :: MonadState s m => Lens' s VM -> VM -> VMResult -> (Error -> m ()) -> m VMResult -> Tx -> Word64 -> Word64 -> m (VMResult, Int)
+checkAndHandleQuery :: (MonadIO m, MonadState s m) => Lens' s VM -> VM -> VMResult -> (Error -> m ()) -> m VMResult -> Tx -> Word64 -> Word64 -> m (VMResult, Int)
 checkAndHandleQuery l vmBeforeTx vmResult' onErr executeTx tx' gasLeftBeforeTx gasLeftAfterTx =
         -- Continue transaction whose execution queried a contract or slot
     let continueAfterQuery = do
@@ -108,9 +104,10 @@ checkAndHandleQuery l vmBeforeTx vmResult' onErr executeTx tx' gasLeftBeforeTx g
 
       -- Execute a FFI call
       Just (PleaseDoFFI (cmd : args) continuation) -> do
-        -- WARNING: this uses unsafePerformIO to avoid using IO here explicitely
-        let (_, stdout, _) = unsafePerformIO $ readProcessWithExitCode cmd args ""
-        l %= execState (continuation $ encodeAbiValue $ AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.pack $ stdout]))
+        (_, stdout, _) <- liftIO $ readProcessWithExitCode cmd args ""
+        let encodedResponse = encodeAbiValue $
+              AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.pack $ stdout])
+        l %= execState (continuation encodedResponse)
         continueAfterQuery
 
       -- No queries to answer
@@ -153,7 +150,7 @@ handleErrorsAndConstruction l onErr vmResult' vmBeforeTx tx' = case (vmResult', 
   _ -> pure ()
 
 -- | Execute a transaction "as normal".
-execTx :: (MonadState VM m, MonadThrow m) => Tx -> m (VMResult, Int)
+execTx :: (MonadIO m, MonadState VM m, MonadThrow m) => Tx -> m (VMResult, Int)
 execTx = execTxWith id vmExcept $ fromEVM exec
 
 -- | Execute a transaction, logging coverage at every step.
@@ -190,35 +187,8 @@ execTxWithCov memo = do
       pure $ lookupBytecodeMetadata memo bc
 
 initialVM :: Bool -> VM
-initialVM ffi = vmForEthrunCreation ffi
+initialVM ffi = vmForEthrunCreation mempty
   & block . timestamp .~ Lit initialTimestamp
   & block . number .~ initialBlockNumber
   & env . contracts .~ mempty       -- fixes weird nonce issues
-
-vmForEthrunCreation :: Bool -> VM
-vmForEthrunCreation ffi =
-  makeVm $ VMOpts
-    { vmoptContract = initialContract (InitCode mempty mempty)
-    , vmoptCalldata = mempty
-    , vmoptValue = Lit 0
-    , vmoptStorageBase = Concrete
-    , vmoptAddress = createAddress ethrunAddress 1
-    , vmoptCaller = litAddr ethrunAddress
-    , vmoptOrigin = ethrunAddress
-    , vmoptCoinbase = 0
-    , vmoptNumber = 0
-    , vmoptTimestamp = Lit 0
-    , vmoptBlockGaslimit = 0
-    , vmoptGasprice = 0
-    , vmoptPrevRandao = 42069
-    , vmoptGas = 0xffffffffffffffff
-    , vmoptGaslimit = 0xffffffffffffffff
-    , vmoptBaseFee = 0
-    , vmoptPriorityFee = 0
-    , vmoptMaxCodeSize = 0xffffffff
-    , vmoptSchedule = EVM.FeeSchedule.berlin
-    , vmoptChainId = 1
-    , vmoptCreate = False
-    , vmoptTxAccessList = mempty
-    , vmoptAllowFFI = ffi
-    }
+  & allowFFI .~ ffi
