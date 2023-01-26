@@ -11,7 +11,7 @@ import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.Reader (runReaderT, asks)
-import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT, gets)
+import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT, gets, MonadIO)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Binary.Get (runGetOrFail)
@@ -80,7 +80,7 @@ isSuccessful Campaign{_tests} =
 -- (2): The test is 'Open', and evaluating it breaks our runtime
 -- (3): The test is unshrunk, and we can shrink it
 -- Then update accordingly, keeping track of how many times we've tried to solve or shrink.
-updateTest :: (MonadCatch m, MonadRandom m, MonadReader Env m)
+updateTest :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
            => World -> VM -> Maybe (VM, [Tx]) -> EchidnaTest -> m EchidnaTest
 
 
@@ -117,7 +117,7 @@ runUpdate f = let l = tests in use l >>= mapM f >>= (l .=)
 
 -- | Given an initial 'VM' state and a way to run transactions, evaluate a list of transactions, constantly
 -- checking if we've solved any tests or can shrink known solves.
-evalSeq :: (MonadCatch m, MonadRandom m, MonadReader Env m, MonadState (VM, Campaign) m)
+evalSeq :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m, MonadState (VM, Campaign) m)
         => World -> VM -> (Tx -> m a) -> [Tx] -> m [(Tx, a)]
 evalSeq w v e = go [] where
   go r xs = do
@@ -129,7 +129,7 @@ evalSeq w v e = go [] where
 
 -- | Given a call sequence that produces Tx with gas >= g for f, try to randomly generate
 -- a smaller one that achieves at least that gas usage
-shrinkGasSeq :: (MonadRandom m, MonadReader Env m, MonadThrow m, MonadState VM m)
+shrinkGasSeq :: (MonadIO m, MonadRandom m, MonadReader Env m, MonadThrow m, MonadState VM m)
           => Text -> Int -> [Tx] -> m [Tx]
 shrinkGasSeq f g xs = sequence [shorten, shrunk] >>= uniform >>= ap (fmap . flip bool xs) check where
   callsF t =
@@ -160,7 +160,7 @@ updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
 -- transaction if it finds new coverage.
-execTxOptC :: (MonadState (VM, Campaign) m, MonadThrow m) => Tx -> m (VMResult, Int)
+execTxOptC :: (MonadIO m, MonadState (VM, Campaign) m, MonadThrow m) => Tx -> m (VMResult, Int)
 execTxOptC tx = do
   (_, camp) <- get
   let cov = _2 . coverage
@@ -212,7 +212,7 @@ randseq (n,txs) ql o w = do
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate, generate that many calls,
 -- constantly checking if we've solved any tests or can shrink known solves. Update coverage as a result
-callseq :: (MonadCatch m, MonadRandom m, MonadReader Env m, MonadState Campaign m)
+callseq :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m, MonadState Campaign m)
         => InitialCorpus -> VM -> World -> Int -> m ()
 callseq ic v w ql = do
   conf <- asks (.cfg._cConf)
@@ -272,7 +272,7 @@ callseq ic v w ql = do
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an optional dictionary
 -- to generate calls with. Return the 'Campaign' state once we can't solve or shrink anything.
 campaign
-  :: (MonadCatch m, MonadRandom m, MonadReader Env m)
+  :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
   => StateT Campaign m a -- ^ Callback to run after each state update (for instrumentation)
   -> VM                  -- ^ Initial VM state
   -> World               -- ^ Initial world state

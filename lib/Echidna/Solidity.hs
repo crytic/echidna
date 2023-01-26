@@ -162,7 +162,7 @@ loadSpecified solConf name cs = do
   unless solConf._quiet . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
-  let SolConf ca d ads bala balc mcs pref _ _ libs _ fp dpc dpb ma tm _ fs = solConf
+  let SolConf ca d ads bala balc mcs pref _ _ libs _ fp dpc dpb ma tm _ ffi fs = solConf
 
   -- generate the complete abi mapping
   let bc = c._creationCode
@@ -182,9 +182,9 @@ loadSpecified solConf name cs = do
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
-  let vm = initialVM & block . gaslimit .~ fromInteger unlimitedGasPerBlock
-                     & block . maxCodeSize .~ fromInteger mcs
-  blank' <- maybe (pure vm) loadEthenoBatch fp
+  let vm = initialVM ffi & block . gaslimit .~ fromInteger unlimitedGasPerBlock
+                         & block . maxCodeSize .~ fromInteger mcs
+  blank' <- maybe (pure vm) (loadEthenoBatch ffi) fp
   let blank = populateAddresses (Set.insert d ads) bala blank'
 
   unless (null con || isJust fp) (throwM $ ConstructorArgs (show con))
