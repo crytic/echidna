@@ -31,6 +31,7 @@ import Control.Monad.Random (getRandom)
 import Control.Monad.State.Strict (evalStateT)
 import Data.DoubleWord (Int256)
 import Data.Function ((&))
+import Data.IORef
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
 import Data.Map (fromList, lookup, empty)
@@ -96,7 +97,13 @@ runContract f mc cfg = do
   (v, sc, cs, w, ts, d, txs) <- prepareContract cfg (f :| []) mc g
   let solcByName = fromList [(c.contractName, c) | c <- cs]
   let dappInfo' = dappInfo "/" solcByName sc
-  let env = Env { cfg = cfg, dapp = dappInfo' }
+  cacheMeta <- newIORef mempty
+  cacheContracts <- newIORef mempty
+  cacheSlots <- newIORef mempty
+  let env = Env { cfg = cfg, dapp = dappInfo'
+                , metadataCache = cacheMeta
+                , fetchContractCache = cacheContracts
+                , fetchSlotCache = cacheSlots }
   -- start ui and run tests
   runReaderT (campaign (pure ()) v w ts (Just d) txs) env
 
@@ -120,8 +127,15 @@ testContract' fp n v configPath s as = testCase fp $ withSolcVersion v $ do
 
 checkConstructorConditions :: FilePath -> String -> TestTree
 checkConstructorConditions fp as = testCase fp $ do
-  (v, _, t) <- loadSolTests testConfig.solConf (fp :| []) Nothing
-  let env = Env { cfg = testConfig, dapp = emptyDapp }
+  (v, _, t) <- loadSolTests testConfig (fp :| []) Nothing
+  -- TODO:
+  cacheMeta <- newIORef mempty
+  cacheContracts <- newIORef mempty
+  cacheSlots <- newIORef mempty
+  let env = Env { cfg = testConfig, dapp = emptyDapp
+                , metadataCache = cacheMeta
+                , fetchContractCache = cacheContracts
+                , fetchSlotCache = cacheSlots }
   r <- flip runReaderT env $
     mapM (\u -> evalStateT (checkETest u) v) t
   mapM_ (\(x,_) -> assertBool as (forceBool x)) r

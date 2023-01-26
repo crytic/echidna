@@ -8,7 +8,6 @@ import Control.Monad (void)
 import Control.Monad.Catch (catch)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text (Text)
-import Echidna.Types.Config
 import Echidna.Types.Solidity (SolException(..))
 import Echidna.Solidity (loadWithCryticCompile)
 
@@ -36,4 +35,4 @@ compilationTests = testGroup "Compilation and loading tests"
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
-  tryLoad = void $ loadWithCryticCompile testConfig.solConf (fp :| []) c
+  tryLoad = void $ loadWithCryticCompile testConfig (fp :| []) c

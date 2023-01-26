@@ -20,7 +20,7 @@ import EVM.Types (Addr, Expr (ConcreteBuf, Lit))
 import Echidna.ABI
 import Echidna.Events (Events, extractEvents)
 import Echidna.Exec
-import Echidna.Types.Buffer (viewBuffer)
+import Echidna.Types.Buffer (forceBuf)
 import Echidna.Types.Config
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Test
@@ -32,9 +32,9 @@ data CallRes = ResFalse | ResTrue | ResRevert | ResOther
 
 --- | Given a 'VMResult', classify it assuming it was the result of a call to an Echidna test.
 classifyRes :: VMResult -> CallRes
-classifyRes (VMSuccess b) | viewBuffer b == Just (encodeAbiValue (AbiBool True))  = ResTrue
-                          | viewBuffer b == Just (encodeAbiValue (AbiBool False)) = ResFalse
-                          | otherwise                                             = ResOther
+classifyRes (VMSuccess b) | forceBuf b == encodeAbiValue (AbiBool True)  = ResTrue
+                          | forceBuf b == encodeAbiValue (AbiBool False) = ResFalse
+                          | otherwise                                    = ResOther
 classifyRes Reversion = ResRevert
 classifyRes _         = ResOther
 
@@ -46,11 +46,11 @@ getResultFromVM vm =
     Nothing -> error "getResultFromVM failed"
 
 createTest :: TestType -> EchidnaTest
-createTest m =  EchidnaTest (Open (-1)) m v [] Stop []
-                where v = case m of
-                           PropertyTest _ _     -> BoolValue True
-                           OptimizationTest _ _ -> IntValue minBound
-                           _                    -> NoValue
+createTest m = EchidnaTest (Open 0) m v [] Stop []
+  where v = case m of
+              PropertyTest _ _     -> BoolValue True
+              OptimizationTest _ _ -> IntValue minBound
+              _                    -> NoValue
 
 validateTestModeError :: String
 validateTestModeError = "Invalid test mode (should be property, assertion, dapptest, optimization, overflow or exploration)"
@@ -152,11 +152,10 @@ runTx f s a = do
 --- | Extract a test value from an execution.
 getIntFromResult :: Maybe VMResult -> TestValue
 getIntFromResult (Just (VMSuccess b)) =
-  case viewBuffer b of
-    Nothing -> error "invalid decode of buffer"
-    Just bs -> case decodeAbiValue (AbiIntType 256) $ LBS.fromStrict bs of
-      AbiInt 256 n -> IntValue n
-      _ -> error ("invalid decode of int256: " ++ show bs)
+  let bs = forceBuf b
+  in case decodeAbiValue (AbiIntType 256) $ LBS.fromStrict bs of
+    AbiInt 256 n -> IntValue n
+    _ -> error ("invalid decode of int256: " ++ show bs)
 getIntFromResult _ = IntValue minBound
 
 -- | Given a property test, evaluate it and see if it currently passes.
@@ -174,9 +173,9 @@ checkStatefullAssertion sig addr = do
   dappInfo <- asks (.dapp)
   vm <- get
       -- Whether the last transaction called the function `sig`.
-  let isCorrectFn = case viewBuffer vm._state._calldata of
-        Just cd -> BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) cd
-        Nothing -> False
+  let isCorrectFn =
+        BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty))
+                      (forceBuf vm._state._calldata)
       -- Whether the last transaction executed a function on the contract `addr`.
       isCorrectAddr = addr == vm._state._codeContract
       isCorrectTarget = isCorrectFn && isCorrectAddr
@@ -201,9 +200,9 @@ checkDapptestAssertion sig addr = do
   -- Whether the last transaction has any value
   let hasValue = vm._state._callvalue /= Lit 0
       -- Whether the last transaction called the function `sig`.
-  let isCorrectFn = case viewBuffer $ vm._state._calldata of
-        Just cd -> BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty)) cd
-        Nothing -> False
+  let isCorrectFn =
+        BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty))
+                      (forceBuf vm._state._calldata)
       isAssertionFailure = case vm._result of
         Just (VMFailure (Revert (ConcreteBuf bs))) -> not $ BS.isSuffixOf assumeMagicReturnCode bs
         Just (VMFailure _)           -> True

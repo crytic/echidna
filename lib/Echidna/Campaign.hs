@@ -9,13 +9,14 @@ import Control.Monad (replicateM, when, unless)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.Reader (runReaderT, asks)
+import Control.Monad.Reader (runReaderT, asks, liftIO)
 import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT, gets, MonadIO)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
 import Data.HashMap.Strict qualified as H
+import Data.IORef (readIORef, writeIORef)
 import Data.Map (Map, unionWith, (\\), elems, keys, lookup, insert, mapWithKey)
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Ord (comparing)
@@ -36,12 +37,12 @@ import Echidna.Shrink (shrinkTest)
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types (Gas)
-import Echidna.Types.Buffer (viewBuffer)
+import Echidna.Types.Buffer (forceBuf)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (InitialCorpus)
 import Echidna.Types.Coverage (coveragePoints)
-import Echidna.Types.Signature (makeBytecodeMemo)
+import Echidna.Types.Signature (makeBytecodeCache, MetadataCache)
 import Echidna.Types.Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), getResult, call)
 import Echidna.Types.World (World)
@@ -88,7 +89,7 @@ updateTest vmForShrink (vm, xs) test = do
   limit <- asks (.cfg.campaignConf.testLimit)
   dappInfo <- asks (.dapp)
   case test.testState of
-    Open i | i >= limit -> case test.testType of
+    Open i | i > limit -> case test.testType of
       OptimizationTest _ _ -> pure $ test { testState = Large (-1) }
       _                    -> pure $ test { testState = Passed }
     Open i -> do
@@ -136,11 +137,11 @@ updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
 -- transaction if it finds new coverage.
-execTxOptC :: (MonadIO m, MonadState (VM, Campaign) m, MonadThrow m) => Tx -> m (VMResult, Gas)
+execTxOptC :: (MonadIO m, MonadReader Env m, MonadState (VM, Campaign) m, MonadThrow m) => Tx -> m (VMResult, Gas)
 execTxOptC tx = do
-  (vm, Campaign{_bcMemo, _coverage = oldCov}) <- get
+  (vm, Campaign{_coverage = oldCov}) <- get
   let cov = _2 . coverage
-  ((res, newCov), vm') <- runStateT (execTxWithCov _bcMemo tx) vm
+  ((res, newCov), vm') <- runStateT (execTxWithCov tx) vm
   _1 .= vm'
   let vmr = getResult $ fst res
   -- Update the coverage map with the proper binary according to the vm result
@@ -162,8 +163,8 @@ addToCorpus n res = unless (null rtxs) $ corpus %= Set.insert (n, rtxs)
 
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
 randseq :: (MonadRandom m, MonadReader Env m, MonadState Campaign m)
-        => InitialCorpus -> Int -> Map Addr Contract -> World -> m [Tx]
-randseq (n,txs) ql o w = do
+        => MetadataCache -> InitialCorpus -> Int -> Map Addr Contract -> World -> m [Tx]
+randseq memo (n,txs) ql o w = do
   ca <- get
   cs <- asks (.cfg.campaignConf.mutConsts)
   txConf <- asks (.cfg.txConf)
@@ -174,7 +175,6 @@ randseq (n,txs) ql o w = do
   if n > p then -- Replay the transactions in the corpus, if we are executing the first iterations
     return $ txs !! p
   else do
-    memo <- gets (._bcMemo)
     -- Randomly generate new random transactions
     gtxs <- replicateM ql $ runReaderT (genTxM memo o) (w, txConf)
     -- Generate a random mutator
@@ -204,7 +204,9 @@ callseq ic v w ql = do
   -- Then, we get the current campaign state
   ca <- get
   -- Then, we generate the actual transaction in the sequence
-  is <- randseq ic ql old w
+  metaCacheRef <- asks (.metadataCache)
+  metaCache <- liftIO $ readIORef metaCacheRef
+  is <- randseq metaCache ic ql old w
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, (vm, camp)) <- runStateT (evalSeq v ef is) (v, ca)
   let new = vm._env._contracts
@@ -261,16 +263,19 @@ campaign
   -> m Campaign
 campaign u vm w ts d txs = do
   conf <- asks (.cfg.campaignConf)
+
+  metaCacheRef <- asks (.metadataCache)
+  liftIO $ writeIORef metaCacheRef (memo vm._env._contracts)
+
   let c = fromMaybe mempty conf.knownCoverage
   let effectiveSeed = fromMaybe d'.defSeed conf.seed
       effectiveGenDict = d' { defSeed = effectiveSeed }
       d' = fromMaybe defaultDict d
-  execStateT
-    (evalRandT runCampaign (mkStdGen effectiveSeed))
-    (Campaign ts c mempty effectiveGenDict False Set.empty 0 memo)
+      camp = Campaign ts c mempty effectiveGenDict False Set.empty 0
+  execStateT (evalRandT (lift u >> runCampaign) (mkStdGen effectiveSeed)) camp
   where
     -- "mapMaybe ..." is to get a list of all contracts
-    memo        = makeBytecodeMemo . mapMaybe (viewBuffer . (^. bytecode)) . elems $ vm._env._contracts
+    memo = makeBytecodeCache . map (forceBuf . (^. bytecode)) . elems
     runCampaign = gets (fmap (.testState) . (._tests)) >>= update
     update c    = do
       let ic = (length txs, txs)
@@ -278,11 +283,11 @@ campaign u vm w ts d txs = do
       Campaign{_ncallseqs} <- get
       if | stopOnFail && any (\case Solved -> True; Failed _ -> True; _ -> False) c ->
            lift u
-         | any (\case Open  n   -> n < testLimit; _ -> False) c ->
+         | any (\case Open  n   -> n <= testLimit; _ -> False) c ->
            callseq ic vm w seqLen >> step
          | any (\case Large n   -> n < shrinkLimit; _ -> False) c ->
            step
-         | null c && (seqLen * _ncallseqs) < testLimit ->
+         | null c && (seqLen * _ncallseqs) <= testLimit ->
            callseq ic vm w seqLen >> step
          | otherwise ->
            lift u
