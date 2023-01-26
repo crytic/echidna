@@ -6,7 +6,7 @@ import Prelude hiding (Word)
 
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import Control.Monad.State.Strict (MonadState(get, put), gets)
+import Control.Monad.State.Strict (MonadState(get, put), gets, MonadIO)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as LBS
 import Data.Text (Text)
@@ -110,7 +110,7 @@ updateOpenTest test txs i (IntValue v',es,r) = if v' > v then test { testState =
 updateOpenTest _ _ _ _                       = error "Invalid type of test"
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
-checkETest :: (MonadReader Env m, MonadState VM m, MonadThrow m)
+checkETest :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
            => EchidnaTest -> m (TestValue, Events, TxResult)
 checkETest test = case test.testType of
                   Exploration           -> return (BoolValue True, [], Stop) -- These values are never used
@@ -119,7 +119,7 @@ checkETest test = case test.testType of
                   AssertionTest dt n a  -> if dt then checkDapptestAssertion (n, a) else checkStatefullAssertion (n, a)
                   CallTest _ f          -> checkCall f
 
-checkProperty :: (MonadReader Env m, MonadState VM m, MonadThrow m)
+checkProperty :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
               => (Text, Addr) -> m (TestValue, Events, TxResult)
 checkProperty t = do
     r <- gets (._result)
@@ -128,7 +128,7 @@ checkProperty t = do
       _                  -> return (BoolValue True, [], Stop) -- These values are never used
 
 
-runTx :: (MonadReader Env m, MonadState VM m, MonadThrow m)
+runTx :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
       => Text -> (Addr -> Addr) -> Addr -> m (VM, VM)
 runTx f s a = do
   vm <- get -- save EVM state
@@ -140,7 +140,7 @@ runTx f s a = do
 
 
 -- | Given a property test, evaluate it and see if it currently passes.
-checkProperty' :: (MonadReader Env m, MonadState VM m, MonadThrow m)
+checkProperty' :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
                => (Text, Addr) -> m (TestValue, Events, TxResult)
 checkProperty' (f,a) = do
   dappInfo <- asks (.dapp)
@@ -160,7 +160,7 @@ getIntFromResult (Just (VMSuccess b)) = case viewBuffer b of
 getIntFromResult _ = IntValue minBound
 
 -- | Given a property test, evaluate it and see if it currently passes.
-checkOptimization :: (MonadReader Env m, MonadState VM m, MonadThrow m)
+checkOptimization :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
                   => (Text, Addr) -> m (TestValue, Events, TxResult)
 checkOptimization (f,a) = do
   TestConf _ s <- asks (.cfg._tConf)

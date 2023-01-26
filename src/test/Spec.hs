@@ -13,6 +13,7 @@ import Tests.Research (researchTests)
 import Tests.Values (valuesTests)
 import Tests.Seed (seedTests)
 import Tests.Dapptest (dapptestTests)
+import Tests.Cheat (cheatTests)
 
 main :: IO ()
 main = withCurrentDirectory "./tests/solidity" . defaultMain $
@@ -30,4 +31,5 @@ main = withCurrentDirectory "./tests/solidity" . defaultMain $
            , researchTests
            , dapptestTests
            , encodingJSONTests
+           , cheatTests
            ]

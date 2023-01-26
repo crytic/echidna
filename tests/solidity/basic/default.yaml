@@ -73,6 +73,8 @@ maxBlockDelay: 60480
 filterFunctions: []
 # by default, blacklist methods in filterFunctions
 filterBlacklist: true
+# enable or disable ffi HEVM cheatcode
+allowFFI: false
 #directory to save the corpus; by default is disabled
 corpusDir: null
 # constants for corpus mutations (for experimentation only)

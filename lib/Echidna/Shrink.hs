@@ -4,7 +4,7 @@ import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import Control.Monad.State.Strict (MonadState(get, put))
+import Control.Monad.State.Strict (MonadState(get, put), MonadIO)
 import Data.Foldable (traverse_)
 import Data.Set qualified as Set
 import Data.List qualified as List
@@ -21,7 +21,7 @@ import Echidna.Types.Config
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
 -- still solves that test.
-shrinkSeq :: (MonadRandom m, MonadReader Env m, MonadThrow m, MonadState VM m)
+shrinkSeq :: (MonadIO m, MonadRandom m, MonadReader Env m, MonadThrow m, MonadState VM m)
           => m (TestValue, Events, TxResult) -> (TestValue, Events, TxResult) -> [Tx] -> m ([Tx], TestValue, Events, TxResult)
 shrinkSeq f (v,es,r) xs = do
   strategies <- sequence [shorten, shrunk]
