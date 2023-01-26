@@ -52,7 +52,7 @@ prepareContract cfg fs c g = do
 
   -- compile and load contracts
   (cs, scs) <- Echidna.Solidity.contracts solConf fs
-  p <- loadSpecified solConf c cs
+  p <- loadSpecified cfg c cs
 
   -- run processors
   si <- runSlither (NE.head fs) solConf.cryticArgs

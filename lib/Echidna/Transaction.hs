@@ -22,8 +22,8 @@ import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
 import Echidna.Types (fromEVM)
-import Echidna.Types.Buffer (viewBuffer, forceLit)
-import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, BytecodeMemo, lookupBytecodeMetadata)
+import Echidna.Types.Buffer (forceBuf, forceLit)
+import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, MetadataCache, lookupBytecodeMetadata)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign (Campaign(..))
@@ -43,7 +43,7 @@ getSignatures hmm (Just lmm) = usuallyVeryRarely hmm lmm -- once in a while, thi
 
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
 genTxM :: (MonadRandom m, MonadReader (World, TxConf) m, MonadState Campaign m)
-  => BytecodeMemo
+  => MetadataCache
   -> Map Addr Contract
   -> m Tx
 genTxM memo m = do
@@ -60,10 +60,10 @@ genTxM memo m = do
   pure $ Tx (SolCall c') s' (fst r') g gp v' (level t')
   where
     toContractA :: SignatureMap -> (Addr, Contract) -> Maybe ContractA
-    toContractA mm (addr, c) = do
-      bc <- viewBuffer $ c ^. bytecode
-      let metadata = lookupBytecodeMetadata memo bc
-      (addr,) <$> M.lookup metadata mm
+    toContractA mm (addr, c) =
+      let bc = forceBuf $ c ^. bytecode
+          metadata = lookupBytecodeMetadata memo bc
+      in (addr,) <$> M.lookup metadata mm
 
 genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
 genDelay mv ds = do

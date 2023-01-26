@@ -35,6 +35,7 @@ import Echidna.Campaign (isSuccessful)
 import Echidna.UI
 import Echidna.Output.Source
 import Echidna.Output.Corpus
+import Data.IORef (newIORef)
 
 main :: IO ()
 main = do
@@ -50,7 +51,14 @@ main = do
   let solcByName = fromList [(c.contractName, c) | c <- cs]
   -- TODO put in real path
   let dappInfo' = dappInfo "/" solcByName sc
-  let env = Env { cfg = cfg, dapp = dappInfo' }
+  cacheContracts <- newIORef mempty
+  cacheSlots <- newIORef mempty
+  cacheMeta <- newIORef mempty
+  let env = Env { cfg = cfg
+                , dapp = dappInfo'
+                , metadataCache = cacheMeta
+                , fetchContractCache = cacheContracts
+                , fetchSlotCache = cacheSlots }
   -- start ui and run tests
   cpg <- runReaderT (ui v w ts (Just d) txs) env
 
