@@ -1,6 +1,5 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE GADTs #-}
 
 module Echidna.Campaign where
@@ -55,17 +54,20 @@ instance MonadCatch m => MonadCatch (RandT g m) where
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
 isDone :: MonadReader EConfig m => Campaign -> m Bool
-isDone c | null (view tests c) = do
+isDone c | null c._tests = do
   conf <- asks (._cConf)
   pure $ c._ncallseqs * conf._seqLen >= conf._testLimit
-isDone (view tests -> ts) = do
+isDone c = do
   conf <- asks (._cConf)
   let res (Open  i)   = if i >= conf._testLimit then Just True else Nothing
       res Passed      = Just True
       res (Large i)   = if i >= conf._shrinkLimit then Just False else Nothing
       res Solved      = Just False
       res (Failed _)  = Just False
-  pure $ res . (.testState) <$> ts & if conf._stopOnFail then elem $ Just False else all isJust
+  let testResults = res . (.testState) <$> c._tests
+  let done = if conf._stopOnFail then Just False `elem` testResults
+                                 else all isJust testResults
+  pure done
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
