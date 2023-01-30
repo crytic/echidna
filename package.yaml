@@ -5,7 +5,8 @@ maintainer: Trail of Bits <echidna-dev@trailofbits.com>
 
 version: 2.0.5
 
-ghc-options: -Wall -fno-warn-orphans -O2 -threaded +RTS -N -RTS
+# https://github.com/haskell/cabal/issues/4739
+ghc-options: -Wall -fno-warn-orphans -O2 -threaded +RTS -N -RTS -optP-Wno-nonportable-include-path
 
 dependencies:
   - base
