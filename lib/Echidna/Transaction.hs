@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE ViewPatterns #-}
 
 module Echidna.Transaction where
 
@@ -32,11 +31,11 @@ import Echidna.Types.Campaign (Campaign(..))
 hasSelfdestructed :: VM -> Addr -> Bool
 hasSelfdestructed vm addr = addr `elem` vm._tx._substate._selfdestructs
 
--- | If half a tuple is zero, make both halves zero. Useful for generating delays, since block number
--- only goes up with timestamp
+-- | If half a tuple is zero, make both halves zero. Useful for generating
+-- delays, since block number only goes up with timestamp
 level :: (Num a, Eq a) => (a, a) -> (a, a)
-level (elemOf each 0 -> True) = (0,0)
-level x                       = x
+level (x, y) | x == 0 || y == 0 = (0, 0)
+level x = x
 
 getSignatures :: MonadRandom m => SignatureMap -> Maybe SignatureMap -> m SignatureMap
 getSignatures hmm Nothing = return hmm
