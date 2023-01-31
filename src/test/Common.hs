@@ -110,7 +110,7 @@ checkConstructorConditions fp as = testCase fp $ do
   let env = Env { cfg = testConfig, dapp = emptyDapp }
   r <- flip runReaderT env $
     mapM (\u -> evalStateT (checkETest u) v) t
-  mapM_ (\(x,_,_) -> assertBool as (forceBool x)) r
+  mapM_ (\(x,_) -> assertBool as (forceBool x)) r
   where forceBool (BoolValue b) = b
         forceBool _ = error "BoolValue expected"
 
