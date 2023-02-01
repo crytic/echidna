@@ -12,8 +12,6 @@ import Data.Text
 import Data.Text.Encoding (decodeUtf8)
 import Numeric (showHex)
 
-import EVM.Types (keccak')
-
 import Echidna.ABI (ppAbiValue, GenDict(..))
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Campaign qualified as C
@@ -98,7 +96,7 @@ encodeCampaign C.Campaign{..} = encode
            , _error = Nothing
            , _tests = mapTest <$> _tests
            , seed = _genDict._defSeed
-           , coverage = mapKeys (("0x" ++) . (`showHex` "") . keccak') $ DF.toList <$>_coverage
+           , coverage = mapKeys (("0x" ++) . (`showHex` "")) $ DF.toList <$> _coverage
            , gasInfo = toList _gasInfo
            }
 

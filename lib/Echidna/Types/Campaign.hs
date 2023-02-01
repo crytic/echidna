@@ -11,7 +11,6 @@ import Echidna.Types
 import Echidna.Types.Corpus
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Test (EchidnaTest)
-import Echidna.Types.Signature (BytecodeMemo)
 import Echidna.Types.Tx (Tx)
 
 -- | Configuration for running an Echidna 'Campaign'.
@@ -54,13 +53,11 @@ data Campaign = Campaign { _tests       :: [EchidnaTest]
                            -- ^ List of transactions with maximum coverage
                          , _ncallseqs   :: Int
                            -- ^ Number of times the callseq is called
-                         , _bcMemo        :: BytecodeMemo
-                           -- ^ Stored results of getBytecodeMetadata on all contracts
                          }
 makeLenses ''Campaign
 
 defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty mempty defaultDict False mempty 0 mempty
+defaultCampaign = Campaign mempty mempty mempty defaultDict False mempty 0
 
 defaultTestLimit :: Int
 defaultTestLimit = 50000

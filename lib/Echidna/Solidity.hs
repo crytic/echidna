@@ -7,7 +7,7 @@ import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Extra (whenM)
 import Control.Monad.State.Strict (execStateT)
 import Data.Foldable (toList)
-import Data.HashMap.Strict qualified as M
+import Data.Map qualified as M
 import Data.List (find, partition, isSuffixOf, (\\))
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NEE
@@ -27,7 +27,7 @@ import EVM hiding (contracts, path)
 import EVM qualified (contracts)
 import EVM.ABI
 import EVM.Solidity
-import EVM.Types (Addr)
+import EVM.Types (Addr, keccak')
 import EVM.Dapp (dappInfo)
 
 import Echidna.ABI (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
@@ -37,7 +37,7 @@ import Echidna.Fetch (deployContracts, deployBytecodes)
 import Echidna.Processor
 import Echidna.RPC (loadEthenoBatch)
 import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
-import Echidna.Types.Signature (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
+import Echidna.Types.Signature (ContractName, FunctionHash, SolSignature, SignatureMap)
 import Echidna.Types.Solidity hiding (deployBytecodes, deployContracts)
 import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx (basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
@@ -176,8 +176,8 @@ loadSpecified solConf name cs = do
   -- Filter again for dapptest tests or assertions checking if enabled
   let neFuns = filterMethods (c._contractName) fs (fallback NE.:| funs)
   -- Construct ABI mapping for World
-  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (getBytecodeMetadata cc._runtimeCode, filterMethods (cc._contractName) fs $ abiOf pref cc)
-                         else M.singleton (getBytecodeMetadata c._runtimeCode) fabiOfc
+  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (keccak' cc._runtimeCode, filterMethods (cc._contractName) fs $ abiOf pref cc)
+                         else M.singleton (keccak' c._runtimeCode) fabiOfc
 
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file

@@ -8,8 +8,8 @@ import Control.Monad (join)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Control.Monad.State.Strict (MonadState, gets)
-import Data.HashMap.Strict qualified as M
 import Data.Map (Map, toList)
+import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -22,8 +22,8 @@ import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
 import Echidna.Types (fromEVM)
-import Echidna.Types.Buffer (viewBuffer, forceLit)
-import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, BytecodeMemo, lookupBytecodeMetadata)
+import Echidna.Types.Buffer (forceLit)
+import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign (Campaign(..))
@@ -43,10 +43,9 @@ getSignatures hmm (Just lmm) = usuallyVeryRarely hmm lmm -- once in a while, thi
 
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
 genTxM :: (MonadRandom m, MonadReader (World, TxConf) m, MonadState Campaign m)
-  => BytecodeMemo
-  -> Map Addr Contract
+  => Map Addr Contract
   -> m Tx
-genTxM memo m = do
+genTxM m = do
   TxConf _ g gp t b mv <- asks snd
   World ss hmm lmm ps _ <- asks fst
   genDict <- gets (._genDict)
@@ -61,9 +60,8 @@ genTxM memo m = do
   where
     toContractA :: SignatureMap -> (Addr, Contract) -> Maybe ContractA
     toContractA mm (addr, c) = do
-      bc <- viewBuffer $ c ^. bytecode
-      let metadata = lookupBytecodeMetadata memo bc
-      (addr,) <$> M.lookup metadata mm
+      sig <- Map.lookup (forceLit c._codehash) mm
+      pure (addr, sig)
 
 genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
 genDelay mv ds = do

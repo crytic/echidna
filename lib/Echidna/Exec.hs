@@ -7,24 +7,23 @@ module Echidna.Exec where
 import Control.Lens
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Strict (MonadState(get, put), execState, execState, MonadIO(liftIO), runStateT)
-import Data.Map qualified as M
-import Data.Maybe (fromMaybe)
+import Data.Map qualified as Map
+import Data.Maybe (fromMaybe, fromJust)
 import Data.Set qualified as S
-
-import EVM hiding (tx)
-import EVM.ABI
-import EVM.Exec (exec, vmForEthrunCreation)
-import EVM.Types (Expr(ConcreteBuf, Lit), hexText)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import System.Process (readProcessWithExitCode)
 
+import EVM hiding (tx)
+import EVM.ABI
+import EVM.Exec (exec, vmForEthrunCreation)
+import EVM.Types (Expr(ConcreteBuf, Lit), hexText, W256)
+
 import Echidna.Events (emptyEvents)
 import Echidna.Transaction
 import Echidna.Types (ExecException(..), fromEVM)
-import Echidna.Types.Buffer (viewBuffer)
+import Echidna.Types.Buffer (forceLit)
 import Echidna.Types.Coverage (CoverageMap)
-import Echidna.Types.Signature (BytecodeMemo, lookupBytecodeMetadata)
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
@@ -141,10 +140,9 @@ execTx = execTxWith id vmExcept $ fromEVM exec
 -- | Execute a transaction, logging coverage at every step.
 execTxWithCov
   :: (MonadIO m, MonadState VM m, MonadThrow m)
-  => BytecodeMemo
-  -> Tx
+  => Tx
   -> m ((VMResult, Int), CoverageMap)
-execTxWithCov memo tx = do
+execTxWithCov tx = do
   vm <- get
   (r, (vm', cm)) <- runStateT (execTxWith _1 vmExcept execCov tx) (vm, mempty)
   put vm'
@@ -169,18 +167,18 @@ execTxWithCov memo tx = do
 
     -- | Add current location to the CoverageMap
     addCoverage :: VM -> CoverageMap -> CoverageMap
-    addCoverage vm = M.alter
+    addCoverage vm = Map.alter
                        (Just . maybe mempty (S.insert $ currentCovLoc vm))
-                       (currentMeta vm)
+                       (currentCodehash vm)
 
     -- | Get the VM's current execution location
     currentCovLoc vm = (vm._state._pc, fromMaybe 0 $ vmOpIx vm, length vm._frames, Stop)
 
     -- | Get the current contract's bytecode metadata
-    currentMeta vm = fromMaybe (error "no contract information on coverage") $ do
-      buffer <- vm ^? env . contracts . at vm._state._contract . _Just . bytecode
-      bc <- viewBuffer buffer
-      pure $ lookupBytecodeMetadata memo bc
+    currentCodehash :: VM -> W256
+    currentCodehash vm =
+      let c = fromJust $ Map.lookup vm._state._contract vm._env._contracts
+      in forceLit c._codehash
 
 initialVM :: Bool -> VM
 initialVM ffi = vmForEthrunCreation mempty

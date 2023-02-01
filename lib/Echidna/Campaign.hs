@@ -16,14 +16,14 @@ import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
 import Data.HashMap.Strict qualified as H
-import Data.Map (Map, unionWith, (\\), elems, keys, lookup, insert, mapWithKey)
+import Data.Map (Map, unionWith, (\\), keys, lookup, insert, mapWithKey)
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Ord (comparing)
 import Data.Set qualified as DS
 import Data.Text (Text)
 import System.Random (mkStdGen)
 
-import EVM (Contract, VM(..), VMResult(..), bytecode)
+import EVM (Contract, VM(..), VMResult(..))
 import qualified EVM (Env(..))
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (Addr, Expr(ConcreteBuf))
@@ -38,8 +38,6 @@ import Echidna.Types.Config
 import Echidna.Types.Corpus (InitialCorpus)
 import Echidna.Types.Coverage (coveragePoints)
 import Echidna.Types.Test
-import Echidna.Types.Buffer (viewBuffer)
-import Echidna.Types.Signature (makeBytecodeMemo)
 import Echidna.Types.Tx (TxCall(..), Tx(..), getResult, call)
 import Echidna.Types.World (World)
 import Echidna.Mutator.Corpus
@@ -138,9 +136,9 @@ updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 -- transaction if it finds new coverage.
 execTxOptC :: (MonadIO m, MonadState (VM, Campaign) m, MonadThrow m) => Tx -> m (VMResult, Int)
 execTxOptC tx = do
-  (vm, Campaign{_bcMemo, _coverage = oldCov}) <- get
+  (vm, Campaign{_coverage = oldCov}) <- get
   let cov = _2 . coverage
-  ((res, newCov), vm') <- runStateT (execTxWithCov _bcMemo tx) vm
+  ((res, newCov), vm') <- runStateT (execTxWithCov tx) vm
   _1 .= vm'
   let vmr = getResult $ fst res
   -- Update the coverage map with the proper binary according to the vm result
@@ -174,9 +172,8 @@ randseq (n,txs) ql o w = do
   if n > p then -- Replay the transactions in the corpus, if we are executing the first iterations
     return $ txs !! p
   else do
-    memo <- gets (._bcMemo)
     -- Randomly generate new random transactions
-    gtxs <- replicateM ql $ runReaderT (genTxM memo o) (w, txConf)
+    gtxs <- replicateM ql $ runReaderT (genTxM o) (w, txConf)
     -- Generate a random mutator
     cmut <- if ql == 1 then seqMutatorsStateless (fromConsts cs) else seqMutatorsStateful (fromConsts cs)
     -- Fetch the mutator
@@ -264,10 +261,9 @@ campaign u vm w ts d txs = do
       d' = fromMaybe defaultDict d
   execStateT
     (evalRandT runCampaign (mkStdGen effectiveSeed))
-    (Campaign ts c mempty effectiveGenDict False DS.empty 0 memo)
+    (Campaign ts c mempty effectiveGenDict False DS.empty 0)
   where
     -- "mapMaybe ..." is to get a list of all contracts
-    memo        = makeBytecodeMemo . mapMaybe (viewBuffer . (^. bytecode)) . elems $ vm._env._contracts
     runCampaign = gets (fmap (.testState) . (._tests)) >>= update
     update c    = do
       let ic = (length txs, txs)

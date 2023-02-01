@@ -1,3 +1,5 @@
+{-# LANGUAGE GADTs #-}
+
 module Echidna.Output.Source where
 
 import Prelude hiding (writeFile)
@@ -18,10 +20,10 @@ import Text.Printf (printf)
 
 import EVM.Debug (srcMapCodePos)
 import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
+import EVM.Types (keccak')
 
 import Echidna.Types.Coverage (CoverageMap, CoverageInfo)
 import Echidna.Types.Tx (TxResult(..))
-import Echidna.Types.Signature (getBytecodeMetadata)
 import System.FilePath ((</>))
 
 type FilePathText = Text
@@ -111,16 +113,17 @@ srcMapCov sc s contracts =
   M.map (M.fromListWith (++)) .
   M.fromListWith (++) .
   map (\(srcPath, line, txResult) -> (srcPath, [(line, [txResult])])) .
-  nub .                                               -- Deduplicate results
-  mapMaybe (srcMapCodePosResult sc) $                 -- Get the filename, number of line and tx result
+  nub .                               -- Deduplicate results
+  mapMaybe (srcMapCodePosResult sc) $ -- Get the filename, number of line and tx result
   concatMap mapContract contracts
   where
     mapContract c =
-      mapMaybe (srcMapForOpLocation c) .                  -- Get the mapped line and tx result
-      S.toList . fromMaybe S.empty $                      -- Convert from Set to list
-      M.lookup (getBytecodeMetadata c._runtimeCode) s -- Get the coverage information of the current contract
+      mapMaybe (srcMapForOpLocation c) . -- Get the mapped line and tx result
+      S.toList . fromMaybe S.empty $     -- Convert from Set to list
+      M.lookup (keccak' c._runtimeCode) s -- Get the coverage information of the current contract
 
--- | Given a source cache, a mapped line, return a tuple with the filename, number of line and tx result
+-- | Given a source cache, a mapped line, return a tuple with the filename,
+-- number of line and tx result
 srcMapCodePosResult :: SourceCache -> (SrcMap, TxResult) -> Maybe (Text, Int, TxResult)
 srcMapCodePosResult sc (n, r) = case srcMapCodePos sc n of
   Just (t,n') -> Just (t,n',r)
