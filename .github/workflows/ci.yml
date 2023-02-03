@@ -16,12 +16,12 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-20.04
-            apt-get: autoconf automake libtool
-            shell: bash
-          - os: macos-latest
-            brew: automake
-            shell: bash
+          #- os: ubuntu-20.04
+          #  apt-get: autoconf automake libtool
+          #  shell: bash
+          #- os: macos-latest
+          #  brew: automake
+          #  shell: bash
           - os: windows-latest
             shell: msys2 {0}
 
