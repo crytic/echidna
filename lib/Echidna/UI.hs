@@ -1,7 +1,11 @@
+{-# LANGUAGE CPP #-}
+
 module Echidna.UI where
 
+#ifdef INTERACTIVE_UI
 import Brick
 import Brick.BChan
+#endif
 import Control.Concurrent (killThread, threadDelay)
 import Control.Monad (forever, void, when)
 import Control.Monad.Catch (MonadCatch(..))
@@ -11,10 +15,12 @@ import Control.Monad.Random.Strict (MonadRandom)
 import Data.ByteString.Lazy qualified as BS
 import Data.IORef
 import Data.Maybe (fromMaybe)
+#ifdef INTERACTIVE_UI
 import Graphics.Vty qualified as V
 import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
+#endif
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Concurrent (forkIO, forkFinally)
 import UnliftIO.Timeout (timeout)
@@ -29,7 +35,9 @@ import Echidna.Types.Test (EchidnaTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
+#ifdef INTERACTIVE_UI
 import Echidna.UI.Widgets
+#endif
 import Echidna.Types.Config
 
 data CampaignEvent = CampaignUpdated Campaign | CampaignTimedout Campaign
@@ -53,9 +61,12 @@ ui vm world ts d txs = do
       runCampaign = timeout timeoutUsec (campaign updateRef vm world ts d txs)
   terminalPresent <- liftIO isTerminal
   let effectiveMode = case uiConf.operationMode of
+#ifdef INTERACTIVE_UI
         Interactive | not terminalPresent -> NonInteractive Text
+#endif
         other -> other
   case effectiveMode of
+#ifdef INTERACTIVE_UI
     Interactive -> do
       bc <- liftIO $ newBChan 100
       let updateUI e = readIORef ref >>= writeBChan bc . e
@@ -77,7 +88,7 @@ ui vm world ts d txs = do
       final <- liftIO $ readIORef ref
       liftIO . putStrLn $ runReader (ppCampaign final) conf
       pure final
-
+#endif
     NonInteractive outputFormat -> do
       result <- runCampaign
       (final, timedout) <- case result of
@@ -95,6 +106,8 @@ ui vm world ts d txs = do
         None ->
           pure ()
       pure final
+
+#ifdef INTERACTIVE_UI
 
 vtyConfig :: IO Config
 vtyConfig = do
@@ -138,3 +151,5 @@ monitor = do
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
 isTerminal :: IO Bool
 isTerminal = (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
+
+#endif
