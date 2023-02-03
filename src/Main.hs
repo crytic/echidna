@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Main where
@@ -167,7 +168,9 @@ overrideConfig config Options{..} =
   where
     overrideFormat cfg =
       case maybe cfg._uConf.operationMode NonInteractive cliOutputFormat of
+#ifdef INTERACTIVE_UI
         Interactive -> cfg
+#endif
         NonInteractive Text -> cfg { _uConf = cfg._uConf { operationMode = NonInteractive Text }}
         nonInteractive -> cfg { _uConf = cfg._uConf { operationMode = nonInteractive }
                               , _sConf = cfg._sConf { _quiet = True }

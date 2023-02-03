@@ -12,7 +12,6 @@ dependencies:
   - aeson
   - base16-bytestring
   - binary
-  - brick
   - bytestring
   - containers
   - data-bword
@@ -37,13 +36,11 @@ dependencies:
   - text
   - transformers
   - time
-  - unix
   - unliftio
   - utf8-string
   - unordered-containers
   - vector
   - vector-instances
-  - vty
   - word-wrap
   - yaml
 
@@ -64,6 +61,12 @@ when:
   - condition: os(darwin)
     extra-libraries: c++
     ld-options: -Wl,-keep_dwarf_unwind
+  - condition: "!os(windows)"
+    cpp-options: -DINTERACTIVE_UI
+    dependencies:
+      - brick
+      - unix
+      - vty
 
 executables:
   echidna-test:
