@@ -100,7 +100,7 @@ jobs:
 
       - name: Build and install echidna
         run: |
-          stack install --flag echidna:static --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib  --extra-lib-dirs=$HOME/.local/bin
+          stack install --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib  --extra-lib-dirs=$HOME/.local/bin
 
       - name: Amend and compress binaries (macOS)
         if: runner.os == 'macOS'
