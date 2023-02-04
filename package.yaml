@@ -62,15 +62,14 @@ when:
   - condition: os(darwin)
     extra-libraries: c++
     ld-options: -Wl,-keep_dwarf_unwind
+  - condition: os(windows)
+    extra-libraries: stdc++
   - condition: "!os(windows)"
     cpp-options: -DINTERACTIVE_UI
     dependencies:
       - brick
       - unix
       - vty
-  - condition: os(windows)
-    extra-libraries:
-      - gmp
 
 executables:
   echidna:
