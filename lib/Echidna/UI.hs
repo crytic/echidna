@@ -5,13 +5,18 @@ module Echidna.UI where
 #ifdef INTERACTIVE_UI
 import Brick
 import Brick.BChan
-#endif
 import Control.Concurrent (killThread, threadDelay)
 import Control.Monad (forever, void, when)
+#else
+import Control.Monad (when)
+#endif
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader, runReader, asks)
 import Control.Monad.Random.Strict (MonadRandom)
+#ifndef INTERACTIVE_UI
+import Control.Monad.State.Strict (get)
+#endif
 import Data.ByteString.Lazy qualified as BS
 import Data.IORef
 import Data.Maybe (fromMaybe)
@@ -22,7 +27,9 @@ import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
 #endif
 import UnliftIO (MonadUnliftIO)
+#ifdef INTERACTIVE_UI
 import UnliftIO.Concurrent (forkIO, forkFinally)
+#endif
 import UnliftIO.Timeout (timeout)
 
 import EVM (VM)
@@ -59,10 +66,14 @@ ui vm world ts d txs = do
       secToUsec = (* 1000000)
       timeoutUsec = secToUsec $ fromMaybe (-1) uiConf.maxTime
       runCampaign = timeout timeoutUsec (campaign updateRef vm world ts d txs)
+#ifdef INTERACTIVE_UI
   terminalPresent <- liftIO isTerminal
+#endif
   let effectiveMode = case uiConf.operationMode of
 #ifdef INTERACTIVE_UI
         Interactive | not terminalPresent -> NonInteractive Text
+#else
+        Interactive -> NonInteractive Text
 #endif
         other -> other
   case effectiveMode of
@@ -88,6 +99,8 @@ ui vm world ts d txs = do
       final <- liftIO $ readIORef ref
       liftIO . putStrLn $ runReader (ppCampaign final) conf
       pure final
+#else
+    Interactive -> error "Interactive UI is not available"
 #endif
     NonInteractive outputFormat -> do
       result <- runCampaign
