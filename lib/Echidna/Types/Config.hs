@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Echidna.Types.Config where
@@ -15,11 +14,7 @@ import Echidna.Types.Tx  (TxConf)
 import Echidna.Types.Test  (TestConf)
 import EVM.Types (Addr)
 
-#ifdef INTERACTIVE_UI
 data OperationMode = Interactive | NonInteractive OutputFormat deriving Show
-#else
-data OperationMode = NonInteractive OutputFormat deriving Show
-#endif
 data OutputFormat = Text | JSON | None deriving Show
 data UIConf = UIConf { maxTime       :: Maybe Int
                      , operationMode :: OperationMode
