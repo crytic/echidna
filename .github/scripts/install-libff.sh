@@ -35,7 +35,7 @@ if [ "$HOST_OS" = "Linux" ] && [ "$(uname -m)" = "aarch64" ]; then
 fi
 
 if [ "$HOST_OS" = "Windows" ]; then
-  ARGS+=("-G" "Unix Makefiles")
+  ARGS+=("-G" "Ninja")
   sed -i 's/STATIC/SHARED/' libff/CMakeLists.txt
 fi
 
