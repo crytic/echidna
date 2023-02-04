@@ -36,6 +36,7 @@ fi
 
 if [ "$HOST_OS" = "Windows" ]; then
   ARGS+=("-G" "Ninja")
+  sed -i 's/SHARED/STATIC/' CMakeLists.txt
 fi
 
 mkdir -p build
