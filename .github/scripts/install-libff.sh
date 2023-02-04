@@ -36,6 +36,7 @@ fi
 
 if [ "$HOST_OS" = "Windows" ]; then
   ARGS+=("-G" "Unix Makefiles")
+  sed -i 's/STATIC/SHARED/' libff/CMakeLists.txt
 fi
 
 mkdir -p build
