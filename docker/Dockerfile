@@ -50,6 +50,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
 COPY --from=builder-echidna /root/.local/bin/echidna /usr/local/bin/echidna
+RUN ln -s /usr/local/bin/echidna /usr/local/bin/echidna-test
 COPY --from=builder-python3 /venv /venv
 ENV LANG="C.UTF-8"
 ENV PATH="$PATH:/venv/bin"
