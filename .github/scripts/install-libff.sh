@@ -36,7 +36,7 @@ fi
 
 if [ "$HOST_OS" = "Windows" ]; then
   ARGS+=("-G" "Ninja")
-  sed -i 's/STATIC/SHARED/' libff/CMakeLists.txt
+  sed -i 's/find_library(GMP_LIBRARY gmp)/find_library(GMP_LIBRARY NAMES libgmp.a)/' CMakeLists.txt
 fi
 
 mkdir -p build
