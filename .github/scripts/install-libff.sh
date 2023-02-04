@@ -35,8 +35,7 @@ if [ "$HOST_OS" = "Linux" ] && [ "$(uname -m)" = "aarch64" ]; then
 fi
 
 if [ "$HOST_OS" = "Windows" ]; then
-  ARGS+=("-G" "Ninja")
-  sed -i 's/SHARED/STATIC/' CMakeLists.txt
+  ARGS+=("-G" "Unix Makefiles")
 fi
 
 mkdir -p build
