@@ -67,9 +67,6 @@ when:
       - brick
       - unix
       - vty
-  - condition: os(windows)
-    extra-libraries:
-      - gmp
 
 executables:
   echidna-test:
