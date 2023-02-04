@@ -41,7 +41,7 @@ jobs:
         uses: msys2/setup-msys2@v2
         if: runner.os == 'Windows'
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           path-type: inherit
           update: true
           install: >-
