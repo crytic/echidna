@@ -18,15 +18,15 @@ fix_path()
 }
 
 
-BUILD="$(mktemp -d)/echidna-test"
+BUILD="$(mktemp -d)/echidna"
 mkdir -p "$BUILD"
-cp "$HOME/.local/bin/echidna-test" "$BUILD"
+cp "$HOME/.local/bin/echidna" "$BUILD"
 
-BINARY="$BUILD/echidna-test"
+BINARY="$BUILD/echidna"
 add_rpath "$BINARY"
 fix_path "$BINARY" libsecp256k1 "@rpath/libsecp256k1.dylib"
 fix_path "$BINARY" libff "@rpath/libff.dylib"
 fix_path "$BUILD/libff.dylib" libgmp "@rpath/libgmp.dylib"
 fix_path "$BUILD/libsecp256k1.dylib" libgmp "@rpath/libgmp.dylib"
 
-GZIP=-9 tar -czf echidna-test.tar.gz -C "$BUILD/.." echidna-test
+GZIP=-9 tar -czf echidna.tar.gz -C "$BUILD/.." echidna

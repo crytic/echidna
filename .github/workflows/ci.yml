@@ -72,13 +72,13 @@ jobs:
 
       - name: Compress binary (Linux)
         if: runner.os == 'Linux'
-        run: GZIP=-9 tar -czf echidna-test.tar.gz -C $HOME/.local/bin/ echidna-test
+        run: GZIP=-9 tar -czf echidna.tar.gz -C $HOME/.local/bin/ echidna
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
-          name: echidna-test-${{ runner.os }}
-          path: echidna-test.tar.gz
+          name: echidna-${{ runner.os }}
+          path: echidna.tar.gz
 
       - name: Build and copy test suite
         if: runner.os == 'Linux'
