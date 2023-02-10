@@ -10,6 +10,9 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text (Text)
 import Echidna.Types.Solidity (SolException(..))
 import Echidna.Solidity (loadWithCryticCompile)
+import Echidna.Types.Config (Env(..))
+import EVM.Dapp (emptyDapp)
+import Data.IORef (newIORef)
 
 compilationTests :: TestTree
 compilationTests = testGroup "Compilation and loading tests"
@@ -35,4 +38,13 @@ compilationTests = testGroup "Compilation and loading tests"
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
-  tryLoad = void $ loadWithCryticCompile testConfig (fp :| []) c
+  tryLoad = do
+    cacheMeta <- newIORef mempty
+    cacheContracts <- newIORef mempty
+    cacheSlots <- newIORef mempty
+    let env = Env { cfg = testConfig
+                  , dapp = emptyDapp
+                  , metadataCache = cacheMeta
+                  , fetchContractCache = cacheContracts
+                  , fetchSlotCache = cacheSlots }
+    void $ loadWithCryticCompile env (fp :| []) c

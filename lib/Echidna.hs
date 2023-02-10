@@ -8,12 +8,12 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import System.FilePath ((</>))
 
-import EVM
+import EVM hiding (Env, env)
 import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Solidity (SourceCache, SolcContract)
 
 import Echidna.ABI
-import Echidna.Types.Config hiding (cfg)
+import Echidna.Types.Config
 import Echidna.Types.Solidity
 import Echidna.Types.Campaign
 import Echidna.Types.Random
@@ -38,21 +38,21 @@ import Echidna.RPC (loadEtheno, extractFromEtheno)
 -- * A list of Echidna tests to check
 -- * A prepopulated dictionary
 -- * A list of transaction sequences to initialize the corpus
-prepareContract :: EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
+prepareContract :: Env -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
                 -> IO (VM, SourceCache, [SolcContract], World, [EchidnaTest], GenDict, [[Tx]])
-prepareContract cfg fs c g = do
-  ctxs <- case cfg.campaignConf.corpusDir of
+prepareContract env fs c g = do
+  ctxs <- case env.cfg.campaignConf.corpusDir of
             Nothing -> pure []
             Just dir -> do
               ctxs1 <- loadTxs (dir </> "reproducers")
               ctxs2 <- loadTxs (dir </> "coverage")
               pure (ctxs1 ++ ctxs2)
 
-  let solConf = cfg.solConf
+  let solConf = env.cfg.solConf
 
   -- compile and load contracts
   (cs, scs) <- Echidna.Solidity.contracts solConf fs
-  p <- loadSpecified cfg c cs
+  p <- loadSpecified env c cs
 
   -- run processors
   si <- runSlither (NE.head fs) solConf.cryticArgs
@@ -76,7 +76,7 @@ prepareContract cfg fs c g = do
 
   -- load transactions from init sequence (if any)
   ethenoCorpus <-
-    case cfg.solConf.initialize of
+    case env.cfg.solConf.initialize of
       Nothing -> pure []
       Just fp -> do
         es' <- loadEtheno fp
@@ -86,6 +86,6 @@ prepareContract cfg fs c g = do
 
   let sc = selectSourceCache c scs
 
-  let dict = mkGenDict cfg.campaignConf.dictFreq constants' Set.empty g (returnTypes cs)
+  let dict = mkGenDict env.cfg.campaignConf.dictFreq constants' Set.empty g (returnTypes cs)
 
   pure (vm, sc, cs, world, ts, dict, corp)

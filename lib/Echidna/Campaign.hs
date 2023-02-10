@@ -17,7 +17,8 @@ import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
 import Data.HashMap.Strict qualified as H
 import Data.IORef (readIORef, writeIORef)
-import Data.Map (Map, unionWith, (\\), elems, keys, lookup, insert, mapWithKey)
+import Data.Map qualified as Map
+import Data.Map (Map, (\\))
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Ord (comparing)
 import Data.Set qualified as Set
@@ -30,8 +31,8 @@ import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (Addr, Expr(ConcreteBuf))
 
 import Echidna.ABI
-import Echidna.Events (extractEvents)
 import Echidna.Exec
+import Echidna.Events (extractEvents)
 import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
 import Echidna.Test
@@ -130,9 +131,9 @@ updateGasInfo ((t@(Tx (SolCall (f, _)) _ _ _ _ _ _), (_, used')):ts) tseq gi =
     Just (used, _) | used' > used -> rec
     Just (used, otseq) | (used' == used) && (length otseq > length tseq') -> rec
     _ -> updateGasInfo ts tseq' gi
-  where mused = Data.Map.lookup f gi
+  where mused = Map.lookup f gi
         tseq' = t:tseq
-        rec   = updateGasInfo ts tseq' (insert f (used', reverse tseq') gi)
+        rec   = updateGasInfo ts tseq' (Map.insert f (used', reverse tseq') gi)
 updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
@@ -145,9 +146,9 @@ execTxOptC tx = do
   _1 .= vm'
   let vmr = getResult $ fst res
   -- Update the coverage map with the proper binary according to the vm result
-  cov .= mapWithKey (\_ s -> Set.map (set _4 vmr) s) newCov
+  cov .= Map.mapWithKey (\_ s -> Set.map (set _4 vmr) s) newCov
   -- Update the global coverage map with the union of the result just obtained
-  cov %= unionWith Set.union oldCov
+  cov %= Map.unionWith Set.union oldCov
   grew <- (== LT) . comparing coveragePoints oldCov <$> use cov
   when grew $ do
     case tx.call of
@@ -211,7 +212,7 @@ callseq ic v w ql = do
   (res, (vm, camp)) <- runStateT (evalSeq v ef is) (v, ca)
   let new = vm._env._contracts
       -- compute the addresses not present in the old VM via set difference
-      diff = keys $ new \\ old
+      diff = Map.keys $ new \\ old
       -- and construct a set to union to the constants table
       diffs = H.fromList [(AbiAddressType, Set.fromList $ AbiAddress <$> diff)]
   -- Save the global campaign state (also vm state, but that gets reset before it's used)
@@ -265,7 +266,9 @@ campaign u vm w ts d txs = do
   conf <- asks (.cfg.campaignConf)
 
   metaCacheRef <- asks (.metadataCache)
-  liftIO $ writeIORef metaCacheRef (memo vm._env._contracts)
+  fetchContractCacheRef <- asks (.fetchContractCache)
+  external <- liftIO $ Map.mapMaybe id <$> readIORef fetchContractCacheRef
+  liftIO $ writeIORef metaCacheRef (memo (vm._env._contracts <> external))
 
   let c = fromMaybe mempty conf.knownCoverage
   let effectiveSeed = fromMaybe d'.defSeed conf.seed
@@ -274,8 +277,7 @@ campaign u vm w ts d txs = do
       camp = Campaign ts c mempty effectiveGenDict False Set.empty 0
   execStateT (evalRandT (lift u >> runCampaign) (mkStdGen effectiveSeed)) camp
   where
-    -- "mapMaybe ..." is to get a list of all contracts
-    memo = makeBytecodeCache . map (forceBuf . (^. bytecode)) . elems
+    memo = makeBytecodeCache . map (forceBuf . (^. bytecode)) . Map.elems
     runCampaign = gets (fmap (.testState) . (._tests)) >>= update
     update c    = do
       let ic = (length txs, txs)
