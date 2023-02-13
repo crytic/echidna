@@ -110,7 +110,7 @@ instance FromJSON EConfigWithUsage where
                              <*> v ..:? "initialize"      ..!= Nothing
                              <*> v ..:? "deployContracts" ..!= []
                              <*> v ..:? "deployBytecodes" ..!= []
-                             <*> v ..:? "multi-abi"       ..!= False
+                             <*> v ..:? "allContracts"    ..!= False
                              <*> mode
                              <*> v ..:? "testDestruction" ..!= False
                              <*> v ..:? "allowFFI"        ..!= False
