@@ -31,16 +31,16 @@ data TxCall = SolCreate   ByteString
   deriving (Show, Ord, Eq)
 $(deriveJSON defaultOptions ''TxCall)
 
-maxGasPerBlock :: Integer
+maxGasPerBlock :: Word64
 maxGasPerBlock = 12500000 -- https://cointelegraph.com/news/ethereum-miners-vote-to-increase-gas-limit-causing-community-debate
 
-unlimitedGasPerBlock :: Integer
+unlimitedGasPerBlock :: Word64
 unlimitedGasPerBlock = 0xffffffff
 
-defaultTimeDelay :: Integer
+defaultTimeDelay :: W256
 defaultTimeDelay = 604800
 
-defaultBlockDelay :: Integer
+defaultBlockDelay :: W256
 defaultBlockDelay = 60480
 
 initialTimestamp :: W256
@@ -207,5 +207,5 @@ getResult (VMFailure (FFI _))                   = ErrorFFI
 getResult (VMFailure NonceOverflow)             = ErrorNonceOverflow
 
 makeSingleTx :: Addr -> Addr -> W256 -> TxCall -> [Tx]
-makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d (fromInteger maxGasPerBlock) 0 v (0, 0)]
+makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d maxGasPerBlock 0 v (0, 0)]
 makeSingleTx _ _ _ _           = error "invalid usage of makeSingleTx"
