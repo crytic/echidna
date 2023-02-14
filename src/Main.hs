@@ -5,7 +5,7 @@ module Main where
 import Control.Lens hiding (argument)
 import Control.Monad (unless)
 import Control.Monad.Reader (runReaderT)
-import Control.Monad.Random (getRandom)
+import Control.Monad.Random (getRandomR)
 import Data.Aeson.Key qualified as Aeson.Key
 import Data.List.NonEmpty qualified as NE
 import Data.Map (fromList)
@@ -14,7 +14,6 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Version (showVersion)
-import EVM.Types (Addr)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
@@ -23,6 +22,7 @@ import System.IO (hPutStrLn, stderr)
 
 import EVM.Dapp (dappInfo)
 import EVM.Solidity (SolcContract(..))
+import EVM.Types (Addr)
 
 import Echidna
 import Echidna.Config
@@ -39,7 +39,7 @@ import Echidna.Output.Corpus
 main :: IO ()
 main = do
   opts@Options{..} <- execParser optsParser
-  g <- getRandom
+  g <- getRandomR (0, maxBound)
   EConfigWithUsage loadedCfg ks _ <-
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
   let cfg = overrideConfig loadedCfg opts
