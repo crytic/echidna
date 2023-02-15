@@ -173,7 +173,7 @@ overrideConfig config Options{..} =
 
     overrideSolConf solConf = solConf
       { solcArgs = fromMaybe solConf.solcArgs cliSolcArgs
-      , cryticArgs = maybe solConf.cryticArgs words cliSolcArgs
+      , cryticArgs = maybe solConf.cryticArgs words cliCryticArgs
       , sender = if null cliSender then solConf.sender else Set.fromList cliSender
       , deployer = fromMaybe solConf.deployer cliDeployer
       , contractAddr = fromMaybe solConf.contractAddr cliContractAddr
