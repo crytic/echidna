@@ -24,7 +24,7 @@ import Echidna.Test (getResultFromVM, checkETest)
 shrinkTest :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
            => VM -> EchidnaTest -> m EchidnaTest
 shrinkTest vm test = do
-  sl <- asks (.cfg._cConf._shrinkLimit)
+  sl <- asks (.cfg.campaignConf.shrinkLimit)
   dappInfo <- asks (.dapp)
   let x = test.testReproducer
   case test.testState of
@@ -75,7 +75,7 @@ shrinkSeq f v xs = do
 
 shrinkSender :: (MonadReader Env m, MonadRandom m) => Tx -> m Tx
 shrinkSender x = do
-  senderSet <- asks (.cfg._sConf._sender)
+  senderSet <- asks (.cfg.solConf.sender)
   let orderedSenders = List.sort $ Set.toList senderSet
   case List.elemIndex x.src orderedSenders of
     Just i | i > 0 -> do

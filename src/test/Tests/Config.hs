@@ -26,4 +26,4 @@ configTests = testGroup "Configuration tests" $
       assertBool ("unset options: " ++ show unset') $ null unset'
   ]
   where files = ["basic/config.yaml", "basic/default.yaml"]
-        assertCoverage config value = config._cConf._knownCoverage @?= value
+        assertCoverage config value = config.campaignConf.knownCoverage @?= value

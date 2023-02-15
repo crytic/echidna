@@ -1,8 +1,5 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Echidna.Types.Config where
 
-import Control.Lens
 import Data.Aeson.Key (Key)
 import Data.HashSet (HashSet)
 
@@ -27,15 +24,14 @@ data Role = Sender | Receiver | Ambiguous
 type Names = Role -> Addr -> String
 
 -- | Our big glorious global config type, just a product of each local config.,
-data EConfig = EConfig {
-  _cConf :: CampaignConf,
-  _nConf :: Names,
-  _sConf :: SolConf,
-  _tConf :: TestConf,
-  _xConf :: TxConf,
-  _uConf :: UIConf
-}
-makeLenses ''EConfig
+data EConfig = EConfig
+  { campaignConf :: CampaignConf
+  , namesConf :: Names
+  , solConf :: SolConf
+  , testConf :: TestConf
+  , txConf :: TxConf
+  , uiConf :: UIConf
+  }
 
 instance Read OutputFormat where
   readsPrec _ = \case 't':'e':'x':'t':r -> [(Text, r)]
@@ -44,13 +40,13 @@ instance Read OutputFormat where
                       _ -> []
 
 
-data EConfigWithUsage = EConfigWithUsage {
-  econfig   :: EConfig,
-  badkeys   :: HashSet Key,
-  unsetkeys :: HashSet Key
-}
+data EConfigWithUsage = EConfigWithUsage
+  { econfig   :: EConfig
+  , badkeys   :: HashSet Key
+  , unsetkeys :: HashSet Key
+  }
 
-data Env = Env {
-  cfg :: EConfig,
-  dapp :: DappInfo
-}
+data Env = Env
+  { cfg :: EConfig
+  , dapp :: DappInfo
+  }

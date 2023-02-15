@@ -15,29 +15,29 @@ import Echidna.Types.Signature (BytecodeMemo)
 import Echidna.Types.Tx (Tx)
 
 -- | Configuration for running an Echidna 'Campaign'.
-data CampaignConf = CampaignConf { _testLimit     :: Int
-                                   -- ^ Maximum number of function calls to execute while fuzzing
-                                 , _stopOnFail    :: Bool
-                                   -- ^ Whether to stop the campaign immediately if any property fails
-                                 , _estimateGas   :: Bool
-                                   -- ^ Whether to collect gas usage statistics
-                                 , _seqLen        :: Int
-                                   -- ^ Number of calls between state resets (e.g. \"every 10 calls,
-                                   -- reset the state to avoid unrecoverable states/save memory\"
-                                 , _shrinkLimit   :: Int
-                                   -- ^ Maximum number of candidate sequences to evaluate while shrinking
-                                 , _knownCoverage :: Maybe CoverageMap
-                                   -- ^ If applicable, initially known coverage. If this is 'Nothing',
-                                   -- Echidna won't collect coverage information (and will go faster)
-                                 , _seed          :: Maybe Int
-                                   -- ^ Seed used for the generation of random transactions
-                                 , _dictFreq      :: Float
-                                   -- ^ Frequency for the use of dictionary values in the random transactions
-                                 , _corpusDir     :: Maybe FilePath
-                                   -- ^ Directory to load and save lists of transactions
-                                 , _mutConsts     :: MutationConsts Integer
-                                 }
-makeLenses ''CampaignConf
+data CampaignConf = CampaignConf
+  { testLimit     :: Int
+    -- ^ Maximum number of function calls to execute while fuzzing
+  , stopOnFail    :: Bool
+    -- ^ Whether to stop the campaign immediately if any property fails
+  , estimateGas   :: Bool
+    -- ^ Whether to collect gas usage statistics
+  , seqLen        :: Int
+    -- ^ Number of calls between state resets (e.g. \"every 10 calls,
+    -- reset the state to avoid unrecoverable states/save memory\"
+  , shrinkLimit   :: Int
+    -- ^ Maximum number of candidate sequences to evaluate while shrinking
+  , knownCoverage :: Maybe CoverageMap
+    -- ^ If applicable, initially known coverage. If this is 'Nothing',
+    -- Echidna won't collect coverage information (and will go faster)
+  , seed          :: Maybe Int
+    -- ^ Seed used for the generation of random transactions
+  , dictFreq      :: Float
+    -- ^ Frequency for the use of dictionary values in the random transactions
+  , corpusDir     :: Maybe FilePath
+    -- ^ Directory to load and save lists of transactions
+  , mutConsts     :: MutationConsts Integer
+  }
 
 -- | The state of a fuzzing campaign.
 data Campaign = Campaign { _tests       :: [EchidnaTest]

@@ -45,7 +45,7 @@ ui :: (MonadCatch m, MonadRandom m, MonadReader Env m, MonadUnliftIO m)
    -> m Campaign
 ui vm world ts d txs = do
   conf <- asks (.cfg)
-  let uiConf = conf._uConf
+  let uiConf = conf.uiConf
   ref <- liftIO $ newIORef defaultCampaign
   let updateRef = get >>= liftIO . atomicWriteIORef ref
       secToUsec = (* 1000000)

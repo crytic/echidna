@@ -36,4 +36,4 @@ compilationTests = testGroup "Compilation and loading tests"
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
-  tryLoad = void $ loadWithCryticCompile testConfig._sConf (fp :| []) c
+  tryLoad = void $ loadWithCryticCompile testConfig.solConf (fp :| []) c
