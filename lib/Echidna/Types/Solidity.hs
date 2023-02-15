@@ -1,9 +1,6 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Echidna.Types.Solidity where
 
 import Control.Exception (Exception)
-import Control.Lens
 import Data.SemVer (Version, version, toString)
 import Data.Set (Set)
 import Data.Text (Text, unpack)
@@ -60,27 +57,27 @@ instance Show SolException where
 instance Exception SolException
 
 -- | Configuration for loading Solidity for Echidna testing.
-data SolConf = SolConf { _contractAddr    :: Addr             -- ^ Contract address to use
-                       , _deployer        :: Addr             -- ^ Contract deployer address to use
-                       , _sender          :: Set Addr         -- ^ Sender addresses to use
-                       , _balanceAddr     :: Integer          -- ^ Initial balance of deployer and senders
-                       , _balanceContract :: Integer          -- ^ Initial balance of contract to test
-                       , _codeSize        :: Integer          -- ^ Max code size for deployed contratcs (default 24576, per EIP-170)
-                       , _prefix          :: Text             -- ^ Function name prefix used to denote tests
-                       , _cryticArgs      :: [String]         -- ^ Args to pass to crytic
-                       , _solcArgs        :: String           -- ^ Args to pass to @solc@
-                       , _solcLibs        :: [String]         -- ^ List of libraries to load, in order.
-                       , _quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
-                       , _initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
-                       , _deployContracts :: [(Addr, String)] -- ^ List of contracts to deploy in specific addresses
-                       , _deployBytecodes :: [(Addr, Text)]   -- ^ List of contracts to deploy in specific addresses
-                       , _multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
-                       , _testMode        :: String           -- ^ Testing mode
-                       , _testDestruction :: Bool             -- ^ Whether or not to add a property to detect contract destruction
-                       , _allowFFI        :: Bool             -- ^ Whether or not to allow FFI hevm cheatcode
-                       , _methodFilter    :: Filter           -- ^ List of methods to avoid or include calling during a campaign
-                       }
-makeLenses ''SolConf
+data SolConf = SolConf
+  { contractAddr    :: Addr             -- ^ Contract address to use
+  , deployer        :: Addr             -- ^ Contract deployer address to use
+  , sender          :: Set Addr         -- ^ Sender addresses to use
+  , balanceAddr     :: Integer          -- ^ Initial balance of deployer and senders
+  , balanceContract :: Integer          -- ^ Initial balance of contract to test
+  , codeSize        :: Integer          -- ^ Max code size for deployed contratcs (default 24576, per EIP-170)
+  , prefix          :: Text             -- ^ Function name prefix used to denote tests
+  , cryticArgs      :: [String]         -- ^ Args to pass to crytic
+  , solcArgs        :: String           -- ^ Args to pass to @solc@
+  , solcLibs        :: [String]         -- ^ List of libraries to load, in order.
+  , quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
+  , initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
+  , deployContracts :: [(Addr, String)] -- ^ List of contracts to deploy in specific addresses
+  , deployBytecodes :: [(Addr, Text)]   -- ^ List of contracts to deploy in specific addresses
+  , multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
+  , testMode        :: String           -- ^ Testing mode
+  , testDestruction :: Bool             -- ^ Whether or not to add a property to detect contract destruction
+  , allowFFI        :: Bool             -- ^ Whether or not to allow FFI hevm cheatcode
+  , methodFilter    :: Filter           -- ^ List of methods to avoid or include calling during a campaign
+  }
 
 -- | List of contract names from every source cache
 type SourceCaches = [([ContractName], SourceCache)]

@@ -112,13 +112,13 @@ tsWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 tsWidget Solved     t = failWidget Nothing t.testReproducer t.testEvents t.testValue t.testResult
 tsWidget Passed     _ = pure (withAttr (attrName "success") $ str "PASSED!", emptyWidget)
 tsWidget (Open i)   t = do
-  n <- asks (._cConf._testLimit)
+  n <- asks (.campaignConf.testLimit)
   if i >= n then
     tsWidget Passed t
   else
     pure (withAttr (attrName "working") $ str $ "fuzzing " ++ progress i n, emptyWidget)
 tsWidget (Large n)  t = do
-  m <- asks (._cConf._shrinkLimit)
+  m <- asks (.campaignConf.shrinkLimit)
   failWidget (if n < m then Just (n,m) else Nothing) t.testReproducer t.testEvents t.testValue t.testResult
 
 titleWidget :: Widget n
@@ -147,13 +147,13 @@ optWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 optWidget Solved     _ = error "optimization tests cannot be solved"
 optWidget Passed     t = pure (str $ "max value found: " ++ show t.testValue, emptyWidget)
 optWidget (Open i)   t = do
-  n <- asks (._cConf._testLimit)
+  n <- asks (.campaignConf.testLimit)
   if i >= n then
     optWidget Passed t
   else
     pure (withAttr (attrName "working") $ str $ "optimizing " ++ progress i n ++ ", current max value: " ++ show t.testValue, emptyWidget)
 optWidget (Large n)  t = do
-  m <- asks (._cConf._shrinkLimit)
+  m <- asks (.campaignConf.shrinkLimit)
   maxWidget (if n < m then Just (n,m) else Nothing) t.testReproducer t.testEvents t.testValue
 
 maxWidget :: MonadReader EConfig m

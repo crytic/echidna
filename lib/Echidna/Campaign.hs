@@ -19,7 +19,7 @@ import Data.HashMap.Strict qualified as H
 import Data.Map (Map, unionWith, (\\), elems, keys, lookup, insert, mapWithKey)
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Ord (comparing)
-import Data.Set qualified as DS
+import Data.Set qualified as Set
 import Data.Text (Text)
 import System.Random (mkStdGen)
 
@@ -43,7 +43,6 @@ import Echidna.Types.Signature (makeBytecodeMemo)
 import Echidna.Types.Tx (TxCall(..), Tx(..), getResult, call)
 import Echidna.Types.World (World)
 import Echidna.Mutator.Corpus
-import qualified Data.Set as Set
 import Echidna.Events (extractEvents)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
@@ -55,18 +54,18 @@ instance MonadCatch m => MonadCatch (RandT g m) where
 -- the limits defined in our 'CampaignConf'.
 isDone :: MonadReader EConfig m => Campaign -> m Bool
 isDone c | null c._tests = do
-  conf <- asks (._cConf)
-  pure $ c._ncallseqs * conf._seqLen >= conf._testLimit
+  conf <- asks (.campaignConf)
+  pure $ c._ncallseqs * conf.seqLen >= conf.testLimit
 isDone c = do
-  conf <- asks (._cConf)
-  let res (Open  i)   = if i >= conf._testLimit then Just True else Nothing
+  conf <- asks (.campaignConf)
+  let res (Open  i)   = if i >= conf.testLimit then Just True else Nothing
       res Passed      = Just True
-      res (Large i)   = if i >= conf._shrinkLimit then Just False else Nothing
+      res (Large i)   = if i >= conf.shrinkLimit then Just False else Nothing
       res Solved      = Just False
       res (Failed _)  = Just False
   let testResults = res . (.testState) <$> c._tests
-  let done = if conf._stopOnFail then Just False `elem` testResults
-                                 else all isJust testResults
+  let done = if conf.stopOnFail then Just False `elem` testResults
+                                else all isJust testResults
   pure done
 
 -- | Given a 'Campaign', check if the test results should be reported as a
@@ -85,10 +84,10 @@ isSuccessful Campaign{_tests} =
 updateTest :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
            => VM -> (VM, [Tx]) -> EchidnaTest -> m EchidnaTest
 updateTest vmForShrink (vm, xs) test = do
-  tl <- asks (.cfg._cConf._testLimit)
+  limit <- asks (.cfg.campaignConf.testLimit)
   dappInfo <- asks (.dapp)
   case test.testState of
-    Open i | i >= tl -> case test.testType of
+    Open i | i >= limit -> case test.testType of
       OptimizationTest _ _ -> pure $ test { testState = Large (-1) }
       _                    -> pure $ test { testState = Passed }
     Open i -> do
@@ -144,9 +143,9 @@ execTxOptC tx = do
   _1 .= vm'
   let vmr = getResult $ fst res
   -- Update the coverage map with the proper binary according to the vm result
-  cov .= mapWithKey (\_ s -> DS.map (set _4 vmr) s) newCov
+  cov .= mapWithKey (\_ s -> Set.map (set _4 vmr) s) newCov
   -- Update the global coverage map with the union of the result just obtained
-  cov %= unionWith DS.union oldCov
+  cov %= unionWith Set.union oldCov
   grew <- (== LT) . comparing coveragePoints oldCov <$> use cov
   when grew $ do
     case tx.call of
@@ -157,7 +156,7 @@ execTxOptC tx = do
 
 -- | Given a list of transactions in the corpus, save them discarding reverted transactions
 addToCorpus :: MonadState Campaign m => Int -> [(Tx, (VMResult, Int))] -> m ()
-addToCorpus n res = unless (null rtxs) $ corpus %= DS.insert (n, rtxs)
+addToCorpus n res = unless (null rtxs) $ corpus %= Set.insert (n, rtxs)
   where rtxs = fst <$> res
 
 -- | Generate a new sequences of transactions, either using the corpus or with randomly created transactions
@@ -165,8 +164,8 @@ randseq :: (MonadRandom m, MonadReader Env m, MonadState Campaign m)
         => InitialCorpus -> Int -> Map Addr Contract -> World -> m [Tx]
 randseq (n,txs) ql o w = do
   ca <- get
-  cs <- asks (.cfg._cConf._mutConsts)
-  txConf <- asks (.cfg._xConf)
+  cs <- asks (.cfg.campaignConf.mutConsts)
+  txConf <- asks (.cfg.txConf)
   let ctxs = ca._corpus
       -- TODO: include reproducer when optimizing
       --rs   = filter (not . null) $ map (view testReproducer) $ ca ^. tests
@@ -181,7 +180,7 @@ randseq (n,txs) ql o w = do
     cmut <- if ql == 1 then seqMutatorsStateless (fromConsts cs) else seqMutatorsStateful (fromConsts cs)
     -- Fetch the mutator
     let mut = getCorpusMutation cmut
-    if DS.null ctxs then
+    if Set.null ctxs then
       return gtxs      -- Use the generated random transactions
     else
       mut ql ctxs gtxs -- Apply the mutator
@@ -191,16 +190,16 @@ randseq (n,txs) ql o w = do
 callseq :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m, MonadState Campaign m)
         => InitialCorpus -> VM -> World -> Int -> m ()
 callseq ic v w ql = do
-  conf <- asks (.cfg._cConf)
+  conf <- asks (.cfg.campaignConf)
   -- First, we figure out whether we need to execute with or without coverage optimization and gas info,
   -- and pick our execution function appropriately
-  let coverageEnabled = isJust conf._knownCoverage
+  let coverageEnabled = isJust conf.knownCoverage
   let ef = if coverageEnabled then execTxOptC else (\t -> do (xd, ca) <- get
                                                              (r, vm') <- runStateT (execTx t) xd
                                                              put (vm', ca)
                                                              pure r)
       old = v._env._contracts
-  let gasEnabled = conf._estimateGas
+  let gasEnabled = conf.estimateGas
   -- Then, we get the current campaign state
   ca <- get
   -- Then, we generate the actual transaction in the sequence
@@ -228,7 +227,7 @@ callseq ic v w ql = do
       additions = H.unionWith Set.union diffs results
   -- append to the constants dictionary
   modifying (genDict . constants) . H.unionWith Set.union $ additions
-  modifying (genDict . dictValues) . DS.union $ mkDictValues $ Set.unions $ H.elems additions
+  modifying (genDict . dictValues) . Set.union $ mkDictValues $ Set.unions $ H.elems additions
   where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
     -- type for each function called, and if we do, tries to parse the return value as a value of that
@@ -257,30 +256,30 @@ campaign
   -> [[Tx]]              -- ^ Initial corpus of transactions
   -> m Campaign
 campaign u vm w ts d txs = do
-  conf <- asks (.cfg._cConf)
-  let c = fromMaybe mempty (conf._knownCoverage)
-  let effectiveSeed = fromMaybe d'._defSeed conf._seed
+  conf <- asks (.cfg.campaignConf)
+  let c = fromMaybe mempty conf.knownCoverage
+  let effectiveSeed = fromMaybe d'._defSeed conf.seed
       effectiveGenDict = d' { _defSeed = effectiveSeed }
       d' = fromMaybe defaultDict d
   execStateT
     (evalRandT runCampaign (mkStdGen effectiveSeed))
-    (Campaign ts c mempty effectiveGenDict False DS.empty 0 memo)
+    (Campaign ts c mempty effectiveGenDict False Set.empty 0 memo)
   where
     -- "mapMaybe ..." is to get a list of all contracts
     memo        = makeBytecodeMemo . mapMaybe (viewBuffer . (^. bytecode)) . elems $ vm._env._contracts
     runCampaign = gets (fmap (.testState) . (._tests)) >>= update
     update c    = do
       let ic = (length txs, txs)
-      CampaignConf{_testLimit, _stopOnFail, _seqLen, _shrinkLimit} <- asks (.cfg._cConf)
+      CampaignConf{testLimit, stopOnFail, seqLen, shrinkLimit} <- asks (.cfg.campaignConf)
       Campaign{_ncallseqs} <- get
-      if | _stopOnFail && any (\case Solved -> True; Failed _ -> True; _ -> False) c ->
+      if | stopOnFail && any (\case Solved -> True; Failed _ -> True; _ -> False) c ->
            lift u
-         | any (\case Open  n   -> n < _testLimit; _ -> False) c ->
-           callseq ic vm w _seqLen >> step
-         | any (\case Large n   -> n < _shrinkLimit; _ -> False) c ->
+         | any (\case Open  n   -> n < testLimit; _ -> False) c ->
+           callseq ic vm w seqLen >> step
+         | any (\case Large n   -> n < shrinkLimit; _ -> False) c ->
            step
-         | null c && (_seqLen * _ncallseqs) < _testLimit ->
-           callseq ic vm w _seqLen >> step
+         | null c && (seqLen * _ncallseqs) < testLimit ->
+           callseq ic vm w seqLen >> step
          | otherwise ->
            lift u
     step = runUpdate (shrinkTest vm) >> lift u >> runCampaign

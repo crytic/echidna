@@ -2,11 +2,11 @@
 
 module Main where
 
-import Control.Lens hiding (argument)
 import Control.Monad (unless)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
 import Data.Aeson.Key qualified as Aeson.Key
+import Data.Function ((&))
 import Data.List.NonEmpty qualified as NE
 import Data.Map (fromList)
 import Data.Maybe (fromMaybe)
@@ -43,7 +43,7 @@ main = do
   EConfigWithUsage loadedCfg ks _ <-
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
   let cfg = overrideConfig loadedCfg opts
-  unless cfg._sConf._quiet $
+  unless cfg.solConf.quiet $
     mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString) ks
 
   (v, sc, cs, w, ts, d, txs) <- prepareContract cfg cliFilePath cliSelectedContract g
@@ -55,7 +55,7 @@ main = do
   cpg <- runReaderT (ui v w ts (Just d) txs) env
 
   -- save corpus
-  case cfg._cConf._corpusDir of
+  case cfg.campaignConf.corpusDir of
     Nothing -> pure ()
     Just dir -> do
       saveTxs (dir </> "reproducers") (filter (not . null) $ (.testReproducer) <$> cpg._tests)
@@ -98,50 +98,50 @@ optsParser = info (helper <*> versionOption <*> options) $ fullDesc
 options :: Parser Options
 options = Options
   <$> (NE.fromList <$> some (argument str (metavar "FILES"
-                        <> help "Solidity files to analyze")))
+    <> help "Solidity files to analyze")))
   <*> optional (option str $ long "contract"
-        <> metavar "CONTRACT"
-        <> help "Contract to analyze")
+    <> metavar "CONTRACT"
+    <> help "Contract to analyze")
   <*> optional (option str $ long "config"
-        <> metavar "CONFIG"
-        <> help "Config file (command-line arguments override config options)")
+    <> metavar "CONFIG"
+    <> help "Config file (command-line arguments override config options)")
   <*> optional (option auto $ long "format"
-        <> metavar "FORMAT"
-        <> help "Output format. Either 'json', 'text', 'none'. All these disable interactive UI")
+    <> metavar "FORMAT"
+    <> help "Output format. Either 'json', 'text', 'none'. All these disable interactive UI")
   <*> optional (option str $ long "corpus-dir"
-        <> metavar "PATH"
-        <> help "Directory to save and load corpus and coverage data.")
+    <> metavar "PATH"
+    <> help "Directory to save and load corpus and coverage data.")
   <*> optional (option str $ long "test-mode"
-        <> help "Test mode to use. Either 'property', 'assertion', 'dapptest', 'optimization', 'overflow' or 'exploration'" )
+    <> help "Test mode to use. Either 'property', 'assertion', 'dapptest', 'optimization', 'overflow' or 'exploration'" )
   <*> switch (long "multi-abi"
-        <> help "Use multi-abi mode of testing.")
+    <> help "Use multi-abi mode of testing.")
   <*> optional (option auto $ long "test-limit"
-        <> metavar "INTEGER"
-        <> help ("Number of sequences of transactions to generate during testing. Default is " ++ show defaultTestLimit))
+    <> metavar "INTEGER"
+    <> help ("Number of sequences of transactions to generate during testing. Default is " ++ show defaultTestLimit))
   <*> optional (option auto $ long "shrink-limit"
-        <> metavar "INTEGER"
-        <> help ("Number of tries to attempt to shrink a failing sequence of transactions. Default is " ++ show defaultShrinkLimit))
+    <> metavar "INTEGER"
+    <> help ("Number of tries to attempt to shrink a failing sequence of transactions. Default is " ++ show defaultShrinkLimit))
   <*> optional (option auto $ long "seq-len"
-        <> metavar "INTEGER"
-        <> help ("Number of transactions to generate during testing. Default is " ++ show defaultSequenceLength))
+    <> metavar "INTEGER"
+    <> help ("Number of transactions to generate during testing. Default is " ++ show defaultSequenceLength))
   <*> optional (option auto $ long "contract-addr"
-        <> metavar "ADDRESS"
-        <> help ("Address to deploy the contract to test. Default is " ++ show defaultContractAddr))
+    <> metavar "ADDRESS"
+    <> help ("Address to deploy the contract to test. Default is " ++ show defaultContractAddr))
   <*> optional (option auto $ long "deployer"
-        <> metavar "ADDRESS"
-        <> help ("Address of the deployer of the contract to test. Default is " ++ show defaultDeployerAddr))
+    <> metavar "ADDRESS"
+    <> help ("Address of the deployer of the contract to test. Default is " ++ show defaultDeployerAddr))
   <*> many (option auto $ long "sender"
-        <> metavar "ADDRESS"
-        <> help "Addresses to use for the transactions sent during testing. Can be passed multiple times. Check the documentation to see the default values.")
+    <> metavar "ADDRESS"
+    <> help "Addresses to use for the transactions sent during testing. Can be passed multiple times. Check the documentation to see the default values.")
   <*> optional (option auto $ long "seed"
-        <> metavar "SEED"
-        <> help "Run with a specific seed.")
+    <> metavar "SEED"
+    <> help "Run with a specific seed.")
   <*> optional (option str $ long "crytic-args"
-        <> metavar "ARGS"
-        <> help "Additional arguments to use in crytic-compile for the compilation of the contract to test.")
+    <> metavar "ARGS"
+    <> help "Additional arguments to use in crytic-compile for the compilation of the contract to test.")
   <*> optional (option str $ long "solc-args"
-        <> metavar "ARGS"
-        <> help "Additional arguments to use in solc for the compilation of the contract to test.")
+    <> metavar "ARGS"
+    <> help "Additional arguments to use in solc for the compilation of the contract to test.")
 
 versionOption :: Parser (a -> a)
 versionOption = infoOption
@@ -150,63 +150,33 @@ versionOption = infoOption
 
 overrideConfig :: EConfig -> Options -> EConfig
 overrideConfig config Options{..} =
-  foldl (\a f -> f a) config [ overrideFormat
-                             , overrideCorpusDir
-                             , overrideTestMode
-                             , overrideMultiAbi
-                             , overrideTestLimit
-                             , overrideShrinkLimit
-                             , overrideSeqLen
-                             , overrideContractAddr
-                             , overrideDeployer
-                             , overrideSender
-                             , overrideSeed
-                             , overrideCryticArgs
-                             , overrideSolcArgs
-                             ]
+  config { solConf = overrideSolConf config.solConf
+         , campaignConf = overrideCampaignConf config.campaignConf
+         }
+         & overrideFormat
   where
     overrideFormat cfg =
-      case maybe cfg._uConf.operationMode NonInteractive cliOutputFormat of
+      case maybe cfg.uiConf.operationMode NonInteractive cliOutputFormat of
         Interactive -> cfg
-        NonInteractive Text -> cfg { _uConf = cfg._uConf { operationMode = NonInteractive Text }}
-        nonInteractive -> cfg { _uConf = cfg._uConf { operationMode = nonInteractive }
-                              , _sConf = cfg._sConf { _quiet = True }
+        NonInteractive Text -> cfg { uiConf = cfg.uiConf { operationMode = NonInteractive Text }}
+        nonInteractive -> cfg { uiConf = cfg.uiConf { operationMode = nonInteractive }
+                              , solConf = cfg.solConf { quiet = True }
                               }
 
-    overrideCorpusDir cfg =
-      cfg & cConf . corpusDir %~ (cliCorpusDir <|>)
+    overrideCampaignConf campaignConf = campaignConf
+      { corpusDir = cliCorpusDir <|> campaignConf.corpusDir
+      , testLimit = fromMaybe campaignConf.testLimit cliTestLimit
+      , shrinkLimit = fromMaybe campaignConf.shrinkLimit cliShrinkLimit
+      , seqLen = fromMaybe campaignConf.seqLen cliSeqLen
+      , seed = cliSeed <|> campaignConf.seed
+      }
 
-    overrideTestMode cfg =
-      cfg & sConf . testMode %~ (`fromMaybe` (validateTestMode <$> cliTestMode))
-
-    overrideMultiAbi cfg =
-      if cliMultiAbi then cfg & sConf . multiAbi .~ True else cfg
-
-    overrideTestLimit cfg =
-      cfg & cConf . testLimit %~ (`fromMaybe` cliTestLimit)
-
-    overrideShrinkLimit cfg =
-      cfg & cConf . shrinkLimit %~ (`fromMaybe` cliShrinkLimit)
-
-    overrideSeqLen cfg =
-      cfg & cConf . seqLen %~ (`fromMaybe` cliSeqLen)
-
-    overrideContractAddr cfg =
-      cfg & sConf . contractAddr %~ (`fromMaybe` cliContractAddr)
-
-    overrideDeployer cfg =
-      cfg & sConf . deployer %~ (`fromMaybe` cliDeployer)
-
-    overrideSender cfg =
-      cfg & sConf . sender %~ (`fromMaybe` (if null cliSender
-                                               then Nothing
-                                               else Just $ Set.fromList cliSender))
-
-    overrideSeed cfg =
-      cfg & cConf . seed %~ (cliSeed <|>)
-
-    overrideCryticArgs cfg =
-      cfg & sConf . cryticArgs %~ (`fromMaybe` (words <$> cliCryticArgs))
-
-    overrideSolcArgs cfg =
-      cfg & sConf . solcArgs %~ (`fromMaybe` cliSolcArgs)
+    overrideSolConf solConf = solConf
+      { solcArgs = fromMaybe solConf.solcArgs cliSolcArgs
+      , cryticArgs = maybe solConf.cryticArgs words cliSolcArgs
+      , sender = if null cliSender then solConf.sender else Set.fromList cliSender
+      , deployer = fromMaybe solConf.deployer cliDeployer
+      , contractAddr = fromMaybe solConf.contractAddr cliContractAddr
+      , testMode = maybe solConf.testMode validateTestMode cliTestMode
+      , multiAbi = cliMultiAbi || solConf.multiAbi
+      }

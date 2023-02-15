@@ -77,13 +77,13 @@ contracts solConf fp = let usual = ["--solc-disable-warnings", "--export-format"
   case mp of
    Nothing -> throwM NoCryticCompile
    Just path -> do
-    let solargs = solConf._solcArgs ++ linkLibraries solConf._solcLibs & (usual ++) .
+    let solargs = solConf.solcArgs ++ linkLibraries solConf.solcLibs & (usual ++) .
                   (\sa -> if null sa then [] else ["--solc-args", sa])
         compileOne :: FilePath -> IO ([SolcContract], SourceCaches)
         compileOne x = do
           mSolc <- do
-            stderr <- if solConf._quiet then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
-            (ec, out, err) <- readCreateProcessWithExitCode (proc path $ (solConf._cryticArgs ++ solargs) |> x) {std_err = stderr} ""
+            stderr <- if solConf.quiet then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
+            (ec, out, err) <- readCreateProcessWithExitCode (proc path $ (solConf.cryticArgs ++ solargs) |> x) {std_err = stderr} ""
             case ec of
               ExitSuccess -> readSolcBatch "crytic-export"
               ExitFailure _ -> throwM $ CompileFailure out err
@@ -107,8 +107,8 @@ removeJsonFiles dir =
         whenM (doesFileExist path) $ removeFile path
 
 addresses :: SolConf -> Set AbiValue
-addresses SolConf{_contractAddr, _deployer, _sender} = do
-  Set.map AbiAddress $ Set.union _sender (Set.fromList [_contractAddr, _deployer, 0x0])
+addresses SolConf{contractAddr, deployer, sender} = do
+  Set.map AbiAddress $ Set.union sender (Set.fromList [contractAddr, deployer, 0x0])
 
 populateAddresses :: Set Addr -> Integer -> VM -> VM
 populateAddresses addrs b vm =
@@ -157,9 +157,9 @@ loadSpecified :: SolConf -> Maybe Text -> [SolcContract] -> IO (VM, EventMap, NE
 loadSpecified solConf name cs = do
   -- Pick contract to load
   c <- choose cs name
-  when (isNothing name && length cs > 1 && not solConf._quiet) $
+  when (isNothing name && length cs > 1 && not solConf.quiet) $
     putStrLn "Multiple contracts found, only analyzing the first"
-  unless solConf._quiet . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
+  unless solConf.quiet . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
 
   -- Local variables
   let SolConf ca d ads bala balc mcs pref _ _ libs _ fp dpc dpb ma tm _ ffi fs = solConf
@@ -250,14 +250,14 @@ prepareForTest :: SolConf
                -> Maybe ContractName
                -> SlitherInfo
                -> (VM, World, [EchidnaTest])
-prepareForTest SolConf{_sender, _testMode, _testDestruction} (vm, em, a, ts, m) c si = do
+prepareForTest SolConf{sender, testMode, testDestruction} (vm, em, a, ts, m) c si = do
   let r = vm._state._contract
       a' = NE.toList a
       ps = filterResults c si.payableFunctions
-      as = if isAssertionMode _testMode then filterResults c si.asserts else []
-      cs = if isDapptestMode _testMode then [] else filterResults c si.constantFunctions \\ as
+      as = if isAssertionMode testMode then filterResults c si.asserts else []
+      cs = if isDapptestMode testMode then [] else filterResults c si.constantFunctions \\ as
       (hm, lm) = prepareHashMaps cs as $ filterFallbacks c si.fallbackDefined si.receiveDefined m
-  (vm, World _sender hm lm ps em, createTests _testMode _testDestruction ts r a')
+  (vm, World sender hm lm ps em, createTests testMode testDestruction ts r a')
 
 
 filterFallbacks :: Maybe ContractName -> [ContractName] -> [ContractName] -> SignatureMap -> SignatureMap
@@ -270,10 +270,10 @@ filterFallbacks _ _ _ sm = sm
 -- this limited variant is used only in tests
 prepareForTest' :: SolConf -> (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
                -> (VM, World, [EchidnaTest])
-prepareForTest' SolConf{_sender, _testMode} (v, em, a, ts, _) = do
+prepareForTest' SolConf{sender, testMode} (v, em, a, ts, _) = do
   let r = v._state._contract
       a' = NE.toList a
-  (v, World _sender M.empty Nothing [] em, createTests _testMode True ts r a')
+  (v, World sender M.empty Nothing [] em, createTests testMode True ts r a')
 
 prepareHashMaps :: [FunctionHash] -> [FunctionHash] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
 prepareHashMaps [] _  m = (m, Nothing)                                -- No constant functions detected
