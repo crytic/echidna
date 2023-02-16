@@ -1,13 +1,15 @@
 module Etherscan where
 
+import Control.Concurrent (threadDelay)
 import Control.Exception (catch, SomeException)
 import Control.Monad
 import Data.Aeson
+import Data.Aeson.Types (parseEither)
 import Data.Maybe (catMaybes)
 import Data.Sequence (Seq)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Network.HTTP.Simple (httpSink, parseRequest, getResponseBody, httpJSONEither)
+import Network.HTTP.Simple (httpSink, parseRequest, getResponseBody, httpJSON)
 import System.Environment (lookupEnv)
 import Text.HTML.DOM (sinkDoc)
 import Text.XML.Cursor (attributeIs, content, element, fromDocument, ($//), (&//))
@@ -19,15 +21,7 @@ data SourceCode = SourceCode
   { name :: Text
   , code :: String
   }
-
-instance FromJSON SourceCode where
-  parseJSON (Object v) = do
-    res <- v .: "result"
-    case res of
-      [Object r] -> SourceCode <$> (r .: "ContractName")
-                               <*> (r .: "SourceCode")
-      _ -> mzero
-  parseJSON _ = mzero
+  deriving Show
 
 fetchContractSource :: Addr -> IO (Maybe SourceCode)
 fetchContractSource addr = do
@@ -37,10 +31,35 @@ fetchContractSource addr = do
                         <> "&action=getsourcecode"
                         <> "&address=" <> show addr
                         <> maybe "" ("&apikey=" <>) apiKey
-  resp <- httpJSONEither url
-  case getResponseBody resp of
-    Right s -> pure $ Just s
-    Left _ -> pure Nothing
+  try url (5 :: Int)
+  where
+  try url n = do
+    resp <- httpJSON url
+    let result = getResponseBody resp
+    let parsed = flip parseEither result $ \obj -> do
+          message :: String <- obj .: "message"
+          case message of
+            'O':'K':_ -> do
+              r <- obj .: "result"
+              case r of
+                [Object t] -> do
+                  sc <- SourceCode <$> (t .: "ContractName")
+                                   <*> (t .: "SourceCode")
+                  pure $ Right sc
+                _ -> mzero
+            "NOTOK" -> do
+              -- most likely rate limiting
+              err :: String <- obj .: "result"
+              pure $ Left err
+            _ ->
+              pure $ Left message
+    case join parsed of
+      Right src | n > 0 -> pure $ Just src
+      Left err | n > 0 -> do
+        putStrLn $ "Retrying (" <> show n <> " left). Error: " <> err
+        threadDelay (5*1000000 `div` n)
+        try url (n - 1)
+      _ -> pure Nothing
 
 -- | Unfortunately, Etherscan doesn't expose source maps in the JSON API.
 -- This function scrapes it from the HTML. Return a tuple where the first element
