@@ -12,7 +12,7 @@ import Data.List (find, partition, isSuffixOf, (\\))
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NEE
-import Data.Map (Map, keys, elems, unions, member)
+import Data.Map (Map, keys, unions, member)
 import Data.Map qualified as Map
 import Data.Maybe (isJust, isNothing, catMaybes, listToMaybe)
 import Data.Set (Set)
@@ -146,10 +146,10 @@ filterMethodsWithArgs ms = case NE.filter (\(_, xs) -> not $ null xs) ms of
                              fs -> NE.fromList fs
 
 abiOf :: Text -> SolcContract -> NE.NonEmpty SolSignature
-abiOf pref cc =
+abiOf pref solcContract =
   fallback :|
     filter (not . isPrefixOf pref . fst)
-           (elems cc.abiMap <&> \m -> (m.name, snd <$> m.inputs))
+           (Map.elems solcContract.abiMap <&> \method -> (method.name, snd <$> method.inputs))
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -169,8 +169,7 @@ loadSpecified solConf name cs = do
 
   -- generate the complete abi mapping
   let bc = c.creationCode
-      abi = liftM2 (,) (.name) (fmap snd . (.inputs)) <$> toList (c.abiMap)
-      con = c.constructorInputs
+      abi = Map.elems c.abiMap <&> \method -> (method.name, snd <$> method.inputs)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
 
 
@@ -190,7 +189,8 @@ loadSpecified solConf name cs = do
   blank' <- maybe (pure vm) (loadEthenoBatch ffi) fp
   let blank = populateAddresses (Set.insert d ads) bala blank'
 
-  unless (null con || isJust fp) (throwM $ ConstructorArgs (show con))
+  unless (null c.constructorInputs || isJust fp) $
+    throwM $ ConstructorArgs (show c.constructorInputs)
   -- Select libraries
   ls <- mapM (choose cs . Just . T.pack) libs
 
