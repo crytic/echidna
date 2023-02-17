@@ -2,7 +2,7 @@ module Echidna.Solidity where
 
 import Control.Lens
 import Control.Arrow (first)
-import Control.Monad (liftM2, when, unless, forM_)
+import Control.Monad (when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Extra (whenM)
 import Control.Monad.State.Strict (execStateT)
