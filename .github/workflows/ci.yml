@@ -115,9 +115,9 @@ jobs:
         if: runner.os == 'Linux'
         run: GZIP=-9 tar -czf echidna.tar.gz -C $HOME/.local/bin/ echidna
 
-      - name: Compress binary (Windows)
+      - name: Compress binaries (Windows)
         if: runner.os == 'Windows'
-        run: GZIP=-9 tar -czf echidna-test.tar.gz -C $HOME/.local/bin/ echidna-test.exe
+        run: .github/scripts/build-windows-release.sh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
