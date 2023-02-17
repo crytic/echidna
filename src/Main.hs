@@ -47,7 +47,7 @@ main = do
     mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString) ks
 
   (v, sc, cs, w, ts, d, txs) <- prepareContract cfg cliFilePath cliSelectedContract g
-  let solcByName = fromList [(c._contractName, c) | c <- cs]
+  let solcByName = fromList [(c.contractName, c) | c <- cs]
   -- TODO put in real path
   let dappInfo' = dappInfo "/" solcByName sc
   let env = Env { cfg = cfg, dapp = dappInfo' }

@@ -11,16 +11,16 @@ import Data.Text (pack, Text)
 import Data.Map qualified as M
 import Data.Maybe (listToMaybe, fromJust)
 import Data.Vector (fromList)
-import Control.Lens
 
 import EVM
 import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, AbiType(AbiUIntType, AbiTupleType, AbiStringType))
-import EVM.Dapp
+import EVM.Dapp (DappContext(..), DappInfo(..))
 import EVM.Format (showValues, showError, contractNamePart)
+import EVM.Solidity (SolcContract(..))
 import EVM.Types (Expr(ConcreteBuf), W256, maybeLitWord)
-import EVM.Solidity (contractName)
 
 import Echidna.Types.Buffer (forceLit)
+import qualified Data.Map as Map
 
 type EventMap = M.Map W256 Event
 type Events = [Text]
@@ -30,15 +30,15 @@ emptyEvents = fromForest []
 
 maybeContractNameFromCodeHash :: (?context :: DappContext) => EVM.Types.W256 -> Maybe Text
 maybeContractNameFromCodeHash codeHash = fmap contractToName maybeContract
-  where maybeContract = preview (contextInfo . dappSolcByHash . ix codeHash . _2) ?context
-        contractToName = view (contractName . to contractNamePart)
+  where maybeContract = snd <$> Map.lookup codeHash ?context.info.solcByHash
+        contractToName c = contractNamePart c.contractName
 
 extractEvents :: Bool -> DappInfo -> VM -> Events
-extractEvents decodeErrors dappInfo' vm =
-  let eventMap = dappInfo'._dappEventMap
+extractEvents decodeErrors dappInfo vm =
+  let eventMap = dappInfo.eventMap
       forest = traceForest vm
       showTrace trace =
-        let ?context = DappContext { _contextInfo = dappInfo', _contextEnv = vm ^?! EVM.env . EVM.contracts } in
+        let ?context = DappContext { info = dappInfo, env = vm._env._contracts } in
         let codehash' = fromJust $ maybeLitWord trace._traceContract._codehash
             maybeContractName = maybeContractNameFromCodeHash codehash'
         in
