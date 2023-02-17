@@ -19,7 +19,7 @@ import Echidna.Exec (execTx)
 import Echidna.Events (extractEvents)
 
 deployContracts :: DappInfo -> [(Addr, SolcContract)] -> Addr -> VM -> IO VM
-deployContracts di cs = deployBytecodes' di $ map (\(a, c) -> (a, c._creationCode)) cs
+deployContracts di cs = deployBytecodes' di $ map (\(a, c) -> (a, c.creationCode)) cs
 
 deployBytecodes :: DappInfo -> [(Addr, Text)] -> Addr -> VM -> IO VM
 deployBytecodes di cs =

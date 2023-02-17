@@ -144,7 +144,7 @@ execEthenoTxs :: (MonadState VM m, MonadFail m, MonadThrow m) => Etheno -> m ()
 execEthenoTxs et = do
   setupEthenoTx et
   vm <- get
-  res <- exec
+  res <- fromEVM exec
   case (res, et) of
        (_        , AccountCreated _)  -> return ()
        (Reversion,   _)               -> void $ put vm

@@ -93,7 +93,7 @@ runContract :: FilePath -> Maybe ContractName -> EConfig -> IO Campaign
 runContract f mc cfg = do
   g <- getRandom
   (v, sc, cs, w, ts, d, txs) <- prepareContract cfg (f :| []) mc g
-  let solcByName = fromList [(c._contractName, c) | c <- cs]
+  let solcByName = fromList [(c.contractName, c) | c <- cs]
   let dappInfo' = dappInfo "/" solcByName sc
   let env = Env { cfg = cfg, dapp = dappInfo' }
   -- start ui and run tests
