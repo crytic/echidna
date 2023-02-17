@@ -21,3 +21,8 @@ cd "secp256k1-$gitRef"
 ./configure --prefix=$PREFIX --enable-module-recovery --disable-benchmark --disable-tests --with-pic
 
 make install
+
+if [ "$HOST_OS" = "Windows" ]; then
+  # Delete file that causes failure to link
+  find $PREFIX -name libsecp256k1.dll.a -delete
+fi
