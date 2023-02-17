@@ -2,21 +2,23 @@ module Echidna.Solidity where
 
 import Control.Lens
 import Control.Arrow (first)
-import Control.Monad (liftM2, when, unless, forM_)
+import Control.Monad (when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Extra (whenM)
 import Control.Monad.State.Strict (execStateT)
 import Data.Foldable (toList)
 import Data.HashMap.Strict qualified as M
 import Data.List (find, partition, isSuffixOf, (\\))
+import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NEE
-import Data.Map (Map, keys, elems, unions, member)
+import Data.Map (Map, keys, unions, member)
 import Data.Map qualified as Map
 import Data.Maybe (isJust, isNothing, catMaybes, listToMaybe)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text qualified as T
-import Data.Text.Lens (unpacked)
 import System.Directory (doesDirectoryExist, doesFileExist, findExecutable, listDirectory, removeFile)
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit (ExitCode(..))
@@ -42,8 +44,6 @@ import Echidna.Types.Solidity hiding (deployBytecodes, deployContracts)
 import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx (basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.World (World(..))
-import qualified Data.Set as Set
-import Data.Set (Set)
 
 -- | Given a list of source caches (SourceCaches) and an optional contract name,
 -- select one that includes that contract (if possible). Otherwise, use the first source
@@ -146,7 +146,10 @@ filterMethodsWithArgs ms = case NE.filter (\(_, xs) -> not $ null xs) ms of
                              fs -> NE.fromList fs
 
 abiOf :: Text -> SolcContract -> NE.NonEmpty SolSignature
-abiOf pref cc = fallback NE.:| filter (not . isPrefixOf pref . fst) (elems (cc._abiMap) <&> \m -> (m._methodName, m ^.. methodInputs . traverse . _2))
+abiOf pref solcContract =
+  fallback :|
+    filter (not . isPrefixOf pref . fst)
+           (Map.elems solcContract.abiMap <&> \method -> (method.name, snd <$> method.inputs))
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -159,25 +162,24 @@ loadSpecified solConf name cs = do
   c <- choose cs name
   when (isNothing name && length cs > 1 && not solConf.quiet) $
     putStrLn "Multiple contracts found, only analyzing the first"
-  unless solConf.quiet . putStrLn $ "Analyzing contract: " <> c ^. contractName . unpacked
+  unless solConf.quiet . putStrLn $ "Analyzing contract: " <> T.unpack c.contractName
 
   -- Local variables
   let SolConf ca d ads bala balc mcs pref _ _ libs _ fp dpc dpb ma tm _ ffi fs = solConf
 
   -- generate the complete abi mapping
-  let bc = c._creationCode
-      abi = liftM2 (,) (view methodName) (fmap snd . view methodInputs) <$> toList (c._abiMap)
-      con = view constructorInputs c
+  let bc = c.creationCode
+      abi = Map.elems c.abiMap <&> \method -> (method.name, snd <$> method.inputs)
       (tests, funs) = partition (isPrefixOf pref . fst) abi
 
 
   -- Filter ABI according to the config options
-  let fabiOfc = if isDapptestMode tm then filterMethodsWithArgs (abiOf pref c) else filterMethods (c._contractName) fs $ abiOf pref c
+  let fabiOfc = if isDapptestMode tm then filterMethodsWithArgs (abiOf pref c) else filterMethods c.contractName fs $ abiOf pref c
   -- Filter again for dapptest tests or assertions checking if enabled
-  let neFuns = filterMethods (c._contractName) fs (fallback NE.:| funs)
+  let neFuns = filterMethods c.contractName fs (fallback NE.:| funs)
   -- Construct ABI mapping for World
-  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (getBytecodeMetadata cc._runtimeCode, filterMethods (cc._contractName) fs $ abiOf pref cc)
-                         else M.singleton (getBytecodeMetadata c._runtimeCode) fabiOfc
+  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (getBytecodeMetadata cc.runtimeCode, filterMethods cc.contractName fs $ abiOf pref cc)
+                         else M.singleton (getBytecodeMetadata c.runtimeCode) fabiOfc
 
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
@@ -187,7 +189,8 @@ loadSpecified solConf name cs = do
   blank' <- maybe (pure vm) (loadEthenoBatch ffi) fp
   let blank = populateAddresses (Set.insert d ads) bala blank'
 
-  unless (null con || isJust fp) (throwM $ ConstructorArgs (show con))
+  unless (null c.constructorInputs || isJust fp) $
+    throwM $ ConstructorArgs (show c.constructorInputs)
   -- Select libraries
   ls <- mapM (choose cs . Just . T.pack) libs
 
@@ -197,12 +200,12 @@ loadSpecified solConf name cs = do
     $ throwM NoTests
   when (null abiMapping && isDapptestMode tm)                   -- < Dapptests checks
     $ throwM NoTests
-  when (bc == mempty) $ throwM (NoBytecode c._contractName) -- Bytecode check
+  when (bc == mempty) $ throwM (NoBytecode c.contractName) -- Bytecode check
   case find (not . null . snd) tests of
     Just (t,_) -> throwM $ TestArgsFound t                      -- Test args check
     Nothing    -> do
       -- dappinfo for debugging in case of failure
-      let di = dappInfo "/" (Map.fromList $ map (\x -> (x._contractName, x)) cs) mempty
+      let di = dappInfo "/" (Map.fromList $ map (\x -> (x.contractName, x)) cs) mempty
 
       -- library deployment
       vm0 <- deployContracts di (zip [addrLibrary ..] ls) d blank
@@ -225,12 +228,12 @@ loadSpecified solConf name cs = do
 
       case vm4._result of
         Just (VMFailure _) -> throwM SetUpCallFailed
-        _                  -> return (vm4, unions $ map (view EVM.Solidity.eventMap) cs, neFuns, fst <$> tests, abiMapping)
+        _                  -> return (vm4, unions $ map (.eventMap) cs, neFuns, fst <$> tests, abiMapping)
 
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
-                                      find (Data.Text.isSuffixOf (if T.any (== ':') n then n else ":" `append` n) . view contractName) cs
+                                      find (Data.Text.isSuffixOf (if T.any (== ':') n then n else ":" `append` n) . (.contractName)) cs
         setUpFunction = ("setUp", [])
 
 
@@ -311,6 +314,6 @@ extremeConstants = concatMap (\i -> [mkSmallAbiInt i, mkLargeAbiInt i, mkLargeAb
 
 returnTypes :: [SolcContract] -> Text -> Maybe AbiType
 returnTypes cs t = do
-  method <- find ((== t) . view methodName) $ concatMap (toList . view abiMap) cs
-  (_, abiType) <- listToMaybe method._methodOutput
+  method <- find ((== t) . (.name)) $ concatMap (toList . (.abiMap)) cs
+  (_, abiType) <- listToMaybe method.output
   pure abiType

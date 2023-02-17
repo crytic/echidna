@@ -2,11 +2,11 @@ module Echidna.Output.Source where
 
 import Prelude hiding (writeFile)
 
-import Control.Lens
 import Data.Foldable
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.List (nub, sort)
 import Data.Map qualified as M
+import Data.Sequence qualified as Seq
 import Data.Set qualified as S
 import Data.Text (Text, pack)
 import Data.Text qualified as T
@@ -37,8 +37,8 @@ ppCoveredCode :: Bool -> SourceCache -> [SolcContract] -> CoverageMap -> Text
 ppCoveredCode isHtml sc cs s | s == mempty = "Coverage map is empty"
                              | otherwise   =
   let allFiles = zipWith (\(srcPath, _rawSource) srcLines -> (srcPath, V.map decodeUtf8 srcLines))
-                   sc._sourceFiles
-                   sc._sourceLines
+                   sc.files
+                   sc.lines
       -- ^ Collect all the possible lines from all the files
       covLines = srcMapCov sc s cs
       -- ^ List of covered lines during the fuzzing campaing
@@ -111,14 +111,14 @@ srcMapCov sc s contracts =
   M.map (M.fromListWith (++)) .
   M.fromListWith (++) .
   map (\(srcPath, line, txResult) -> (srcPath, [(line, [txResult])])) .
-  nub .                                               -- Deduplicate results
-  mapMaybe (srcMapCodePosResult sc) $                 -- Get the filename, number of line and tx result
+  nub .                                              -- Deduplicate results
+  mapMaybe (srcMapCodePosResult sc) $                -- Get the filename, number of line and tx result
   concatMap mapContract contracts
   where
     mapContract c =
-      mapMaybe (srcMapForOpLocation c) .                  -- Get the mapped line and tx result
-      S.toList . fromMaybe S.empty $                      -- Convert from Set to list
-      M.lookup (getBytecodeMetadata c._runtimeCode) s -- Get the coverage information of the current contract
+      mapMaybe (srcMapForOpLocation c) .             -- Get the mapped line and tx result
+      S.toList . fromMaybe S.empty $                 -- Convert from Set to list
+      M.lookup (getBytecodeMetadata c.runtimeCode) s -- Get the coverage information of the current contract
 
 -- | Given a source cache, a mapped line, return a tuple with the filename, number of line and tx result
 srcMapCodePosResult :: SourceCache -> (SrcMap, TxResult) -> Maybe (Text, Int, TxResult)
@@ -129,7 +129,7 @@ srcMapCodePosResult sc (n, r) = case srcMapCodePos sc n of
 -- | Given a contract, and tuple as coverage, return the corresponding mapped line (if any)
 srcMapForOpLocation :: SolcContract -> CoverageInfo -> Maybe (SrcMap, TxResult)
 srcMapForOpLocation contract (_,n,_,r) =
-  case preview (ix n) (contract._runtimeSrcmap <> contract._creationSrcmap) of
+  case Seq.lookup n (contract.runtimeSrcmap <> contract.creationSrcmap) of
     Just sm -> Just (sm,r)
     _       -> Nothing
 
@@ -141,4 +141,4 @@ buildRuntimeLinesMap sc contracts =
     [(k, S.singleton v) | (k, v) <- mapMaybe (srcMapCodePos sc) srcMaps]
   where
   srcMaps = concatMap
-    (\c -> toList $ c._runtimeSrcmap <> c._creationSrcmap) contracts
+    (\c -> toList $ c.runtimeSrcmap <> c.creationSrcmap) contracts
