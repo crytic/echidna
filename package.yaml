@@ -14,6 +14,7 @@ dependencies:
   - base16-bytestring
   - binary
   - bytestring
+  - code-page
   - containers
   - data-bword
   - data-dword
@@ -42,6 +43,7 @@ dependencies:
   - unordered-containers
   - vector
   - vector-instances
+  - with-utf8
   - word-wrap
   - yaml
 
