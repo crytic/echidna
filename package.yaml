@@ -77,7 +77,7 @@ executables:
     source-dirs: src/
     dependencies: echidna
     when:
-        - condition: os(linux) && flag(static)
+        - condition: (os(linux) || os(windows)) && flag(static)
           ghc-options:
             - -static
             - -O2
