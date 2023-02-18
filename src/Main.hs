@@ -14,11 +14,13 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Version (showVersion)
+import Main.Utf8 (withUtf8)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
+import System.IO.CodePage (withCP65001)
 
 import EVM.Dapp (dappInfo)
 import EVM.Solidity (SolcContract(..))
@@ -37,7 +39,7 @@ import Echidna.Output.Source
 import Echidna.Output.Corpus
 
 main :: IO ()
-main = do
+main = withUtf8 $ withCP65001 $ do
   opts@Options{..} <- execParser optsParser
   g <- getRandomR (0, maxBound)
   EConfigWithUsage loadedCfg ks _ <-
