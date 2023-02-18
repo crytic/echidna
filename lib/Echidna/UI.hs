@@ -7,29 +7,26 @@ import Brick
 import Brick.BChan
 import Control.Concurrent (killThread, threadDelay)
 import Control.Monad (forever, void, when)
-#else
-import Control.Monad (when)
-#endif
-import Control.Monad.Catch (MonadCatch(..))
-import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Reader (MonadReader, runReader, asks)
-import Control.Monad.Random.Strict (MonadRandom)
-#ifndef INTERACTIVE_UI
-import Control.Monad.State.Strict (get)
-#endif
-import Data.ByteString.Lazy qualified as BS
-import Data.IORef
-import Data.Maybe (fromMaybe)
-#ifdef INTERACTIVE_UI
 import Graphics.Vty qualified as V
 import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
-#endif
-import UnliftIO (MonadUnliftIO)
-#ifdef INTERACTIVE_UI
 import UnliftIO.Concurrent (forkIO, forkFinally)
+
+import Echidna.UI.Widgets
+#else /* !INTERACTIVE_UI */
+import Control.Monad (when)
+import Control.Monad.State.Strict (get)
 #endif
+
+import Control.Monad.Catch (MonadCatch(..))
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Reader (MonadReader, runReader, asks)
+import Control.Monad.Random.Strict (MonadRandom)
+import Data.ByteString.Lazy qualified as BS
+import Data.IORef
+import Data.Maybe (fromMaybe)
+import UnliftIO (MonadUnliftIO)
 import UnliftIO.Timeout (timeout)
 
 import EVM (VM)
@@ -42,9 +39,6 @@ import Echidna.Types.Test (EchidnaTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
-#ifdef INTERACTIVE_UI
-import Echidna.UI.Widgets
-#endif
 import Echidna.Types.Config
 
 data CampaignEvent = CampaignUpdated Campaign | CampaignTimedout Campaign
