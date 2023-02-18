@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    name: Build Echidna
+    name: Build Echidna on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
