@@ -93,12 +93,6 @@ jobs:
         env:
           HOST_OS: ${{ runner.os }}
 
-      - name: Add libraries to PATH (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          echo "${HOME}/.local/bin" >> $GITHUB_PATH
-          echo "${HOME}/.local/lib" >> $GITHUB_PATH
-
       - name: Build Dependencies
         run: |
           stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib --only-dependencies
