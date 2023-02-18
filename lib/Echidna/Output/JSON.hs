@@ -97,7 +97,7 @@ encodeCampaign C.Campaign{..} = encode
   Campaign { _success = True
            , _error = Nothing
            , _tests = mapTest <$> _tests
-           , seed = _genDict._defSeed
+           , seed = _genDict.defSeed
            , coverage = mapKeys (("0x" ++) . (`showHex` "") . keccak') $ DF.toList <$>_coverage
            , gasInfo = toList _gasInfo
            }
