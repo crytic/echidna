@@ -61,11 +61,6 @@ default-extensions:
 library:
   source-dirs: lib/
 
-when:
-  - condition: os(darwin)
-    extra-libraries: c++
-    ld-options: -Wl,-keep_dwarf_unwind
-
 executables:
   echidna:
     main: Main.hs
@@ -82,6 +77,9 @@ executables:
           ghc-options:
             - -O2
           ld-options: -pthread
+        - condition: os(darwin)
+          extra-libraries: c++
+          ld-options: -Wl,-keep_dwarf_unwind
 
 tests:
   echidna-testsuite:
@@ -103,6 +101,9 @@ tests:
           ghc-options:
             - -O2
           ld-options: -pthread
+        - condition: os(darwin)
+          extra-libraries: c++
+          ld-options: -Wl,-keep_dwarf_unwind
 
 flags:
   static:
