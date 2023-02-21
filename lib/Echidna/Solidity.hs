@@ -184,7 +184,7 @@ loadSpecified solConf name cs = do
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
-  let vm = initialVM ffi & block . gaslimit .~ fromInteger unlimitedGasPerBlock
+  let vm = initialVM ffi & block . gaslimit .~ unlimitedGasPerBlock
                          & block . maxCodeSize .~ fromInteger mcs
   blank' <- maybe (pure vm) (loadEthenoBatch ffi) fp
   let blank = populateAddresses (Set.insert d ads) bala blank'
@@ -218,12 +218,12 @@ loadSpecified solConf name cs = do
       vm2 <- deployBytecodes di dpb d vm1
 
       -- main contract deployment
-      let deployment = execTx $ createTxWithValue bc d ca (fromInteger unlimitedGasPerBlock) (fromInteger balc) (0, 0)
+      let deployment = execTx $ createTxWithValue bc d ca unlimitedGasPerBlock (fromInteger balc) (0, 0)
       vm3 <- execStateT deployment vm2
       when (isNothing $ currentContract vm3) (throwM $ DeploymentFailed ca $ T.unlines $ extractEvents True di vm3)
 
       -- Run
-      let transaction = execTx $ uncurry basicTx setUpFunction d ca (fromInteger unlimitedGasPerBlock) (0, 0)
+      let transaction = execTx $ uncurry basicTx setUpFunction d ca unlimitedGasPerBlock (0, 0)
       vm4 <- if isDapptestMode tm && setUpFunction `elem` abi then execStateT transaction vm3 else return vm3
 
       case vm4._result of
