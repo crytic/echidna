@@ -80,7 +80,7 @@ summaryWidget :: Campaign -> Widget Name
 summaryWidget c =
   padLeft (Pad 1) (
       str ("Tests found: " ++ show (length c._tests)) <=>
-      str ("Seed: " ++ show c._genDict._defSeed)
+      str ("Seed: " ++ show c._genDict.defSeed)
     <=>
     maybe emptyWidget str (ppCoverage c._coverage)
     <=>

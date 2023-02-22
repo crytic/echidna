@@ -221,13 +221,16 @@ callseq ic v w ql = do
   -- Keep track of the number of calls to `callseq`
   ncallseqs += 1
   -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
-  types <- gets (._genDict._rTypes)
+  types <- gets (._genDict.rTypes)
   let results = parse (map (\(t, (vr, _)) -> (t, vr)) res) types
       -- union the return results with the new addresses
       additions = H.unionWith Set.union diffs results
   -- append to the constants dictionary
-  modifying (genDict . constants) . H.unionWith Set.union $ additions
-  modifying (genDict . dictValues) . Set.union $ mkDictValues $ Set.unions $ H.elems additions
+  let dict = camp._genDict
+  genDict .= dict
+    { constants = H.unionWith Set.union additions dict.constants
+    , dictValues = Set.union (mkDictValues $ Set.unions $ H.elems additions) dict.dictValues
+    }
   where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
     -- type for each function called, and if we do, tries to parse the return value as a value of that
@@ -258,8 +261,8 @@ campaign
 campaign u vm w ts d txs = do
   conf <- asks (.cfg.campaignConf)
   let c = fromMaybe mempty conf.knownCoverage
-  let effectiveSeed = fromMaybe d'._defSeed conf.seed
-      effectiveGenDict = d' { _defSeed = effectiveSeed }
+  let effectiveSeed = fromMaybe d'.defSeed conf.seed
+      effectiveGenDict = d' { defSeed = effectiveSeed }
       d' = fromMaybe defaultDict d
   execStateT
     (evalRandT runCampaign (mkStdGen effectiveSeed))
