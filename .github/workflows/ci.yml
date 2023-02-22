@@ -23,12 +23,6 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install automake
 
-      - name: Get Packages (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get -q update
-          sudo apt-get -q install autoconf automake libtool
-
       - name: Checkout
         uses: actions/checkout@v3
 
