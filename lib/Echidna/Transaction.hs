@@ -51,7 +51,7 @@ genTxM memo m = do
   World ss hmm lmm ps _ <- asks fst
   genDict <- gets (._genDict)
   mm <- getSignatures hmm lmm
-  let ns = genDict._dictValues
+  let ns = genDict.dictValues
   s' <- rElem' ss
   r' <- rElem' $ Set.fromList (mapMaybe (toContractA mm) (toList m))
   c' <- genInteractionsM genDict (snd r')

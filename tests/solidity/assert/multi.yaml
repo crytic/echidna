@@ -1,2 +1,2 @@
 testMode: assertion
-multi-abi: true
+allContracts: true

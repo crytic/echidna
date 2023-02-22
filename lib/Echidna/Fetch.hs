@@ -33,7 +33,7 @@ deployBytecodes' di ((a, bc):cs) d vm =
   where
     zeros = pack $ replicate 320 0 -- This will initialize with zero a large number of possible constructor parameters
     loadRest = do
-      vm' <- execStateT (execTx $ createTx (bc `append` zeros) d a (fromInteger unlimitedGasPerBlock) (0, 0)) vm
+      vm' <- execStateT (execTx $ createTx (bc `append` zeros) d a unlimitedGasPerBlock (0, 0)) vm
       case vm'._result of
         (Just (VMSuccess _)) -> return vm'
         _ -> throwM $ DeploymentFailed a (Data.Text.unlines $ extractEvents True di vm')

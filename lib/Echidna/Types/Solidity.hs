@@ -72,7 +72,7 @@ data SolConf = SolConf
   , initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
   , deployContracts :: [(Addr, String)] -- ^ List of contracts to deploy in specific addresses
   , deployBytecodes :: [(Addr, Text)]   -- ^ List of contracts to deploy in specific addresses
-  , multiAbi        :: Bool             -- ^ Whether or not to use the multi-abi mode
+  , allContracts    :: Bool             -- ^ Whether or not to fuzz all contracts
   , testMode        :: String           -- ^ Testing mode
   , testDestruction :: Bool             -- ^ Whether or not to add a property to detect contract destruction
   , allowFFI        :: Bool             -- ^ Whether or not to allow FFI hevm cheatcode

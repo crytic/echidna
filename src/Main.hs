@@ -80,7 +80,7 @@ data Options = Options
   , cliOutputFormat     :: Maybe OutputFormat
   , cliCorpusDir        :: Maybe FilePath
   , cliTestMode         :: Maybe TestMode
-  , cliMultiAbi         :: Bool
+  , cliAllContracts     :: Bool
   , cliTestLimit        :: Maybe Int
   , cliShrinkLimit      :: Maybe Int
   , cliSeqLen           :: Maybe Int
@@ -115,8 +115,8 @@ options = Options
     <> help "Directory to save and load corpus and coverage data.")
   <*> optional (option str $ long "test-mode"
     <> help "Test mode to use. Either 'property', 'assertion', 'dapptest', 'optimization', 'overflow' or 'exploration'" )
-  <*> switch (long "multi-abi"
-    <> help "Use multi-abi mode of testing.")
+  <*> switch (long "all-contracts"
+    <> help "Generate calls to all deployed contracts.")
   <*> optional (option auto $ long "test-limit"
     <> metavar "INTEGER"
     <> help ("Number of sequences of transactions to generate during testing. Default is " ++ show defaultTestLimit))
@@ -180,5 +180,5 @@ overrideConfig config Options{..} =
       , deployer = fromMaybe solConf.deployer cliDeployer
       , contractAddr = fromMaybe solConf.contractAddr cliContractAddr
       , testMode = maybe solConf.testMode validateTestMode cliTestMode
-      , multiAbi = cliMultiAbi || solConf.multiAbi
+      , allContracts = cliAllContracts || solConf.allContracts
       }

@@ -160,6 +160,6 @@ execEthenoTxs et = do
 -- | For an etheno txn, set up VM to execute txn
 setupEthenoTx :: MonadState VM m => Etheno -> m ()
 setupEthenoTx (AccountCreated f) = initAddress f -- TODO: improve etheno to include initial balance
-setupEthenoTx (ContractCreated f c _ _ d v) = setupTx $ createTxWithValue d f c (fromInteger unlimitedGasPerBlock) v (1, 1)
-setupEthenoTx (FunctionCall f t _ _ d v) = setupTx $ Tx (SolCalldata d) f t (fromInteger unlimitedGasPerBlock) 0 v (1, 1)
+setupEthenoTx (ContractCreated f c _ _ d v) = setupTx $ createTxWithValue d f c unlimitedGasPerBlock v (1, 1)
+setupEthenoTx (FunctionCall f t _ _ d v) = setupTx $ Tx (SolCalldata d) f t unlimitedGasPerBlock 0 v (1, 1)
 setupEthenoTx (BlockMined n t) = setupTx $ Tx NoCall 0 0 0 0 0 (fromInteger t, fromInteger n)

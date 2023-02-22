@@ -124,7 +124,7 @@ ppCampaign c = do
   gasInfoPrinted <- ppGasInfo c
   let coveragePrinted = maybe "" ("\n" ++) . ppCoverage $ c._coverage
       corpusPrinted = maybe "" ("\n" ++) . ppCorpus $ c._corpus
-      seedPrinted = "\nSeed: " ++ show c._genDict._defSeed
+      seedPrinted = "\nSeed: " ++ show c._genDict.defSeed
   pure $
     testsPrinted
     ++ gasInfoPrinted
