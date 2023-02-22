@@ -19,7 +19,7 @@ import Control.Monad (when)
 import Control.Monad.State.Strict (get)
 #endif
 
-import Control.Monad.Catch (MonadCatch(..))
+import Control.Monad.Catch (MonadCatch(..), catchAll)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader, runReader, asks)
 import Control.Monad.Random.Strict (MonadRandom)
@@ -41,7 +41,10 @@ import Echidna.Types.World (World)
 import Echidna.UI.Report
 import Echidna.Types.Config
 
-data CampaignEvent = CampaignUpdated Campaign | CampaignTimedout Campaign
+data CampaignEvent =
+  CampaignUpdated Campaign
+  | CampaignTimedout Campaign
+  | CampaignCrashed String
 
 -- | Set up and run an Echidna 'Campaign' and display interactive UI or
 -- print non-interactive output in desired format at the end
@@ -78,9 +81,12 @@ ui vm world ts d txs = do
       ticker <- liftIO $ forkIO $ -- run UI update every 100ms
         forever $ threadDelay 100000 >> updateUI CampaignUpdated
       _ <- forkFinally -- run worker
-        (void $ runCampaign >>= \case
-          Nothing -> liftIO $ updateUI CampaignTimedout
-          Just _ -> liftIO $ updateUI CampaignUpdated
+        (void $ do
+          catchAll
+            (runCampaign >>= \case
+              Nothing -> liftIO $ updateUI CampaignTimedout
+              Just _ -> liftIO $ updateUI CampaignUpdated)
+            (liftIO . writeBChan bc . CampaignCrashed . show)
         )
         (const $ liftIO $ killThread ticker)
       let buildVty = do
@@ -132,6 +138,9 @@ monitor = do
 
       onEvent (AppEvent (CampaignUpdated c')) = put (c', Running)
       onEvent (AppEvent (CampaignTimedout c')) = put (c', Timedout)
+      onEvent (AppEvent (CampaignCrashed e)) = do
+        (c,_) <- get
+        put (c, Crashed e)
       onEvent (VtyEvent (EvKey KEsc _))                         = halt
       onEvent (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = halt
       onEvent (MouseDown (SBClick el n) _ _ _) =

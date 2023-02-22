@@ -16,6 +16,7 @@ import Data.Text (isPrefixOf)
 import Data.Yaml qualified as Y
 
 import EVM (VM(..))
+import EVM.Types (W256)
 
 import Echidna.Test
 import Echidna.Types.Campaign
@@ -51,15 +52,21 @@ instance FromJSON EConfigWithUsage where
             let useKey k = modify' $ insert k
                 x ..:? k = useKey k >> lift (x .:? k)
                 x ..!= y = fromMaybe y <$> x
-                getWord s d = fromIntegral <$> v ..:? s ..!= (d :: Integer)
+                -- Parse as unbounded Integer and see if it fits into W256
+                getWord256 k def = do
+                  value :: Integer <- fromMaybe (fromIntegral (def :: W256)) <$> v ..:? k
+                  if value > fromIntegral (maxBound :: W256) then
+                    fail $ show k <> ": value does not fit in 256 bits"
+                  else
+                    pure $ fromIntegral value
 
                 -- TxConf
-                xc = TxConf <$> getWord "propMaxGas" maxGasPerBlock
-                            <*> getWord "testMaxGas" maxGasPerBlock
-                            <*> getWord "maxGasprice" 0
-                            <*> getWord "maxTimeDelay" defaultTimeDelay
-                            <*> getWord "maxBlockDelay" defaultBlockDelay
-                            <*> getWord "maxValue" 100000000000000000000 -- 100 eth
+                xc = TxConf <$> v ..:? "propMaxGas" ..!= maxGasPerBlock
+                            <*> v ..:? "testMaxGas" ..!= maxGasPerBlock
+                            <*> getWord256 "maxGasprice" 0
+                            <*> getWord256 "maxTimeDelay" defaultTimeDelay
+                            <*> getWord256 "maxBlockDelay" defaultBlockDelay
+                            <*> getWord256 "maxValue" 100000000000000000000 -- 100 eth
 
                 -- TestConf
                 tc = do
@@ -103,7 +110,7 @@ instance FromJSON EConfigWithUsage where
                              <*> v ..:? "initialize"      ..!= Nothing
                              <*> v ..:? "deployContracts" ..!= []
                              <*> v ..:? "deployBytecodes" ..!= []
-                             <*> v ..:? "multi-abi"       ..!= False
+                             <*> v ..:? "allContracts"    ..!= False
                              <*> mode
                              <*> v ..:? "testDestruction" ..!= False
                              <*> v ..:? "allowFFI"        ..!= False

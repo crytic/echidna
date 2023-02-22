@@ -1,4 +1,6 @@
-## TODO
+## 2.1.0 (Unreleased)
+
+* Rename multi-abi mode to allContracts
 
 ## 2.0.5
 
@@ -7,26 +9,26 @@
 * Update hevm to 0.50 (#884, #894, #896, #897, #901)
 * Added saving and loading of reproducers for every test (#858)
 * Added events and revert reasons for any failure in the constructor (#871)
-* Fixed uninitialized sender addresses from etheno transactions (#823) 
-* Fixed crash when minimizing inputs during optimization tests (#837) 
+* Fixed uninitialized sender addresses from etheno transactions (#823)
+* Fixed crash when minimizing inputs during optimization tests (#837)
 * Refactored code and removed useless dependencies (#856, #857, #874, #878, #895, #903)
 
 ## 2.0.4
 
 * Added colored html for coverage output code (#816)
-* Fixed crash when parsing solc versions (#835) 
+* Fixed crash when parsing solc versions (#835)
 * Fixed long transactions and event lines in UI (#832)
-* Added Homebrew installation instructions (#848) 
+* Added Homebrew installation instructions (#848)
 * Moved all nix stuff to flake and use nix-bundle-exe for macOS release (#851)
-* Updated codebase to GHC 9.0.2 (#846) 
+* Updated codebase to GHC 9.0.2 (#846)
 * Refactored code and removed useless dependencies (#854, #853, #829, #827, #828)
 
 ## 2.0.3
 
 * Clean up Docker containers (#706)
 * Avoid resetting accounts if there is a deployed contract (#795)
-* Fixed decoding non-utf8 strings from slither printer (#799) 
-* Fixed generation and mutation of extreme signed integers (#791) 
+* Fixed decoding non-utf8 strings from slither printer (#799)
+* Fixed generation and mutation of extreme signed integers (#791)
 * Removed fallback from signature map when it is not defined (#772)
 
 ## 2.0.2
@@ -37,13 +39,13 @@
 * Fixed crash when the EVM execution triggers more than one query (#760)
 * Added support for detection and handling of ancient solc versions (#675)
 * Added explicit static flag and removed pthread one from ghc options (#768)
- 
+
 ## 2.0.1
 
 * Optimized stateless mutators (#747)
 * Expanded and improved command-line help (#741)
 * Added dapptest support: compatibility mode to run foundry and dapptool fuzz tests (#733, #745)
-* Generate more values closer to the maximum (#736) 
+* Generate more values closer to the maximum (#736)
 * Fix TERMINFO path for Nix release builds (#731)
 * Mitigate large memory consumption when replaying corpus (#725)
 * Fix --shrink-limit to change shrink limit instead of test limit (#728)
@@ -54,14 +56,14 @@
 
 * Refactored test internal data structures and code
 * Refactored unit test code and moved the related files to the `tests` directory
-* Added support to show events and custom errors when a property/assertion fails 
+* Added support to show events and custom errors when a property/assertion fails
 * Added support for catching assertion failure in Solidity 0.8.x
 * Added two new testing mode: optimization and overflow (only in Solidity 0.8.x)
 * Added optional checks for contract destruction
 * Added `testMode` option and removed related flags
 * Simplified contract deployer and property sender addresses to be easier to read
 * Updated hevm to 0.49.0
- 
+
 ## 1.7.3
 
 * Removed old compilation artifacts before starting a new fuzzing campaign (#697)
@@ -92,17 +94,17 @@
 * Refactor coverage types and added corpus size in UI (#627)
 * Fixed link to macOS binary in binaries.soliditylang.org (#629)
 * Fixed default.nix to use 1.7.0 as version (#623)
-* Refactored Test type (#622) 
+* Refactored Test type (#622)
 
 ## 1.7.0
 
-* Refactored and improved etheno support to be more useful (#615) 
+* Refactored and improved etheno support to be more useful (#615)
 * Coverage filenames are not overwritten (#620)
 * Refactored the mutator code (#618)
 * More corpus and array mutations implemented (#372)
 * Source coverage is printed after fuzzing campaign (#516)
 * Nix improvements and fixes (#603, #604, #608, #612)
-* Simplified slither information parsing (#543) 
+* Simplified slither information parsing (#543)
 * Enabled use of coverage by default (#605)
 * Run echidna tests in parallel (#571)
 
@@ -112,10 +114,10 @@
 * Use metadata to detect deployed contracts (#593)
 * Semver integration for improving testing with different solc versions (#594)
 * Added some performance improvement in property execution (#576)
-* Fixed wait bug when shrinking (#584) 
+* Fixed wait bug when shrinking (#584)
 * Added funwithnumber example from Sabre (#565)
 * Improved function filtering to be more precise (#570)
-* Small fixes in the macOS CI (#597), the README (#590) and Nix (#581) 
+* Small fixes in the macOS CI (#597), the README (#590) and Nix (#581)
 
 ## 1.6.0
 * Slither is now a required dependency.
@@ -134,7 +136,7 @@
 * Fix negative address bug (#552)
 * Various Github Actions improvements (#527, #554)
 * Allow to bypass EIP-170 and set up a custom max code size (#544)
- 
+
 ## 1.5.1
 
 * Fix timestamp and block delays having the initial timestamp/block added to them (#460, #469)

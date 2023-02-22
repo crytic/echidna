@@ -61,11 +61,6 @@ library:
   source-dirs: lib/
 
 when:
-  - condition: os(darwin)
-    extra-libraries: c++
-    ld-options: -Wl,-keep_dwarf_unwind
-  - condition: os(windows)
-    extra-libraries: stdc++
   - condition: "!os(windows)"
     cpp-options: -DINTERACTIVE_UI
     dependencies:
@@ -89,6 +84,11 @@ executables:
           ghc-options:
             - -O2
           ld-options: -pthread
+        - condition: os(darwin)
+          extra-libraries: c++
+          ld-options: -Wl,-keep_dwarf_unwind
+        - condition: os(windows)
+          extra-libraries: stdc++
 
 tests:
   echidna-testsuite:
@@ -110,6 +110,11 @@ tests:
           ghc-options:
             - -O2
           ld-options: -pthread
+        - condition: os(darwin)
+          extra-libraries: c++
+          ld-options: -Wl,-keep_dwarf_unwind
+        - condition: os(windows)
+          extra-libraries: stdc++
 
 flags:
   static:
