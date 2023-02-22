@@ -121,16 +121,16 @@ jobs:
           path: echidna.tar.gz
 
       - name: Build and copy test suite
-        if: runner.os == 'Linux'
+        if: runner.os != 'macOS'
         run: |
           stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
           cp "$(find "$PWD" -name 'echidna-testsuite*' -type f)" .
 
       - name: Upload testsuite
-        if: runner.os == 'Linux'
+        if: runner.os != 'macOS'
         uses: actions/upload-artifact@v3
         with:
-          name: echidna-testsuite
+          name: echidna-testsuite-${{ matrix.os }}
           path: echidna-testsuite*
 
 
@@ -175,7 +175,7 @@ jobs:
       - name: Download testsuite
         uses: actions/download-artifact@v3
         with:
-         name: echidna-testsuite
+         name: echidna-testsuite-${{ matrix.os }}
 
       - name: Test (Linux)
         if: runner.os == 'Linux'
