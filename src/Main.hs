@@ -44,7 +44,7 @@ import EVM.Types (Addr, keccak', W256)
 import Echidna
 import Echidna.Config
 import Echidna.Types.Buffer (forceBuf)
-import Echidna.Types.Campaign
+import Echidna.Types.Campaign hiding (corpus)
 import Echidna.Types.Config
 import Echidna.Types.Solidity
 import Echidna.Types.Test (TestMode, EchidnaTest(..))
@@ -76,7 +76,7 @@ main = do
       pure (Nothing, Nothing)
 
   opts@Options{..} <- execParser optsParser
-  g <- getRandomR (0, maxBound)
+  seed <- getRandomR (0, maxBound)
   EConfigWithUsage loadedCfg ks _ <-
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
   let cfg = overrideConfig loadedCfg opts
@@ -91,13 +91,14 @@ main = do
                 , metadataCache = cacheMetaRef
                 , fetchContractCache = cacheContractsRef
                 , fetchSlotCache = cacheSlotsRef }
-  (vm, sourceCache, deployedContracts, world, ts, d, txs) <-
-    prepareContract env cliFilePath cliSelectedContract g
-  let solcByName = Map.fromList [(c.contractName, c) | c <- deployedContracts]
+  (vm, sourceCache, contracts, world, ts, dict) <-
+    prepareContract env cliFilePath cliSelectedContract seed
+  let solcByName = Map.fromList [(c.contractName, c) | c <- contracts]
   -- TODO put in real path
   let dappInfo' = dappInfo "/" solcByName sourceCache
+  corpus <- prepareCorpus env world
   -- start ui and run tests
-  campaign <- runReaderT (ui vm world ts (Just d) txs) (env { dapp = dappInfo' })
+  campaign <- runReaderT (ui vm world ts (Just dict) corpus) (env { dapp = dappInfo' })
 
   contractsCache <- readIORef cacheContractsRef
   slotsCache <- readIORef cacheSlotsRef
@@ -105,8 +106,10 @@ main = do
   case maybeBlock of
     Just block -> do
       -- Save fetched data, it's okay to override as the cache only grows
-      JSON.encodeFile (".echidna" </> "block_" <> show block <> "_fetch_cache_contracts.json") (toFetchedContractData <$> Map.mapMaybe id contractsCache)
-      JSON.encodeFile (".echidna" </> "block_" <> show block <> "_fetch_cache_slots.json") slotsCache
+      JSON.encodeFile (".echidna" </> "block_" <> show block <> "_fetch_cache_contracts.json")
+                      (toFetchedContractData <$> Map.mapMaybe id contractsCache)
+      JSON.encodeFile (".echidna" </> "block_" <> show block <> "_fetch_cache_slots.json")
+                      slotsCache
     Nothing ->
       pure ()
 
@@ -124,22 +127,21 @@ main = do
       -- as it orders the runs chronologically.
       runId <- fromIntegral . systemSeconds <$> getSystemTime
 
-      mapM_ (\(addr,mc) ->
+      mapM_ (\(addr, mc) ->
         case mc of
           Just contract -> do
             r <- externalSolcContract addr contract
             case r of
-              Just (externalSourceCache, solcContract) ->
+              Just (externalSourceCache, solcContract) -> do
                 let dir' = dir </> show addr
-                in do
-                  saveCoverage False runId dir' externalSourceCache [solcContract] campaign._coverage
-                  saveCoverage True  runId dir' externalSourceCache [solcContract] campaign._coverage
+                saveCoverage False runId dir' externalSourceCache [solcContract] campaign._coverage
+                saveCoverage True  runId dir' externalSourceCache [solcContract] campaign._coverage
               Nothing -> pure ()
           Nothing -> pure ()) (Map.toList contractsCache)
 
       -- save source coverage reports
-      saveCoverage False runId dir sourceCache deployedContracts campaign._coverage
-      saveCoverage True  runId dir sourceCache deployedContracts campaign._coverage
+      saveCoverage False runId dir sourceCache contracts campaign._coverage
+      saveCoverage True  runId dir sourceCache contracts campaign._coverage
 
   if isSuccessful campaign then exitSuccess else exitWith (ExitFailure 1)
 
@@ -151,7 +153,6 @@ main = do
   externalSolcContract addr c = do
     let runtimeCode = forceBuf $ view bytecode c
     putStr $ "Fetching Solidity source for contract at address " <> show addr <> "... "
-    -- TODO: without ETHERSCAN_API_KEY there is 1req/5s limit
     srcRet <- Etherscan.fetchContractSource addr
     putStrLn $ if isJust srcRet then "Success!" else "Error!"
     putStr $ "Fetching Solidity source map for contract at address " <> show addr <> "... "
@@ -178,7 +179,7 @@ main = do
             , eventMap = mempty -- error "TODO: mkEventMap abis"
             , errorMap = mempty -- error "TODO: mkErrorMap abis"
             , storageLayout = Nothing
-            , immutableReferences = mempty -- TODO: deprecate combined-json
+            , immutableReferences = mempty
             }
       pure (sourceCache, solcContract)
 
