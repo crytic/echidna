@@ -61,7 +61,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
 
       - name: Docker Build and Push (Ubuntu & NVM variant)
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v4
         with:
           platforms: linux/amd64
           target: final-ubuntu
@@ -74,7 +74,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Docker Build and Push (Distroless variant)
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v4
         if: ${{ env.WORKFLOW_BUILD_DISTROLESS == true }}
         with:
           platforms: linux/amd64
