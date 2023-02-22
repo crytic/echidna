@@ -100,7 +100,7 @@ tests:
       - tasty-hunit
       - tasty-quickcheck
     when:
-        - condition: os(linux) && flag(static)
+        - condition: (os(linux) || os(windows)) && flag(static)
           ghc-options:
             - -static
             - -O2
