@@ -30,19 +30,21 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.local/
-          key: ${{ runner.os }}-local-v4
+          key: ${{ runner.os }}-local-v5-${{ hashFiles('.github/scripts/install-*') }}
 
       - name: Cache Stack
         uses: actions/cache@v3
         with:
-          path: ~/.stack
-          key: ${{ runner.os }}-stack-v4
+          path: |
+            ~/.stack
+            .stack-work
+          key: ${{ runner.os }}-stack-v5-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Cache Cabal
         uses: actions/cache@v3
         with:
           path: ~/.cabal
-          key: ${{ runner.os }}-cabal-v4
+          key: ${{ runner.os }}-cabal-v5-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Build Libraries
         run: |
