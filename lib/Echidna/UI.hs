@@ -7,6 +7,7 @@ import Brick
 import Brick.BChan
 import Control.Concurrent (killThread, threadDelay)
 import Control.Monad (forever, void, when)
+import Control.Monad.Catch (MonadCatch(..), catchAll)
 import Graphics.Vty qualified as V
 import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
 import System.Posix.Terminal (queryTerminal)
@@ -16,10 +17,10 @@ import UnliftIO.Concurrent (forkIO, forkFinally)
 import Echidna.UI.Widgets
 #else /* !INTERACTIVE_UI */
 import Control.Monad (when)
+import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.State.Strict (get)
 #endif
 
-import Control.Monad.Catch (MonadCatch(..), catchAll)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader, runReader, asks)
 import Control.Monad.Random.Strict (MonadRandom)
