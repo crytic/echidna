@@ -81,7 +81,7 @@ Our tool signals each execution trace in the corpus with the following "line mar
 
 Echidna can test contracts compiled with different smart contract build systems, including [Truffle](https://truffleframework.com/) or [hardhat](https://hardhat.org/) using [crytic-compile](https://github.com/crytic/crytic-compile). To invoke echidna with the current compilation framework, use `echidna .`.
 
-On top of that, Echidna supports two modes of testing complex contracts. Firstly, one can [describe an initialization procedure with Truffle and Etheno](https://github.com/crytic/building-secure-contracts/blob/master/program-analysis/echidna/end-to-end-testing.md) and use that as the base state for Echidna. Secondly, echidna can call into any contract with a known ABI by passing in the corresponding solidity source in the CLI. Use `multi-abi: true` in your config to turn this on.
+On top of that, Echidna supports two modes of testing complex contracts. Firstly, one can [describe an initialization procedure with Truffle and Etheno](https://github.com/crytic/building-secure-contracts/blob/master/program-analysis/echidna/end-to-end-testing.md) and use that as the base state for Echidna. Secondly, Echidna can call into any contract with a known ABI by passing in the corresponding Solidity source in the CLI. Use `allContracts: true` in your config to turn this on.
 
 ### Crash course on Echidna
 

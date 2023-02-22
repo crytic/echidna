@@ -54,8 +54,8 @@ initialize: null
 deployContracts: []
 #initialize the blockchain with some bytecode in some addresses
 deployBytecodes: []
-#whether ot not to use the multi-abi mode of testing
-multi-abi: false
+#whether ot not to fuzz all contracts
+allContracts: false
 #timeout controls test timeout settings
 timeout: null
 #seed not defined by default, is the random seed
