@@ -24,6 +24,7 @@ import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_e
 import System.Exit (ExitCode(..))
 import System.FilePath.Posix ((</>))
 import System.IO (openFile, IOMode(..))
+import System.Info (os)
 
 import EVM hiding (contracts, path)
 import EVM qualified (contracts)
@@ -44,6 +45,10 @@ import Echidna.Types.Solidity hiding (deployBytecodes, deployContracts)
 import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx (basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.World (World(..))
+
+-- | OS-specific path to the "null" file, which accepts writes without storing them
+nullFilePath :: String
+nullFilePath = if os == "mingw32" then "\\\\.\\NUL" else "/dev/null"
 
 -- | Given a list of source caches (SourceCaches) and an optional contract name,
 -- select one that includes that contract (if possible). Otherwise, use the first source
@@ -82,7 +87,7 @@ contracts solConf fp = let usual = ["--solc-disable-warnings", "--export-format"
         compileOne :: FilePath -> IO ([SolcContract], SourceCaches)
         compileOne x = do
           mSolc <- do
-            stderr <- if solConf.quiet then UseHandle <$> openFile "/dev/null" WriteMode else pure Inherit
+            stderr <- if solConf.quiet then UseHandle <$> openFile nullFilePath WriteMode else pure Inherit
             (ec, out, err) <- readCreateProcessWithExitCode (proc path $ (solConf.cryticArgs ++ solargs) |> x) {std_err = stderr} ""
             case ec of
               ExitSuccess -> readSolcBatch "crytic-export"
