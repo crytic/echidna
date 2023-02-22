@@ -9,7 +9,7 @@ import Control.Monad.Catch (catch)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text (Text)
 import Echidna.Types.Solidity (SolException(..))
-import Echidna.Solidity (loadWithCryticCompile)
+import Echidna.Solidity (loadSolTests)
 import Echidna.Types.Config (Env(..))
 import EVM.Dapp (emptyDapp)
 import Data.IORef (newIORef)
@@ -47,4 +47,4 @@ loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
                   , metadataCache = cacheMeta
                   , fetchContractCache = cacheContracts
                   , fetchSlotCache = cacheSlots }
-    void $ loadWithCryticCompile env (fp :| []) c
+    void $ loadSolTests env (fp :| []) c

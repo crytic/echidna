@@ -102,11 +102,12 @@ runContract f mc cfg = do
                 , metadataCache = cacheMeta
                 , fetchContractCache = cacheContracts
                 , fetchSlotCache = cacheSlots }
-  (v, sc, cs, w, ts, d, txs) <- prepareContract env (f :| []) mc g
+  (vm, sc, cs, w, ts, d) <- prepareContract env (f :| []) mc g
   let solcByName = fromList [(c.contractName, c) | c <- cs]
   let dappInfo' = dappInfo "/" solcByName sc
+  let corpus = []
   -- start ui and run tests
-  runReaderT (campaign (pure ()) v w ts (Just d) txs) (env { dapp = dappInfo' })
+  runReaderT (campaign (pure ()) vm w ts (Just d) corpus) (env { dapp = dappInfo' })
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg = testContract' fp Nothing Nothing cfg True
