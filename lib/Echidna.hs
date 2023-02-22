@@ -54,12 +54,11 @@ prepareContract env solFiles specifiedContract seed = do
     Nothing -> pure ()
 
   -- load tests
-  let echidnaTests = createTests
-                       solConf.testMode
-                       solConf.testDestruction
-                       testNames
-                       vm._state._contract
-                       funs
+  let echidnaTests = createTests solConf.testMode
+                                 solConf.testDestruction
+                                 testNames
+                                 vm._state._contract
+                                 funs
 
   let eventMap = Map.unions $ map (.eventMap) contracts
   let world = mkWorld solConf eventMap signatureMap specifiedContract slitherInfo
@@ -87,8 +86,8 @@ prepareCorpus env world = do
     case env.cfg.solConf.initialize of
       Nothing -> pure []
       Just fp -> do
-        es' <- loadEtheno fp
-        pure [extractFromEtheno es' sigs]
+        es <- loadEtheno fp
+        pure [extractFromEtheno es sigs]
 
   persistedCorpus <-
     case env.cfg.campaignConf.corpusDir of
