@@ -57,24 +57,6 @@ import Etherscan qualified
 
 main :: IO ()
 main = do
-  createDirectoryIfMissing True ".echidna"
-
-  maybeBlock :: Maybe Int <- lookupEnv "ECHIDNA_RPC_BLOCK" <&> (>>= readMaybe)
-
-  (loadedContractsCache, loadedSlotsCache) <- case maybeBlock of
-    Just block -> do
-      parsedContracts :: Maybe (Map Addr FetchedContractData) <-
-        readFileIfExists (".echidna" </> "block_" <> show block <> "_fetch_cache_contracts.json")
-        <&> (>>= JSON.decodeStrict)
-
-      parsedSlots :: Maybe (Map Addr (Map W256 (Maybe W256))) <-
-        readFileIfExists (".echidna" </> "block_" <> show block <> "_fetch_cache_slots.json")
-        <&> (>>= JSON.decodeStrict)
-
-      pure (Map.map (Just . fromFetchedContractData) <$> parsedContracts, parsedSlots)
-    Nothing ->
-      pure (Nothing, Nothing)
-
   opts@Options{..} <- execParser optsParser
   seed <- getRandomR (0, maxBound)
   EConfigWithUsage loadedCfg ks _ <-
@@ -82,6 +64,27 @@ main = do
   let cfg = overrideConfig loadedCfg opts
   unless cfg.solConf.quiet $
     mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString) ks
+
+  -- Try to load the persisted RPC cache. TODO: we use the corpus dir for now,
+  -- think where to place it
+  maybeBlock :: Maybe Int <- lookupEnv "ECHIDNA_RPC_BLOCK" <&> (>>= readMaybe)
+  (loadedContractsCache, loadedSlotsCache) <-
+    case cfg.campaignConf.corpusDir of
+      Nothing -> pure (Nothing, Nothing)
+      Just dir -> do
+        let cache_dir = dir </> "cache"
+        createDirectoryIfMissing True cache_dir
+        case maybeBlock of
+          Just block -> do
+            parsedContracts :: Maybe (Map Addr FetchedContractData) <-
+              readFileIfExists (cache_dir </> "block_" <> show block <> "_fetch_cache_contracts.json")
+              <&> (>>= JSON.decodeStrict)
+            parsedSlots :: Maybe (Map Addr (Map W256 (Maybe W256))) <-
+              readFileIfExists (cache_dir </> "block_" <> show block <> "_fetch_cache_slots.json")
+              <&> (>>= JSON.decodeStrict)
+            pure (Map.map (Just . fromFetchedContractData) <$> parsedContracts, parsedSlots)
+          Nothing ->
+            pure (Nothing, Nothing)
 
   cacheContractsRef <- newIORef $ fromMaybe mempty loadedContractsCache
   cacheSlotsRef <- newIORef $ fromMaybe mempty loadedSlotsCache
@@ -103,20 +106,21 @@ main = do
   contractsCache <- readIORef cacheContractsRef
   slotsCache <- readIORef cacheSlotsRef
 
-  case maybeBlock of
-    Just block -> do
-      -- Save fetched data, it's okay to override as the cache only grows
-      JSON.encodeFile (".echidna" </> "block_" <> show block <> "_fetch_cache_contracts.json")
-                      (toFetchedContractData <$> Map.mapMaybe id contractsCache)
-      JSON.encodeFile (".echidna" </> "block_" <> show block <> "_fetch_cache_slots.json")
-                      slotsCache
-    Nothing ->
-      pure ()
-
   -- save corpus
   case cfg.campaignConf.corpusDir of
     Nothing -> pure ()
     Just dir -> do
+      let cache_dir = dir </> "cache"
+      case maybeBlock of
+        Just block -> do
+          -- Save fetched data, it's okay to override as the cache only grows
+          JSON.encodeFile (cache_dir </> "block_" <> show block <> "_fetch_cache_contracts.json")
+                          (toFetchedContractData <$> Map.mapMaybe id contractsCache)
+          JSON.encodeFile (cache_dir </> "block_" <> show block <> "_fetch_cache_slots.json")
+                          slotsCache
+        Nothing ->
+          pure ()
+
       saveTxs (dir </> "reproducers") (filter (not . null) $ (.testReproducer) <$> campaign._tests)
       saveTxs (dir </> "coverage") (snd <$> Set.toList campaign._corpus)
 
