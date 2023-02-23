@@ -130,7 +130,7 @@ jobs:
         if: runner.os != 'macOS'
         uses: actions/upload-artifact@v3
         with:
-          name: echidna-testsuite-${{ matrix.os }}
+          name: echidna-testsuite-${{ runner.os }}
           path: echidna-testsuite*
 
 
@@ -138,7 +138,7 @@ jobs:
     name: Test Echidna with solc ${{ matrix.solc }}
     runs-on: ${{ matrix.os }}
     needs: build
-    continue-on-error: ${{ matrix.experimental }}
+    continue-on-error: ${{ matrix.experimental || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -148,7 +148,8 @@ jobs:
         solc:
           - "0.4.25"
           - "0.5.7"
-        experimental: [false]
+          - "0.6.12"
+          - "0.7.5"
         include:
           - solc: "0.6.12"
             experimental: true
@@ -175,7 +176,7 @@ jobs:
       - name: Download testsuite
         uses: actions/download-artifact@v3
         with:
-         name: echidna-testsuite-${{ matrix.os }}
+         name: echidna-testsuite-${{ runner.os }}
 
       - name: Test (Linux)
         if: runner.os == 'Linux'
@@ -187,6 +188,7 @@ jobs:
 
       - name: Test (Windows)
         if: runner.os == 'Windows'
+        shell: bash
         run: |
           export PATH="${PATH}:$HOME/.local/bin"
           cp "$HOME/.local/bin/solc-${{ matrix.solc }}.exe" "$HOME/.local/bin/solc.exe"
