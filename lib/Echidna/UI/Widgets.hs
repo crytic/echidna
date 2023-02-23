@@ -28,7 +28,6 @@ import qualified Brick.Widgets.Dialog as B
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe, isJust)
 
-data UIStateStatus = Uninitialized | Running | Timedout | Crashed String
 data UIState = UIState
   { status :: UIStateStatus
   , campaign :: Campaign
@@ -37,6 +36,8 @@ data UIState = UIState
   , fetchedDialog :: B.Dialog ()
   , displayFetchedDialog :: Bool
   }
+
+data UIStateStatus = Uninitialized | Running | Timedout | Crashed String
 
 attrs :: A.AttrMap
 attrs = A.attrMap (V.white `on` V.black)
@@ -53,6 +54,9 @@ bold = withAttr (attrName "bold")
 
 failure :: Widget n -> Widget n
 failure = withAttr (attrName "failure")
+
+success :: Widget n -> Widget n
+success = withAttr (attrName "success")
 
 data Name =
   TestsViewPort
@@ -121,13 +125,14 @@ fetchCacheWidget
   :: Map Addr (Maybe Contract) -> Map Addr (Map W256 (Maybe W256)) -> Widget Name
 fetchCacheWidget contracts slots =
   padLeft (Pad 1) $
-    str ("Fetched contracts: " <> contractCount)
+    (str "Fetched contracts: " <+> countWidget (Map.elems contracts))
     <=>
-    str ("Fetched slots: " <> show (sum $ length <$> slots))
+    (str "Fetched slots: " <+> countWidget (concat $ Map.elems (Map.elems <$> slots)))
   where
-    contractCount =
-      let successful = Map.filter isJust contracts
-      in show (length successful) <> "/" <> show (length contracts)
+  countWidget fetches =
+    let successful = filter isJust fetches
+        style = if length successful == length fetches then success else failure
+    in style . str $ show (length successful) <> "/" <> show (length fetches)
 
 fetchedDialogWidget :: UIState -> Widget n
 fetchedDialogWidget uiState =
@@ -144,7 +149,7 @@ fetchedDialogWidget uiState =
     foldl (<=>) emptyWidget $
       Map.mapWithKey renderSlot (fromMaybe mempty $ Map.lookup addr uiState.fetchedSlots)
   renderSlot slot (Just value) =
-    padLeft (Pad 1) $ str (show slot <> " => " <> show value)
+    padLeft (Pad 1) $ strBreak (show slot <> " => " <> show value)
   renderSlot slot Nothing =
     padLeft (Pad 1) $ failure $ str (show slot)
 
@@ -208,7 +213,7 @@ failWidget :: MonadReader EConfig m
 failWidget _ [] _  _  _= pure (failureBadge, str "*no transactions made*")
 failWidget b xs es _ r = do
   s <- seqWidget xs
-  pure (failureBadge  <+> str (" with " ++ show r), status <=> titleWidget <=> s <=> eventWidget es)
+  pure (failureBadge <+> str (" with " ++ show r), status <=> titleWidget <=> s <=> eventWidget es)
   where
   status = case b of
     Nothing    -> emptyWidget
@@ -224,7 +229,8 @@ optWidget (Open i)   t = do
   if i >= n then
     optWidget Passed t
   else
-    pure (withAttr (attrName "working") $ str $ "optimizing " ++ progress i n ++ ", current max value: " ++ show t.testValue, emptyWidget)
+    pure (withAttr (attrName "working") $ str $ "optimizing " ++ progress i n
+      ++ ", current max value: " ++ show t.testValue, emptyWidget)
 optWidget (Large n)  t = do
   m <- asks (.campaignConf.shrinkLimit)
   maxWidget (if n < m then Just (n,m) else Nothing) t.testReproducer t.testEvents t.testValue
@@ -249,7 +255,7 @@ seqWidget xs = do
         zipWith (<+>) ordinals (withAttr (attrName "tx") . strBreak <$> ppTxs)
 
 failureBadge :: Widget Name
-failureBadge = withAttr (attrName "failure") $ str "FAILED!"
+failureBadge = failure $ str "FAILED!"
 
 maximumBadge :: Widget Name
 maximumBadge = withAttr (attrName "maximum") $ str "OPTIMIZED!"
