@@ -183,18 +183,8 @@ jobs:
         with:
          name: echidna-testsuite-${{ runner.os }}
 
-      - name: Test (Linux)
-        if: runner.os == 'Linux'
+      - name: Test
         run: |
-          export PATH="${PATH}:$HOME/.local/bin"
-          cp "$HOME/.local/bin/solc-${{ matrix.solc }}" "$HOME/.local/bin/solc"
-          chmod +x echidna-testsuite
-          ./echidna-testsuite
-
-      - name: Test (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          export PATH="${PATH}:$HOME/.local/bin"
-          cp "$HOME/.local/bin/solc-${{ matrix.solc }}.exe" "$HOME/.local/bin/solc.exe"
-          ./echidna-testsuite.exe
+          solc-select use ${{ matrix.solc }}
+          chmod +x echidna-testsuite*
+          ./echidna-testsuite*
