@@ -159,6 +159,8 @@ jobs:
             experimental: true
           - solc: "0.7.5"
             experimental: true
+          - os: windows-latest
+            experimental: true
 
     steps:
       - name: Checkout
