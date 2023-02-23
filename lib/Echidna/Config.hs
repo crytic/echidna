@@ -1,8 +1,6 @@
 module Echidna.Config where
 
 import Control.Applicative ((<|>))
-import Control.Lens
-import Control.Monad.Fail qualified as M (MonadFail(..))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Control.Monad.State (StateT(..), runStateT, modify')
 import Control.Monad.Trans (lift)
@@ -10,6 +8,7 @@ import Data.Aeson
 import Data.Aeson.KeyMap (keys)
 import Data.Bool (bool)
 import Data.ByteString qualified as BS
+import Data.Functor ((<&>))
 import Data.HashSet (fromList, insert, difference)
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
@@ -136,8 +135,7 @@ instance FromJSON EConfigWithUsage where
         Just "json"             -> pure . Just . NonInteractive $ JSON
         Just "none"             -> pure . Just . NonInteractive $ None
         Nothing -> pure Nothing
-        _ -> M.fail "Unrecognized format type (should be text, json, or none)")
-
+        _ -> fail "Unrecognized format type (should be text, json, or none)")
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
 defaultConfig :: EConfig
