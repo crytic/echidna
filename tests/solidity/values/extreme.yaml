@@ -2,3 +2,4 @@ testLimit: 5000
 shrinkLimit: 100
 testMode: assertion
 seqLen: 1
+seed: 1337
