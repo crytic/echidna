@@ -125,6 +125,10 @@ jobs:
         run: |
           stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
           cp "$(find "$PWD" -name 'echidna-testsuite*' -type f)" .
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            # work around https://gitlab.haskell.org/ghc/ghc/-/issues/21109
+            strip echidna-testsuite*
+          fi
 
       - name: Upload testsuite
         if: runner.os != 'macOS'
