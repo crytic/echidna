@@ -24,26 +24,27 @@ import Data.Text (Text)
 import System.Random (mkStdGen)
 
 import EVM (Contract, VM(..), VMResult(..), bytecode)
-import qualified EVM (Env(..))
+import EVM qualified (Env(..))
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (Addr, Expr(ConcreteBuf))
 
 import Echidna.ABI
+import Echidna.Events (extractEvents)
 import Echidna.Exec
+import Echidna.Mutator.Corpus
+import Echidna.Shrink (shrinkTest)
 import Echidna.Test
 import Echidna.Transaction
-import Echidna.Shrink (shrinkTest)
+import Echidna.Types (Gas)
+import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (InitialCorpus)
 import Echidna.Types.Coverage (coveragePoints)
-import Echidna.Types.Test
-import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Signature (makeBytecodeMemo)
+import Echidna.Types.Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), getResult, call)
 import Echidna.Types.World (World)
-import Echidna.Mutator.Corpus
-import Echidna.Events (extractEvents)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -120,7 +121,7 @@ evalSeq vmForShrink e = go [] where
 
 -- | Given current `gasInfo` and a sequence of executed transactions, updates information on highest
 -- gas usage for each call
-updateGasInfo :: [(Tx, (VMResult, Int))] -> [Tx] -> Map Text (Int, [Tx]) -> Map Text (Int, [Tx])
+updateGasInfo :: [(Tx, (VMResult, Gas))] -> [Tx] -> Map Text (Gas, [Tx]) -> Map Text (Gas, [Tx])
 updateGasInfo [] _ gi = gi
 updateGasInfo ((t@(Tx (SolCall (f, _)) _ _ _ _ _ _), (_, used')):ts) tseq gi =
   case mused of
@@ -135,7 +136,7 @@ updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction executed, saving the
 -- transaction if it finds new coverage.
-execTxOptC :: (MonadIO m, MonadState (VM, Campaign) m, MonadThrow m) => Tx -> m (VMResult, Int)
+execTxOptC :: (MonadIO m, MonadState (VM, Campaign) m, MonadThrow m) => Tx -> m (VMResult, Gas)
 execTxOptC tx = do
   (vm, Campaign{_bcMemo, _coverage = oldCov}) <- get
   let cov = _2 . coverage
@@ -155,7 +156,7 @@ execTxOptC tx = do
   return res
 
 -- | Given a list of transactions in the corpus, save them discarding reverted transactions
-addToCorpus :: MonadState Campaign m => Int -> [(Tx, (VMResult, Int))] -> m ()
+addToCorpus :: MonadState Campaign m => Int -> [(Tx, (VMResult, Gas))] -> m ()
 addToCorpus n res = unless (null rtxs) $ corpus %= Set.insert (n, rtxs)
   where rtxs = fst <$> res
 

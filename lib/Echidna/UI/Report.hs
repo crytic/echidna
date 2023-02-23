@@ -10,6 +10,7 @@ import Data.Text qualified as T
 import Echidna.ABI (GenDict(..), encodeSig)
 import Echidna.Events (Events)
 import Echidna.Pretty (ppTxCall)
+import Echidna.Types (Gas)
 import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (CoverageMap, scoveragePoints)
@@ -49,7 +50,7 @@ ppCorpus c | c == mempty = Nothing
            | otherwise   = Just $ "Corpus size: " ++ show (corpusSize c)
 
 -- | Pretty-print the gas usage for a function.
-ppGasOne :: MonadReader EConfig m => (Text, (Int, [Tx])) -> m String
+ppGasOne :: MonadReader EConfig m => (Text, (Gas, [Tx])) -> m String
 ppGasOne ("", _)      = pure ""
 ppGasOne (f, (g, xs)) = let pxs = mapM (ppTx $ length (nub $ (.src) <$> xs) /= 1) xs in
  (("\n" ++ unpack f ++ " used a maximum of " ++ show g ++ " gas\n  Call sequence:\n") ++) . unlines . fmap ("    " ++) <$> pxs
