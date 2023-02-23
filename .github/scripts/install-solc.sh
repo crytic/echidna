@@ -1,20 +1,7 @@
 #!/bin/bash
+set -eux -o pipefail
 
-# Adapted from https://github.com/commercialhaskell/stack
-
-set -eux
-
-mkdir -p $HOME/.local/bin;
-
-wget() {
-  if [ -f '/c/msys64/usr/bin/wget.exe' ]; then
-    cmd="/c/msys64/usr/bin/wget.exe"
-  else
-    cmd="wget"
-  fi
-
-  command "$cmd" -q $*
-}
+pip3 install solc-select --user
 
 travis_retry() {
   cmd=$*
@@ -23,47 +10,19 @@ travis_retry() {
 
 fetch_solc() {
   VER="$1"
-  FILE="$2"
-  EXT="$3"
-
-  if [ ! -f "$HOME/.local/bin/solc-$VER$EXT" ]; then
-    rm -Rf "$FILE"
-    wget "https://github.com/ethereum/solidity/releases/download/v$VER/$FILE"
-    chmod +x "$FILE"
-    mv "$FILE" "$HOME/.local/bin/solc-$VER$EXT"
-    echo "Downloaded solc $VER"
-  else
-    echo "Skipped solc $VER, already present"
-  fi
-}
-
-fetch_solc_linux() {
-  fetch_solc "$1" "solc-static-linux" ""
-}
-
-fetch_solc_windows() {
-  fetch_solc "$1" "solc-windows.exe" ".exe"
+  solc-select use "$VER" --always-install
 }
 
 fetch_all() {
-  FETCHER="$1"
-
-  "$FETCHER" "0.4.25"
-  "$FETCHER" "0.5.7"
-  "$FETCHER" "0.6.12"
-  "$FETCHER" "0.7.5"
+  fetch_solc "0.4.25"
+  fetch_solc "0.5.7"
+  fetch_solc "0.6.12"
+  fetch_solc "0.7.5"
 }
 
-if [ "$HOST_OS" = "Linux" ]; then
-  if [ "${SOLC_VER:-}" == "" ]; then
-    travis_retry fetch_all fetch_solc_linux
-  else
-    travis_retry fetch_solc_linux "$SOLC_VER"
-  fi
-elif [ "$HOST_OS" = "Windows" ]; then
-  if [ "${SOLC_VER:-}" == "" ]; then
-    travis_retry fetch_all fetch_solc_windows
-  else
-    travis_retry fetch_solc_windows "$SOLC_VER"
-  fi
+
+if [ "${SOLC_VER:-}" == "" ]; then
+  travis_retry fetch_all
+else
+  travis_retry fetch_solc "$SOLC_VER"
 fi
