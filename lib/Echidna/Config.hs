@@ -115,7 +115,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "deployBytecodes" ..!= []
         <*> ((<|>) <$> v ..:? "allContracts"
                    -- TODO: keep compatible with the old name for a while
-                   <*> v ..:? "multi-abi") ..!= False
+                   <*> lift (v .:? "multi-abi")) ..!= False
         <*> mode
         <*> v ..:? "testDestruction" ..!= False
         <*> v ..:? "allowFFI"        ..!= False
