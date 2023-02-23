@@ -44,7 +44,7 @@ data Campaign = Campaign { _tests       :: [EchidnaTest]
                            -- ^ Tests being evaluated
                          , _coverage    :: CoverageMap
                            -- ^ Coverage captured (NOTE: we don't always record this)
-                         , _gasInfo     :: Map Text (Int, [Tx])
+                         , _gasInfo     :: Map Text (Gas, [Tx])
                            -- ^ Worst case gas (NOTE: we don't always record this)
                          , _genDict     :: GenDict
                            -- ^ Generation dictionary

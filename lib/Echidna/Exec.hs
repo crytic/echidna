@@ -21,7 +21,7 @@ import System.Process (readProcessWithExitCode)
 
 import Echidna.Events (emptyEvents)
 import Echidna.Transaction
-import Echidna.Types (ExecException(..), fromEVM)
+import Echidna.Types (ExecException(..), Gas, fromEVM)
 import Echidna.Types.Buffer (viewBuffer)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Signature (BytecodeMemo, lookupBytecodeMetadata)
@@ -63,7 +63,7 @@ vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> Unknow
 
 -- | Given an error handler `onErr`, an execution strategy `executeTx`, and a transaction `tx`,
 -- execute that transaction using the given execution strategy, calling `onErr` on errors.
-execTxWith :: (MonadIO m, MonadState s m) => Lens' s VM -> (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Int)
+execTxWith :: (MonadIO m, MonadState s m) => Lens' s VM -> (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Gas)
 execTxWith l onErr executeTx tx = do
   vm <- use l
   if hasSelfdestructed vm tx.dst then
@@ -76,7 +76,7 @@ execTxWith l onErr executeTx tx = do
     vmResult <- runFully
     gasLeftAfterTx <- use $ l . state . gas
     handleErrorsAndConstruction vmResult vmBeforeTx
-    pure (vmResult, fromIntegral $ gasLeftBeforeTx - gasLeftAfterTx)
+    pure (vmResult, gasLeftBeforeTx - gasLeftAfterTx)
   where
   runFully = do
     vmResult <- executeTx
@@ -135,7 +135,7 @@ execTxWith l onErr executeTx tx = do
     _ -> pure ()
 
 -- | Execute a transaction "as normal".
-execTx :: (MonadIO m, MonadState VM m, MonadThrow m) => Tx -> m (VMResult, Int)
+execTx :: (MonadIO m, MonadState VM m, MonadThrow m) => Tx -> m (VMResult, Gas)
 execTx = execTxWith id vmExcept $ fromEVM exec
 
 -- | Execute a transaction, logging coverage at every step.
@@ -143,7 +143,7 @@ execTxWithCov
   :: (MonadIO m, MonadState VM m, MonadThrow m)
   => BytecodeMemo
   -> Tx
-  -> m ((VMResult, Int), CoverageMap)
+  -> m ((VMResult, Gas), CoverageMap)
 execTxWithCov memo tx = do
   vm <- get
   (r, (vm', cm)) <- runStateT (execTxWith _1 vmExcept execCov tx) (vm, mempty)
