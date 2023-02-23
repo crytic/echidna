@@ -15,6 +15,7 @@ import Numeric (showHex)
 import EVM.Types (keccak')
 
 import Echidna.ABI (ppAbiValue, GenDict(..))
+import Echidna.Types (Gas)
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Campaign qualified as C
 import Echidna.Types.Test qualified as T
@@ -27,7 +28,7 @@ data Campaign = Campaign
   , _tests :: [Test]
   , seed :: Int
   , coverage :: Map String [CoverageInfo]
-  , gasInfo :: [(Text, (Int, [Tx]))]
+  , gasInfo :: [(Text, (Gas, [Tx]))]
   }
 
 instance ToJSON Campaign where
