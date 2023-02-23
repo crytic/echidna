@@ -16,7 +16,7 @@ fetch_solc() {
   FILE="$2"
   EXT="$3"
 
-  if [ ! -f "$HOME/.local/bin/solc-$VER" ]; then
+  if [ ! -f "$HOME/.local/bin/solc-$VER$EXT" ]; then
     rm -Rf "$FILE"
     wget "https://github.com/ethereum/solidity/releases/download/v$VER/$FILE"
     chmod +x "$FILE"

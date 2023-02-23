@@ -139,7 +139,7 @@ jobs:
 
 
   test:
-    name: Test Echidna with solc ${{ matrix.solc }}
+    name: Test with solc ${{ matrix.solc }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     needs: build
     continue-on-error: ${{ matrix.experimental || false }}
@@ -170,6 +170,7 @@ jobs:
           python-version: '3.8'
 
       - name: Install dependencies
+        shell: bash
         run: |
           .github/scripts/install-solc.sh
           .github/scripts/install-crytic-compile.sh
