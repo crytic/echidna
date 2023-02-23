@@ -6,6 +6,16 @@ set -eux
 
 mkdir -p $HOME/.local/bin;
 
+wget() {
+  if [ -f '/c/msys64/usr/bin/wget.exe' ]; then
+    cmd="/c/msys64/usr/bin/wget.exe"
+  else
+    cmd="wget"
+  fi
+
+  command "$cmd" -q $*
+}
+
 travis_retry() {
   cmd=$*
   $cmd || (sleep 2 && $cmd) || (sleep 10 && $cmd)
