@@ -22,7 +22,7 @@ import Data.Text qualified as T
 import System.Directory (doesDirectoryExist, doesFileExist, findExecutable, listDirectory, removeFile)
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit (ExitCode(..))
-import System.FilePath.Posix ((</>))
+import System.FilePath (joinPath, splitDirectories, (</>))
 import System.IO (openFile, IOMode(..))
 import System.Info (os)
 
@@ -238,7 +238,11 @@ loadSpecified solConf name cs = do
   where choose []    _        = throwM NoContracts
         choose (c:_) Nothing  = return c
         choose _     (Just n) = maybe (throwM $ ContractNotFound n) pure $
-                                      find (Data.Text.isSuffixOf (if T.any (== ':') n then n else ":" `append` n) . (.contractName)) cs
+                                      find (Data.Text.isSuffixOf (contractId n) . (.contractName)) cs
+        contractId n | T.any (== ':') n = let (splitPath, splitName) = T.breakOn ":" n in
+                                          rewritePathSeparators splitPath `T.append` splitName
+                     | otherwise        = ":" `append` n
+        rewritePathSeparators = T.pack . joinPath . splitDirectories . T.unpack
         setUpFunction = ("setUp", [])
 
 
