@@ -48,10 +48,6 @@ import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx (basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.World (World(..))
 
--- | OS-specific path to the "null" file, which accepts writes without storing them
-nullFilePath :: String
-nullFilePath = if os == "mingw32" then "\\\\.\\NUL" else "/dev/null"
-
 -- | Given a list of source caches (SourceCaches) and an optional contract name,
 -- select one that includes that contract (if possible). Otherwise, use the first source
 -- cache available (or fail if it is empty)
@@ -100,6 +96,9 @@ compileContracts solConf fp = do
               ExitFailure _ -> throwM $ CompileFailure out err
 
           maybe (throwM SolcReadFailure) (pure . first toList) mSolc
+        -- | OS-specific path to the "null" file, which accepts writes without storing them
+        nullFilePath :: String
+        nullFilePath = if os == "mingw32" then "\\\\.\\NUL" else "/dev/null"
     -- clean up previous artifacts
     removeJsonFiles "crytic-export"
     cps <- mapM compileOne fp
