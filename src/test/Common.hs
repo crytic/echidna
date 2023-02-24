@@ -44,6 +44,7 @@ import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Campaign (campaign)
 import Echidna.Solidity (loadSolTests)
 import Echidna.Test (checkETest)
+import Echidna.Types (Gas)
 import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
 import Echidna.Types.Campaign (Campaign(..), CampaignConf(..))
 import Echidna.Types.Signature (ContractName)
@@ -183,10 +184,10 @@ solvedWith tx t = maybe False (any $ (== tx) . (.call)) . solnFor t
 solvedWithout :: TxCall -> Text -> Campaign -> Bool
 solvedWithout tx t = maybe False (all $ (/= tx) . (.call)) . solnFor t
 
-getGas :: Text -> Campaign -> Maybe (Int, [Tx])
+getGas :: Text -> Campaign -> Maybe (Gas, [Tx])
 getGas t camp = lookup t camp._gasInfo
 
-gasInRange :: Text -> Int -> Int -> Campaign -> Bool
+gasInRange :: Text -> Gas -> Gas -> Campaign -> Bool
 gasInRange t l h c = case getGas t c of
   Just (g, _) -> g >= l && g <= h
   _           -> False
