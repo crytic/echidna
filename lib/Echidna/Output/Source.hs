@@ -14,6 +14,8 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
 import Data.Vector qualified as V
 import HTMLEntities.Text qualified as HTML
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath ((</>))
 import Text.Printf (printf)
 
 import EVM.Debug (srcMapCodePos)
@@ -22,7 +24,6 @@ import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
 import Echidna.Types.Coverage (CoverageMap, CoverageInfo)
 import Echidna.Types.Tx (TxResult(..))
 import Echidna.Types.Signature (getBytecodeMetadata)
-import System.FilePath ((</>))
 
 type FilePathText = Text
 
@@ -30,7 +31,9 @@ saveCoverage :: Bool -> Int -> FilePath -> SourceCache -> [SolcContract] -> Cove
 saveCoverage isHtml seed d sc cs s = let extension = if isHtml then ".html" else ".txt"
                                          fn = d </> "covered." <> show seed <> extension
                                          cc = ppCoveredCode isHtml sc cs s
-                                       in writeFile fn cc
+                                     in do
+                                       createDirectoryIfMissing True d
+                                       writeFile fn cc
 
 -- | Pretty-print the covered code
 ppCoveredCode :: Bool -> SourceCache -> [SolcContract] -> CoverageMap -> Text

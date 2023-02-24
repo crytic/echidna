@@ -7,7 +7,7 @@ import Data.ByteString qualified as BS
 import Data.Foldable (find)
 import Data.HashMap.Strict (HashMap)
 import Data.List.NonEmpty (NonEmpty)
-import Data.Map qualified as M
+import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import GHC.Word (Word32)
@@ -35,7 +35,7 @@ type SolCall     = (FunctionName, [AbiValue])
 type ContractA = (Addr, NonEmpty SolSignature)
 
 -- | Used to memoize results of getBytecodeMetadata
-type BytecodeMemo = M.Map ByteString ByteString
+type MetadataCache = M.Map ByteString ByteString
 
 type SignatureMap = HashMap ByteString (NonEmpty SolSignature)
 
@@ -46,12 +46,12 @@ getBytecodeMetadata bs =
       Nothing     -> bs -- if no metadata is found, return the complete bytecode
       Just (_, m) -> m
 
-lookupBytecodeMetadata :: BytecodeMemo -> ByteString -> ByteString
+lookupBytecodeMetadata :: MetadataCache -> ByteString -> ByteString
 lookupBytecodeMetadata memo bs = fromMaybe (getBytecodeMetadata bs) (memo M.!? bs)
 
 -- | Precalculate getBytecodeMetadata for all contracts in a list
-makeBytecodeMemo :: [ByteString] -> BytecodeMemo
-makeBytecodeMemo bss = M.fromList $ bss `zip` (getBytecodeMetadata <$> bss)
+makeBytecodeCache :: [ByteString] -> MetadataCache
+makeBytecodeCache bss = M.fromList $ bss `zip` (getBytecodeMetadata <$> bss)
 
 knownBzzrPrefixes :: [ByteString]
 knownBzzrPrefixes = [
