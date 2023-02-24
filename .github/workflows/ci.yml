@@ -66,7 +66,9 @@ jobs:
       - name: Cache Local
         uses: actions/cache@v3
         with:
-          path: ~/.local/
+          path: |
+            ~/.local
+            D:\a\_temp\msys64\home\runneradmin\.local
           key: ${{ runner.os }}-local-v5-${{ hashFiles('.github/scripts/install-*') }}
 
       - name: Cache Stack
@@ -75,6 +77,8 @@ jobs:
           path: |
             ~/.stack
             .stack-work
+            ~\AppData\Roaming\stack
+            ~\AppData\Local\Programs\stack
           key: ${{ runner.os }}-stack-v5-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Cache Cabal
