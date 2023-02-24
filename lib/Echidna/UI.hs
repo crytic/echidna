@@ -71,13 +71,11 @@ ui vm world ts d txs = do
       runCampaign = timeout timeoutUsec (campaign updateRef vm world ts d txs)
 #ifdef INTERACTIVE_UI
   terminalPresent <- liftIO isTerminal
+#else
+  terminalPresent <- pure False
 #endif
   let effectiveMode = case uiConf.operationMode of
-#ifdef INTERACTIVE_UI
         Interactive | not terminalPresent -> NonInteractive Text
-#else
-        Interactive -> NonInteractive Text
-#endif
         other -> other
   case effectiveMode of
 #ifdef INTERACTIVE_UI
