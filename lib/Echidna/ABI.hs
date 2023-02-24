@@ -311,12 +311,18 @@ genWithDict genDict m g t = do
                    Just cs -> Just <$> rElem' cs
   fromMaybe <$> g t <*> maybeValM
 
+pregenAdds :: [Addr]
+pregenAdds = [i*0xffffffff | i <- [1 .. 3]]
+
+pregenAbiAdds :: [AbiValue]
+pregenAbiAdds = map (AbiAddress . fromIntegral) pregenAdds
+
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Requires a dictionary.
 genAbiValueM :: MonadRandom m => GenDict -> AbiType -> m AbiValue
 genAbiValueM genDict = genWithDict genDict genDict.constants $ \case
   (AbiUIntType n)         -> fixAbiUInt n . fromInteger <$> getRandomUint n
   (AbiIntType n)          -> fixAbiInt n . fromInteger <$> getRandomInt n
-  AbiAddressType          -> AbiAddress . fromInteger <$> getRandomR (0, 2 ^ (160 :: Integer) - 1)
+  AbiAddressType          -> rElem $ NE.fromList pregenAbiAdds
   AbiBoolType             -> AbiBool <$> getRandom
   (AbiBytesType n)        -> AbiBytes n . BS.pack . take n <$> getRandoms
   AbiBytesDynamicType     -> liftM2 (\n -> AbiBytesDynamic . BS.pack . take n)
