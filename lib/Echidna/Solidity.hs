@@ -179,7 +179,7 @@ loadSpecified solConf name cs = do
   let neFuns = filterMethods c.contractName fs (fallback NE.:| funs)
   -- Construct ABI mapping for World
   let abiMapping =
-        if solConf.multiAbi then
+        if solConf.allContracts then
           M.fromList $ catMaybes $ cs <&> \contract ->
             let filtered = filterMethods contract.contractName fs $ abiOf pref contract
             in (getBytecodeMetadata contract.runtimeCode,) <$> NE.nonEmpty filtered
