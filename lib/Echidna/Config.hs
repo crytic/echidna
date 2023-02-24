@@ -38,8 +38,8 @@ instance FromJSON EConfigWithUsage where
   -- config and not used and which keys were unset in the config and defaulted
   parseJSON o = do
     let v' = case o of
-                  Object v -> v
-                  _        -> mempty
+               Object v -> v
+               _        -> mempty
     (c, ks) <- runStateT (parser v') $ fromList []
     let found = fromList (keys v')
     pure $ EConfigWithUsage c (found `difference` ks) (ks `difference` found)
@@ -68,7 +68,6 @@ instance FromJSON EConfigWithUsage where
         else
           pure $ fromIntegral value
 
-      -- TxConf
       txConfParser = TxConf
         <$> v ..:? "propMaxGas" ..!= maxGasPerBlock
         <*> v ..:? "testMaxGas" ..!= maxGasPerBlock
@@ -77,7 +76,6 @@ instance FromJSON EConfigWithUsage where
         <*> getWord256 "maxBlockDelay" defaultBlockDelay
         <*> getWord256 "maxValue" 100000000000000000000 -- 100 eth
 
-      -- TestConf
       testConfParser = do
         psender <- v ..:? "psender" ..!= 0x10000
         fprefix <- v ..:? "prefix"  ..!= "echidna_"
