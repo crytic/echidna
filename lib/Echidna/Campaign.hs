@@ -258,7 +258,7 @@ campaign
   -> VM                  -- ^ Initial VM state
   -> World               -- ^ Initial world state
   -> [EchidnaTest]       -- ^ Tests to evaluate
-  -> Maybe GenDict       -- ^ Optional generation dictionary
+  -> GenDict             -- ^ Generation dictionary
   -> [[Tx]]              -- ^ Initial corpus of transactions
   -> m Campaign
 campaign u vm world ts dict initialCorpus = do
@@ -270,9 +270,8 @@ campaign u vm world ts dict initialCorpus = do
   liftIO $ writeIORef metaCacheRef (memo (vm._env._contracts <> external))
 
   let c = fromMaybe mempty conf.knownCoverage
-  let effectiveSeed = fromMaybe dict'.defSeed conf.seed
-      effectiveGenDict = dict' { defSeed = effectiveSeed }
-      dict' = fromMaybe defaultDict dict
+  let effectiveSeed = fromMaybe dict.defSeed conf.seed
+      effectiveGenDict = dict { defSeed = effectiveSeed }
       camp = Campaign ts c mempty effectiveGenDict False Set.empty 0
   execStateT (evalRandT (lift u >> runCampaign) (mkStdGen effectiveSeed)) camp
   where

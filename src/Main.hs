@@ -39,7 +39,7 @@ import System.IO.CodePage (withCP65001)
 import Text.Read (readMaybe)
 
 import EVM (Contract(..), bytecode, ContractCode (RuntimeCode), RuntimeCode (ConcreteRuntimeCode), initialContract)
-import EVM.Dapp (dappInfo, emptyDapp)
+import EVM.Dapp (dappInfo)
 import EVM.Solidity (SolcContract(..), SourceCache(..))
 import EVM.Types (Addr, keccak', W256)
 
@@ -55,6 +55,7 @@ import Echidna.Campaign (isSuccessful)
 import Echidna.UI
 import Echidna.Output.Source
 import Echidna.Output.Corpus
+import Echidna.Solidity (compileContracts, selectSourceCache)
 import Etherscan qualified
 
 main :: IO ()
@@ -88,22 +89,25 @@ main = withUtf8 $ withCP65001 $ do
           Nothing ->
             pure (Nothing, Nothing)
 
+  (contracts, sourceCaches) <- compileContracts cfg.solConf cliFilePath
+  let sourceCache = selectSourceCache cliSelectedContract sourceCaches
+  let solcByName = Map.fromList [(c.contractName, c) | c <- contracts]
+
   cacheContractsRef <- newIORef $ fromMaybe mempty loadedContractsCache
   cacheSlotsRef <- newIORef $ fromMaybe mempty loadedSlotsCache
   cacheMetaRef <- newIORef mempty
   let env = Env { cfg = cfg
-                , dapp = emptyDapp -- TODO: fixme
+                  -- TODO put in real path
+                , dapp = dappInfo "/" solcByName sourceCache
                 , metadataCache = cacheMetaRef
                 , fetchContractCache = cacheContractsRef
                 , fetchSlotCache = cacheSlotsRef }
-  (vm, sourceCache, contracts, world, ts, dict) <-
-    prepareContract env cliFilePath cliSelectedContract seed
-  let solcByName = Map.fromList [(c.contractName, c) | c <- contracts]
-  -- TODO put in real path
-  let dappInfo' = dappInfo "/" solcByName sourceCache
-  corpus <- prepareCorpus env world
+
+  (vm, world, echidnaTests, dict) <- prepareContract env contracts cliFilePath cliSelectedContract seed
+
+  initialCorpus <- loadInitialCorpus env world
   -- start ui and run tests
-  campaign <- runReaderT (ui vm world ts (Just dict) corpus) (env { dapp = dappInfo' })
+  campaign <- runReaderT (ui vm world echidnaTests dict initialCorpus) env
 
   contractsCache <- readIORef cacheContractsRef
   slotsCache <- readIORef cacheSlotsRef
