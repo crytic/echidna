@@ -19,7 +19,7 @@ import EVM.ABI (encodeAbiValue, AbiValue(..))
 import EVM.Types (Addr, W256)
 
 import Echidna.Orphans.JSON ()
-import Echidna.Types.Buffer (viewBuffer)
+import Echidna.Types.Buffer (forceBuf)
 import Echidna.Types.Signature (SolCall)
 
 -- | A transaction call is either a @CREATE@, a fully instrumented 'SolCall', or
@@ -177,9 +177,9 @@ data TxConf = TxConf { propGas       :: Word64
 
 -- | Transform a VMResult into a more hash friendly sum type
 getResult :: VMResult -> TxResult
-getResult (VMSuccess b) | viewBuffer b == Just (encodeAbiValue (AbiBool True))  = ReturnTrue
-                        | viewBuffer b == Just (encodeAbiValue (AbiBool False)) = ReturnFalse
-                        | otherwise                                             = Stop
+getResult (VMSuccess b) | forceBuf b == encodeAbiValue (AbiBool True)  = ReturnTrue
+                        | forceBuf b == encodeAbiValue (AbiBool False) = ReturnFalse
+                        | otherwise                                    = Stop
 
 getResult (VMFailure (BalanceTooLow _ _ ))      = ErrorBalanceTooLow
 getResult (VMFailure (UnrecognizedOpcode _))    = ErrorUnrecognizedOpcode

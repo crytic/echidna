@@ -4,7 +4,7 @@ import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadThrow, MonadCatch)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import Control.Monad.State.Strict (MonadState(get, put), MonadIO, MonadState(get, put), evalStateT)
+import Control.Monad.State.Strict (MonadState(get, put), evalStateT, MonadIO)
 import Data.Foldable (traverse_)
 import Data.Set qualified as Set
 import Data.List qualified as List
