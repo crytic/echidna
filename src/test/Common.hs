@@ -31,6 +31,7 @@ import Control.Monad.Random (getRandom)
 import Control.Monad.State.Strict (evalStateT)
 import Data.DoubleWord (Int256)
 import Data.Function ((&))
+import Data.IORef
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
 import Data.Map (fromList, lookup, empty)
@@ -93,12 +94,20 @@ withSolcVersion (Just f) t = do
 runContract :: FilePath -> Maybe ContractName -> EConfig -> IO Campaign
 runContract f mc cfg = do
   g <- getRandom
-  (v, sc, cs, w, ts, d, txs) <- prepareContract cfg (f :| []) mc g
+  cacheMeta <- newIORef mempty
+  cacheContracts <- newIORef mempty
+  cacheSlots <- newIORef mempty
+  let env = Env { cfg = cfg
+                , dapp = error "FIXME"
+                , metadataCache = cacheMeta
+                , fetchContractCache = cacheContracts
+                , fetchSlotCache = cacheSlots }
+  (vm, sc, cs, w, ts, d) <- prepareContract env (f :| []) mc g
   let solcByName = fromList [(c.contractName, c) | c <- cs]
   let dappInfo' = dappInfo "/" solcByName sc
-  let env = Env { cfg = cfg, dapp = dappInfo' }
+  let corpus = []
   -- start ui and run tests
-  runReaderT (campaign (pure ()) v w ts (Just d) txs) env
+  runReaderT (campaign (pure ()) vm w ts (Just d) corpus) (env { dapp = dappInfo' })
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg = testContract' fp Nothing Nothing cfg True
@@ -120,8 +129,15 @@ testContract' fp n v configPath s as = testCase fp $ withSolcVersion v $ do
 
 checkConstructorConditions :: FilePath -> String -> TestTree
 checkConstructorConditions fp as = testCase fp $ do
-  (v, _, t) <- loadSolTests testConfig.solConf (fp :| []) Nothing
-  let env = Env { cfg = testConfig, dapp = emptyDapp }
+  cacheMeta <- newIORef mempty
+  cacheContracts <- newIORef mempty
+  cacheSlots <- newIORef mempty
+  let env = Env { cfg = testConfig
+                , dapp = emptyDapp
+                , metadataCache = cacheMeta
+                , fetchContractCache = cacheContracts
+                , fetchSlotCache = cacheSlots }
+  (v, _, t) <- loadSolTests env (fp :| []) Nothing
   r <- flip runReaderT env $
     mapM (\u -> evalStateT (checkETest u) v) t
   mapM_ (\(x,_) -> assertBool as (forceBool x)) r

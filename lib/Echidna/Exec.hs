@@ -5,27 +5,37 @@
 module Echidna.Exec where
 
 import Control.Lens
+import Control.Monad (when)
 import Control.Monad.Catch (MonadThrow(..))
-import Control.Monad.State.Strict (MonadState(get, put), execState, execState, MonadIO(liftIO), runStateT)
+import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO))
+import Control.Monad.Reader (MonadReader, asks)
+import Data.IORef (readIORef, atomicWriteIORef)
 import Data.Map qualified as M
+import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as S
-
-import EVM hiding (tx)
-import EVM.ABI
-import EVM.Exec (exec, vmForEthrunCreation)
-import EVM.Types (Expr(ConcreteBuf, Lit), hexText)
+import Data.Text qualified as Text
 import Data.Text qualified as T
 import Data.Vector qualified as V
+import Text.Read (readMaybe)
+import System.Environment (lookupEnv)
 import System.Process (readProcessWithExitCode)
+
+import EVM hiding (Env, cache, contract, tx, value)
+import EVM.ABI
+import EVM.Exec (exec, vmForEthrunCreation)
+import EVM.Fetch qualified
+import EVM.Types (Expr(ConcreteBuf, Lit), hexText)
 
 import Echidna.Events (emptyEvents)
 import Echidna.Transaction
 import Echidna.Types (ExecException(..), Gas, fromEVM)
-import Echidna.Types.Buffer (viewBuffer)
+import Echidna.Types.Buffer (forceBuf)
 import Echidna.Types.Coverage (CoverageMap)
-import Echidna.Types.Signature (BytecodeMemo, lookupBytecodeMetadata)
+import Echidna.Types.Signature (MetadataCache, getBytecodeMetadata, lookupBytecodeMetadata)
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
+import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
+import Echidna.Types.Solidity (SolConf(..))
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
@@ -63,7 +73,8 @@ vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> Unknow
 
 -- | Given an error handler `onErr`, an execution strategy `executeTx`, and a transaction `tx`,
 -- execute that transaction using the given execution strategy, calling `onErr` on errors.
-execTxWith :: (MonadIO m, MonadState s m) => Lens' s VM -> (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Gas)
+execTxWith :: (MonadIO m, MonadState s m, MonadReader Env m)
+           => Lens' s VM -> (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Gas)
 execTxWith l onErr executeTx tx = do
   vm <- use l
   if hasSelfdestructed vm tx.dst then
@@ -85,16 +96,81 @@ execTxWith l onErr executeTx tx = do
     -- the execution by recursively calling `runFully`.
     case getQuery vmResult of
       -- A previously unknown contract is required
-      Just (PleaseFetchContract _ continuation) -> do
-        -- Use the empty contract
-        l %= execState (continuation emptyAccount)
-        runFully
+      Just q@(PleaseFetchContract addr continuation) -> do
+        cacheRef <- asks (.fetchContractCache)
+        cache <- liftIO $ readIORef cacheRef
+        case Map.lookup addr cache of
+          Just (Just contract) -> l %= execState (continuation contract)
+          Just Nothing ->
+            l %= execState (continuation emptyAccount)
+          Nothing -> do
+            -- TODO: temporary
+            operationMode <- asks (.cfg.uiConf.operationMode)
+            when (operationMode == NonInteractive Text) $ liftIO $ print q
+            logMsg $ "INFO: Performing RPC: " <> show q
+            getRpcUrl >>= \case
+              Just rpcUrl -> do
+                rpcBlock <- getRpcBlock
+                ret <- liftIO $ EVM.Fetch.fetchContractFrom rpcBlock rpcUrl addr
+                case ret of
+                  -- TODO: fix hevm to not return an empty contract in case of an error
+                  Just contract | contract._contractcode /= EVM.RuntimeCode (EVM.ConcreteRuntimeCode "") -> do
+                    metaCacheRef <- asks (.metadataCache)
+                    metaCache <- liftIO $ readIORef metaCacheRef
+                    let bc = forceBuf (contract ^. bytecode)
+                    liftIO $ atomicWriteIORef metaCacheRef $ Map.insert bc (getBytecodeMetadata bc) metaCache
+
+                    l %= execState (continuation contract)
+                    liftIO $ atomicWriteIORef cacheRef $ Map.insert addr (Just contract) cache
+                  _ -> do
+                    -- TODO: better error reporting in HEVM, when intermmittent
+                    -- network eror then retry
+                    liftIO $ atomicWriteIORef cacheRef $ Map.insert addr Nothing cache
+                    logMsg $ "ERROR: Failed to fetch contract: " <> show q
+                    -- TODO: How should we fail here? It could be a network error,
+                    -- RPC server returning junk etc.
+                    l %= execState (continuation emptyAccount)
+              Nothing -> do
+                liftIO $ atomicWriteIORef cacheRef $ Map.insert addr Nothing cache
+                logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
+                -- TODO: How should we fail here? RPC is not configured but VM
+                -- wants to fetch
+                l %= execState (continuation emptyAccount)
+        runFully -- resume execution
 
       -- A previously unknown slot is required
-      Just (PleaseFetchSlot _ _ continuation) -> do
-        -- Use the zero slot
-        l %= execState (continuation 0)
-        runFully
+      Just q@(PleaseFetchSlot addr slot continuation) -> do
+        cacheRef <- asks (.fetchSlotCache)
+        cache <- liftIO $ readIORef cacheRef
+        case Map.lookup addr cache >>= Map.lookup slot of
+          Just (Just value) -> l %= execState (continuation value)
+          Just Nothing -> l %= execState (continuation 0)
+          Nothing -> do
+            -- TODO: temporary
+            operationMode <- asks (.cfg.uiConf.operationMode)
+            when (operationMode == NonInteractive Text) $ liftIO $ print q
+            logMsg $ "INFO: Performing RPC: " <> show q
+            getRpcUrl >>= \case
+              Just rpcUrl -> do
+                rpcBlock <- getRpcBlock
+                ret <- liftIO $ EVM.Fetch.fetchSlotFrom rpcBlock rpcUrl addr slot
+                case ret of
+                  Just value -> do
+                    l %= execState (continuation value)
+                    liftIO $ atomicWriteIORef cacheRef $
+                      Map.insertWith Map.union addr (Map.singleton slot (Just value)) cache
+                  Nothing -> do
+                    -- TODO: How should we fail here? It could be a network error,
+                    -- RPC server returning junk etc.
+                    logMsg $ "ERROR: Failed to fetch slot: " <> show q
+                    liftIO $ atomicWriteIORef cacheRef $
+                      Map.insertWith Map.union addr (Map.singleton slot Nothing) cache
+                    l %= execState (continuation 0)
+              Nothing -> do
+                logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
+                -- Use the zero slot
+                l %= execState (continuation 0)
+        runFully -- resume execution
 
       -- Execute a FFI call
       Just (PleaseDoFFI (cmd : args) continuation) -> do
@@ -106,6 +182,17 @@ execTxWith l onErr executeTx tx = do
 
       -- No queries to answer, the tx is fully executed and the result is final
       _ -> pure vmResult
+    where
+    -- TODO: Currently, for simplicity we get those values from env vars.
+    -- Make it posible to pass through the config file and CLI
+    getRpcUrl = liftIO $ do
+      val <- lookupEnv "ECHIDNA_RPC_URL"
+      pure (Text.pack <$> val)
+    getRpcBlock = liftIO $ do
+      -- TODO: Is the latest block a good default? It makes fuzzing hard to
+      -- reproduce. Rethink this.
+      val <- lookupEnv "ECHIDNA_RPC_BLOCK"
+      pure $ maybe EVM.Fetch.Latest EVM.Fetch.BlockNumber (val >>= readMaybe)
 
   -- | Handles reverts, failures and contract creations that might be the result
   -- (`vmResult`) of executing transaction `tx`.
@@ -134,33 +221,42 @@ execTxWith l onErr executeTx tx = do
         loadContract tx.dst)
     _ -> pure ()
 
+
+logMsg :: (MonadIO m, MonadReader Env m) => String -> m ()
+logMsg msg = do
+  cfg <- asks (.cfg)
+  operationMode <- asks (.cfg.uiConf.operationMode)
+  when (operationMode == NonInteractive Text && not cfg.solConf.quiet) $
+    liftIO $ putStrLn msg
+
 -- | Execute a transaction "as normal".
-execTx :: (MonadIO m, MonadState VM m, MonadThrow m) => Tx -> m (VMResult, Gas)
+execTx :: (MonadIO m, MonadState VM m, MonadReader Env m, MonadThrow m) => Tx -> m (VMResult, Gas)
 execTx = execTxWith id vmExcept $ fromEVM exec
 
 -- | Execute a transaction, logging coverage at every step.
 execTxWithCov
-  :: (MonadIO m, MonadState VM m, MonadThrow m)
-  => BytecodeMemo
-  -> Tx
+  :: (MonadIO m, MonadState VM m, MonadReader Env m, MonadThrow m)
+  => Tx
   -> m ((VMResult, Gas), CoverageMap)
-execTxWithCov memo tx = do
+execTxWithCov tx = do
   vm <- get
-  (r, (vm', cm)) <- runStateT (execTxWith _1 vmExcept execCov tx) (vm, mempty)
+  metaCacheRef <- asks (.metadataCache)
+  cache <- liftIO $ readIORef metaCacheRef
+  (r, (vm', cm)) <- runStateT (execTxWith _1 vmExcept (execCov cache) tx) (vm, mempty)
   put vm'
   pure (r, cm)
   where
     -- the same as EVM.exec but collects coverage, will stop on a query
-    execCov = do
+    execCov cache = do
      (vm, cm) <- get
-     let (r, vm', cm') = loop vm cm
+     let (r, vm', cm') = loop cache vm cm
      put (vm', cm')
      pure r
 
     -- | Repeatedly exec a step and add coverage until we have an end result
-    loop :: VM -> CoverageMap -> (VMResult, VM, CoverageMap)
-    loop vm cm = case vm._result of
-      Nothing  -> loop (stepVM vm) (addCoverage vm cm)
+    loop :: MetadataCache -> VM -> CoverageMap -> (VMResult, VM, CoverageMap)
+    loop cache vm cm = case vm._result of
+      Nothing  -> loop cache (stepVM vm) (addCoverage cache vm cm)
       Just r   -> (r, vm, cm)
 
     -- | Execute one instruction on the EVM
@@ -168,19 +264,19 @@ execTxWithCov memo tx = do
     stepVM = execState exec1
 
     -- | Add current location to the CoverageMap
-    addCoverage :: VM -> CoverageMap -> CoverageMap
-    addCoverage vm = M.alter
+    addCoverage :: MetadataCache -> VM -> CoverageMap -> CoverageMap
+    addCoverage cache vm = M.alter
                        (Just . maybe mempty (S.insert $ currentCovLoc vm))
-                       (currentMeta vm)
+                       (currentMeta cache vm)
 
     -- | Get the VM's current execution location
     currentCovLoc vm = (vm._state._pc, fromMaybe 0 $ vmOpIx vm, length vm._frames, Stop)
 
     -- | Get the current contract's bytecode metadata
-    currentMeta vm = fromMaybe (error "no contract information on coverage") $ do
+    currentMeta cache vm = fromMaybe (error "no contract information on coverage") $ do
       buffer <- vm ^? env . contracts . at vm._state._contract . _Just . bytecode
-      bc <- viewBuffer buffer
-      pure $ lookupBytecodeMetadata memo bc
+      let bc = forceBuf buffer
+      pure $ lookupBytecodeMetadata cache bc
 
 initialVM :: Bool -> VM
 initialVM ffi = vmForEthrunCreation mempty

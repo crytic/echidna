@@ -47,6 +47,9 @@ dependencies:
   - vty
   - word-wrap
   - yaml
+  - http-conduit
+  - html-conduit
+  - xml-conduit
 
 language: GHC2021
 

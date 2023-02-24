@@ -6,7 +6,6 @@ module Echidna.Transaction where
 import Control.Lens
 import Control.Monad (join)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
-import Control.Monad.Reader.Class (MonadReader, asks)
 import Control.Monad.State.Strict (MonadState, gets)
 import Data.HashMap.Strict qualified as M
 import Data.Map (Map, toList)
@@ -14,7 +13,7 @@ import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
-import EVM
+import EVM hiding (value)
 import EVM.ABI (abiValueType)
 import EVM.Types (Expr(ConcreteBuf, Lit), Addr, W256)
 
@@ -22,8 +21,8 @@ import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
 import Echidna.Types (fromEVM)
-import Echidna.Types.Buffer (viewBuffer, forceLit)
-import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, BytecodeMemo, lookupBytecodeMetadata)
+import Echidna.Types.Buffer (forceBuf, forceLit)
+import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, MetadataCache, lookupBytecodeMetadata)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign (Campaign(..))
@@ -42,28 +41,36 @@ getSignatures hmm Nothing = return hmm
 getSignatures hmm (Just lmm) = usuallyVeryRarely hmm lmm -- once in a while, this will use the low-priority signature for the input generation
 
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
-genTxM :: (MonadRandom m, MonadReader (World, TxConf) m, MonadState Campaign m)
-  => BytecodeMemo
+genTx :: (MonadRandom m, MonadState Campaign m)
+  => MetadataCache
+  -> World
+  -> TxConf
   -> Map Addr Contract
   -> m Tx
-genTxM memo m = do
-  TxConf _ g gp t b mv <- asks snd
-  World ss hmm lmm ps _ <- asks fst
+genTx memo world txConf deployedContracts = do
   genDict <- gets (._genDict)
-  mm <- getSignatures hmm lmm
-  let ns = genDict.dictValues
-  s' <- rElem' ss
-  r' <- rElem' $ Set.fromList (mapMaybe (toContractA mm) (toList m))
-  c' <- genInteractionsM genDict (snd r')
-  v' <- genValue mv ns ps c'
-  t' <- (,) <$> genDelay t ns <*> genDelay b ns
-  pure $ Tx (SolCall c') s' (fst r') g gp v' (level t')
+  sigMap <- getSignatures world.highSignatureMap world.lowSignatureMap
+  sender <- rElem' world.senders
+  (dstAddr, dstAbis) <- rElem' $ Set.fromList $
+    mapMaybe (toContractA sigMap) (toList deployedContracts)
+  solCall <- genInteractionsM genDict dstAbis
+  value <- genValue txConf.maxValue genDict.dictValues world.payableSigs solCall
+  ts <- (,) <$> genDelay txConf.maxTimeDelay genDict.dictValues
+            <*> genDelay txConf.maxBlockDelay genDict.dictValues
+  pure $ Tx { call = SolCall solCall
+            , src = sender
+            , dst = dstAddr
+            , gas = txConf.txGas
+            , gasprice = txConf.maxGasprice
+            , value = value
+            , delay = level ts
+            }
   where
     toContractA :: SignatureMap -> (Addr, Contract) -> Maybe ContractA
-    toContractA mm (addr, c) = do
-      bc <- viewBuffer $ c ^. bytecode
-      let metadata = lookupBytecodeMetadata memo bc
-      (addr,) <$> M.lookup metadata mm
+    toContractA sigMap (addr, c) =
+      let bc = forceBuf $ c ^. bytecode
+          metadata = lookupBytecodeMetadata memo bc
+      in (addr,) <$> M.lookup metadata sigMap
 
 genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
 genDelay mv ds = do

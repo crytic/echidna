@@ -9,13 +9,14 @@ import Data.Aeson.Types (FromJSON, Parser, Value(String))
 import Data.ByteString.Base16 qualified as BS16 (decode)
 import Data.ByteString.Lazy.Char8 qualified as BSL
 import Data.ByteString.UTF8 qualified as BSU
-import Data.Containers.ListUtils (nubOrd)
 import Data.Either (fromRight)
 import Data.HashMap.Strict qualified as M
 import Data.List (isPrefixOf)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.SemVer (Version, fromText)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (pack, isSuffixOf)
 import System.Directory (findExecutable)
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
@@ -49,9 +50,9 @@ filterResults (Just c) rs =
     Just s -> hashSig <$> s
 filterResults Nothing rs = hashSig <$> (concat . M.elems) rs
 
-enhanceConstants :: SlitherInfo -> [AbiValue]
+enhanceConstants :: SlitherInfo -> Set AbiValue
 enhanceConstants si =
-  nubOrd . concatMap enh . concat . concat . M.elems $ M.elems <$> si.constantValues
+  Set.fromList . concatMap enh . concat . concat . M.elems $ M.elems <$> si.constantValues
   where
     enh (AbiUInt _ n) = makeNumAbiValues (fromIntegral n)
     enh (AbiInt _ n) = makeNumAbiValues (fromIntegral n)
