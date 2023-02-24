@@ -112,7 +112,7 @@ instance FromJSON SlitherInfo where
           "string" ->
             pure . Just . AbiString $
               if "0x" `isPrefixOf` v
-              then fromRight (error ("invalid b16 decoding of: " ++ show v)) $ BS16.decode $ BSU.fromString $ drop 2 v
+              then fromRight (BSU.fromString v) $ BS16.decode $ BSU.fromString $ drop 2 v
               else BSU.fromString v
 
           "address" -> pure $ AbiAddress . Addr <$> readMaybe v
