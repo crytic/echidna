@@ -85,15 +85,17 @@ loadEtheno :: FilePath -> IO [Etheno]
 loadEtheno fp = do
   bs <- eitherDecodeFileStrict fp
   case bs of
-       (Left e) -> throwM $ EthenoException e
-       (Right (ethenoInit :: [Etheno])) -> return ethenoInit
+    (Left e) -> throwM $ EthenoException e
+    (Right (ethenoInit :: [Etheno])) -> return ethenoInit
 
 extractFromEtheno :: [Etheno] -> Set SolSignature -> [Tx]
 extractFromEtheno ess ss = case ess of
-  (BlockMined ni ti :es)  -> Tx NoCall 0 0 0 0 0 (fromInteger ti, fromInteger ni) : extractFromEtheno es ss
-  (c@FunctionCall{} :es)  -> concatMap (`matchSignatureAndCreateTx` c) ss ++ extractFromEtheno es ss
-  (_:es)                  -> extractFromEtheno es ss
-  _                       -> []
+  (BlockMined ni ti :es)  ->
+    Tx NoCall 0 0 0 0 0 (fromInteger ti, fromInteger ni) : extractFromEtheno es ss
+  (c@FunctionCall{} :es) ->
+    concatMap (`matchSignatureAndCreateTx` c) ss ++ extractFromEtheno es ss
+  (_:es) -> extractFromEtheno es ss
+  _ -> []
 
 matchSignatureAndCreateTx :: SolSignature -> Etheno -> [Tx]
 matchSignatureAndCreateTx ("", []) _ = [] -- Not sure if we should match this.

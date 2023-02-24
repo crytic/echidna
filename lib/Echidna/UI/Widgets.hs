@@ -25,8 +25,23 @@ import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxResult(..))
 import Echidna.UI.Report
 import Echidna.Types.Config
+import Data.Map (Map)
+import EVM.Types (Addr, W256)
+import EVM (Contract)
+import qualified Brick.Widgets.Dialog as B
+import qualified Data.Map as Map
+import Data.Maybe (fromMaybe, isJust)
 
-data UIState = Uninitialized | Running | Timedout | Crashed String
+data UIState = UIState
+  { status :: UIStateStatus
+  , campaign :: Campaign
+  , fetchedContracts :: Map Addr (Maybe Contract)
+  , fetchedSlots :: Map Addr (Map W256 (Maybe W256))
+  , fetchedDialog :: B.Dialog ()
+  , displayFetchedDialog :: Bool
+  }
+
+data UIStateStatus = Uninitialized | Running | Timedout | Crashed String
 
 attrs :: A.AttrMap
 attrs = A.attrMap (V.white `on` V.black)
@@ -38,41 +53,55 @@ attrs = A.attrMap (V.white `on` V.black)
   , (attrName "success", fg V.brightGreen)
   ]
 
+bold :: Widget n -> Widget n
+bold = withAttr (attrName "bold")
+
+failure :: Widget n -> Widget n
+failure = withAttr (attrName "failure")
+
+success :: Widget n -> Widget n
+success = withAttr (attrName "success")
+
 data Name =
   TestsViewPort
   | SBClick ClickableScrollbarElement Name
   deriving (Ord, Show, Eq)
 
 -- | Render 'Campaign' progress as a 'Widget'.
-campaignStatus :: MonadReader EConfig m
-               => (Campaign, UIState) -> m (Widget Name)
-campaignStatus (c@Campaign{_tests, _coverage, _ncallseqs}, uiState) = do
-  done <- isDone c
-  case (uiState, done) of
+campaignStatus :: MonadReader EConfig m => UIState -> m (Widget Name)
+campaignStatus uiState = do
+  done <- isDone uiState.campaign
+  case (uiState.status, done) of
     (Uninitialized, _) ->
       pure $ mainbox (padLeft (Pad 1) $ str "Starting up, please wait...") emptyWidget
     (Crashed e, _) ->
       pure $ mainbox (padLeft (Pad 1) $
         withAttr (attrName "failure") $ strBreak $ formatCrashReport e) emptyWidget
     (Timedout, _) ->
-      mainboxTests (str "Timed out, C-c or esc to exit")
+      mainbox <$> testsWidget uiState.campaign._tests
+              <*> pure (finalStatus "Timed out, C-c or esc to exit")
     (_, True) ->
-      mainboxTests (str "Campaign complete, C-c or esc to exit")
+      mainbox <$> testsWidget uiState.campaign._tests
+              <*> pure (finalStatus "Campaign complete, C-c or esc to exit")
     _ ->
-      mainboxTests emptyWidget
+      mainbox <$> testsWidget uiState.campaign._tests
+              <*> pure emptyWidget
   where
-    mainboxTests underneath = do
-      t <- testsWidget _tests
-      pure $ mainbox (summaryWidget c <=> hBorderWithLabel (str "Tests") <=> t) underneath
-
     mainbox :: Widget Name -> Widget Name -> Widget Name
     mainbox inner underneath =
-      padTop (Pad 1) $ hCenter $ hLimit 120 $
-      wrapInner inner
-      <=>
-      hCenter underneath
-    wrapInner = borderWithLabel (withAttr (attrName "bold") $ str title)
+      hCenter $ hLimit 120 $
+        wrapInner inner underneath
+    wrapInner inner underneath =
+      joinBorders $ borderWithLabel (bold $ str title) $
+        summaryWidget uiState
+        <=>
+        hBorderWithLabel (str "Tests")
+        <=>
+        inner
+        <=>
+        underneath
     title = "Echidna " ++ showVersion Paths_echidna.version
+    finalStatus s = hBorder <=> hCenter (bold $ str s)
 
 formatCrashReport :: String -> String
 formatCrashReport e =
@@ -80,16 +109,54 @@ formatCrashReport e =
   e <>
   "\n\nPlease report it to https://github.com/crytic/echidna/issues"
 
-summaryWidget :: Campaign -> Widget Name
-summaryWidget c =
-  padLeft (Pad 1) (
-      str ("Tests found: " ++ show (length c._tests)) <=>
+summaryWidget :: UIState -> Widget Name
+summaryWidget uiState =
+  vLimit 5 (hLimitPercent 50 leftSide <+> vBorder <+> hLimitPercent 50 rightSide)
+  where
+  leftSide =
+    let c = uiState.campaign in
+    padLeft (Pad 1) $
+      vLimit 1 (str "Tests found: " <+> str (show (length c._tests)) <+> fill ' ')
+      <=>
       str ("Seed: " ++ show c._genDict.defSeed)
+      <=>
+      str (ppCoverage c._coverage)
+      <=>
+      str (ppCorpus c._corpus)
+  rightSide = fetchCacheWidget uiState.fetchedContracts uiState.fetchedSlots
+
+fetchCacheWidget
+  :: Map Addr (Maybe Contract) -> Map Addr (Map W256 (Maybe W256)) -> Widget Name
+fetchCacheWidget contracts slots =
+  padLeft (Pad 1) $
+    (str "Fetched contracts: " <+> countWidget (Map.elems contracts))
     <=>
-    maybe emptyWidget str (ppCoverage c._coverage)
+    (str "Fetched slots: " <+> countWidget (concat $ Map.elems (Map.elems <$> slots)))
+  where
+  countWidget fetches =
+    let successful = filter isJust fetches
+        style = if length successful == length fetches then success else failure
+    in style . str $ show (length successful) <> "/" <> show (length fetches)
+
+fetchedDialogWidget :: UIState -> Widget n
+fetchedDialogWidget uiState =
+  B.renderDialog uiState.fetchedDialog $ padLeftRight 1 $
+    foldl (<=>) emptyWidget (Map.mapWithKey renderContract uiState.fetchedContracts)
+  where
+  renderContract addr (Just _code) =
+    bold (str (show addr))
     <=>
-    maybe emptyWidget str (ppCorpus c._corpus)
-  )
+    renderSlots addr
+  renderContract addr Nothing =
+    bold $ failure (str (show addr))
+  renderSlots addr =
+    foldl (<=>) emptyWidget $
+      Map.mapWithKey renderSlot (fromMaybe mempty $ Map.lookup addr uiState.fetchedSlots)
+  renderSlot slot (Just value) =
+    padLeft (Pad 1) $ strBreak (show slot <> " => " <> show value)
+  renderSlot slot Nothing =
+    padLeft (Pad 1) $ failure $ str (show slot)
+
 
 failedFirst :: EchidnaTest -> EchidnaTest -> Ordering
 failedFirst t1 _ | didFailed t1 = LT
@@ -119,7 +186,7 @@ testWidget etest =
     pure $ padLeft (Pad 1) $
       str infront <+> name n <+> str ": " <+> status
       <=> padTop (Pad 1) details
-  name n = withAttr (attrName "bold") $ str (T.unpack n)
+  name n = bold $ str (T.unpack n)
 
 tsWidget :: MonadReader EConfig m
          => TestState -> EchidnaTest -> m (Widget Name, Widget Name)
@@ -150,7 +217,7 @@ failWidget :: MonadReader EConfig m
 failWidget _ [] _  _  _= pure (failureBadge, str "*no transactions made*")
 failWidget b xs es _ r = do
   s <- seqWidget xs
-  pure (failureBadge  <+> str (" with " ++ show r), status <=> titleWidget <=> s <=> eventWidget es)
+  pure (failureBadge <+> str (" with " ++ show r), status <=> titleWidget <=> s <=> eventWidget es)
   where
   status = case b of
     Nothing    -> emptyWidget
@@ -166,7 +233,8 @@ optWidget (Open i)   t = do
   if i >= n then
     optWidget Passed t
   else
-    pure (withAttr (attrName "working") $ str $ "optimizing " ++ progress i n ++ ", current max value: " ++ show t.testValue, emptyWidget)
+    pure (withAttr (attrName "working") $ str $ "optimizing " ++ progress i n
+      ++ ", current max value: " ++ show t.testValue, emptyWidget)
 optWidget (Large n)  t = do
   m <- asks (.campaignConf.shrinkLimit)
   maxWidget (if n < m then Just (n,m) else Nothing) t.testReproducer t.testEvents t.testValue
@@ -191,7 +259,7 @@ seqWidget xs = do
         zipWith (<+>) ordinals (withAttr (attrName "tx") . strBreak <$> ppTxs)
 
 failureBadge :: Widget Name
-failureBadge = withAttr (attrName "failure") $ str "FAILED!"
+failureBadge = failure $ str "FAILED!"
 
 maximumBadge :: Widget Name
 maximumBadge = withAttr (attrName "maximum") $ str "OPTIMIZED!"

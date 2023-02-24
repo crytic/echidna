@@ -46,6 +46,9 @@ dependencies:
   - with-utf8
   - word-wrap
   - yaml
+  - http-conduit
+  - html-conduit
+  - xml-conduit
 
 language: GHC2021
 
