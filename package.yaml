@@ -72,11 +72,10 @@ executables:
     when:
         - condition: os(linux) && flag(static)
           ghc-options:
-            - -static
             - -O2
-          cc-options: -static
-          ld-options: -static -pthread
-        - condition: os(linux)
+            - -optl-static
+            - -optl-pthread
+        - condition: "os(linux) && !flag(static)"
           ghc-options:
             - -O2
           ld-options: -pthread
@@ -96,11 +95,10 @@ tests:
     when:
         - condition: os(linux) && flag(static)
           ghc-options:
-            - -static
             - -O2
-          cc-options: -static
-          ld-options: -static -pthread
-        - condition: os(linux)
+            - -optl-static
+            - -optl-pthread
+        - condition: "os(linux) && !flag(static)"
           ghc-options:
             - -O2
           ld-options: -pthread

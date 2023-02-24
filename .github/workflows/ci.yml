@@ -12,11 +12,18 @@ jobs:
   build:
     name: Build Echidna
     runs-on: ${{ matrix.os }}
+    container: ${{ fromJSON(matrix.container || '{"image":null}') }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       matrix:
         os:
           - ubuntu-20.04
           - macos-latest
+        include:
+          - os: ubuntu-20.04
+            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:9.2.5\", \"options\": \"--user 1001\"}"
 
     steps:
       - name: Get Packages (macOS)
