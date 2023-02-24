@@ -1,7 +1,6 @@
 module Echidna.Config where
 
-import Control.Lens
-import Control.Monad.Fail qualified as M (MonadFail(..))
+import Control.Applicative ((<|>))
 import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Control.Monad.State (StateT(..), runStateT, modify')
 import Control.Monad.Trans (lift)
@@ -9,6 +8,7 @@ import Data.Aeson
 import Data.Aeson.KeyMap (keys)
 import Data.Bool (bool)
 import Data.ByteString qualified as BS
+import Data.Functor ((<&>))
 import Data.HashSet (fromList, insert, difference)
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
@@ -38,94 +38,102 @@ instance FromJSON EConfigWithUsage where
   -- config and not used and which keys were unset in the config and defaulted
   parseJSON o = do
     let v' = case o of
-                  Object v -> v
-                  _        -> mempty
+               Object v -> v
+               _        -> mempty
     (c, ks) <- runStateT (parser v') $ fromList []
     let found = fromList (keys v')
-    return $ EConfigWithUsage c (found `difference` ks) (ks `difference` found)
+    pure $ EConfigWithUsage c (found `difference` ks) (ks `difference` found)
     -- this parser runs in StateT and comes equipped with the following
     -- equivalent unary operators:
     -- x .:? k (Parser) <==> x ..:? k (StateT)
     -- x .!= v (Parser) <==> x ..!= v (StateT)
     -- tl;dr use an extra initial . to lift into the StateT parser
-    where parser v =
-            let useKey k = modify' $ insert k
-                x ..:? k = useKey k >> lift (x .:? k)
-                x ..!= y = fromMaybe y <$> x
-                -- Parse as unbounded Integer and see if it fits into W256
-                getWord256 k def = do
-                  value :: Integer <- fromMaybe (fromIntegral (def :: W256)) <$> v ..:? k
-                  if value > fromIntegral (maxBound :: W256) then
-                    fail $ show k <> ": value does not fit in 256 bits"
-                  else
-                    pure $ fromIntegral value
+    where
+    parser v =
+      EConfig <$> campaignConfParser
+              <*> pure names
+              <*> solConfParser
+              <*> testConfParser
+              <*> txConfParser
+              <*> (UIConf <$> v ..:? "timeout" <*> formatParser)
+      where
+      useKey k = modify' $ insert k
+      x ..:? k = useKey k >> lift (x .:? k)
+      x ..!= y = fromMaybe y <$> x
+      -- Parse as unbounded Integer and see if it fits into W256
+      getWord256 k def = do
+        value :: Integer <- fromMaybe (fromIntegral (def :: W256)) <$> v ..:? k
+        if value > fromIntegral (maxBound :: W256) then
+          fail $ show k <> ": value does not fit in 256 bits"
+        else
+          pure $ fromIntegral value
 
-                -- TxConf
-                xc = TxConf <$> v ..:? "propMaxGas" ..!= maxGasPerBlock
-                            <*> v ..:? "testMaxGas" ..!= maxGasPerBlock
-                            <*> getWord256 "maxGasprice" 0
-                            <*> getWord256 "maxTimeDelay" defaultTimeDelay
-                            <*> getWord256 "maxBlockDelay" defaultBlockDelay
-                            <*> getWord256 "maxValue" 100000000000000000000 -- 100 eth
+      txConfParser = TxConf
+        <$> v ..:? "propMaxGas" ..!= maxGasPerBlock
+        <*> v ..:? "testMaxGas" ..!= maxGasPerBlock
+        <*> getWord256 "maxGasprice" 0
+        <*> getWord256 "maxTimeDelay" defaultTimeDelay
+        <*> getWord256 "maxBlockDelay" defaultBlockDelay
+        <*> getWord256 "maxValue" 100000000000000000000 -- 100 eth
 
-                -- TestConf
-                tc = do
-                  psender <- v ..:? "psender" ..!= 0x10000
-                  fprefix <- v ..:? "prefix"  ..!= "echidna_"
-                  let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
-                      classify fname vm = maybe ResOther classifyRes vm._result == goal fname
-                  return $ TestConf classify (const psender)
+      testConfParser = do
+        psender <- v ..:? "psender" ..!= 0x10000
+        fprefix <- v ..:? "prefix"  ..!= "echidna_"
+        let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
+            classify fname vm = maybe ResOther classifyRes vm._result == goal fname
+        pure $ TestConf classify (const psender)
 
-                -- CampaignConf
-                cov = v ..:? "coverage" <&> \case Just False -> Nothing
-                                                  _          -> Just mempty
-                cc = CampaignConf <$> v ..:? "testLimit"   ..!= defaultTestLimit
-                                  <*> v ..:? "stopOnFail"  ..!= False
-                                  <*> v ..:? "estimateGas" ..!= False
-                                  <*> v ..:? "seqLen"      ..!= defaultSequenceLength
-                                  <*> v ..:? "shrinkLimit" ..!= defaultShrinkLimit
-                                  <*> cov
-                                  <*> v ..:? "seed"
-                                  <*> v ..:? "dictFreq"    ..!= 0.40
-                                  <*> v ..:? "corpusDir"   ..!= Nothing
-                                  <*> v ..:? "mutConsts"   ..!= defaultMutationConsts
+      campaignConfParser = CampaignConf
+        <$> v ..:? "testLimit"   ..!= defaultTestLimit
+        <*> v ..:? "stopOnFail"  ..!= False
+        <*> v ..:? "estimateGas" ..!= False
+        <*> v ..:? "seqLen"      ..!= defaultSequenceLength
+        <*> v ..:? "shrinkLimit" ..!= defaultShrinkLimit
+        <*> (v ..:? "coverage" <&> \case Just False -> Nothing;  _ -> Just mempty)
+        <*> v ..:? "seed"
+        <*> v ..:? "dictFreq"    ..!= 0.40
+        <*> v ..:? "corpusDir"   ..!= Nothing
+        <*> v ..:? "mutConsts"   ..!= defaultMutationConsts
 
-                -- SolConf
-                fnFilter = bool Whitelist Blacklist <$> v ..:? "filterBlacklist" ..!= True
-                                                    <*> v ..:? "filterFunctions" ..!= []
-                mode = v ..:? "testMode" >>= \case
-                  Just s  -> pure $ validateTestMode s
-                  Nothing -> pure "property"
-                sc = SolConf <$> v ..:? "contractAddr"    ..!= defaultContractAddr
-                             <*> v ..:? "deployer"        ..!= defaultDeployerAddr
-                             <*> v ..:? "sender"          ..!= Set.fromList [0x10000, 0x20000, defaultDeployerAddr]
-                             <*> v ..:? "balanceAddr"     ..!= 0xffffffff
-                             <*> v ..:? "balanceContract" ..!= 0
-                             <*> v ..:? "codeSize"        ..!= 0x6000      -- 24576 (EIP-170)
-                             <*> v ..:? "prefix"          ..!= "echidna_"
-                             <*> v ..:? "cryticArgs"      ..!= []
-                             <*> v ..:? "solcArgs"        ..!= ""
-                             <*> v ..:? "solcLibs"        ..!= []
-                             <*> v ..:? "quiet"           ..!= False
-                             <*> v ..:? "initialize"      ..!= Nothing
-                             <*> v ..:? "deployContracts" ..!= []
-                             <*> v ..:? "deployBytecodes" ..!= []
-                             <*> v ..:? "allContracts"    ..!= False
-                             <*> mode
-                             <*> v ..:? "testDestruction" ..!= False
-                             <*> v ..:? "allowFFI"        ..!= False
-                             <*> fnFilter
-                names :: Names
-                names Sender = (" from: " ++) . show
-                names _      = const ""
-                format = fromMaybe Interactive <$> (v ..:? "format" >>= \case
-                  Just ("text" :: String) -> pure . Just . NonInteractive $ Text
-                  Just "json"             -> pure . Just . NonInteractive $ JSON
-                  Just "none"             -> pure . Just . NonInteractive $ None
-                  Nothing -> pure Nothing
-                  _ -> M.fail "Unrecognized format type (should be text, json, or none)") in
-            EConfig <$> cc <*> pure names <*> sc <*> tc <*> xc
-                    <*> (UIConf <$> v ..:? "timeout" <*> format)
+      solConfParser = SolConf
+        <$> v ..:? "contractAddr"    ..!= defaultContractAddr
+        <*> v ..:? "deployer"        ..!= defaultDeployerAddr
+        <*> v ..:? "sender"          ..!= Set.fromList [0x10000, 0x20000, defaultDeployerAddr]
+        <*> v ..:? "balanceAddr"     ..!= 0xffffffff
+        <*> v ..:? "balanceContract" ..!= 0
+        <*> v ..:? "codeSize"        ..!= 0x6000      -- 24576 (EIP-170)
+        <*> v ..:? "prefix"          ..!= "echidna_"
+        <*> v ..:? "cryticArgs"      ..!= []
+        <*> v ..:? "solcArgs"        ..!= ""
+        <*> v ..:? "solcLibs"        ..!= []
+        <*> v ..:? "quiet"           ..!= False
+        <*> v ..:? "initialize"      ..!= Nothing
+        <*> v ..:? "deployContracts" ..!= []
+        <*> v ..:? "deployBytecodes" ..!= []
+        <*> ((<|>) <$> v ..:? "allContracts"
+                   -- TODO: keep compatible with the old name for a while
+                   <*> lift (v .:? "multi-abi")) ..!= False
+        <*> mode
+        <*> v ..:? "testDestruction" ..!= False
+        <*> v ..:? "allowFFI"        ..!= False
+        <*> fnFilter
+        where
+        mode = v ..:? "testMode" >>= \case
+          Just s  -> pure $ validateTestMode s
+          Nothing -> pure "property"
+        fnFilter = bool Whitelist Blacklist <$> v ..:? "filterBlacklist" ..!= True
+                                            <*> v ..:? "filterFunctions" ..!= []
+
+      names :: Names
+      names Sender = (" from: " ++) . show
+      names _      = const ""
+
+      formatParser = fromMaybe Interactive <$> (v ..:? "format" >>= \case
+        Just ("text" :: String) -> pure . Just . NonInteractive $ Text
+        Just "json"             -> pure . Just . NonInteractive $ JSON
+        Just "none"             -> pure . Just . NonInteractive $ None
+        Nothing -> pure Nothing
+        _ -> fail "Unrecognized format type (should be text, json, or none)")
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
 defaultConfig :: EConfig
