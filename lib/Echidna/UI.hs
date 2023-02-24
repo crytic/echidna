@@ -5,9 +5,11 @@ module Echidna.UI where
 #ifdef INTERACTIVE_UI
 import Brick
 import Brick.BChan
+import Brick.Widgets.Dialog qualified as B
 import Control.Concurrent (killThread, threadDelay)
 import Control.Monad (forever, void, when)
 import Control.Monad.Catch (MonadCatch(..), catchAll)
+import Control.Monad.State (modify')
 import Graphics.Vty qualified as V
 import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
 import System.Posix.Terminal (queryTerminal)
@@ -43,8 +45,6 @@ import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
 import Echidna.Types.Config
-import Control.Monad.State (modify')
-import qualified Brick.Widgets.Dialog as B
 
 data UIEvent =
   CampaignUpdated Campaign
