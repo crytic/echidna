@@ -43,7 +43,7 @@ import System.Process (readProcess)
 import Echidna (prepareContract)
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Campaign (campaign)
-import Echidna.Solidity (loadSolTests)
+import Echidna.Solidity (loadSolTests, compileContracts, selectSourceCache)
 import Echidna.Test (checkETest)
 import Echidna.Types (Gas)
 import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
@@ -62,14 +62,12 @@ testConfig = defaultConfig & overrideQuiet
 
 overrideQuiet :: EConfig -> EConfig
 overrideQuiet conf =
-  conf { solConf = conf.solConf { quiet = True } }
+  conf { solConf = conf.solConf { quiet = True }}
 
 overrideLimits :: EConfig -> EConfig
 overrideLimits conf =
   conf { campaignConf = conf.campaignConf { testLimit = 10000
-                                          , shrinkLimit = 4000
-                                          }
-       }
+                                          , shrinkLimit = 4000 }}
 
 type SolcVersion = Version
 type SolcVersionComp = Version -> Bool
@@ -92,22 +90,24 @@ withSolcVersion (Just f) t = do
     Left e   -> error $ show e
 
 runContract :: FilePath -> Maybe ContractName -> EConfig -> IO Campaign
-runContract f mc cfg = do
-  g <- getRandom
+runContract f selectedContract cfg = do
+  seed <- getRandom
+  (contracts, sourceCaches) <- compileContracts cfg.solConf (f :| [])
+  let sourceCache = selectSourceCache selectedContract sourceCaches
+  let solcByName = fromList [(c.contractName, c) | c <- contracts]
+
   cacheMeta <- newIORef mempty
   cacheContracts <- newIORef mempty
   cacheSlots <- newIORef mempty
   let env = Env { cfg = cfg
-                , dapp = error "FIXME"
+                , dapp = dappInfo "/" solcByName sourceCache
                 , metadataCache = cacheMeta
                 , fetchContractCache = cacheContracts
                 , fetchSlotCache = cacheSlots }
-  (vm, sc, cs, w, ts, d) <- prepareContract env (f :| []) mc g
-  let solcByName = fromList [(c.contractName, c) | c <- cs]
-  let dappInfo' = dappInfo "/" solcByName sc
+  (vm, world, echidnaTests, dict) <- prepareContract env contracts (f :| []) selectedContract seed
   let corpus = []
   -- start ui and run tests
-  runReaderT (campaign (pure ()) vm w ts (Just d) corpus) (env { dapp = dappInfo' })
+  runReaderT (campaign (pure ()) vm world echidnaTests dict corpus) env
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg = testContract' fp Nothing Nothing cfg True
