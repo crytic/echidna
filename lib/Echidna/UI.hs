@@ -120,6 +120,7 @@ ui vm world ts d txs = do
 #else
     Interactive -> error "Interactive UI is not available"
 #endif
+
     NonInteractive outputFormat -> do
       result <- runCampaign
       (final, timedout) <- case result of
