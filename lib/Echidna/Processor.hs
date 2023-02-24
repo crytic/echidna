@@ -4,7 +4,7 @@ module Echidna.Processor where
 
 import Control.Exception (Exception)
 import Control.Monad.Catch (MonadThrow(..))
-import Data.Aeson ((.:), (.:?), (.!=), decode, parseJSON, withEmbeddedJSON, withObject)
+import Data.Aeson ((.:), (.:?), (.!=), eitherDecode, parseJSON, withEmbeddedJSON, withObject)
 import Data.Aeson.Types (FromJSON, Parser, Value(String))
 import Data.ByteString.Base16 qualified as BS16 (decode)
 import Data.ByteString.Lazy.Char8 qualified as BSL
@@ -107,30 +107,18 @@ instance FromJSON SlitherInfo where
         v <- o .: "value"
         t <- o .: "type"
         case t of
-          'u':'i':'n':'t':x ->
-            case AbiUInt <$> readMaybe x <*> readMaybe v of
-              Nothing -> failure v t
-              i -> pure i
-
-          'i':'n':'t':x ->
-            case AbiInt <$> readMaybe x <*> readMaybe v of
-              Nothing -> failure v t
-              i -> pure i
-
+          'u':'i':'n':'t':x -> pure $ AbiUInt <$> readMaybe x <*> readMaybe v
+          'i':'n':'t':x -> pure $ AbiInt <$> readMaybe x <*> readMaybe v
           "string" ->
             pure . Just . AbiString $
               if "0x" `isPrefixOf` v
               then fromRight (error ("invalid b16 decoding of: " ++ show v)) $ BS16.decode $ BSU.fromString $ drop 2 v
               else BSU.fromString v
 
-          "address" ->
-            case AbiAddress . Addr <$> readMaybe v of
-              Nothing -> failure v t
-              a -> pure a
+          "address" -> pure $ AbiAddress . Addr <$> readMaybe v
 
           -- we don't need all the types for now
           _ -> pure Nothing
-        where failure v t = fail $ "failed to parse " ++ t ++ ": " ++ v
 
 -- Slither processing
 runSlither :: FilePath -> [String] -> IO SlitherInfo
@@ -143,7 +131,7 @@ runSlither fp extraArgs = if ".vy" `isSuffixOf` pack fp then return noInfo else 
       (ec, out, err) <- readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
       case ec of
         ExitSuccess ->
-          case decode (BSL.pack out) of
-            Just si -> pure si
-            Nothing -> throwM $ ProcessorFailure "slither" "decoding slither output failed"
+          case eitherDecode (BSL.pack out) of
+            Right si -> pure si
+            Left msg -> throwM $ ProcessorFailure "slither" ("decoding slither output failed:\n" ++ msg)
         ExitFailure _ -> throwM $ ProcessorFailure "slither" err

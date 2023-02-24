@@ -1,6 +1,6 @@
 module Echidna.Solidity where
 
-import Control.Lens
+import Control.Lens hiding (filtered)
 import Control.Arrow (first)
 import Control.Monad (when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
@@ -26,7 +26,7 @@ import System.FilePath (joinPath, splitDirectories, (</>))
 import System.IO (openFile, IOMode(..))
 import System.Info (os)
 
-import EVM hiding (contracts, path)
+import EVM hiding (contract, contracts, path)
 import EVM qualified (contracts)
 import EVM.ABI
 import EVM.Solidity
@@ -135,14 +135,12 @@ linkLibraries ls = "--libraries " ++
   iconcatMap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls
 
 -- | Filter methods using a whitelist/blacklist
-filterMethods :: Text -> Filter -> NE.NonEmpty SolSignature -> NE.NonEmpty SolSignature
-filterMethods _  f@(Whitelist [])  _ = error $ show $ InvalidMethodFilters f
-filterMethods cn f@(Whitelist ic) ms = case NE.filter (\s -> encodeSigWithName cn s `elem` ic) ms of
-                                         [] -> error $ show $ InvalidMethodFilters f
-                                         fs -> NE.fromList fs
-filterMethods cn f@(Blacklist ig) ms = case NE.filter (\s -> encodeSigWithName cn s `notElem` ig) ms of
-                                         [] -> error $ show $ InvalidMethodFilters f
-                                         fs -> NE.fromList fs
+filterMethods :: Text -> Filter -> NE.NonEmpty SolSignature -> [SolSignature]
+filterMethods _ f@(Whitelist [])  _ = error $ show $ InvalidMethodFilters f
+filterMethods contractName (Whitelist ic) ms =
+  NE.filter (\s -> encodeSigWithName contractName s `elem` ic) ms
+filterMethods contractName (Blacklist ig) ms =
+  NE.filter (\s -> encodeSigWithName contractName s `notElem` ig) ms
 
 -- | Filter methods with arguments, used for dapptest mode
 filterMethodsWithArgs :: NE.NonEmpty SolSignature -> NE.NonEmpty SolSignature
@@ -161,7 +159,7 @@ abiOf pref solcContract =
 -- testing and extract an ABI and list of tests. Throws exceptions if anything returned doesn't look
 -- usable for Echidna. NOTE: Contract names passed to this function should be prefixed by the
 -- filename their code is in, plus a colon.
-loadSpecified :: SolConf -> Maybe Text -> [SolcContract] -> IO (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
+loadSpecified :: SolConf -> Maybe Text -> [SolcContract] -> IO (VM, EventMap, [SolSignature], [Text], SignatureMap)
 loadSpecified solConf name cs = do
   -- Pick contract to load
   c <- choose cs name
@@ -170,7 +168,7 @@ loadSpecified solConf name cs = do
   unless solConf.quiet . putStrLn $ "Analyzing contract: " <> T.unpack c.contractName
 
   -- Local variables
-  let SolConf ca d ads bala balc mcs pref _ _ libs _ fp dpc dpb ma tm _ ffi fs = solConf
+  let SolConf ca d ads bala balc mcs pref _ _ libs _ fp dpc dpb _ tm _ ffi fs = solConf
 
   -- generate the complete abi mapping
   let bc = c.creationCode
@@ -179,13 +177,21 @@ loadSpecified solConf name cs = do
 
 
   -- Filter ABI according to the config options
-  let fabiOfc = if isDapptestMode tm then filterMethodsWithArgs (abiOf pref c) else filterMethods c.contractName fs $ abiOf pref c
+  let fabiOfc = if isDapptestMode tm
+                   then NE.toList $ filterMethodsWithArgs (abiOf pref c)
+                   else filterMethods c.contractName fs $ abiOf pref c
   -- Filter again for dapptest tests or assertions checking if enabled
   let neFuns = filterMethods c.contractName fs (fallback NE.:| funs)
   -- Construct ABI mapping for World
-  let abiMapping = if ma then M.fromList $ cs <&> \cc -> (getBytecodeMetadata cc.runtimeCode, filterMethods cc.contractName fs $ abiOf pref cc)
-                         else M.singleton (getBytecodeMetadata c.runtimeCode) fabiOfc
-
+  let abiMapping =
+        if solConf.allContracts then
+          M.fromList $ catMaybes $ cs <&> \contract ->
+            let filtered = filterMethods contract.contractName fs $ abiOf pref contract
+            in (getBytecodeMetadata contract.runtimeCode,) <$> NE.nonEmpty filtered
+        else
+          case NE.nonEmpty fabiOfc of
+            Just ne -> M.singleton (getBytecodeMetadata c.runtimeCode) ne
+            Nothing -> mempty
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
@@ -251,25 +257,24 @@ loadSpecified solConf name cs = do
 -- the first contract in the file. Take said contract and return an initial VM state with it loaded,
 -- its ABI (as 'SolSignature's), and the names of its Echidna tests. NOTE: unlike 'loadSpecified',
 -- contract names passed here don't need the file they occur in specified.
-loadWithCryticCompile :: SolConf -> NE.NonEmpty FilePath -> Maybe Text -> IO (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
+loadWithCryticCompile :: SolConf -> NE.NonEmpty FilePath -> Maybe Text -> IO (VM, EventMap, [SolSignature], [Text], SignatureMap)
 loadWithCryticCompile solConf fp name = contracts solConf fp >>= \(cs, _) -> loadSpecified solConf name cs
 
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.
 prepareForTest :: SolConf
-               -> (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
+               -> (VM, EventMap, [SolSignature], [Text], SignatureMap)
                -> Maybe ContractName
                -> SlitherInfo
                -> (VM, World, [EchidnaTest])
 prepareForTest SolConf{sender, testMode, testDestruction} (vm, em, a, ts, m) c si = do
   let r = vm._state._contract
-      a' = NE.toList a
       ps = filterResults c si.payableFunctions
       as = if isAssertionMode testMode then filterResults c si.asserts else []
       cs = if isDapptestMode testMode then [] else filterResults c si.constantFunctions \\ as
       (hm, lm) = prepareHashMaps cs as $ filterFallbacks c si.fallbackDefined si.receiveDefined m
-  (vm, World sender hm lm ps em, createTests testMode testDestruction ts r a')
+  (vm, World sender hm lm ps em, createTests testMode testDestruction ts r a)
 
 
 filterFallbacks :: Maybe ContractName -> [ContractName] -> [ContractName] -> SignatureMap -> SignatureMap
@@ -280,12 +285,11 @@ filterFallbacks _ [] [] sm = M.map f sm
 filterFallbacks _ _ _ sm = sm
 
 -- this limited variant is used only in tests
-prepareForTest' :: SolConf -> (VM, EventMap, NE.NonEmpty SolSignature, [Text], SignatureMap)
+prepareForTest' :: SolConf -> (VM, EventMap, [SolSignature], [Text], SignatureMap)
                -> (VM, World, [EchidnaTest])
 prepareForTest' SolConf{sender, testMode} (v, em, a, ts, _) = do
   let r = v._state._contract
-      a' = NE.toList a
-  (v, World sender M.empty Nothing [] em, createTests testMode True ts r a')
+  (v, World sender M.empty Nothing [] em, createTests testMode True ts r a)
 
 prepareHashMaps :: [FunctionHash] -> [FunctionHash] -> SignatureMap -> (SignatureMap, Maybe SignatureMap)
 prepareHashMaps [] _  m = (m, Nothing)                                -- No constant functions detected

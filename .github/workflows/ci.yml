@@ -16,10 +16,8 @@ jobs:
       matrix:
         include:
           - os: ubuntu-20.04
-            apt-get: autoconf automake libtool
             shell: bash
           - os: macos-latest
-            brew: automake
             shell: bash
           - os: windows-latest
             shell: msys2 {0}
@@ -29,12 +27,9 @@ jobs:
         shell: ${{ matrix.shell }}
 
     steps:
-      - name: Get Packages
-        uses: mstksg/get-package@v1
-        if: runner.os != 'Windows'
-        with:
-          brew: ${{ matrix.brew }}
-          apt-get: ${{ matrix.apt-get }}
+      - name: Get Packages (macOS)
+        if: runner.os == 'macOS'
+        run: brew install automake
 
       - name: Get Packages (Windows)
         uses: msys2/setup-msys2@v2
@@ -72,19 +67,21 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.local/
-          key: ${{ runner.os }}-local-v4
+          key: ${{ runner.os }}-local-v5-${{ hashFiles('.github/scripts/install-*') }}
 
       - name: Cache Stack
         uses: actions/cache@v3
         with:
-          path: ~/.stack
-          key: ${{ runner.os }}-stack-v4
+          path: |
+            ~/.stack
+            .stack-work
+          key: ${{ runner.os }}-stack-v5-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Cache Cabal
         uses: actions/cache@v3
         with:
           path: ~/.cabal
-          key: ${{ runner.os }}-cabal-v4
+          key: ${{ runner.os }}-cabal-v5-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Build Libraries
         run: |

@@ -3,6 +3,7 @@ module Echidna.Types where
 import EVM (Error, EVM, VM)
 import Control.Exception (Exception)
 import Control.Monad.State.Strict (MonadState, runState, get, put)
+import Data.Word (Word64)
 
 -- | We throw this when our execution fails due to something other than reversion.
 data ExecException = IllegalExec Error | UnknownFailure Error
@@ -14,6 +15,7 @@ instance Show ExecException where
 
 instance Exception ExecException
 
+type Gas = Word64
 
 type MutationConsts a = (a, a, a, a)
 
