@@ -48,17 +48,17 @@ ui :: (MonadCatch m, MonadRandom m, MonadReader Env m, MonadUnliftIO m)
    => VM             -- ^ Initial VM state
    -> World          -- ^ Initial world state
    -> [EchidnaTest]  -- ^ Tests to evaluate
-   -> Maybe GenDict
+   -> GenDict
    -> [[Tx]]
    -> m Campaign
-ui vm world ts d txs = do
+ui vm world ts dict initialCorpus = do
   conf <- asks (.cfg)
   let uiConf = conf.uiConf
   ref <- liftIO $ newIORef defaultCampaign
   let updateRef = get >>= liftIO . atomicWriteIORef ref
       secToUsec = (* 1000000)
       timeoutUsec = secToUsec $ fromMaybe (-1) uiConf.maxTime
-      runCampaign = timeout timeoutUsec (campaign updateRef vm world ts d txs)
+      runCampaign = timeout timeoutUsec (campaign updateRef vm world ts dict initialCorpus)
   terminalPresent <- liftIO isTerminal
   let effectiveMode = case uiConf.operationMode of
         Interactive | not terminalPresent -> NonInteractive Text

@@ -10,7 +10,7 @@ import System.FilePath ((</>))
 
 import EVM hiding (Env, env, contracts)
 import EVM.ABI (AbiValue(AbiAddress))
-import EVM.Solidity (SourceCache, SolcContract(..))
+import EVM.Solidity (SolcContract(..))
 
 import Echidna.ABI
 import Echidna.Output.Corpus
@@ -35,23 +35,16 @@ import Echidna.Types.World
 -- * A seed used during the random generation
 -- and returns:
 -- * A VM with the contract deployed and ready for testing
--- * A World with all the required data for generating random transctions
+-- * A World with all the required data for generating random transactions
 -- * A list of Echidna tests to check
 -- * A prepopulated dictionary
-prepareContract :: Env -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
-                -> IO (VM, SourceCache, [SolcContract], World, [EchidnaTest], GenDict)
-prepareContract env solFiles specifiedContract seed = do
+prepareContract :: Env -> [SolcContract] -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
+                -> IO (VM, World, [EchidnaTest], GenDict)
+prepareContract env contracts solFiles specifiedContract seed = do
   let solConf = env.cfg.solConf
 
   -- compile and load contracts
-  (contracts, scs) <- compileContracts solConf solFiles
   (vm, funs, testNames, signatureMap) <- loadSpecified env specifiedContract contracts
-
-  -- run processors
-  slitherInfo <- runSlither (NE.head solFiles) solConf.cryticArgs
-  case find (< minSupportedSolcVersion) slitherInfo.solcVersions of
-    Just outdatedVersion -> throwM $ OutdatedSolcVersion outdatedVersion
-    Nothing -> pure ()
 
   -- load tests
   let echidnaTests = createTests solConf.testMode
@@ -59,6 +52,12 @@ prepareContract env solFiles specifiedContract seed = do
                                  testNames
                                  vm._state._contract
                                  funs
+
+  -- run processors
+  slitherInfo <- runSlither (NE.head solFiles) solConf.cryticArgs
+  case find (< minSupportedSolcVersion) slitherInfo.solcVersions of
+    Just outdatedVersion -> throwM $ OutdatedSolcVersion outdatedVersion
+    Nothing -> pure ()
 
   let eventMap = Map.unions $ map (.eventMap) contracts
   let world = mkWorld solConf eventMap signatureMap specifiedContract slitherInfo
@@ -76,18 +75,18 @@ prepareContract env solFiles specifiedContract seed = do
                        seed
                        (returnTypes contracts)
 
-  pure (vm, selectSourceCache specifiedContract scs, contracts, world, echidnaTests, dict)
+  pure (vm, world, echidnaTests, dict)
 
-prepareCorpus :: Env -> World -> IO [[Tx]]
-prepareCorpus env world = do
+loadInitialCorpus :: Env -> World -> IO [[Tx]]
+loadInitialCorpus env world = do
   -- load transactions from init sequence (if any)
   let sigs = Set.fromList $ concatMap NE.toList (HM.elems world.highSignatureMap)
   ethenoCorpus <-
     case env.cfg.solConf.initialize of
       Nothing -> pure []
-      Just fp -> do
-        es <- loadEtheno fp
-        pure [extractFromEtheno es sigs]
+      Just dir -> do
+        ethenos <- loadEtheno dir
+        pure [extractFromEtheno ethenos sigs]
 
   persistedCorpus <-
     case env.cfg.campaignConf.corpusDir of
