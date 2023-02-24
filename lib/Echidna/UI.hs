@@ -72,7 +72,7 @@ ui vm world ts d txs = do
 #ifdef INTERACTIVE_UI
   terminalPresent <- liftIO isTerminal
 #else
-  terminalPresent <- pure False
+  let terminalPresent = False
 #endif
   let effectiveMode = case uiConf.operationMode of
         Interactive | not terminalPresent -> NonInteractive Text
