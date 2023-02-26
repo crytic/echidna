@@ -5,7 +5,7 @@ packages:
 
 extra-deps:
 - git: https://github.com/ethereum/hevm.git
-  commit: 00b54a159d8c0b15dff30d790e89914e6488243f
+  commit: 040d130e4265038ebba3fc7cd98de04c782678df
 
 - restless-git-0.7@sha256:346a5775a586f07ecb291036a8d3016c3484ccdc188b574bcdec0a82c12db293,968
 - s-cargot-0.1.4.0@sha256:61ea1833fbb4c80d93577144870e449d2007d311c34d74252850bb48aa8c31fb,3525
@@ -14,9 +14,3 @@ extra-deps:
 - spool-0.1@sha256:77780cbfc2c0be23ff2ea9e474062f3df97fcd9db946ee0b3508280a923b83e2,1461
 - smt2-parser-0.1.0.1@sha256:1e1a4565915ed851c13d1e6b8bb5185cf5d454da3b43170825d53e221f753d77,1421
 - spawn-0.3@sha256:b91e01d8f2b076841410ae284b32046f91471943dc799c1af77d666c72101f02,1162
-
-extra-include-dirs:
-- /usr/local/opt/readline/include
-
-extra-lib-dirs:
-- /usr/local/opt/readline/lib

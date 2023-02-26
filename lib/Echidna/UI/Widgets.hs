@@ -1,4 +1,8 @@
+{-# LANGUAGE CPP #-}
+
 module Echidna.UI.Widgets where
+
+#ifdef INTERACTIVE_UI
 
 import Brick
 import Brick.AttrMap qualified as A
@@ -262,3 +266,5 @@ maximumBadge = withAttr (attrName "maximum") $ str "OPTIMIZED!"
 
 strBreak :: String -> Widget n
 strBreak = strWrapWith $ defaultWrapSettings { breakLongWords = True }
+
+#endif

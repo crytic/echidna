@@ -10,18 +10,55 @@ on:
 
 jobs:
   build:
-    name: Build Echidna
+    name: Build Echidna on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os:
-          - ubuntu-20.04
-          - macos-latest
+        include:
+          - os: ubuntu-20.04
+            shell: bash
+          - os: macos-latest
+            shell: bash
+          - os: windows-latest
+            shell: msys2 {0}
+
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
 
     steps:
       - name: Get Packages (macOS)
         if: runner.os == 'macOS'
         run: brew install automake
+
+      - name: Get Packages (Windows)
+        uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          update: true
+          install: >-
+            base-devel
+            gmp-devel
+            openssl-devel
+            git
+            unzip
+          pacboy: >-
+            cmake:p
+            ninja:p
+            gcc:p
+            autotools:p
+            gmp:p
+            openssl:p
+
+      - name: Install Stack
+        uses: haskell/actions/setup@v2
+        id: stack
+        with:
+          ghc-version: '9.2'
+          enable-stack: true
+          stack-version: 'latest'
 
       - name: Checkout
         uses: actions/checkout@v3
@@ -29,7 +66,9 @@ jobs:
       - name: Cache Local
         uses: actions/cache@v3
         with:
-          path: ~/.local/
+          path: |
+            ~/.local
+            D:\a\_temp\msys64\home\runneradmin\.local
           key: ${{ runner.os }}-local-v5-${{ hashFiles('.github/scripts/install-*') }}
 
       - name: Cache Stack
@@ -38,6 +77,8 @@ jobs:
           path: |
             ~/.stack
             .stack-work
+            ~\AppData\Roaming\stack
+            ~\AppData\Local\Programs\stack
           key: ${{ runner.os }}-stack-v5-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Cache Cabal
@@ -69,6 +110,10 @@ jobs:
         if: runner.os == 'Linux'
         run: GZIP=-9 tar -czf echidna.tar.gz -C $HOME/.local/bin/ echidna
 
+      - name: Compress binary (Windows)
+        if: runner.os == 'Windows'
+        run: GZIP=-9 tar -czf echidna.tar.gz -C $APPDATA/local/bin/ echidna.exe
+
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
@@ -76,35 +121,45 @@ jobs:
           path: echidna.tar.gz
 
       - name: Build and copy test suite
-        if: runner.os == 'Linux'
+        if: runner.os != 'macOS'
         run: |
           stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
-          cp "$(find "$PWD" -name echidna-testsuite -type f)" .
+          cp "$(find "$PWD" -name 'echidna-testsuite*' -type f)" .
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            # work around https://gitlab.haskell.org/ghc/ghc/-/issues/21109
+            strip echidna-testsuite*
+          fi
 
       - name: Upload testsuite
-        if: runner.os == 'Linux'
+        if: runner.os != 'macOS'
         uses: actions/upload-artifact@v3
         with:
-          name: echidna-testsuite
-          path: echidna-testsuite
+          name: echidna-testsuite-${{ runner.os }}
+          path: echidna-testsuite*
 
 
   test:
-    name: Test Echidna with solc ${{ matrix.solc }}
-    runs-on: ubuntu-latest
+    name: Test with solc ${{ matrix.solc }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     needs: build
-    continue-on-error: ${{ matrix.experimental }}
+    continue-on-error: ${{ matrix.experimental || false }}
     strategy:
       fail-fast: false
       matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
         solc:
           - "0.4.25"
           - "0.5.7"
-        experimental: [false]
+          - "0.6.12"
+          - "0.7.5"
         include:
           - solc: "0.6.12"
             experimental: true
           - solc: "0.7.5"
+            experimental: true
+          - os: windows-latest
             experimental: true
 
     steps:
@@ -117,6 +172,7 @@ jobs:
           python-version: '3.8'
 
       - name: Install dependencies
+        shell: bash
         run: |
           .github/scripts/install-solc.sh
           .github/scripts/install-crytic-compile.sh
@@ -127,11 +183,10 @@ jobs:
       - name: Download testsuite
         uses: actions/download-artifact@v3
         with:
-         name: echidna-testsuite
+         name: echidna-testsuite-${{ runner.os }}
 
       - name: Test
         run: |
-          export PATH="${PATH}:$HOME/.local/bin"
-          cp "$HOME/.local/bin/solc-${{ matrix.solc }}" "$HOME/.local/bin/solc"
-          chmod +x echidna-testsuite
-          ./echidna-testsuite
+          solc-select use ${{ matrix.solc }}
+          chmod +x echidna-testsuite*
+          ./echidna-testsuite*
