@@ -1,23 +1,37 @@
+{-# LANGUAGE CPP #-}
+
 module Echidna.UI where
 
+#ifdef INTERACTIVE_UI
 import Brick
 import Brick.BChan
+import Brick.Widgets.Dialog qualified as B
 import Control.Concurrent (killThread, threadDelay)
 import Control.Monad (forever, void, when)
 import Control.Monad.Catch (MonadCatch(..), catchAll)
-import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader (ask), runReader, asks)
+import Control.Monad.State (modify')
+import Graphics.Vty qualified as V
+import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
+import System.Posix.Terminal (queryTerminal)
+import System.Posix.Types (Fd(..))
+import UnliftIO.Concurrent (forkIO, forkFinally)
+
+import Echidna.UI.Widgets
+#else /* !INTERACTIVE_UI */
+import Control.Monad (when)
+import Control.Monad.Catch (MonadCatch(..))
+import Control.Monad.Reader (MonadReader, runReader, asks)
+import Control.Monad.State.Strict (get)
+#endif
+
+import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Random.Strict (MonadRandom)
 import Data.ByteString.Lazy qualified as BS
 import Data.IORef
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
-import Graphics.Vty qualified as V
-import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
-import System.Posix.Terminal (queryTerminal)
-import System.Posix.Types (Fd(..))
 import UnliftIO (MonadUnliftIO)
-import UnliftIO.Concurrent (forkIO, forkFinally)
 import UnliftIO.Timeout (timeout)
 
 import EVM (VM, Contract)
@@ -31,10 +45,7 @@ import Echidna.Types.Test (EchidnaTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
-import Echidna.UI.Widgets
 import Echidna.Types.Config
-import Control.Monad.State (modify')
-import qualified Brick.Widgets.Dialog as B
 
 data UIEvent =
   CampaignUpdated Campaign
@@ -59,11 +70,16 @@ ui vm world ts dict initialCorpus = do
       secToUsec = (* 1000000)
       timeoutUsec = secToUsec $ fromMaybe (-1) uiConf.maxTime
       runCampaign = timeout timeoutUsec (campaign updateRef vm world ts dict initialCorpus)
+#ifdef INTERACTIVE_UI
   terminalPresent <- liftIO isTerminal
+#else
+  let terminalPresent = False
+#endif
   let effectiveMode = case uiConf.operationMode of
         Interactive | not terminalPresent -> NonInteractive Text
         other -> other
   case effectiveMode of
+#ifdef INTERACTIVE_UI
     Interactive -> do
       bc <- liftIO $ newBChan 100
       let updateUI e = readIORef ref >>= writeBChan bc . e
@@ -102,6 +118,9 @@ ui vm world ts dict initialCorpus = do
       final <- liftIO $ readIORef ref
       liftIO . putStrLn $ runReader (ppCampaign final) conf
       pure final
+#else
+    Interactive -> error "Interactive UI is not available"
+#endif
 
     NonInteractive outputFormat -> do
       result <- runCampaign
@@ -120,6 +139,8 @@ ui vm world ts dict initialCorpus = do
         None ->
           pure ()
       pure final
+
+#ifdef INTERACTIVE_UI
 
 vtyConfig :: IO Config
 vtyConfig = do
@@ -176,3 +197,5 @@ monitor = do
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
 isTerminal :: IO Bool
 isTerminal = (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
+
+#endif

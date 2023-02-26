@@ -13,8 +13,8 @@ dependencies:
   - aeson
   - base16-bytestring
   - binary
-  - brick
   - bytestring
+  - code-page
   - containers
   - data-bword
   - data-dword
@@ -38,13 +38,12 @@ dependencies:
   - text
   - transformers
   - time
-  - unix
   - unliftio
   - utf8-string
   - unordered-containers
   - vector
   - vector-instances
-  - vty
+  - with-utf8
   - word-wrap
   - yaml
   - http-conduit
@@ -64,13 +63,21 @@ default-extensions:
 library:
   source-dirs: lib/
 
+when:
+  - condition: "!os(windows)"
+    cpp-options: -DINTERACTIVE_UI
+    dependencies:
+      - brick
+      - unix
+      - vty
+
 executables:
   echidna:
     main: Main.hs
     source-dirs: src/
     dependencies: echidna
     when:
-        - condition: os(linux) && flag(static)
+        - condition: (os(linux) || os(windows)) && flag(static)
           ghc-options:
             - -static
             - -O2
@@ -83,6 +90,8 @@ executables:
         - condition: os(darwin)
           extra-libraries: c++
           ld-options: -Wl,-keep_dwarf_unwind
+        - condition: os(windows)
+          extra-libraries: stdc++
 
 tests:
   echidna-testsuite:
@@ -94,7 +103,7 @@ tests:
       - tasty-hunit
       - tasty-quickcheck
     when:
-        - condition: os(linux) && flag(static)
+        - condition: (os(linux) || os(windows)) && flag(static)
           ghc-options:
             - -static
             - -O2
@@ -107,6 +116,8 @@ tests:
         - condition: os(darwin)
           extra-libraries: c++
           ld-options: -Wl,-keep_dwarf_unwind
+        - condition: os(windows)
+          extra-libraries: stdc++
 
 flags:
   static:

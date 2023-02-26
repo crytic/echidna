@@ -27,6 +27,7 @@ import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Vector qualified as Vector
 import Data.Version (showVersion)
 import GHC.Generics (Generic)
+import Main.Utf8 (withUtf8)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
@@ -34,6 +35,7 @@ import System.Environment (lookupEnv)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
+import System.IO.CodePage (withCP65001)
 import Text.Read (readMaybe)
 
 import EVM (Contract(..), bytecode, ContractCode (RuntimeCode), RuntimeCode (ConcreteRuntimeCode), initialContract)
@@ -57,7 +59,7 @@ import Echidna.Solidity (compileContracts, selectSourceCache)
 import Etherscan qualified
 
 main :: IO ()
-main = do
+main = withUtf8 $ withCP65001 $ do
   opts@Options{..} <- execParser optsParser
   seed <- getRandomR (0, maxBound)
   EConfigWithUsage loadedCfg ks _ <-
