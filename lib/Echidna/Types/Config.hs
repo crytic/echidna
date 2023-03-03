@@ -22,7 +22,7 @@ data UIConf = UIConf { maxTime       :: Maybe Int
                      }
 
 -- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.
-data Role = Sender | Receiver | Ambiguous
+data Role = Sender | Receiver
 
 -- | Rules for pretty-printing addresses based on their role in a transaction.
 type Names = Role -> Addr -> String

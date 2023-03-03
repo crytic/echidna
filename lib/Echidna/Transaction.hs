@@ -90,14 +90,14 @@ genValue mv ds ps sc =
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool
-canShrinkTx (Tx solcall _ _ _ 0 0 (0, 0)) =
-  case solcall of
+canShrinkTx Tx { call, gasprice = 0, value = 0, delay = (0, 0) } =
+  case call of
     SolCall (_, l) -> any canShrinkAbiValue l
     _ -> False
 canShrinkTx _ = True
 
 removeCallTx :: Tx -> Tx
-removeCallTx (Tx _ _ r _ _ _ d) = Tx NoCall 0 r 0 0 0 d
+removeCallTx t = Tx NoCall 0 t.src 0 0 0 t.delay
 
 -- | Given a 'Transaction', generate a random \"smaller\" 'Transaction', preserving origin,
 -- destination, value, and call signature.
@@ -123,7 +123,7 @@ shrinkTx tx' = let
   in join $ usuallyRarely (join (uniform possibilities)) (pure $ removeCallTx tx')
 
 mutateTx :: (MonadRandom m) => Tx -> m Tx
-mutateTx t@(Tx (SolCall c) _ _ _ _ _ _) = do
+mutateTx t@(Tx { call = SolCall c }) = do
   f <- oftenUsually skip mutate
   f c
   where mutate z = mutateAbiCall z >>= \c' -> pure $ t { call = SolCall c' }
@@ -142,9 +142,18 @@ setupTx (Tx c s r g gp v (t, b)) = fromEVM . sequence_ $
   , tx . gasprice .= gp, tx . origin .= s, state . caller .= Lit (fromIntegral s), state . callvalue .= Lit v
   , block . timestamp %= (\x -> Lit (forceLit x + t)), block . number += b, setup] where
     setup = case c of
-      SolCreate bc   -> assign (env . contracts . at r) (Just $ initialContract (InitCode bc mempty) & set balance v) >> loadContract r >> state . code .= RuntimeCode (ConcreteRuntimeCode bc)
-      SolCall cd     -> incrementBalance >> loadContract r >> state . calldata .= ConcreteBuf (encode cd)
-      SolCalldata cd -> incrementBalance >> loadContract r >> state . calldata .= ConcreteBuf cd
+      SolCreate bc -> do
+        assign (env . contracts . at r) (Just $ initialContract (InitCode bc mempty) & set balance v)
+        loadContract r
+        state . code .= RuntimeCode (ConcreteRuntimeCode bc)
+      SolCall cd -> do
+        incrementBalance
+        loadContract r
+        state . calldata .= ConcreteBuf (encode cd)
+      SolCalldata cd -> do
+        incrementBalance
+        loadContract r
+        state . calldata .= ConcreteBuf cd
     incrementBalance = (env . contracts . ix r . balance) += v
     encode (n, vs) = abiCalldata
       (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
