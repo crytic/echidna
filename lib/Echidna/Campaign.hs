@@ -123,7 +123,7 @@ evalSeq vmForShrink e = go [] where
 -- gas usage for each call
 updateGasInfo :: [(Tx, (VMResult, Gas))] -> [Tx] -> Map Text (Gas, [Tx]) -> Map Text (Gas, [Tx])
 updateGasInfo [] _ gi = gi
-updateGasInfo ((tx@(Tx (SolCall (f, _)) _ _ _ _ _ _), (_, used')):txs) tseq gi =
+updateGasInfo ((tx@(Tx { call = SolCall (f, _) }), (_, used')):txs) tseq gi =
   case mused of
     Nothing -> rec
     Just (used, _) | used' > used -> rec
