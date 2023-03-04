@@ -13,9 +13,6 @@ jobs:
     name: Build Echidna on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     container: ${{ fromJSON(matrix.container || '{"image":null}') }}
-    defaults:
-      run:
-        shell: bash
     strategy:
       matrix:
         include:
