@@ -23,8 +23,9 @@ import Data.Text qualified as T
 import System.Directory (doesDirectoryExist, doesFileExist, findExecutable, listDirectory, removeFile)
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit (ExitCode(..))
-import System.FilePath.Posix ((</>))
+import System.FilePath (joinPath, splitDirectories, (</>))
 import System.IO (openFile, IOMode(..))
+import System.Info (os)
 
 import EVM hiding (Env, env, contract, contracts, path)
 import EVM qualified (contracts, env)
@@ -86,7 +87,7 @@ compileContracts solConf fp = do
         compileOne x = do
           mSolc <- do
             stderr <- if solConf.quiet
-                         then UseHandle <$> openFile "/dev/null" WriteMode
+                         then UseHandle <$> openFile nullFilePath WriteMode
                          else pure Inherit
             (ec, out, err) <- readCreateProcessWithExitCode
               (proc path $ (solConf.cryticArgs ++ solargs) |> x) {std_err = stderr} ""
@@ -95,6 +96,9 @@ compileContracts solConf fp = do
               ExitFailure _ -> throwM $ CompileFailure out err
 
           maybe (throwM SolcReadFailure) (pure . first toList) mSolc
+        -- | OS-specific path to the "null" file, which accepts writes without storing them
+        nullFilePath :: String
+        nullFilePath = if os == "mingw32" then "\\\\.\\NUL" else "/dev/null"
     -- clean up previous artifacts
     removeJsonFiles "crytic-export"
     cps <- mapM compileOne fp
@@ -270,7 +274,11 @@ loadSpecified env name cs = do
         choose (c:_) Nothing = pure c
         choose _ (Just n) =
           maybe (throwM $ ContractNotFound n) pure $
-            find (Data.Text.isSuffixOf (if T.any (== ':') n then n else ":" `append` n) . (.contractName)) cs
+            find (Data.Text.isSuffixOf (contractId n) . (.contractName)) cs
+        contractId n | T.any (== ':') n = let (splitPath, splitName) = T.breakOn ":" n in
+                                          rewritePathSeparators splitPath `T.append` splitName
+                     | otherwise = ":" `append` n
+        rewritePathSeparators = T.pack . joinPath . splitDirectories . T.unpack
         setUpFunction = ("setUp", [])
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
