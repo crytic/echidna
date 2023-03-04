@@ -18,7 +18,7 @@ jobs:
         include:
           - os: ubuntu-20.04
             shell: bash
-            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:9.2.5\", \"options\": \"--user 1001\"}"
+            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:9.2.7\", \"options\": \"--user 1001\"}"
           - os: macos-latest
             shell: bash
           - os: windows-latest
