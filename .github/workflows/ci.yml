@@ -8,6 +8,10 @@ on:
     branches:
     - master
 
+env:
+  # Tag for cache invalidation
+  CACHE_VERSION: v6
+
 jobs:
   build:
     name: Build Echidna on ${{ matrix.os }}
@@ -72,23 +76,18 @@ jobs:
           path: |
             ~/.local
             D:\a\_temp\msys64\home\runneradmin\.local
-          key: ${{ runner.os }}-local-v5-${{ hashFiles('.github/scripts/install-*') }}
+          key: ${{ runner.os }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
 
-      - name: Cache Stack
+      - name: Cache Stack & Cabal
         uses: actions/cache@v3
         with:
           path: |
             .stack-work
+            ${{ steps.stack.outputs.cabal-store || '~/.cabal' }}/*
             ${{ steps.stack.outputs.stack-root || '~/.stack' }}/*
-            ${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar
-            ${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar.gz
-          key: ${{ runner.os }}-stack-v5-${{ hashFiles('package.yaml', 'stack.yaml') }}
-
-      - name: Cache Cabal
-        uses: actions/cache@v3
-        with:
-          path: ${{ steps.stack.outputs.cabal-store || '~/.cabal' }}
-          key: ${{ runner.os }}-cabal-v5-${{ hashFiles('package.yaml', 'stack.yaml') }}
+            !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar
+            !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar.gz
+          key: ${{ runner.os }}-stack-${{ env.CACHE_VERSION }}-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Build Libraries
         run: |
