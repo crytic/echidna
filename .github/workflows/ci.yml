@@ -57,6 +57,7 @@ jobs:
       - name: Install Stack
         uses: haskell/actions/setup@v2
         id: stack
+        if: matrix.container == ''
         with:
           ghc-version: '9.2'
           enable-stack: true
@@ -78,15 +79,15 @@ jobs:
         with:
           path: |
             .stack-work
-            ${{ steps.stack.outputs.stack-root }}/*
-            !${{ steps.stack.outputs.stack-root }}/pantry/hackage/*.tar
-            !${{ steps.stack.outputs.stack-root }}/pantry/hackage/*.tar.gz
+            ${{ steps.stack.outputs.stack-root || '~/.stack' }}/*
+            ${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar
+            ${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar.gz
           key: ${{ runner.os }}-stack-v5-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Cache Cabal
         uses: actions/cache@v3
         with:
-          path: ${{ steps.stack.outputs.cabal-store }}
+          path: ${{ steps.stack.outputs.cabal-store || '~/.cabal' }}
           key: ${{ runner.os }}-cabal-v5-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Build Libraries
