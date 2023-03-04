@@ -79,13 +79,11 @@ executables:
     when:
         - condition: (os(linux) || os(windows)) && flag(static)
           ghc-options:
-            - -O2
             - -optl-static
-            - -optl-pthread
-        - condition: "os(linux) && !flag(static)"
+        - condition: os(linux) || os(windows)
           ghc-options:
             - -O2
-          ld-options: -pthread
+            - -optl-pthread
         - condition: os(darwin)
           extra-libraries: c++
           ld-options: -Wl,-keep_dwarf_unwind
@@ -104,13 +102,11 @@ tests:
     when:
         - condition: (os(linux) || os(windows)) && flag(static)
           ghc-options:
-            - -O2
             - -optl-static
-            - -optl-pthread
-        - condition: "os(linux) && !flag(static)"
+        - condition: os(linux) || os(windows)
           ghc-options:
             - -O2
-          ld-options: -pthread
+            - -optl-pthread
         - condition: os(darwin)
           extra-libraries: c++
           ld-options: -Wl,-keep_dwarf_unwind
