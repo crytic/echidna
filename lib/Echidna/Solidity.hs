@@ -32,7 +32,6 @@ import EVM qualified (contracts, env)
 import EVM.ABI
 import EVM.Solidity
 import EVM.Types (Addr)
-import EVM.Dapp (dappInfo)
 
 import Echidna.ABI (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
 import Echidna.Exec (execTx, initialVM)
@@ -229,10 +228,7 @@ loadSpecified env name cs = do
   case find (not . null . snd) tests of
     Just (t, _) -> throwM $ TestArgsFound t
     Nothing -> do
-      -- dappinfo for debugging in case of failure
-      let di = dappInfo "/" (Map.fromList $ map (\x -> (x.contractName, x)) cs) mempty
-
-      flip runReaderT (env {dapp = di}) $ do
+      flip runReaderT env $ do
         -- library deployment
         vm0 <- deployContracts (zip [addrLibrary ..] ls) solConf.deployer blank
 
@@ -253,7 +249,7 @@ loadSpecified env name cs = do
                                     (0, 0)
         vm3 <- execStateT deployment vm2
         when (isNothing $ currentContract vm3) $
-          throwM $ DeploymentFailed solConf.contractAddr $ T.unlines $ extractEvents True di vm3
+          throwM $ DeploymentFailed solConf.contractAddr $ T.unlines $ extractEvents True env.dapp vm3
 
         -- Run
         let transaction = execTx $ uncurry basicTx
