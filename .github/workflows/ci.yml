@@ -93,6 +93,7 @@ jobs:
         run: |
           .github/scripts/install-libsecp256k1.sh
           .github/scripts/install-libff.sh
+          .github/scripts/macos-prepare-for-static.sh
         env:
           HOST_OS: ${{ runner.os }}
 
@@ -104,12 +105,8 @@ jobs:
         run: |
           stack install --flag echidna:static --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
 
-      - name: Amend and compress binaries (macOS)
-        if: runner.os == 'macOS'
-        run: .github/scripts/build-macos-release.sh
-
-      - name: Compress binary (Linux)
-        if: runner.os == 'Linux'
+      - name: Compress binary (Linux, macOS)
+        if: runner.os != 'Windows'
         run: GZIP=-9 tar -czf echidna.tar.gz -C $HOME/.local/bin/ echidna
 
       - name: Compress binary (Windows)
@@ -123,7 +120,6 @@ jobs:
           path: echidna.tar.gz
 
       - name: Build and copy test suite
-        if: runner.os != 'macOS'
         run: |
           stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
           cp "$(find "$PWD" -name 'echidna-testsuite*' -type f)" .
@@ -133,7 +129,6 @@ jobs:
           fi
 
       - name: Upload testsuite
-        if: runner.os != 'macOS'
         uses: actions/upload-artifact@v3
         with:
           name: echidna-testsuite-${{ runner.os }}
@@ -151,6 +146,7 @@ jobs:
         os:
           - ubuntu-latest
           - windows-latest
+          - macos-latest
         solc:
           - "0.4.25"
           - "0.5.7"
@@ -162,6 +158,8 @@ jobs:
           - solc: "0.7.5"
             experimental: true
           - os: windows-latest
+            experimental: true
+          - os: macos-latest
             experimental: true
 
     steps:
@@ -177,7 +175,7 @@ jobs:
         shell: bash
         run: |
           .github/scripts/install-solc.sh
-          .github/scripts/install-crytic-compile.sh
+          pip3 install slither-analyzer --user
         env:
           HOST_OS: ${{ runner.os }}
           SOLC_VER: ${{ matrix.solc }}
