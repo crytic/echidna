@@ -39,19 +39,19 @@ data CampaignConf = CampaignConf
   }
 
 -- | The state of a fuzzing campaign.
-data Campaign = Campaign { _tests       :: [EchidnaTest]
+data Campaign = Campaign { _tests       :: ![EchidnaTest]
                            -- ^ Tests being evaluated
-                         , _coverage    :: CoverageMap
+                         , _coverage    :: !CoverageMap
                            -- ^ Coverage captured (NOTE: we don't always record this)
-                         , _gasInfo     :: Map Text (Gas, [Tx])
+                         , _gasInfo     :: !(Map Text (Gas, [Tx]))
                            -- ^ Worst case gas (NOTE: we don't always record this)
-                         , _genDict     :: GenDict
+                         , _genDict     :: !GenDict
                            -- ^ Generation dictionary
-                         , _newCoverage :: Bool
+                         , _newCoverage :: !Bool
                            -- ^ Flag to indicate new coverage found
-                         , _corpus      :: Corpus
+                         , _corpus      :: !Corpus
                            -- ^ List of transactions with maximum coverage
-                         , _ncallseqs   :: Int
+                         , _ncallseqs   :: !Int
                            -- ^ Number of times the callseq is called
                          }
 makeLenses ''Campaign

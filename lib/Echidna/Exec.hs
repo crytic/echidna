@@ -262,8 +262,8 @@ execTxWithCov tx = do
     -- the same as EVM.exec but collects coverage, will stop on a query
     execCov cache = do
      (vm, cm) <- get
-     let (r, vm', cm') = loop cache vm cm
-     put (vm', cm')
+     let (r, vm', cm') = loop cache vm mempty
+     put (vm', Map.unionWith S.union cm cm')
      pure r
 
     -- | Repeatedly exec a step and add coverage until we have an end result

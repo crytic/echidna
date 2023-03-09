@@ -25,4 +25,4 @@ coveragePoints = sum . fmap size
 -- only considering the different instruction PCs (discarding the TxResult).
 -- This is useful to report a coverage measure to the user
 scoveragePoints :: CoverageMap -> Int
-scoveragePoints = sum . fmap (size . Data.Set.map (view _1))
+scoveragePoints = coveragePoints -- sum . fmap (size . Data.Set.map (view _1))
