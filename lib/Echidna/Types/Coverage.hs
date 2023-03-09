@@ -1,9 +1,8 @@
 module Echidna.Types.Coverage where
 
-import Control.Lens
 import Data.ByteString (ByteString)
 import Data.Map.Strict (Map)
-import Data.Set (Set, size, map)
+import Data.Set (Set, size)
 
 import Echidna.Types.Tx (TxResult)
 
