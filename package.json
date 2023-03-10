@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "remote-echidna": "https://github.com/aviggiano/remote-echidna.git"
+  }
+}
