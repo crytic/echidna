@@ -1,6 +1,19 @@
-## 2.1.0 (Unreleased)
+## 2.1.0
 
-* Rename multi-abi mode to allContracts
+* External contracts are now automatically fetched from Ethereum nodes during fuzzing (#927, #971)
+* Added support for the FFI cheatcode (#750)
+* Renamed multi-abi mode to allContracts, multi-abi still works but will be removed in future (#934)
+* Fixed method filtering in multi-abi mode (#950, #954)
+* Fixed config parsing for too large values (#935)
+* Renamed echidna-test binary to echidna (#826)
+* Added scrollbar to the UI (#915)
+* Removed generation of negative seeds (#933)
+* Added crash display to the UI (#944)
+* Added human-friendly errors for panic codes (#965)
+* Refactored code (#903, #906, #908, #924, #925, #928, #946, #956, #966, #968)
+* Added limited Windows build (#943)
+* Updated dependencies (#942, #948)
+* Build and CI improvements (#912, #914, #917, #952, #967)
 
 ## 2.0.5
 
