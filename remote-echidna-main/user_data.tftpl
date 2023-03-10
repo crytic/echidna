@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+set -eux
+
+echo "[${namespace}][${project}][$(date)] Start tests"
+
+echo "[${namespace}][${project}][$(date)] Setup environment variables"
+export AWS_ACCESS_KEY_ID=${aws_access_key_id}
+export AWS_SECRET_ACCESS_KEY=${aws_secret_access_key}
+export WORKDIR=/home/ubuntu
+export ECHIDNA_DIRECTORY=echidna
+
+echo "[${namespace}][${project}][$(date)] Go to working directory"
+cd $WORKDIR
+
+echo "[${namespace}][${project}][$(date)] Install OS libraries"
+sudo apt-get update
+sudo apt-get install -y git gcc make python3-pip unzip
+
+echo "[${namespace}][${project}][$(date)] Install AWS CLI"
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+
+echo "[${namespace}][${project}][$(date)] Install Node.js"
+curl -sL https://deb.nodesource.com/setup_16.x | sudo -E bash -
+
+echo "[${namespace}][${project}][$(date)] Install yarn"
+curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
+echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
+sudo apt update && sudo apt install -y yarn
+
+echo "[${namespace}][${project}][$(date)] Install solc-select"
+pip3 install solc-select --user
+export PATH="$PATH:/root/.local/bin"
+
+echo "[${namespace}][${project}][$(date)] Install solidity ${solidity_version}"
+solc-select install ${solidity_version}
+solc-select use ${solidity_version}
+
+echo "[${namespace}][${project}][$(date)] Install slither"
+pip3 install slither-analyzer --user
+
+echo "[${namespace}][${project}][$(date)] Install echidna"
+wget https://github.com/crytic/echidna/releases/download/v2.0.5/echidna-test-2.0.5-Ubuntu-22.04.tar.gz
+tar -xvkf echidna-test-2.0.5-Ubuntu-22.04.tar.gz
+sudo mv echidna-test /usr/bin/
+
+echo "[${namespace}][${project}][$(date)] Install git project"
+git clone ${project_git_url} 
+cd "$(basename ${project_git_url} .git)"
+git checkout ${project_git_checkout}
+
+echo "[${namespace}][${project}][$(date)] Load previous output from S3"
+aws s3 sync s3://${s3_bucket}/${namespace}-${project}/${project_git_checkout}/ $ECHIDNA_DIRECTORY/ 
+
+echo "[${namespace}][${project}][$(date)] Run tests"
+echo "[${namespace}][${project}][$(date)] '${run_tests_cmd}'"
+${run_tests_cmd}
+
+echo "[${namespace}][${project}][$(date)] Copy output to S3"
+aws s3 cp /var/log/cloud-init-output.log s3://${s3_bucket}/${namespace}-${project}/${project_git_checkout}/
+aws s3 sync $ECHIDNA_DIRECTORY/ s3://${s3_bucket}/${namespace}-${project}/${project_git_checkout}/
+
+echo "[${namespace}][${project}][$(date)] Finish tests"
+sudo shutdown -h now
