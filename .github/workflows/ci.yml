@@ -1,194 +1,30 @@
 name: CI
 
 on:
+  pull_request:
+    types: [opened, synchronize]
   push:
     branches:
-    - master
-  pull_request:
-    branches:
-    - master
-
-env:
-  # Tag for cache invalidation
-  CACHE_VERSION: v6
+      - master
 
 jobs:
-  build:
-    name: Build Echidna on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    container: ${{ fromJSON(matrix.container || '{"image":null}') }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-20.04
-            shell: bash
-            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:9.2.7\", \"options\": \"--user 1001\"}"
-          - os: macos-latest
-            shell: bash
-          - os: windows-latest
-            shell: msys2 {0}
-
-    defaults:
-      run:
-        shell: ${{ matrix.shell }}
-
+  remote-echidna:
+    name: Run remote-echidna
+    runs-on: ubuntu-latest
     steps:
-      - name: Get Packages (macOS)
-        if: runner.os == 'macOS'
-        run: brew install automake
-
-      - name: Get Packages (Windows)
-        uses: msys2/setup-msys2@v2
-        if: runner.os == 'Windows'
+      - uses: actions/checkout@v3
+      - uses: hashicorp/setup-terraform@v2
         with:
-          msystem: UCRT64
-          path-type: inherit
-          update: true
-          install: >-
-            base-devel
-            gmp-devel
-            openssl-devel
-            git
-            unzip
-          pacboy: >-
-            cmake:p
-            ninja:p
-            gcc:p
-            autotools:p
-            gmp:p
-            openssl:p
-
-      - name: Install Stack
-        uses: haskell/actions/setup@v2
-        id: stack
-        if: matrix.container == ''
-        with:
-          ghc-version: '9.2'
-          enable-stack: true
-          stack-version: 'latest'
-
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Cache Local
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.local
-            D:\a\_temp\msys64\home\runneradmin\.local
-          key: ${{ runner.os }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
-
-      - name: Cache Stack & Cabal
-        uses: actions/cache@v3
-        with:
-          path: |
-            .stack-work
-            ${{ steps.stack.outputs.cabal-store || '~/.cabal' }}/*
-            ${{ steps.stack.outputs.stack-root || '~/.stack' }}/*
-            !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar
-            !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar.gz
-          key: ${{ runner.os }}-stack-${{ env.CACHE_VERSION }}-${{ hashFiles('package.yaml', 'stack.yaml') }}
-
-      - name: Build Libraries
-        run: |
-          .github/scripts/install-libsecp256k1.sh
-          .github/scripts/install-libff.sh
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+      - name: Terraform Init
+        run: terraform init
+      - name: Terraform Apply
         env:
-          HOST_OS: ${{ runner.os }}
-
-      - name: Build Dependencies
+          project: 'echidna'
+          project_git_url: 'https://github.com/${{github.repository}}.git'
+          project_git_checkout: ${{ github.head_ref || github.ref_name }}
+          ec2_instance_key_name: 'key.pem'
+          run_tests_cmd: 'yarn && echidna-test tests/solidity/overflow/overflow.sol --contract Test --config tests/solidity/overflow/config.yaml'
         run: |
-          stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib --only-dependencies
-
-      - name: Build and install echidna
-        run: |
-          stack install --flag echidna:static --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
-
-      - name: Amend and compress binaries (macOS)
-        if: runner.os == 'macOS'
-        run: .github/scripts/build-macos-release.sh
-
-      - name: Compress binary (Linux)
-        if: runner.os == 'Linux'
-        run: GZIP=-9 tar -czf echidna.tar.gz -C $HOME/.local/bin/ echidna
-
-      - name: Compress binary (Windows)
-        if: runner.os == 'Windows'
-        run: GZIP=-9 tar -czf echidna.tar.gz -C $APPDATA/local/bin/ echidna.exe
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: echidna-${{ runner.os }}
-          path: echidna.tar.gz
-
-      - name: Build and copy test suite
-        if: runner.os != 'macOS'
-        run: |
-          stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
-          cp "$(find "$PWD" -name 'echidna-testsuite*' -type f)" .
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            # work around https://gitlab.haskell.org/ghc/ghc/-/issues/21109
-            strip echidna-testsuite*
-          fi
-
-      - name: Upload testsuite
-        if: runner.os != 'macOS'
-        uses: actions/upload-artifact@v3
-        with:
-          name: echidna-testsuite-${{ runner.os }}
-          path: echidna-testsuite*
-
-
-  test:
-    name: Test with solc ${{ matrix.solc }} on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    needs: build
-    continue-on-error: ${{ matrix.experimental || false }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-        solc:
-          - "0.4.25"
-          - "0.5.7"
-          - "0.6.12"
-          - "0.7.5"
-        include:
-          - solc: "0.6.12"
-            experimental: true
-          - solc: "0.7.5"
-            experimental: true
-          - os: windows-latest
-            experimental: true
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.8'
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          .github/scripts/install-solc.sh
-          .github/scripts/install-crytic-compile.sh
-        env:
-          HOST_OS: ${{ runner.os }}
-          SOLC_VER: ${{ matrix.solc }}
-
-      - name: Download testsuite
-        uses: actions/download-artifact@v3
-        with:
-         name: echidna-testsuite-${{ runner.os }}
-
-      - name: Test
-        run: |
-          solc-select use ${{ matrix.solc }}
-          chmod +x echidna-testsuite*
-          ./echidna-testsuite*
+          terraform init
+          terraform apply -var="ec2_instance_key_name=${{ env.ec2_instance_key_name }}" -var="project=${{ env.project }}" -var="project_git_url=${{ env.project_git_url }}" -var="project_git_checkout=${{ env.project_git_checkout }}" -var="run_tests_cmd=${{ var.run_tests_cmd }}" -no-color -input=false -auto-apply
