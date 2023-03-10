@@ -1,0 +1,3 @@
+[submodule "remote-echidna"]
+	path = remote-echidna
+	url = https://github.com/aviggiano/remote-echidna.git
