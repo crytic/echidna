@@ -346,4 +346,3 @@ Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://emp
 ## License
 
 Echidna is licensed and distributed under the [AGPLv3 license](https://github.com/crytic/echidna/blob/master/LICENSE).
-
