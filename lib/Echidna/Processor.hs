@@ -37,7 +37,7 @@ data ProcException = ProcessorFailure String String
 instance Show ProcException where
   show = \case
     ProcessorFailure p e -> "Error running " ++ p ++ ":\n" ++ e
-    ProcessorNotFound p e -> "Cannot find " ++ p ++ "in PATH.\n" ++ e
+    ProcessorNotFound p e -> "Cannot find " ++ p ++ " in PATH.\n" ++ e
 
 instance Exception ProcException
 
