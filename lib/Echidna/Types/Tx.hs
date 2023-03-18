@@ -158,6 +158,7 @@ data TxResult = ReturnTrue
               | ErrorSMTTimeout
               | ErrorFFI
               | ErrorNonceOverflow
+              | ErrorReturnDataOutOfBounds
   deriving (Eq, Ord, Show)
 $(deriveJSON defaultOptions ''TxResult)
 
@@ -205,6 +206,7 @@ getResult (VMFailure (NotUnique _))             = ErrorWhiffNotUnique
 getResult (VMFailure SMTTimeout)                = ErrorSMTTimeout
 getResult (VMFailure (FFI _))                   = ErrorFFI
 getResult (VMFailure NonceOverflow)             = ErrorNonceOverflow
+getResult (VMFailure ReturnDataOutOfBounds)     = ErrorReturnDataOutOfBounds
 
 makeSingleTx :: Addr -> Addr -> W256 -> TxCall -> [Tx]
 makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d maxGasPerBlock 0 v (0, 0)]

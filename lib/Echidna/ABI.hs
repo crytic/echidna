@@ -77,6 +77,7 @@ ppAbiValue (AbiArray      _ _ v) =
   "[" ++ intercalate ", " (ppAbiValue <$> toList v) ++ "]"
 ppAbiValue (AbiTuple v) =
   "(" ++ intercalate ", " (ppAbiValue <$> toList v) ++ ")"
+ppAbiValue (AbiFunction v) = show v
 
 -- Types
 
@@ -257,6 +258,7 @@ shrinkAbiValue (AbiArrayDynamic t l) = getRandomR (0, 9 :: Int) >>= -- 10% of ch
                                             _ -> AbiArrayDynamic t <$> shrinkV l
 shrinkAbiValue (AbiTuple v)          = AbiTuple <$> traverse shrinkAbiValue' v
   where shrinkAbiValue' x = liftM3 bool (pure x) (shrinkAbiValue x) getRandom
+shrinkAbiValue (AbiFunction v)       = pure $ AbiFunction v
 
 -- | Given a 'SolCall', generate a random \"smaller\" (simpler) call.
 shrinkAbiCall :: MonadRandom m => SolCall -> m SolCall
@@ -287,6 +289,7 @@ mutateAbiValue (AbiArray n t l)      = do fs <- replicateM n $ genAbiValue t
 
 mutateAbiValue (AbiArrayDynamic t l) = AbiArrayDynamic t <$> mutateLL Nothing mempty l
 mutateAbiValue (AbiTuple v)          = AbiTuple          <$> traverse mutateAbiValue v
+mutateAbiValue (AbiFunction v)       = pure $ AbiFunction v
 
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
 mutateAbiCall :: (MonadRandom m) => SolCall -> m SolCall
@@ -333,6 +336,8 @@ genAbiValueM genDict = genWithDict genDict genDict.constants $ \case
                              >>= flip V.replicateM (genAbiValueM genDict t)
   (AbiArrayType n t)      -> AbiArray n t <$> V.replicateM n (genAbiValueM genDict t)
   (AbiTupleType v)        -> AbiTuple <$> traverse (genAbiValueM genDict) v
+  AbiFunctionType         -> liftM2 (\n -> AbiString . BS.pack . take n)
+                                    (getRandomR (1, 32)) getRandoms
 
 -- | Given a 'SolSignature', generate a random 'SolCalls' with that signature, possibly with a dictionary.
 genAbiCallM :: MonadRandom m => GenDict -> SolSignature -> m SolCall
