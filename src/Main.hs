@@ -222,9 +222,6 @@ toFetchedContractData contract =
 instance ToJSONKey W256 where
   toJSONKey = toJSONKeyText (Text.pack . show)
 
-instance ToJSONKey Addr where
-  toJSONKey = toJSONKeyText (Text.pack . show)
-
 readFileIfExists :: FilePath -> IO (Maybe BS.ByteString)
 readFileIfExists path = do
   exists <- doesFileExist path
