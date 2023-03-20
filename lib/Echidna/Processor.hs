@@ -3,7 +3,6 @@
 module Echidna.Processor where
 
 import Control.Exception (Exception)
-import Control.Monad (unless)
 import Control.Monad.Catch (MonadThrow(..))
 import Data.Aeson ((.:), (.:?), (.!=), eitherDecode, parseJSON, withEmbeddedJSON, withObject)
 import Data.Aeson.Types (FromJSON, Parser, Value(String))
@@ -21,7 +20,6 @@ import Data.Set qualified as Set
 import Data.Text (pack, isSuffixOf)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode(..))
-import System.IO (hFlush, stdout)
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import Text.Read (readMaybe)
 
@@ -31,6 +29,7 @@ import EVM.Types (Addr(..))
 import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
 import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
 import Echidna.Types.Solidity (SolConf(..))
+import Echidna.Utility (measureIO)
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
 -- instance for more detailed explanations.
@@ -132,11 +131,8 @@ runSlither fp solConf = if ".vy" `isSuffixOf` pack fp then return noInfo else do
     Nothing -> throwM $ ProcessorNotFound "slither" "You should install it using 'pip3 install slither-analyzer --user'"
     Just path -> do
       let args = ["--ignore-compile", "--print", "echidna", "--json", "-"] ++ solConf.cryticArgs ++ [fp]
-      unless solConf.quiet $ do
-        putStr $ "Running slither on " <> fp <> "... "
-        hFlush stdout
-      (ec, out, err) <- readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
-      unless solConf.quiet $ putStrLn "Done!"
+      (ec, out, err) <- measureIO solConf.quiet ("Running slither on " <> fp) $ do
+        readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
       case ec of
         ExitSuccess ->
           case eitherDecode (BSL.pack out) of

@@ -24,7 +24,7 @@ import System.Directory (doesDirectoryExist, doesFileExist, findExecutable, list
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit (ExitCode(..))
 import System.FilePath (joinPath, splitDirectories, (</>))
-import System.IO (openFile, IOMode(..), hFlush, stdout)
+import System.IO (openFile, IOMode(..))
 import System.Info (os)
 
 import EVM hiding (Env, env, contract, contracts, path)
@@ -46,6 +46,7 @@ import Echidna.Types.Solidity
 import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx (basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.World (World(..))
+import Echidna.Utility (measureIO)
 
 -- | Given a list of source caches (SourceCaches) and an optional contract name,
 -- select one that includes that contract (if possible). Otherwise, use the first source
@@ -88,12 +89,9 @@ compileContracts solConf fp = do
             stderr <- if solConf.quiet
                          then UseHandle <$> openFile nullFilePath WriteMode
                          else pure Inherit
-            unless solConf.quiet $ do
-              putStr $ "Compiling " <> x <> "... "
-              hFlush stdout
-            (ec, out, err) <- readCreateProcessWithExitCode
-              (proc path $ (solConf.cryticArgs ++ solargs) |> x) {std_err = stderr} ""
-            unless solConf.quiet $ putStrLn "Done!"
+            (ec, out, err) <- measureIO solConf.quiet ("Compiling " <> x) $ do
+              readCreateProcessWithExitCode
+                (proc path $ (solConf.cryticArgs ++ solargs) |> x) {std_err = stderr} ""
             case ec of
               ExitSuccess -> readSolcBatch "crytic-export"
               ExitFailure _ -> throwM $ CompileFailure out err
