@@ -54,7 +54,7 @@ prepareContract env contracts solFiles specifiedContract seed = do
                                  funs
 
   -- run processors
-  slitherInfo <- runSlither (NE.head solFiles) solConf.cryticArgs
+  slitherInfo <- runSlither (NE.head solFiles) solConf
   case find (< minSupportedSolcVersion) slitherInfo.solcVersions of
     Just outdatedVersion -> throwM $ OutdatedSolcVersion outdatedVersion
     Nothing -> pure ()
