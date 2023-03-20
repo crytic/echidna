@@ -56,6 +56,7 @@ import Echidna.UI
 import Echidna.Output.Source
 import Echidna.Output.Corpus
 import Echidna.Solidity (compileContracts, selectSourceCache)
+import Echidna.Utility (measureIO)
 import Etherscan qualified
 
 main :: IO ()
@@ -127,8 +128,10 @@ main = withUtf8 $ withCP65001 $ do
         Nothing ->
           pure ()
 
-      saveTxs (dir </> "reproducers") (filter (not . null) $ (.testReproducer) <$> campaign._tests)
-      saveTxs (dir </> "coverage") (snd <$> Set.toList campaign._corpus)
+      measureIO cfg.solConf.quiet "Saving test reproducers" $
+        saveTxs (dir </> "reproducers") (filter (not . null) $ (.testReproducer) <$> campaign._tests)
+      measureIO cfg.solConf.quiet "Saving corpus" $
+        saveTxs (dir </> "coverage") (snd <$> Set.toList campaign._corpus)
 
       -- TODO: Add another option to config for saving coverage report
 
