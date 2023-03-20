@@ -4,7 +4,7 @@
 module Main where
 
 import Control.Lens (view)
-import Control.Monad (unless)
+import Control.Monad (unless, forM_)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
 import Data.Aeson (ToJSON, FromJSON, ToJSONKey)
@@ -67,7 +67,7 @@ main = withUtf8 $ withCP65001 $ do
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
   let cfg = overrideConfig loadedCfg opts
   unless cfg.solConf.quiet $
-    mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString) ks
+    forM_ ks $ hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString
 
   -- Try to load the persisted RPC cache. TODO: we use the corpus dir for now,
   -- think where to place it
@@ -140,7 +140,7 @@ main = withUtf8 $ withCP65001 $ do
       -- as it orders the runs chronologically.
       runId <- fromIntegral . systemSeconds <$> getSystemTime
 
-      mapM_ (\(addr, mc) ->
+      forM_ (Map.toList contractsCache) $ \(addr, mc) ->
         case mc of
           Just contract -> do
             r <- externalSolcContract addr contract
@@ -150,7 +150,7 @@ main = withUtf8 $ withCP65001 $ do
                 saveCoverage False runId dir' externalSourceCache [solcContract] campaign._coverage
                 saveCoverage True  runId dir' externalSourceCache [solcContract] campaign._coverage
               Nothing -> pure ()
-          Nothing -> pure ()) (Map.toList contractsCache)
+          Nothing -> pure ()
 
       -- save source coverage reports
       saveCoverage False runId dir sourceCache contracts campaign._coverage
