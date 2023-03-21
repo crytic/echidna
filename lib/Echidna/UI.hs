@@ -6,8 +6,6 @@ module Echidna.UI where
 import Brick
 import Brick.BChan
 import Brick.Widgets.Dialog qualified as B
-import Control.Concurrent (killThread, threadDelay)
-import Control.Monad (forever, void, when)
 import Control.Monad.Catch (MonadCatch(..), catchAll)
 import Control.Monad.Reader (MonadReader (ask), runReader, asks)
 import Control.Monad.State (modify')
@@ -15,16 +13,16 @@ import Graphics.Vty qualified as V
 import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
-import UnliftIO.Concurrent (forkIO, forkFinally)
 
 import Echidna.UI.Widgets
 #else /* !INTERACTIVE_UI */
-import Control.Monad (when)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Reader (MonadReader, runReader, asks)
 import Control.Monad.State.Strict (get)
 #endif
 
+import Control.Monad
+import Control.Concurrent (killThread, threadDelay)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Random.Strict (MonadRandom)
 import Data.ByteString.Lazy qualified as BS
@@ -33,6 +31,7 @@ import Data.Map (Map)
 import Data.Maybe (fromMaybe)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Timeout (timeout)
+import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
 import EVM (VM, Contract)
 import EVM.Types (Addr, W256)
@@ -41,11 +40,14 @@ import Echidna.ABI
 import Echidna.Campaign (campaign)
 import Echidna.Output.JSON qualified
 import Echidna.Types.Campaign
-import Echidna.Types.Test (EchidnaTest)
+import Echidna.Types.Config
+import Echidna.Types.Corpus (corpusSize)
+import Echidna.Types.Coverage (scoveragePoints)
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFailed, isOpen)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
-import Echidna.Types.Config
+import Echidna.Utility (timePrefix)
 
 data UIEvent =
   CampaignUpdated Campaign
@@ -123,7 +125,15 @@ ui vm world ts dict initialCorpus = do
 #endif
 
     NonInteractive outputFormat -> do
+      ticker <- liftIO $ forkIO $
+        -- print out status update every 3s
+        forever $ do
+          threadDelay $ 3*1000000
+          camp <- readIORef ref
+          time <- timePrefix
+          putStrLn $ time <> "[status] " <> statusLine conf.campaignConf camp
       result <- runCampaign
+      liftIO $ killThread ticker
       (final, timedout) <- case result of
         Nothing -> do
           final <- liftIO $ readIORef ref
@@ -199,3 +209,16 @@ isTerminal :: IO Bool
 isTerminal = (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 
 #endif
+
+-- | Composes a compact text status line of the campaign
+statusLine :: CampaignConf -> Campaign -> String
+statusLine campaignConf camp =
+  "tests: " <> show (length $ filter didFailed camp._tests) <> "/" <> show (length camp._tests)
+  <> ", fuzzing: " <> show fuzzRuns <> "/" <> show campaignConf.testLimit
+  <> ", cov: " <> show (scoveragePoints camp._coverage)
+  <> ", corpus: " <> show (corpusSize camp._corpus)
+  where
+  fuzzRuns = case filter isOpen camp._tests of
+    -- fuzzing progress is the same for all Open tests, grab the first one
+    EchidnaTest { testState = Open t }:_ -> t
+    _ -> campaignConf.testLimit
