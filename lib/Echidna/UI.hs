@@ -6,8 +6,6 @@ module Echidna.UI where
 import Brick
 import Brick.BChan
 import Brick.Widgets.Dialog qualified as B
-import Control.Concurrent (killThread, threadDelay)
-import Control.Monad (forever, void, when)
 import Control.Monad.Catch (MonadCatch(..), catchAll)
 import Control.Monad.Reader (MonadReader (ask), runReader, asks)
 import Control.Monad.State (modify')
@@ -15,16 +13,16 @@ import Graphics.Vty qualified as V
 import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
 import System.Posix.Terminal (queryTerminal)
 import System.Posix.Types (Fd(..))
-import UnliftIO.Concurrent (forkIO, forkFinally)
 
 import Echidna.UI.Widgets
 #else /* !INTERACTIVE_UI */
-import Control.Monad (when)
 import Control.Monad.Catch (MonadCatch(..))
 import Control.Monad.Reader (MonadReader, runReader, asks)
 import Control.Monad.State.Strict (get)
 #endif
 
+import Control.Monad
+import Control.Concurrent (killThread, threadDelay)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Random.Strict (MonadRandom)
 import Data.ByteString.Lazy qualified as BS
@@ -33,6 +31,7 @@ import Data.Map (Map)
 import Data.Maybe (fromMaybe)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Timeout (timeout)
+import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
 import EVM (VM, Contract)
 import EVM.Types (Addr, W256)
