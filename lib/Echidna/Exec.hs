@@ -36,6 +36,7 @@ import Echidna.Types.Signature (MetadataCache, getBytecodeMetadata, lookupByteco
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
 import Echidna.Types.Solidity (SolConf(..))
+import Echidna.Utility (timePrefix)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
@@ -104,9 +105,6 @@ execTxWith l onErr executeTx tx = do
           Just Nothing ->
             l %= execState (continuation emptyAccount)
           Nothing -> do
-            -- TODO: temporary
-            operationMode <- asks (.cfg.uiConf.operationMode)
-            when (operationMode == NonInteractive Text) $ liftIO $ print q
             logMsg $ "INFO: Performing RPC: " <> show q
             getRpcUrl >>= \case
               Just rpcUrl -> do
@@ -146,9 +144,6 @@ execTxWith l onErr executeTx tx = do
           Just (Just value) -> l %= execState (continuation value)
           Just Nothing -> l %= execState (continuation 0)
           Nothing -> do
-            -- TODO: temporary
-            operationMode <- asks (.cfg.uiConf.operationMode)
-            when (operationMode == NonInteractive Text) $ liftIO $ print q
             logMsg $ "INFO: Performing RPC: " <> show q
             getRpcUrl >>= \case
               Just rpcUrl -> do
@@ -239,8 +234,9 @@ logMsg :: (MonadIO m, MonadReader Env m) => String -> m ()
 logMsg msg = do
   cfg <- asks (.cfg)
   operationMode <- asks (.cfg.uiConf.operationMode)
-  when (operationMode == NonInteractive Text && not cfg.solConf.quiet) $
-    liftIO $ putStrLn msg
+  when (operationMode == NonInteractive Text && not cfg.solConf.quiet) $ liftIO $ do
+    time <- timePrefix
+    putStrLn $ time <> msg
 
 -- | Execute a transaction "as normal".
 execTx :: (MonadIO m, MonadState VM m, MonadReader Env m, MonadThrow m) => Tx -> m (VMResult, Gas)
