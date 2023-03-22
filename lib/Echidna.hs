@@ -70,7 +70,8 @@ prepareContract env contracts solFiles specifiedContract seed = do
                   <> deployedAddresses
 
   let dict = mkGenDict env.cfg.campaignConf.dictFreq
-                       constants
+                       -- make sure we don't use cheat codes to form fuzzing call sequences
+                       (Set.delete (AbiAddress cheatCode) constants)
                        Set.empty
                        seed
                        (returnTypes contracts)

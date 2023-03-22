@@ -24,7 +24,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import System.Random (mkStdGen)
 
-import EVM (Contract, VM(..), VMResult(..), bytecode)
+import EVM (Contract, VM(..), VMResult(..), bytecode, cheatCode)
 import EVM qualified (Env(..))
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (Addr, Expr(ConcreteBuf))
@@ -246,7 +246,9 @@ callseq initialCorpus vm world seqLen = do
       case result of
         VMSuccess (ConcreteBuf buf) ->
           case runGetOrFail (getAbi type') (LBS.fromStrict buf) of
-            Right (_, _, abiValue) -> Just (type', Set.singleton abiValue)
+            -- make sure we don't use cheat codes to form fuzzing call sequences
+            Right (_, _, abiValue) | abiValue /= AbiAddress cheatCode ->
+              Just (type', Set.singleton abiValue)
             _ -> Nothing
         _ -> Nothing
 
