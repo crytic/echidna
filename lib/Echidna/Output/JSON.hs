@@ -19,7 +19,7 @@ import Echidna.Types (Gas)
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Campaign qualified as C
 import Echidna.Types.Test qualified as T
-import Echidna.Types.Test (EchidnaTest, testState, testReproducer)
+import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 
 data Campaign = Campaign
@@ -104,10 +104,8 @@ encodeCampaign C.Campaign{..} = encode
            }
 
 mapTest :: EchidnaTest -> Test
-mapTest echidnaTest =
-  let tst = echidnaTest.testState
-      txs = echidnaTest.testReproducer
-      (status, transactions, err) = mapTestState tst txs in
+mapTest test =
+  let (status, transactions, err) = mapTestState test.state test.reproducer in
   Test { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
        , name = "name" --TODO add a proper name here
        , status = status

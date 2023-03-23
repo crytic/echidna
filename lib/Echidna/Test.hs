@@ -97,19 +97,19 @@ createTests m td ts r ss = case m of
 
 updateOpenTest :: EchidnaTest -> [Tx] -> Int -> (TestValue, Events, TxResult) -> EchidnaTest
 updateOpenTest test txs _ (BoolValue False,es,r) =
-  test { testState = Large (-1), testReproducer = txs, testEvents = es, testResult = r }
+  test { state = Large (-1), reproducer = txs, events = es, result = r }
 updateOpenTest test _   i (BoolValue True,_,_)   =
-  test { testState = Open (i + 1) }
+  test { state = Open (i + 1) }
 updateOpenTest test txs i (IntValue v',es,r) =
   if v' > v then
-    test { testState = Open (i + 1)
-         , testReproducer = txs
-         , testValue = IntValue v'
-         , testEvents = es
-         , testResult = r }
+    test { state = Open (i + 1)
+         , reproducer = txs
+         , value = IntValue v'
+         , events = es
+         , result = r }
   else
-    test { testState = Open (i + 1) }
-  where v = case test.testValue of
+    test { state = Open (i + 1) }
+  where v = case test.value of
               IntValue x -> x
               _          -> error "Invalid type of value for optimization"
 updateOpenTest _ _ _ _ = error "Invalid type of test"

@@ -43,7 +43,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (corpusSize)
 import Echidna.Types.Coverage (scoveragePoints)
-import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFailed, isOpen)
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOpen)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
@@ -213,12 +213,12 @@ isTerminal = (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 -- | Composes a compact text status line of the campaign
 statusLine :: CampaignConf -> Campaign -> String
 statusLine campaignConf camp =
-  "tests: " <> show (length $ filter didFailed camp._tests) <> "/" <> show (length camp._tests)
+  "tests: " <> show (length $ filter didFail camp._tests) <> "/" <> show (length camp._tests)
   <> ", fuzzing: " <> show fuzzRuns <> "/" <> show campaignConf.testLimit
   <> ", cov: " <> show (scoveragePoints camp._coverage)
   <> ", corpus: " <> show (corpusSize camp._corpus)
   where
   fuzzRuns = case filter isOpen camp._tests of
     -- fuzzing progress is the same for all Open tests, grab the first one
-    EchidnaTest { testState = Open t }:_ -> t
+    EchidnaTest { state = Open t }:_ -> t
     _ -> campaignConf.testLimit
