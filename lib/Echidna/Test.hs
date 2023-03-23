@@ -88,7 +88,7 @@ createTests m td ts r ss = case m of
   "property"     -> map (\t -> createTest (PropertyTest t r)) ts
   "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
   "assertion"    -> map (\s -> createTest (AssertionTest False s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
-  "dapptest"     -> map (\s -> createTest (AssertionTest True s r)) (filter (\(_, xs) -> not $ null xs) ss)
+  "dapptest"     -> map (\s -> createTest (AssertionTest True s r)) (filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ss)
   _              -> error validateTestModeError
 
  ++ (if td then [sdt, sdat] else [])

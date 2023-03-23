@@ -150,7 +150,7 @@ filterMethods contractName (Blacklist ig) ms =
 
 -- | Filter methods with arguments, used for dapptest mode
 filterMethodsWithArgs :: NE.NonEmpty SolSignature -> NE.NonEmpty SolSignature
-filterMethodsWithArgs ms = case NE.filter (\(_, xs) -> not $ null xs) ms of
+filterMethodsWithArgs ms = case NE.filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ms of
                              [] -> error "No dapptest tests found"
                              fs -> NE.fromList fs
 
