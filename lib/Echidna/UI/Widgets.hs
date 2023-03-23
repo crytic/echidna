@@ -78,13 +78,13 @@ campaignStatus uiState = do
       pure $ mainbox (padLeft (Pad 1) $
         withAttr (attrName "failure") $ strBreak $ formatCrashReport e) emptyWidget
     (Timedout, _) ->
-      mainbox <$> testsWidget uiState.campaign._tests
+      mainbox <$> testsWidget uiState.campaign.tests
               <*> pure (finalStatus "Timed out, C-c or esc to exit")
     (_, True) ->
-      mainbox <$> testsWidget uiState.campaign._tests
+      mainbox <$> testsWidget uiState.campaign.tests
               <*> pure (finalStatus "Campaign complete, C-c or esc to exit")
     _ ->
-      mainbox <$> testsWidget uiState.campaign._tests
+      mainbox <$> testsWidget uiState.campaign.tests
               <*> pure emptyWidget
   where
     mainbox :: Widget Name -> Widget Name -> Widget Name
@@ -116,13 +116,13 @@ summaryWidget uiState =
   leftSide =
     let c = uiState.campaign in
     padLeft (Pad 1) $
-      vLimit 1 (str "Tests found: " <+> str (show (length c._tests)) <+> fill ' ')
+      vLimit 1 (str "Tests found: " <+> str (show (length c.tests)) <+> fill ' ')
       <=>
-      str ("Seed: " ++ show c._genDict.defSeed)
+      str ("Seed: " ++ show c.genDict.defSeed)
       <=>
-      str (ppCoverage c._coverage)
+      str (ppCoverage c.coverage)
       <=>
-      str (ppCorpus c._corpus)
+      str (ppCorpus c.corpus)
   rightSide = fetchCacheWidget uiState.fetchedContracts uiState.fetchedSlots
 
 fetchCacheWidget
