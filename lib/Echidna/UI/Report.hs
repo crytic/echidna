@@ -14,7 +14,7 @@ import Echidna.Types (Gas)
 import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (CoverageMap, scoveragePoints)
-import Echidna.Types.Test (testEvents, testState, TestState(..), testType, TestType(..), testReproducer, testValue)
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
 import Echidna.Types.Config
 
@@ -136,17 +136,17 @@ ppTests Campaign { _tests = ts } = unlines . catMaybes <$> mapM pp ts
   pp t =
     case t.testType of
       PropertyTest n _ -> do
-        status <- ppTS t.testState t.testEvents t.testReproducer
+        status <- ppTS t.state t.events t.reproducer
         pure $ Just (T.unpack n <> ": " <> status)
       CallTest n _ -> do
-        status <- ppTS t.testState t.testEvents t.testReproducer
+        status <- ppTS t.state t.events t.reproducer
         pure $ Just (T.unpack n <> ": " <> status)
       AssertionTest _ s _ -> do
-        status <- ppTS t.testState t.testEvents t.testReproducer
+        status <- ppTS t.state t.events t.reproducer
         pure $ Just (T.unpack (encodeSig s) <> ": " <> status)
       OptimizationTest n _ -> do
-        status <- ppOPT t.testState t.testEvents t.testReproducer
-        pure $ Just (T.unpack n <> ": max value: " <> show t.testValue <> "\n" <> status)
+        status <- ppOPT t.state t.events t.reproducer
+        pure $ Just (T.unpack n <> ": max value: " <> show t.value <> "\n" <> status)
       Exploration -> pure Nothing
 
 -- | Given a number of boxes checked and a number of total boxes, pretty-print progress in box-checking.

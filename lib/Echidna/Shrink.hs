@@ -26,28 +26,27 @@ shrinkTest :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
 shrinkTest vm test = do
   sl <- asks (.cfg.campaignConf.shrinkLimit)
   dappInfo <- asks (.dapp)
-  let x = test.testReproducer
-  case test.testState of
+  case test.state of
     Large i | i >= sl ->
-      pure $ test { testState = Solved, testReproducer = x }
+      pure $ test { state = Solved }
     Large i ->
-      if length x > 1 || any canShrinkTx x then do
-        maybeShrunk <- evalStateT (shrinkSeq (checkETest test) test.testValue x) vm
+      if length test.reproducer > 1 || any canShrinkTx test.reproducer then do
+        maybeShrunk <- evalStateT (shrinkSeq (checkETest test) test.value test.reproducer) vm
         pure $ case maybeShrunk of
           Just (txs, val, vm') -> do
-            test { testState = Large (i + 1)
-                 , testReproducer = txs
-                 , testEvents = extractEvents False dappInfo vm'
-                 , testResult = getResultFromVM vm'
-                 , testValue = val }
+            test { state = Large (i + 1)
+                 , reproducer = txs
+                 , events = extractEvents False dappInfo vm'
+                 , result = getResultFromVM vm'
+                 , value = val }
           Nothing ->
             -- No success with shrinking this time, just bump trials
-            test { testState = Large (i + 1) }
+            test { state = Large (i + 1) }
       else
-        pure $ test { testState = if isOptimizationTest test.testType
+        pure $ test { state = if isOptimizationTest test.testType
                                      then Large (i + 1)
                                      else Solved
-                    , testReproducer = x }
+                    }
     _ -> pure test
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
