@@ -147,7 +147,7 @@ checkConstructorConditions fp as = testCase fp $ do
 
 getResult :: Text -> Campaign -> Maybe EchidnaTest
 getResult n c =
-  case filter findTest c._tests of
+  case filter findTest c.tests of
     []  -> Nothing
     [x] -> Just x
     _   -> error "found more than one tests"
@@ -201,7 +201,7 @@ solvedWithout :: TxCall -> Text -> Campaign -> Bool
 solvedWithout tx t = maybe False (all $ (/= tx) . (.call)) . solnFor t
 
 getGas :: Text -> Campaign -> Maybe (Gas, [Tx])
-getGas t camp = lookup t camp._gasInfo
+getGas t camp = lookup t camp.gasInfo
 
 gasInRange :: Text -> Gas -> Gas -> Campaign -> Bool
 gasInRange t l h c = case getGas t c of
@@ -209,7 +209,7 @@ gasInRange t l h c = case getGas t c of
   _           -> False
 
 countCorpus :: Int -> Campaign -> Bool
-countCorpus n c = length c._corpus == n
+countCorpus n c = length c.corpus == n
 
 coverageEmpty :: Campaign -> Bool
-coverageEmpty c = c._coverage == empty
+coverageEmpty c = c.coverage == empty

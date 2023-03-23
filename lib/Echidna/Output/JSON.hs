@@ -97,10 +97,10 @@ encodeCampaign :: C.Campaign -> ByteString
 encodeCampaign C.Campaign{..} = encode
   Campaign { _success = True
            , _error = Nothing
-           , _tests = mapTest <$> _tests
-           , seed = _genDict.defSeed
-           , coverage = mapKeys (("0x" ++) . (`showHex` "") . keccak') $ DF.toList <$>_coverage
-           , gasInfo = toList _gasInfo
+           , _tests = mapTest <$> tests
+           , seed = genDict.defSeed
+           , coverage = mapKeys (("0x" ++) . (`showHex` "") . keccak') $ DF.toList <$> coverage
+           , gasInfo = toList gasInfo
            }
 
 mapTest :: EchidnaTest -> Test
