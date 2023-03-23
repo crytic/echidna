@@ -129,7 +129,7 @@ main = withUtf8 $ withCP65001 $ do
           pure ()
 
       measureIO cfg.solConf.quiet "Saving test reproducers" $
-        saveTxs (dir </> "reproducers") (filter (not . null) $ (.testReproducer) <$> campaign._tests)
+        saveTxs (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> campaign._tests)
       measureIO cfg.solConf.quiet "Saving corpus" $
         saveTxs (dir </> "coverage") (snd <$> Set.toList campaign._corpus)
 

@@ -64,7 +64,7 @@ isDone c = do
       res (Large i)   = if i >= conf.shrinkLimit then Just False else Nothing
       res Solved      = Just False
       res (Failed _)  = Just False
-  let testResults = res . (.testState) <$> c._tests
+  let testResults = res . (.state) <$> c._tests
   let done = if conf.stopOnFail then Just False `elem` testResults
                                 else all isJust testResults
   pure done
@@ -73,7 +73,7 @@ isDone c = do
 -- success or a failure.
 isSuccessful :: Campaign -> Bool
 isSuccessful Campaign{_tests} =
-  all (\case { Passed -> True; Open _ -> True; _ -> False; }) ((.testState) <$> _tests)
+  all (\case { Passed -> True; Open _ -> True; _ -> False; }) ((.state) <$> _tests)
 
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
 -- of transactions and the state after evaluation, see if:
@@ -87,10 +87,10 @@ updateTest :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
 updateTest vmForShrink (vm, xs) test = do
   limit <- asks (.cfg.campaignConf.testLimit)
   dappInfo <- asks (.dapp)
-  case test.testState of
+  case test.state of
     Open i | i > limit -> case test.testType of
-      OptimizationTest _ _ -> pure $ test { testState = Large (-1) }
-      _                    -> pure $ test { testState = Passed }
+      OptimizationTest _ _ -> pure $ test { state = Large (-1) }
+      _                    -> pure $ test { state = Passed }
     Open i -> do
       (testValue, vm') <- evalStateT (checkETest test) vm
       let events = extractEvents False dappInfo vm'
@@ -278,7 +278,7 @@ campaign u vm world ts dict initialCorpus = do
   execStateT (evalRandT (lift u >> runCampaign) (mkStdGen effectiveSeed)) camp
   where
     memo = makeBytecodeCache . map (forceBuf . (^. bytecode)) . Map.elems
-    runCampaign = gets (fmap (.testState) . (._tests)) >>= update
+    runCampaign = gets (fmap (.state) . (._tests)) >>= update
     update c = do
       CampaignConf{testLimit, stopOnFail, seqLen, shrinkLimit} <- asks (.cfg.campaignConf)
       Campaign{_ncallseqs} <- get

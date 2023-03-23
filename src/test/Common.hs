@@ -161,7 +161,7 @@ getResult n c =
 
 optnFor :: Text -> Campaign -> Maybe TestValue
 optnFor n c = case getResult n c of
-  Just t -> Just t.testValue
+  Just t -> Just t.value
   _      -> Nothing
 
 optimized :: Text -> Int256 -> Campaign -> Bool
@@ -172,7 +172,7 @@ optimized n v c = case optnFor n c of
 
 solnFor :: Text -> Campaign -> Maybe [Tx]
 solnFor n c = case getResult n c of
-  Just t -> if null t.testReproducer then Nothing else Just t.testReproducer
+  Just t -> if null t.reproducer then Nothing else Just t.reproducer
   _      -> Nothing
 
 solved :: Text -> Campaign -> Bool
