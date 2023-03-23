@@ -46,7 +46,7 @@ import EVM.Types (Addr, keccak', W256)
 import Echidna
 import Echidna.Config
 import Echidna.Types.Buffer (forceBuf)
-import Echidna.Types.Campaign hiding (corpus)
+import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Solidity
 import Echidna.Types.Test (TestMode, EchidnaTest(..))
@@ -129,9 +129,9 @@ main = withUtf8 $ withCP65001 $ do
           pure ()
 
       measureIO cfg.solConf.quiet "Saving test reproducers" $
-        saveTxs (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> campaign._tests)
+        saveTxs (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> campaign.tests)
       measureIO cfg.solConf.quiet "Saving corpus" $
-        saveTxs (dir </> "coverage") (snd <$> Set.toList campaign._corpus)
+        saveTxs (dir </> "coverage") (snd <$> Set.toList campaign.corpus)
 
       -- TODO: Add another option to config for saving coverage report
 
@@ -147,14 +147,14 @@ main = withUtf8 $ withCP65001 $ do
             case r of
               Just (externalSourceCache, solcContract) -> do
                 let dir' = dir </> show addr
-                saveCoverage False runId dir' externalSourceCache [solcContract] campaign._coverage
-                saveCoverage True  runId dir' externalSourceCache [solcContract] campaign._coverage
+                saveCoverage False runId dir' externalSourceCache [solcContract] campaign.coverage
+                saveCoverage True  runId dir' externalSourceCache [solcContract] campaign.coverage
               Nothing -> pure ()
           Nothing -> pure ()
 
       -- save source coverage reports
-      saveCoverage False runId dir sourceCache contracts campaign._coverage
-      saveCoverage True  runId dir sourceCache contracts campaign._coverage
+      saveCoverage False runId dir sourceCache contracts campaign.coverage
+      saveCoverage True  runId dir sourceCache contracts campaign.coverage
 
   if isSuccessful campaign then exitSuccess else exitWith (ExitFailure 1)
 

@@ -24,9 +24,9 @@ ppCampaign :: MonadReader EConfig m => Campaign -> m String
 ppCampaign campaign = do
   testsPrinted <- ppTests campaign
   gasInfoPrinted <- ppGasInfo campaign
-  let coveragePrinted = ppCoverage campaign._coverage
-      corpusPrinted = "\n" <> ppCorpus campaign._corpus
-      seedPrinted = "\nSeed: " <> show campaign._genDict.defSeed
+  let coveragePrinted = ppCoverage campaign.coverage
+      corpusPrinted = "\n" <> ppCorpus campaign.corpus
+      seedPrinted = "\nSeed: " <> show campaign.genDict.defSeed
   pure $
     testsPrinted
     <> gasInfoPrinted
@@ -65,9 +65,9 @@ ppCorpus c = "Corpus size: " <> show (corpusSize c)
 
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
 ppGasInfo :: MonadReader EConfig m => Campaign -> m String
-ppGasInfo Campaign { _gasInfo } | _gasInfo == mempty = pure ""
-ppGasInfo Campaign { _gasInfo } = do
-  items <- mapM ppGasOne $ sortOn (\(_, (n, _)) -> n) $ toList _gasInfo
+ppGasInfo Campaign { gasInfo } | gasInfo == mempty = pure ""
+ppGasInfo Campaign { gasInfo } = do
+  items <- mapM ppGasOne $ sortOn (\(_, (n, _)) -> n) $ toList gasInfo
   pure $ intercalate "" items
 
 -- | Pretty-print the gas usage for a function.
@@ -131,7 +131,7 @@ ppOptimized b es xs = do
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: MonadReader EConfig m => Campaign -> m String
-ppTests Campaign { _tests = ts } = unlines . catMaybes <$> mapM pp ts
+ppTests Campaign { tests } = unlines . catMaybes <$> mapM pp tests
   where
   pp t =
     case t.testType of

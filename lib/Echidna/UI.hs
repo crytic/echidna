@@ -213,12 +213,12 @@ isTerminal = (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 -- | Composes a compact text status line of the campaign
 statusLine :: CampaignConf -> Campaign -> String
 statusLine campaignConf camp =
-  "tests: " <> show (length $ filter didFail camp._tests) <> "/" <> show (length camp._tests)
+  "tests: " <> show (length $ filter didFail camp.tests) <> "/" <> show (length camp.tests)
   <> ", fuzzing: " <> show fuzzRuns <> "/" <> show campaignConf.testLimit
-  <> ", cov: " <> show (scoveragePoints camp._coverage)
-  <> ", corpus: " <> show (corpusSize camp._corpus)
+  <> ", cov: " <> show (scoveragePoints camp.coverage)
+  <> ", corpus: " <> show (corpusSize camp.corpus)
   where
-  fuzzRuns = case filter isOpen camp._tests of
+  fuzzRuns = case filter isOpen camp.tests of
     -- fuzzing progress is the same for all Open tests, grab the first one
     EchidnaTest { state = Open t }:_ -> t
     _ -> campaignConf.testLimit

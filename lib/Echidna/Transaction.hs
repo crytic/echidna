@@ -48,7 +48,7 @@ genTx :: (MonadRandom m, MonadState Campaign m)
   -> Map Addr Contract
   -> m Tx
 genTx memo world txConf deployedContracts = do
-  genDict <- gets (._genDict)
+  genDict <- gets (.genDict)
   sigMap <- getSignatures world.highSignatureMap world.lowSignatureMap
   sender <- rElem' world.senders
   (dstAddr, dstAbis) <- rElem' $ Set.fromList $
