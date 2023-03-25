@@ -1,5 +1,4 @@
 {-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE GADTs #-}
 
 module Echidna.Campaign where
@@ -59,12 +58,13 @@ isDone c | null c.tests = do
   pure $ c.ncallseqs * conf.seqLen >= conf.testLimit
 isDone c = do
   conf <- asks (.campaignConf)
-  let res (Open  i)   = if i >= conf.testLimit then Just True else Nothing
-      res Passed      = Just True
-      res (Large i)   = if i >= conf.shrinkLimit then Just False else Nothing
-      res Solved      = Just False
-      res (Failed _)  = Just False
-  let testResults = res . (.state) <$> c.tests
+  let result = \case
+        Open i   -> if i >= conf.testLimit then Just True else Nothing
+        Passed   -> Just True
+        Large i  -> if i >= conf.shrinkLimit then Just False else Nothing
+        Solved   -> Just False
+        Failed _ -> Just False
+  let testResults = result . (.state) <$> c.tests
   let done = if conf.stopOnFail then Just False `elem` testResults
                                 else all isJust testResults
   pure done
