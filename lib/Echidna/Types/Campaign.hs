@@ -3,7 +3,7 @@ module Echidna.Types.Campaign where
 import Data.Map (Map)
 import Data.Text (Text)
 
-import Echidna.ABI (GenDict, defaultDict)
+import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
 import Echidna.Types.Corpus
 import Echidna.Types.Coverage (CoverageMap)
@@ -54,7 +54,7 @@ data Campaign = Campaign
   }
 
 defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty mempty defaultDict False mempty 0
+defaultCampaign = Campaign mempty mempty mempty emptyDict False mempty 0
 
 defaultTestLimit :: Int
 defaultTestLimit = 50000
