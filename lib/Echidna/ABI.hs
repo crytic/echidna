@@ -107,15 +107,15 @@ hashSig = abiKeccak . TE.encodeUtf8
 data GenDict = GenDict
   { pSynthA    :: Float
     -- ^ Fraction of time to use dictionary vs. synthesize
-  , constants  :: HashMap AbiType (Set AbiValue)
+  , constants  :: !(HashMap AbiType (Set AbiValue))
     -- ^ Constants to use, sorted by type
-  , wholeCalls :: HashMap SolSignature (Set SolCall)
+  , wholeCalls :: !(HashMap SolSignature (Set SolCall))
     -- ^ Whole calls to use, sorted by type
   , defSeed    :: Int
     -- ^ Default seed to use if one is not provided in EConfig
   , rTypes     :: Text -> Maybe AbiType
     -- ^ Return types of any methods we scrape return values from
-  , dictValues :: Set W256
+  , dictValues :: !(Set W256)
     -- ^ A set of int/uint constants for better performance
   }
 
