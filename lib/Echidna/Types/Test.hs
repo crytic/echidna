@@ -30,10 +30,10 @@ data TestConf = TestConf
 -- | State of a particular Echidna test. N.B.: 'Solved' means a falsifying
 -- call sequence was found.
 data TestState
-  = Open Int  -- ^ Maybe solvable, tracking attempts already made
-  | Large Int -- ^ Solved, maybe shrinable, tracking shrinks tried
-  | Passed    -- ^ Presumed unsolvable
-  | Solved    -- ^ Solved with no need for shrinking
+  = Open !Int  -- ^ Maybe solvable, tracking attempts already made
+  | Large !Int -- ^ Solved, maybe shrinable, tracking shrinks tried
+  | Passed     -- ^ Presumed unsolvable
+  | Solved     -- ^ Solved with no need for shrinking
   | Failed ExecException -- ^ Broke the execution environment
   deriving Show
 
