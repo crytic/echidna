@@ -54,7 +54,7 @@ prepareContract env contracts solFiles specifiedContract seed = do
                                  funs
 
   -- run processors
-  slitherInfo <- runSlither (NE.head solFiles) solConf.cryticArgs
+  slitherInfo <- runSlither (NE.head solFiles) solConf
   case find (< minSupportedSolcVersion) slitherInfo.solcVersions of
     Just outdatedVersion -> throwM $ OutdatedSolcVersion outdatedVersion
     Nothing -> pure ()
@@ -70,7 +70,8 @@ prepareContract env contracts solFiles specifiedContract seed = do
                   <> deployedAddresses
 
   let dict = mkGenDict env.cfg.campaignConf.dictFreq
-                       constants
+                       -- make sure we don't use cheat codes to form fuzzing call sequences
+                       (Set.delete (AbiAddress cheatCode) constants)
                        Set.empty
                        seed
                        (returnTypes contracts)

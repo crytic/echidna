@@ -21,5 +21,5 @@ seedTests =
             & overrideQuiet
           gen s = do
             camp <- runContract "basic/flags.sol" Nothing (cfg s)
-            pure camp._tests
+            pure camp.tests
           same s t = (==) <$> gen s <*> gen t

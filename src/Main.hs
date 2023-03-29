@@ -4,7 +4,7 @@
 module Main where
 
 import Control.Lens (view)
-import Control.Monad (unless)
+import Control.Monad (unless, forM_)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
 import Data.Aeson (ToJSON, FromJSON, ToJSONKey)
@@ -46,7 +46,7 @@ import EVM.Types (Addr, keccak', W256)
 import Echidna
 import Echidna.Config
 import Echidna.Types.Buffer (forceBuf)
-import Echidna.Types.Campaign hiding (corpus)
+import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Solidity
 import Echidna.Types.Test (TestMode, EchidnaTest(..))
@@ -56,6 +56,7 @@ import Echidna.UI
 import Echidna.Output.Source
 import Echidna.Output.Corpus
 import Echidna.Solidity (compileContracts, selectSourceCache)
+import Echidna.Utility (measureIO)
 import Etherscan qualified
 
 main :: IO ()
@@ -66,7 +67,7 @@ main = withUtf8 $ withCP65001 $ do
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
   let cfg = overrideConfig loadedCfg opts
   unless cfg.solConf.quiet $
-    mapM_ (hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString) ks
+    forM_ ks $ hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString
 
   -- Try to load the persisted RPC cache. TODO: we use the corpus dir for now,
   -- think where to place it
@@ -127,8 +128,10 @@ main = withUtf8 $ withCP65001 $ do
         Nothing ->
           pure ()
 
-      saveTxs (dir </> "reproducers") (filter (not . null) $ (.testReproducer) <$> campaign._tests)
-      saveTxs (dir </> "coverage") (snd <$> Set.toList campaign._corpus)
+      measureIO cfg.solConf.quiet "Saving test reproducers" $
+        saveTxs (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> campaign.tests)
+      measureIO cfg.solConf.quiet "Saving corpus" $
+        saveTxs (dir </> "coverage") (snd <$> Set.toList campaign.corpus)
 
       -- TODO: Add another option to config for saving coverage report
 
@@ -137,21 +140,21 @@ main = withUtf8 $ withCP65001 $ do
       -- as it orders the runs chronologically.
       runId <- fromIntegral . systemSeconds <$> getSystemTime
 
-      mapM_ (\(addr, mc) ->
+      forM_ (Map.toList contractsCache) $ \(addr, mc) ->
         case mc of
           Just contract -> do
             r <- externalSolcContract addr contract
             case r of
               Just (externalSourceCache, solcContract) -> do
                 let dir' = dir </> show addr
-                saveCoverage False runId dir' externalSourceCache [solcContract] campaign._coverage
-                saveCoverage True  runId dir' externalSourceCache [solcContract] campaign._coverage
+                saveCoverage False runId dir' externalSourceCache [solcContract] campaign.coverage
+                saveCoverage True  runId dir' externalSourceCache [solcContract] campaign.coverage
               Nothing -> pure ()
-          Nothing -> pure ()) (Map.toList contractsCache)
+          Nothing -> pure ()
 
       -- save source coverage reports
-      saveCoverage False runId dir sourceCache contracts campaign._coverage
-      saveCoverage True  runId dir sourceCache contracts campaign._coverage
+      saveCoverage False runId dir sourceCache contracts campaign.coverage
+      saveCoverage True  runId dir sourceCache contracts campaign.coverage
 
   if isSuccessful campaign then exitSuccess else exitWith (ExitFailure 1)
 
@@ -220,9 +223,6 @@ toFetchedContractData contract =
     }
 
 instance ToJSONKey W256 where
-  toJSONKey = toJSONKeyText (Text.pack . show)
-
-instance ToJSONKey Addr where
   toJSONKey = toJSONKeyText (Text.pack . show)
 
 readFileIfExists :: FilePath -> IO (Maybe BS.ByteString)

@@ -14,7 +14,7 @@ import Echidna.Types (Gas)
 import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (CoverageMap, scoveragePoints)
-import Echidna.Types.Test (testEvents, testState, TestState(..), testType, TestType(..), testReproducer, testValue)
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
 import Echidna.Types.Config
 
@@ -24,9 +24,9 @@ ppCampaign :: MonadReader EConfig m => Campaign -> m String
 ppCampaign campaign = do
   testsPrinted <- ppTests campaign
   gasInfoPrinted <- ppGasInfo campaign
-  let coveragePrinted = ppCoverage campaign._coverage
-      corpusPrinted = "\n" <> ppCorpus campaign._corpus
-      seedPrinted = "\nSeed: " <> show campaign._genDict.defSeed
+  let coveragePrinted = ppCoverage campaign.coverage
+      corpusPrinted = "\n" <> ppCorpus campaign.corpus
+      seedPrinted = "\nSeed: " <> show campaign.genDict.defSeed
   pure $
     testsPrinted
     <> gasInfoPrinted
@@ -65,9 +65,9 @@ ppCorpus c = "Corpus size: " <> show (corpusSize c)
 
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
 ppGasInfo :: MonadReader EConfig m => Campaign -> m String
-ppGasInfo Campaign { _gasInfo } | _gasInfo == mempty = pure ""
-ppGasInfo Campaign { _gasInfo } = do
-  items <- mapM ppGasOne $ sortOn (\(_, (n, _)) -> n) $ toList _gasInfo
+ppGasInfo Campaign { gasInfo } | gasInfo == mempty = pure ""
+ppGasInfo Campaign { gasInfo } = do
+  items <- mapM ppGasOne $ sortOn (\(_, (n, _)) -> n) $ toList gasInfo
   pure $ intercalate "" items
 
 -- | Pretty-print the gas usage for a function.
@@ -131,22 +131,22 @@ ppOptimized b es xs = do
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: MonadReader EConfig m => Campaign -> m String
-ppTests Campaign { _tests = ts } = unlines . catMaybes <$> mapM pp ts
+ppTests Campaign { tests } = unlines . catMaybes <$> mapM pp tests
   where
   pp t =
     case t.testType of
       PropertyTest n _ -> do
-        status <- ppTS t.testState t.testEvents t.testReproducer
+        status <- ppTS t.state t.events t.reproducer
         pure $ Just (T.unpack n <> ": " <> status)
       CallTest n _ -> do
-        status <- ppTS t.testState t.testEvents t.testReproducer
+        status <- ppTS t.state t.events t.reproducer
         pure $ Just (T.unpack n <> ": " <> status)
       AssertionTest _ s _ -> do
-        status <- ppTS t.testState t.testEvents t.testReproducer
+        status <- ppTS t.state t.events t.reproducer
         pure $ Just (T.unpack (encodeSig s) <> ": " <> status)
       OptimizationTest n _ -> do
-        status <- ppOPT t.testState t.testEvents t.testReproducer
-        pure $ Just (T.unpack n <> ": max value: " <> show t.testValue <> "\n" <> status)
+        status <- ppOPT t.state t.events t.reproducer
+        pure $ Just (T.unpack n <> ": max value: " <> show t.value <> "\n" <> status)
       Exploration -> pure Nothing
 
 -- | Given a number of boxes checked and a number of total boxes, pretty-print progress in box-checking.

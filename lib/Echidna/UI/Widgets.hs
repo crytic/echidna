@@ -78,13 +78,13 @@ campaignStatus uiState = do
       pure $ mainbox (padLeft (Pad 1) $
         withAttr (attrName "failure") $ strBreak $ formatCrashReport e) emptyWidget
     (Timedout, _) ->
-      mainbox <$> testsWidget uiState.campaign._tests
+      mainbox <$> testsWidget uiState.campaign.tests
               <*> pure (finalStatus "Timed out, C-c or esc to exit")
     (_, True) ->
-      mainbox <$> testsWidget uiState.campaign._tests
+      mainbox <$> testsWidget uiState.campaign.tests
               <*> pure (finalStatus "Campaign complete, C-c or esc to exit")
     _ ->
-      mainbox <$> testsWidget uiState.campaign._tests
+      mainbox <$> testsWidget uiState.campaign.tests
               <*> pure emptyWidget
   where
     mainbox :: Widget Name -> Widget Name -> Widget Name
@@ -116,13 +116,13 @@ summaryWidget uiState =
   leftSide =
     let c = uiState.campaign in
     padLeft (Pad 1) $
-      vLimit 1 (str "Tests found: " <+> str (show (length c._tests)) <+> fill ' ')
+      vLimit 1 (str "Tests found: " <+> str (show (length c.tests)) <+> fill ' ')
       <=>
-      str ("Seed: " ++ show c._genDict.defSeed)
+      str ("Seed: " ++ show c.genDict.defSeed)
       <=>
-      str (ppCoverage c._coverage)
+      str (ppCoverage c.coverage)
       <=>
-      str (ppCorpus c._corpus)
+      str (ppCorpus c.corpus)
   rightSide = fetchCacheWidget uiState.fetchedContracts uiState.fetchedSlots
 
 fetchCacheWidget
@@ -159,8 +159,8 @@ fetchedDialogWidget uiState =
 
 
 failedFirst :: EchidnaTest -> EchidnaTest -> Ordering
-failedFirst t1 _ | didFailed t1 = LT
-                 | otherwise   = GT
+failedFirst t1 _ | didFail t1 = LT
+                 | otherwise  = GT
 
 testsWidget :: MonadReader EConfig m => [EchidnaTest] -> m (Widget Name)
 testsWidget tests' =
@@ -172,17 +172,16 @@ testsWidget tests' =
     traverse testWidget (sortBy failedFirst tests')
 
 testWidget :: MonadReader EConfig m => EchidnaTest -> m (Widget Name)
-testWidget etest =
- case etest.testType of
-      Exploration           -> widget tsWidget "exploration" ""
-      PropertyTest n _      -> widget tsWidget n ""
-      OptimizationTest n _  -> widget optWidget n "optimizing "
-      AssertionTest _ s _   -> widget tsWidget (encodeSig s) "assertion in "
-      CallTest n _          -> widget tsWidget n ""
-
+testWidget test =
+  case test.testType of
+    Exploration          -> widget tsWidget "exploration" ""
+    PropertyTest n _     -> widget tsWidget n ""
+    OptimizationTest n _ -> widget optWidget n "optimizing "
+    AssertionTest _ s _  -> widget tsWidget (encodeSig s) "assertion in "
+    CallTest n _         -> widget tsWidget n ""
   where
   widget f n infront = do
-    (status, details) <- f (etest.testState) etest
+    (status, details) <- f test.state test
     pure $ padLeft (Pad 1) $
       str infront <+> name n <+> str ": " <+> status
       <=> padTop (Pad 1) details
@@ -191,7 +190,7 @@ testWidget etest =
 tsWidget :: MonadReader EConfig m
          => TestState -> EchidnaTest -> m (Widget Name, Widget Name)
 tsWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
-tsWidget Solved     t = failWidget Nothing t.testReproducer t.testEvents t.testValue t.testResult
+tsWidget Solved     t = failWidget Nothing t.reproducer t.events t.value t.result
 tsWidget Passed     _ = pure (withAttr (attrName "success") $ str "PASSED!", emptyWidget)
 tsWidget (Open i)   t = do
   n <- asks (.campaignConf.testLimit)
@@ -201,7 +200,7 @@ tsWidget (Open i)   t = do
     pure (withAttr (attrName "working") $ str $ "fuzzing " ++ progress i n, emptyWidget)
 tsWidget (Large n)  t = do
   m <- asks (.campaignConf.shrinkLimit)
-  failWidget (if n < m then Just (n,m) else Nothing) t.testReproducer t.testEvents t.testValue t.testResult
+  failWidget (if n < m then Just (n,m) else Nothing) t.reproducer t.events t.value t.result
 
 titleWidget :: Widget n
 titleWidget = str "Call sequence" <+> str ":"
@@ -227,17 +226,17 @@ optWidget :: MonadReader EConfig m
           => TestState -> EchidnaTest -> m (Widget Name, Widget Name)
 optWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 optWidget Solved     _ = error "optimization tests cannot be solved"
-optWidget Passed     t = pure (str $ "max value found: " ++ show t.testValue, emptyWidget)
+optWidget Passed     t = pure (str $ "max value found: " ++ show t.value, emptyWidget)
 optWidget (Open i)   t = do
   n <- asks (.campaignConf.testLimit)
   if i >= n then
     optWidget Passed t
   else
     pure (withAttr (attrName "working") $ str $ "optimizing " ++ progress i n
-      ++ ", current max value: " ++ show t.testValue, emptyWidget)
+      ++ ", current max value: " ++ show t.value, emptyWidget)
 optWidget (Large n)  t = do
   m <- asks (.campaignConf.shrinkLimit)
-  maxWidget (if n < m then Just (n,m) else Nothing) t.testReproducer t.testEvents t.testValue
+  maxWidget (if n < m then Just (n,m) else Nothing) t.reproducer t.events t.value
 
 maxWidget :: MonadReader EConfig m
            => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> m (Widget Name, Widget Name)

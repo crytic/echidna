@@ -19,8 +19,8 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (pack, isSuffixOf)
 import System.Directory (findExecutable)
-import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit (ExitCode(..))
+import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import Text.Read (readMaybe)
 
 import EVM.ABI (AbiValue(..))
@@ -28,6 +28,8 @@ import EVM.Types (Addr(..))
 
 import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
 import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
+import Echidna.Types.Solidity (SolConf(..))
+import Echidna.Utility (measureIO)
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
 -- instance for more detailed explanations.
@@ -37,7 +39,7 @@ data ProcException = ProcessorFailure String String
 instance Show ProcException where
   show = \case
     ProcessorFailure p e -> "Error running " ++ p ++ ":\n" ++ e
-    ProcessorNotFound p e -> "Cannot find " ++ p ++ "in PATH.\n" ++ e
+    ProcessorNotFound p e -> "Cannot find " ++ p ++ " in PATH.\n" ++ e
 
 instance Exception ProcException
 
@@ -122,14 +124,15 @@ instance FromJSON SlitherInfo where
           _ -> pure Nothing
 
 -- Slither processing
-runSlither :: FilePath -> [String] -> IO SlitherInfo
-runSlither fp extraArgs = if ".vy" `isSuffixOf` pack fp then return noInfo else do
+runSlither :: FilePath -> SolConf -> IO SlitherInfo
+runSlither fp solConf = if ".vy" `isSuffixOf` pack fp then return noInfo else do
   mp <- findExecutable "slither"
   case mp of
     Nothing -> throwM $ ProcessorNotFound "slither" "You should install it using 'pip3 install slither-analyzer --user'"
     Just path -> do
-      let args = ["--ignore-compile", "--print", "echidna", "--json", "-"] ++ extraArgs ++ [fp]
-      (ec, out, err) <- readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
+      let args = ["--ignore-compile", "--print", "echidna", "--json", "-"] ++ solConf.cryticArgs ++ [fp]
+      (ec, out, err) <- measureIO solConf.quiet ("Running slither on " <> fp) $ do
+        readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
       case ec of
         ExitSuccess ->
           case eitherDecode (BSL.pack out) of

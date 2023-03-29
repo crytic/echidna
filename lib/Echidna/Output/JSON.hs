@@ -19,7 +19,7 @@ import Echidna.Types (Gas)
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Campaign qualified as C
 import Echidna.Types.Test qualified as T
-import Echidna.Types.Test (EchidnaTest, testState, testReproducer)
+import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 
 data Campaign = Campaign
@@ -97,17 +97,15 @@ encodeCampaign :: C.Campaign -> ByteString
 encodeCampaign C.Campaign{..} = encode
   Campaign { _success = True
            , _error = Nothing
-           , _tests = mapTest <$> _tests
-           , seed = _genDict.defSeed
-           , coverage = mapKeys (("0x" ++) . (`showHex` "") . keccak') $ DF.toList <$>_coverage
-           , gasInfo = toList _gasInfo
+           , _tests = mapTest <$> tests
+           , seed = genDict.defSeed
+           , coverage = mapKeys (("0x" ++) . (`showHex` "") . keccak') $ DF.toList <$> coverage
+           , gasInfo = toList gasInfo
            }
 
 mapTest :: EchidnaTest -> Test
-mapTest echidnaTest =
-  let tst = echidnaTest.testState
-      txs = echidnaTest.testReproducer
-      (status, transactions, err) = mapTestState tst txs in
+mapTest test =
+  let (status, transactions, err) = mapTestState test.state test.reproducer in
   Test { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
        , name = "name" --TODO add a proper name here
        , status = status

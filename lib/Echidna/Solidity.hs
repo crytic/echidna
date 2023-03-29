@@ -46,6 +46,7 @@ import Echidna.Types.Solidity
 import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx (basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp, initialBlockNumber)
 import Echidna.Types.World (World(..))
+import Echidna.Utility (measureIO)
 
 -- | Given a list of source caches (SourceCaches) and an optional contract name,
 -- select one that includes that contract (if possible). Otherwise, use the first source
@@ -88,8 +89,9 @@ compileContracts solConf fp = do
             stderr <- if solConf.quiet
                          then UseHandle <$> openFile nullFilePath WriteMode
                          else pure Inherit
-            (ec, out, err) <- readCreateProcessWithExitCode
-              (proc path $ (solConf.cryticArgs ++ solargs) |> x) {std_err = stderr} ""
+            (ec, out, err) <- measureIO solConf.quiet ("Compiling " <> x) $ do
+              readCreateProcessWithExitCode
+                (proc path $ (solConf.cryticArgs ++ solargs) |> x) {std_err = stderr} ""
             case ec of
               ExitSuccess -> readSolcBatch "crytic-export"
               ExitFailure _ -> throwM $ CompileFailure out err
@@ -148,7 +150,7 @@ filterMethods contractName (Blacklist ig) ms =
 
 -- | Filter methods with arguments, used for dapptest mode
 filterMethodsWithArgs :: NE.NonEmpty SolSignature -> NE.NonEmpty SolSignature
-filterMethodsWithArgs ms = case NE.filter (\(_, xs) -> not $ null xs) ms of
+filterMethodsWithArgs ms = case NE.filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ms of
                              [] -> error "No dapptest tests found"
                              fs -> NE.fromList fs
 

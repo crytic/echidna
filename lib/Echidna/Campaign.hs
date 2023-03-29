@@ -1,15 +1,14 @@
 {-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE GADTs #-}
 
 module Echidna.Campaign where
 
 import Control.Lens
-import Control.Monad (replicateM, when, unless)
+import Control.Monad (replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader (MonadReader, asks, liftIO)
-import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT, gets, MonadIO)
+import Control.Monad.State.Strict (MonadState(..), StateT(..), evalStateT, execStateT, gets, MonadIO, modify')
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Binary.Get (runGetOrFail)
@@ -19,12 +18,11 @@ import Data.IORef (readIORef, writeIORef)
 import Data.Map qualified as Map
 import Data.Map (Map, (\\))
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
-import Data.Ord (comparing)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import System.Random (mkStdGen)
 
-import EVM (Contract, VM(..), VMResult(..), bytecode)
+import EVM (Contract, VM(..), VMResult(..), bytecode, cheatCode)
 import EVM qualified (Env(..))
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (Addr, Expr(ConcreteBuf))
@@ -45,6 +43,7 @@ import Echidna.Types.Signature (makeBytecodeCache, MetadataCache)
 import Echidna.Types.Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), getResult, call)
 import Echidna.Types.World (World)
+import Echidna.Types.Corpus (Corpus)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -54,17 +53,18 @@ instance MonadCatch m => MonadCatch (RandT g m) where
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
 isDone :: MonadReader EConfig m => Campaign -> m Bool
-isDone c | null c._tests = do
+isDone c | null c.tests = do
   conf <- asks (.campaignConf)
-  pure $ c._ncallseqs * conf.seqLen >= conf.testLimit
+  pure $ c.ncallseqs * conf.seqLen >= conf.testLimit
 isDone c = do
   conf <- asks (.campaignConf)
-  let res (Open  i)   = if i >= conf.testLimit then Just True else Nothing
-      res Passed      = Just True
-      res (Large i)   = if i >= conf.shrinkLimit then Just False else Nothing
-      res Solved      = Just False
-      res (Failed _)  = Just False
-  let testResults = res . (.testState) <$> c._tests
+  let result = \case
+        Open i   -> if i >= conf.testLimit then Just True else Nothing
+        Passed   -> Just True
+        Large i  -> if i >= conf.shrinkLimit then Just False else Nothing
+        Solved   -> Just False
+        Failed _ -> Just False
+  let testResults = result . (.state) <$> c.tests
   let done = if conf.stopOnFail then Just False `elem` testResults
                                 else all isJust testResults
   pure done
@@ -72,8 +72,8 @@ isDone c = do
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
 isSuccessful :: Campaign -> Bool
-isSuccessful Campaign{_tests} =
-  all (\case { Passed -> True; Open _ -> True; _ -> False; }) ((.testState) <$> _tests)
+isSuccessful Campaign{tests} =
+  all (\case { Passed -> True; Open _ -> True; _ -> False; }) ((.state) <$> tests)
 
 -- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well as possibly a sequence
 -- of transactions and the state after evaluation, see if:
@@ -87,10 +87,10 @@ updateTest :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
 updateTest vmForShrink (vm, xs) test = do
   limit <- asks (.cfg.campaignConf.testLimit)
   dappInfo <- asks (.dapp)
-  case test.testState of
+  case test.state of
     Open i | i > limit -> case test.testType of
-      OptimizationTest _ _ -> pure $ test { testState = Large (-1) }
-      _                    -> pure $ test { testState = Passed }
+      OptimizationTest _ _ -> pure $ test { state = Large (-1) }
+      _                    -> pure $ test { state = Passed }
     Open i -> do
       (testValue, vm') <- evalStateT (checkETest test) vm
       let events = extractEvents False dappInfo vm'
@@ -105,7 +105,9 @@ updateTest vmForShrink (vm, xs) test = do
 -- | Given a rule for updating a particular test's state, apply it to each test in a 'Campaign'.
 runUpdate :: (MonadReader Env m, MonadState Campaign m)
           => (EchidnaTest -> m EchidnaTest) -> m ()
-runUpdate f = let l = tests in use l >>= mapM f >>= (l .=)
+runUpdate f = do
+  tests' <- mapM f =<< gets (.tests)
+  modify' $ \c -> c { tests = tests' }
 
 -- | Given an initial 'VM' state and a way to run transactions, evaluate a list of transactions, constantly
 -- checking if we've solved any tests or can shrink known solves.
@@ -139,26 +141,24 @@ updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 execTxOptC :: (MonadIO m, MonadReader Env m, MonadState (VM, Campaign) m, MonadThrow m)
            => Tx -> m (VMResult, Gas)
 execTxOptC tx = do
-  (vm, Campaign{_coverage = oldCov}) <- get
-  let cov = _2 . coverage
-  ((res, newCov), vm') <- runStateT (execTxWithCov tx) vm
-  _1 .= vm'
+  (vm, camp@Campaign{coverage = oldCov}) <- get
+  ((res, txCov), vm') <- runStateT (execTxWithCov tx) vm
   let vmr = getResult $ fst res
-  -- Update the coverage map with the proper binary according to the vm result
-  cov .= Map.mapWithKey (\_ s -> Set.map (set _4 vmr) s) newCov
-  -- Update the global coverage map with the union of the result just obtained
-  cov %= Map.unionWith Set.union oldCov
-  grew <- (== LT) . comparing coveragePoints oldCov <$> use cov
-  when grew $ do
-    case tx.call of
-      SolCall c -> _2 . genDict %= gaddCalls (Set.singleton c)
-      _ -> pure ()
-    _2 . newCoverage .= True
-  return res
+  -- Update the tx coverage map with the proper binary according to the vm result
+  let txCov' = Map.mapWithKey (\_ s -> Set.map (set _4 vmr) s) txCov
+  -- Update the global coverage map with the one from this tx run
+  let newCov = Map.unionWith Set.union oldCov txCov'
+  put (vm', camp { coverage = newCov })
+  when (coveragePoints oldCov < coveragePoints newCov) $ do
+    let dict' = case tx.call of
+          SolCall c -> gaddCalls (Set.singleton c) camp.genDict
+          _ -> camp.genDict
+    modify' $ \(_vm, c) -> (_vm, c { newCoverage = True, genDict = dict' })
+  pure res
 
 -- | Given a list of transactions in the corpus, save them discarding reverted transactions
-addToCorpus :: MonadState Campaign m => Int -> [(Tx, (VMResult, Gas))] -> m ()
-addToCorpus n res = unless (null rtxs) $ corpus %= Set.insert (n, rtxs)
+addToCorpus :: Int -> [(Tx, (VMResult, Gas))] -> Corpus -> Corpus
+addToCorpus n res corpus = if null rtxs then corpus else Set.insert (n, rtxs) corpus
   where rtxs = fst <$> res
 
 -- | Generate a new sequences of transactions, either using the corpus or with
@@ -178,9 +178,9 @@ randseq memo seqLen deployedContracts world = do
                          else seqMutatorsStateful (fromConsts mutConsts)
   -- Fetch the mutator
   let mut = getCorpusMutation cmut
-  if null camp._corpus
+  if null camp.corpus
     then pure randTxs -- Use the generated random transactions
-    else mut seqLen camp._corpus randTxs -- Apply the mutator
+    else mut seqLen camp.corpus randTxs -- Apply the mutator
 
 -- | Given an initial 'VM' and 'World' state and a number of calls to generate,
 -- generate that many calls, constantly checking if we've solved any tests or
@@ -199,40 +199,49 @@ callseq initialCorpus vm world seqLen = do
                              put (vm', ca)
                              pure r
   -- Then, we get the current campaign state
-  ca <- get
+  camp <- get
   -- Then, we generate the actual transaction in the sequence
   metaCacheRef <- asks (.metadataCache)
   metaCache <- liftIO $ readIORef metaCacheRef
-  txSeq <-
-    -- Replay transactions in the corpus during the first iterations
-    if length initialCorpus > ca._ncallseqs
-      then pure $ initialCorpus !! ca._ncallseqs
-      else randseq metaCache seqLen vm._env._contracts world
+  -- Replay transactions in the corpus during the first iterations
+  txSeq <- if length initialCorpus > camp.ncallseqs
+    then pure $ initialCorpus !! camp.ncallseqs
+    else randseq metaCache seqLen vm._env._contracts world
+
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
-  (res, (vm', camp)) <- runStateT (evalSeq vm ef txSeq) (vm, ca)
-  let -- compute the addresses not present in the old VM via set difference
-      diff = Map.keys $ vm'._env._contracts \\ vm._env._contracts
-      -- and construct a set to union to the constants table
-      diffs = H.fromList [(AbiAddressType, Set.fromList $ AbiAddress <$> diff)]
-  -- Save the global campaign state (also vm state, but that gets reset before it's used)
-  put camp -- Update the gas estimation
-  when conf.estimateGas $ gasInfo %= updateGasInfo res []
-  -- If there is new coverage, add the transaction list to the corpus
-  when camp._newCoverage $ addToCorpus (camp._ncallseqs + 1) res
-  -- Reset the new coverage flag
-  newCoverage .= False
-  -- Keep track of the number of calls to `callseq`
-  ncallseqs += 1
-  -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
-  types <- gets (._genDict.rTypes)
-  let results = parse (map (\(t, (vr, _)) -> (t, vr)) res) types
-      -- union the return results with the new addresses
-      additions = H.unionWith Set.union diffs results
-  -- append to the constants dictionary
-  let dict = camp._genDict
-  genDict .= dict
-    { constants = H.unionWith Set.union additions dict.constants
-    , dictValues = Set.union (mkDictValues $ Set.unions $ H.elems additions) dict.dictValues
+  (res, (vm', camp')) <- runStateT (evalSeq vm ef txSeq) (vm, camp)
+
+  let
+    -- compute the addresses not present in the old VM via set difference
+    newAddrs = Map.keys $ vm'._env._contracts \\ vm._env._contracts
+    -- and construct a set to union to the constants table
+    diffs = H.fromList [(AbiAddressType, Set.fromList $ AbiAddress <$> newAddrs)]
+    -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
+    results = parse (map (\(t, (vr, _)) -> (t, vr)) res) camp.genDict.rTypes
+    -- union the return results with the new addresses
+    additions = H.unionWith Set.union diffs results
+    -- append to the constants dictionary
+    updatedDict = camp.genDict
+      { constants = H.unionWith Set.union additions camp.genDict.constants
+      , dictValues = Set.union (mkDictValues $ Set.unions $ H.elems additions)
+                               camp.genDict.dictValues
+      }
+
+  -- Update the campaign state
+  put camp'
+    { genDict = updatedDict
+      -- Update the gas estimation
+    , gasInfo = if conf.estimateGas
+                   then updateGasInfo res [] camp.gasInfo
+                   else camp.gasInfo
+      -- If there is new coverage, add the transaction list to the corpus
+    , corpus = if camp'.newCoverage
+                  then addToCorpus (camp.ncallseqs + 1) res camp.corpus
+                  else camp.corpus
+      -- Reset the new coverage flag
+    , newCoverage = False
+      -- Keep track of the number of calls to `callseq`
+    , ncallseqs = camp.ncallseqs + 1
     }
   where
     -- Given a list of transactions and a return typing rule, this checks whether we know the return
@@ -246,7 +255,9 @@ callseq initialCorpus vm world seqLen = do
       case result of
         VMSuccess (ConcreteBuf buf) ->
           case runGetOrFail (getAbi type') (LBS.fromStrict buf) of
-            Right (_, _, abiValue) -> Just (type', Set.singleton abiValue)
+            -- make sure we don't use cheat codes to form fuzzing call sequences
+            Right (_, _, abiValue) | abiValue /= AbiAddress cheatCode ->
+              Just (type', Set.singleton abiValue)
             _ -> Nothing
         _ -> Nothing
 
@@ -276,17 +287,17 @@ campaign u vm world ts dict initialCorpus = do
   execStateT (evalRandT (lift u >> runCampaign) (mkStdGen effectiveSeed)) camp
   where
     memo = makeBytecodeCache . map (forceBuf . (^. bytecode)) . Map.elems
-    runCampaign = gets (fmap (.testState) . (._tests)) >>= update
-    update c = do
+    runCampaign = do
+      testStates <- gets (fmap (.state) . (.tests))
       CampaignConf{testLimit, stopOnFail, seqLen, shrinkLimit} <- asks (.cfg.campaignConf)
-      Campaign{_ncallseqs} <- get
-      if | stopOnFail && any (\case Solved -> True; Failed _ -> True; _ -> False) c ->
+      Campaign{ncallseqs} <- get
+      if | stopOnFail && any (\case Solved -> True; Failed _ -> True; _ -> False) testStates ->
            lift u
-         | any (\case Open  n   -> n <= testLimit; _ -> False) c ->
+         | any (\case Open n -> n <= testLimit; _ -> False) testStates ->
            callseq initialCorpus vm world seqLen >> step
-         | any (\case Large n   -> n < shrinkLimit; _ -> False) c ->
+         | any (\case Large n -> n < shrinkLimit; _ -> False) testStates ->
            step
-         | null c && (seqLen * _ncallseqs) <= testLimit ->
+         | null testStates && (seqLen * ncallseqs) <= testLimit ->
            callseq initialCorpus vm world seqLen >> step
          | otherwise ->
            lift u

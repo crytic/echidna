@@ -1,12 +1,9 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Echidna.Types.Campaign where
 
-import Control.Lens
 import Data.Map (Map)
 import Data.Text (Text)
 
-import Echidna.ABI (GenDict, defaultDict)
+import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
 import Echidna.Types.Corpus
 import Echidna.Types.Coverage (CoverageMap)
@@ -39,25 +36,25 @@ data CampaignConf = CampaignConf
   }
 
 -- | The state of a fuzzing campaign.
-data Campaign = Campaign { _tests       :: [EchidnaTest]
-                           -- ^ Tests being evaluated
-                         , _coverage    :: CoverageMap
-                           -- ^ Coverage captured (NOTE: we don't always record this)
-                         , _gasInfo     :: Map Text (Gas, [Tx])
-                           -- ^ Worst case gas (NOTE: we don't always record this)
-                         , _genDict     :: GenDict
-                           -- ^ Generation dictionary
-                         , _newCoverage :: Bool
-                           -- ^ Flag to indicate new coverage found
-                         , _corpus      :: Corpus
-                           -- ^ List of transactions with maximum coverage
-                         , _ncallseqs   :: Int
-                           -- ^ Number of times the callseq is called
-                         }
-makeLenses ''Campaign
+data Campaign = Campaign
+  { tests       :: ![EchidnaTest]
+    -- ^ Tests being evaluated
+  , coverage    :: !CoverageMap
+    -- ^ Coverage captured (NOTE: we don't always record this)
+  , gasInfo     :: !(Map Text (Gas, [Tx]))
+    -- ^ Worst case gas (NOTE: we don't always record this)
+  , genDict     :: !GenDict
+    -- ^ Generation dictionary
+  , newCoverage :: !Bool
+    -- ^ Flag to indicate new coverage found
+  , corpus      :: !Corpus
+    -- ^ List of transactions with maximum coverage
+  , ncallseqs   :: !Int
+    -- ^ Number of times the callseq is called
+  }
 
 defaultCampaign :: Campaign
-defaultCampaign = Campaign mempty mempty mempty defaultDict False mempty 0
+defaultCampaign = Campaign mempty mempty mempty emptyDict False mempty 0
 
 defaultTestLimit :: Int
 defaultTestLimit = 50000

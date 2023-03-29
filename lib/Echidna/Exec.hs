@@ -6,7 +6,7 @@ module Echidna.Exec where
 
 import Control.Lens
 import Control.Monad (when)
-import Control.Monad.Catch (MonadThrow(..))
+import Control.Monad.Catch (MonadThrow(..), catchAll, SomeException)
 import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO))
 import Control.Monad.Reader (MonadReader, asks)
 import Data.IORef (readIORef, atomicWriteIORef)
@@ -36,6 +36,7 @@ import Echidna.Types.Signature (MetadataCache, getBytecodeMetadata, lookupByteco
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
 import Echidna.Types.Solidity (SolConf(..))
+import Echidna.Utility (timePrefix)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
@@ -104,14 +105,11 @@ execTxWith l onErr executeTx tx = do
           Just Nothing ->
             l %= execState (continuation emptyAccount)
           Nothing -> do
-            -- TODO: temporary
-            operationMode <- asks (.cfg.uiConf.operationMode)
-            when (operationMode == NonInteractive Text) $ liftIO $ print q
             logMsg $ "INFO: Performing RPC: " <> show q
             getRpcUrl >>= \case
               Just rpcUrl -> do
                 rpcBlock <- getRpcBlock
-                ret <- liftIO $ EVM.Fetch.fetchContractFrom rpcBlock rpcUrl addr
+                ret <- liftIO $ safeFetchContractFrom rpcBlock rpcUrl addr
                 case ret of
                   -- TODO: fix hevm to not return an empty contract in case of an error
                   Just contract | contract._contractcode /= EVM.RuntimeCode (EVM.ConcreteRuntimeCode "") -> do
@@ -146,14 +144,11 @@ execTxWith l onErr executeTx tx = do
           Just (Just value) -> l %= execState (continuation value)
           Just Nothing -> l %= execState (continuation 0)
           Nothing -> do
-            -- TODO: temporary
-            operationMode <- asks (.cfg.uiConf.operationMode)
-            when (operationMode == NonInteractive Text) $ liftIO $ print q
             logMsg $ "INFO: Performing RPC: " <> show q
             getRpcUrl >>= \case
               Just rpcUrl -> do
                 rpcBlock <- getRpcBlock
-                ret <- liftIO $ EVM.Fetch.fetchSlotFrom rpcBlock rpcUrl addr slot
+                ret <- liftIO $ safeFetchSlotFrom rpcBlock rpcUrl addr slot
                 case ret of
                   Just value -> do
                     l %= execState (continuation value)
@@ -188,11 +183,24 @@ execTxWith l onErr executeTx tx = do
     getRpcUrl = liftIO $ do
       val <- lookupEnv "ECHIDNA_RPC_URL"
       pure (Text.pack <$> val)
+
     getRpcBlock = liftIO $ do
       -- TODO: Is the latest block a good default? It makes fuzzing hard to
       -- reproduce. Rethink this.
       val <- lookupEnv "ECHIDNA_RPC_BLOCK"
       pure $ maybe EVM.Fetch.Latest EVM.Fetch.BlockNumber (val >>= readMaybe)
+
+    -- TODO: temporary solution, handle errors gracefully
+    safeFetchContractFrom rpcBlock rpcUrl addr =
+      catchAll
+        (EVM.Fetch.fetchContractFrom rpcBlock rpcUrl addr)
+        (\(_e :: SomeException) -> pure $ Just emptyAccount)
+
+    -- TODO: temporary solution, handle errors gracefully
+    safeFetchSlotFrom rpcBlock rpcUrl addr slot =
+      catchAll
+        (EVM.Fetch.fetchSlotFrom rpcBlock rpcUrl addr slot)
+        (\(_e :: SomeException) -> pure $ Just 0)
 
   -- | Handles reverts, failures and contract creations that might be the result
   -- (`vmResult`) of executing transaction `tx`.
@@ -226,8 +234,9 @@ logMsg :: (MonadIO m, MonadReader Env m) => String -> m ()
 logMsg msg = do
   cfg <- asks (.cfg)
   operationMode <- asks (.cfg.uiConf.operationMode)
-  when (operationMode == NonInteractive Text && not cfg.solConf.quiet) $
-    liftIO $ putStrLn msg
+  when (operationMode == NonInteractive Text && not cfg.solConf.quiet) $ liftIO $ do
+    time <- timePrefix
+    putStrLn $ time <> msg
 
 -- | Execute a transaction "as normal".
 execTx :: (MonadIO m, MonadState VM m, MonadReader Env m, MonadThrow m) => Tx -> m (VMResult, Gas)
