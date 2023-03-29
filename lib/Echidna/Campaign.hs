@@ -3,6 +3,7 @@
 
 module Echidna.Campaign where
 
+import Control.DeepSeq (force)
 import Control.Lens
 import Control.Monad (replicateM, when)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
@@ -236,7 +237,7 @@ callseq initialCorpus vm world seqLen = do
                    else camp.gasInfo
       -- If there is new coverage, add the transaction list to the corpus
     , corpus = if camp'.newCoverage
-                  then addToCorpus (camp.ncallseqs + 1) res camp.corpus
+                  then force $ addToCorpus (camp.ncallseqs + 1) res camp.corpus
                   else camp.corpus
       -- Reset the new coverage flag
     , newCoverage = False
