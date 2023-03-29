@@ -18,6 +18,7 @@ dependencies:
   - containers
   - data-bword
   - data-dword
+  - deepseq
   - extra
   - directory
   - exceptions
