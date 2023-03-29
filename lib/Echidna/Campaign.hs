@@ -237,6 +237,7 @@ callseq initialCorpus vm world seqLen = do
                    else camp.gasInfo
       -- If there is new coverage, add the transaction list to the corpus
     , corpus = if camp'.newCoverage
+                  -- corpus is a bit too lazy, force the evaluation to reduce the memory usage
                   then force $ addToCorpus (camp.ncallseqs + 1) res camp.corpus
                   else camp.corpus
       -- Reset the new coverage flag
