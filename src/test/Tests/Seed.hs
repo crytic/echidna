@@ -6,7 +6,7 @@ import Test.Tasty.HUnit (testCase, assertBool)
 import Common (runContract, overrideQuiet)
 import Data.Function ((&))
 import Echidna.Types.Config (EConfig(..))
-import Echidna.Types.Campaign (Campaign(..), CampaignConf(..))
+import Echidna.Types.Campaign
 import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Config (defaultConfig)
 

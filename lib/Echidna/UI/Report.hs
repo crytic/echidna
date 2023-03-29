@@ -1,6 +1,6 @@
 module Echidna.UI.Report where
 
-import Control.Monad.Reader (MonadReader, asks)
+import Control.Monad.Reader (MonadReader, asks, MonadIO (liftIO))
 import Data.List (intercalate, nub, sortOn)
 import Data.Map (toList)
 import Data.Maybe (catMaybes)
@@ -13,19 +13,19 @@ import Echidna.Pretty (ppTxCall)
 import Echidna.Types (Gas)
 import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
-import Echidna.Types.Coverage (CoverageMap, scoveragePoints)
+import Echidna.Types.Coverage (CoverageMap, FrozenCoverageMap, scoveragePoints, scoveragePointsFrozen)
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
 import Echidna.Types.Config
 
 import EVM.Types (W256)
 
-ppCampaign :: MonadReader EConfig m => Campaign -> m String
+ppCampaign :: (MonadIO m, MonadReader Env m) => Campaign -> m String
 ppCampaign campaign = do
   testsPrinted <- ppTests campaign
   gasInfoPrinted <- ppGasInfo campaign
-  let coveragePrinted = ppCoverage campaign.coverage
-      corpusPrinted = "\n" <> ppCorpus campaign.corpus
+  coveragePrinted <- liftIO $ ppCoverage campaign.coverage
+  let corpusPrinted = "\n" <> ppCorpus campaign.corpus
       seedPrinted = "\nSeed: " <> show campaign.genDict.defSeed
   pure $
     testsPrinted
@@ -35,12 +35,12 @@ ppCampaign campaign = do
     <> seedPrinted
 
 -- | Given rules for pretty-printing associated address, and whether to print them, pretty-print a 'Transaction'.
-ppTx :: MonadReader EConfig m => Bool -> Tx -> m String
+ppTx :: MonadReader Env m => Bool -> Tx -> m String
 ppTx _ Tx { call = NoCall, delay } =
   pure $ "*wait*" <> ppDelay delay
 ppTx printName tx = do
-  names <- asks (.namesConf)
-  tGas  <- asks (.txConf.txGas)
+  names <- asks (.cfg.namesConf)
+  tGas  <- asks (.cfg.txConf.txGas)
   pure $
     ppTxCall tx.call
     <> (if not printName then "" else names Sender tx.src <> names Receiver tx.dst)
@@ -55,23 +55,32 @@ ppDelay (time, block) =
   <> (if block == 0 then "" else " Block delay: " <> show (toInteger block))
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
-ppCoverage :: CoverageMap -> String
-ppCoverage s = "Unique instructions: " <> show (scoveragePoints s)
-               <> "\nUnique codehashes: " <> show (length s)
+ppCoverage :: CoverageMap -> IO String
+ppCoverage s = do
+  points <- scoveragePoints s
+  pure $ ppCoverageCommon points (length s)
+
+ppFrozenCoverage :: FrozenCoverageMap -> String
+ppFrozenCoverage s = ppCoverageCommon (scoveragePointsFrozen s) (length s)
+
+ppCoverageCommon :: Int -> Int -> String
+ppCoverageCommon points ncodehashes =
+  "Unique instructions: " <> show points
+    <> "\nUnique codehashes: " <> show ncodehashes
 
 -- | Pretty-print the corpus a 'Campaign' has obtained.
 ppCorpus :: Corpus -> String
 ppCorpus c = "Corpus size: " <> show (corpusSize c)
 
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
-ppGasInfo :: MonadReader EConfig m => Campaign -> m String
+ppGasInfo :: MonadReader Env m => Campaign -> m String
 ppGasInfo Campaign { gasInfo } | gasInfo == mempty = pure ""
 ppGasInfo Campaign { gasInfo } = do
   items <- mapM ppGasOne $ sortOn (\(_, (n, _)) -> n) $ toList gasInfo
   pure $ intercalate "" items
 
 -- | Pretty-print the gas usage for a function.
-ppGasOne :: MonadReader EConfig m => (Text, (Gas, [Tx])) -> m String
+ppGasOne :: MonadReader Env m => (Text, (Gas, [Tx])) -> m String
 ppGasOne ("", _)      = pure ""
 ppGasOne (func, (gas, txs)) = do
   let header = "\n" <> unpack func <> " used a maximum of " <> show gas <> " gas\n"
@@ -80,7 +89,7 @@ ppGasOne (func, (gas, txs)) = do
   pure $ header <> unlines (("    " <>) <$> prettyTxs)
 
 -- | Pretty-print the status of a solved test.
-ppFail :: MonadReader EConfig m => Maybe (Int, Int) -> Events -> [Tx] -> m String
+ppFail :: MonadReader Env m => Maybe (Int, Int) -> Events -> [Tx] -> m String
 ppFail _ _ []  = pure "failed with no transactions made ⁉️  "
 ppFail b es xs = do
   let status = case b of
@@ -96,29 +105,29 @@ ppEvents es = if null es then "" else "Event sequence: " <> T.unpack (T.intercal
 
 -- | Pretty-print the status of a test.
 
-ppTS :: MonadReader EConfig m => TestState -> Events -> [Tx] -> m String
+ppTS :: MonadReader Env m => TestState -> Events -> [Tx] -> m String
 ppTS (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
 ppTS Solved     es l = ppFail Nothing es l
 ppTS Passed     _ _  = pure " passed! 🎉"
 ppTS (Open i)   es [] = do
-  t <- asks (.campaignConf.testLimit)
+  t <- asks (.cfg.campaignConf.testLimit)
   if i >= t then ppTS Passed es [] else pure $ " fuzzing " <> progress i t
 ppTS (Open _)   es r = ppFail Nothing es r
 ppTS (Large n) es l  = do
-  m <- asks (.campaignConf.shrinkLimit)
+  m <- asks (.cfg.campaignConf.shrinkLimit)
   ppFail (if n < m then Just (n, m) else Nothing) es l
 
-ppOPT :: MonadReader EConfig m => TestState -> Events -> [Tx] -> m String
+ppOPT :: MonadReader Env m => TestState -> Events -> [Tx] -> m String
 ppOPT (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
 ppOPT Solved     es l = ppOptimized Nothing es l
 ppOPT Passed     _ _  = pure " passed! 🎉"
 ppOPT (Open _)   es r = ppOptimized Nothing es r
 ppOPT (Large n) es l  = do
-  m <- asks (.campaignConf.shrinkLimit)
+  m <- asks (.cfg.campaignConf.shrinkLimit)
   ppOptimized (if n < m then Just (n, m) else Nothing) es l
 
 -- | Pretty-print the status of a optimized test.
-ppOptimized :: MonadReader EConfig m => Maybe (Int, Int) -> Events -> [Tx] -> m String
+ppOptimized :: MonadReader Env m => Maybe (Int, Int) -> Events -> [Tx] -> m String
 ppOptimized _ _ []  = pure "Call sequence:\n(no transactions)"
 ppOptimized b es xs = do
   let status = case b of
@@ -130,7 +139,7 @@ ppOptimized b es xs = do
          <> ppEvents es
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
-ppTests :: MonadReader EConfig m => Campaign -> m String
+ppTests :: MonadReader Env m => Campaign -> m String
 ppTests Campaign { tests } = unlines . catMaybes <$> mapM pp tests
   where
   pp t =

@@ -5,20 +5,21 @@
 module Echidna.Exec where
 
 import Control.Lens
-import Control.Monad (when)
+import Control.Monad (forM_, when)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO))
 import Control.Monad.Reader (MonadReader, asks)
+import Data.Bits
+import Data.ByteString qualified as BS
 import Data.IORef (readIORef, atomicWriteIORef)
-import Data.Map qualified as M
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe)
-import Data.Set qualified as S
+import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
 import Data.Vector qualified as V
+import Data.Vector.Unboxed.Mutable qualified as V
 import System.Process (readProcessWithExitCode)
 
-import EVM hiding (Env, cache, contract, tx, value)
+import EVM hiding (pc, Env, cache, contract, tx, value)
 import EVM.ABI
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Fetch qualified
@@ -31,7 +32,7 @@ import Echidna.Types (ExecException(..), Gas, fromEVM, emptyAccount)
 import Echidna.Types.Buffer (forceBuf)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Signature (MetadataCache, getBytecodeMetadata, lookupBytecodeMetadata)
-import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
+import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber, getResult)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Utility (timePrefix)
@@ -225,44 +226,85 @@ execTx
   -> m (VMResult, Gas)
 execTx = execTxWith id vmExcept $ fromEVM exec
 
+-- | A type alias for the context we carry while executing instructions
+type CoverageContext = (CoverageMap, Bool, Maybe (BS.ByteString, Int))
+
 -- | Execute a transaction, logging coverage at every step.
 execTxWithCov
   :: (MonadIO m, MonadState VM m, MonadReader Env m, MonadThrow m)
-  => Tx
-  -> m ((VMResult, Gas), CoverageMap)
-execTxWithCov tx = do
+  => Tx -> CoverageMap
+  -> m ((VMResult, Gas), (CoverageMap, Bool))
+execTxWithCov tx cov = do
   vm <- get
   metaCacheRef <- asks (.metadataCache)
   cache <- liftIO $ readIORef metaCacheRef
-  (r, (vm', cm)) <- runStateT (execTxWith _1 vmExcept (execCov cache) tx) (vm, mempty)
+  (r, (vm', (cm, grew, lastLoc))) <-
+    runStateT (execTxWith _1 vmExcept (execCov cache) tx) (vm, (cov, False, Nothing))
   put vm'
-  pure (r, cm)
+
+  -- Update the last valid location with the transaction result
+  grew' <- liftIO $ case lastLoc of
+    Just (meta, pc) ->
+      case Map.lookup meta cm of
+        Nothing -> pure False -- shouldn't happen
+        Just vec -> do
+          let txResultBit = fromEnum $ getResult $ fst r
+          V.read vec pc >>= \case
+            (opIx, depths, txResults) | not (txResults `testBit` txResultBit) -> do
+              V.write vec pc (opIx, depths, txResults `setBit` txResultBit)
+              pure True -- we count this as new coverage
+            _ -> pure False
+    _ -> pure False
+
+  pure (r, (cm, grew || grew'))
   where
     -- the same as EVM.exec but collects coverage, will stop on a query
     execCov cache = do
      (vm, cm) <- get
-     let (r, vm', cm') = loop cache vm cm
+     (r, vm', cm') <- liftIO $ loop cache vm cm
      put (vm', cm')
      pure r
 
     -- | Repeatedly exec a step and add coverage until we have an end result
-    loop :: MetadataCache -> VM -> CoverageMap -> (VMResult, VM, CoverageMap)
-    loop cache vm cm = case vm._result of
-      Nothing  -> loop cache (stepVM vm) (addCoverage cache vm cm)
-      Just r   -> (r, vm, cm)
+    loop :: MetadataCache -> VM -> CoverageContext -> IO (VMResult, VM, CoverageContext)
+    loop cache !vm !cc = case vm._result of
+      Nothing -> addCoverage cache vm cc >>= loop cache (stepVM vm)
+      Just r -> pure (r, vm, cc)
 
     -- | Execute one instruction on the EVM
     stepVM :: VM -> VM
     stepVM = execState exec1
 
     -- | Add current location to the CoverageMap
-    addCoverage :: MetadataCache -> VM -> CoverageMap -> CoverageMap
-    addCoverage cache vm = M.alter
-                       (Just . maybe mempty (S.insert $ currentCovLoc vm))
-                       (currentMeta cache vm)
+    addCoverage :: MetadataCache -> VM -> CoverageContext -> IO CoverageContext
+    addCoverage cache !vm (!cm, new, lastLoc) = do
+      let (pc, opIx, depth) = currentCovLoc vm
+          meta = currentMeta cache vm
+      case Map.lookup meta cm of
+        Nothing -> do
+          let size = BS.length . forceBuf . view bytecode . fromJust $
+                Map.lookup vm._state._contract vm._env._contracts
+          if size > 0 then do
+            vec <- V.new size
+            -- We use -1 for opIx to indicate that the location was not covered
+            forM_ [0..size-1] $ \i -> V.write vec i (-1, 0, 0)
+            V.write vec pc (opIx, fromIntegral depth, 0 `setBit` fromEnum Stop)
+            pure (Map.insert meta vec cm, True, Just (meta, pc))
+          else do
+            -- TODO: should we collect the coverage here? Even if there is no
+            -- bytecode for external contract, we could have a "virtual" location
+            -- that PC landed at and record that.
+            pure (cm, new, lastLoc)
+        Just vec -> do
+          V.read vec pc >>= \case
+            (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
+              V.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
+              pure (cm, True, Just (meta, pc))
+            _ ->
+              pure (cm, new, Just (meta, pc))
 
     -- | Get the VM's current execution location
-    currentCovLoc vm = (vm._state._pc, fromMaybe 0 $ vmOpIx vm, length vm._frames, Stop)
+    currentCovLoc vm = (vm._state._pc, fromMaybe 0 $ vmOpIx vm, length vm._frames)
 
     -- | Get the current contract's bytecode metadata
     currentMeta cache vm = fromMaybe (error "no contract information on coverage") $ do

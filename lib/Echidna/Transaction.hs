@@ -8,6 +8,7 @@ import Control.Monad (join)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.State.Strict (MonadState, gets, modify')
 import Data.Map (Map, toList)
+import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -24,8 +25,7 @@ import Echidna.Types.Buffer (forceBuf, forceLit)
 import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, MetadataCache, lookupBytecodeMetadata)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
-import Echidna.Types.Campaign (Campaign(..))
-import qualified Data.Map as Map
+import Echidna.Types.Campaign
 
 hasSelfdestructed :: VM -> Addr -> Bool
 hasSelfdestructed vm addr = addr `elem` vm._tx._substate._selfdestructs
