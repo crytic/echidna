@@ -1,6 +1,8 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DerivingStrategies #-}
 
 module Echidna.Types.Tx where
 
@@ -15,20 +17,23 @@ import Data.Text (Text)
 import Data.Word (Word64)
 
 import EVM (VMResult(..), Error(..))
-import EVM.ABI (encodeAbiValue, AbiValue(..))
+import EVM.ABI (encodeAbiValue, AbiValue(..), AbiType)
 import EVM.Types (Addr, W256)
 
 import Echidna.Orphans.JSON ()
 import Echidna.Types.Buffer (forceBuf)
 import Echidna.Types.Signature (SolCall)
+import Control.DeepSeq (NFData)
+import GHC.Generics (Generic)
+import Data.DoubleWord (Word256, Word128, Int256, Int128, Word160)
 
 -- | A transaction call is either a @CREATE@, a fully instrumented 'SolCall', or
 -- an abstract call consisting only of calldata.
-data TxCall = SolCreate   ByteString
-            | SolCall     SolCall
-            | SolCalldata ByteString
+data TxCall = SolCreate   !ByteString
+            | SolCall     !SolCall
+            | SolCalldata !ByteString
             | NoCall
-  deriving (Show, Ord, Eq)
+  deriving (Show, Ord, Eq, Generic)
 $(deriveJSON defaultOptions ''TxCall)
 
 maxGasPerBlock :: Word64
@@ -51,14 +56,26 @@ initialBlockNumber = 4370000  -- Initial byzantium block
 
 -- | A transaction is either a @CREATE@ or a regular call with an origin, destination, and value.
 -- Note: I currently don't model nonces or signatures here.
-data Tx = Tx { call  :: TxCall       -- | Call
-             , src   :: Addr         -- | Origin
-             , dst   :: Addr         -- | Destination
-             , gas   :: Word64       -- | Gas
-             , gasprice :: W256     -- | Gas price
-             , value :: W256         -- | Value
-             , delay :: (W256, W256) -- | (Time, # of blocks since last call)
-             } deriving (Eq, Ord, Show)
+data Tx = Tx { call  :: !TxCall       -- | Call
+             , src   :: !Addr         -- | Origin
+             , dst   :: !Addr         -- | Destination
+             , gas   :: !Word64       -- | Gas
+             , gasprice :: !W256      -- | Gas price
+             , value :: !W256         -- | Value
+             , delay :: !(W256, W256) -- | (Time, # of blocks since last call)
+             } deriving (Eq, Ord, Show, Generic)
+
+deriving instance NFData Tx
+deriving instance NFData TxCall
+deriving instance NFData AbiValue
+deriving instance NFData Word256
+deriving instance NFData Word128
+deriving instance NFData Int256
+deriving instance NFData Int128
+deriving instance NFData Word160
+deriving instance NFData AbiType
+deriving anyclass instance NFData Addr
+deriving anyclass instance NFData W256
 
 instance ToJSON Tx where
   toJSON Tx{..} = object
