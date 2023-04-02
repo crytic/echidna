@@ -12,7 +12,7 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 * Optional corpus collection, mutation and coverage guidance to find deeper bugs
 * Powered by [Slither](https://github.com/crytic/slither) to extract useful information before the fuzzing campaign
 * Source code integration to identify which lines are covered after the fuzzing campaign
-* Curses-based retro UI, text-only or JSON output
+* Interactive terminal UI, text-only or JSON output
 * Automatic test case minimization for quick triage
 * Seamless integration into the development workflow
 * Maximum gas usage reporting of the fuzzing campaign
@@ -26,7 +26,11 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 
 ### Executing the test runner
 
-The core Echidna functionality is an executable called `echidna`. `echidna` takes a contract and a list of invariants (properties that should always remain true) as input. For each invariant, it generates random sequences of calls to the contract and checks if the invariant holds. If it can find some way to falsify the invariant, it prints the call sequence that does so. If it can't, you have some assurance the contract is safe.
+The core Echidna functionality is an executable called `echidna`, which takes a contract and a list
+of invariants (properties that should always remain true) as input. For each invariant, it generates
+random sequences of calls to the contract and checks if the invariant holds. If it can find some way
+to falsify the invariant, it prints the call sequence that does so. If it can't, you have some
+assurance the contract is safe.
 
 ### Writing invariants
 
@@ -114,7 +118,7 @@ Echidna supports three different output drivers. There is the default `text`
 driver, a `json` driver, and a `none` driver, which should suppress all
 `stdout` output. The JSON driver reports the overall campaign as follows.
 
-```json
+```
 Campaign = {
   "success"      : bool,
   "error"        : string?,
@@ -149,28 +153,42 @@ will either be `property` or `assertion`, and `status` always takes on either
 
 ### Debugging Performance Problems
 
-The best way to deal with an Echidna performance issue is to run `echidna` with profiling on.
-This creates a text file, `echidna.prof`, which shows which functions take up the most CPU and memory usage.
+One way to diagnose Echidna's performance issues is to run `echidna` with profiling on.
+To run Echidna with basic profiling, add `+RTS -p -s` to your original `echidna` command:
 
-To build a version of `echidna` that supports profiling, either Stack or Nix should be used.
-With Stack, adding the flag `--profile` will make the build support profiling.
-With Nix, running `nix-build --arg profiling true` will make the build support profiling.
+```
+$ nix develop
+$ cabal --enable-profiling run echidna -- ... +RTS -p -s`
+$ less echidna.prof
+```
 
-To run with profiling on, add the flags `+RTS -p` to your original `echidna` command.
+This produces a report file (`echidna.prof`), that shows which functions take up the most CPU and memory usage.
 
-Performance issues in the past have been because of functions getting called repeatedly when they could be memoized,
-and memory leaks related to Haskell's lazy evaluation;
-checking for these would be a good place to start.
+If the basic profiling doesn't help, you can use more [advanced profiling techniques](https://input-output-hk.github.io/hs-opt-handbook.github.io/src/Measurement_Observation/Heap_Ghc/eventlog.html).
+
+Common causes for performance issues that we observed:
+
+- Costly functions called in hot paths
+- Lazy data constructors that accumulate thunks
+- Inefficient data structures used in hot paths
+
+Checking for these is a good place to start. If you suspect some comuptation is too lazy and
+leaks memory, you can use `force` from `Control.DeepSeq` to make sure it gets evaluated.
 
 ## Limitations and known issues
 
-EVM emulation and testing are hard. Echidna has some limitations in the latest release. Some of these are inherited from [hevm](https://github.com/dapphub/dapptools/tree/master/src/hevm) while some are results from design/performance decisions or simply bugs in our code. We list them here including their corresponding issue and the status ("wont fix", "on hold", "in review", "fixed"). Issues that are "fixed" are expected to be included in the next Echidna release.
+EVM emulation and testing are hard. Echidna has some limitations in the latest release. Some of
+these are inherited from [hevm](https://github.com/ethereum/hevm) while some are results from
+design/performance decisions or simply bugs in our code. We list them here including their
+corresponding issue and the status ("wont fix", "on hold", "in review", "fixed"). Issues that are
+"fixed" are expected to be included in the next Echidna release.
 
-| Description |  Issue   | Status   |
-| :--- |     :---:              |         :---:   |
+| Description | Issue | Status |
+| :---        | :---: | :---:  |
 | Vyper support is limited | [#652](https://github.com/crytic/echidna/issues/652) | *wont fix* |
 | Limited library support for testing | [#651](https://github.com/crytic/echidna/issues/651) | *wont fix* |
-| Lack of support for function pointers in Solidity | [#798](https://github.com/crytic/echidna/issues/798) | *on hold* |
+| Lack of support for function pointers in Solidity | [#798](https://github.com/crytic/echidna/issues/798) | *fixed* |
+
 ## Installation
 
 ### Precompiled binaries
