@@ -11,8 +11,7 @@ import Control.Monad.Reader (MonadReader (ask), runReader, asks)
 import Control.Monad.State (modify')
 import Graphics.Vty qualified as V
 import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
-import System.Posix.Terminal (queryTerminal)
-import System.Posix.Types (Fd(..))
+import System.Posix
 
 import Echidna.UI.Widgets
 #else /* !INTERACTIVE_UI */
@@ -28,7 +27,7 @@ import Control.Monad.Random.Strict (MonadRandom)
 import Data.ByteString.Lazy qualified as BS
 import Data.IORef
 import Data.Map (Map)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Timeout (timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
@@ -68,7 +67,12 @@ ui vm world ts dict initialCorpus = do
   conf <- asks (.cfg)
   let uiConf = conf.uiConf
   ref <- liftIO $ newIORef defaultCampaign
-  let updateRef = get >>= liftIO . atomicWriteIORef ref
+  stop <- newEmptyMVar
+  let updateRef = do
+        shouldStop <- liftIO $ isJust <$> tryReadMVar stop
+        get >>= liftIO . atomicWriteIORef ref
+        pure shouldStop
+
       secToUsec = (* 1000000)
       timeoutUsec = secToUsec $ fromMaybe (-1) uiConf.maxTime
       runCampaign = timeout timeoutUsec (campaign updateRef vm world ts dict initialCorpus)
@@ -125,6 +129,10 @@ ui vm world ts dict initialCorpus = do
 #endif
 
     NonInteractive outputFormat -> do
+#ifdef INTERACTIVE_UI
+      liftIO $ forM_ [sigINT, sigTERM] (\sig -> installHandler sig (Catch $ putMVar stop ()) Nothing)
+#endif
+
       ticker <- liftIO $ forkIO $
         -- print out status update every 3s
         forever $ do
