@@ -98,3 +98,13 @@ loadInitialCorpus env world = do
         pure (ctxs1 ++ ctxs2)
 
   pure $ persistedCorpus ++ ethenoCorpus
+
+validateCorpus :: VM -> [Tx] -> IO ()
+validateCorpus _  []     = return ()
+validateCorpus vm (t:ts) = 
+  if t.dst `elem` deployed
+  then validateCorpus vm ts 
+  else error (errorMessage t.dst)
+    where deployed = Map.keys vm._env._contracts
+          errorMessage addr = "Invalid corpus: it includes a transaction with destination: " ++ show addr ++ ", which is never deployed\nClean the corpus to fix it"
+

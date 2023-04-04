@@ -107,6 +107,7 @@ main = withUtf8 $ withCP65001 $ do
   (vm, world, echidnaTests, dict) <- prepareContract env contracts cliFilePath cliSelectedContract seed
 
   initialCorpus <- loadInitialCorpus env world
+  mapM_ (validateCorpus vm) initialCorpus
   -- start ui and run tests
   campaign <- runReaderT (ui vm world echidnaTests dict initialCorpus) env
 
