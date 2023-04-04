@@ -43,7 +43,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (corpusSize)
 import Echidna.Types.Coverage (scoveragePoints)
-import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOpen)
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOpen, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
@@ -214,6 +214,7 @@ isTerminal = (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 statusLine :: CampaignConf -> Campaign -> String
 statusLine campaignConf camp =
   "tests: " <> show (length $ filter didFail camp.tests) <> "/" <> show (length camp.tests)
+  <> ", values: " <> show (map (.value) $ filter (\t -> isOptimizationTest t.testType) camp.tests)
   <> ", fuzzing: " <> show fuzzRuns <> "/" <> show campaignConf.testLimit
   <> ", cov: " <> show (scoveragePoints camp.coverage)
   <> ", corpus: " <> show (corpusSize camp.corpus)
