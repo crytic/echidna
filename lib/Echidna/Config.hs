@@ -1,7 +1,6 @@
 module Echidna.Config where
 
 import Control.Applicative ((<|>))
-import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Control.Monad.State (StateT(..), runStateT, modify')
 import Control.Monad.Trans (lift)
 import Data.Aeson
@@ -82,7 +81,7 @@ instance FromJSON EConfigWithUsage where
         psender <- v ..:? "psender" ..!= 0x10000
         fprefix <- v ..:? "prefix"  ..!= "echidna_"
         let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
-            classify fname vm = maybe ResOther classifyRes vm._result == goal fname
+            classify fname vm = maybe ResOther classifyRes vm.result == goal fname
         pure $ TestConf classify (const psender)
 
       campaignConfParser = CampaignConf
@@ -145,11 +144,3 @@ defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEit
 -- | Try to parse an Echidna config file, throw an error if we can't.
 parseConfig :: FilePath -> IO EConfigWithUsage
 parseConfig f = BS.readFile f >>= Y.decodeThrow
-
--- | Run some action with the default configuration, useful in the REPL.
-withDefaultConfig :: ReaderT EConfig m a -> m a
-withDefaultConfig = (`runReaderT` defaultConfig)
-
--- | 'withDefaultConfig' but not for transformers
-withDefaultConfig' :: Reader EConfig a -> a
-withDefaultConfig' = (`runReader` defaultConfig)

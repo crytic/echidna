@@ -2,7 +2,7 @@
 
 module Main where
 
-import Control.Lens (view)
+import Optics.Core (view)
 import Control.Monad (unless, forM_, when)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)

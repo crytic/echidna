@@ -10,7 +10,6 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import GHC.Word (Word32)
 
 import EVM.ABI (AbiType, AbiValue)
 import EVM.Types (Addr)
@@ -20,8 +19,6 @@ type ContractName = Text
 
 -- | Name of a function
 type FunctionName = Text
-
-type FunctionHash = Word32
 
 -- | Represents the type of a Solidity function.
 -- A tuple for the name of the function and the 'AbiType's of any arguments it expects.

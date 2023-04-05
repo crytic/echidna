@@ -3,32 +3,38 @@
 
 module Echidna.Transaction where
 
-import Control.Lens
+import Optics.Core
+import Optics.State
+import Optics.State.Operators
+
 import Control.Monad (join)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
-import Control.Monad.State.Strict (MonadState, gets)
+import Control.Monad.State.Strict (MonadState, gets, modify')
 import Data.HashMap.Strict qualified as M
 import Data.Map (Map, toList)
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
-import EVM hiding (value)
+import EVM
+  ( bytecode, initialContract, loadContract, Block(..), Contract, ContractCode(..)
+  , FrameState(..), RuntimeCode(..), SubState(..), TxState(..), VM(..) )
 import EVM.ABI (abiValueType)
-import EVM.Types (Expr(ConcreteBuf, Lit), Addr, W256)
+import EVM.Types (Expr(ConcreteBuf, Lit), Addr, W256, FunctionSelector)
 
 import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
 import Echidna.Types (fromEVM)
 import Echidna.Types.Buffer (forceBuf, forceLit)
-import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, MetadataCache, lookupBytecodeMetadata)
+import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, MetadataCache, lookupBytecodeMetadata)
 import Echidna.Types.Tx
+import Echidna.Types.Tx qualified as Tx
 import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign (Campaign(..))
 
 hasSelfdestructed :: VM -> Addr -> Bool
-hasSelfdestructed vm addr = addr `elem` vm._tx._substate._selfdestructs
+hasSelfdestructed vm addr = addr `elem` vm.tx.substate.selfdestructs
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating
 -- delays, since block number only goes up with timestamp
@@ -78,12 +84,13 @@ genDelay mv ds = do
   where randValue = fromIntegral <$> getRandomR (1 :: Integer, fromIntegral mv)
         fromDict = (`mod` (mv + 1)) <$> rElem' ds
 
-genValue :: MonadRandom m => W256 -> Set W256 -> [FunctionHash] -> SolCall -> m W256
+genValue :: MonadRandom m => W256 -> Set W256 -> [FunctionSelector] -> SolCall -> m W256
 genValue mv ds ps sc =
   if sig `elem` ps then
     join $ oftenUsually fromDict randValue
-  else do
-    join $ usuallyVeryRarely (pure 0) randValue -- once in a while, this will generate value in a non-payable function
+  else
+    -- once in a while, this will generate value in a non-payable function
+    join $ usuallyVeryRarely (pure 0) randValue
   where randValue = fromIntegral <$> getRandomR (0 :: Integer, fromIntegral mv)
         sig = (hashSig . encodeSig . signatureCall) sc
         fromDict = (`mod` (mv + 1)) <$> rElem' ds
@@ -102,25 +109,26 @@ removeCallTx t = Tx NoCall 0 t.src 0 0 0 t.delay
 -- | Given a 'Transaction', generate a random \"smaller\" 'Transaction', preserving origin,
 -- destination, value, and call signature.
 shrinkTx :: MonadRandom m => Tx -> m Tx
-shrinkTx tx' = let
-  shrinkCall = case tx'.call of
-   SolCall sc -> SolCall <$> shrinkAbiCall sc
-   _ -> pure tx'.call
+shrinkTx tx =
+  join $ usuallyRarely (join (uniform possibilities)) (pure $ removeCallTx tx)
+  where
+  shrinkCall = case tx.call of
+    SolCall sc -> SolCall <$> shrinkAbiCall sc
+    _ -> pure tx.call
   lower 0 = pure 0
-  lower x = (getRandomR (0 :: Integer, fromIntegral x)
-              >>= (\r -> uniform [0, r]) . fromIntegral)  -- try 0 quicker
+  lower x = getRandomR (0 :: Integer, fromIntegral x)
+              >>= (\r -> uniform [0, r]) . fromIntegral  -- try 0 quicker
   possibilities =
-    [ do call' <- shrinkCall
-         pure tx' { call = call' }
-    , do value' <- lower tx'.value
-         pure tx' { Echidna.Types.Tx.value = value' }
-    , do gasprice' <- lower tx'.gasprice
-         pure tx' { Echidna.Types.Tx.gasprice = gasprice' }
-    , do let (time, blocks) = tx'.delay
-         delay' <- level <$> ((,) <$> lower time <*> lower blocks)
-         pure tx' { delay = delay' }
+    [ do call <- shrinkCall
+         pure tx { call }
+    , do value <- lower tx.value
+         pure tx { Tx.value }
+    , do gasprice <- lower tx.gasprice
+         pure tx { Tx.gasprice }
+    , do let (time, blocks) = tx.delay
+         delay <- level <$> ((,) <$> lower time <*> lower blocks)
+         pure tx { delay }
     ]
-  in join $ usuallyRarely (join (uniform possibilities)) (pure $ removeCallTx tx')
 
 mutateTx :: (MonadRandom m) => Tx -> m Tx
 mutateTx t@(Tx { call = SolCall c }) = do
@@ -130,30 +138,50 @@ mutateTx t@(Tx { call = SolCall c }) = do
         skip _ = pure t
 mutateTx t = pure t
 
--- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
--- 'Transaction's \"on-chain\".
+-- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively,
+-- this just brings 'Transaction's \"on-chain\".
 setupTx :: MonadState VM m => Tx -> m ()
-setupTx (Tx NoCall _ r _ _ _ (t, b)) = fromEVM . sequence_ $
-  [ state . pc .= 0, state . stack .= mempty, state . memory .= mempty
-  , block . timestamp %= (\x -> Lit (forceLit x + t)), block . number += b, loadContract r]
+setupTx tx@Tx{ call = NoCall } = fromEVM $ do
+  modify' $ \vm -> vm
+    { state = resetState vm.state
+    , block = advanceBlock tx.delay vm.block
+    }
+  loadContract tx.src
 
-setupTx (Tx c s r g gp v (t, b)) = fromEVM . sequence_ $
-  [ result .= Nothing, state . pc .= 0, state . stack .= mempty, state . memory .= mempty, state . gas .= g
-  , tx . gasprice .= gp, tx . origin .= s, state . caller .= Lit (fromIntegral s), state . callvalue .= Lit v
-  , block . timestamp %= (\x -> Lit (forceLit x + t)), block . number += b, setup] where
-    setup = case c of
-      SolCreate bc -> do
-        assign (env . contracts . at r) (Just $ initialContract (InitCode bc mempty) & set balance v)
-        loadContract r
-        state . code .= RuntimeCode (ConcreteRuntimeCode bc)
-      SolCall cd -> do
-        incrementBalance
-        loadContract r
-        state . calldata .= ConcreteBuf (encode cd)
-      SolCalldata cd -> do
-        incrementBalance
-        loadContract r
-        state . calldata .= ConcreteBuf cd
-    incrementBalance = (env . contracts . ix r . balance) += v
-    encode (n, vs) = abiCalldata
-      (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
+setupTx tx@Tx{ call } = fromEVM $ do
+  modify' $ \vm -> vm
+    { result = Nothing
+    , state = (resetState vm.state)
+                { gas = tx.gas
+                , caller = Lit (fromIntegral tx.src)
+                , callvalue = Lit tx.value
+                }
+    , tx = vm.tx { gasprice = tx.gasprice, origin = tx.src }
+    , block = advanceBlock tx.delay vm.block
+    }
+  case call of
+    SolCreate bc -> do
+      assign (#env % #contracts % at tx.dst)
+             (Just $ initialContract (InitCode bc mempty) & set #balance tx.value)
+      loadContract tx.dst
+      #state % #code .= RuntimeCode (ConcreteRuntimeCode bc)
+    SolCall cd -> do
+      incrementBalance
+      loadContract tx.dst
+      #state % #calldata .= ConcreteBuf (encode cd)
+    SolCalldata cd -> do
+      incrementBalance
+      loadContract tx.dst
+      #state % #calldata .= ConcreteBuf cd
+  where
+  incrementBalance = #env % #contracts % ix tx.dst % #balance %= (+ tx.value)
+  encode (n, vs) = abiCalldata
+    (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
+
+resetState :: FrameState -> FrameState
+resetState state = state { pc = 0, stack = mempty, memory = mempty }
+
+advanceBlock :: (W256, W256) -> Block -> Block
+advanceBlock (t,b) block =
+  block { timestamp = Lit (forceLit block.timestamp + t)
+        , number = block.number + b }

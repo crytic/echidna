@@ -1,10 +1,10 @@
-{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE GADTs #-}
 
 module Echidna.Campaign where
 
+import Optics.Core
+
 import Control.DeepSeq (force)
-import Control.Lens
 import Control.Monad (replicateM, when, unless, void)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
@@ -42,6 +42,7 @@ import Echidna.Types.Config
 import Echidna.Types.Coverage (coveragePoints)
 import Echidna.Types.Signature (makeBytecodeCache, MetadataCache)
 import Echidna.Types.Test
+import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), getResult, call)
 import Echidna.Types.World (World)
 import Echidna.Types.Corpus (Corpus)
@@ -90,8 +91,8 @@ updateTest vmForShrink (vm, xs) test = do
   dappInfo <- asks (.dapp)
   case test.state of
     Open i | i > limit -> case test.testType of
-      OptimizationTest _ _ -> pure $ test { state = Large (-1) }
-      _                    -> pure $ test { state = Passed }
+      OptimizationTest _ _ -> pure $ test { Test.state = Large (-1) }
+      _                    -> pure $ test { Test.state = Passed }
     Open i -> do
       (testValue, vm') <- evalStateT (checkETest test) vm
       let events = extractEvents False dappInfo vm'
@@ -207,14 +208,14 @@ callseq initialCorpus vm world seqLen = do
   -- Replay transactions in the corpus during the first iterations
   txSeq <- if length initialCorpus > camp.ncallseqs
     then pure $ initialCorpus !! camp.ncallseqs
-    else randseq metaCache seqLen vm._env._contracts world
+    else randseq metaCache seqLen vm.env.contracts world
 
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
   (res, (vm', camp')) <- runStateT (evalSeq vm ef txSeq) (vm, camp)
 
   let
     -- compute the addresses not present in the old VM via set difference
-    newAddrs = Map.keys $ vm'._env._contracts \\ vm._env._contracts
+    newAddrs = Map.keys $ vm'.env.contracts \\ vm.env.contracts
     -- and construct a set to union to the constants table
     diffs = H.fromList [(AbiAddressType, Set.fromList $ AbiAddress <$> newAddrs)]
     -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
@@ -280,7 +281,7 @@ campaign u vm world ts dict initialCorpus = do
   metaCacheRef <- asks (.metadataCache)
   fetchContractCacheRef <- asks (.fetchContractCache)
   external <- liftIO $ Map.mapMaybe id <$> readIORef fetchContractCacheRef
-  liftIO $ writeIORef metaCacheRef (memo (vm._env._contracts <> external))
+  liftIO $ writeIORef metaCacheRef (memo (vm.env.contracts <> external))
 
   let c = fromMaybe mempty conf.knownCoverage
   let effectiveSeed = fromMaybe dict.defSeed conf.seed

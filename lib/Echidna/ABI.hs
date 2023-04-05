@@ -34,7 +34,7 @@ import Data.Word (Word8)
 import Numeric (showHex)
 
 import EVM.ABI hiding (genAbiValue)
-import EVM.Types (Addr, abiKeccak, W256)
+import EVM.Types (Addr, abiKeccak, W256, FunctionSelector(..))
 
 import Echidna.Mutator.Array (mutateLL, replaceAt)
 import Echidna.Types.Random
@@ -99,7 +99,7 @@ encodeSigWithName cn (n, ts) =
   last (T.split (==':') cn) <> "." <> n <> "(" <> T.intercalate "," (abiTypeSolidity <$> ts) <> ")"
 
 -- | Get the signature of a solidity method
-hashSig :: Text -> FunctionHash
+hashSig :: Text -> FunctionSelector
 hashSig = abiKeccak . TE.encodeUtf8
 
 -- | Configuration necessary for generating new 'SolCall's. Don't construct this
@@ -367,5 +367,5 @@ genInteractionsM genDict l = genAbiCallM genDict =<< rElem l
 
 abiCalldata :: Text -> Vector AbiValue -> ByteString
 abiCalldata s xs = BSLazy.toStrict . runPut $ do
-  putWord32be (abiKeccak (encodeUtf8 s))
+  putWord32be (abiKeccak (encodeUtf8 s)).unFunctionSelector
   putAbi (AbiTuple xs)

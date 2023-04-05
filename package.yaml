@@ -51,16 +51,19 @@ dependencies:
   - html-conduit
   - xml-conduit
   - wreq
+  - optics
+  - optics-core
 
 language: GHC2021
 
 default-extensions:
-  - LambdaCase
-  - OverloadedStrings
-
   - DuplicateRecordFields
+  - LambdaCase
+  - MultiWayIf
   - NoFieldSelectors
+  - OverloadedLabels
   - OverloadedRecordDot
+  - OverloadedStrings
 
 library:
   source-dirs: lib/

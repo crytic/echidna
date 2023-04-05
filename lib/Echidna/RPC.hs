@@ -1,19 +1,22 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveAnyClass #-}
 
 module Echidna.RPC where
 
+import Prelude hiding (Word)
+
 import Control.Exception (SomeException)
 import Control.Monad.Catch (catchAll)
-import Data.Aeson (ToJSON, FromJSON, ToJSONKey(toJSONKey))
+import Data.Aeson (FromJSON(..), ToJSON, ToJSONKey (toJSONKey))
 import Data.Aeson.Types (toJSONKeyText)
-import Data.ByteString (ByteString)
-import Data.Text qualified as Text
+import Data.ByteString.Char8 (ByteString)
 import Data.Text (Text)
-import Data.Word (Word64)
+import Data.Text qualified as Text
 import GHC.Generics (Generic)
-import Network.Wreq.Session qualified as Session
-import System.Environment
 import Text.Read (readMaybe)
+import Data.Word (Word64)
+import Network.Wreq.Session qualified as Session
+import System.Environment (lookupEnv)
 
 import EVM (Contract(..), ContractCode(RuntimeCode), RuntimeCode (..), initialContract)
 import EVM.Fetch qualified
@@ -68,18 +71,18 @@ instance ToJSONKey W256 where
 fromFetchedContractData :: FetchedContractData -> Contract
 fromFetchedContractData contractData =
   (initialContract (RuntimeCode (ConcreteRuntimeCode contractData.runtimeCode)))
-    { _nonce = contractData.nonce
-    , _balance = contractData.balance
-    , _external = True
+    { nonce = contractData.nonce
+    , balance = contractData.balance
+    , external = True
     }
 
 toFetchedContractData :: Contract -> FetchedContractData
 toFetchedContractData contract =
-  let code = case contract._contractcode of
+  let code = case contract.contractcode of
                RuntimeCode (ConcreteRuntimeCode c) -> c
                _ -> error "unexpected code"
   in FetchedContractData
     { runtimeCode = code
-    , nonce = contract._nonce
-    , balance = contract._balance
+    , nonce = contract.nonce
+    , balance = contract.balance
     }

@@ -4,12 +4,14 @@ module Echidna.Etheno where
 
 import Prelude hiding (Word)
 
+import Optics.Core
+import Optics.State.Operators
+
 import Control.Exception (Exception)
-import Control.Lens
 import Control.Monad (void)
 import Control.Monad.Catch (MonadThrow, throwM)
 import Control.Monad.Fail qualified as M (MonadFail(..))
-import Control.Monad.State.Strict (MonadState, get, put, execStateT)
+import Control.Monad.State.Strict (MonadState, get, put, execStateT, gets)
 import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
 import Data.ByteString.Base16 qualified as BS16 (decode)
 import Data.ByteString.Char8 (ByteString)
@@ -49,31 +51,33 @@ data Etheno
 instance FromJSON Etheno where
   parseJSON = withObject "Etheno" $ \v -> do
     (ev :: String) <- v .: "event"
-    let gu = maybe (M.fail "could not parse gas_used") pure . readMaybe =<< v .: "gas_used"
-        gp = maybe (M.fail "could not parse gas_price") pure . readMaybe =<< v .: "gas_price"
-        ni = maybe (M.fail "could not parse number_increase") pure . readMaybe =<< v .: "number_increment"
-        ti = maybe (M.fail "could not parse timestamp_increase") pure . readMaybe =<< v .: "timestamp_increment"
+    let
+      gu = maybe (M.fail "could not parse gas_used") pure . readMaybe =<< v .: "gas_used"
+      gp = maybe (M.fail "could not parse gas_price") pure . readMaybe =<< v .: "gas_price"
+      ni = maybe (M.fail "could not parse number_increase") pure . readMaybe =<< v .: "number_increment"
+      ti = maybe (M.fail "could not parse timestamp_increase") pure . readMaybe =<< v .: "timestamp_increment"
     case ev of
-         "AccountCreated"  -> AccountCreated  <$> v .: "address"
-         "ContractCreated" -> ContractCreated <$> v .: "from"
-                                              <*> v .: "contract_address"
-                                              <*> gu
-                                              <*> gp
-                                              <*> (decode =<< (v .: "data"))
-                                              <*> v .: "value"
-         "FunctionCall"    -> FunctionCall    <$> v .: "from"
-                                              <*> v .: "to"
-                                              <*> gu
-                                              <*> gp
-                                              <*> (decode =<< (v .: "data"))
-                                              <*> v .: "value"
-         "BlockMined"      -> BlockMined      <$> ni
-                                              <*> ti
+      "AccountCreated"  -> AccountCreated  <$> v .: "address"
+      "ContractCreated" -> ContractCreated <$> v .: "from"
+                                           <*> v .: "contract_address"
+                                           <*> gu
+                                           <*> gp
+                                           <*> (decode =<< (v .: "data"))
+                                           <*> v .: "value"
+      "FunctionCall"    -> FunctionCall    <$> v .: "from"
+                                           <*> v .: "to"
+                                           <*> gu
+                                           <*> gp
+                                           <*> (decode =<< (v .: "data"))
+                                           <*> v .: "value"
+      "BlockMined"      -> BlockMined      <$> ni
+                                           <*> ti
 
-         _ -> M.fail "event should be one of \"AccountCreated\", \"ContractCreated\", or \"FunctionCall\""
-    where decode x = case BS16.decode . encodeUtf8 . T.drop 2 $ x of
-                          Right a -> pure a
-                          Left e  -> M.fail $ "could not decode hexstring: " <> e
+      _ -> M.fail "event should be one of \"AccountCreated\", \"ContractCreated\", or \"FunctionCall\""
+    where
+      decode x = case BS16.decode . encodeUtf8 . T.drop 2 $ x of
+                   Right a -> pure a
+                   Left e  -> M.fail $ "could not decode hexstring: " <> e
 
 
 -- | Handler for parsing errors
@@ -110,7 +114,7 @@ matchSignatureAndCreateTx (s,ts) (FunctionCall a d _ _ bs v) =
   where t = AbiTupleType (V.fromList ts)
         fromTuple (AbiTuple xs) = V.toList xs
         fromTuple _            = []
-matchSignatureAndCreateTx _ _                                = []
+matchSignatureAndCreateTx _ _ = []
 
 -- | Main function: takes a filepath where the initialization sequence lives and returns
 -- | the initialized VM along with a list of Addr's to put in GenConf
@@ -126,14 +130,15 @@ loadEthenoBatch ffi fp = do
 
 initAddress :: MonadState VM m => Addr -> m ()
 initAddress addr = do
-  cs <- use (env . EVM.contracts)
+  cs <- gets (.env.contracts)
   if addr `member` cs then pure ()
-  else env . EVM.contracts . at addr .= Just account
+  else #env % #contracts % at addr .= Just account
   where
     account =
-      initialContract (RuntimeCode (ConcreteRuntimeCode mempty))
-        & set nonce 0
-        & set balance 100000000000000000000 -- default balance for EOAs in etheno
+      (initialContract (RuntimeCode (ConcreteRuntimeCode mempty)))
+        { nonce = 0
+        , balance = 100000000000000000000 -- default balance for EOAs in etheno
+        }
 
 crashWithQueryError :: (MonadState VM m, MonadFail m, MonadThrow m) => Query -> Etheno -> m ()
 crashWithQueryError q et =
@@ -162,7 +167,7 @@ execEthenoTxs et = do
     (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
     (VMSuccess (ConcreteBuf bc),
      ContractCreated _ ca _ _ _ _) -> do
-       env . contracts . at ca . _Just . contractcode .= InitCode mempty mempty
+       #env % #contracts % at ca % _Just % #contractcode .= InitCode mempty mempty
        fromEVM (replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bc)) >> loadContract ca)
        pure ()
     _                              -> pure ()

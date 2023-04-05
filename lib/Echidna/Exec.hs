@@ -4,7 +4,10 @@
 
 module Echidna.Exec where
 
-import Control.Lens
+import Optics.Core
+import Optics.State
+import Optics.State.Operators
+
 import Control.Monad (when)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO))
@@ -18,7 +21,7 @@ import Data.Text qualified as T
 import Data.Vector qualified as V
 import System.Process (readProcessWithExitCode)
 
-import EVM hiding (Env, cache, contract, tx, value)
+import EVM hiding (Env)
 import EVM.ABI
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Fetch qualified
@@ -76,12 +79,12 @@ execTxWith l onErr executeTx tx = do
   if hasSelfdestructed vm tx.dst then
     pure (VMFailure (Revert (ConcreteBuf "")), 0)
   else do
-    l . traces .= emptyEvents
+    l % #traces .= emptyEvents
     vmBeforeTx <- use l
     l %= execState (setupTx tx)
-    gasLeftBeforeTx <- use $ l . state . gas
+    gasLeftBeforeTx <- use $ l % #state % #gas
     vmResult <- runFully
-    gasLeftAfterTx <- use $ l . state . gas
+    gasLeftAfterTx <- use $ l % #state % #gas
     handleErrorsAndConstruction vmResult vmBeforeTx
     pure (vmResult, gasLeftBeforeTx - gasLeftAfterTx)
   where
@@ -110,7 +113,7 @@ execTxWith l onErr executeTx tx = do
                 ret <- liftIO $ safeFetchContractFrom rpcBlock rpcUrl addr
                 case ret of
                   -- TODO: fix hevm to not return an empty contract in case of an error
-                  Just contract | contract._contractcode /= EVM.RuntimeCode (EVM.ConcreteRuntimeCode "") -> do
+                  Just contract | contract.contractcode /= EVM.RuntimeCode (EVM.ConcreteRuntimeCode "") -> do
                     metaCacheRef <- asks (.metadataCache)
                     metaCache <- liftIO $ readIORef metaCacheRef
                     let bc = forceBuf (contract ^. bytecode)
@@ -179,25 +182,25 @@ execTxWith l onErr executeTx tx = do
   -- (`vmResult`) of executing transaction `tx`.
   handleErrorsAndConstruction vmResult vmBeforeTx = case (vmResult, tx.call) of
     (Reversion, _) -> do
-      tracesBeforeVMReset <- use $ l . traces
-      codeContractBeforeVMReset <- use $ l . state . codeContract
-      calldataBeforeVMReset <- use $ l . state . calldata
-      callvalueBeforeVMReset <- use $ l . state . callvalue
+      tracesBeforeVMReset <- use $ l % #traces
+      codeContractBeforeVMReset <- use $ l % #state % #codeContract
+      calldataBeforeVMReset <- use $ l % #state % #calldata
+      callvalueBeforeVMReset <- use $ l % #state % #callvalue
       -- If a transaction reverts reset VM to state before the transaction.
       l .= vmBeforeTx
       -- Undo reset of some of the VM state.
       -- Otherwise we'd loose all information about the reverted transaction like
       -- contract address, calldata, result and traces.
-      l . result ?= vmResult
-      l . state . calldata .= calldataBeforeVMReset
-      l . state . callvalue .= callvalueBeforeVMReset
-      l . traces .= tracesBeforeVMReset
-      l . state . codeContract .= codeContractBeforeVMReset
+      l % #result ?= vmResult
+      l % #state % #calldata .= calldataBeforeVMReset
+      l % #state % #callvalue .= callvalueBeforeVMReset
+      l % #state % #codeContract .= codeContractBeforeVMReset
+      l % #traces .= tracesBeforeVMReset
     (VMFailure x, _) -> onErr x
     (VMSuccess (ConcreteBuf bytecode'), SolCreate _) ->
       -- Handle contract creation.
       l %= execState (do
-        env . contracts . at tx.dst . _Just . contractcode .= InitCode mempty mempty
+        #env % #contracts % at tx.dst % _Just % #contractcode .= InitCode mempty mempty
         replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bytecode'))
         loadContract tx.dst)
     _ -> pure ()
@@ -213,7 +216,7 @@ logMsg msg = do
 
 -- | Execute a transaction "as normal".
 execTx :: (MonadIO m, MonadState VM m, MonadReader Env m, MonadThrow m) => Tx -> m (VMResult, Gas)
-execTx = execTxWith id vmExcept $ fromEVM exec
+execTx = execTxWith equality' vmExcept $ fromEVM exec
 
 -- | Execute a transaction, logging coverage at every step.
 execTxWithCov
@@ -237,7 +240,7 @@ execTxWithCov tx = do
 
     -- | Repeatedly exec a step and add coverage until we have an end result
     loop :: MetadataCache -> VM -> CoverageMap -> (VMResult, VM, CoverageMap)
-    loop cache vm cm = case vm._result of
+    loop cache vm cm = case vm.result of
       Nothing  -> loop cache (stepVM vm) (addCoverage cache vm cm)
       Just r   -> (r, vm, cm)
 
@@ -252,17 +255,17 @@ execTxWithCov tx = do
                        (currentMeta cache vm)
 
     -- | Get the VM's current execution location
-    currentCovLoc vm = (vm._state._pc, fromMaybe 0 $ vmOpIx vm, length vm._frames, Stop)
+    currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames, Stop)
 
     -- | Get the current contract's bytecode metadata
     currentMeta cache vm = fromMaybe (error "no contract information on coverage") $ do
-      buffer <- vm ^? env . contracts . at vm._state._contract . _Just . bytecode
+      buffer <- view bytecode <$> Map.lookup vm.state.contract vm.env.contracts
       let bc = forceBuf buffer
       pure $ lookupBytecodeMetadata cache bc
 
 initialVM :: Bool -> VM
 initialVM ffi = vmForEthrunCreation mempty
-  & block . timestamp .~ Lit initialTimestamp
-  & block . number .~ initialBlockNumber
-  & env . contracts .~ mempty       -- fixes weird nonce issues
-  & allowFFI .~ ffi
+  & #block % #timestamp .~ Lit initialTimestamp
+  & #block % #number .~ initialBlockNumber
+  & #env % #contracts .~ mempty -- fixes weird nonce issues
+  & #allowFFI .~ ffi

@@ -8,7 +8,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import System.FilePath ((</>))
 
-import EVM hiding (Env, env, contracts)
+import EVM hiding (Env)
 import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Solidity (SolcContract(..))
 
@@ -50,7 +50,7 @@ prepareContract env contracts solFiles specifiedContract seed = do
   let echidnaTests = createTests solConf.testMode
                                  solConf.testDestruction
                                  testNames
-                                 vm._state._contract
+                                 vm.state.contract
                                  funs
 
   -- run processors
@@ -62,7 +62,7 @@ prepareContract env contracts solFiles specifiedContract seed = do
   let eventMap = Map.unions $ map (.eventMap) contracts
   let world = mkWorld solConf eventMap signatureMap specifiedContract slitherInfo
 
-  let deployedAddresses = Set.fromList $ AbiAddress <$> Map.keys vm._env._contracts
+  let deployedAddresses = Set.fromList $ AbiAddress <$> Map.keys vm.env.contracts
   let constants = enhanceConstants slitherInfo
                   <> timeConstants
                   <> extremeConstants

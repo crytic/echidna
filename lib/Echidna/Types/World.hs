@@ -1,8 +1,8 @@
 module Echidna.Types.World where
 
-import EVM.Types (Addr)
+import EVM.Types (Addr, FunctionSelector)
 
-import Echidna.Types.Signature (FunctionHash, SignatureMap)
+import Echidna.Types.Signature (SignatureMap)
 import Echidna.Events (EventMap)
 import Data.Set (Set)
 
@@ -14,6 +14,6 @@ import Data.Set (Set)
 data World = World { senders          :: Set Addr
                    , highSignatureMap :: SignatureMap
                    , lowSignatureMap  :: Maybe SignatureMap
-                   , payableSigs      :: [FunctionHash]
+                   , payableSigs      :: [FunctionSelector]
                    , eventMap         :: EventMap
                    }

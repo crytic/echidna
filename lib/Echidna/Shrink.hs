@@ -43,10 +43,10 @@ shrinkTest vm test = do
             -- No success with shrinking this time, just bump trials
             test { state = Large (i + 1) }
       else
-        pure $ test { state = if isOptimizationTest test.testType
-                                     then Large (i + 1)
-                                     else Solved
-                    }
+        pure $
+          test { state = if isOptimizationTest test.testType
+                            then Large (i + 1)
+                            else Solved }
     _ -> pure test
 
 -- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
@@ -79,5 +79,5 @@ shrinkSender x = do
   case List.elemIndex x.src orderedSenders of
     Just i | i > 0 -> do
       sender <- uniform (take i orderedSenders)
-      pure x{src = sender}
+      pure x { src = sender }
     _ -> pure x
