@@ -10,7 +10,7 @@ on:
 
 env:
   # Tag for cache invalidation
-  CACHE_VERSION: v6
+  CACHE_VERSION: v7
 
 jobs:
   build:
@@ -98,11 +98,11 @@ jobs:
 
       - name: Build Dependencies
         run: |
-          stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib --only-dependencies
+          stack build --ghc-options="-j2 -Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib --only-dependencies
 
       - name: Build and install echidna
         run: |
-          stack install --flag echidna:static --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+          stack install --flag echidna:static --ghc-options="-j2 -Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
 
       - name: Amend and compress binaries (macOS)
         if: runner.os == 'macOS'
@@ -125,7 +125,7 @@ jobs:
       - name: Build and copy test suite
         if: runner.os != 'macOS'
         run: |
-          stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+          stack build --flag echidna:static --test --no-run-tests --ghc-options="-j2 -Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
           cp "$(find "$PWD" -name 'echidna-testsuite*' -type f)" .
           if [ "${{ runner.os }}" = "Windows" ]; then
             # work around https://gitlab.haskell.org/ghc/ghc/-/issues/21109
