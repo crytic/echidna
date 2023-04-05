@@ -1,3 +1,14 @@
+## 2.1.1
+* Added missing space in ProcessorNotFound message (#977)
+* Added measurement and log of external actions (#988)
+* Avoid using cheat codes address to form fuzzing call sequences (#993)
+* Implemented invariant testing from foundry (#989)
+* hevm upgraded to 0.50.4 (#986)
+* Cleaned and improved codebase (#990, #994, #995, #997)
+* Make frequently modified fields strict (#1000)
+* Force corpus evaluation (#1002)
+* Text/headless UI was improved (#991, #1006, #1007, #1009)
+
 ## 2.1.0
 
 * External contracts are now automatically fetched from Ethereum nodes during fuzzing (#927, #971)
