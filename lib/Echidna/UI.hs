@@ -28,7 +28,7 @@ import Data.ByteString.Lazy qualified as BS
 import Data.IORef
 import Data.Map (Map)
 import Data.Maybe (fromMaybe, isJust)
-import UnliftIO (MonadUnliftIO)
+import UnliftIO (MonadUnliftIO, hFlush, stdout)
 import UnliftIO.Timeout (timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
@@ -140,6 +140,7 @@ ui vm world ts dict initialCorpus = do
           camp <- readIORef ref
           time <- timePrefix
           putStrLn $ time <> "[status] " <> statusLine conf.campaignConf camp
+          hFlush stdout
       result <- runCampaign
       liftIO $ killThread ticker
       (final, timedout) <- case result of
