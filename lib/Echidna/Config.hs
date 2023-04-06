@@ -56,6 +56,8 @@ instance FromJSON EConfigWithUsage where
               <*> testConfParser
               <*> txConfParser
               <*> (UIConf <$> v ..:? "timeout" <*> formatParser)
+              <*> v ..:? "rpcUrl"
+              <*> v ..:? "rpcBlock"
       where
       useKey k = modify' $ insert k
       x ..:? k = useKey k >> lift (x .:? k)
@@ -84,16 +86,17 @@ instance FromJSON EConfigWithUsage where
         pure $ TestConf classify (const psender)
 
       campaignConfParser = CampaignConf
-        <$> v ..:? "testLimit"   ..!= defaultTestLimit
-        <*> v ..:? "stopOnFail"  ..!= False
+        <$> v ..:? "testLimit" ..!= defaultTestLimit
+        <*> v ..:? "stopOnFail" ..!= False
         <*> v ..:? "estimateGas" ..!= False
-        <*> v ..:? "seqLen"      ..!= defaultSequenceLength
+        <*> v ..:? "seqLen" ..!= defaultSequenceLength
         <*> v ..:? "shrinkLimit" ..!= defaultShrinkLimit
         <*> (v ..:? "coverage" <&> \case Just False -> Nothing;  _ -> Just mempty)
         <*> v ..:? "seed"
-        <*> v ..:? "dictFreq"    ..!= 0.40
-        <*> v ..:? "corpusDir"   ..!= Nothing
-        <*> v ..:? "mutConsts"   ..!= defaultMutationConsts
+        <*> v ..:? "dictFreq" ..!= 0.40
+        <*> v ..:? "corpusDir" ..!= Nothing
+        <*> v ..:? "mutConsts" ..!= defaultMutationConsts
+        <*> v ..:? "coverageReport" ..!= True
 
       solConfParser = SolConf
         <$> v ..:? "contractAddr"    ..!= defaultContractAddr

@@ -4,6 +4,8 @@ import Data.Aeson.Key (Key)
 import Data.HashSet (HashSet)
 import Data.IORef (IORef)
 import Data.Map (Map)
+import Data.Text (Text)
+import Data.Word (Word64)
 
 import EVM (Contract)
 import EVM.Dapp (DappInfo)
@@ -35,6 +37,9 @@ data EConfig = EConfig
   , testConf :: TestConf
   , txConf :: TxConf
   , uiConf :: UIConf
+
+  , rpcUrl :: Maybe Text
+  , rpcBlock :: Maybe Word64
   }
 
 instance Read OutputFormat where
@@ -57,4 +62,5 @@ data Env = Env
   , metadataCache :: IORef MetadataCache
   , fetchContractCache :: IORef (Map Addr (Maybe Contract))
   , fetchSlotCache :: IORef (Map Addr (Map W256 (Maybe W256)))
+  , chainId :: Maybe W256
   }

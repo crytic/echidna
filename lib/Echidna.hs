@@ -13,9 +13,9 @@ import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Solidity (SolcContract(..))
 
 import Echidna.ABI
+import Echidna.Etheno (loadEtheno, extractFromEtheno)
 import Echidna.Output.Corpus
 import Echidna.Processor
-import Echidna.RPC (loadEtheno, extractFromEtheno)
 import Echidna.Solidity
 import Echidna.Test (createTests)
 import Echidna.Types.Campaign hiding (corpus)
