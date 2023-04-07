@@ -34,11 +34,11 @@ import EVM.Solidity
 import EVM.Types (Addr)
 
 import Echidna.ABI (encodeSig, encodeSigWithName, hashSig, fallback, commonTypeSizes, mkValidAbiInt, mkValidAbiUInt)
-import Echidna.Exec (execTx, initialVM)
+import Echidna.Deploy (deployContracts, deployBytecodes)
+import Echidna.Etheno (loadEthenoBatch)
 import Echidna.Events (EventMap, extractEvents)
-import Echidna.Fetch (deployContracts, deployBytecodes)
+import Echidna.Exec (execTx, initialVM)
 import Echidna.Processor
-import Echidna.RPC (loadEthenoBatch)
 import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
