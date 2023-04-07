@@ -141,18 +141,20 @@ main = withUtf8 $ withCP65001 $ do
         -- as it orders the runs chronologically.
         runId <- fromIntegral . systemSeconds <$> getSystemTime
 
-        -- coverage reports for external contracts
-        forM_ (Map.toList contractsCache) $ \(addr, mc) ->
-          case mc of
-            Just contract -> do
-              r <- externalSolcContract addr contract
-              case r of
-                Just (externalSourceCache, solcContract) -> do
-                  let dir' = dir </> show addr
-                  saveCoverage False runId dir' externalSourceCache [solcContract] campaign.coverage
-                  saveCoverage True  runId dir' externalSourceCache [solcContract] campaign.coverage
-                Nothing -> pure ()
-            Nothing -> pure ()
+        -- coverage reports for external contracts, we only support
+        -- Ethereum Mainnet for now
+        when (chainId == Just 1) $ do
+          forM_ (Map.toList contractsCache) $ \(addr, mc) ->
+            case mc of
+              Just contract -> do
+                r <- externalSolcContract addr contract
+                case r of
+                  Just (externalSourceCache, solcContract) -> do
+                    let dir' = dir </> show addr
+                    saveCoverage False runId dir' externalSourceCache [solcContract] campaign.coverage
+                    saveCoverage True  runId dir' externalSourceCache [solcContract] campaign.coverage
+                  Nothing -> pure ()
+              Nothing -> pure ()
 
         -- save source coverage reports
         saveCoverage False runId dir sourceCache contracts campaign.coverage
