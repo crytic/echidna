@@ -5,7 +5,7 @@
 module Echidna.Exec where
 
 import Control.Lens
-import Control.Monad (unless)
+import Control.Monad (when)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO))
 import Control.Monad.Reader (MonadReader, asks)
@@ -32,7 +32,7 @@ import Echidna.Types.Buffer (forceBuf)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Signature (MetadataCache, getBytecodeMetadata, lookupBytecodeMetadata)
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber)
-import Echidna.Types.Config (Env(..), EConfig(..))
+import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Utility (timePrefix)
 
@@ -206,7 +206,8 @@ execTxWith l onErr executeTx tx = do
 logMsg :: (MonadIO m, MonadReader Env m) => String -> m ()
 logMsg msg = do
   cfg <- asks (.cfg)
-  unless (cfg.solConf.quiet) $ liftIO $ do
+  operationMode <- asks (.cfg.uiConf.operationMode)
+  when (operationMode == NonInteractive Text && not cfg.solConf.quiet) $ liftIO $ do
     time <- timePrefix
     putStrLn $ time <> msg
 
