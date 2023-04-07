@@ -46,5 +46,7 @@ loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
                   , dapp = emptyDapp
                   , metadataCache = cacheMeta
                   , fetchContractCache = cacheContracts
-                  , fetchSlotCache = cacheSlots }
+                  , fetchSlotCache = cacheSlots
+                  , chainId = Nothing
+                  }
     void $ loadSolTests env (fp :| []) c

@@ -50,6 +50,7 @@ dependencies:
   - http-conduit
   - html-conduit
   - xml-conduit
+  - wreq
 
 language: GHC2021
 

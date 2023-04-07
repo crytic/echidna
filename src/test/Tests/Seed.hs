@@ -16,10 +16,24 @@ seedTests =
     [ testCase "different seeds" $ assertBool "results are the same" . not =<< same 0 2
     , testCase "same seeds" $ assertBool "results differ" =<< same 0 0
     ]
-    where cfg s = defaultConfig
-            { campaignConf = CampaignConf 600 False False 20 0 Nothing (Just s) 0.15 Nothing defaultMutationConsts }
-            & overrideQuiet
-          gen s = do
-            camp <- runContract "basic/flags.sol" Nothing (cfg s)
-            pure camp.tests
-          same s t = (==) <$> gen s <*> gen t
+    where
+    cfg s = defaultConfig
+      { campaignConf = CampaignConf
+        { testLimit = 600
+        , stopOnFail = False
+        , estimateGas = False
+        , seqLen = 20
+        , shrinkLimit = 0
+        , knownCoverage = Nothing
+        , seed = Just s
+        , dictFreq = 0.15
+        , corpusDir = Nothing
+        , mutConsts = defaultMutationConsts
+        , coverageReport = False
+        }
+      }
+      & overrideQuiet
+    gen s = do
+      camp <- runContract "basic/flags.sol" Nothing (cfg s)
+      pure camp.tests
+    same s t = (==) <$> gen s <*> gen t

@@ -1,4 +1,4 @@
-module Echidna.Fetch where
+module Echidna.Deploy where
 
 import Control.Monad.Catch (MonadThrow(..), throwM)
 import Control.Monad.State.Strict (execStateT, MonadIO)
