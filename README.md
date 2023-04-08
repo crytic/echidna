@@ -156,9 +156,9 @@ will either be `property` or `assertion`, and `status` always takes on either
 One way to diagnose Echidna's performance issues is to run `echidna` with profiling on.
 To run Echidna with basic profiling, add `+RTS -p -s` to your original `echidna` command:
 
-```
-$ nix develop
-$ cabal --enable-profiling run echidna -- ... +RTS -p -s`
+```sh
+$ nix develop # alternatively nix-shell
+$ cabal --enable-profiling run echidna -- ... +RTS -p -s
 $ less echidna.prof
 ```
 
@@ -187,7 +187,6 @@ corresponding issue and the status ("wont fix", "on hold", "in review", "fixed")
 | :---        | :---: | :---:  |
 | Vyper support is limited | [#652](https://github.com/crytic/echidna/issues/652) | *wont fix* |
 | Limited library support for testing | [#651](https://github.com/crytic/echidna/issues/651) | *wont fix* |
-| Lack of support for function pointers in Solidity | [#798](https://github.com/crytic/echidna/issues/798) | *fixed* |
 
 ## Installation
 
@@ -266,30 +265,29 @@ If you're getting errors building related to linking, try tinkering with `--extr
 $ nix-env -i -f https://github.com/crytic/echidna/tarball/master
 ```
 
-To build a standalone release for non-Nix macOS systems, the following will
-bundle Echidna and all linked dylibs in a tarball:
-
+With flakes enabled, you can run Echidna straight from this repo:
 ```sh
-$ nix-build macos-release.nix
-$ ll result/
-bin    echidna-1.7.3-aarch64-darwin.tar.gz
+$ nix run github:crytic/echidna # master
+$ nix run github:crytic/echidna/v2.1.1 # specific ref (tag/branch/commit)
 ```
 
-It is possible to develop Echidna with Cabal inside `nix-shell`. Nix will automatically
-install all the dependencies required for development including `crytic-compile` and `solc`.
-A quick way to get GHCi with Echidna ready for work:
+To build a standalone release for non-Nix macOS systems, the following will
+bundle Echidna and all linked dylibs:
+
+```sh
+$ nix build .#echidna-bundle
+```
+
+Nix will automatically install all the dependencies required for development
+including `crytic-compile` and `solc`. A quick way to start developing Echidna:
 
 ```sh
 $ git clone https://github.com/crytic/echidna
 $ cd echidna
-$ nix-shell
+$ nix develop # alternatively nix-shell
+[nix-shell]$ cabal run echidna
+[nix-shell]$ cabal run tests
 [nix-shell]$ cabal new-repl
-```
-
-Running the test suite:
-
-```sh
-nix-shell --run 'cabal test'
 ```
 
 ## Public use of Echidna
