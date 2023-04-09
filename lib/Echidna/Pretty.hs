@@ -11,7 +11,9 @@ import Echidna.Types.Tx (TxCall(..))
 
 -- | Pretty-print some 'AbiCall'.
 ppSolCall :: SolCall -> String
-ppSolCall (t, vs) = (if t == "" then unpack "*fallback*" else unpack t) ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
+ppSolCall (t, vs) =
+  (if t == "" then unpack "*fallback*" else unpack t)
+  ++ "(" ++ intercalate "," (ppAbiValue <$> vs) ++ ")"
 
 -- | Pretty-print some 'TxCall'
 ppTxCall :: TxCall -> String

@@ -85,22 +85,22 @@ main = withUtf8 $ withCP65001 $ do
             pure (Nothing, Nothing)
 
   (contracts, sourceCaches) <- compileContracts cfg.solConf cliFilePath
-  let sourceCache = selectSourceCache cliSelectedContract sourceCaches
-  let solcByName = Map.fromList [(c.contractName, c) | c <- contracts]
-
   cacheContractsRef <- newIORef $ fromMaybe mempty loadedContractsCache
   cacheSlotsRef <- newIORef $ fromMaybe mempty loadedSlotsCache
   cacheMetaRef <- newIORef mempty
   chainId <- RPC.fetchChainId cfg.rpcUrl
 
-  let env = Env { cfg = cfg
-                  -- TODO put in real path
-                , dapp = dappInfo "/" solcByName sourceCache
-                , metadataCache = cacheMetaRef
-                , fetchContractCache = cacheContractsRef
-                , fetchSlotCache = cacheSlotsRef
-                , chainId = chainId
-                }
+  let
+    sourceCache = selectSourceCache cliSelectedContract sourceCaches
+    solcByName = Map.fromList [(c.contractName, c) | c <- contracts]
+    env = Env { cfg = cfg
+                -- TODO put in real path
+              , dapp = dappInfo "/" solcByName sourceCache
+              , metadataCache = cacheMetaRef
+              , fetchContractCache = cacheContractsRef
+              , fetchSlotCache = cacheSlotsRef
+              , chainId = chainId
+              }
 
   seed <- getRandomR (0, maxBound)
   (vm, world, echidnaTests, dict) <- prepareContract env contracts cliFilePath cliSelectedContract seed

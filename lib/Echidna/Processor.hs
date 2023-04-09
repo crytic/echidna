@@ -73,9 +73,6 @@ data SlitherInfo = SlitherInfo
   , receiveDefined :: [ContractName]
   } deriving (Show)
 
-noInfo :: SlitherInfo
-noInfo = SlitherInfo mempty mempty mempty mempty mempty [] [] []
-
 instance FromJSON SlitherInfo where
   parseJSON = withObject "slitherOutput" $ \o -> do
     -- take the value under 'description' through the path - $['results']['printers'][0]['description']
@@ -98,7 +95,8 @@ instance FromJSON SlitherInfo where
         -- flatten [[AbiValue]], the array probably shouldn't be nested, fix it in Slither
         let constantValues = (fmap . fmap) (catMaybes . concat) constantValues'
         functionsRelations <- o .: "functions_relations"
-        generationGraph <- (traverse . traverse) (withObject "relations" (.: "impacts")) functionsRelations
+        generationGraph <-
+          (traverse . traverse) (withObject "relations" (.: "impacts")) functionsRelations
         solcVersions' <- o .:? "solc_versions"
         solcVersions <- case mapM (fromText . pack) (fromMaybe [] solcVersions') of
           Left _ -> pure []
@@ -114,8 +112,8 @@ instance FromJSON SlitherInfo where
           'i':'n':'t':x -> pure $ AbiInt <$> readMaybe x <*> readMaybe v
           "string" ->
             pure . Just . AbiString $
-              if "0x" `isPrefixOf` v
-              then fromRight (BSU.fromString v) $ BS16.decode $ BSU.fromString $ drop 2 v
+              if "0x" `isPrefixOf` v then
+                fromRight (BSU.fromString v) $ BS16.decode $ BSU.fromString $ drop 2 v
               else BSU.fromString v
 
           "address" -> pure $ AbiAddress . Addr <$> readMaybe v
@@ -125,17 +123,24 @@ instance FromJSON SlitherInfo where
 
 -- Slither processing
 runSlither :: FilePath -> SolConf -> IO SlitherInfo
-runSlither fp solConf = if ".vy" `isSuffixOf` pack fp then return noInfo else do
-  mp <- findExecutable "slither"
-  case mp of
-    Nothing -> throwM $ ProcessorNotFound "slither" "You should install it using 'pip3 install slither-analyzer --user'"
-    Just path -> do
-      let args = ["--ignore-compile", "--print", "echidna", "--json", "-"] ++ solConf.cryticArgs ++ [fp]
-      (ec, out, err) <- measureIO solConf.quiet ("Running slither on " <> fp) $ do
-        readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
-      case ec of
-        ExitSuccess ->
-          case eitherDecode (BSL.pack out) of
-            Right si -> pure si
-            Left msg -> throwM $ ProcessorFailure "slither" ("decoding slither output failed:\n" ++ msg)
-        ExitFailure _ -> throwM $ ProcessorFailure "slither" err
+runSlither fp _ | ".vy" `isSuffixOf` pack fp = pure noInfo
+runSlither fp solConf = do
+  path <- findExecutable "slither" >>= \case
+    Nothing -> throwM $
+      ProcessorNotFound "slither" "You should install it using 'pip3 install slither-analyzer --user'"
+    Just path -> pure path
+
+  let args = ["--ignore-compile", "--print", "echidna", "--json", "-"]
+             ++ solConf.cryticArgs ++ [fp]
+  (ec, out, err) <- measureIO solConf.quiet ("Running slither on " <> fp) $
+    readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
+  case ec of
+    ExitSuccess ->
+      case eitherDecode (BSL.pack out) of
+        Right si -> pure si
+        Left msg -> throwM $
+          ProcessorFailure "slither" ("decoding slither output failed:\n" ++ msg)
+    ExitFailure _ -> throwM $ ProcessorFailure "slither" err
+
+noInfo :: SlitherInfo
+noInfo = SlitherInfo mempty mempty mempty mempty mempty [] [] []

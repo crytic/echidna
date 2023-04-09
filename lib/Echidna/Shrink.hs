@@ -3,7 +3,7 @@ module Echidna.Shrink (shrinkTest) where
 import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadThrow, MonadCatch)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
-import Control.Monad.Reader.Class (MonadReader, asks)
+import Control.Monad.Reader.Class (MonadReader (ask), asks)
 import Control.Monad.State.Strict (MonadState(get, put), evalStateT, MonadIO)
 import Data.Foldable (traverse_)
 import Data.Set qualified as Set
@@ -21,13 +21,15 @@ import Echidna.Types.Config
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Test (getResultFromVM, checkETest)
 
-shrinkTest :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
-           => VM -> EchidnaTest -> m EchidnaTest
+shrinkTest
+  :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
+  => VM
+  -> EchidnaTest
+  -> m EchidnaTest
 shrinkTest vm test = do
-  sl <- asks (.cfg.campaignConf.shrinkLimit)
-  dappInfo <- asks (.dapp)
+  env <- ask
   case test.state of
-    Large i | i >= sl ->
+    Large i | i >= env.cfg.campaignConf.shrinkLimit ->
       pure $ test { state = Solved }
     Large i ->
       if length test.reproducer > 1 || any canShrinkTx test.reproducer then do
@@ -36,7 +38,7 @@ shrinkTest vm test = do
           Just (txs, val, vm') -> do
             test { state = Large (i + 1)
                  , reproducer = txs
-                 , events = extractEvents False dappInfo vm'
+                 , events = extractEvents False env.dapp vm'
                  , result = getResultFromVM vm'
                  , value = val }
           Nothing ->
@@ -44,15 +46,18 @@ shrinkTest vm test = do
             test { state = Large (i + 1) }
       else
         pure $ test { state = if isOptimizationTest test.testType
-                                     then Large (i + 1)
-                                     else Solved
-                    }
+                                 then Large (i + 1)
+                                 else Solved }
     _ -> pure test
 
--- | Given a call sequence that solves some Echidna test, try to randomly generate a smaller one that
--- still solves that test.
-shrinkSeq :: (MonadIO m, MonadRandom m, MonadReader Env m, MonadThrow m, MonadState VM m)
-          => m (TestValue, VM) -> TestValue -> [Tx] -> m (Maybe ([Tx], TestValue, VM))
+-- | Given a call sequence that solves some Echidna test, try to randomly
+-- generate a smaller one that still solves that test.
+shrinkSeq
+  :: (MonadIO m, MonadRandom m, MonadReader Env m, MonadThrow m, MonadState VM m)
+  => m (TestValue, VM)
+  -> TestValue
+  -> [Tx]
+  -> m (Maybe ([Tx], TestValue, VM))
 shrinkSeq f v xs = do
   strategies <- sequence [shorten, shrunk]
   let strategy = uniform strategies

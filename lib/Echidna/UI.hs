@@ -172,38 +172,39 @@ vtyConfig = do
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
 monitor :: MonadReader Env m => m (App UIState UIEvent Name)
 monitor = do
-  let drawUI :: EConfig -> UIState -> [Widget Name]
-      drawUI conf uiState =
-        [ if uiState.displayFetchedDialog
-             then fetchedDialogWidget uiState
-             else emptyWidget
-        , runReader (campaignStatus uiState) conf]
+  let
+    drawUI :: EConfig -> UIState -> [Widget Name]
+    drawUI conf uiState =
+      [ if uiState.displayFetchedDialog
+           then fetchedDialogWidget uiState
+           else emptyWidget
+      , runReader (campaignStatus uiState) conf]
 
-      onEvent (AppEvent (CampaignUpdated c')) =
-        modify' $ \state -> state { campaign = c', status = Running }
-      onEvent (AppEvent (CampaignTimedout c')) =
-        modify' $ \state -> state { campaign = c', status = Timedout }
-      onEvent (AppEvent (CampaignCrashed e)) = do
-        modify' $ \state -> state { status = Crashed e }
-      onEvent (AppEvent (FetchCacheUpdated contracts slots)) =
-        modify' $ \state -> state { fetchedContracts = contracts
-                                  , fetchedSlots = slots }
-      onEvent (VtyEvent (EvKey (KChar 'f') _)) =
-        modify' $ \state -> state { displayFetchedDialog = not state.displayFetchedDialog }
-      onEvent (VtyEvent (EvKey KEsc _))                         = halt
-      onEvent (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = halt
-      onEvent (MouseDown (SBClick el n) _ _ _) =
-        case n of
-          TestsViewPort -> do
-            let vp = viewportScroll TestsViewPort
-            case el of
-              SBHandleBefore -> vScrollBy vp (-1)
-              SBHandleAfter  -> vScrollBy vp 1
-              SBTroughBefore -> vScrollBy vp (-10)
-              SBTroughAfter  -> vScrollBy vp 10
-              SBBar          -> pure ()
-          _ -> pure ()
-      onEvent _ = pure ()
+    onEvent (AppEvent (CampaignUpdated c')) =
+      modify' $ \state -> state { campaign = c', status = Running }
+    onEvent (AppEvent (CampaignTimedout c')) =
+      modify' $ \state -> state { campaign = c', status = Timedout }
+    onEvent (AppEvent (CampaignCrashed e)) = do
+      modify' $ \state -> state { status = Crashed e }
+    onEvent (AppEvent (FetchCacheUpdated contracts slots)) =
+      modify' $ \state -> state { fetchedContracts = contracts
+                                , fetchedSlots = slots }
+    onEvent (VtyEvent (EvKey (KChar 'f') _)) =
+      modify' $ \state -> state { displayFetchedDialog = not state.displayFetchedDialog }
+    onEvent (VtyEvent (EvKey KEsc _))                         = halt
+    onEvent (VtyEvent (EvKey (KChar 'c') l)) | MCtrl `elem` l = halt
+    onEvent (MouseDown (SBClick el n) _ _ _) =
+      case n of
+        TestsViewPort -> do
+          let vp = viewportScroll TestsViewPort
+          case el of
+            SBHandleBefore -> vScrollBy vp (-1)
+            SBHandleAfter  -> vScrollBy vp 1
+            SBTroughBefore -> vScrollBy vp (-10)
+            SBTroughAfter  -> vScrollBy vp 10
+            SBBar          -> pure ()
+        _ -> pure ()
+    onEvent _ = pure ()
 
   conf <- asks (.cfg)
   pure $ App { appDraw = drawUI conf

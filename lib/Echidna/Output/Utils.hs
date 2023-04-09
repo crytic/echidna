@@ -14,4 +14,3 @@ withCurrentDirectory dir action =
   bracket getCurrentDirectory setCurrentDirectory $ \_ -> do
     setCurrentDirectory dir
     action
-
