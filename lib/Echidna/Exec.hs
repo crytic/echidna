@@ -69,8 +69,13 @@ vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> Unknow
 
 -- | Given an error handler `onErr`, an execution strategy `executeTx`, and a transaction `tx`,
 -- execute that transaction using the given execution strategy, calling `onErr` on errors.
-execTxWith :: (MonadIO m, MonadState s m, MonadReader Env m)
-           => Lens' s VM -> (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Gas)
+execTxWith
+  :: (MonadIO m, MonadState s m, MonadReader Env m)
+  => Lens' s VM
+  -> (Error -> m ())
+  -> m VMResult
+  -> Tx
+  -> m (VMResult, Gas)
 execTxWith l onErr executeTx tx = do
   vm <- use l
   if hasSelfdestructed vm tx.dst then
@@ -212,7 +217,10 @@ logMsg msg = do
     putStrLn $ time <> msg
 
 -- | Execute a transaction "as normal".
-execTx :: (MonadIO m, MonadState VM m, MonadReader Env m, MonadThrow m) => Tx -> m (VMResult, Gas)
+execTx
+  :: (MonadIO m, MonadState VM m, MonadReader Env m, MonadThrow m)
+  => Tx
+  -> m (VMResult, Gas)
 execTx = execTxWith id vmExcept $ fromEVM exec
 
 -- | Execute a transaction, logging coverage at every step.
@@ -264,5 +272,5 @@ initialVM :: Bool -> VM
 initialVM ffi = vmForEthrunCreation mempty
   & block . timestamp .~ Lit initialTimestamp
   & block . number .~ initialBlockNumber
-  & env . contracts .~ mempty       -- fixes weird nonce issues
+  & env . contracts .~ mempty -- fixes weird nonce issues
   & allowFFI .~ ffi

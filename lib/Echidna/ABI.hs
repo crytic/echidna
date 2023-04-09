@@ -21,6 +21,7 @@ import Data.HashMap.Strict qualified as M
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.List (intercalate)
+import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromMaybe, catMaybes)
 import Data.Text (Text)
@@ -362,7 +363,7 @@ genAbiCallM genDict abi = do
   mutateAbiCall solCall
 
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one, possibly with a dictionary.
-genInteractionsM :: MonadRandom m => GenDict -> NE.NonEmpty SolSignature -> m SolCall
+genInteractionsM :: MonadRandom m => GenDict -> NonEmpty SolSignature -> m SolCall
 genInteractionsM genDict l = genAbiCallM genDict =<< rElem l
 
 abiCalldata :: Text -> Vector AbiValue -> ByteString

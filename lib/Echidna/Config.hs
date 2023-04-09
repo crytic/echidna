@@ -1,7 +1,6 @@
 module Echidna.Config where
 
 import Control.Applicative ((<|>))
-import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Control.Monad.State (StateT(..), runStateT, modify')
 import Control.Monad.Trans (lift)
 import Data.Aeson
@@ -145,11 +144,3 @@ defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEit
 -- | Try to parse an Echidna config file, throw an error if we can't.
 parseConfig :: FilePath -> IO EConfigWithUsage
 parseConfig f = BS.readFile f >>= Y.decodeThrow
-
--- | Run some action with the default configuration, useful in the REPL.
-withDefaultConfig :: ReaderT EConfig m a -> m a
-withDefaultConfig = (`runReaderT` defaultConfig)
-
--- | 'withDefaultConfig' but not for transformers
-withDefaultConfig' :: Reader EConfig a -> a
-withDefaultConfig' = (`runReader` defaultConfig)
