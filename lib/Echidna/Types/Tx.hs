@@ -195,35 +195,36 @@ data TxConf = TxConf { propGas       :: Word64
 
 -- | Transform a VMResult into a more hash friendly sum type
 getResult :: VMResult -> TxResult
-getResult (VMSuccess b) | forceBuf b == encodeAbiValue (AbiBool True)  = ReturnTrue
-                        | forceBuf b == encodeAbiValue (AbiBool False) = ReturnFalse
-                        | otherwise                                    = Stop
+getResult = \case
+  VMSuccess b | forceBuf b == encodeAbiValue (AbiBool True)  -> ReturnTrue
+              | forceBuf b == encodeAbiValue (AbiBool False) -> ReturnFalse
+              | otherwise                                    -> Stop
 
-getResult (VMFailure (BalanceTooLow _ _ ))      = ErrorBalanceTooLow
-getResult (VMFailure (UnrecognizedOpcode _))    = ErrorUnrecognizedOpcode
-getResult (VMFailure SelfDestruction )          = ErrorSelfDestruction
-getResult (VMFailure StackUnderrun )            = ErrorStackUnderrun
-getResult (VMFailure BadJumpDestination )       = ErrorBadJumpDestination
-getResult (VMFailure (Revert _))                = ErrorRevert
-getResult (VMFailure (OutOfGas _ _))            = ErrorOutOfGas
-getResult (VMFailure (BadCheatCode _))          = ErrorBadCheatCode
-getResult (VMFailure StackLimitExceeded)        = ErrorStackLimitExceeded
-getResult (VMFailure IllegalOverflow)           = ErrorIllegalOverflow
-getResult (VMFailure (Query _))                 = ErrorQuery
-getResult (VMFailure StateChangeWhileStatic)    = ErrorStateChangeWhileStatic
-getResult (VMFailure InvalidFormat)             = ErrorInvalidFormat
-getResult (VMFailure InvalidMemoryAccess)       = ErrorInvalidMemoryAccess
-getResult (VMFailure CallDepthLimitReached)     = ErrorCallDepthLimitReached
-getResult (VMFailure (MaxCodeSizeExceeded _ _)) = ErrorMaxCodeSizeExceeded
-getResult (VMFailure PrecompileFailure)         = ErrorPrecompileFailure
-getResult (VMFailure (UnexpectedSymbolicArg{})) = ErrorUnexpectedSymbolic
-getResult (VMFailure DeadPath)                  = ErrorDeadPath
-getResult (VMFailure (Choose _))                = ErrorChoose -- not entirely sure what this is
-getResult (VMFailure (NotUnique _))             = ErrorWhiffNotUnique
-getResult (VMFailure SMTTimeout)                = ErrorSMTTimeout
-getResult (VMFailure (FFI _))                   = ErrorFFI
-getResult (VMFailure NonceOverflow)             = ErrorNonceOverflow
-getResult (VMFailure ReturnDataOutOfBounds)     = ErrorReturnDataOutOfBounds
+  VMFailure (BalanceTooLow _ _)       -> ErrorBalanceTooLow
+  VMFailure (UnrecognizedOpcode _)    -> ErrorUnrecognizedOpcode
+  VMFailure SelfDestruction           -> ErrorSelfDestruction
+  VMFailure StackUnderrun             -> ErrorStackUnderrun
+  VMFailure BadJumpDestination        -> ErrorBadJumpDestination
+  VMFailure (Revert _)                -> ErrorRevert
+  VMFailure (OutOfGas _ _)            -> ErrorOutOfGas
+  VMFailure (BadCheatCode _)          -> ErrorBadCheatCode
+  VMFailure StackLimitExceeded        -> ErrorStackLimitExceeded
+  VMFailure IllegalOverflow           -> ErrorIllegalOverflow
+  VMFailure (Query _)                 -> ErrorQuery
+  VMFailure StateChangeWhileStatic    -> ErrorStateChangeWhileStatic
+  VMFailure InvalidFormat             -> ErrorInvalidFormat
+  VMFailure InvalidMemoryAccess       -> ErrorInvalidMemoryAccess
+  VMFailure CallDepthLimitReached     -> ErrorCallDepthLimitReached
+  VMFailure (MaxCodeSizeExceeded _ _) -> ErrorMaxCodeSizeExceeded
+  VMFailure PrecompileFailure         -> ErrorPrecompileFailure
+  VMFailure (UnexpectedSymbolicArg{}) -> ErrorUnexpectedSymbolic
+  VMFailure DeadPath                  -> ErrorDeadPath
+  VMFailure (Choose _)                -> ErrorChoose -- not entirely sure what this is
+  VMFailure (NotUnique _)             -> ErrorWhiffNotUnique
+  VMFailure SMTTimeout                -> ErrorSMTTimeout
+  VMFailure (FFI _)                   -> ErrorFFI
+  VMFailure NonceOverflow             -> ErrorNonceOverflow
+  VMFailure ReturnDataOutOfBounds     -> ErrorReturnDataOutOfBounds
 
 makeSingleTx :: Addr -> Addr -> W256 -> TxCall -> [Tx]
 makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d maxGasPerBlock 0 v (0, 0)]

@@ -55,12 +55,12 @@ dependencies:
 language: GHC2021
 
 default-extensions:
-  - LambdaCase
-  - OverloadedStrings
-
   - DuplicateRecordFields
+  - LambdaCase
+  - MultiWayIf
   - NoFieldSelectors
   - OverloadedRecordDot
+  - OverloadedStrings
 
 library:
   source-dirs: lib/

@@ -48,32 +48,34 @@ data Etheno
 
 instance FromJSON Etheno where
   parseJSON = withObject "Etheno" $ \v -> do
+    let
+      gu = maybe (M.fail "could not parse gas_used") pure . readMaybe =<< v .: "gas_used"
+      gp = maybe (M.fail "could not parse gas_price") pure . readMaybe =<< v .: "gas_price"
+      ni = maybe (M.fail "could not parse number_increase") pure . readMaybe =<< v .: "number_increment"
+      ti = maybe (M.fail "could not parse timestamp_increase") pure . readMaybe =<< v .: "timestamp_increment"
     (ev :: String) <- v .: "event"
-    let gu = maybe (M.fail "could not parse gas_used") pure . readMaybe =<< v .: "gas_used"
-        gp = maybe (M.fail "could not parse gas_price") pure . readMaybe =<< v .: "gas_price"
-        ni = maybe (M.fail "could not parse number_increase") pure . readMaybe =<< v .: "number_increment"
-        ti = maybe (M.fail "could not parse timestamp_increase") pure . readMaybe =<< v .: "timestamp_increment"
     case ev of
-         "AccountCreated"  -> AccountCreated  <$> v .: "address"
-         "ContractCreated" -> ContractCreated <$> v .: "from"
-                                              <*> v .: "contract_address"
-                                              <*> gu
-                                              <*> gp
-                                              <*> (decode =<< (v .: "data"))
-                                              <*> v .: "value"
-         "FunctionCall"    -> FunctionCall    <$> v .: "from"
-                                              <*> v .: "to"
-                                              <*> gu
-                                              <*> gp
-                                              <*> (decode =<< (v .: "data"))
-                                              <*> v .: "value"
-         "BlockMined"      -> BlockMined      <$> ni
-                                              <*> ti
+      "AccountCreated"  -> AccountCreated  <$> v .: "address"
+      "ContractCreated" -> ContractCreated <$> v .: "from"
+                                           <*> v .: "contract_address"
+                                           <*> gu
+                                           <*> gp
+                                           <*> (decode =<< (v .: "data"))
+                                           <*> v .: "value"
+      "FunctionCall"    -> FunctionCall    <$> v .: "from"
+                                           <*> v .: "to"
+                                           <*> gu
+                                           <*> gp
+                                           <*> (decode =<< (v .: "data"))
+                                           <*> v .: "value"
+      "BlockMined"      -> BlockMined      <$> ni
+                                           <*> ti
 
-         _ -> M.fail "event should be one of \"AccountCreated\", \"ContractCreated\", or \"FunctionCall\""
-    where decode x = case BS16.decode . encodeUtf8 . T.drop 2 $ x of
-                          Right a -> pure a
-                          Left e  -> M.fail $ "could not decode hexstring: " <> e
+      _ -> M.fail "event should be one of \"AccountCreated\", \"ContractCreated\", or \"FunctionCall\""
+    where
+      decode x = case BS16.decode . encodeUtf8 . T.drop 2 $ x of
+                   Right a -> pure a
+                   Left e  -> M.fail $ "could not decode hexstring: " <> e
 
 
 -- | Handler for parsing errors
@@ -90,7 +92,7 @@ loadEtheno fp = do
   bs <- eitherDecodeFileStrict fp
   case bs of
     (Left e) -> throwM $ EthenoException e
-    (Right (ethenoInit :: [Etheno])) -> return ethenoInit
+    (Right (ethenoInit :: [Etheno])) -> pure ethenoInit
 
 extractFromEtheno :: [Etheno] -> Set SolSignature -> [Tx]
 extractFromEtheno ess ss = case ess of
@@ -104,13 +106,15 @@ extractFromEtheno ess ss = case ess of
 matchSignatureAndCreateTx :: SolSignature -> Etheno -> [Tx]
 matchSignatureAndCreateTx ("", []) _ = [] -- Not sure if we should match this.
 matchSignatureAndCreateTx (s,ts) (FunctionCall a d _ _ bs v) =
-  if BS.take 4 bs == selector (encodeSig (s,ts))
-  then makeSingleTx a d v $ SolCall (s, fromTuple $ decodeAbiValue t (LBS.fromStrict $ BS.drop 4 bs))
-  else []
+  if BS.take 4 bs == selector (encodeSig (s,ts)) then
+    makeSingleTx a d v $
+      SolCall (s, fromTuple $ decodeAbiValue t (LBS.fromStrict $ BS.drop 4 bs))
+  else
+    []
   where t = AbiTupleType (V.fromList ts)
         fromTuple (AbiTuple xs) = V.toList xs
-        fromTuple _            = []
-matchSignatureAndCreateTx _ _                                = []
+        fromTuple _ = []
+matchSignatureAndCreateTx _ _ = []
 
 -- | Main function: takes a filepath where the initialization sequence lives and returns
 -- | the initialized VM along with a list of Addr's to put in GenConf
@@ -135,17 +139,25 @@ initAddress addr = do
         & set nonce 0
         & set balance 100000000000000000000 -- default balance for EOAs in etheno
 
-crashWithQueryError :: (MonadState VM m, MonadFail m, MonadThrow m) => Query -> Etheno -> m ()
+crashWithQueryError
+  :: (MonadState VM m, MonadFail m, MonadThrow m)
+  => Query
+  -> Etheno
+  -> m ()
 crashWithQueryError q et =
   case (q, et) of
     (PleaseFetchContract addr _, FunctionCall f t _ _ _ _) ->
-      error ("Address " ++ show addr ++ " was used during function call from " ++ show f ++ " to " ++ show t ++ " but it was never defined as EOA or deployed as a contract")
+      error $ "Address " ++ show addr ++ " was used during function call from "
+                ++ show f ++ " to " ++ show t ++ " but it was never defined as EOA or deployed as a contract"
     (PleaseFetchContract addr _, ContractCreated f t _ _ _ _) ->
-      error ("Address " ++ show addr ++ " was used during the contract creation of " ++ show t ++ " from " ++ show f ++ " but it was never defined as EOA or deployed as a contract")
+      error $ "Address " ++ show addr ++ " was used during the contract creation of "
+                ++ show t ++ " from " ++ show f ++ " but it was never defined as EOA or deployed as a contract"
     (PleaseFetchSlot slot _ _, FunctionCall f t _ _ _ _) ->
-      error ("Slot " ++ show slot ++ " was used during function call from " ++ show f ++ " to " ++ show t ++ " but it was never loaded")
+      error $ "Slot " ++ show slot ++ " was used during function call from "
+                ++ show f ++ " to " ++ show t ++ " but it was never loaded"
     (PleaseFetchSlot slot _ _, ContractCreated f t _ _ _ _) ->
-      error ("Slot " ++ show slot ++ " was used during the contract creation of " ++ show t ++ " from " ++ show f ++ " but it was never loaded")
+      error $ "Slot " ++ show slot ++ " was used during the contract creation of "
+                ++ show t ++ " from " ++ show f ++ " but it was never loaded"
     _ -> error $ show (q, et)
 
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
@@ -156,16 +168,17 @@ execEthenoTxs et = do
   vm <- get
   res <- fromEVM exec
   case (res, et) of
-    (_        , AccountCreated _)  -> return ()
+    (_        , AccountCreated _)  -> pure ()
     (Reversion,   _)               -> void $ put vm
     (VMFailure (Query q), _)       -> crashWithQueryError q et
     (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
     (VMSuccess (ConcreteBuf bc),
      ContractCreated _ ca _ _ _ _) -> do
-       env . contracts . at ca . _Just . contractcode .= InitCode mempty mempty
-       fromEVM (replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bc)) >> loadContract ca)
-       pure ()
-    _                              -> pure ()
+      env . contracts . at ca . _Just . contractcode .= InitCode mempty mempty
+      fromEVM $ do
+        replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bc))
+        loadContract ca
+    _ -> pure ()
 
 -- | For an etheno txn, set up VM to execute txn
 setupEthenoTx :: MonadState VM m => Etheno -> m ()
