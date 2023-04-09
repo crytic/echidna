@@ -8,7 +8,6 @@ import Control.Monad.Extra (whenM)
 import Control.Monad.Reader (ReaderT(runReaderT))
 import Control.Monad.State.Strict (execStateT)
 import Data.Foldable (toList)
-import Data.HashMap.Strict qualified as M
 import Data.List (find, partition, isSuffixOf, (\\))
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List.NonEmpty qualified as NE
@@ -200,8 +199,8 @@ loadSpecified env name cs = do
   unless solConf.quiet $
     putStrLn $ "Analyzing contract: " <> T.unpack mainContract.contractName
 
-  -- generate the complete abi mapping
   let
+    -- generate the complete abi mapping
     abi = Map.elems mainContract.abiMap <&> \method -> (method.name, snd <$> method.inputs)
     (tests, funs) = partition (isPrefixOf solConf.prefix . fst) abi
 
@@ -215,14 +214,14 @@ loadSpecified env name cs = do
     -- Construct ABI mapping for World
     abiMapping =
       if solConf.allContracts then
-        M.fromList $ catMaybes $ cs <&> \contract ->
+        Map.fromList $ catMaybes $ cs <&> \contract ->
           let filtered = filterMethods contract.contractName
                                        solConf.methodFilter
                                        (abiOf solConf.prefix contract)
           in (getBytecodeMetadata contract.runtimeCode,) <$> NE.nonEmpty filtered
       else
         case NE.nonEmpty fabiOfc of
-          Just ne -> M.singleton (getBytecodeMetadata mainContract.runtimeCode) ne
+          Just ne -> Map.singleton (getBytecodeMetadata mainContract.runtimeCode) ne
           Nothing -> mempty
 
     -- Set up initial VM, either with chosen contract or Etheno initialization file
@@ -299,9 +298,11 @@ loadSpecified env name cs = do
     choose _ (Just n) =
       maybe (throwM $ ContractNotFound n) pure $
         find (Data.Text.isSuffixOf (contractId n) . (.contractName)) cs
-    contractId n | T.any (== ':') n = let (splitPath, splitName) = T.breakOn ":" n in
-                                      rewritePathSeparators splitPath `T.append` splitName
-                 | otherwise = ":" `append` n
+    contractId n
+      | T.any (== ':') n =
+        let (splitPath, splitName) = T.breakOn ":" n
+        in rewritePathSeparators splitPath `T.append` splitName
+      | otherwise = ":" `append` n
     rewritePathSeparators = T.pack . joinPath . splitDirectories . T.unpack
     setUpFunction = ("setUp", [])
 
@@ -328,7 +329,7 @@ filterFallbacks
   -> [ContractName]
   -> SignatureMap
   -> SignatureMap
-filterFallbacks _ [] [] sm = M.map f sm
+filterFallbacks _ [] [] sm = Map.map f sm
   where f ss = NE.fromList $ case NE.filter (/= fallback) ss of
                 []  -> [fallback] -- No other alternative
                 ss' -> ss'
@@ -343,16 +344,16 @@ prepareHashMaps [] _  m = (m, Nothing) -- No constant functions detected
 prepareHashMaps cs as m =
   let
     (hm, lm) =
-      ( M.unionWith NEE.union (filterHashMap not cs m) (filterHashMap id as m)
+      ( Map.unionWith NEE.union (filterHashMap not cs m) (filterHashMap id as m)
       , filterHashMap id cs m )
   in
-    if | M.size hm > 0  && M.size lm > 0  -> (hm, Just lm) -- Usual case
-       | M.size hm > 0  && M.size lm == 0 -> (hm, Nothing) -- No low-priority functions detected
-       | M.size hm == 0 && M.size lm > 0  -> (m,  Nothing) -- No high-priority functions detected
+    if | Map.size hm > 0  && Map.size lm > 0  -> (hm, Just lm) -- Usual case
+       | Map.size hm > 0  && Map.size lm == 0 -> (hm, Nothing) -- No low-priority functions detected
+       | Map.size hm == 0 && Map.size lm > 0  -> (m,  Nothing) -- No high-priority functions detected
        | otherwise                        -> error "Error processing function hashmaps"
   where
     filterHashMap f xs =
-      M.mapMaybe (NE.nonEmpty . NE.filter (\s -> f $ (hashSig . encodeSig $ s) `elem` xs))
+      Map.mapMaybe (NE.nonEmpty . NE.filter (\s -> f $ (hashSig . encodeSig $ s) `elem` xs))
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
 -- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
@@ -370,7 +371,7 @@ loadSolTests env fp name = do
   (vm, funs, testNames, _signatureMap) <- loadSpecified env name contracts
   let
     eventMap = Map.unions $ map (.eventMap) contracts
-    world = World solConf.sender M.empty Nothing [] eventMap
+    world = World solConf.sender mempty Nothing [] eventMap
     echidnaTests = createTests solConf.testMode True testNames vm._state._contract funs
   pure (vm, world, echidnaTests)
 

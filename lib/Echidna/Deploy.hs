@@ -1,6 +1,8 @@
 module Echidna.Deploy where
 
+import Control.Monad (foldM)
 import Control.Monad.Catch (MonadThrow(..), throwM)
+import Control.Monad.Reader (MonadReader, asks)
 import Control.Monad.State.Strict (execStateT, MonadIO)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -9,16 +11,15 @@ import Data.Either (fromRight)
 import Data.Text (Text, unlines)
 import Data.Text.Encoding (encodeUtf8)
 
-import EVM hiding (Env)
+import EVM hiding (bytecode, Env)
 import EVM.Solidity
 import EVM.Types (Addr)
 
-import Echidna.Types.Solidity (SolException(..))
-import Echidna.Types.Tx (createTx, unlimitedGasPerBlock)
 import Echidna.Exec (execTx)
 import Echidna.Events (extractEvents)
-import Control.Monad.Reader (MonadReader, asks)
 import Echidna.Types.Config (Env(..))
+import Echidna.Types.Solidity (SolException(..))
+import Echidna.Types.Tx (createTx, unlimitedGasPerBlock)
 
 deployContracts
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
@@ -46,17 +47,15 @@ deployBytecodes'
   -> Addr
   -> VM
   -> m VM
-deployBytecodes' []           _ vm = pure vm
-deployBytecodes' ((a, bc):cs) d vm =
-  deployBytecodes' cs d =<< loadRest
+deployBytecodes' cs src initialVM = foldM deployOne initialVM cs
   where
-    -- This will initialize with zero a large number of possible constructor parameters
-    zeros = BS.replicate 320 0
-    loadRest = do
-      vm' <- flip execStateT vm $
-        execTx $ createTx (bc <> zeros) d a unlimitedGasPerBlock (0, 0)
-      case vm'._result of
-        Just (VMSuccess _) -> pure vm'
-        _ -> do
-          di <- asks (.dapp)
-          throwM $ DeploymentFailed a (Data.Text.unlines $ extractEvents True di vm')
+  deployOne vm (dst, bytecode) = do
+    vm' <- flip execStateT vm $
+      execTx $ createTx (bytecode <> zeros) src dst unlimitedGasPerBlock (0, 0)
+    case vm'._result of
+      Just (VMSuccess _) -> pure vm'
+      _ -> do
+        di <- asks (.dapp)
+        throwM $ DeploymentFailed dst (Data.Text.unlines $ extractEvents True di vm')
+  -- This will initialize with zero a large number of possible constructor parameters
+  zeros = BS.replicate 320 0

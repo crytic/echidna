@@ -14,7 +14,6 @@ import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
-import Data.HashMap.Strict qualified as H
 import Data.IORef (readIORef, writeIORef)
 import Data.Map qualified as Map
 import Data.Map (Map, (\\))
@@ -162,11 +161,12 @@ execTxOptC
 execTxOptC tx = do
   (vm, camp@Campaign{coverage = oldCov}) <- get
   ((res, txCov), vm') <- runStateT (execTxWithCov tx) vm
-  let vmr = getResult $ fst res
-  -- Update the tx coverage map with the proper binary according to the vm result
-  let txCov' = Map.mapWithKey (\_ s -> Set.map (set _4 vmr) s) txCov
-  -- Update the global coverage map with the one from this tx run
-  let newCov = Map.unionWith Set.union oldCov txCov'
+  let
+    vmr = getResult $ fst res
+    -- Update the tx coverage map with the proper binary according to the vm result
+    txCov' = Map.mapWithKey (\_ s -> Set.map (set _4 vmr) s) txCov
+    -- Update the global coverage map with the one from this tx run
+    newCov = Map.unionWith Set.union oldCov txCov'
   put (vm', camp { coverage = newCov })
   when (coveragePoints oldCov < coveragePoints newCov) $ do
     let dict' = case tx.call of
@@ -220,13 +220,16 @@ callseq initialCorpus vm world seqLen = do
   conf <- asks (.cfg.campaignConf)
   -- First, we figure out whether we need to execute with or without coverage
   -- optimization and gas info, and pick our execution function appropriately
-  let coverageEnabled = isJust conf.knownCoverage
-  let ef = if coverageEnabled
-              then execTxOptC
-              else \tx -> do (v, ca) <- get
-                             (r, vm') <- runStateT (execTx tx) v
-                             put (vm', ca)
-                             pure r
+  let
+    coverageEnabled = isJust conf.knownCoverage
+    execFunc =
+      if coverageEnabled
+         then execTxOptC
+         else \tx -> do
+           (v, ca) <- get
+           (r, vm') <- runStateT (execTx tx) v
+           put (vm', ca)
+           pure r
   -- Then, we get the current campaign state
   camp <- get
   -- Then, we generate the actual transaction in the sequence
@@ -234,25 +237,25 @@ callseq initialCorpus vm world seqLen = do
   metaCache <- liftIO $ readIORef metaCacheRef
   -- Replay transactions in the corpus during the first iterations
   txSeq <- if length initialCorpus > camp.ncallseqs
-    then pure $ initialCorpus !! camp.ncallseqs
-    else randseq metaCache seqLen vm._env._contracts world
+              then pure $ initialCorpus !! camp.ncallseqs
+              else randseq metaCache seqLen vm._env._contracts world
 
   -- We then run each call sequentially. This gives us the result of each call, plus a new state
-  (res, (vm', camp')) <- runStateT (evalSeq vm ef txSeq) (vm, camp)
+  (res, (vm', camp')) <- runStateT (evalSeq vm execFunc txSeq) (vm, camp)
 
   let
     -- compute the addresses not present in the old VM via set difference
     newAddrs = Map.keys $ vm'._env._contracts \\ vm._env._contracts
     -- and construct a set to union to the constants table
-    diffs = H.fromList [(AbiAddressType, Set.fromList $ AbiAddress <$> newAddrs)]
+    diffs = Map.fromList [(AbiAddressType, Set.fromList $ AbiAddress <$> newAddrs)]
     -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'
-    results = parse (map (\(t, (vr, _)) -> (t, vr)) res) camp.genDict.rTypes
+    results = returnValues (map (\(t, (vr, _)) -> (t, vr)) res) camp.genDict.rTypes
     -- union the return results with the new addresses
-    additions = H.unionWith Set.union diffs results
+    additions = Map.unionWith Set.union diffs results
     -- append to the constants dictionary
     updatedDict = camp.genDict
-      { constants = H.unionWith Set.union additions camp.genDict.constants
-      , dictValues = Set.union (mkDictValues $ Set.unions $ H.elems additions)
+      { constants = Map.unionWith Set.union additions camp.genDict.constants
+      , dictValues = Set.union (mkDictValues $ Set.unions $ Map.elems additions)
                                camp.genDict.dictValues
       }
 
@@ -274,16 +277,17 @@ callseq initialCorpus vm world seqLen = do
     , ncallseqs = camp.ncallseqs + 1
     }
   where
-    -- Given a list of transactions and a return typing rule, this checks whether we know the return
-    -- type for each function called, and if we do, tries to parse the return value as a value of
-    -- that type. It returns a 'GenDict' style HashMap.
-    parse l rt = H.fromList . flip mapMaybe l $ \(tx, result) -> do
-      fname <- case tx.call of
-        SolCall (fname, _) -> Just fname
-        _ -> Nothing
-      type' <- rt fname
+  -- Given a list of transactions and a return typing rule, this checks whether we know the return
+  -- type for each function called, and if we do, tries to parse the return value as a value of
+  -- that type. It returns a 'GenDict' style Map.
+  returnValues txResults returnTypeOf =
+    Map.fromList . flip mapMaybe txResults $ \(tx, result) -> do
       case result of
-        VMSuccess (ConcreteBuf buf) ->
+        VMSuccess (ConcreteBuf buf) -> do
+          fname <- case tx.call of
+            SolCall (fname, _) -> Just fname
+            _ -> Nothing
+          type' <- returnTypeOf fname
           case runGetOrFail (getAbi type') (LBS.fromStrict buf) of
             -- make sure we don't use cheat codes to form fuzzing call sequences
             Right (_, _, abiValue) | abiValue /= AbiAddress cheatCode ->
@@ -305,17 +309,19 @@ campaign
   -> m Campaign
 campaign u vm world ts dict initialCorpus = do
   conf <- asks (.cfg.campaignConf)
-
   metaCacheRef <- asks (.metadataCache)
   fetchContractCacheRef <- asks (.fetchContractCache)
   external <- liftIO $ Map.mapMaybe id <$> readIORef fetchContractCacheRef
   liftIO $ writeIORef metaCacheRef (memo (vm._env._contracts <> external))
 
-  let c = fromMaybe mempty conf.knownCoverage
-  let effectiveSeed = fromMaybe dict.defSeed conf.seed
-      effectiveGenDict = dict { defSeed = effectiveSeed }
-      camp = Campaign ts c mempty effectiveGenDict False Set.empty 0
+  let
+    covMap = fromMaybe mempty conf.knownCoverage
+    effectiveSeed = fromMaybe dict.defSeed conf.seed
+    effectiveGenDict = dict { defSeed = effectiveSeed }
+    camp = Campaign ts covMap mempty effectiveGenDict False Set.empty 0
+
   execStateT (evalRandT (lift u >> runCampaign) (mkStdGen effectiveSeed)) camp
+
   where
     memo = makeBytecodeCache . map (forceBuf . (^. bytecode)) . Map.elems
     runCampaign = do
