@@ -1,7 +1,6 @@
 module Echidna where
 
 import Control.Monad.Catch (MonadThrow(..))
-import Data.HashMap.Strict qualified as HM
 import Data.List (find)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
@@ -88,7 +87,7 @@ prepareContract env contracts solFiles specifiedContract seed = do
 loadInitialCorpus :: Env -> World -> IO [[Tx]]
 loadInitialCorpus env world = do
   -- load transactions from init sequence (if any)
-  let sigs = Set.fromList $ concatMap NE.toList (HM.elems world.highSignatureMap)
+  let sigs = Set.fromList $ concatMap NE.toList (Map.elems world.highSignatureMap)
   ethenoCorpus <-
     case env.cfg.solConf.initialize of
       Nothing -> pure []

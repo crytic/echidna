@@ -5,14 +5,24 @@ import Data.ListLike qualified as LL
 
 -- | A list of mutators to randomly select to perform a mutation of list-like values
 listMutators :: (LL.ListLike f i, MonadRandom m) => m (f -> m f)
-listMutators = fromList [(return, 1), (expandRandList, 10), (deleteRandList, 10), (swapRandList, 10)]
+listMutators = fromList
+  [ (pure, 1) -- no-op
+  , (expandRandList, 10)
+  , (deleteRandList, 10)
+  , (swapRandList, 10)
+  ]
 
 -- | Mutate a list-like data structure using a list of mutators
-mutateLL :: (LL.ListLike f i, MonadRandom m)
-         => Maybe Int -- ^ Required size for the mutated list-like value (or Nothing if there are no constrains)
-         -> f         -- ^ Randomly generated list-like value to complement the mutated list, if it is shorter than the requested size
-         -> f         -- ^ List-like value to mutate
-         -> m f
+mutateLL
+  :: (LL.ListLike f i, MonadRandom m)
+  -- | Required size for the mutated list-like value (or Nothing if there are no constrains)
+  => Maybe Int
+  -- | Randomly generated list-like value to complement the mutated list, if it is
+  -- shorter than the requested size
+  -> f
+  -- | List-like value to mutate
+  -> f
+  -> m f
 mutateLL mn fs vs = do
   f <- listMutators
   xs <- f vs
@@ -24,10 +34,11 @@ replaceAt i f n = LL.take n f <> LL.cons i (LL.drop (n + 1) f)
 expandAt :: LL.ListLike f i => f -> Int -> Int -> f
 expandAt xs k t =
   case LL.uncons xs of
-    Nothing     -> xs
-    Just (y,ys) -> if k == 0
-                   then LL.replicate t y <> ys
-                   else LL.cons y (expandAt ys (k - 1) t)
+    Nothing -> xs
+    Just (y,ys) ->
+      if k == 0
+         then LL.replicate t y <> ys
+         else LL.cons y (expandAt ys (k - 1) t)
 
 expandRandList :: (LL.ListLike f i, MonadRandom m) => f -> m f
 expandRandList xs

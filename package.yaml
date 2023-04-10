@@ -41,9 +41,7 @@ dependencies:
   - time
   - unliftio
   - utf8-string
-  - unordered-containers
   - vector
-  - vector-instances
   - with-utf8
   - word-wrap
   - yaml

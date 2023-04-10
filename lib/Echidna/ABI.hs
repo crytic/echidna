@@ -1,6 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DerivingStrategies #-}
-
 module Echidna.ABI where
 
 import Control.Monad (liftM2, liftM3, foldM, replicateM)
@@ -15,9 +12,8 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.DoubleWord (Int256, Word256)
 import Data.Foldable (toList)
-import Data.Hashable (Hashable(..))
-import Data.HashMap.Strict (HashMap)
-import Data.HashMap.Strict qualified as M
+import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.List (intercalate)
@@ -30,7 +26,6 @@ import Data.Text.Encoding (encodeUtf8)
 import Data.Text.Encoding qualified as TE
 import Data.Vector (Vector)
 import Data.Vector qualified as V
-import Data.Vector.Instances ()
 import Data.Word (Word8)
 import Numeric (showHex)
 
@@ -108,9 +103,9 @@ hashSig = abiKeccak . TE.encodeUtf8
 data GenDict = GenDict
   { pSynthA    :: Float
     -- ^ Fraction of time to use dictionary vs. synthesize
-  , constants  :: !(HashMap AbiType (Set AbiValue))
+  , constants  :: !(Map AbiType (Set AbiValue))
     -- ^ Constants to use, sorted by type
-  , wholeCalls :: !(HashMap SolSignature (Set SolCall))
+  , wholeCalls :: !(Map SolSignature (Set SolCall))
     -- ^ Whole calls to use, sorted by type
   , defSeed    :: Int
     -- ^ Default seed to use if one is not provided in EConfig
@@ -121,19 +116,15 @@ data GenDict = GenDict
   }
 
 hashMapBy
-  :: (Hashable k, Hashable a, Eq k, Ord a)
+  :: (Ord k, Eq k, Ord a)
   => (a -> k)
   -> Set a
-  -> HashMap k (Set a)
-hashMapBy f = M.fromListWith Set.union . fmap (\v -> (f v, Set.singleton v)) . Set.toList
+  -> Map k (Set a)
+hashMapBy f = Map.fromListWith Set.union . fmap (\v -> (f v, Set.singleton v)) . Set.toList
 
 gaddCalls :: Set SolCall -> GenDict -> GenDict
 gaddCalls calls dict =
   dict { wholeCalls = dict.wholeCalls <> hashMapBy (fmap $ fmap abiValueType) calls }
-
-deriving anyclass instance Hashable AbiType
-deriving anyclass instance Hashable AbiValue
-deriving anyclass instance Hashable Addr
 
 -- | Construct a 'GenDict' from some dictionaries, a 'Float', a default seed,
 -- and a typing rule for return values
@@ -317,12 +308,17 @@ mutateAbiCall = traverse f
 -- | Given a generator taking an @a@ and returning a @b@ and a way to get @b@s associated with some
 -- @a@ from a 'GenDict', return a generator that takes an @a@ and either synthesizes new @b@s with the
 -- provided generator or uses the 'GenDict' dictionary (when available).
-genWithDict :: (Eq a, Hashable a, MonadRandom m)
-            => GenDict -> HashMap a (Set b) -> (a -> m b) -> a -> m b
+genWithDict
+  :: (Eq a, Ord a, MonadRandom m)
+  => GenDict
+  -> Map a (Set b)
+  -> (a -> m b)
+  -> a
+  -> m b
 genWithDict genDict m g t = do
   r <- getRandom
   let maybeValM = if genDict.pSynthA >= r then fromDict else pure Nothing
-      fromDict = case M.lookup t m of
+      fromDict = case Map.lookup t m of
                    Nothing -> pure Nothing
                    Just cs -> Just <$> rElem' cs
   fromMaybe <$> g t <*> maybeValM
@@ -362,9 +358,15 @@ genAbiCallM genDict abi = do
                          abi
   mutateAbiCall solCall
 
--- | Given a list of 'SolSignature's, generate a random 'SolCall' for one, possibly with a dictionary.
-genInteractionsM :: MonadRandom m => GenDict -> NonEmpty SolSignature -> m SolCall
-genInteractionsM genDict l = genAbiCallM genDict =<< rElem l
+-- | Given a list of 'SolSignature's, generate a random 'SolCall' for one,
+-- possibly with a dictionary.
+genInteractionsM
+  :: MonadRandom m
+  => GenDict
+  -> NonEmpty SolSignature
+  -> m SolCall
+genInteractionsM genDict solSignatures =
+  rElem solSignatures >>= genAbiCallM genDict
 
 abiCalldata :: Text -> Vector AbiValue -> ByteString
 abiCalldata s xs = BSLazy.toStrict . runPut $ do

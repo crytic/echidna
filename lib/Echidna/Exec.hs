@@ -41,14 +41,15 @@ data ErrorClass = RevertE | IllegalE | UnknownE
 
 -- | Given an execution error, classify it. Mostly useful for nice @pattern@s ('Reversion', 'Illegal').
 classifyError :: Error -> ErrorClass
-classifyError (OutOfGas _ _)         = RevertE
-classifyError (Revert _)             = RevertE
-classifyError (UnrecognizedOpcode _) = RevertE
-classifyError StackLimitExceeded     = RevertE
-classifyError StackUnderrun          = IllegalE
-classifyError BadJumpDestination     = IllegalE
-classifyError IllegalOverflow        = IllegalE
-classifyError _                      = UnknownE
+classifyError = \case
+  OutOfGas _ _         -> RevertE
+  Revert _             -> RevertE
+  UnrecognizedOpcode _ -> RevertE
+  StackLimitExceeded   -> RevertE
+  StackUnderrun        -> IllegalE
+  BadJumpDestination   -> IllegalE
+  IllegalOverflow      -> IllegalE
+  _                    -> UnknownE
 
 -- | Extracts the 'Query' if there is one.
 getQuery :: VMResult -> Maybe Query
@@ -65,7 +66,8 @@ pattern Illegal <- VMFailure (classifyError -> IllegalE)
 
 -- | Given an execution error, throw the appropriate exception.
 vmExcept :: MonadThrow m => Error -> m ()
-vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e}
+vmExcept e = throwM $
+  case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e}
 
 -- | Given an error handler `onErr`, an execution strategy `executeTx`, and a transaction `tx`,
 -- execute that transaction using the given execution strategy, calling `onErr` on errors.

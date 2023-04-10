@@ -1,4 +1,3 @@
-{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Echidna.Output.JSON where
@@ -6,8 +5,9 @@ module Echidna.Output.JSON where
 import Data.Aeson hiding (Error)
 import Data.ByteString.Base16 qualified as BS16
 import Data.ByteString.Lazy (ByteString)
-import Data.Foldable qualified as DF
-import Data.Map
+import Data.Map (Map)
+import Data.Map qualified as Map
+import Data.Set qualified as Set
 import Data.Text
 import Data.Text.Encoding (decodeUtf8)
 import Numeric (showHex)
@@ -95,24 +95,26 @@ instance ToJSON Transaction where
 
 encodeCampaign :: C.Campaign -> ByteString
 encodeCampaign C.Campaign{..} = encode
-  Campaign { _success = True
-           , _error = Nothing
-           , _tests = mapTest <$> tests
-           , seed = genDict.defSeed
-           , coverage = mapKeys (("0x" ++) . (`showHex` "") . keccak') $ DF.toList <$> coverage
-           , gasInfo = toList gasInfo
-           }
+  Campaign
+    { _success = True
+    , _error = Nothing
+    , _tests = mapTest <$> tests
+    , seed = genDict.defSeed
+    , coverage = Map.mapKeys (("0x" ++) . (`showHex` "") . keccak') $ Set.toList <$> coverage
+    , gasInfo = Map.toList gasInfo
+    }
 
 mapTest :: EchidnaTest -> Test
 mapTest test =
-  let (status, transactions, err) = mapTestState test.state test.reproducer in
-  Test { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
-       , name = "name" --TODO add a proper name here
-       , status = status
-       , _error = err
-       , testType = Property
-       , transactions = transactions
-       }
+  let (status, transactions, err) = mapTestState test.state test.reproducer
+  in Test
+    { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
+    , name = "name" -- TODO add a proper name here
+    , status = status
+    , _error = err
+    , testType = Property
+    , transactions = transactions
+    }
   where
   mapTestState (T.Open _) _ = (Fuzzing, Nothing, Nothing)
   mapTestState T.Passed _ = (Passed, Nothing, Nothing)
@@ -121,15 +123,17 @@ mapTest test =
   mapTestState (T.Failed e) _ = (Error, Nothing, Just $ show e) -- TODO add (show e)
 
   mapTx tx =
-    let (function, args) = mapCall tx.call in
-    Transaction { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
-                , function = function
-                , arguments = args
-                , gas = toInteger tx.gas
-                , gasprice = toInteger tx.gasprice
-                }
+    let (function, args) = mapCall tx.call
+    in Transaction
+      { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
+      , function = function
+      , arguments = args
+      , gas = toInteger tx.gas
+      , gasprice = toInteger tx.gasprice
+      }
 
-  mapCall (SolCreate _) = ("<CREATE>", Nothing)
-  mapCall (SolCall (name, args)) = (name, Just $ ppAbiValue <$> args)
-  mapCall NoCall                 = ("*wait*", Nothing)
-  mapCall (SolCalldata x) = (decodeUtf8 $ "0x" <> BS16.encode x, Nothing)
+  mapCall = \case
+    SolCreate _          -> ("<CREATE>", Nothing)
+    SolCall (name, args) -> (name, Just $ ppAbiValue <$> args)
+    NoCall               -> ("*wait*", Nothing)
+    SolCalldata x        -> (decodeUtf8 $ "0x" <> BS16.encode x, Nothing)

@@ -1,9 +1,10 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
+
 module Echidna.Types.Buffer where
 
 import Data.ByteString (ByteString)
-import EVM.Types (Expr(ConcreteBuf, Lit), EType(Buf), EType(EWord), W256)
+import EVM.Types (Expr(ConcreteBuf, Lit), EType(Buf, EWord), W256)
 
 forceBuf :: Expr 'Buf -> ByteString
 forceBuf (ConcreteBuf b) = b

@@ -9,8 +9,8 @@ import Brick.Widgets.Dialog qualified as B
 import Control.Monad.Catch (MonadCatch(..), catchAll)
 import Control.Monad.Reader (MonadReader (ask), runReader, asks)
 import Control.Monad.State (modify')
-import Graphics.Vty qualified as V
 import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
+import Graphics.Vty qualified as Vty
 import System.Posix
 
 import Echidna.UI.Widgets
@@ -56,32 +56,33 @@ data UIEvent =
 
 -- | Set up and run an Echidna 'Campaign' and display interactive UI or
 -- print non-interactive output in desired format at the end
-ui :: (MonadCatch m, MonadRandom m, MonadReader Env m, MonadUnliftIO m)
-   => VM             -- ^ Initial VM state
-   -> World          -- ^ Initial world state
-   -> [EchidnaTest]  -- ^ Tests to evaluate
-   -> GenDict
-   -> [[Tx]]
-   -> m Campaign
+ui
+  :: (MonadCatch m, MonadRandom m, MonadReader Env m, MonadUnliftIO m)
+  => VM             -- ^ Initial VM state
+  -> World          -- ^ Initial world state
+  -> [EchidnaTest]  -- ^ Tests to evaluate
+  -> GenDict
+  -> [[Tx]]
+  -> m Campaign
 ui vm world ts dict initialCorpus = do
   conf <- asks (.cfg)
-  let uiConf = conf.uiConf
   ref <- liftIO $ newIORef defaultCampaign
   stop <- newEmptyMVar
-  let updateRef = do
-        shouldStop <- liftIO $ isJust <$> tryReadMVar stop
-        get >>= liftIO . atomicWriteIORef ref
-        pure shouldStop
+  let
+    updateRef = do
+      shouldStop <- liftIO $ isJust <$> tryReadMVar stop
+      get >>= liftIO . atomicWriteIORef ref
+      pure shouldStop
 
-      secToUsec = (* 1000000)
-      timeoutUsec = secToUsec $ fromMaybe (-1) uiConf.maxTime
-      runCampaign = timeout timeoutUsec (campaign updateRef vm world ts dict initialCorpus)
+    secToUsec = (* 1000000)
+    timeoutUsec = secToUsec $ fromMaybe (-1) conf.uiConf.maxTime
+    runCampaign = timeout timeoutUsec (campaign updateRef vm world ts dict initialCorpus)
 #ifdef INTERACTIVE_UI
   terminalPresent <- liftIO isTerminal
 #else
   let terminalPresent = False
 #endif
-  let effectiveMode = case uiConf.operationMode of
+  let effectiveMode = case conf.uiConf.operationMode of
         Interactive | not terminalPresent -> NonInteractive Text
         other -> other
   case effectiveMode of
@@ -109,7 +110,7 @@ ui vm world ts dict initialCorpus = do
         (const $ liftIO $ killThread ticker)
       let buildVty = do
             v <- mkVty =<< vtyConfig
-            V.setMode (V.outputIface v) V.Mouse True
+            Vty.setMode (Vty.outputIface v) Vty.Mouse True
             pure v
       initialVty <- liftIO buildVty
       app <- customMain initialVty buildVty (Just bc) <$> monitor
@@ -163,11 +164,10 @@ ui vm world ts dict initialCorpus = do
 
 vtyConfig :: IO Config
 vtyConfig = do
-  config <- V.standardIOConfig
+  config <- Vty.standardIOConfig
   pure config { inputMap = (Nothing, "\ESC[6;2~", EvKey KPageDown [MShift]) :
                            (Nothing, "\ESC[5;2~", EvKey KPageUp [MShift]) :
-                           inputMap defaultConfig
-              }
+                           inputMap defaultConfig }
 
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
 monitor :: MonadReader Env m => m (App UIState UIEvent Name)
@@ -178,7 +178,7 @@ monitor = do
       [ if uiState.displayFetchedDialog
            then fetchedDialogWidget uiState
            else emptyWidget
-      , runReader (campaignStatus uiState) conf]
+      , runReader (campaignStatus uiState) conf ]
 
     onEvent (AppEvent (CampaignUpdated c')) =
       modify' $ \state -> state { campaign = c', status = Running }

@@ -15,24 +15,25 @@ minSupportedSolcVersion = version 0 4 25 [] []
 
 data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
 
--- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
--- instance for more detailed explanations.
-data SolException = BadAddr Addr
-                  | CompileFailure String String
-                  | SolcReadFailure
-                  | NoContracts
-                  | TestArgsFound Text
-                  | ContractNotFound Text
-                  | NoBytecode Text
-                  | NoFuncs
-                  | NoTests
-                  | OnlyTests
-                  | ConstructorArgs String
-                  | DeploymentFailed Addr Text
-                  | SetUpCallFailed
-                  | NoCryticCompile
-                  | InvalidMethodFilters Filter
-                  | OutdatedSolcVersion Version
+-- | Things that can go wrong trying to load a Solidity file for Echidna testing.
+-- Read the 'Show' instance for more detailed explanations.
+data SolException
+  = BadAddr Addr
+  | CompileFailure String String
+  | SolcReadFailure
+  | NoContracts
+  | TestArgsFound Text
+  | ContractNotFound Text
+  | NoBytecode Text
+  | NoFuncs
+  | NoTests
+  | OnlyTests
+  | ConstructorArgs String
+  | DeploymentFailed Addr Text
+  | SetUpCallFailed
+  | NoCryticCompile
+  | InvalidMethodFilters Filter
+  | OutdatedSolcVersion Version
 
 instance Show SolException where
   show = \case
