@@ -90,14 +90,21 @@ createTests
   -> [SolSignature]
   -> [EchidnaTest]
 createTests m td ts r ss = case m of
-  "exploration"  -> [createTest Exploration]
-  "overflow"     -> [createTest (CallTest "Integer (over/under)flow" checkOverflowTest)]
-  "property"     -> map (\t -> createTest (PropertyTest t r)) ts
-  "optimization" -> map (\t -> createTest (OptimizationTest t r)) ts
-  "assertion"    -> map (\s -> createTest (AssertionTest False s r)) (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
-  "dapptest"     -> map (\s -> createTest (AssertionTest True s r)) (filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ss)
-  _              -> error validateTestModeError
-
+  "exploration" ->
+    [createTest Exploration]
+  "overflow" ->
+    [createTest (CallTest "Integer (over/under)flow" checkOverflowTest)]
+  "property" ->
+    map (\t -> createTest (PropertyTest t r)) ts
+  "optimization" ->
+    map (\t -> createTest (OptimizationTest t r)) ts
+  "assertion" ->
+    map (\s -> createTest (AssertionTest False s r))
+        (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
+  "dapptest" ->
+    map (\s -> createTest (AssertionTest True s r))
+        (filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ss)
+  _ -> error validateTestModeError
   ++ (if td then [sdt, sdat] else [])
   where
   sdt = createTest (CallTest "Target contract is not self-destructed" $ checkSelfDestructedTarget r)
@@ -198,8 +205,8 @@ checkStatefulAssertion
 checkStatefulAssertion sig addr = do
   dappInfo <- asks (.dapp)
   vm <- get
-      -- Whether the last transaction called the function `sig`.
   let
+    -- Whether the last transaction called the function `sig`.
     isCorrectFn =
       BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty))
                     (forceBuf vm._state._calldata)

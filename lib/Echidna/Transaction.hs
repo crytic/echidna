@@ -6,14 +6,13 @@ module Echidna.Transaction where
 import Control.Lens
 import Control.Monad (join)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
-import Control.Monad.State.Strict (MonadState, gets)
-import Data.HashMap.Strict qualified as M
+import Control.Monad.State.Strict (MonadState, gets, modify')
 import Data.Map (Map, toList)
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
-import EVM hiding (value)
+import EVM hiding (resetState, tx, value)
 import EVM.ABI (abiValueType)
 import EVM.Types (Expr(ConcreteBuf, Lit), Addr, W256)
 
@@ -26,6 +25,7 @@ import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, 
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign (Campaign(..))
+import qualified Data.Map as Map
 
 hasSelfdestructed :: VM -> Addr -> Bool
 hasSelfdestructed vm addr = addr `elem` vm._tx._substate._selfdestructs
@@ -77,7 +77,7 @@ genTx memo world txConf deployedContracts = do
     toContractA sigMap (addr, c) =
       let bc = forceBuf $ c ^. bytecode
           metadata = lookupBytecodeMetadata memo bc
-      in (addr,) <$> M.lookup metadata sigMap
+      in (addr,) <$> Map.lookup metadata sigMap
 
 genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
 genDelay mv ds = do
@@ -139,50 +139,55 @@ shrinkTx tx' =
   in join $ usuallyRarely (join (uniform possibilities)) (pure $ removeCallTx tx')
 
 mutateTx :: (MonadRandom m) => Tx -> m Tx
-mutateTx t@(Tx { call = SolCall c }) = do
+mutateTx tx@Tx{call = SolCall c} = do
   f <- oftenUsually skip mutate
   f c
-  where mutate z = mutateAbiCall z >>= \c' -> pure $ t { call = SolCall c' }
-        skip _ = pure t
-mutateTx t = pure t
+  where mutate z = mutateAbiCall z >>= \c' -> pure tx { call = SolCall c' }
+        skip _ = pure tx
+mutateTx tx = pure tx
 
 -- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
 -- 'Transaction's \"on-chain\".
 setupTx :: MonadState VM m => Tx -> m ()
-setupTx (Tx NoCall _ r _ _ _ (t, b)) = fromEVM $ do
-  state . pc .= 0
-  state . stack .= mempty
-  state . memory .= mempty
-  block . timestamp %= (\x -> Lit (forceLit x + t))
-  block . number += b
-  loadContract r
+setupTx tx@Tx{call = NoCall} = fromEVM $ do
+  modify' $ \vm -> vm
+    { _state = resetState vm._state
+    , _block = advanceBlock vm._block tx.delay
+    }
+  loadContract tx.dst
 
-setupTx (Tx c s r g gp v (t, b)) = fromEVM $ do
-  result .= Nothing
-  state . pc .= 0
-  state . stack .= mempty
-  state . memory .= mempty
-  state . gas .= g
-  tx . gasprice .= gp
-  tx . origin .= s
-  state . caller .= Lit (fromIntegral s)
-  state . callvalue .= Lit v
-  block . timestamp %= (\x -> Lit (forceLit x + t))
-  block . number += b
-  case c of
+setupTx tx@Tx{call} = fromEVM $ do
+  modify' $ \vm -> vm
+    { _result = Nothing
+    , _state = (resetState vm._state)
+                 { _gas = tx.gas
+                 , _caller = Lit (fromIntegral tx.src)
+                 , _callvalue = Lit tx.value
+                 }
+    , _block = advanceBlock vm._block tx.delay
+    , _tx = vm._tx { _gasprice = tx.gasprice, _origin = tx.src }
+    }
+  case call of
     SolCreate bc -> do
-      env . contracts . at r .= Just (initialContract (InitCode bc mempty) & set balance v)
-      loadContract r
+      env . contracts . at tx.dst .= Just (initialContract (InitCode bc mempty) & set balance tx.value)
+      loadContract tx.dst
       state . code .= RuntimeCode (ConcreteRuntimeCode bc)
     SolCall cd -> do
       incrementBalance
-      loadContract r
+      loadContract tx.dst
       state . calldata .= ConcreteBuf (encode cd)
     SolCalldata cd -> do
       incrementBalance
-      loadContract r
+      loadContract tx.dst
       state . calldata .= ConcreteBuf cd
   where
-    incrementBalance = (env . contracts . ix r . balance) += v
-    encode (n, vs) = abiCalldata
-      (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
+    incrementBalance = env . contracts . ix tx.dst . balance += tx.value
+    encode (n, vs) = abiCalldata (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
+
+resetState :: FrameState -> FrameState
+resetState s = s { _pc = 0, _stack = mempty, _memory = mempty }
+
+advanceBlock :: Block -> (W256, W256) -> Block
+advanceBlock blk (t,b) =
+  blk { _timestamp = Lit (forceLit blk._timestamp + t)
+      , _number = blk._number + b }

@@ -10,9 +10,10 @@ import Data.ByteString.Base16 qualified as BS16 (decode)
 import Data.ByteString.Lazy.Char8 qualified as BSL
 import Data.ByteString.UTF8 qualified as BSU
 import Data.Either (fromRight)
-import Data.HashMap.Strict qualified as M
 import Data.List (isPrefixOf)
 import Data.List.NonEmpty qualified as NE
+import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.SemVer (Version, fromText)
 import Data.Set (Set)
@@ -45,16 +46,16 @@ instance Exception ProcException
 
 -- | This function is used to filter the lists of function names according to the supplied
 -- contract name (if any) and returns a list of hashes
-filterResults :: Maybe ContractName -> M.HashMap ContractName [FunctionName] -> [FunctionHash]
+filterResults :: Maybe ContractName -> Map ContractName [FunctionName] -> [FunctionHash]
 filterResults (Just c) rs =
-  case M.lookup c rs of
+  case Map.lookup c rs of
     Nothing -> filterResults Nothing rs
     Just s -> hashSig <$> s
-filterResults Nothing rs = hashSig <$> (concat . M.elems) rs
+filterResults Nothing rs = hashSig <$> (concat . Map.elems) rs
 
 enhanceConstants :: SlitherInfo -> Set AbiValue
 enhanceConstants si =
-  Set.fromList . concatMap enh . concat . concat . M.elems $ M.elems <$> si.constantValues
+  Set.fromList . concatMap enh . concat . concat . Map.elems $ Map.elems <$> si.constantValues
   where
     enh (AbiUInt _ n) = makeNumAbiValues (fromIntegral n)
     enh (AbiInt _ n) = makeNumAbiValues (fromIntegral n)
@@ -63,11 +64,11 @@ enhanceConstants si =
 
 -- we loose info on what constants are in which functions
 data SlitherInfo = SlitherInfo
-  { payableFunctions :: M.HashMap ContractName [FunctionName]
-  , constantFunctions :: M.HashMap ContractName [FunctionName]
-  , asserts :: M.HashMap ContractName [FunctionName]
-  , constantValues  :: M.HashMap ContractName (M.HashMap FunctionName [AbiValue])
-  , generationGraph :: M.HashMap ContractName (M.HashMap FunctionName [FunctionName])
+  { payableFunctions :: Map ContractName [FunctionName]
+  , constantFunctions :: Map ContractName [FunctionName]
+  , asserts :: Map ContractName [FunctionName]
+  , constantValues  :: Map ContractName (Map FunctionName [AbiValue])
+  , generationGraph :: Map ContractName (Map FunctionName [FunctionName])
   , solcVersions :: [Version]
   , fallbackDefined :: [ContractName]
   , receiveDefined :: [ContractName]
@@ -90,7 +91,7 @@ instance FromJSON SlitherInfo where
         receiveDefined <- o .:? "with_receive" .!= ["*"]
         constantValues'
           -- the type annotation is needed
-          :: M.HashMap ContractName (M.HashMap FunctionName [[Maybe AbiValue]])
+          :: Map ContractName (Map FunctionName [[Maybe AbiValue]])
           <- o .: "constants_used" >>= (traverse . traverse . traverse . traverse) parseConstant
         -- flatten [[AbiValue]], the array probably shouldn't be nested, fix it in Slither
         let constantValues = (fmap . fmap) (catMaybes . concat) constantValues'
