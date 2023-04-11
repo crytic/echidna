@@ -33,6 +33,9 @@ data CampaignConf = CampaignConf
   , corpusDir     :: Maybe FilePath
     -- ^ Directory to load and save lists of transactions
   , mutConsts     :: MutationConsts Integer
+    -- ^ Directory to load and save lists of transactions
+  , coverageReport :: Bool
+    -- ^ Whether or not to generate a coverage report
   }
 
 -- | The state of a fuzzing campaign.

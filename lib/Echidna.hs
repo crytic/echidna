@@ -1,8 +1,8 @@
 module Echidna where
 
 import Control.Monad.Catch (MonadThrow(..))
-import Data.HashMap.Strict qualified as HM
 import Data.List (find)
+import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
@@ -13,9 +13,9 @@ import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Solidity (SolcContract(..))
 
 import Echidna.ABI
+import Echidna.Etheno (loadEtheno, extractFromEtheno)
 import Echidna.Output.Corpus
 import Echidna.Processor
-import Echidna.RPC (loadEtheno, extractFromEtheno)
 import Echidna.Solidity
 import Echidna.Test (createTests)
 import Echidna.Types.Campaign hiding (corpus)
@@ -38,20 +38,18 @@ import Echidna.Types.World
 -- * A World with all the required data for generating random transactions
 -- * A list of Echidna tests to check
 -- * A prepopulated dictionary
-prepareContract :: Env -> [SolcContract] -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
-                -> IO (VM, World, [EchidnaTest], GenDict)
+prepareContract
+  :: Env
+  -> [SolcContract]
+  -> NonEmpty FilePath
+  -> Maybe ContractName
+  -> Seed
+  -> IO (VM, World, [EchidnaTest], GenDict)
 prepareContract env contracts solFiles specifiedContract seed = do
   let solConf = env.cfg.solConf
 
   -- compile and load contracts
   (vm, funs, testNames, signatureMap) <- loadSpecified env specifiedContract contracts
-
-  -- load tests
-  let echidnaTests = createTests solConf.testMode
-                                 solConf.testDestruction
-                                 testNames
-                                 vm._state._contract
-                                 funs
 
   -- run processors
   slitherInfo <- runSlither (NE.head solFiles) solConf
@@ -59,29 +57,37 @@ prepareContract env contracts solFiles specifiedContract seed = do
     Just outdatedVersion -> throwM $ OutdatedSolcVersion outdatedVersion
     Nothing -> pure ()
 
-  let eventMap = Map.unions $ map (.eventMap) contracts
-  let world = mkWorld solConf eventMap signatureMap specifiedContract slitherInfo
+  let
+    -- load tests
+    echidnaTests = createTests solConf.testMode
+                               solConf.testDestruction
+                               testNames
+                               vm._state._contract
+                               funs
 
-  let deployedAddresses = Set.fromList $ AbiAddress <$> Map.keys vm._env._contracts
-  let constants = enhanceConstants slitherInfo
-                  <> timeConstants
-                  <> extremeConstants
-                  <> staticAddresses solConf
-                  <> deployedAddresses
+    eventMap = Map.unions $ map (.eventMap) contracts
+    world = mkWorld solConf eventMap signatureMap specifiedContract slitherInfo
 
-  let dict = mkGenDict env.cfg.campaignConf.dictFreq
-                       -- make sure we don't use cheat codes to form fuzzing call sequences
-                       (Set.delete (AbiAddress cheatCode) constants)
-                       Set.empty
-                       seed
-                       (returnTypes contracts)
+    deployedAddresses = Set.fromList $ AbiAddress <$> Map.keys vm._env._contracts
+    constants = enhanceConstants slitherInfo
+                <> timeConstants
+                <> extremeConstants
+                <> staticAddresses solConf
+                <> deployedAddresses
+
+    dict = mkGenDict env.cfg.campaignConf.dictFreq
+                     -- make sure we don't use cheat codes to form fuzzing call sequences
+                     (Set.delete (AbiAddress cheatCode) constants)
+                     Set.empty
+                     seed
+                     (returnTypes contracts)
 
   pure (vm, world, echidnaTests, dict)
 
 loadInitialCorpus :: Env -> World -> IO [[Tx]]
 loadInitialCorpus env world = do
   -- load transactions from init sequence (if any)
-  let sigs = Set.fromList $ concatMap NE.toList (HM.elems world.highSignatureMap)
+  let sigs = Set.fromList $ concatMap NE.toList (Map.elems world.highSignatureMap)
   ethenoCorpus <-
     case env.cfg.solConf.initialize of
       Nothing -> pure []

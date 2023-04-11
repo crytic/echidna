@@ -1,7 +1,8 @@
 module Echidna.Mutator.Corpus where
 
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, weighted)
-import Data.Set qualified as DS
+import Data.Set (Set)
+import Data.Set qualified as Set
 
 import Echidna.Mutator.Array
 import Echidna.Transaction (mutateTx, shrinkTx)
@@ -37,37 +38,58 @@ mutator Expansion = expandRandList
 mutator Swapping = swapRandList
 mutator Deletion = deleteRandList
 
-selectAndMutate :: MonadRandom m
-                => ([Tx] -> m [Tx]) -> Corpus -> m [Tx]
-selectAndMutate f ctxs = do
-  rtxs <- weighted $ map (\(i, txs) -> (txs, fromIntegral i)) $ DS.toDescList ctxs
+selectAndMutate
+  :: MonadRandom m
+  => ([Tx] -> m [Tx])
+  -> Corpus
+  -> m [Tx]
+selectAndMutate f corpus = do
+  rtxs <- selectFromCorpus corpus
   k <- getRandomR (0, length rtxs - 1)
   f $ take k rtxs
 
-selectAndCombine :: MonadRandom m
-                 => ([Tx] -> [Tx] -> m [Tx]) -> Int -> Corpus -> [Tx] -> m [Tx]
-selectAndCombine f ql ctxs gtxs = do
-  rtxs1 <- selectFromCorpus
-  rtxs2 <- selectFromCorpus
+selectAndCombine
+  :: MonadRandom m
+  => ([Tx] -> [Tx] -> m [Tx])
+  -> Int
+  -> Corpus
+  -> [Tx]
+  -> m [Tx]
+selectAndCombine f ql corpus gtxs = do
+  rtxs1 <- selectFromCorpus corpus
+  rtxs2 <- selectFromCorpus corpus
   txs <- f rtxs1 rtxs2
-  return . take ql $ txs ++ gtxs
-    where selectFromCorpus = weighted $ map (\(i, txs) -> (txs, fromIntegral i)) $ DS.toDescList ctxs
+  pure . take ql $ txs <> gtxs
 
-getCorpusMutation :: MonadRandom m
-                  => CorpusMutation -> (Int -> Corpus -> [Tx] -> m [Tx])
+selectFromCorpus
+  :: MonadRandom m
+  => Set (Int, [Tx])
+  -> m [Tx]
+selectFromCorpus =
+  weighted . map (\(i, txs) -> (txs, fromIntegral i)) . Set.toDescList
+
+getCorpusMutation
+  :: MonadRandom m
+  => CorpusMutation
+  -> (Int -> Corpus -> [Tx] -> m [Tx])
 getCorpusMutation (RandomAppend m) = mut (mutator m)
- where mut f ql ctxs gtxs = do
-          rtxs' <- selectAndMutate f ctxs
-          return . take ql $ rtxs' ++ gtxs
+  where
+    mut f ql ctxs gtxs = do
+      rtxs' <- selectAndMutate f ctxs
+      pure . take ql $ rtxs' ++ gtxs
 getCorpusMutation (RandomPrepend m) = mut (mutator m)
- where mut f ql ctxs gtxs = do
-          rtxs' <- selectAndMutate f ctxs
-          k <- getRandomR (0, ql - 1)
-          return . take ql $ take k gtxs ++ rtxs'
+  where
+    mut f ql ctxs gtxs = do
+      rtxs' <- selectAndMutate f ctxs
+      k <- getRandomR (0, ql - 1)
+      pure . take ql $ take k gtxs ++ rtxs'
 getCorpusMutation RandomSplice = selectAndCombine spliceAtRandom
 getCorpusMutation RandomInterleave = selectAndCombine interleaveAtRandom
 
-seqMutatorsStateful :: MonadRandom m => MutationConsts Rational -> m CorpusMutation
+seqMutatorsStateful
+  :: MonadRandom m
+  => MutationConsts Rational
+  -> m CorpusMutation
 seqMutatorsStateful (c1, c2, c3, c4) = weighted
   [(RandomAppend Identity,   800),
    (RandomPrepend Identity,  200),
@@ -88,7 +110,10 @@ seqMutatorsStateful (c1, c2, c3, c4) = weighted
    (RandomInterleave,        c4)
  ]
 
-seqMutatorsStateless :: MonadRandom m => MutationConsts Rational -> m CorpusMutation
+seqMutatorsStateless
+  :: MonadRandom m
+  => MutationConsts Rational
+  -> m CorpusMutation
 seqMutatorsStateless (c1, c2, _, _) = weighted
   [(RandomAppend Identity,   800),
    (RandomPrepend Identity,  200),

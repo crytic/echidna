@@ -6,7 +6,7 @@ module Echidna.Exec where
 
 import Control.Lens
 import Control.Monad (when)
-import Control.Monad.Catch (MonadThrow(..), catchAll, SomeException)
+import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO))
 import Control.Monad.Reader (MonadReader, asks)
 import Data.IORef (readIORef, atomicWriteIORef)
@@ -14,11 +14,8 @@ import Data.Map qualified as M
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as S
-import Data.Text qualified as Text
 import Data.Text qualified as T
 import Data.Vector qualified as V
-import Text.Read (readMaybe)
-import System.Environment (lookupEnv)
 import System.Process (readProcessWithExitCode)
 
 import EVM hiding (Env, cache, contract, tx, value)
@@ -28,8 +25,9 @@ import EVM.Fetch qualified
 import EVM.Types (Expr(ConcreteBuf, Lit), hexText)
 
 import Echidna.Events (emptyEvents)
+import Echidna.RPC (safeFetchContractFrom, safeFetchSlotFrom)
 import Echidna.Transaction
-import Echidna.Types (ExecException(..), Gas, fromEVM)
+import Echidna.Types (ExecException(..), Gas, fromEVM, emptyAccount)
 import Echidna.Types.Buffer (forceBuf)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Signature (MetadataCache, getBytecodeMetadata, lookupBytecodeMetadata)
@@ -43,22 +41,20 @@ data ErrorClass = RevertE | IllegalE | UnknownE
 
 -- | Given an execution error, classify it. Mostly useful for nice @pattern@s ('Reversion', 'Illegal').
 classifyError :: Error -> ErrorClass
-classifyError (OutOfGas _ _)         = RevertE
-classifyError (Revert _)             = RevertE
-classifyError (UnrecognizedOpcode _) = RevertE
-classifyError StackLimitExceeded     = RevertE
-classifyError StackUnderrun          = IllegalE
-classifyError BadJumpDestination     = IllegalE
-classifyError IllegalOverflow        = IllegalE
-classifyError _                      = UnknownE
+classifyError = \case
+  OutOfGas _ _         -> RevertE
+  Revert _             -> RevertE
+  UnrecognizedOpcode _ -> RevertE
+  StackLimitExceeded   -> RevertE
+  StackUnderrun        -> IllegalE
+  BadJumpDestination   -> IllegalE
+  IllegalOverflow      -> IllegalE
+  _                    -> UnknownE
 
 -- | Extracts the 'Query' if there is one.
 getQuery :: VMResult -> Maybe Query
 getQuery (VMFailure (Query q)) = Just q
 getQuery _                     = Nothing
-
-emptyAccount :: Contract
-emptyAccount = initialContract (RuntimeCode (ConcreteRuntimeCode mempty))
 
 -- | Matches execution errors that just cause a reversion.
 pattern Reversion :: VMResult
@@ -70,12 +66,18 @@ pattern Illegal <- VMFailure (classifyError -> IllegalE)
 
 -- | Given an execution error, throw the appropriate exception.
 vmExcept :: MonadThrow m => Error -> m ()
-vmExcept e = throwM $ case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e}
+vmExcept e = throwM $
+  case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e}
 
 -- | Given an error handler `onErr`, an execution strategy `executeTx`, and a transaction `tx`,
 -- execute that transaction using the given execution strategy, calling `onErr` on errors.
-execTxWith :: (MonadIO m, MonadState s m, MonadReader Env m)
-           => Lens' s VM -> (Error -> m ()) -> m VMResult -> Tx -> m (VMResult, Gas)
+execTxWith
+  :: (MonadIO m, MonadState s m, MonadReader Env m)
+  => Lens' s VM
+  -> (Error -> m ())
+  -> m VMResult
+  -> Tx
+  -> m (VMResult, Gas)
 execTxWith l onErr executeTx tx = do
   vm <- use l
   if hasSelfdestructed vm tx.dst then
@@ -91,6 +93,10 @@ execTxWith l onErr executeTx tx = do
     pure (vmResult, gasLeftBeforeTx - gasLeftAfterTx)
   where
   runFully = do
+    config <- asks (.cfg)
+    -- TODO: Is the latest block a good default? It makes fuzzing hard to reproduce. Rethink this.
+    let rpcBlock = maybe EVM.Fetch.Latest (EVM.Fetch.BlockNumber . fromIntegral) config.rpcBlock
+
     vmResult <- executeTx
     -- For queries, we halt execution because the VM needs some additional
     -- information from the outside. We provide this information and resume
@@ -106,9 +112,8 @@ execTxWith l onErr executeTx tx = do
             l %= execState (continuation emptyAccount)
           Nothing -> do
             logMsg $ "INFO: Performing RPC: " <> show q
-            getRpcUrl >>= \case
+            case config.rpcUrl of
               Just rpcUrl -> do
-                rpcBlock <- getRpcBlock
                 ret <- liftIO $ safeFetchContractFrom rpcBlock rpcUrl addr
                 case ret of
                   -- TODO: fix hevm to not return an empty contract in case of an error
@@ -145,9 +150,8 @@ execTxWith l onErr executeTx tx = do
           Just Nothing -> l %= execState (continuation 0)
           Nothing -> do
             logMsg $ "INFO: Performing RPC: " <> show q
-            getRpcUrl >>= \case
+            case config.rpcUrl of
               Just rpcUrl -> do
-                rpcBlock <- getRpcBlock
                 ret <- liftIO $ safeFetchSlotFrom rpcBlock rpcUrl addr slot
                 case ret of
                   Just value -> do
@@ -177,30 +181,6 @@ execTxWith l onErr executeTx tx = do
 
       -- No queries to answer, the tx is fully executed and the result is final
       _ -> pure vmResult
-    where
-    -- TODO: Currently, for simplicity we get those values from env vars.
-    -- Make it posible to pass through the config file and CLI
-    getRpcUrl = liftIO $ do
-      val <- lookupEnv "ECHIDNA_RPC_URL"
-      pure (Text.pack <$> val)
-
-    getRpcBlock = liftIO $ do
-      -- TODO: Is the latest block a good default? It makes fuzzing hard to
-      -- reproduce. Rethink this.
-      val <- lookupEnv "ECHIDNA_RPC_BLOCK"
-      pure $ maybe EVM.Fetch.Latest EVM.Fetch.BlockNumber (val >>= readMaybe)
-
-    -- TODO: temporary solution, handle errors gracefully
-    safeFetchContractFrom rpcBlock rpcUrl addr =
-      catchAll
-        (EVM.Fetch.fetchContractFrom rpcBlock rpcUrl addr)
-        (\(_e :: SomeException) -> pure $ Just emptyAccount)
-
-    -- TODO: temporary solution, handle errors gracefully
-    safeFetchSlotFrom rpcBlock rpcUrl addr slot =
-      catchAll
-        (EVM.Fetch.fetchSlotFrom rpcBlock rpcUrl addr slot)
-        (\(_e :: SomeException) -> pure $ Just 0)
 
   -- | Handles reverts, failures and contract creations that might be the result
   -- (`vmResult`) of executing transaction `tx`.
@@ -239,7 +219,10 @@ logMsg msg = do
     putStrLn $ time <> msg
 
 -- | Execute a transaction "as normal".
-execTx :: (MonadIO m, MonadState VM m, MonadReader Env m, MonadThrow m) => Tx -> m (VMResult, Gas)
+execTx
+  :: (MonadIO m, MonadState VM m, MonadReader Env m, MonadThrow m)
+  => Tx
+  -> m (VMResult, Gas)
 execTx = execTxWith id vmExcept $ fromEVM exec
 
 -- | Execute a transaction, logging coverage at every step.
@@ -291,5 +274,5 @@ initialVM :: Bool -> VM
 initialVM ffi = vmForEthrunCreation mempty
   & block . timestamp .~ Lit initialTimestamp
   & block . number .~ initialBlockNumber
-  & env . contracts .~ mempty       -- fixes weird nonce issues
+  & env . contracts .~ mempty -- fixes weird nonce issues
   & allowFFI .~ ffi

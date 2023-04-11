@@ -15,43 +15,44 @@ minSupportedSolcVersion = version 0 4 25 [] []
 
 data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
 
--- | Things that can go wrong trying to load a Solidity file for Echidna testing. Read the 'Show'
--- instance for more detailed explanations.
-data SolException = BadAddr Addr
-                  | CompileFailure String String
-                  | SolcReadFailure
-                  | NoContracts
-                  | TestArgsFound Text
-                  | ContractNotFound Text
-                  | NoBytecode Text
-                  | NoFuncs
-                  | NoTests
-                  | OnlyTests
-                  | ConstructorArgs String
-                  | DeploymentFailed Addr Text
-                  | SetUpCallFailed
-                  | NoCryticCompile
-                  | InvalidMethodFilters Filter
-                  | OutdatedSolcVersion Version
+-- | Things that can go wrong trying to load a Solidity file for Echidna testing.
+-- Read the 'Show' instance for more detailed explanations.
+data SolException
+  = BadAddr Addr
+  | CompileFailure String String
+  | SolcReadFailure
+  | NoContracts
+  | TestArgsFound Text
+  | ContractNotFound Text
+  | NoBytecode Text
+  | NoFuncs
+  | NoTests
+  | OnlyTests
+  | ConstructorArgs String
+  | DeploymentFailed Addr Text
+  | SetUpCallFailed
+  | NoCryticCompile
+  | InvalidMethodFilters Filter
+  | OutdatedSolcVersion Version
 
 instance Show SolException where
   show = \case
-    BadAddr a                -> "No contract at " ++ show a ++ " exists"
-    CompileFailure x y       -> "Couldn't compile given file\n" ++ "stdout:\n" ++ x ++ "stderr:\n" ++ y
-    SolcReadFailure          -> "Could not read crytic-export/combined_solc.json"
-    NoContracts              -> "No contracts found in given file"
-    (ContractNotFound c)     -> "Given contract " ++ show c ++ " not found in given file"
-    (TestArgsFound t)        -> "Test " ++ show t ++ " has arguments, aborting"
-    (NoBytecode t)           -> "No bytecode found for contract " ++ show t
-    NoFuncs                  -> "ABI is empty, are you sure your constructor is right?"
-    NoTests                  -> "No tests found in ABI"
-    OnlyTests                -> "Only tests and no public functions found in ABI"
-    (ConstructorArgs s)      -> "Constructor arguments are required: " ++ s
-    NoCryticCompile          -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
-    (InvalidMethodFilters f) -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
-    SetUpCallFailed          -> "Calling the setUp() function failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
-    (DeploymentFailed a t)   -> "Deploying the contract " ++ show a ++ " failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.):\n" ++ unpack t
-    OutdatedSolcVersion v    -> "Solc version " ++ toString v ++ " detected. Echidna doesn't support versions of solc before " ++ toString minSupportedSolcVersion ++ ". Please use a newer version."
+    BadAddr a              -> "No contract at " ++ show a ++ " exists"
+    CompileFailure x y     -> "Couldn't compile given file\n" ++ "stdout:\n" ++ x ++ "stderr:\n" ++ y
+    SolcReadFailure        -> "Could not read crytic-export/combined_solc.json"
+    NoContracts            -> "No contracts found in given file"
+    ContractNotFound c     -> "Given contract " ++ show c ++ " not found in given file"
+    TestArgsFound t        -> "Test " ++ show t ++ " has arguments, aborting"
+    NoBytecode t           -> "No bytecode found for contract " ++ show t
+    NoFuncs                -> "ABI is empty, are you sure your constructor is right?"
+    NoTests                -> "No tests found in ABI"
+    OnlyTests              -> "Only tests and no public functions found in ABI"
+    ConstructorArgs s      -> "Constructor arguments are required: " ++ s
+    NoCryticCompile        -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
+    InvalidMethodFilters f -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
+    SetUpCallFailed        -> "Calling the setUp() function failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
+    DeploymentFailed a t   -> "Deploying the contract " ++ show a ++ " failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.):\n" ++ unpack t
+    OutdatedSolcVersion v  -> "Solc version " ++ toString v ++ " detected. Echidna doesn't support versions of solc before " ++ toString minSupportedSolcVersion ++ ". Please use a newer version."
 
 
 instance Exception SolException

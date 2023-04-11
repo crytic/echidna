@@ -3,7 +3,7 @@ name: echidna
 author: Trail of Bits <echidna-dev@trailofbits.com>
 maintainer: Trail of Bits <echidna-dev@trailofbits.com>
 
-version: 2.1.0
+version: 2.1.1
 
 # https://github.com/haskell/cabal/issues/4739
 ghc-options: -Wall -fno-warn-orphans -O2 -threaded +RTS -N -RTS -optP-Wno-nonportable-include-path
@@ -41,25 +41,24 @@ dependencies:
   - time
   - unliftio
   - utf8-string
-  - unordered-containers
   - vector
-  - vector-instances
   - with-utf8
   - word-wrap
   - yaml
   - http-conduit
   - html-conduit
   - xml-conduit
+  - wreq
 
 language: GHC2021
 
 default-extensions:
-  - LambdaCase
-  - OverloadedStrings
-
   - DuplicateRecordFields
+  - LambdaCase
+  - MultiWayIf
   - NoFieldSelectors
   - OverloadedRecordDot
+  - OverloadedStrings
 
 library:
   source-dirs: lib/

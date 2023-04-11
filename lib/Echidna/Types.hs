@@ -1,6 +1,6 @@
 module Echidna.Types where
 
-import EVM (Error, EVM, VM)
+import EVM (Error, EVM, VM, Contract, initialContract, ContractCode (RuntimeCode), RuntimeCode (ConcreteRuntimeCode))
 import Control.Exception (Exception)
 import Control.Monad.State.Strict (MonadState, runState, get, put)
 import Data.Word (Word64)
@@ -26,3 +26,6 @@ fromEVM evmAction = do
   let (r, vm') = runState evmAction vm
   put vm'
   pure r
+
+emptyAccount :: Contract
+emptyAccount = initialContract (RuntimeCode (ConcreteRuntimeCode mempty))

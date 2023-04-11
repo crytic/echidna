@@ -72,7 +72,7 @@ extractEvents decodeErrors dappInfo vm =
       _ -> Nothing
 
 maybeContractNameFromCodeHash :: DappInfo -> W256 -> Maybe Text
-maybeContractNameFromCodeHash info codeHash = fmap contractToName maybeContract
+maybeContractNameFromCodeHash info codeHash = contractToName <$> maybeContract
   where maybeContract = snd <$> Map.lookup codeHash info.solcByHash
         contractToName c = contractNamePart c.contractName
 
@@ -97,14 +97,15 @@ decodePanic v = decodeAbiValue (AbiUIntType 256) (fromStrict v)
 humanPanic :: AbiValue -> Text
 humanPanic (AbiUInt _ code) =
   case code of
-    0x01 -> "Using assert."
-    0x11 -> "SafeMath over-/under-flows."
-    0x12 -> "Divide by 0."
-    0x21 -> "Conversion into non-existent enum type."
-    0x22 -> "Incorrectly encoded storage byte array."
-    0x31 -> "pop() on an empty array."
-    0x32 -> "Index out of bounds exception."
-    0x41 -> "Allocating too much memory or creating a too large array."
-    0x51 -> "Calling a zero-initialized variable of internal function type."
-    _ -> "Unknown panic error code."
-humanPanic _ = error "Shouldn't happen, improve types to make this branch go away"
+    0x01 -> "Using assert"
+    0x11 -> "SafeMath over-/under-flows"
+    0x12 -> "Divide by 0"
+    0x21 -> "Conversion into non-existent enum type"
+    0x22 -> "Incorrectly encoded storage byte array"
+    0x31 -> "pop() on an empty array"
+    0x32 -> "Index out of bounds exception"
+    0x41 -> "Allocating too much memory or creating a too large array"
+    0x51 -> "Calling a zero-initialized variable of internal function type"
+    _ -> "Unknown panic error code"
+humanPanic _ =
+  error "Shouldn't happen, improve types to make this branch go away"

@@ -1,7 +1,6 @@
 module Echidna.Config where
 
 import Control.Applicative ((<|>))
-import Control.Monad.Reader (Reader, ReaderT(..), runReader)
 import Control.Monad.State (StateT(..), runStateT, modify')
 import Control.Monad.Trans (lift)
 import Data.Aeson
@@ -9,7 +8,6 @@ import Data.Aeson.KeyMap (keys)
 import Data.Bool (bool)
 import Data.ByteString qualified as BS
 import Data.Functor ((<&>))
-import Data.HashSet (fromList, insert, difference)
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (isPrefixOf)
@@ -40,9 +38,9 @@ instance FromJSON EConfigWithUsage where
     let v' = case o of
                Object v -> v
                _        -> mempty
-    (c, ks) <- runStateT (parser v') $ fromList []
-    let found = fromList (keys v')
-    pure $ EConfigWithUsage c (found `difference` ks) (ks `difference` found)
+    (c, ks) <- runStateT (parser v') $ Set.fromList []
+    let found = Set.fromList (keys v')
+    pure $ EConfigWithUsage c (found `Set.difference` ks) (ks `Set.difference` found)
     -- this parser runs in StateT and comes equipped with the following
     -- equivalent unary operators:
     -- x .:? k (Parser) <==> x ..:? k (StateT)
@@ -56,8 +54,10 @@ instance FromJSON EConfigWithUsage where
               <*> testConfParser
               <*> txConfParser
               <*> (UIConf <$> v ..:? "timeout" <*> formatParser)
+              <*> v ..:? "rpcUrl"
+              <*> v ..:? "rpcBlock"
       where
-      useKey k = modify' $ insert k
+      useKey k = modify' $ Set.insert k
       x ..:? k = useKey k >> lift (x .:? k)
       x ..!= y = fromMaybe y <$> x
       -- Parse as unbounded Integer and see if it fits into W256
@@ -84,16 +84,17 @@ instance FromJSON EConfigWithUsage where
         pure $ TestConf classify (const psender)
 
       campaignConfParser = CampaignConf
-        <$> v ..:? "testLimit"   ..!= defaultTestLimit
-        <*> v ..:? "stopOnFail"  ..!= False
+        <$> v ..:? "testLimit" ..!= defaultTestLimit
+        <*> v ..:? "stopOnFail" ..!= False
         <*> v ..:? "estimateGas" ..!= False
-        <*> v ..:? "seqLen"      ..!= defaultSequenceLength
+        <*> v ..:? "seqLen" ..!= defaultSequenceLength
         <*> v ..:? "shrinkLimit" ..!= defaultShrinkLimit
         <*> (v ..:? "coverage" <&> \case Just False -> Nothing;  _ -> Just mempty)
         <*> v ..:? "seed"
-        <*> v ..:? "dictFreq"    ..!= 0.40
-        <*> v ..:? "corpusDir"   ..!= Nothing
-        <*> v ..:? "mutConsts"   ..!= defaultMutationConsts
+        <*> v ..:? "dictFreq" ..!= 0.40
+        <*> v ..:? "corpusDir" ..!= Nothing
+        <*> v ..:? "mutConsts" ..!= defaultMutationConsts
+        <*> v ..:? "coverageReport" ..!= True
 
       solConfParser = SolConf
         <$> v ..:? "contractAddr"    ..!= defaultContractAddr
@@ -142,11 +143,3 @@ defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEit
 -- | Try to parse an Echidna config file, throw an error if we can't.
 parseConfig :: FilePath -> IO EConfigWithUsage
 parseConfig f = BS.readFile f >>= Y.decodeThrow
-
--- | Run some action with the default configuration, useful in the REPL.
-withDefaultConfig :: ReaderT EConfig m a -> m a
-withDefaultConfig = (`runReaderT` defaultConfig)
-
--- | 'withDefaultConfig' but not for transformers
-withDefaultConfig' :: Reader EConfig a -> a
-withDefaultConfig' = (`runReader` defaultConfig)

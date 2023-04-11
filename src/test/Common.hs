@@ -103,11 +103,12 @@ runContract f selectedContract cfg = do
                 , dapp = dappInfo "/" solcByName sourceCache
                 , metadataCache = cacheMeta
                 , fetchContractCache = cacheContracts
-                , fetchSlotCache = cacheSlots }
+                , fetchSlotCache = cacheSlots
+                , chainId = Nothing }
   (vm, world, echidnaTests, dict) <- prepareContract env contracts (f :| []) selectedContract seed
   let corpus = []
   -- start ui and run tests
-  runReaderT (campaign (pure ()) vm world echidnaTests dict corpus) env
+  runReaderT (campaign (pure False) vm world echidnaTests dict corpus) env
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg = testContract' fp Nothing Nothing cfg True
@@ -136,7 +137,8 @@ checkConstructorConditions fp as = testCase fp $ do
                 , dapp = emptyDapp
                 , metadataCache = cacheMeta
                 , fetchContractCache = cacheContracts
-                , fetchSlotCache = cacheSlots }
+                , fetchSlotCache = cacheSlots
+                , chainId = Nothing }
   (v, _, t) <- loadSolTests env (fp :| []) Nothing
   r <- flip runReaderT env $
     mapM (\u -> evalStateT (checkETest u) v) t

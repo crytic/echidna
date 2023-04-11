@@ -1,9 +1,11 @@
 module Echidna.Types.Config where
 
 import Data.Aeson.Key (Key)
-import Data.HashSet (HashSet)
 import Data.IORef (IORef)
 import Data.Map (Map)
+import Data.Set (Set)
+import Data.Text (Text)
+import Data.Word (Word64)
 
 import EVM (Contract)
 import EVM.Dapp (DappInfo)
@@ -35,19 +37,23 @@ data EConfig = EConfig
   , testConf :: TestConf
   , txConf :: TxConf
   , uiConf :: UIConf
+
+  , rpcUrl :: Maybe Text
+  , rpcBlock :: Maybe Word64
   }
 
 instance Read OutputFormat where
-  readsPrec _ = \case 't':'e':'x':'t':r -> [(Text, r)]
-                      'j':'s':'o':'n':r -> [(JSON, r)]
-                      'n':'o':'n':'e':r -> [(None, r)]
-                      _ -> []
+  readsPrec _ =
+    \case 't':'e':'x':'t':r -> [(Text, r)]
+          'j':'s':'o':'n':r -> [(JSON, r)]
+          'n':'o':'n':'e':r -> [(None, r)]
+          _ -> []
 
 
 data EConfigWithUsage = EConfigWithUsage
   { econfig   :: EConfig
-  , badkeys   :: HashSet Key
-  , unsetkeys :: HashSet Key
+  , badkeys   :: Set Key
+  , unsetkeys :: Set Key
   }
 
 data Env = Env
@@ -57,4 +63,5 @@ data Env = Env
   , metadataCache :: IORef MetadataCache
   , fetchContractCache :: IORef (Map Addr (Maybe Contract))
   , fetchSlotCache :: IORef (Map Addr (Map W256 (Maybe W256)))
+  , chainId :: Maybe W256
   }

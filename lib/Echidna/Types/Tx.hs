@@ -29,10 +29,11 @@ import Data.DoubleWord (Word256, Word128, Int256, Int128, Word160)
 
 -- | A transaction call is either a @CREATE@, a fully instrumented 'SolCall', or
 -- an abstract call consisting only of calldata.
-data TxCall = SolCreate   !ByteString
-            | SolCall     !SolCall
-            | SolCalldata !ByteString
-            | NoCall
+data TxCall
+  = SolCreate   !ByteString
+  | SolCall     !SolCall
+  | SolCalldata !ByteString
+  | NoCall
   deriving (Show, Ord, Eq, Generic)
 $(deriveJSON defaultOptions ''TxCall)
 
@@ -56,14 +57,15 @@ initialBlockNumber = 4370000  -- Initial byzantium block
 
 -- | A transaction is either a @CREATE@ or a regular call with an origin, destination, and value.
 -- Note: I currently don't model nonces or signatures here.
-data Tx = Tx { call  :: !TxCall       -- | Call
-             , src   :: !Addr         -- | Origin
-             , dst   :: !Addr         -- | Destination
-             , gas   :: !Word64       -- | Gas
-             , gasprice :: !W256      -- | Gas price
-             , value :: !W256         -- | Value
-             , delay :: !(W256, W256) -- | (Time, # of blocks since last call)
-             } deriving (Eq, Ord, Show, Generic)
+data Tx = Tx
+  { call  :: !TxCall       -- ^ Call
+  , src   :: !Addr         -- ^ Origin
+  , dst   :: !Addr         -- ^ Destination
+  , gas   :: !Word64       -- ^ Gas
+  , gasprice :: !W256      -- ^ Gas price
+  , value :: !W256         -- ^ Value
+  , delay :: !(W256, W256) -- ^ (Time, # of blocks since last call)
+  } deriving (Eq, Ord, Show, Generic)
 
 deriving instance NFData Tx
 deriving instance NFData TxCall
@@ -121,109 +123,115 @@ basicTx :: Text         -- | Function name
         -> Tx
 basicTx f a s d g = basicTxWithValue f a s d g 0
 
-basicTxWithValue :: Text         -- | Function name
-                 -> [AbiValue]   -- | Function args
-                 -> Addr         -- | Sender
-                 -> Addr         -- | Destination contract
-                 -> Word64       -- | Gas limit
-                 -> W256         -- | Value
-                 -> (W256, W256) -- | Block increment
-                 -> Tx
+basicTxWithValue
+  :: Text         -- ^ Function name
+  -> [AbiValue]   -- ^ Function args
+  -> Addr         -- ^ Sender
+  -> Addr         -- ^ Destination contract
+  -> Word64       -- ^ Gas limit
+  -> W256         -- ^ Value
+  -> (W256, W256) -- ^ Block increment
+  -> Tx
 basicTxWithValue f a s d g = Tx (SolCall (f, a)) s d g 0
 
-createTx :: ByteString   -- | Constructor bytecode
-         -> Addr         -- | Creator
-         -> Addr         -- | Destination address
-         -> Word64       -- | Gas limit
-         -> (W256, W256) -- | Block increment
-         -> Tx
+createTx
+  :: ByteString   -- ^ Constructor bytecode
+  -> Addr         -- ^ Creator
+  -> Addr         -- ^ Destination address
+  -> Word64       -- ^ Gas limit
+  -> (W256, W256) -- ^ Block increment
+  -> Tx
 createTx bc s d g = createTxWithValue bc s d g 0
 
-createTxWithValue :: ByteString   -- | Constructor bytecode
-                  -> Addr         -- | Creator
-                  -> Addr         -- | Destination address
-                  -> Word64       -- | Gas limit
-                  -> W256         -- | Value
-                  -> (W256, W256) -- | Block increment
-                  -> Tx
+createTxWithValue
+  :: ByteString   -- ^ Constructor bytecode
+  -> Addr         -- ^ Creator
+  -> Addr         -- ^ Destination address
+  -> Word64       -- ^ Gas limit
+  -> W256         -- ^ Value
+  -> (W256, W256) -- ^ Block increment
+  -> Tx
 createTxWithValue bc s d g = Tx (SolCreate bc) s d g 0
 
-data TxResult = ReturnTrue
-              | ReturnFalse
-              | Stop
-              | ErrorBalanceTooLow
-              | ErrorUnrecognizedOpcode
-              | ErrorSelfDestruction
-              | ErrorStackUnderrun
-              | ErrorBadJumpDestination
-              | ErrorRevert
-              | ErrorOutOfGas
-              | ErrorBadCheatCode
-              | ErrorStackLimitExceeded
-              | ErrorIllegalOverflow
-              | ErrorQuery
-              | ErrorStateChangeWhileStatic
-              | ErrorInvalidFormat
-              | ErrorInvalidMemoryAccess
-              | ErrorCallDepthLimitReached
-              | ErrorMaxCodeSizeExceeded
-              | ErrorPrecompileFailure
-              | ErrorUnexpectedSymbolic
-              | ErrorDeadPath
-              | ErrorChoose -- not entirely sure what this is
-              | ErrorWhiffNotUnique
-              | ErrorSMTTimeout
-              | ErrorFFI
-              | ErrorNonceOverflow
-              | ErrorReturnDataOutOfBounds
+data TxResult
+  = ReturnTrue
+  | ReturnFalse
+  | Stop
+  | ErrorBalanceTooLow
+  | ErrorUnrecognizedOpcode
+  | ErrorSelfDestruction
+  | ErrorStackUnderrun
+  | ErrorBadJumpDestination
+  | ErrorRevert
+  | ErrorOutOfGas
+  | ErrorBadCheatCode
+  | ErrorStackLimitExceeded
+  | ErrorIllegalOverflow
+  | ErrorQuery
+  | ErrorStateChangeWhileStatic
+  | ErrorInvalidFormat
+  | ErrorInvalidMemoryAccess
+  | ErrorCallDepthLimitReached
+  | ErrorMaxCodeSizeExceeded
+  | ErrorPrecompileFailure
+  | ErrorUnexpectedSymbolic
+  | ErrorDeadPath
+  | ErrorChoose -- not entirely sure what this is
+  | ErrorWhiffNotUnique
+  | ErrorSMTTimeout
+  | ErrorFFI
+  | ErrorNonceOverflow
+  | ErrorReturnDataOutOfBounds
   deriving (Eq, Ord, Show)
 $(deriveJSON defaultOptions ''TxResult)
 
-data TxConf = TxConf { propGas       :: Word64
-                     -- ^ Gas to use evaluating echidna properties
-                     , txGas         :: Word64
-                     -- ^ Gas to use in generated transactions
-                     , maxGasprice   :: W256
-                     -- ^ Maximum gasprice to be checked for a transaction
-                     , maxTimeDelay  :: W256
-                     -- ^ Maximum time delay between transactions (seconds)
-                     , maxBlockDelay :: W256
-                     -- ^ Maximum block delay between transactions
-                     , maxValue      :: W256
-                     -- ^ Maximum value to use in transactions
-                     }
+data TxConf = TxConf
+  { propGas       :: Word64
+  -- ^ Gas to use evaluating echidna properties
+  , txGas         :: Word64
+  -- ^ Gas to use in generated transactions
+  , maxGasprice   :: W256
+  -- ^ Maximum gasprice to be checked for a transaction
+  , maxTimeDelay  :: W256
+  -- ^ Maximum time delay between transactions (seconds)
+  , maxBlockDelay :: W256
+  -- ^ Maximum block delay between transactions
+  , maxValue      :: W256
+  -- ^ Maximum value to use in transactions
+  }
 
 -- | Transform a VMResult into a more hash friendly sum type
 getResult :: VMResult -> TxResult
-getResult (VMSuccess b) | forceBuf b == encodeAbiValue (AbiBool True)  = ReturnTrue
-                        | forceBuf b == encodeAbiValue (AbiBool False) = ReturnFalse
-                        | otherwise                                    = Stop
+getResult = \case
+  VMSuccess b | forceBuf b == encodeAbiValue (AbiBool True)  -> ReturnTrue
+              | forceBuf b == encodeAbiValue (AbiBool False) -> ReturnFalse
+              | otherwise                                    -> Stop
 
-getResult (VMFailure (BalanceTooLow _ _ ))      = ErrorBalanceTooLow
-getResult (VMFailure (UnrecognizedOpcode _))    = ErrorUnrecognizedOpcode
-getResult (VMFailure SelfDestruction )          = ErrorSelfDestruction
-getResult (VMFailure StackUnderrun )            = ErrorStackUnderrun
-getResult (VMFailure BadJumpDestination )       = ErrorBadJumpDestination
-getResult (VMFailure (Revert _))                = ErrorRevert
-getResult (VMFailure (OutOfGas _ _))            = ErrorOutOfGas
-getResult (VMFailure (BadCheatCode _))          = ErrorBadCheatCode
-getResult (VMFailure StackLimitExceeded)        = ErrorStackLimitExceeded
-getResult (VMFailure IllegalOverflow)           = ErrorIllegalOverflow
-getResult (VMFailure (Query _))                 = ErrorQuery
-getResult (VMFailure StateChangeWhileStatic)    = ErrorStateChangeWhileStatic
-getResult (VMFailure InvalidFormat)             = ErrorInvalidFormat
-getResult (VMFailure InvalidMemoryAccess)       = ErrorInvalidMemoryAccess
-getResult (VMFailure CallDepthLimitReached)     = ErrorCallDepthLimitReached
-getResult (VMFailure (MaxCodeSizeExceeded _ _)) = ErrorMaxCodeSizeExceeded
-getResult (VMFailure PrecompileFailure)         = ErrorPrecompileFailure
-getResult (VMFailure (UnexpectedSymbolicArg{})) = ErrorUnexpectedSymbolic
-getResult (VMFailure DeadPath)                  = ErrorDeadPath
-getResult (VMFailure (Choose _))                = ErrorChoose -- not entirely sure what this is
-getResult (VMFailure (NotUnique _))             = ErrorWhiffNotUnique
-getResult (VMFailure SMTTimeout)                = ErrorSMTTimeout
-getResult (VMFailure (FFI _))                   = ErrorFFI
-getResult (VMFailure NonceOverflow)             = ErrorNonceOverflow
-getResult (VMFailure ReturnDataOutOfBounds)     = ErrorReturnDataOutOfBounds
+  VMFailure (BalanceTooLow _ _)       -> ErrorBalanceTooLow
+  VMFailure (UnrecognizedOpcode _)    -> ErrorUnrecognizedOpcode
+  VMFailure SelfDestruction           -> ErrorSelfDestruction
+  VMFailure StackUnderrun             -> ErrorStackUnderrun
+  VMFailure BadJumpDestination        -> ErrorBadJumpDestination
+  VMFailure (Revert _)                -> ErrorRevert
+  VMFailure (OutOfGas _ _)            -> ErrorOutOfGas
+  VMFailure (BadCheatCode _)          -> ErrorBadCheatCode
+  VMFailure StackLimitExceeded        -> ErrorStackLimitExceeded
+  VMFailure IllegalOverflow           -> ErrorIllegalOverflow
+  VMFailure (Query _)                 -> ErrorQuery
+  VMFailure StateChangeWhileStatic    -> ErrorStateChangeWhileStatic
+  VMFailure InvalidFormat             -> ErrorInvalidFormat
+  VMFailure InvalidMemoryAccess       -> ErrorInvalidMemoryAccess
+  VMFailure CallDepthLimitReached     -> ErrorCallDepthLimitReached
+  VMFailure (MaxCodeSizeExceeded _ _) -> ErrorMaxCodeSizeExceeded
+  VMFailure PrecompileFailure         -> ErrorPrecompileFailure
+  VMFailure (UnexpectedSymbolicArg{}) -> ErrorUnexpectedSymbolic
+  VMFailure DeadPath                  -> ErrorDeadPath
+  VMFailure (Choose _)                -> ErrorChoose -- not entirely sure what this is
+  VMFailure (NotUnique _)             -> ErrorWhiffNotUnique
+  VMFailure SMTTimeout                -> ErrorSMTTimeout
+  VMFailure (FFI _)                   -> ErrorFFI
+  VMFailure NonceOverflow             -> ErrorNonceOverflow
+  VMFailure ReturnDataOutOfBounds     -> ErrorReturnDataOutOfBounds
 
 makeSingleTx :: Addr -> Addr -> W256 -> TxCall -> [Tx]
 makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d maxGasPerBlock 0 v (0, 0)]
