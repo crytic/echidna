@@ -1,7 +1,7 @@
 module Echidna.ABI where
 
 import Control.Monad (liftM2, liftM3, foldM, replicateM)
-import Control.Monad.Random.Strict (MonadRandom, getRandom, getRandoms, getRandomR)
+import Control.Monad.Random.Strict (MonadRandom, join, getRandom, getRandoms, getRandomR)
 import Control.Monad.Random.Strict qualified as Random
 import Data.Binary.Put (runPut, putWord32be)
 import Data.BinaryWord (unsignedWord)
@@ -155,12 +155,19 @@ mkDictValues =
 
 -- Generation (synthesis)
 
+getRandomPow :: (MonadRandom m) => Int -> m Integer
+getRandomPow n = if n <= 0 then return 0 else
+  do
+   mexp <- getRandomR (20, n)
+   getRandomR (2 ^ (mexp `div` 2), 2 ^ mexp)
+
 getRandomUint :: MonadRandom m => Int -> m Integer
 getRandomUint n =
-  getRandomR =<< Random.weighted
-    [ ((0, 1023), 1)
-    , ((0, 2 ^ n - 5), 8)
-    , ((2 ^ n - 5, 2 ^ n - 1), 1)
+  join $ Random.weighted
+    [ (getRandomR (0, 1023), 2)
+    , (getRandomR (0, 2 ^ n - 5), 16)
+    , (getRandomR (2 ^ n - 5, 2 ^ n - 1), 2)
+    , (getRandomPow (n - 5), 1)
     ]
 
 getRandomInt :: MonadRandom m => Int -> m Integer
