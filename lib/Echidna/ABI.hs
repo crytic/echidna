@@ -164,10 +164,10 @@ getRandomPow n = if n <= 0 then return 0 else
 getRandomUint :: MonadRandom m => Int -> m Integer
 getRandomUint n =
   join $ Random.weighted
-    [ (getRandomR (0, 1023), 1)
-    , (getRandomR (0, 2 ^ n - 5), 8)
-    , (getRandomR (2 ^ n - 5, 2 ^ n - 1), 1)
-    , (getRandomPow (n - 5), 4)
+    [ (getRandomR (0, 1023), 2)
+    , (getRandomR (0, 2 ^ n - 5), 16)
+    , (getRandomR (2 ^ n - 5, 2 ^ n - 1), 2)
+    , (getRandomPow (n - 5), 1)
     ]
 
 getRandomInt :: MonadRandom m => Int -> m Integer
