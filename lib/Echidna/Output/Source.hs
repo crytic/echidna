@@ -2,13 +2,14 @@ module Echidna.Output.Source where
 
 import Prelude hiding (writeFile)
 
+import Data.Aeson (ToJSON(..), FromJSON(..), withText)
 import Data.Foldable
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.List (nub, sort)
 import Data.Map qualified as M
 import Data.Sequence qualified as Seq
 import Data.Set qualified as S
-import Data.Text (Text, pack)
+import Data.Text (Text, pack, toLower)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
@@ -27,18 +28,39 @@ import Echidna.Types.Signature (getBytecodeMetadata)
 
 type FilePathText = Text
 
-saveCoverage :: Bool -> Int -> FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
-saveCoverage isHtml seed d sc cs s = let extension = if isHtml then ".html" else ".txt"
-                                         fn = d </> "covered." <> show seed <> extension
-                                         cc = ppCoveredCode isHtml sc cs s
-                                     in do
-                                       createDirectoryIfMissing True d
-                                       writeFile fn cc
+data CoverageFileType = Lcov | Html | Txt deriving (Eq, Show)
+
+instance ToJSON CoverageFileType where
+  toJSON = toJSON . show
+
+instance FromJSON CoverageFileType where
+  parseJSON = withText "CoverageFileType" $ readFn . toLower where
+    readFn "lcov" = pure Lcov
+    readFn "html" = pure Html
+    readFn "text" = pure Txt
+    readFn "txt"  = pure Txt
+    readFn _ = fail "could not parse CoverageFileType"
+
+coverageFileExtension :: CoverageFileType -> String
+coverageFileExtension Lcov = ".lcov"
+coverageFileExtension Html = ".html"
+coverageFileExtension Txt = ".txt"
+
+saveCoverages :: [CoverageFileType] -> Int -> FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
+saveCoverages fileTypes seed d sc cs s = mapM_ (\ty -> saveCoverage ty seed d sc cs s) fileTypes
+
+saveCoverage :: CoverageFileType -> Int -> FilePath -> SourceCache -> [SolcContract] -> CoverageMap -> IO ()
+saveCoverage fileType seed d sc cs s = let extension = coverageFileExtension fileType
+                                           fn = d </> "covered." <> show seed <> extension
+                                           cc = ppCoveredCode fileType sc cs s
+                                       in do
+                                         createDirectoryIfMissing True d
+                                         writeFile fn cc
 
 -- | Pretty-print the covered code
-ppCoveredCode :: Bool -> SourceCache -> [SolcContract] -> CoverageMap -> Text
-ppCoveredCode isHtml sc cs s | s == mempty = "Coverage map is empty"
-                             | otherwise   =
+ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> CoverageMap -> Text
+ppCoveredCode fileType sc cs s | s == mempty = "Coverage map is empty"
+                               | otherwise   =
   let allFiles = zipWith (\(srcPath, _rawSource) srcLines -> (srcPath, V.map decodeUtf8 srcLines))
                    sc.files
                    sc.lines
@@ -49,47 +71,56 @@ ppCoveredCode isHtml sc cs s | s == mempty = "Coverage map is empty"
       -- ^ Excludes lines such as comments or blanks
       ppFile (srcPath, srcLines) =
         let runtimeLines = fromMaybe mempty $ M.lookup srcPath runtimeLinesMap
-            marked = markLines isHtml srcLines runtimeLines (fromMaybe M.empty (M.lookup srcPath covLines))
+            marked = markLines fileType srcLines runtimeLines (fromMaybe M.empty (M.lookup srcPath covLines))
         in T.unlines (changeFileName srcPath : changeFileLines (V.toList marked))
       -- ^ Pretty print individual file coverage
-      topHeader
-        | isHtml = "<style> code { white-space: pre-wrap; display: block; background-color: #eee; }" <>
-                   ".executed { background-color: #afa; }" <>
-                   ".reverted { background-color: #ffa; }" <>
-                   ".unexecuted { background-color: #faa; }" <>
-                   ".neutral { background-color: #eee; }" <>
-                   "</style>"
-        | otherwise = ""
+      topHeader = case fileType of
+        Lcov -> "TN:\n"
+        Html -> "<style> code { white-space: pre-wrap; display: block; background-color: #eee; }" <>
+                ".executed { background-color: #afa; }" <>
+                ".reverted { background-color: #ffa; }" <>
+                ".unexecuted { background-color: #faa; }" <>
+                ".neutral { background-color: #eee; }" <>
+                "</style>"
+        Txt  -> ""
       -- ^ Text to add to top of the file
-      changeFileName fn
-        | isHtml = "<b>" <> HTML.text fn <> "</b>"
-        | otherwise = fn
+      changeFileName fn = case fileType of
+        Lcov -> "SF:" <> fn
+        Html -> "<b>" <> HTML.text fn <> "</b>"
+        Txt  -> fn
       -- ^ Alter file name, in the case of html turning it into bold text
-      changeFileLines ls
-        | isHtml = "<code>" : ls ++ ["", "</code>","<br />"]
-        | otherwise = ls
+      changeFileLines ls = case fileType of
+        Lcov -> ls ++ ["end_of_record"]
+        Html -> "<code>" : ls ++ ["", "</code>","<br />"]
+        Txt  -> ls
       -- ^ Alter file contents, in the case of html encasing it in <code> and adding a line break
   in topHeader <> T.unlines (map ppFile allFiles)
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
-markLines :: Bool -> V.Vector Text -> S.Set Int -> M.Map Int [TxResult] -> V.Vector Text
-markLines isHtml codeLines runtimeLines resultMap =
-  V.map markLine (V.indexed codeLines)
+markLines :: CoverageFileType -> V.Vector Text -> S.Set Int -> M.Map Int [TxResult] -> V.Vector Text
+markLines fileType codeLines runtimeLines resultMap =
+  V.map markLine . V.filter shouldUseLine $ V.indexed codeLines
   where
+  shouldUseLine (i, _) = case fileType of
+    Lcov -> i + 1 `elem` runtimeLines
+    _ -> True
   markLine (i, codeLine) =
     let n = i + 1
         results  = fromMaybe [] (M.lookup n resultMap)
         markers = sort $ nub $ getMarker <$> results
         wrapLine :: Text -> Text
-        wrapLine line
-          | isHtml = "<span class='" <> cssClass <> "'>" <>
+        wrapLine line = case fileType of
+          Html -> "<span class='" <> cssClass <> "'>" <>
                         HTML.text line <>
                      "</span>"
-          | otherwise = line
+          _ -> line
           where
           cssClass = if n `elem` runtimeLines then getCSSClass markers else "neutral"
+        result = case fileType of
+          Lcov -> pack $ printf "DA:%d,%d" n (length results)
+          _ -> pack $ printf " %*d | %-4s| %s" lineNrSpan n markers (wrapLine codeLine)
 
-    in pack $ printf " %*d | %-4s| %s" lineNrSpan n markers (wrapLine codeLine)
+    in result
   lineNrSpan = length . show $ V.length codeLines + 1
 
 getCSSClass :: String -> Text

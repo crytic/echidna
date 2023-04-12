@@ -5,6 +5,7 @@ import Test.Tasty.HUnit (testCase, assertBool)
 
 import Common (runContract, overrideQuiet)
 import Data.Function ((&))
+import Echidna.Output.Source (CoverageFileType(..))
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Campaign (Campaign(..), CampaignConf(..))
 import Echidna.Mutator.Corpus (defaultMutationConsts)
@@ -29,7 +30,7 @@ seedTests =
         , dictFreq = 0.15
         , corpusDir = Nothing
         , mutConsts = defaultMutationConsts
-        , coverageReport = False
+        , coverageFormats = [Txt,Html,Lcov]
         }
       }
       & overrideQuiet

@@ -135,30 +135,28 @@ main = withUtf8 $ withCP65001 $ do
       -- TODO: We use the corpus dir to save coverage reports which is confusing.
       -- Add config option to pass dir for saving coverage report and decouple it
       -- from corpusDir.
-      when cfg.campaignConf.coverageReport $ do
-        -- We need runId to have a unique directory to save files under so they
-        -- don't collide with the next runs. We use the current time for this
-        -- as it orders the runs chronologically.
-        runId <- fromIntegral . systemSeconds <$> getSystemTime
 
-        -- coverage reports for external contracts, we only support
-        -- Ethereum Mainnet for now
-        when (chainId == Just 1) $ do
-          forM_ (Map.toList contractsCache) $ \(addr, mc) ->
-            case mc of
-              Just contract -> do
-                r <- externalSolcContract addr contract
-                case r of
-                  Just (externalSourceCache, solcContract) -> do
-                    let dir' = dir </> show addr
-                    saveCoverage False runId dir' externalSourceCache [solcContract] campaign.coverage
-                    saveCoverage True  runId dir' externalSourceCache [solcContract] campaign.coverage
-                  Nothing -> pure ()
-              Nothing -> pure ()
+      -- We need runId to have a unique directory to save files under so they
+      -- don't collide with the next runs. We use the current time for this
+      -- as it orders the runs chronologically.
+      runId <- fromIntegral . systemSeconds <$> getSystemTime
 
-        -- save source coverage reports
-        saveCoverage False runId dir sourceCache contracts campaign.coverage
-        saveCoverage True  runId dir sourceCache contracts campaign.coverage
+      -- coverage reports for external contracts, we only support
+      -- Ethereum Mainnet for now
+      when (chainId == Just 1 && length cfg.campaignConf.coverageFormats > 0) $ do
+        forM_ (Map.toList contractsCache) $ \(addr, mc) ->
+          case mc of
+            Just contract -> do
+              r <- externalSolcContract addr contract
+              case r of
+                Just (externalSourceCache, solcContract) -> do
+                  let dir' = dir </> show addr
+                  saveCoverages cfg.campaignConf.coverageFormats runId dir' externalSourceCache [solcContract] campaign.coverage
+                Nothing -> pure ()
+            Nothing -> pure ()
+
+      -- save source coverage reports
+      saveCoverages cfg.campaignConf.coverageFormats runId dir sourceCache contracts campaign.coverage
 
   if isSuccessful campaign then exitSuccess else exitWith (ExitFailure 1)
 
