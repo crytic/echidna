@@ -11,7 +11,6 @@ import Data.Text qualified as Text
 import Data.Text (Text)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
-import Network.Wreq.Session qualified as Session
 import System.Environment
 import Text.Read (readMaybe)
 
@@ -47,12 +46,7 @@ safeFetchSlotFrom rpcBlock rpcUrl addr slot =
     (\(_e :: SomeException) -> pure $ Just 0)
 
 fetchChainId :: Maybe Text -> IO (Maybe W256)
-fetchChainId (Just url) = do
-  sess <- Session.newAPISession
-  EVM.Fetch.fetchQuery
-    EVM.Fetch.Latest -- this shouldn't matter
-    (EVM.Fetch.fetchWithSession url sess)
-    EVM.Fetch.QueryChainId
+fetchChainId (Just url) = EVM.Fetch.fetchChainIdFrom url
 fetchChainId Nothing = pure Nothing
 
 data FetchedContractData = FetchedContractData
@@ -68,18 +62,18 @@ instance ToJSONKey W256 where
 fromFetchedContractData :: FetchedContractData -> Contract
 fromFetchedContractData contractData =
   (initialContract (RuntimeCode (ConcreteRuntimeCode contractData.runtimeCode)))
-    { _nonce = contractData.nonce
-    , _balance = contractData.balance
-    , _external = True
+    { nonce = contractData.nonce
+    , balance = contractData.balance
+    , external = True
     }
 
 toFetchedContractData :: Contract -> FetchedContractData
 toFetchedContractData contract =
-  let code = case contract._contractcode of
+  let code = case contract.contractcode of
                RuntimeCode (ConcreteRuntimeCode c) -> c
                _ -> error "unexpected code"
   in FetchedContractData
     { runtimeCode = code
-    , nonce = contract._nonce
-    , balance = contract._balance
+    , nonce = contract.nonce
+    , balance = contract.balance
     }

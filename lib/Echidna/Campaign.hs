@@ -2,8 +2,9 @@
 
 module Echidna.Campaign where
 
+import Optics.Core
+
 import Control.DeepSeq (force)
-import Control.Lens
 import Control.Monad (foldM, replicateM, when, unless, void)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
@@ -23,8 +24,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import System.Random (mkStdGen)
 
-import EVM (Contract, VM(..), VMResult(..), bytecode, cheatCode)
-import EVM qualified (Env(..))
+import EVM hiding (Env, Frame(state), VM(state))
+import EVM (VM)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (Addr, Expr(ConcreteBuf))
 
@@ -104,7 +105,7 @@ runCampaign callback vm world tests dict initialCorpus = do
   metaCacheRef <- asks (.metadataCache)
   fetchContractCacheRef <- asks (.fetchContractCache)
   external <- liftIO $ Map.mapMaybe id <$> readIORef fetchContractCacheRef
-  liftIO $ writeIORef metaCacheRef (mkMemo (vm._env._contracts <> external))
+  liftIO $ writeIORef metaCacheRef (mkMemo (vm.env.contracts <> external))
 
   let
     covMap = fromMaybe mempty conf.knownCoverage
@@ -145,7 +146,7 @@ runCampaign callback vm world tests dict initialCorpus = do
        | otherwise ->
          void $ lift callback
 
-  fuzz = randseq vm._env._contracts world >>= callseq vm
+  fuzz = randseq vm.env.contracts world >>= callseq vm
 
   continue = do
     runUpdate (shrinkTest vm)
@@ -215,7 +216,7 @@ callseq vm txSeq = do
 
   let
     -- compute the addresses not present in the old VM via set difference
-    newAddrs = Map.keys $ vm'._env._contracts \\ vm._env._contracts
+    newAddrs = Map.keys $ vm'.env.contracts \\ vm.env.contracts
     -- and construct a set to union to the constants table
     diffs = Map.fromList [(AbiAddressType, Set.fromList $ AbiAddress <$> newAddrs)]
     -- Now we try to parse the return values as solidity constants, and add then to the 'GenDict'

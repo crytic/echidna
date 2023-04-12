@@ -80,7 +80,7 @@ instance FromJSON EConfigWithUsage where
         psender <- v ..:? "psender" ..!= 0x10000
         fprefix <- v ..:? "prefix"  ..!= "echidna_"
         let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
-            classify fname vm = maybe ResOther classifyRes vm._result == goal fname
+            classify fname vm = maybe ResOther classifyRes vm.result == goal fname
         pure $ TestConf classify (const psender)
 
       campaignConfParser = CampaignConf

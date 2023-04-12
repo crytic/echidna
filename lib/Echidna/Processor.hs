@@ -25,10 +25,10 @@ import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_e
 import Text.Read (readMaybe)
 
 import EVM.ABI (AbiValue(..))
-import EVM.Types (Addr(..))
+import EVM.Types (Addr(..), FunctionSelector)
 
 import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
-import Echidna.Types.Signature (ContractName, FunctionName, FunctionHash)
+import Echidna.Types.Signature (ContractName, FunctionName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Utility (measureIO)
 
@@ -46,7 +46,7 @@ instance Exception ProcException
 
 -- | This function is used to filter the lists of function names according to the supplied
 -- contract name (if any) and returns a list of hashes
-filterResults :: Maybe ContractName -> Map ContractName [FunctionName] -> [FunctionHash]
+filterResults :: Maybe ContractName -> Map ContractName [FunctionName] -> [FunctionSelector]
 filterResults (Just c) rs =
   case Map.lookup c rs of
     Nothing -> filterResults Nothing rs

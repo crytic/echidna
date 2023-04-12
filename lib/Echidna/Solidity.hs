@@ -1,6 +1,7 @@
 module Echidna.Solidity where
 
-import Control.Lens hiding (filtered)
+import Optics.Core hiding (filtered)
+
 import Control.Arrow (first)
 import Control.Monad (when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
@@ -27,11 +28,10 @@ import System.FilePath (joinPath, splitDirectories, (</>))
 import System.IO (openFile, IOMode(..))
 import System.Info (os)
 
-import EVM hiding (Env, env, contract, contracts, path)
-import EVM qualified (contracts, env)
+import EVM hiding (Env)
 import EVM.ABI
 import EVM.Solidity
-import EVM.Types (Addr)
+import EVM.Types (Addr, FunctionSelector)
 
 import Echidna.ABI
   ( encodeSig, encodeSigWithName, hashSig, fallback
@@ -44,7 +44,7 @@ import Echidna.Processor
 import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
-  (ContractName, FunctionHash, SolSignature, SignatureMap, getBytecodeMetadata)
+  (ContractName, SolSignature, SignatureMap, getBytecodeMetadata)
 import Echidna.Types.Solidity
 import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx
@@ -140,13 +140,13 @@ populateAddresses addrs b vm =
   Set.foldl' (\vm' addr ->
     if deployed addr
        then vm'
-       else vm' & set (EVM.env . EVM.contracts . at addr) (Just account)
+       else vm' & set (#env % #contracts % at addr) (Just account)
   ) vm addrs
   where
     account =
       (initialContract (RuntimeCode (ConcreteRuntimeCode mempty)))
-        { _nonce = 0, _balance = fromInteger b }
-    deployed addr = addr `member` vm._env._contracts
+        { nonce = 0, balance = fromInteger b }
+    deployed addr = addr `member` vm.env.contracts
 
 -- | Address to load the first library
 addrLibrary :: Addr
@@ -156,7 +156,7 @@ addrLibrary = 0xff
 linkLibraries :: [String] -> String
 linkLibraries [] = ""
 linkLibraries ls = "--libraries " ++
-  iconcatMap (\i x -> concat [x, ":", show $ addrLibrary + toEnum i, ","]) ls
+  concatMap (\(i,x) -> concat [x, ":", show $ addrLibrary + i, ","]) (zip [0..] ls)
 
 -- | Filter methods using a whitelist/blacklist
 filterMethods :: Text -> Filter -> NonEmpty SolSignature -> [SolSignature]
@@ -227,8 +227,8 @@ loadSpecified env name cs = do
     -- Set up initial VM, either with chosen contract or Etheno initialization file
     -- need to use snd to add to ABI dict
     vm = initialVM solConf.allowFFI
-           & block . gaslimit .~ unlimitedGasPerBlock
-           & block . maxCodeSize .~ fromIntegral solConf.codeSize
+           & #block % #gaslimit .~ unlimitedGasPerBlock
+           & #block % #maxCodeSize .~ fromIntegral solConf.codeSize
 
   blank' <- maybe (pure vm) (loadEthenoBatch solConf.allowFFI) solConf.initialize
   let blank = populateAddresses (Set.insert solConf.deployer solConf.sender)
@@ -288,7 +288,7 @@ loadSpecified env name cs = do
               then execStateT transaction vm3
               else return vm3
 
-    case vm4._result of
+    case vm4.result of
       Just (VMFailure _) -> throwM SetUpCallFailed
       _ -> pure (vm4, neFuns, fst <$> tests, abiMapping)
 
@@ -336,8 +336,8 @@ filterFallbacks _ [] [] sm = Map.map f sm
 filterFallbacks _ _ _ sm = sm
 
 prepareHashMaps
-  :: [FunctionHash]
-  -> [FunctionHash]
+  :: [FunctionSelector]
+  -> [FunctionSelector]
   -> SignatureMap
   -> (SignatureMap, Maybe SignatureMap)
 prepareHashMaps [] _  m = (m, Nothing) -- No constant functions detected
@@ -372,7 +372,7 @@ loadSolTests env fp name = do
   let
     eventMap = Map.unions $ map (.eventMap) contracts
     world = World solConf.sender mempty Nothing [] eventMap
-    echidnaTests = createTests solConf.testMode True testNames vm._state._contract funs
+    echidnaTests = createTests solConf.testMode True testNames vm.state.contract funs
   pure (vm, world, echidnaTests)
 
 mkLargeAbiInt :: Int -> AbiValue
