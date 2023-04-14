@@ -34,7 +34,7 @@ import Data.Function ((&))
 import Data.IORef
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
-import Data.Map (fromList, lookup, empty)
+import Data.Map (fromList, lookup)
 import Data.Maybe (isJust)
 import Data.Text (Text, pack)
 import Data.SemVer (Version, version, fromText)
@@ -47,7 +47,7 @@ import Echidna.Solidity (loadSolTests, compileContracts, selectSourceCache)
 import Echidna.Test (checkETest)
 import Echidna.Types (Gas)
 import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
-import Echidna.Types.Campaign (Campaign(..), CampaignConf(..))
+import Echidna.Types.Campaign
 import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
@@ -214,4 +214,4 @@ countCorpus :: Int -> Campaign -> Bool
 countCorpus n c = length c.corpus == n
 
 coverageEmpty :: Campaign -> Bool
-coverageEmpty c = c.coverage == empty
+coverageEmpty c = null c.coverage

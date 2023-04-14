@@ -182,7 +182,7 @@ data TxResult
   | ErrorFFI
   | ErrorNonceOverflow
   | ErrorReturnDataOutOfBounds
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Enum)
 $(deriveJSON defaultOptions ''TxResult)
 
 data TxConf = TxConf

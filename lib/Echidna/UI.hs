@@ -16,7 +16,7 @@ import System.Posix
 import Echidna.UI.Widgets
 #else /* !INTERACTIVE_UI */
 import Control.Monad.Catch (MonadCatch(..))
-import Control.Monad.Reader (MonadReader, runReader, asks)
+import Control.Monad.Reader (MonadReader, asks)
 import Control.Monad.State.Strict (get)
 #endif
 
@@ -28,6 +28,7 @@ import Data.ByteString.Lazy qualified as BS
 import Data.IORef
 import Data.Map (Map)
 import Data.Maybe (fromMaybe, isJust)
+import Data.Vector.Unboxed qualified as VU
 import UnliftIO (MonadUnliftIO, hFlush, stdout)
 import UnliftIO.Timeout (timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
@@ -42,15 +43,15 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (corpusSize)
 import Echidna.Types.Coverage (scoveragePoints)
-import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOpen, isOptimizationTest)
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOpen)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
 import Echidna.Utility (timePrefix)
 
 data UIEvent =
-  CampaignUpdated Campaign
-  | CampaignTimedout Campaign
+  CampaignUpdated FrozenCampaign
+  | CampaignTimedout FrozenCampaign
   | CampaignCrashed String
   | FetchCacheUpdated (Map Addr (Maybe Contract)) (Map Addr (Map W256 (Maybe W256)))
 
@@ -89,7 +90,7 @@ ui vm world ts dict initialCorpus = do
 #ifdef INTERACTIVE_UI
     Interactive -> do
       bc <- liftIO $ newBChan 100
-      let updateUI e = readIORef ref >>= writeBChan bc . e
+      let updateUI e = readIORef ref >>= freezeCampaign >>= writeBChan bc . e
       env <- ask
       ticker <- liftIO $ forkIO $
         -- run UI update every 100ms
@@ -123,7 +124,7 @@ ui vm world ts dict initialCorpus = do
         , displayFetchedDialog = False
         }
       final <- liftIO $ readIORef ref
-      liftIO . putStrLn $ runReader (ppCampaign final) conf
+      liftIO . putStrLn =<< ppCampaign final
       pure final
 #else
     Interactive -> error "Interactive UI is not available"
@@ -140,7 +141,8 @@ ui vm world ts dict initialCorpus = do
           threadDelay $ 3*1000000
           camp <- readIORef ref
           time <- timePrefix
-          putStrLn $ time <> "[status] " <> statusLine conf.campaignConf camp
+          line <- statusLine conf.campaignConf camp
+          putStrLn $ time <> "[status] " <> line
           hFlush stdout
       result <- runCampaign'
       liftIO $ killThread ticker
@@ -152,13 +154,18 @@ ui vm world ts dict initialCorpus = do
           pure (final, False)
       case outputFormat of
         JSON ->
-          liftIO . BS.putStr $ Echidna.Output.JSON.encodeCampaign final
+          liftIO $ BS.putStr =<< Echidna.Output.JSON.encodeCampaign final
         Text -> do
-          liftIO . putStrLn $ runReader (ppCampaign final) conf
+          liftIO . putStrLn =<< ppCampaign final
           when timedout $ liftIO $ putStrLn "TIMEOUT!"
         None ->
           pure ()
       pure final
+
+freezeCampaign :: Campaign -> IO FrozenCampaign
+freezeCampaign camp = do
+  frozenCov <- mapM VU.freeze camp.coverage
+  pure camp { coverage = frozenCov }
 
 #ifdef INTERACTIVE_UI
 
@@ -173,7 +180,7 @@ vtyConfig = do
 monitor :: MonadReader Env m => m (App UIState UIEvent Name)
 monitor = do
   let
-    drawUI :: EConfig -> UIState -> [Widget Name]
+    drawUI :: Env -> UIState -> [Widget Name]
     drawUI conf uiState =
       [ if uiState.displayFetchedDialog
            then fetchedDialogWidget uiState
@@ -206,8 +213,8 @@ monitor = do
         _ -> pure ()
     onEvent _ = pure ()
 
-  conf <- asks (.cfg)
-  pure $ App { appDraw = drawUI conf
+  env <- ask
+  pure $ App { appDraw = drawUI env
              , appStartEvent = pure ()
              , appHandleEvent = onEvent
              , appAttrMap = const attrs
@@ -221,13 +228,13 @@ isTerminal = (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
 #endif
 
 -- | Composes a compact text status line of the campaign
-statusLine :: CampaignConf -> Campaign -> String
-statusLine campaignConf camp =
-  "tests: " <> show (length $ filter didFail camp.tests) <> "/" <> show (length camp.tests)
-  <> ", values: " <> show (map (.value) $ filter (\t -> isOptimizationTest t.testType) camp.tests)
-  <> ", fuzzing: " <> show fuzzRuns <> "/" <> show campaignConf.testLimit
-  <> ", cov: " <> show (scoveragePoints camp.coverage)
-  <> ", corpus: " <> show (corpusSize camp.corpus)
+statusLine :: CampaignConf -> Campaign -> IO String
+statusLine campaignConf camp = do
+  points <- scoveragePoints camp.coverage
+  pure $ "tests: " <> show (length $ filter didFail camp.tests) <> "/" <> show (length camp.tests)
+    <> ", fuzzing: " <> show fuzzRuns <> "/" <> show campaignConf.testLimit
+    <> ", cov: " <> show points
+    <> ", corpus: " <> show (corpusSize camp.corpus)
   where
   fuzzRuns = case filter isOpen camp.tests of
     -- fuzzing progress is the same for all Open tests, grab the first one

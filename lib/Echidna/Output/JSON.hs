@@ -7,9 +7,9 @@ import Data.ByteString.Base16 qualified as BS16
 import Data.ByteString.Lazy (ByteString)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Set qualified as Set
 import Data.Text
 import Data.Text.Encoding (decodeUtf8)
+import Data.Vector.Unboxed qualified as VU
 import Numeric (showHex)
 
 import EVM.Types (keccak')
@@ -93,14 +93,15 @@ instance ToJSON Transaction where
     , "gasprice" .= gasprice
     ]
 
-encodeCampaign :: C.Campaign -> ByteString
-encodeCampaign C.Campaign{..} = encode
-  Campaign
+encodeCampaign :: C.Campaign -> IO ByteString
+encodeCampaign C.Campaign{..} = do
+  frozenCov <- mapM VU.freeze coverage
+  pure $ encode Campaign
     { _success = True
     , _error = Nothing
     , _tests = mapTest <$> tests
     , seed = genDict.defSeed
-    , coverage = Map.mapKeys (("0x" ++) . (`showHex` "") . keccak') $ Set.toList <$> coverage
+    , coverage = Map.mapKeys (("0x" ++) . (`showHex` "") . keccak') $ VU.toList <$> frozenCov
     , gasInfo = Map.toList gasInfo
     }
 
