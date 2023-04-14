@@ -42,7 +42,7 @@ import System.Process (readProcess)
 
 import Echidna (prepareContract)
 import Echidna.Config (parseConfig, defaultConfig)
-import Echidna.Campaign (campaign)
+import Echidna.Campaign (runCampaign)
 import Echidna.Solidity (loadSolTests, compileContracts, selectSourceCache)
 import Echidna.Test (checkETest)
 import Echidna.Types (Gas)
@@ -108,7 +108,7 @@ runContract f selectedContract cfg = do
   (vm, world, echidnaTests, dict) <- prepareContract env contracts (f :| []) selectedContract seed
   let corpus = []
   -- start ui and run tests
-  runReaderT (campaign (pure False) vm world echidnaTests dict corpus) env
+  runReaderT (runCampaign (pure False) vm world echidnaTests dict corpus) env
 
 testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
 testContract fp cfg = testContract' fp Nothing Nothing cfg True
