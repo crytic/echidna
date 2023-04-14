@@ -6,7 +6,7 @@ import Data.Text (Text)
 import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
 import Echidna.Types.Corpus
-import Echidna.Types.Coverage (CoverageMap)
+import Echidna.Types.Coverage (CoverageMap, FrozenCoverageMap)
 import Echidna.Types.Test (EchidnaTest)
 import Echidna.Types.Tx (Tx)
 
@@ -38,11 +38,14 @@ data CampaignConf = CampaignConf
     -- ^ Whether or not to generate a coverage report
   }
 
+type FrozenCampaign = GenericCampaign FrozenCoverageMap
+
+type Campaign = GenericCampaign CoverageMap
 -- | The state of a fuzzing campaign.
-data Campaign = Campaign
+data GenericCampaign a = Campaign
   { tests       :: ![EchidnaTest]
     -- ^ Tests being evaluated
-  , coverage    :: !CoverageMap
+  , coverage    :: !a
     -- ^ Coverage captured (NOTE: we don't always record this)
   , gasInfo     :: !(Map Text (Gas, [Tx]))
     -- ^ Worst case gas (NOTE: we don't always record this)
@@ -56,7 +59,7 @@ data Campaign = Campaign
     -- ^ Number of times the callseq is called
   }
 
-defaultCampaign :: Campaign
+defaultCampaign :: Monoid a => GenericCampaign a
 defaultCampaign = Campaign mempty mempty mempty emptyDict False mempty 0
 
 defaultTestLimit :: Int

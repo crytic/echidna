@@ -1,7 +1,7 @@
 module Tests.Config (configTests) where
 
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (testCase, assertBool, (@?=), assertFailure)
+import Test.Tasty.HUnit (testCase, assertBool, assertFailure)
 
 import Control.Lens (sans)
 import Control.Monad (void)
@@ -12,15 +12,16 @@ import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..))
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Tx (TxConf(..))
 import Echidna.Config (defaultConfig, parseConfig)
+import Data.Maybe (isJust)
 
 configTests :: TestTree
 configTests = testGroup "Configuration tests" $
   [ testCase file . void $ parseConfig file | file <- files ] ++
   [ testCase "parse \"coverage: true\"" $ do
       config <- (.econfig) <$> parseConfig "coverage/test.yaml"
-      assertCoverage config $ Just mempty
+      assertBool "" $ isJust config.campaignConf.knownCoverage
   , testCase "coverage enabled by default" $
-      assertCoverage defaultConfig $ Just mempty
+      assertBool "" $ isJust defaultConfig.campaignConf.knownCoverage
   , testCase "default.yaml" $ do
       EConfigWithUsage _ bad unset <- parseConfig "basic/default.yaml"
       assertBool ("unused options: " ++ show bad) $ null bad
@@ -38,4 +39,3 @@ configTests = testGroup "Configuration tests" $
         Left _ -> pure ()
   ]
   where files = ["basic/config.yaml", "basic/default.yaml"]
-        assertCoverage config value = config.campaignConf.knownCoverage @?= value

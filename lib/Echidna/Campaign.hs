@@ -40,10 +40,9 @@ import Echidna.Types.Buffer (forceBuf)
 import Echidna.Types.Corpus (Corpus)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
-import Echidna.Types.Coverage (coveragePoints)
 import Echidna.Types.Signature (makeBytecodeCache, FunctionName)
 import Echidna.Types.Test
-import Echidna.Types.Tx (TxCall(..), Tx(..), getResult, call)
+import Echidna.Types.Tx (TxCall(..), Tx(..), call)
 import Echidna.Types.World (World)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
@@ -53,12 +52,12 @@ instance MonadCatch m => MonadCatch (RandT g m) where
 
 -- | Given a 'Campaign', checks if we can attempt any solves or shrinks without exceeding
 -- the limits defined in our 'CampaignConf'.
-isDone :: MonadReader EConfig m => Campaign -> m Bool
+isDone :: MonadReader Env m => GenericCampaign a -> m Bool
 isDone c | null c.tests = do
-  conf <- asks (.campaignConf)
+  conf <- asks (.cfg.campaignConf)
   pure $ c.ncallseqs * conf.seqLen >= conf.testLimit
 isDone c = do
-  conf <- asks (.campaignConf)
+  conf <- asks (.cfg.campaignConf)
   let
     result = \case
       Open i   -> if i >= conf.testLimit then Just True else Nothing
@@ -288,15 +287,9 @@ execTxOptC
   -> m (VMResult, Gas)
 execTxOptC tx = do
   (vm, camp@Campaign{coverage = oldCov}) <- get
-  ((res, txCov), vm') <- runStateT (execTxWithCov tx) vm
-  let
-    vmr = getResult $ fst res
-    -- Update the tx coverage map with the proper binary according to the vm result
-    txCov' = Map.mapWithKey (\_ s -> Set.map (set _4 vmr) s) txCov
-    -- Update the global coverage map with the one from this tx run
-    newCov = Map.unionWith Set.union oldCov txCov'
-  put (vm', camp { coverage = newCov })
-  when (coveragePoints oldCov < coveragePoints newCov) $ do
+  ((res, (cov', grew)), vm') <- runStateT (execTxWithCov tx oldCov) vm
+  put (vm', camp { coverage = cov' })
+  when grew $ do
     let dict' = case tx.call of
           SolCall c -> gaddCalls (Set.singleton c) camp.genDict
           _ -> camp.genDict
