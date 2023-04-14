@@ -36,7 +36,7 @@ import EVM (VM, Contract)
 import EVM.Types (Addr, W256)
 
 import Echidna.ABI
-import Echidna.Campaign (campaign)
+import Echidna.Campaign (runCampaign)
 import Echidna.Output.JSON qualified
 import Echidna.Types.Campaign
 import Echidna.Types.Config
@@ -76,7 +76,7 @@ ui vm world ts dict initialCorpus = do
 
     secToUsec = (* 1000000)
     timeoutUsec = secToUsec $ fromMaybe (-1) conf.uiConf.maxTime
-    runCampaign = timeout timeoutUsec (campaign updateRef vm world ts dict initialCorpus)
+    runCampaign' = timeout timeoutUsec (runCampaign updateRef vm world ts dict initialCorpus)
 #ifdef INTERACTIVE_UI
   terminalPresent <- liftIO isTerminal
 #else
@@ -102,7 +102,7 @@ ui vm world ts dict initialCorpus = do
       _ <- forkFinally -- run worker
         (void $ do
           catchAll
-            (runCampaign >>= \case
+            (runCampaign' >>= \case
               Nothing -> liftIO $ updateUI CampaignTimedout
               Just _ -> liftIO $ updateUI CampaignUpdated)
             (liftIO . writeBChan bc . CampaignCrashed . show)
@@ -142,7 +142,7 @@ ui vm world ts dict initialCorpus = do
           time <- timePrefix
           putStrLn $ time <> "[status] " <> statusLine conf.campaignConf camp
           hFlush stdout
-      result <- runCampaign
+      result <- runCampaign'
       liftIO $ killThread ticker
       (final, timedout) <- case result of
         Nothing -> do
