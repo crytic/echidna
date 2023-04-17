@@ -4,6 +4,7 @@ import Data.Map (Map)
 import Data.Text (Text)
 
 import Echidna.ABI (GenDict, emptyDict)
+import Echidna.Output.Source (CoverageFileType)
 import Echidna.Types
 import Echidna.Types.Corpus
 import Echidna.Types.Coverage (CoverageMap, FrozenCoverageMap)
@@ -12,30 +13,30 @@ import Echidna.Types.Tx (Tx)
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf
-  { testLimit     :: Int
+  { testLimit       :: Int
     -- ^ Maximum number of function calls to execute while fuzzing
-  , stopOnFail    :: Bool
+  , stopOnFail      :: Bool
     -- ^ Whether to stop the campaign immediately if any property fails
-  , estimateGas   :: Bool
+  , estimateGas     :: Bool
     -- ^ Whether to collect gas usage statistics
-  , seqLen        :: Int
+  , seqLen          :: Int
     -- ^ Number of calls between state resets (e.g. \"every 10 calls,
     -- reset the state to avoid unrecoverable states/save memory\"
-  , shrinkLimit   :: Int
+  , shrinkLimit     :: Int
     -- ^ Maximum number of candidate sequences to evaluate while shrinking
-  , knownCoverage :: Maybe CoverageMap
+  , knownCoverage   :: Maybe CoverageMap
     -- ^ If applicable, initially known coverage. If this is 'Nothing',
     -- Echidna won't collect coverage information (and will go faster)
-  , seed          :: Maybe Int
+  , seed            :: Maybe Int
     -- ^ Seed used for the generation of random transactions
-  , dictFreq      :: Float
+  , dictFreq        :: Float
     -- ^ Frequency for the use of dictionary values in the random transactions
-  , corpusDir     :: Maybe FilePath
+  , corpusDir       :: Maybe FilePath
     -- ^ Directory to load and save lists of transactions
-  , mutConsts     :: MutationConsts Integer
+  , mutConsts       :: MutationConsts Integer
     -- ^ Directory to load and save lists of transactions
-  , coverageReport :: Bool
-    -- ^ Whether or not to generate a coverage report
+  , coverageFormats :: [CoverageFileType]
+    -- ^ List of file formats to save coverage reports
   }
 
 type FrozenCampaign = GenericCampaign FrozenCoverageMap

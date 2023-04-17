@@ -1,3 +1,8 @@
+## Unreleased
+
+* Added support for lcov coverage report
+* Added a "coverageFormats" config option to choose which coverage reports to make
+
 ## 2.1.1
 
 * Added missing space in ProcessorNotFound message (#977)
