@@ -135,7 +135,7 @@ main = withUtf8 $ withCP65001 $ do
       -- TODO: We use the corpus dir to save coverage reports which is confusing.
       -- Add config option to pass dir for saving coverage report and decouple it
       -- from corpusDir.
-      when cfg.campaignConf.coverageReport $ do
+      unless (null cfg.campaignConf.coverageFormats) $ do
         -- We need runId to have a unique directory to save files under so they
         -- don't collide with the next runs. We use the current time for this
         -- as it orders the runs chronologically.
@@ -151,14 +151,12 @@ main = withUtf8 $ withCP65001 $ do
                 case r of
                   Just (externalSourceCache, solcContract) -> do
                     let dir' = dir </> show addr
-                    saveCoverage False runId dir' externalSourceCache [solcContract] campaign.coverage
-                    saveCoverage True  runId dir' externalSourceCache [solcContract] campaign.coverage
+                    saveCoverages cfg.campaignConf.coverageFormats runId dir' externalSourceCache [solcContract] campaign.coverage
                   Nothing -> pure ()
               Nothing -> pure ()
 
         -- save source coverage reports
-        saveCoverage False runId dir sourceCache contracts campaign.coverage
-        saveCoverage True  runId dir sourceCache contracts campaign.coverage
+        saveCoverages cfg.campaignConf.coverageFormats runId dir sourceCache contracts campaign.coverage
 
   if isSuccessful campaign then exitSuccess else exitWith (ExitFailure 1)
 

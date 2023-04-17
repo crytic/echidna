@@ -77,6 +77,8 @@ filterBlacklist: true
 allowFFI: false
 #directory to save the corpus; by default is disabled
 corpusDir: null
+# list of file formats to save coverage reports in; default is all possible formats
+coverageFormats: ["txt","html","lcov"]
 # constants for corpus mutations (for experimentation only)
 mutConsts: [1, 1, 1, 1]
 # maximum value to send to payable functions
@@ -85,5 +87,3 @@ maxValue: 100000000000000000000 # 100 eth
 rpcUrl: null
 # block number to use when fetching over RPC
 rpcBlock: null
-# whether or not to generate a coverage report
-coverageReport: false
