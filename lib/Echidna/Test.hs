@@ -24,6 +24,7 @@ import Echidna.Types.Buffer (forceBuf)
 import Echidna.Types.Config
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Test
+import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (Tx, TxConf(..), basicTx, TxResult(..), getResult)
 
 --- | Possible responses to a call to an Echidna test: @true@, @false@, @REVERT@, and ???.
@@ -41,7 +42,7 @@ classifyRes _         = ResOther
 
 getResultFromVM :: VM -> TxResult
 getResultFromVM vm =
-  case vm._result of
+  case vm.result of
     Just r -> getResult r
     Nothing -> error "getResultFromVM failed"
 
@@ -117,9 +118,9 @@ updateOpenTest
   -> (TestValue, Events, TxResult)
   -> EchidnaTest
 updateOpenTest test txs _ (BoolValue False,es,r) =
-  test { state = Large (-1), reproducer = txs, events = es, result = r }
+  test { Test.state = Large (-1), reproducer = txs, events = es, result = r }
 updateOpenTest test _   i (BoolValue True,_,_)   =
-  test { state = Open (i + 1) }
+  test { Test.state = Open (i + 1) }
 updateOpenTest test txs i (IntValue v',es,r) =
   if v' > v then
     test { state = Open (i + 1)
@@ -128,7 +129,7 @@ updateOpenTest test txs i (IntValue v',es,r) =
          , events = es
          , result = r }
   else
-    test { state = Open (i + 1) }
+    test { Test.state = Open (i + 1) }
   where
     v = case test.value of
           IntValue x -> x
@@ -156,7 +157,7 @@ checkProperty
   -> m (TestValue, VM)
 checkProperty f a = do
   vm <- get
-  case vm._result of
+  case vm.result of
     Just (VMSuccess _) -> do
       TestConf{classifier, testSender} <- asks (.cfg.testConf)
       (_, vm') <- runTx f testSender a
@@ -195,7 +196,7 @@ checkOptimization f a = do
   TestConf _ s <- asks (.cfg.testConf)
   (vm, vm') <- runTx f s a
   put vm -- restore EVM state
-  pure (getIntFromResult (vm'._result), vm')
+  pure (getIntFromResult vm'.result, vm')
 
 checkStatefulAssertion
   :: (MonadReader Env m, MonadState VM m, MonadThrow m)
@@ -209,12 +210,12 @@ checkStatefulAssertion sig addr = do
     -- Whether the last transaction called the function `sig`.
     isCorrectFn =
       BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty))
-                    (forceBuf vm._state._calldata)
+                    (forceBuf vm.state.calldata)
     -- Whether the last transaction executed a function on the contract `addr`.
-    isCorrectAddr = addr == vm._state._codeContract
+    isCorrectAddr = addr == vm.state.codeContract
     isCorrectTarget = isCorrectFn && isCorrectAddr
     -- Whether the last transaction executed opcode 0xfe, meaning an assertion failure.
-    isAssertionFailure = case vm._result of
+    isAssertionFailure = case vm.result of
       Just (VMFailure (UnrecognizedOpcode 0xfe)) -> True
       _ -> False
     -- Test always passes if it doesn't target the last executed contract and function.
@@ -236,17 +237,17 @@ checkDapptestAssertion sig addr = do
   vm <- get
   let
     -- Whether the last transaction has any value
-    hasValue = vm._state._callvalue /= Lit 0
+    hasValue = vm.state.callvalue /= Lit 0
     -- Whether the last transaction called the function `sig`.
     isCorrectFn =
       BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty))
-                    (forceBuf vm._state._calldata)
-    isAssertionFailure = case vm._result of
+                    (forceBuf vm.state.calldata)
+    isAssertionFailure = case vm.result of
       Just (VMFailure (Revert (ConcreteBuf bs))) ->
         not $ BS.isSuffixOf assumeMagicReturnCode bs
       Just (VMFailure _) -> True
       _ -> False
-    isCorrectAddr = addr == vm._state._codeContract
+    isCorrectAddr = addr == vm.state.codeContract
     isCorrectTarget = isCorrectFn && isCorrectAddr
     isFailure = not hasValue && (isCorrectTarget && isAssertionFailure)
   pure (BoolValue (not isFailure), vm)
@@ -270,13 +271,12 @@ checkAssertionEvent = any (T.isPrefixOf "AssertionFailed(")
 
 checkSelfDestructedTarget :: Addr -> DappInfo -> VM -> TestValue
 checkSelfDestructedTarget addr _ vm =
-  let selfdestructs' = vm._tx._substate._selfdestructs
+  let selfdestructs' = vm.tx.substate.selfdestructs
   in BoolValue $ addr `notElem` selfdestructs'
 
 checkAnySelfDestructed :: DappInfo -> VM -> TestValue
 checkAnySelfDestructed _ vm =
-  let sd = vm._tx._substate._selfdestructs
-  in BoolValue $ null sd
+  BoolValue $ null vm.tx.substate.selfdestructs
 
 checkPanicEvent :: T.Text -> Events -> Bool
 checkPanicEvent n = any (T.isPrefixOf ("Panic(" <> n <> ")"))

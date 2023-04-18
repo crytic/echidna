@@ -3,7 +3,7 @@ module Tests.Config (configTests) where
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool, assertFailure)
 
-import Control.Lens (sans)
+import Optics.Core (sans)
 import Control.Monad (void)
 import Data.Function ((&))
 import Data.Yaml qualified as Y

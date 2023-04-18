@@ -3,7 +3,9 @@
 
 module Echidna.Transaction where
 
-import Control.Lens
+import Optics.Core
+import Optics.State.Operators
+
 import Control.Monad (join)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.State.Strict (MonadState, gets, modify')
@@ -13,22 +15,24 @@ import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
-import EVM hiding (resetState, tx, value)
+
+import EVM hiding (resetState, VMOpts(timestamp, gasprice))
 import EVM.ABI (abiValueType)
-import EVM.Types (Expr(ConcreteBuf, Lit), Addr, W256)
+import EVM.Types (Expr(ConcreteBuf, Lit), Addr, W256, FunctionSelector)
 
 import Echidna.ABI
 import Echidna.Types.Random
 import Echidna.Orphans.JSON ()
 import Echidna.Types (fromEVM)
 import Echidna.Types.Buffer (forceBuf, forceLit)
-import Echidna.Types.Signature (SignatureMap, SolCall, ContractA, FunctionHash, MetadataCache, lookupBytecodeMetadata)
+import Echidna.Types.Signature
+  (SignatureMap, SolCall, ContractA, MetadataCache, lookupBytecodeMetadata)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign
 
 hasSelfdestructed :: VM -> Addr -> Bool
-hasSelfdestructed vm addr = addr `elem` vm._tx._substate._selfdestructs
+hasSelfdestructed vm addr = addr `elem` vm.tx.substate.selfdestructs
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating
 -- delays, since block number only goes up with timestamp
@@ -75,7 +79,7 @@ genTx memo world txConf deployedContracts = do
   where
     toContractA :: SignatureMap -> (Addr, Contract) -> Maybe ContractA
     toContractA sigMap (addr, c) =
-      let bc = forceBuf $ c ^. bytecode
+      let bc = forceBuf $ view bytecode c
           metadata = lookupBytecodeMetadata memo bc
       in (addr,) <$> Map.lookup metadata sigMap
 
@@ -89,7 +93,7 @@ genValue
   :: MonadRandom m
   => W256
   -> Set W256
-  -> [FunctionHash]
+  -> [FunctionSelector]
   -> SolCall
   -> m W256
 genValue mv ds ps sc =
@@ -151,43 +155,43 @@ mutateTx tx = pure tx
 setupTx :: MonadState VM m => Tx -> m ()
 setupTx tx@Tx{call = NoCall} = fromEVM $ do
   modify' $ \vm -> vm
-    { _state = resetState vm._state
-    , _block = advanceBlock vm._block tx.delay
+    { state = resetState vm.state
+    , block = advanceBlock vm.block tx.delay
     }
   loadContract tx.dst
 
 setupTx tx@Tx{call} = fromEVM $ do
   modify' $ \vm -> vm
-    { _result = Nothing
-    , _state = (resetState vm._state)
-                 { _gas = tx.gas
-                 , _caller = Lit (fromIntegral tx.src)
-                 , _callvalue = Lit tx.value
+    { result = Nothing
+    , state = (resetState vm.state)
+                 { gas = tx.gas
+                 , caller = Lit (fromIntegral tx.src)
+                 , callvalue = Lit tx.value
                  }
-    , _block = advanceBlock vm._block tx.delay
-    , _tx = vm._tx { _gasprice = tx.gasprice, _origin = tx.src }
+    , block = advanceBlock vm.block tx.delay
+    , tx = vm.tx { gasprice = tx.gasprice, origin = tx.src }
     }
   case call of
     SolCreate bc -> do
-      env . contracts . at tx.dst .= Just (initialContract (InitCode bc mempty) & set balance tx.value)
+      #env % #contracts % at tx.dst .= Just (initialContract (InitCode bc mempty) & set #balance tx.value)
       loadContract tx.dst
-      state . code .= RuntimeCode (ConcreteRuntimeCode bc)
+      #state % #code .= RuntimeCode (ConcreteRuntimeCode bc)
     SolCall cd -> do
       incrementBalance
       loadContract tx.dst
-      state . calldata .= ConcreteBuf (encode cd)
+      #state % #calldata .= ConcreteBuf (encode cd)
     SolCalldata cd -> do
       incrementBalance
       loadContract tx.dst
-      state . calldata .= ConcreteBuf cd
+      #state % #calldata .= ConcreteBuf cd
   where
-    incrementBalance = env . contracts . ix tx.dst . balance += tx.value
+    incrementBalance = #env % #contracts % ix tx.dst % #balance %= (+ tx.value)
     encode (n, vs) = abiCalldata (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
 
 resetState :: FrameState -> FrameState
-resetState s = s { _pc = 0, _stack = mempty, _memory = mempty }
+resetState s = s { pc = 0, stack = mempty, memory = mempty }
 
 advanceBlock :: Block -> (W256, W256) -> Block
 advanceBlock blk (t,b) =
-  blk { _timestamp = Lit (forceLit blk._timestamp + t)
-      , _number = blk._number + b }
+  blk { timestamp = Lit (forceLit blk.timestamp + t)
+      , number = blk.number + b }

@@ -36,10 +36,10 @@ extractEvents decodeErrors dappInfo vm =
      ++ catMaybes (concatMap flatten (fmap (fmap showTrace) forest))
   where
   showTrace trace =
-    let ?context = DappContext { info = dappInfo, env = vm._env._contracts } in
-    let codehash' = fromJust $ maybeLitWord trace._traceContract._codehash
+    let ?context = DappContext { info = dappInfo, env = vm.env.contracts } in
+    let codehash' = fromJust $ maybeLitWord trace.contract.codehash
         maybeContractName = maybeContractNameFromCodeHash dappInfo codehash'
-    in case trace._traceData of
+    in case trace.tracedata of
       EventTrace addr bytes (topic:_) ->
         case Map.lookup (forceLit topic) dappInfo.eventMap of
           Just (Event name _ types) ->
@@ -78,7 +78,7 @@ maybeContractNameFromCodeHash info codeHash = contractToName <$> maybeContract
 
 decodeRevert :: Bool -> VM -> Maybe Text
 decodeRevert decodeErrors vm =
-  case vm._result of
+  case vm.result of
     Just (VMFailure (Revert (ConcreteBuf bs))) -> decodeRevertMsg decodeErrors bs
     _ -> Nothing
 
