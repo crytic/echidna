@@ -49,7 +49,7 @@
         echidna = with pkgs; lib.pipe
           (haskellPackages.callCabal2nix "echidna" ./. { inherit hevm; })
           [
-            (haskell.lib.compose.addTestToolDepends [ haskellPackages.hpack slither-analyzer solc ])
+            (haskell.lib.compose.addTestToolDepends [ haskellPackages.hpack slither-analyzer solc z3])
             (haskell.lib.compose.disableCabalFlag "static")
           ];
       in rec {

@@ -89,3 +89,4 @@ rpcUrl: null
 rpcBlock: null
 # number of workers
 workers: 1
+symExec: false
