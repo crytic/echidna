@@ -52,7 +52,7 @@ deployBytecodes' cs src initialVM = foldM deployOne initialVM cs
   deployOne vm (dst, bytecode) = do
     vm' <- flip execStateT vm $
       execTx $ createTx (bytecode <> zeros) src dst unlimitedGasPerBlock (0, 0)
-    case vm'._result of
+    case vm'.result of
       Just (VMSuccess _) -> pure vm'
       _ -> do
         di <- asks (.dapp)

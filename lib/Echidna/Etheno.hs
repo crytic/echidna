@@ -4,12 +4,14 @@ module Echidna.Etheno where
 
 import Prelude hiding (Word)
 
+import Optics.Core
+import Optics.State.Operators
+
 import Control.Exception (Exception)
-import Control.Lens
 import Control.Monad (void)
 import Control.Monad.Catch (MonadThrow, throwM)
 import Control.Monad.Fail qualified as M (MonadFail(..))
-import Control.Monad.State.Strict (MonadState, get, put, execStateT)
+import Control.Monad.State.Strict (MonadState, get, put, execStateT, gets)
 import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
 import Data.ByteString.Base16 qualified as BS16 (decode)
 import Data.ByteString.Char8 (ByteString)
@@ -130,14 +132,14 @@ loadEthenoBatch ffi fp = do
 
 initAddress :: MonadState VM m => Addr -> m ()
 initAddress addr = do
-  cs <- use (env . EVM.contracts)
+  cs <- gets (.env.contracts)
   if addr `member` cs then pure ()
-  else env . EVM.contracts . at addr .= Just account
+  else #env % #contracts % at addr .= Just account
   where
     account =
       initialContract (RuntimeCode (ConcreteRuntimeCode mempty))
-        & set nonce 0
-        & set balance 100000000000000000000 -- default balance for EOAs in etheno
+        & set #nonce 0
+        & set #balance 100000000000000000000 -- default balance for EOAs in etheno
 
 crashWithQueryError
   :: (MonadState VM m, MonadFail m, MonadThrow m)
@@ -174,7 +176,7 @@ execEthenoTxs et = do
     (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
     (VMSuccess (ConcreteBuf bc),
      ContractCreated _ ca _ _ _ _) -> do
-      env . contracts . at ca . _Just . contractcode .= InitCode mempty mempty
+      #env % #contracts % at ca % _Just % #contractcode .= InitCode mempty mempty
       fromEVM $ do
         replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bc))
         loadContract ca
