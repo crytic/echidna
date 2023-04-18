@@ -42,6 +42,7 @@ import Echidna.Events (EventMap, extractEvents)
 import Echidna.Exec (execTx, initialVM)
 import Echidna.SourceAnalysis.Slither
 import Echidna.Symbolic (forceAddr)
+import Echidna.SymExec qualified
 import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
@@ -50,7 +51,7 @@ import Echidna.Types.Solidity
 import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx
   ( basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp
-  , initialBlockNumber )
+  , initialBlockNumber, Tx )
 import Echidna.Types.World (World(..))
 import Echidna.Utility (measureIO)
 
@@ -168,7 +169,7 @@ loadSpecified
   :: Env
   -> Maybe Text
   -> [SolcContract]
-  -> IO (VM RealWorld, [SolSignature], [Text], SignatureMap)
+  -> IO (VM RealWorld, [SolSignature], [Text], SignatureMap, [Tx])
 loadSpecified env name cs = do
   let solConf = env.cfg.solConf
 
@@ -178,6 +179,10 @@ loadSpecified env name cs = do
     putStrLn "Multiple contracts found, only analyzing the first"
   unless solConf.quiet $
     putStrLn $ "Analyzing contract: " <> T.unpack mainContract.contractName
+
+  symTxs <- if solConf.symExec
+    then Echidna.SymExec.exploreContract solConf.contractAddr mainContract
+    else pure []
 
   let
     -- generate the complete abi mapping
@@ -271,7 +276,7 @@ loadSpecified env name cs = do
 
     case vm4.result of
       Just (VMFailure _) -> throwM SetUpCallFailed
-      _ -> pure (vm4, neFuns, fst <$> tests, abiMapping)
+      _ -> pure (vm4, neFuns, fst <$> tests, abiMapping, symTxs)
 
   where
     choose [] _ = throwM NoContracts
@@ -363,7 +368,7 @@ loadSolTests
 loadSolTests env name = do
   let solConf = env.cfg.solConf
   let contracts = Map.elems env.dapp.solcByName
-  (vm, funs, testNames, _signatureMap) <- loadSpecified env name contracts
+  (vm, funs, testNames, _signatureMap, _) <- loadSpecified env name contracts
   let
     eventMap = Map.unions $ map (.eventMap) contracts
     world = World solConf.sender mempty Nothing [] eventMap

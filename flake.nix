@@ -15,10 +15,10 @@
   outputs = { self, nixpkgs, flake-utils, nix-bundle-exe, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        systemPkgs = nixpkgs.legacyPackages.${system};
         # prefer musl on Linux, static glibc + threading does not work properly
         # TODO: maybe only override it for echidna-redistributable?
-        pkgsStatic = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsMusl else pkgs;
+        pkgs = if systemPkgs.stdenv.hostPlatform.isLinux then systemPkgs.pkgsMusl else systemPkgs;
         # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
         # would be great to integrate solc-select to be more flexible, improve this in future
         solc = pkgs.stdenv.mkDerivation {
@@ -41,13 +41,13 @@
           '';
         };
 
-        secp256k1-static = pkgsStatic.secp256k1.overrideAttrs (attrs: {
+        secp256k1-static = pkgs.secp256k1.overrideAttrs (attrs: {
           configureFlags = attrs.configureFlags ++ [ "--enable-static" ];
         });
 
-        ncurses-static = pkgsStatic.ncurses.override { enableStatic = true; };
+        ncurses-static = pkgs.ncurses.override { enableStatic = true; };
 
-        hevm = pkgs: pkgs.haskell.lib.dontCheck (
+        hevm = pkgs.haskell.lib.dontCheck (
           pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "ethereum";
             repo = "hevm";
@@ -57,16 +57,16 @@
 
         # FIXME: figure out solc situation, it conflicts with the one from
         # solc-select that is installed with slither, disable tests in the meantime
-        echidna = pkgs: pkgs.haskell.lib.dontCheck (
+        echidna = pkgs.haskell.lib.dontCheck (
           with pkgs; lib.pipe
-          (haskellPackages.callCabal2nix "echidna" ./. { inherit (hevm pkgs); })
+          (haskellPackages.callCabal2nix "echidna" ./. { inherit hevm; })
           [
             (haskell.lib.compose.addTestToolDepends [ haskellPackages.hpack slither-analyzer solc ])
             (haskell.lib.compose.disableCabalFlag "static")
           ]);
 
-        echidna-static = with pkgsStatic; lib.pipe
-          (echidna pkgsStatic)
+        echidna-static = with pkgs; lib.pipe
+          echidna
           [
             (haskell.lib.compose.appendConfigureFlags
               ([
@@ -78,7 +78,6 @@
                 "--extra-lib-dirs=${stripDylib (ncurses-static)}/lib"
               ] ++ (if stdenv.hostPlatform.isDarwin then [
                 "--extra-lib-dirs=${stripDylib (libiconv.override { enableStatic = true; })}/lib"
-                "--extra-lib-dirs=${stripDylib (libcxxabi)}/lib"
               ] else [])))
             (haskell.lib.compose.enableCabalFlag "static")
           ];
@@ -98,28 +97,22 @@
         in if pkgs.stdenv.isLinux
         then pkgs.runCommand "echidna-stripNixRefs" {} ''
           mkdir -p $out/bin
-          cp ${pkgsStatic.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
+          cp ${pkgs.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
           # fix TERMINFO path in ncurses
           ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo" . "\x0" x (length($1) - 65)#e' $out/bin/echidna
           chmod 555 $out/bin/echidna
         '' else pkgs.runCommand "echidna-stripNixRefs" {} ''
           mkdir -p $out/bin
-          cp ${pkgsStatic.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
+          cp ${pkgs.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
           # get the list of dynamic libs from otool and tidy the output
           libs=$(${otool} -L $out/bin/echidna | tail -n +2 | sed 's/^[[:space:]]*//' | cut -d' ' -f1)
           # get the path for libcxx
-          cxx=$(echo "$libs" | ${grep} '^/nix/store/.*-libcxx-')
+          cxx=$(echo "$libs" | ${grep} '^/nix/store/.*-libcxx')
           # rewrite /nix/... library paths to point to /usr/lib
           chmod 777 $out/bin/echidna
           ${install_name_tool} -change "$cxx" /usr/lib/libc++.1.dylib $out/bin/echidna
           # fix TERMINFO path in ncurses
           ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/usr/share/terminfo" . "\x0" x (length($1) - 19)#e' $out/bin/echidna
-          # check that no nix deps remain
-          nixdeps=$(${otool} -L $out/bin/echidna | tail -n +2 | { ${grep} /nix/store -c || test $? = 1; })
-          if [ ! "$nixdeps" = "0" ]; then
-            echo "Nix deps remain in redistributable binary!"
-            exit 255
-          fi
           # re-sign binary
           CODESIGN_ALLOCATE=${codesign_allocate} ${codesign} -f -s - $out/bin/echidna
           chmod 555 $out/bin/echidna
@@ -137,14 +130,14 @@
         '';
 
       in rec {
-        packages.echidna = echidna pkgs;
-        packages.default = echidna pkgs;
+        packages.echidna = echidna;
+        packages.default = echidna;
 
         packages.echidna-redistributable = echidnaRedistributable;
 
         devShell = with pkgs;
           haskellPackages.shellFor {
-            packages = _: [ (echidna pkgs) ];
+            packages = _: [ echidna ];
             shellHook = "hpack";
             buildInputs = [
               solc

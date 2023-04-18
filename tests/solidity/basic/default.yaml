@@ -91,3 +91,4 @@ rpcBlock: null
 workers: 1
 # events server port
 server: null
+symExec: false

@@ -89,9 +89,9 @@ runContract f selectedContract cfg = do
   buildOutput <- compileContracts cfg.solConf (f :| [])
   env <- mkEnv cfg buildOutput
 
-  (vm, world, dict) <- prepareContract env (f :| []) selectedContract seed
+  (vm, world, dict, symTxs) <- prepareContract env (f :| []) selectedContract seed
 
-  let corpus = []
+  let corpus = pure <$> symTxs
   (_stopReason, finalState) <- flip runReaderT env $
     runWorker (pure ()) vm world dict 0 corpus cfg.campaignConf.testLimit
 

@@ -64,11 +64,12 @@ main = withUtf8 $ withCP65001 $ do
 
   -- take the seed from config, otherwise generate a new one
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
-  (vm, world, dict) <- prepareContract env cliFilePath cliSelectedContract seed
+  (vm, world, dict, symTxs) <- prepareContract env cliFilePath cliSelectedContract seed
 
   initialCorpus <- loadInitialCorpus env world
+  let corpus = initialCorpus <> (pure <$> symTxs)
   -- start ui and run tests
-  _campaign <- runReaderT (ui vm world dict initialCorpus) env
+  _campaign <- runReaderT (ui vm world dict corpus) env
 
   tests <- readIORef env.testsRef
 
@@ -95,8 +96,8 @@ main = withUtf8 $ withCP65001 $ do
                 liftIO $ writeFile file (ppTestName test <> ": " <> txsPrinted)
 
       measureIO cfg.solConf.quiet "Saving corpus" $ do
-        corpus <- readIORef env.corpusRef
-        saveTxs (dir </> "coverage") (snd <$> Set.toList corpus)
+        finalCorpus <- readIORef env.corpusRef
+        saveTxs (dir </> "coverage") (snd <$> Set.toList finalCorpus)
 
       -- TODO: We use the corpus dir to save coverage reports which is confusing.
       -- Add config option to pass dir for saving coverage report and decouple it
