@@ -111,7 +111,7 @@ formatCrashReport e =
 
 summaryWidget :: UIState -> Widget Name
 summaryWidget uiState =
-  vLimit 5 (hLimitPercent 50 leftSide <+> vBorder <+> hLimitPercent 50 rightSide)
+  vLimit 5 (hLimitPercent 50 leftSide <+> vBorder <+> rightSide)
   where
   leftSide =
     let c = uiState.campaign in
