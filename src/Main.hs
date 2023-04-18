@@ -6,6 +6,7 @@ import Control.Monad (unless, forM_, when)
 import Control.Monad.Reader (runReaderT, liftIO)
 import Control.Monad.Random (getRandomR)
 import Data.Aeson.Key qualified as Aeson.Key
+import Data.Char (toLower)
 import Data.Function ((&))
 import Data.Hashable (hash)
 import Data.IORef (readIORef)
@@ -28,7 +29,7 @@ import System.IO (hPutStrLn, stderr)
 import System.IO.CodePage (withCP65001)
 
 import EVM.Dapp (DappInfo(..))
-import EVM.Solidity (BuildOutput(..))
+import EVM.Solidity (BuildOutput(..), Contracts(..))
 import EVM.Types (Addr)
 
 import Echidna
@@ -67,8 +68,9 @@ main = withUtf8 $ withCP65001 $ do
   (vm, world, dict) <- prepareContract env cliFilePath cliSelectedContract seed
 
   initialCorpus <- loadInitialCorpus env world
+  let (Contracts contractMap) = buildOutput.contracts
   -- start ui and run tests
-  _campaign <- runReaderT (ui vm world dict initialCorpus) env
+  _campaign <- runReaderT (ui vm world dict initialCorpus cliSelectedContract (Map.elems contractMap)) env
 
   tests <- readIORef env.testsRef
 
@@ -137,12 +139,21 @@ data Options = Options
   , cliSeed             :: Maybe Int
   , cliCryticArgs       :: Maybe String
   , cliSolcArgs         :: Maybe String
+  , cliSymExec          :: Maybe Bool
+  , cliSymExecTimeout   :: Maybe Int
+  , cliSymExecNSolvers  :: Maybe Int
   }
 
 optsParser :: ParserInfo Options
 optsParser = info (helper <*> versionOption <*> options) $ fullDesc
   <> progDesc "EVM property-based testing framework"
   <> header "Echidna"
+
+bool :: ReadM Bool
+bool = maybeReader (f . map toLower) where
+  f "true" = Just True
+  f "false" = Just False
+  f _ = Nothing
 
 options :: Parser Options
 options = Options
@@ -206,6 +217,15 @@ options = Options
   <*> optional (option str $ long "solc-args"
     <> metavar "ARGS"
     <> help "Additional arguments to use in solc for the compilation of the contract to test.")
+  <*> optional (option bool $ long "sym-exec"
+    <> metavar "BOOL"
+    <> help "Whether to enable the experimental symbolic execution feature.")
+  <*> optional (option auto $ long "sym-exec-timeout"
+    <> metavar "INTEGER"
+    <> help ("Timeout for each symbolic execution run, in seconds (assuming sym-exec is enabled). Default is " ++ show defaultSymExecTimeout))
+  <*> optional (option auto $ long "sym-exec-n-solvers"
+    <> metavar "INTEGER"
+    <> help ("Number of symbolic execution solvers to run in parallel for each task (assuming sym-exec is enabled). Default is " ++ show defaultSymExecNWorkers))
 
 versionOption :: Parser (a -> a)
 versionOption = infoOption
@@ -245,6 +265,9 @@ overrideConfig config Options{..} = do
       , seed = cliSeed <|> campaignConf.seed
       , workers = cliWorkers <|> campaignConf.workers
       , serverPort = cliServerPort <|> campaignConf.serverPort
+      , symExec = fromMaybe campaignConf.symExec cliSymExec
+      , symExecTimeout = fromMaybe campaignConf.symExecTimeout cliSymExecTimeout
+      , symExecNSolvers = fromMaybe campaignConf.symExecNSolvers cliSymExecNSolvers
       }
 
     overrideSolConf solConf = solConf

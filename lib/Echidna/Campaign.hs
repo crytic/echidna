@@ -5,7 +5,7 @@ module Echidna.Campaign where
 
 import Control.Concurrent
 import Control.DeepSeq (force)
-import Control.Monad (replicateM, when, void, forM_)
+import Control.Monad (replicateM, when, unless, void, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
@@ -16,6 +16,7 @@ import Control.Monad.Trans (lift)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
 import Data.IORef (readIORef, atomicModifyIORef')
+import Data.Foldable (foldlM)
 import Data.List qualified as List
 import Data.Map qualified as Map
 import Data.Map (Map, (\\))
@@ -28,6 +29,7 @@ import System.Random (mkStdGen)
 
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
+import EVM.Solidity (SolcContract)
 import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
@@ -35,6 +37,7 @@ import Echidna.Exec
 import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
 import Echidna.Symbolic (forceAddr)
+import Echidna.SymExec (createSymTx)
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types (Gas)
@@ -78,10 +81,94 @@ replayCorpus vm txSeqs =
       Just faultyTx ->
         pushWorkerEvent (TxSequenceReplayFailed file faultyTx)
 
+runWorker
+  :: (MonadIO m, MonadThrow m, MonadReader Env m)
+  => WorkerType
+  -> StateT WorkerState m ()
+  -- ^ Callback to run after each state update (for instrumentation)
+  -> VM Concrete RealWorld -- ^ Initial VM state
+  -> World   -- ^ Initial world state
+  -> GenDict -- ^ Generation dictionary
+  -> Int     -- ^ Worker id starting from 0
+  -> [(FilePath, [Tx])]
+  -- ^ Initial corpus of transactions
+  -> Int     -- ^ Test limit for this worker
+  -> Maybe Text -- ^ Specified contract name
+  -> [SolcContract] -- ^ List of contracts
+  -> m (WorkerStopReason, WorkerState)
+runWorker SymbolicWorker callback vm _ dict workerId initialCorpus _ name cs = runSymWorker callback vm dict workerId initialCorpus name cs
+runWorker FuzzWorker callback vm world dict workerId initialCorpus testLimit _ _ = runFuzzWorker callback vm world dict workerId initialCorpus testLimit
+
+runSymWorker
+  :: (MonadIO m, MonadThrow m, MonadReader Env m)
+  => StateT WorkerState m ()
+  -- ^ Callback to run after each state update (for instrumentation)
+  -> VM Concrete RealWorld -- ^ Initial VM state
+  -> GenDict -- ^ Generation dictionary
+  -> Int     -- ^ Worker id starting from 0
+  -> [(FilePath, [Tx])]
+  -- ^ Initial corpus of transactions
+  -> Maybe Text -- ^ Specified contract name
+  -> [SolcContract] -- ^ List of contracts
+  -> m (WorkerStopReason, WorkerState)
+runSymWorker callback vm dict workerId initialCorpus name cs = do
+  cfg <- asks (.cfg)
+  let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
+  eventQueue <- asks (.eventQueue)
+  chan <- liftIO $ dupChan eventQueue
+
+  flip runStateT initialState $
+    flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
+      lift callback
+      void $ replayCorpus vm initialCorpus
+      symexecTxs []
+      mapM_ (symexecTxs . snd) initialCorpus
+      listenerLoop listenerFunc chan nworkers
+      pure SymbolicDone
+
+  where
+
+  effectiveSeed = dict.defSeed + workerId
+  effectiveGenDict = dict { defSeed = effectiveSeed }
+  initialState =
+    WorkerState { workerId
+                , gasInfo = mempty
+                , genDict = effectiveGenDict
+                , newCoverage = False
+                , ncallseqs = 0
+                , ncalls = 0
+                , runningThreads = []
+                }
+
+  -- We could pattern match on workerType here to ignore WorkerEvents from SymbolicWorkers,
+  -- but it may be useful to symexec on top of symexec results to produce multi-transaction
+  -- chains where each transaction results in new coverage.
+  listenerFunc (_, WorkerEvent _ _ (NewCoverage {transactions})) = do
+    void $ callseq vm transactions
+    symexecTxs transactions
+  listenerFunc _ = pure ()
+
+  symexecTxs txs = do
+    cfg <- asks (.cfg)
+    vm' <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm txs
+    (threadId, symTxsChan) <- liftIO $ createSymTx cfg name cs vm'
+
+    modify' (\ws -> ws { runningThreads = [threadId] })
+    lift callback
+
+    symTxs <- liftIO $ takeMVar symTxsChan
+
+    modify' (\ws -> ws { runningThreads = [] })
+    lift callback
+
+    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm' [symTx]) symTxs
+
+    unless newCoverage (pushWorkerEvent SymNoNewCoverage)
+
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
 -- we can't solve or shrink anything.
-runWorker
+runFuzzWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
   => StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
@@ -93,7 +180,7 @@ runWorker
   -- ^ Initial corpus of transactions
   -> Int     -- ^ Test limit for this worker
   -> m (WorkerStopReason, WorkerState)
-runWorker callback vm world dict workerId initialCorpus testLimit = do
+runFuzzWorker callback vm world dict workerId initialCorpus testLimit = do
   let
     effectiveSeed = dict.defSeed + workerId
     effectiveGenDict = dict { defSeed = effectiveSeed }
@@ -104,6 +191,7 @@ runWorker callback vm world dict workerId initialCorpus testLimit = do
                   , newCoverage = False
                   , ncallseqs = 0
                   , ncalls = 0
+                  , runningThreads = []
                   }
 
   flip runStateT initialState $ do
@@ -150,7 +238,7 @@ runWorker callback vm world dict workerId initialCorpus testLimit = do
        | otherwise ->
          lift callback >> pure TestLimitReached
 
-  fuzz = randseq vm.env.contracts world >>= callseq vm
+  fuzz = randseq vm.env.contracts world >>= fmap fst . callseq vm
 
   continue = runUpdate (shrinkTest vm) >> lift callback >> run
 
@@ -183,13 +271,16 @@ randseq deployedContracts world = do
     then pure randTxs -- Use the generated random transactions
     else mut seqLen corpus randTxs -- Apply the mutator
 
+-- TODO callseq ideally shouldn't need to be MonadRandom
+
 -- | Runs a transaction sequence and checks if any test got falsified or can be
 -- minimized. Stores any useful data in the campaign state if coverage increased.
+-- Returns resulting VM, as well as whether any new coverage was found.
 callseq
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM Concrete RealWorld
   -> [Tx]
-  -> m (VM Concrete RealWorld)
+  -> m (VM Concrete RealWorld, Bool)
 callseq vm txSeq = do
   env <- ask
   -- First, we figure out whether we need to execute with or without coverage
@@ -254,7 +345,7 @@ callseq vm txSeq = do
       , ncallseqs = workerState.ncallseqs + 1
       }
 
-  pure vm'
+  pure (vm', newCoverage)
 
   where
   -- Given a list of transactions and a return typing rule, checks whether we
@@ -402,7 +493,8 @@ pushWorkerEvent
 pushWorkerEvent event = do
   workerId <- gets (.workerId)
   env <- ask
-  liftIO $ pushCampaignEvent env (WorkerEvent workerId event)
+  let workerType = workerIDToType env.cfg.campaignConf workerId
+  liftIO $ pushCampaignEvent env (WorkerEvent workerId workerType event)
 
 pushCampaignEvent :: Env -> CampaignEvent -> IO ()
 pushCampaignEvent env event = do
@@ -424,17 +516,28 @@ spawnListener
   -> m (MVar ())
 spawnListener handler = do
   cfg <- asks (.cfg)
-  let nworkers = fromMaybe 1 cfg.campaignConf.workers
+  let nworkers = getNWorkers cfg.campaignConf
   eventQueue <- asks (.eventQueue)
   chan <- liftIO $ dupChan eventQueue
   stopVar <- liftIO newEmptyMVar
-  liftIO $ void $ forkFinally (loop chan nworkers) (const $ putMVar stopVar ())
+  liftIO $ void $ forkFinally (listenerLoop handler chan nworkers) (const $ putMVar stopVar ())
   pure stopVar
-  where
-  loop chan !workersAlive =
-    when (workersAlive > 0) $ do
-      event <- readChan chan
-      handler event
-      case event of
-        (_, WorkerEvent _ (WorkerStopped _)) -> loop chan (workersAlive - 1)
-        _                                    -> loop chan workersAlive
+
+-- | Repeatedly run 'handler' on events from 'chan'.
+-- Stops once 'workersAlive' workers stop.
+listenerLoop
+  :: (MonadIO m)
+  => ((LocalTime, CampaignEvent) -> m ())
+  -- ^ a function that handles the events
+  -> Chan (LocalTime, CampaignEvent)
+  -- ^ event channel
+  -> Int
+  -- ^ number of workers which have to stop before loop exits
+  -> m ()
+listenerLoop handler chan !workersAlive =
+  when (workersAlive > 0) $ do
+    event <- liftIO $ readChan chan
+    handler event
+    case event of
+      (_, WorkerEvent _ _ (WorkerStopped _)) -> listenerLoop handler chan (workersAlive - 1)
+      _                                      -> listenerLoop handler chan workersAlive

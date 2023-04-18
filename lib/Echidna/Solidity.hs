@@ -174,7 +174,7 @@ loadSpecified env name cs = do
   let solConf = env.cfg.solConf
 
   -- Pick contract to load
-  mainContract <- choose cs name
+  mainContract <- chooseContract cs name
   when (isNothing name && length cs > 1 && not solConf.quiet) $
     putStrLn "Multiple contracts found, only analyzing the first"
   unless solConf.quiet $
@@ -220,7 +220,7 @@ loadSpecified env name cs = do
     throwM $ ConstructorArgs (show mainContract.constructorInputs)
 
   -- Select libraries
-  ls <- mapM (choose cs . Just . T.pack) solConf.solcLibs
+  ls <- mapM (chooseContract cs . Just . T.pack) solConf.solcLibs
 
   -- Make sure everything is ready to use, then ship it
   when (null abi) $
@@ -241,7 +241,7 @@ loadSpecified env name cs = do
     vm0 <- deployContracts (zip [addrLibrary ..] ls) solConf.deployer blank
 
     -- additional contract deployment (by name)
-    cs' <- mapM ((choose cs . Just) . T.pack . snd) solConf.deployContracts
+    cs' <- mapM ((chooseContract cs . Just) . T.pack . snd) solConf.deployContracts
     vm1 <- deployContracts (zip (map fst solConf.deployContracts) cs') solConf.deployer vm0
 
     -- additional contract deployment (bytecode)
@@ -275,22 +275,28 @@ loadSpecified env name cs = do
       _ -> pure (vm4, neFuns, fst <$> tests, abiMapping)
 
   where
-    choose [] _ = throwM NoContracts
-    choose (c:_) Nothing = pure c
-    choose _ (Just n) =
-      maybe (throwM $ ContractNotFound n) pure $
-        find (isMatch n) cs
-    isMatch n s =
-      (Data.Text.isSuffixOf (contractId rewriteOsPathSeparators n) . (.contractName)) s ||
-      (Data.Text.isSuffixOf (contractId rewritePosixPathSeparators n) . (.contractName)) s
-    contractId rewrite n
+    setUpFunction = ("setUp", [])
+
+-- | Given a list of contracts and a requested contract name, pick a contract.
+-- See 'loadSpecified' for more information.
+chooseContract :: (MonadThrow m) => [SolcContract] -> Maybe Text -> m SolcContract
+chooseContract [] _ = throwM NoContracts
+chooseContract (c:_) Nothing = pure c
+chooseContract cs (Just n) =
+  maybe (throwM $ ContractNotFound n) pure $
+    find isMatch cs
+  where
+    isMatch s =
+      (Data.Text.isSuffixOf (contractId rewriteOsPathSeparators) . (.contractName)) s ||
+      (Data.Text.isSuffixOf (contractId rewritePosixPathSeparators) . (.contractName)) s
+    contractId rewrite
       | T.any (== ':') n =
         let (splitPath, splitName) = T.breakOn ":" n
         in rewrite splitPath `T.append` splitName
       | otherwise = ":" `append` n
+
     rewriteOsPathSeparators = T.pack . joinPath . splitDirectories . T.unpack
     rewritePosixPathSeparators = T.pack . FPP.joinPath . FPP.splitDirectories . T.unpack
-    setUpFunction = ("setUp", [])
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
 -- for running a 'Campaign' against the tests found.

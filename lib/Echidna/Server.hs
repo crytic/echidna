@@ -16,11 +16,16 @@ import Echidna.Types.Config (Env(..))
 newtype SSE = SSE (LocalTime, CampaignEvent)
 
 instance ToJSON SSE where
-  toJSON (SSE (time, WorkerEvent workerId event)) =
+  toJSON (SSE (time, WorkerEvent workerId workerType event)) =
     object [ "worker" .= workerId
+           , "workerType" .= workerTypeString workerType
            , "timestamp" .= time
            , "data" .= event
            ]
+    where
+      workerTypeString :: WorkerType -> String
+      workerTypeString SymbolicWorker = "symbolic"
+      workerTypeString FuzzWorker = "fuzz"
   toJSON (SSE (time, Failure reason)) =
     object [ "timestamp" .= time
            , "data" .= reason
@@ -38,17 +43,18 @@ runSSEServer serverStopVar env port nworkers = do
         else do
           event@(_, campaignEvent) <- readChan sseChan
           let eventName = \case
-                WorkerEvent _ workerEvent ->
+                WorkerEvent _ _ workerEvent ->
                   case workerEvent of
                     TestFalsified _ -> "test_falsified"
                     TestOptimized _ -> "test_optimized"
                     NewCoverage {} -> "new_coverage"
+                    SymNoNewCoverage -> "sym_no_new_coverage"
                     TxSequenceReplayed {} -> "tx_sequence_replayed"
                     TxSequenceReplayFailed {} -> "tx_sequence_replay_failed"
                     WorkerStopped _ -> "worker_stopped"
                 Failure _err -> "failure"
           case campaignEvent of
-            WorkerEvent _ (WorkerStopped _) -> do
+            WorkerEvent _ _ (WorkerStopped _) -> do
               aliveAfter <- atomicModifyIORef' aliveRef (\n -> (n-1, n-1))
               when (aliveAfter == 0) $ putMVar serverStopVar ()
             _ -> pure ()
