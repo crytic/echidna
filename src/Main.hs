@@ -28,7 +28,7 @@ import System.IO (hPutStrLn, stderr)
 import System.IO.CodePage (withCP65001)
 
 import EVM.Dapp (DappInfo(..))
-import EVM.Solidity (BuildOutput(..))
+import EVM.Solidity (BuildOutput(..), Contracts(..))
 import EVM.Types (Addr)
 
 import Echidna
@@ -67,8 +67,9 @@ main = withUtf8 $ withCP65001 $ do
   (vm, world, dict) <- prepareContract env cliFilePath cliSelectedContract seed
 
   initialCorpus <- loadInitialCorpus env world
+  let (Contracts contractMap) = buildOutput.contracts
   -- start ui and run tests
-  _campaign <- runReaderT (ui vm world dict initialCorpus) env
+  _campaign <- runReaderT (ui vm world dict initialCorpus cliSelectedContract (Map.elems contractMap)) env
 
   tests <- readIORef env.testsRef
 

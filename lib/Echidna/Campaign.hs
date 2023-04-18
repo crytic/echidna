@@ -15,7 +15,8 @@ import Control.Monad.ST (RealWorld)
 import Control.Monad.Trans (lift)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
-import Data.IORef (readIORef, atomicModifyIORef')
+import Data.IORef (newIORef, readIORef, atomicModifyIORef')
+import Data.Foldable (foldlM)
 import Data.List qualified as List
 import Data.Map qualified as Map
 import Data.Map (Map, (\\))
@@ -28,6 +29,7 @@ import System.Random (mkStdGen)
 
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
+import EVM.Solidity (SolcContract)
 import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
@@ -35,6 +37,7 @@ import Echidna.Exec
 import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
 import Echidna.Symbolic (forceAddr)
+import Echidna.SymExec (createSymTx)
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types (Gas)
@@ -78,10 +81,121 @@ replayCorpus vm txSeqs =
       Just faultyTx ->
         pushWorkerEvent (TxSequenceReplayFailed file faultyTx)
 
+runWorker
+  :: (MonadIO m, MonadThrow m, MonadReader Env m)
+  => Bool -- Sym?
+  -> StateT WorkerState m ()
+  -- ^ Callback to run after each state update (for instrumentation)
+  -> VM Concrete RealWorld -- ^ Initial VM state
+  -> World   -- ^ Initial world state
+  -> GenDict -- ^ Generation dictionary
+  -> Int     -- ^ Worker id starting from 0
+  -> [(FilePath, [Tx])]
+  -- ^ Initial corpus of transactions
+  -> Int     -- ^ Test limit for this worker
+  -> Maybe Text -- ^ Specified contract name
+  -> [SolcContract] -- ^ List of contracts
+  -> m (WorkerStopReason, WorkerState)
+runWorker True callback vm _ dict workerId initialCorpus _ name cs = runSymWorker callback vm dict workerId initialCorpus name cs
+runWorker False callback vm world dict workerId initialCorpus testLimit _ _ = runFuzzWorker callback vm world dict workerId initialCorpus testLimit
+
+runSymWorker
+  :: (MonadIO m, MonadThrow m, MonadReader Env m)
+  => StateT WorkerState m ()
+  -- ^ Callback to run after each state update (for instrumentation)
+  -> VM Concrete RealWorld -- ^ Initial VM state
+  -> GenDict -- ^ Generation dictionary
+  -> Int     -- ^ Worker id starting from 0
+  -> [(FilePath, [Tx])]
+  -- ^ Initial corpus of transactions
+  -> Maybe Text -- ^ Specified contract name
+  -> [SolcContract] -- ^ List of contracts
+  -> m (WorkerStopReason, WorkerState)
+runSymWorker callback vm dict workerId initialCorpus name cs = do
+  cfg <- asks (.cfg)
+
+  continueLoopMVar <- liftIO $ newMVar () -- used to pause `run` when nothing is happening
+  threadsLeftRef <- liftIO $ newIORef (getNFuzzWorkers cfg.campaignConf)
+  newCovTxs <- liftIO $ newIORef ([] : map snd initialCorpus)
+  txsToApplyToState <- liftIO $ newIORef []
+  let objs = (continueLoopMVar, threadsLeftRef, newCovTxs, txsToApplyToState)
+
+  void $ spawnListener (listenerFunc objs)
+
+  flip runStateT initialState $
+    flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
+      lift callback
+      void $ replayCorpus vm initialCorpus
+      run objs
+
+  where
+
+  effectiveSeed = dict.defSeed + workerId
+  effectiveGenDict = dict { defSeed = effectiveSeed }
+  initialState =
+    WorkerState { workerId
+                , gasInfo = mempty
+                , genDict = effectiveGenDict
+                , newCoverage = False
+                , ncallseqs = 0
+                , ncalls = 0
+                , runningThreads = []
+                }
+
+  enqueueIORef ref x = atomicModifyIORef' ref (\q -> (q ++ [x], ()))
+
+  dequeueAllIORef ref = atomicModifyIORef' ref ([],)
+
+  dequeueIORef ref = atomicModifyIORef' ref
+    (\case
+      [] -> ([], Nothing)
+      (h:t) -> (t, Just h))
+
+  listenerFunc (continueLoopMVar, _, newCovTxs, txsToApplyToState) (_, WorkerEvent _ (NewCoverage {transactions})) = do
+    enqueueIORef txsToApplyToState transactions
+    enqueueIORef newCovTxs transactions
+    void $ tryPutMVar continueLoopMVar ()
+  listenerFunc (continueLoopMVar, threadsLeftRef, _, _) (_, WorkerEvent _ (WorkerStopped _)) = do
+    newThreadsLeft <- atomicModifyIORef' threadsLeftRef (\n -> (n-1, n-1))
+    when (newThreadsLeft <= 0) $ void $ tryPutMVar continueLoopMVar ()
+  listenerFunc _ _ = pure ()
+
+  run objs@(continueLoopMVar, threadsLeftRef, newCovTxs, txsToApplyToState) = do
+    liftIO $ takeMVar continueLoopMVar
+    mapM_ (callseq vm) =<< liftIO (dequeueAllIORef txsToApplyToState)
+    liftIO (dequeueIORef newCovTxs) >>= \case
+      Nothing -> do
+        -- no more txs for the moment. if everyone else is done, we can finish too
+        threadsLeft <- liftIO (readIORef threadsLeftRef)
+        if threadsLeft <= 0
+          then pure TestLimitReached
+          else continue
+      Just txs -> do
+        symexecTxs txs
+        liftIO $ void $ tryPutMVar continueLoopMVar ()
+        continue
+    where
+    continue = lift callback >> run objs
+
+  symexecTxs txs = do
+    cfg <- asks (.cfg)
+    vm' <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm txs
+    (threadId, symTxsChan) <- liftIO $ createSymTx cfg name cs vm'
+
+    modify' (\ws -> ws { runningThreads = [threadId] })
+    lift callback
+
+    symTxs <- liftIO $ takeMVar symTxsChan
+
+    modify' (\ws -> ws { runningThreads = [] })
+    lift callback
+
+    mapM_ (\symTx -> void $ callseq vm (txs ++ [symTx])) symTxs
+
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
 -- we can't solve or shrink anything.
-runWorker
+runFuzzWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
   => StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
@@ -93,7 +207,7 @@ runWorker
   -- ^ Initial corpus of transactions
   -> Int     -- ^ Test limit for this worker
   -> m (WorkerStopReason, WorkerState)
-runWorker callback vm world dict workerId initialCorpus testLimit = do
+runFuzzWorker callback vm world dict workerId initialCorpus testLimit = do
   let
     effectiveSeed = dict.defSeed + workerId
     effectiveGenDict = dict { defSeed = effectiveSeed }
@@ -104,6 +218,7 @@ runWorker callback vm world dict workerId initialCorpus testLimit = do
                   , newCoverage = False
                   , ncallseqs = 0
                   , ncalls = 0
+                  , runningThreads = []
                   }
 
   flip runStateT initialState $ do
@@ -424,7 +539,7 @@ spawnListener
   -> m (MVar ())
 spawnListener handler = do
   cfg <- asks (.cfg)
-  let nworkers = fromMaybe 1 cfg.campaignConf.workers
+  let nworkers = getNWorkers cfg.campaignConf
   eventQueue <- asks (.eventQueue)
   chan <- liftIO $ dupChan eventQueue
   stopVar <- liftIO newEmptyMVar

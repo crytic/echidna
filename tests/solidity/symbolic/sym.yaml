@@ -1,0 +1,3 @@
+testMode: assertion
+symExec: true
+workers: 0
