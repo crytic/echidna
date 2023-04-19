@@ -6,7 +6,7 @@ maintainer: Trail of Bits <echidna-dev@trailofbits.com>
 version: 2.1.1
 
 # https://github.com/haskell/cabal/issues/4739
-ghc-options: -Wall -fno-warn-orphans -O2 -threaded +RTS -N -RTS -optP-Wno-nonportable-include-path
+ghc-options: -Wall -fno-warn-orphans -O2 -optP-Wno-nonportable-include-path
 
 dependencies:
   - base
@@ -77,19 +77,20 @@ executables:
     main: Main.hs
     source-dirs: src/
     dependencies: echidna
+    ghc-options: -threaded -with-rtsopts=-N
     when:
-        - condition: (os(linux) || os(windows)) && flag(static)
-          ghc-options:
-            - -optl-static
-        - condition: os(linux) || os(windows)
-          ghc-options:
-            - -O2
-            - -optl-pthread
-        - condition: os(darwin)
-          extra-libraries: c++
-          ld-options: -Wl,-keep_dwarf_unwind
-        - condition: os(windows)
-          extra-libraries: stdc++
+      - condition: (os(linux) || os(windows)) && flag(static)
+        ghc-options:
+          - -optl-static
+      - condition: os(linux) || os(windows)
+        ghc-options:
+          - -O2
+          - -optl-pthread
+      - condition: os(darwin)
+        extra-libraries: c++
+        ld-options: -Wl,-keep_dwarf_unwind
+      - condition: os(windows)
+        extra-libraries: stdc++
 
 tests:
   echidna-testsuite:
