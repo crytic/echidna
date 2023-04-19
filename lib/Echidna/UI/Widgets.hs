@@ -10,7 +10,10 @@ import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Control.Monad.Reader (MonadReader, asks)
 import Data.List (nub, intersperse, sortBy)
+import Data.Map qualified as Map
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text qualified as T
+import Data.Time (UTCTime, NominalDiffTime, formatTime, defaultTimeLocale, diffUTCTime)
 import Data.Version (showVersion)
 import Graphics.Vty qualified as V
 import Paths_echidna qualified (version)
@@ -28,13 +31,14 @@ import Echidna.Types.Config
 import Data.Map (Map)
 import EVM.Types (Addr, W256)
 import EVM (Contract)
-import qualified Brick.Widgets.Dialog as B
-import qualified Data.Map as Map
-import Data.Maybe (fromMaybe, isJust)
+import Brick.Widgets.Dialog qualified as B
 
 data UIState = UIState
   { status :: UIStateStatus
   , campaign :: FrozenCampaign
+  , timeStarted :: UTCTime
+  , now :: UTCTime
+
   , fetchedContracts :: Map Addr (Maybe Contract)
   , fetchedSlots :: Map Addr (Map W256 (Maybe W256))
   , fetchedDialog :: B.Dialog ()
@@ -51,6 +55,8 @@ attrs = A.attrMap (V.white `on` V.black)
   , (attrName "tx", fg V.brightWhite)
   , (attrName "working", fg V.brightBlue)
   , (attrName "success", fg V.brightGreen)
+  , (attrName "title", fg V.brightYellow `V.withStyle` V.bold)
+  , (attrName "subtitle", fg V.brightCyan `V.withStyle` V.bold)
   ]
 
 bold :: Widget n -> Widget n
@@ -73,35 +79,37 @@ campaignStatus uiState = do
   done <- isDone uiState.campaign
   case (uiState.status, done) of
     (Uninitialized, _) ->
-      pure $ mainbox (padLeft (Pad 1) $ str "Starting up, please wait...") emptyWidget
+      mainbox (padLeft (Pad 1) $ str "Starting up, please wait...") emptyWidget
     (Crashed e, _) ->
-      pure $ mainbox (padLeft (Pad 1) $
-        withAttr (attrName "failure") $ strBreak $ formatCrashReport e) emptyWidget
-    (Timedout, _) ->
-      mainbox <$> testsWidget uiState.campaign.tests
-              <*> pure (finalStatus "Timed out, C-c or esc to exit")
-    (_, True) ->
-      mainbox <$> testsWidget uiState.campaign.tests
-              <*> pure (finalStatus "Campaign complete, C-c or esc to exit")
-    _ ->
-      mainbox <$> testsWidget uiState.campaign.tests
-              <*> pure emptyWidget
+      mainbox (padLeft (Pad 1) $ failure $ strBreak $ formatCrashReport e) emptyWidget
+    (Timedout, _) -> do
+      tests <- testsWidget uiState.campaign.tests
+      mainbox tests (finalStatus "Timed out, C-c or esc to exit")
+    (_, True) -> do
+      tests <- testsWidget uiState.campaign.tests
+      mainbox tests (finalStatus "Campaign complete, C-c or esc to exit")
+    _ -> do
+      tests <- testsWidget uiState.campaign.tests
+      mainbox tests emptyWidget
   where
-    mainbox :: Widget Name -> Widget Name -> Widget Name
-    mainbox inner underneath =
-      hCenter $ hLimit 120 $
-        wrapInner inner underneath
-    wrapInner inner underneath =
-      joinBorders $ borderWithLabel (bold $ str title) $
-        summaryWidget uiState
-        <=>
-        hBorderWithLabel (str "Tests")
-        <=>
-        inner
-        <=>
-        underneath
-    title = "Echidna " ++ showVersion Paths_echidna.version
-    finalStatus s = hBorder <=> hCenter (bold $ str s)
+  mainbox inner underneath =
+    hCenter . hLimit 120 <$> wrapInner inner underneath
+  wrapInner inner underneath = do
+    chainId <- asks (.chainId)
+    pure $ joinBorders $ borderWithLabel echidnaTitle $
+      summaryWidget uiState chainId
+      <=>
+      hBorderWithLabel (withAttr (attrName "subtitle") $ str " Tests ")
+      <=>
+      inner
+      <=>
+      underneath
+  echidnaTitle =
+    str "[ " <+>
+    withAttr (attrName "title")
+      (str $ "Echidna " <> showVersion Paths_echidna.version) <+>
+    str " ]"
+  finalStatus s = hBorder <=> hCenter (bold $ str s)
 
 formatCrashReport :: String -> String
 formatCrashReport e =
@@ -109,29 +117,55 @@ formatCrashReport e =
   e <>
   "\n\nPlease report it to https://github.com/crytic/echidna/issues"
 
-summaryWidget :: UIState -> Widget Name
-summaryWidget uiState =
-  vLimit 5 (hLimitPercent 50 leftSide <+> vBorder <+> rightSide)
+summaryWidget :: UIState -> Maybe W256 -> Widget Name
+summaryWidget uiState chainId =
+  vLimit 3 $ -- limit to 3 rows
+    hLimitPercent 33 leftSide <+> vBorder <+>
+    hLimitPercent 50 middle <+> vBorder <+>
+    rightSide
   where
   leftSide =
     let c = uiState.campaign in
     padLeft (Pad 1) $
-      vLimit 1 (str "Tests found: " <+> str (show (length c.tests)) <+> fill ' ')
+      (timeElapsedWidget uiState) <+> fill ' '
       <=>
-      str ("Seed: " ++ show c.genDict.defSeed)
+      str ("Tests found: " <> show (length c.tests))
       <=>
-      str (ppFrozenCoverage c.coverage)
+      str ("Seed: " <> show c.genDict.defSeed)
+  middle =
+    let c = uiState.campaign in
+    padLeft (Pad 1) $
+      str (ppFrozenCoverage c.coverage) <+> fill ' '
       <=>
       str (ppCorpus c.corpus)
-  rightSide = fetchCacheWidget uiState.fetchedContracts uiState.fetchedSlots
+  rightSide =
+    padLeft (Pad 1) $
+      (rpcInfoWidget uiState.fetchedContracts uiState.fetchedSlots chainId)
 
-fetchCacheWidget
-  :: Map Addr (Maybe Contract) -> Map Addr (Map W256 (Maybe W256)) -> Widget Name
-fetchCacheWidget contracts slots =
-  padLeft (Pad 1) $
-    (str "Fetched contracts: " <+> countWidget (Map.elems contracts))
-    <=>
-    (str "Fetched slots: " <+> countWidget (concat $ Map.elems (Map.elems <$> slots)))
+timeElapsedWidget :: UIState -> Widget n
+timeElapsedWidget uiState =
+  str "Time elapsed: " <+>
+  str ((formatNominalDiffTime . diffUTCTime uiState.now) uiState.timeStarted)
+
+formatNominalDiffTime :: NominalDiffTime -> String
+formatNominalDiffTime diff =
+  let fmt = if | diff < 60       -> "%Ss"
+               | diff < 60*60    -> "%Mm %Ss"
+               | diff < 24*60*60 -> "%Hh %Mm %Ss"
+               | otherwise       -> "%dd %Hh %Mm %Ss"
+  in formatTime defaultTimeLocale fmt diff
+
+rpcInfoWidget
+  :: Map Addr (Maybe Contract)
+  -> Map Addr (Map W256 (Maybe W256))
+  -> Maybe W256
+  -> Widget Name
+rpcInfoWidget contracts slots chainId =
+  (str "Chain ID: " <+> str (maybe "-" show chainId))
+  <=>
+  (str "Fetched contracts: " <+> countWidget (Map.elems contracts))
+  <=>
+  (str "Fetched slots: " <+> countWidget (concat $ Map.elems (Map.elems <$> slots)))
   where
   countWidget fetches =
     let successful = filter isJust fetches
@@ -187,11 +221,14 @@ testWidget test =
       <=> padTop (Pad 1) details
   name n = bold $ str (T.unpack n)
 
-tsWidget :: MonadReader Env m
-         => TestState -> EchidnaTest -> m (Widget Name, Widget Name)
+tsWidget
+  :: MonadReader Env m
+  => TestState
+  -> EchidnaTest
+  -> m (Widget Name, Widget Name)
 tsWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 tsWidget Solved     t = failWidget Nothing t.reproducer t.events t.value t.result
-tsWidget Passed     _ = pure (withAttr (attrName "success") $ str "PASSED!", emptyWidget)
+tsWidget Passed     _ = pure (success $ str "PASSED!", emptyWidget)
 tsWidget (Open i)   t = do
   n <- asks (.cfg.campaignConf.testLimit)
   if i >= n then
@@ -211,19 +248,33 @@ eventWidget es =
   else str "Event sequence" <+> str ":"
        <=> strBreak (T.unpack $ T.intercalate "\n" es)
 
-failWidget :: MonadReader Env m
-           => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> TxResult -> m (Widget Name, Widget Name)
+failWidget
+  :: MonadReader Env m
+  => Maybe (Int, Int)
+  -> [Tx]
+  -> Events
+  -> TestValue
+  -> TxResult
+  -> m (Widget Name, Widget Name)
 failWidget _ [] _  _  _= pure (failureBadge, str "*no transactions made*")
 failWidget b xs es _ r = do
   s <- seqWidget xs
-  pure (failureBadge <+> str (" with " ++ show r), status <=> titleWidget <=> s <=> eventWidget es)
+  pure
+    ( failureBadge <+> str (" with " ++ show r)
+    , status <=> titleWidget <=> s <=> eventWidget es
+    )
   where
   status = case b of
-    Nothing    -> emptyWidget
-    Just (n,m) -> str "Current action: " <+> withAttr (attrName "working") (str ("shrinking " ++ progress n m))
+    Nothing -> emptyWidget
+    Just (n,m) ->
+      str "Current action: " <+>
+        withAttr (attrName "working") (str ("shrinking " ++ progress n m))
 
-optWidget :: MonadReader Env m
-          => TestState -> EchidnaTest -> m (Widget Name, Widget Name)
+optWidget
+  :: MonadReader Env m
+  => TestState
+  -> EchidnaTest
+  -> m (Widget Name, Widget Name)
 optWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 optWidget Solved     _ = error "optimization tests cannot be solved"
 optWidget Passed     t = pure (str $ "max value found: " ++ show t.value, emptyWidget)
@@ -238,16 +289,26 @@ optWidget (Large n)  t = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
   maxWidget (if n < m then Just (n,m) else Nothing) t.reproducer t.events t.value
 
-maxWidget :: MonadReader Env m
-           => Maybe (Int, Int) -> [Tx] -> Events -> TestValue -> m (Widget Name, Widget Name)
+maxWidget
+  :: MonadReader Env m
+  => Maybe (Int, Int)
+  -> [Tx]
+  -> Events
+  -> TestValue
+  -> m (Widget Name, Widget Name)
 maxWidget _ [] _  _ = pure (failureBadge, str "*no transactions made*")
 maxWidget b xs es v = do
   s <- seqWidget xs
-  pure (maximumBadge  <+> str (" max value: " ++ show v), status <=> titleWidget <=> s <=> eventWidget es)
+  pure
+    ( maximumBadge <+> str (" max value: " ++ show v)
+    , status <=> titleWidget <=> s <=> eventWidget es
+    )
   where
   status = case b of
-    Nothing    -> emptyWidget
-    Just (n,m) -> str "Current action: " <+> withAttr (attrName "working") (str ("shrinking " ++ progress n m))
+    Nothing -> emptyWidget
+    Just (n,m) ->
+      str "Current action: " <+>
+        withAttr (attrName "working") (str ("shrinking " ++ progress n m))
 
 seqWidget :: MonadReader Env m => [Tx] -> m (Widget Name)
 seqWidget xs = do

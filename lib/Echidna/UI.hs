@@ -28,6 +28,7 @@ import Data.ByteString.Lazy qualified as BS
 import Data.IORef
 import Data.Map (Map)
 import Data.Maybe (fromMaybe, isJust)
+import Data.Time (UTCTime, getCurrentTime)
 import Data.Vector.Unboxed qualified as VU
 import UnliftIO (MonadUnliftIO, hFlush, stdout)
 import UnliftIO.Timeout (timeout)
@@ -50,7 +51,7 @@ import Echidna.UI.Report
 import Echidna.Utility (timePrefix)
 
 data UIEvent =
-  CampaignUpdated FrozenCampaign
+  CampaignUpdated UTCTime FrozenCampaign
   | CampaignTimedout FrozenCampaign
   | CampaignCrashed String
   | FetchCacheUpdated (Map Addr (Maybe Contract)) (Map Addr (Map W256 (Maybe W256)))
@@ -96,7 +97,8 @@ ui vm world ts dict initialCorpus = do
         -- run UI update every 100ms
         forever $ do
           threadDelay 100000
-          updateUI CampaignUpdated
+          now <- getCurrentTime
+          updateUI (CampaignUpdated now)
           c <- readIORef env.fetchContractCache
           s <- readIORef env.fetchSlotCache
           writeBChan bc (FetchCacheUpdated c s)
@@ -105,7 +107,10 @@ ui vm world ts dict initialCorpus = do
           catchAll
             (runCampaign' >>= \case
               Nothing -> liftIO $ updateUI CampaignTimedout
-              Just _ -> liftIO $ updateUI CampaignUpdated)
+              Just _ -> liftIO $ do
+                now <- getCurrentTime
+                updateUI (CampaignUpdated now)
+            )
             (liftIO . writeBChan bc . CampaignCrashed . show)
         )
         (const $ liftIO $ killThread ticker)
@@ -115,14 +120,18 @@ ui vm world ts dict initialCorpus = do
             pure v
       initialVty <- liftIO buildVty
       app <- customMain initialVty buildVty (Just bc) <$> monitor
-      liftIO $ void $ app UIState
-        { campaign = defaultCampaign
-        , status = Uninitialized
-        , fetchedContracts = mempty
-        , fetchedSlots = mempty
-        , fetchedDialog = B.dialog (Just "Fetched contracts/slots") Nothing 80
-        , displayFetchedDialog = False
-        }
+      liftIO $ do
+        now <- getCurrentTime
+        void $ app UIState
+          { campaign = defaultCampaign
+          , status = Uninitialized
+          , timeStarted = now
+          , now = now
+          , fetchedContracts = mempty
+          , fetchedSlots = mempty
+          , fetchedDialog = B.dialog (Just "Fetched contracts/slots") Nothing 80
+          , displayFetchedDialog = False
+          }
       final <- liftIO $ readIORef ref
       liftIO . putStrLn =<< ppCampaign final
       pure final
@@ -187,8 +196,8 @@ monitor = do
            else emptyWidget
       , runReader (campaignStatus uiState) conf ]
 
-    onEvent (AppEvent (CampaignUpdated c')) =
-      modify' $ \state -> state { campaign = c', status = Running }
+    onEvent (AppEvent (CampaignUpdated now c')) =
+      modify' $ \state -> state { campaign = c', status = Running, now = now }
     onEvent (AppEvent (CampaignTimedout c')) =
       modify' $ \state -> state { campaign = c', status = Timedout }
     onEvent (AppEvent (CampaignCrashed e)) = do
