@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Echidna.UI where
 
