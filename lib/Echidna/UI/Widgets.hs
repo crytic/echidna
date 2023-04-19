@@ -99,7 +99,8 @@ campaignStatus uiState = do
     pure $ joinBorders $ borderWithLabel echidnaTitle $
       summaryWidget uiState chainId
       <=>
-      hBorderWithLabel (withAttr (attrName "subtitle") $ str " Tests ")
+      hBorderWithLabel (withAttr (attrName "subtitle") $ str $
+        (" Tests (" <> show (length uiState.campaign.tests)) <> ") ")
       <=>
       inner
       <=>
@@ -127,11 +128,9 @@ summaryWidget uiState chainId =
   leftSide =
     let c = uiState.campaign in
     padLeft (Pad 1) $
-      (timeElapsedWidget uiState) <+> fill ' '
+      timeElapsedWidget uiState
       <=>
-      str ("Tests found: " <> show (length c.tests))
-      <=>
-      str ("Seed: " <> show c.genDict.defSeed)
+      str ("Seed: " <> show c.genDict.defSeed) <+> fill ' '
   middle =
     let c = uiState.campaign in
     padLeft (Pad 1) $
