@@ -5,7 +5,7 @@ module Echidna.Campaign where
 import Optics.Core
 
 import Control.DeepSeq (force)
-import Control.Monad (foldM, replicateM, when, unless, void)
+import Control.Monad (replicateM, when, unless, void)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
@@ -82,10 +82,10 @@ isSuccessful Campaign{tests} =
 -- contain minized corpus without sequences that didn't increase the coverage.
 replayCorpus
   :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m, MonadState Campaign m)
-  => VM     -- ^ VM to start replaying from
-  -> [[Tx]] -- ^ corpus to replay
-  -> m VM   -- ^ VM after corpus replay
-replayCorpus = foldM callseq
+  => VM     -- ^ Initial VM state
+  -> [[Tx]] -- ^ Corpus to replay
+  -> m ()
+replayCorpus vm = mapM_ (callseq vm)
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
