@@ -45,7 +45,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (corpusSize)
 import Echidna.Types.Coverage (scoveragePoints)
-import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOpen)
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOpen, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
@@ -243,6 +243,7 @@ statusLine campaignConf camp = do
   points <- scoveragePoints camp.coverage
   pure $ "tests: " <> show (length $ filter didFail camp.tests) <> "/" <> show (length camp.tests)
     <> ", fuzzing: " <> show fuzzRuns <> "/" <> show campaignConf.testLimit
+    <> ", values: " <> show (map (.value) $ filter (\t -> isOptimizationTest t.testType) camp.tests)
     <> ", cov: " <> show points
     <> ", corpus: " <> show (corpusSize camp.corpus)
   where
