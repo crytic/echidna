@@ -19,7 +19,7 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
 import Data.Vector qualified as V
-import Data.Vector.Unboxed.Mutable qualified as V
+import Data.Vector.Unboxed.Mutable qualified as VMut
 import System.Process (readProcessWithExitCode)
 
 import EVM hiding (Env)
@@ -252,9 +252,9 @@ execTxWithCov tx cov = do
         Nothing -> pure False -- shouldn't happen
         Just vec -> do
           let txResultBit = fromEnum $ getResult $ fst r
-          V.read vec pc >>= \case
+          VMut.read vec pc >>= \case
             (opIx, depths, txResults) | not (txResults `testBit` txResultBit) -> do
-              V.write vec pc (opIx, depths, txResults `setBit` txResultBit)
+              VMut.write vec pc (opIx, depths, txResults `setBit` txResultBit)
               pure True -- we count this as new coverage
             _ -> pure False
     _ -> pure False
@@ -288,10 +288,10 @@ execTxWithCov tx cov = do
           let size = BS.length . forceBuf . view bytecode . fromJust $
                 Map.lookup vm.state.contract vm.env.contracts
           if size > 0 then do
-            vec <- V.new size
+            vec <- VMut.new size
             -- We use -1 for opIx to indicate that the location was not covered
-            forM_ [0..size-1] $ \i -> V.write vec i (-1, 0, 0)
-            V.write vec pc (opIx, fromIntegral depth, 0 `setBit` fromEnum Stop)
+            forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0)
+            VMut.write vec pc (opIx, fromIntegral depth, 0 `setBit` fromEnum Stop)
             pure (Map.insert meta vec cm, True, Just (meta, pc))
           else do
             -- TODO: should we collect the coverage here? Even if there is no
@@ -299,12 +299,18 @@ execTxWithCov tx cov = do
             -- that PC landed at and record that.
             pure (cm, new, lastLoc)
         Just vec -> do
-          V.read vec pc >>= \case
-            (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
-              V.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
-              pure (cm, True, Just (meta, pc))
-            _ ->
-              pure (cm, new, Just (meta, pc))
+          if pc < VMut.length vec then
+            VMut.read vec pc >>= \case
+              (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
+                VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
+                pure (cm, True, Just (meta, pc))
+              _ ->
+                pure (cm, new, Just (meta, pc))
+          else
+            -- TODO: no-op: pc is out-of-bounds. This shouldn't happen but we
+            -- observed this in some real-world scenarios. This is likely a bug
+            -- in another place, investigate.
+            pure (cm, new, lastLoc)
 
     -- | Get the VM's current execution location
     currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames)
