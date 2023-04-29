@@ -55,7 +55,7 @@ data WorkerStopReason
   = TestLimitReached
   | TimeLimitReached
   | FastFailed
-  | Killed
+  | Killed !String
   | Crashed !String
   deriving Show
 
@@ -83,8 +83,8 @@ ppCampaignEvent = \case
     "Time limit reached. Stopping."
   WorkerStopped FastFailed ->
     "A test was falsified. Stopping."
-  WorkerStopped Killed ->
-    "Killed. Stopping."
+  WorkerStopped (Killed e) ->
+    "Killed (" <> e <>"). Stopping."
   WorkerStopped (Crashed e) ->
     "Crashed:\n\n" <>
     e <>

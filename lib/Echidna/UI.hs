@@ -15,6 +15,7 @@ import Echidna.UI.Widgets
 #endif
 
 import Control.Concurrent (killThread, threadDelay)
+import Control.Exception (AsyncException)
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Random.Strict (MonadRandom)
@@ -24,14 +25,14 @@ import Data.ByteString.Lazy qualified as BS
 import Data.Map (Map)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Time
-import UnliftIO (MonadUnliftIO, newIORef, readIORef, atomicWriteIORef, hFlush, stdout, IORef, writeIORef, atomicModifyIORef')
+import UnliftIO (MonadUnliftIO, newIORef, readIORef, atomicWriteIORef, hFlush, stdout, IORef, writeIORef, atomicModifyIORef', timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
 import EVM (VM, Contract)
 import EVM.Types (Addr, W256)
 
 import Echidna.ABI
-import Echidna.Campaign (runWorker, pushEvent)
+import Echidna.Campaign (runWorker)
 import Echidna.Output.JSON qualified
 import Echidna.Types.Campaign
 import Echidna.Types.Config
@@ -48,8 +49,6 @@ data UIEvent =
   | FetchCacheUpdated (Map Addr (Maybe Contract))
                       (Map Addr (Map W256 (Maybe W256)))
   | WorkerEvent (Int, LocalTime, CampaignEvent)
-
-type Worker = (IORef WorkerState, MVar ())
 
 -- | Set up and run an Echidna 'Campaign' and display interactive UI or
 -- print non-interactive output in desired format at the end
@@ -78,14 +77,7 @@ ui vm world dict initialCorpus = do
     perWorkerTestLimit = ceiling
       (fromIntegral conf.campaignConf.testLimit / fromIntegral jobs :: Double)
 
-  workers <- forM [0..(jobs-1)] (spawnWorker perWorkerTestLimit)
-
-  -- Run a thread that will order all workers to exit when timeout is reached
-  case conf.uiConf.maxTime of
-    Just seconds -> void . liftIO . forkIO $ do
-      threadDelay (seconds * 1_000_000)
-      stopWorkers workers TimeLimitReached
-    Nothing -> pure ()
+  workers <- forM [0..(jobs-1)] (spawnWorker env perWorkerTestLimit)
 
   -- A var used to block and wait for listener to finish
   listenerStopVar <- newEmptyMVar
@@ -142,7 +134,7 @@ ui vm world dict initialCorpus = do
           }
 
       -- Exited from the UI, stop the workers, not needed anymore
-      stopWorkers workers Killed
+      stopWorkers workers
 
       -- wait for all events to be processed
       takeMVar listenerStopVar
@@ -161,7 +153,7 @@ ui vm world dict initialCorpus = do
 #ifdef INTERACTIVE_UI
       -- Handles ctrl-c, TODO: this doesn't work on Windows
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
-        installHandler sig (Catch $ stopWorkers workers Killed) Nothing
+        installHandler sig (Catch $ stopWorkers workers) Nothing
 #endif
       let forwardEvent = putStrLn . ppLogLine
       liftIO $ spawnListener env forwardEvent jobs listenerStopVar
@@ -198,26 +190,37 @@ ui vm world dict initialCorpus = do
 
   where
 
-  spawnWorker testLimit workerId = do
+  spawnWorker env testLimit workerId = do
     stateRef <- newIORef initialWorkerState
-    stopWorker <- newEmptyMVar
 
-    -- Is ThreadId useful for anything?
-    void . forkIO . void $ do
-      -- TODO: split corpus into chunks and make each worker replay a chunk
-      runWorker (workerCallback stateRef stopWorker)
-                vm world dict workerId initialCorpus testLimit
+    threadId <- forkIO . void $ do
+      stopReason <- catches
+        (do
+          let timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
+          -- TODO: split corpus into chunks and make each worker replay a chunk
+          maybeResult <- timeout timeoutUsecs $
+            runWorker (workerCallback stateRef)
+                      vm world dict workerId initialCorpus testLimit
+          pure $ case maybeResult of
+            Just (stopReason, _finalState) -> stopReason
+            Nothing -> TimeLimitReached
+        )
+        [ Handler $ \(e :: AsyncException) -> pure $ Killed (show e)
+        , Handler $ \(e :: SomeException)  -> pure $ Crashed (show e)
+        ]
 
-    pure (stateRef, stopWorker)
+      time <- liftIO getTimestamp
+      writeChan env.eventQueue (workerId, time, WorkerStopped stopReason)
 
-  -- | This function is idempotent and can be called many times. This is
-  -- important in case there is a race to stop workers, the first reason wins.
-  stopWorkers workers reason =
-    forM_ workers $ \(_, stopWorker) -> tryPutMVar stopWorker reason
+    pure (threadId, stateRef)
+
+  -- | Order the workers to stop immediately
+  stopWorkers workers =
+    forM_ workers $ \(threadId, _) -> liftIO $ killThread threadId
 
   -- | Get a snapshot of all worker states
   workerStates workers =
-    forM workers $ \(stateRef, _) -> readIORef stateRef
+    forM workers $ \(_, stateRef) -> readIORef stateRef
 
   spawnListener
     :: Env
@@ -239,9 +242,8 @@ ui vm world dict initialCorpus = do
           (_, _, WorkerStopped _) -> loop (workersAlive - 1)
           _                       -> loop workersAlive
 
-  workerCallback stateRef stopWorker = do
+  workerCallback stateRef = do
     get >>= writeIORef stateRef
-    tryTakeMVar stopWorker
 
 #ifdef INTERACTIVE_UI
 vtyConfig :: IO Config

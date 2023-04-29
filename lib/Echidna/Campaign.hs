@@ -7,7 +7,7 @@ import Optics.Core hiding ((|>))
 import Control.Concurrent (writeChan)
 import Control.DeepSeq (force)
 import Control.Monad (replicateM, when, void, forM_)
-import Control.Monad.Catch (MonadCatch(..), MonadThrow(..), catchAll)
+import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
 import Control.Monad.State.Strict
@@ -77,7 +77,7 @@ replayCorpus vm txSeqs =
 -- we can't solve or shrink anything.
 runWorker
   :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
-  => StateT WorkerState m (Maybe WorkerStopReason)
+  => StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
   -> VM      -- ^ Initial VM state
   -> World   -- ^ Initial world state
@@ -85,7 +85,7 @@ runWorker
   -> Int     -- ^ Worker id starting from 0
   -> [[Tx]]  -- ^ Initial corpus of transactions
   -> Int     -- ^ Test limit for this worker
-  -> m WorkerState
+  -> m (WorkerStopReason, WorkerState)
 runWorker callback vm world dict workerId initialCorpus testLimit = do
   metaCacheRef <- asks (.metadataCache)
   fetchContractCacheRef <- asks (.fetchContractCache)
@@ -104,15 +104,11 @@ runWorker callback vm world dict workerId initialCorpus testLimit = do
                   , ncalls = 0
                   }
 
-  flip execStateT initialState $ do
+  flip runStateT initialState $ do
     flip evalRandT (mkStdGen effectiveSeed) $ do
-      catchAll
-        (do void $ lift callback
-            void $ replayCorpus vm initialCorpus
-            stopReason <- run
-            pushEvent $ WorkerStopped stopReason
-        )
-        (pushEvent . WorkerStopped . Crashed . show)
+      lift callback
+      void $ replayCorpus vm initialCorpus
+      run
 
   where
   run = do
@@ -131,7 +127,7 @@ runWorker callback vm world dict workerId initialCorpus testLimit = do
                           _       -> False
 
     if | stopOnFail && any final tests -> do
-         void $ lift callback
+         lift callback
          pure FastFailed
 
        | (null tests || any isOpen tests) && ncalls < testLimit ->
@@ -141,15 +137,12 @@ runWorker callback vm world dict workerId initialCorpus testLimit = do
          continue
 
        | otherwise -> do
-         void $ lift callback
+         lift callback
          pure TestLimitReached
 
   fuzz = randseq vm.env.contracts world >>= callseq vm
 
-  continue = do
-    runUpdate (shrinkTest vm)
-    maybeStop <- lift callback
-    maybe run pure maybeStop
+  continue = runUpdate (shrinkTest vm) >> lift callback >> run
 
   mkMemo = makeBytecodeCache . map (forceBuf . (^. bytecode)) . Map.elems
 

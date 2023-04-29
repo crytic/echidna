@@ -117,8 +117,8 @@ runContract f selectedContract cfg = do
   (vm, world, dict) <- prepareContract env contracts (f :| []) selectedContract seed
 
   let corpus = []
-  finalState <- flip runReaderT env $
-    runWorker (pure Nothing) vm world dict 0 corpus cfg.campaignConf.testLimit
+  (_stopReason, finalState) <- flip runReaderT env $
+    runWorker (pure ()) vm world dict 0 corpus cfg.campaignConf.testLimit
 
   -- TODO: consider snapshotting the state so checking function don't need to
   -- be IO
