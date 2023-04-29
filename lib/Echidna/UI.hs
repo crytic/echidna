@@ -214,9 +214,11 @@ ui vm world dict initialCorpus = do
 
     pure (threadId, stateRef)
 
+#ifdef INTERACTIVE_UI
   -- | Order the workers to stop immediately
   stopWorkers workers =
     forM_ workers $ \(threadId, _) -> liftIO $ killThread threadId
+#endif
 
   -- | Get a snapshot of all worker states
   workerStates workers =
