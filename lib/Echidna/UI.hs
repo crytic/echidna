@@ -22,6 +22,7 @@ import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader
 import Control.Monad.State.Strict hiding (state)
 import Data.ByteString.Lazy qualified as BS
+import Data.List.Extra (chunksOf)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Time
@@ -80,7 +81,12 @@ ui vm world dict initialCorpus = do
     perWorkerTestLimit = ceiling
       (fromIntegral conf.campaignConf.testLimit / fromIntegral jobs :: Double)
 
-  workers <- forM [0..(jobs-1)] (spawnWorker env perWorkerTestLimit)
+    chunkSize = ceiling
+      (fromIntegral (length initialCorpus) / fromIntegral jobs :: Double)
+    corpusChunks = chunksOf chunkSize initialCorpus ++ repeat []
+
+  workers <- forM (zip corpusChunks [0..(jobs-1)]) $
+    uncurry (spawnWorker env perWorkerTestLimit)
 
   -- A var used to block and wait for listener to finish
   listenerStopVar <- newEmptyMVar
@@ -193,16 +199,15 @@ ui vm world dict initialCorpus = do
 
   where
 
-  spawnWorker env testLimit workerId = do
+  spawnWorker env testLimit corpusChunk workerId = do
     stateRef <- newIORef initialWorkerState
 
     threadId <- forkIO $ do
       stopReason <- catches (do
-          -- TODO: split corpus into chunks and make each worker replay a chunk
           let timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
           maybeResult <- timeout timeoutUsecs $
             runWorker (get >>= writeIORef stateRef)
-                      vm world dict workerId initialCorpus testLimit
+                      vm world dict workerId corpusChunk testLimit
           pure $ case maybeResult of
             Just (stopReason, _finalState) -> stopReason
             Nothing -> TimeLimitReached

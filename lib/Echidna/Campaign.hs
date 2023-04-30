@@ -126,9 +126,8 @@ runWorker callback vm world dict workerId initialCorpus testLimit = do
                           Large n -> n < shrinkLimit
                           _       -> False
 
-    if | stopOnFail && any final tests -> do
-         lift callback
-         pure FastFailed
+    if | stopOnFail && any final tests ->
+         lift callback >> pure FastFailed
 
        | (null tests || any isOpen tests) && ncalls < testLimit ->
          fuzz >> continue
@@ -136,9 +135,8 @@ runWorker callback vm world dict workerId initialCorpus testLimit = do
        | any shrinkable tests ->
          continue
 
-       | otherwise -> do
-         lift callback
-         pure TestLimitReached
+       | otherwise ->
+         lift callback >> pure TestLimitReached
 
   fuzz = randseq vm.env.contracts world >>= callseq vm
 
