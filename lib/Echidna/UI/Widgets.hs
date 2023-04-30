@@ -55,7 +55,7 @@ data UIState = UIState
   , numCodehashes :: Int
   , lastNewCov :: LocalTime
   -- ^ last timestamp of 'NewCoverage' event
-  --
+
   , tests :: [EchidnaTest]
   }
 
@@ -212,10 +212,10 @@ perfWidget :: UIState -> Widget n
 perfWidget uiState =
   str $ "Calls/s: " <>
     if totalTime > 0
-       then show $ div totalCalls totalTime
+       then show $ totalCalls `div` totalTime
        else "-"
   where
-  totalCalls = (sum $ (.ncalls) <$> uiState.campaigns)
+  totalCalls = sum $ (.ncalls) <$> uiState.campaigns
   totalTime = round $
     diffLocalTime (fromMaybe uiState.now uiState.timeStopped)
                   uiState.timeStarted
@@ -323,8 +323,9 @@ optWidget
 optWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 optWidget Solved     _ = error "optimization tests cannot be solved"
 optWidget Passed     t = pure (str $ "max value found: " ++ show t.value, emptyWidget)
-optWidget Open       t = do
-  pure (withAttr (attrName "working") $ str $ "optimizing, max value: " ++ show t.value, emptyWidget)
+optWidget Open       t =
+  pure (withAttr (attrName "working") $ str $
+    "optimizing, max value: " ++ show t.value, emptyWidget)
 optWidget (Large n)  t = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
   maxWidget (if n < m then Just (n,m) else Nothing) t.reproducer t.events t.value

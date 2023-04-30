@@ -18,8 +18,8 @@ import Echidna.Types.Corpus (Corpus)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Signature (MetadataCache)
 import Echidna.Types.Solidity (SolConf)
-import Echidna.Types.Tx (TxConf)
 import Echidna.Types.Test (TestConf, EchidnaTest)
+import Echidna.Types.Tx (TxConf)
 
 data OperationMode = Interactive | NonInteractive OutputFormat deriving (Show, Eq)
 data OutputFormat = Text | JSON | None deriving (Show, Eq)
@@ -64,9 +64,8 @@ data Env = Env
   { cfg :: EConfig
   , dapp :: DappInfo
 
-  -- | Shared between all workers. Events are fairly rare so contention should
-  -- be minimal. Alternatively, think about a per-worker queue and listening
-  -- on all channels somehow.
+  -- | Shared between all workers. Events are fairly rare so contention is
+  -- minimal.
   , eventQueue :: Chan (Int, LocalTime, CampaignEvent)
 
   , testsRef :: IORef [EchidnaTest]

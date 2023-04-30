@@ -25,7 +25,10 @@ import Data.ByteString.Lazy qualified as BS
 import Data.Map (Map)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Time
-import UnliftIO (MonadUnliftIO, newIORef, readIORef, atomicWriteIORef, hFlush, stdout, IORef, writeIORef, atomicModifyIORef', timeout)
+import UnliftIO
+  ( MonadUnliftIO, newIORef, readIORef, atomicWriteIORef, hFlush, stdout
+  , writeIORef, atomicModifyIORef', timeout
+  )
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
 import EVM (VM, Contract)
@@ -38,7 +41,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (corpusSize)
 import Echidna.Types.Coverage (scoveragePoints)
-import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest, TestType, TestState (..))
+import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest, TestType, TestState(..))
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
@@ -54,8 +57,8 @@ data UIEvent =
 -- print non-interactive output in desired format at the end
 ui
   :: (MonadCatch m, MonadRandom m, MonadReader Env m, MonadUnliftIO m)
-  => VM            -- ^ Initial VM state
-  -> World         -- ^ Initial world state
+  => VM      -- ^ Initial VM state
+  -> World   -- ^ Initial world state
   -> GenDict
   -> [[Tx]]
   -> m [WorkerState]
@@ -193,13 +196,12 @@ ui vm world dict initialCorpus = do
   spawnWorker env testLimit workerId = do
     stateRef <- newIORef initialWorkerState
 
-    threadId <- forkIO . void $ do
-      stopReason <- catches
-        (do
-          let timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
+    threadId <- forkIO $ do
+      stopReason <- catches (do
           -- TODO: split corpus into chunks and make each worker replay a chunk
+          let timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
           maybeResult <- timeout timeoutUsecs $
-            runWorker (workerCallback stateRef)
+            runWorker (get >>= writeIORef stateRef)
                       vm world dict workerId initialCorpus testLimit
           pure $ case maybeResult of
             Just (stopReason, _finalState) -> stopReason
@@ -214,40 +216,40 @@ ui vm world dict initialCorpus = do
 
     pure (threadId, stateRef)
 
-#ifdef INTERACTIVE_UI
-  -- | Order the workers to stop immediately
-  stopWorkers workers =
-    forM_ workers $ \(threadId, _) -> liftIO $ killThread threadId
-#endif
-
   -- | Get a snapshot of all worker states
   workerStates workers =
     forM workers $ \(_, stateRef) -> readIORef stateRef
 
-  spawnListener
-    :: Env
-    -> ((Int, LocalTime, CampaignEvent) -> IO ())
-    -- ^ a function that forwards event to the UI
-    -> Int     -- ^ number of workers
-    -> MVar () -- ^ use to join this thread
-    -> IO ()
-  spawnListener env forwardEvent jobs stopVar =
-    void . forkIO $ do
-      loop jobs
-      putMVar stopVar ()
-    where
-    loop !workersAlive =
-      when (workersAlive > 0) $ do
-        event <- readChan env.eventQueue
-        forwardEvent event
-        case event of
-          (_, _, WorkerStopped _) -> loop (workersAlive - 1)
-          _                       -> loop workersAlive
-
-  workerCallback stateRef = do
-    get >>= writeIORef stateRef
+-- | Listener reads events and forwards all of them to the UI using the
+-- 'forwardEvent' function. It exits after receiving all 'WorkerStopped'
+-- events and sets the passed 'MVar' so the parent thread can block on listener
+-- until all workers are done.
+spawnListener
+  :: Env
+  -> ((Int, LocalTime, CampaignEvent) -> IO ())
+  -- ^ a function that forwards event to the UI
+  -> Int     -- ^ number of workers
+  -> MVar () -- ^ use to join this thread
+  -> IO ()
+spawnListener env forwardEvent jobs stopVar =
+  void . forkIO $ do
+    loop jobs
+    putMVar stopVar ()
+  where
+  loop !workersAlive =
+    when (workersAlive > 0) $ do
+      event <- readChan env.eventQueue
+      forwardEvent event
+      case event of
+        (_, _, WorkerStopped _) -> loop (workersAlive - 1)
+        _                       -> loop workersAlive
 
 #ifdef INTERACTIVE_UI
+ -- | Order the workers to stop immediately
+stopWorkers :: MonadIO m => [(ThreadId, a)] -> m ()
+stopWorkers workers =
+  forM_ workers $ \(threadId, _) -> liftIO $ killThread threadId
+
 vtyConfig :: IO Config
 vtyConfig = do
   config <- Vty.standardIOConfig
@@ -275,6 +277,7 @@ monitor = do
                 , fetchedSlots = slots }
       AppEvent (WorkerEvent event@(_,time,campaignEvent)) -> do
         modify' $ \state -> state { workerEvents = state.workerEvents |> event }
+
         case campaignEvent of
           NewCoverage coverage numCodehashes size ->
             modify' $ \state ->
