@@ -88,4 +88,4 @@ rpcUrl: null
 # block number to use when fetching over RPC
 rpcBlock: null
 # number of workers
-jobs: 1
+workers: 1

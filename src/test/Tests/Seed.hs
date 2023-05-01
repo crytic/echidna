@@ -32,7 +32,7 @@ seedTests =
         , corpusDir = Nothing
         , mutConsts = defaultMutationConsts
         , coverageFormats = [Txt,Html,Lcov]
-        , jobs = Nothing
+        , workers = Nothing
         }
       }
       & overrideQuiet

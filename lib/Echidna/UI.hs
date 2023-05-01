@@ -70,7 +70,7 @@ ui vm world dict initialCorpus = do
 
   let
     -- default to one worker if not configured
-    jobs = fromIntegral $ fromMaybe 1 conf.campaignConf.jobs
+    nworkers = fromIntegral $ fromMaybe 1 conf.campaignConf.workers
 
     effectiveMode = case conf.uiConf.operationMode of
       Interactive | not terminalPresent -> NonInteractive Text
@@ -79,13 +79,13 @@ ui vm world dict initialCorpus = do
     -- Distribute over all workers, could be slightly bigger overall due to
     -- ceiling but this doesn't matter
     perWorkerTestLimit = ceiling
-      (fromIntegral conf.campaignConf.testLimit / fromIntegral jobs :: Double)
+      (fromIntegral conf.campaignConf.testLimit / fromIntegral nworkers :: Double)
 
     chunkSize = ceiling
-      (fromIntegral (length initialCorpus) / fromIntegral jobs :: Double)
+      (fromIntegral (length initialCorpus) / fromIntegral nworkers :: Double)
     corpusChunks = chunksOf chunkSize initialCorpus ++ repeat []
 
-  workers <- forM (zip corpusChunks [0..(jobs-1)]) $
+  workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
     uncurry (spawnWorker env perWorkerTestLimit)
 
   -- A var used to block and wait for listener to finish
@@ -97,7 +97,7 @@ ui vm world dict initialCorpus = do
       -- Channel to push events to update UI
       uiChannel <- liftIO $ newBChan 1000
       let forwardEvent = writeBChan uiChannel . WorkerEvent
-      liftIO $ spawnListener env forwardEvent jobs listenerStopVar
+      liftIO $ spawnListener env forwardEvent nworkers listenerStopVar
 
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 200_000 -- 200 ms
@@ -125,7 +125,7 @@ ui vm world dict initialCorpus = do
         now <- getTimestamp
         void $ app UIState
           { campaigns = [initialWorkerState] -- ugly, fix me
-          , workersAlive = jobs
+          , workersAlive = nworkers
           , status = Uninitialized
           , timeStarted = now
           , timeStopped = Nothing
@@ -165,7 +165,7 @@ ui vm world dict initialCorpus = do
         installHandler sig (Catch $ stopWorkers workers) Nothing
 #endif
       let forwardEvent = putStrLn . ppLogLine
-      liftIO $ spawnListener env forwardEvent jobs listenerStopVar
+      liftIO $ spawnListener env forwardEvent nworkers listenerStopVar
 
       let printStatus = do
             states <- liftIO $ workerStates workers
@@ -236,9 +236,9 @@ spawnListener
   -> Int     -- ^ number of workers
   -> MVar () -- ^ use to join this thread
   -> IO ()
-spawnListener env forwardEvent jobs stopVar =
+spawnListener env forwardEvent nworkers stopVar =
   void . forkIO $ do
-    loop jobs
+    loop nworkers
     putMVar stopVar ()
   where
   loop !workersAlive =

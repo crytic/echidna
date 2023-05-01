@@ -223,7 +223,7 @@ readFileIfExists path = do
 
 data Options = Options
   { cliFilePath         :: NE.NonEmpty FilePath
-  , cliJobs             :: Maybe Word8
+  , cliWorkers          :: Maybe Word8
   , cliSelectedContract :: Maybe Text
   , cliConfigFilepath   :: Maybe FilePath
   , cliOutputFormat     :: Maybe OutputFormat
@@ -251,7 +251,7 @@ options :: Parser Options
 options = Options
   <$> (NE.fromList <$> some (argument str (metavar "FILES"
     <> help "Solidity files to analyze")))
-  <*> optional (option auto $ long "jobs"
+  <*> optional (option auto $ long "workers"
     <> metavar "N"
     <> help "Number of workers to run")
   <*> optional (option str $ long "contract"
@@ -337,7 +337,7 @@ overrideConfig config Options{..} = do
       , shrinkLimit = fromMaybe campaignConf.shrinkLimit cliShrinkLimit
       , seqLen = fromMaybe campaignConf.seqLen cliSeqLen
       , seed = cliSeed <|> campaignConf.seed
-      , jobs = cliJobs <|> campaignConf.jobs
+      , workers = cliWorkers <|> campaignConf.workers
       }
 
     overrideSolConf solConf = solConf

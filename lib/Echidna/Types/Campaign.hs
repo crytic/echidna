@@ -38,7 +38,7 @@ data CampaignConf = CampaignConf
     -- ^ Directory to load and save lists of transactions
   , coverageFormats :: [CoverageFileType]
     -- ^ List of file formats to save coverage reports
-  , jobs            :: Maybe Word8
+  , workers         :: Maybe Word8
   }
 
 data CampaignEvent
