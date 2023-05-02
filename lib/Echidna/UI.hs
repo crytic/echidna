@@ -22,7 +22,7 @@ import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader
 import Control.Monad.State.Strict hiding (state)
 import Data.ByteString.Lazy qualified as BS
-import Data.List.Extra (chunksOf)
+import Data.List.Split (chunksOf)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Time
@@ -83,7 +83,7 @@ ui vm world dict initialCorpus = do
 
     chunkSize = ceiling
       (fromIntegral (length initialCorpus) / fromIntegral nworkers :: Double)
-    corpusChunks = (if chunkSize > 0 then chunksOf chunkSize initialCorpus else []) ++ repeat []
+    corpusChunks = chunksOf chunkSize initialCorpus ++ repeat []
 
   workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
     uncurry (spawnWorker env perWorkerTestLimit)
