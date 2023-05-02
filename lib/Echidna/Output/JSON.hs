@@ -4,7 +4,8 @@ module Echidna.Output.JSON where
 
 import Data.Aeson hiding (Error)
 import Data.ByteString.Base16 qualified as BS16
-import Data.ByteString.Lazy (ByteString)
+import Data.ByteString.Lazy qualified as L
+import Data.IORef (readIORef)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text
@@ -17,6 +18,7 @@ import EVM.Types (keccak')
 import Echidna.ABI (ppAbiValue, GenDict(..))
 import Echidna.Types (Gas)
 import Echidna.Types.Campaign (WorkerState(..))
+import Echidna.Types.Config (Env(..))
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Test qualified as T
 import Echidna.Types.Test (EchidnaTest(..))
@@ -93,14 +95,16 @@ instance ToJSON Transaction where
     , "gasprice" .= gasprice
     ]
 
-encodeCampaign :: [WorkerState] -> IO ByteString
-encodeCampaign workerStates = do
-  let frozenCov = mempty -- coverage
-      worker0 = Prelude.head workerStates
+encodeCampaign :: Env -> [WorkerState] -> IO L.ByteString
+encodeCampaign env workerStates = do
+  tests <- readIORef env.testsRef
+  frozenCov <- mapM VU.freeze =<< readIORef env.coverageRef
+  -- TODO: this is ugly, refactor seed to live in Env
+  let worker0 = Prelude.head workerStates
   pure $ encode Campaign
     { _success = True
     , _error = Nothing
-    , _tests = [] -- TODO: mapTest <$> tests
+    , _tests = mapTest <$> tests
     , seed = worker0.genDict.defSeed
     , coverage = Map.mapKeys (("0x" ++) . (`showHex` "") . keccak') $ VU.toList <$> frozenCov
     , gasInfo = Map.toList $ Map.unionsWith max ((.gasInfo) <$> workerStates)

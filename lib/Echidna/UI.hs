@@ -190,7 +190,7 @@ ui vm world dict initialCorpus = do
 
       case outputFormat of
         JSON ->
-          liftIO $ BS.putStr =<< Echidna.Output.JSON.encodeCampaign states
+          liftIO $ BS.putStr =<< Echidna.Output.JSON.encodeCampaign env states
         Text -> do
           liftIO . putStrLn =<< ppCampaign states
         None ->
