@@ -83,7 +83,7 @@ ui vm world dict initialCorpus = do
 
     chunkSize = ceiling
       (fromIntegral (length initialCorpus) / fromIntegral nworkers :: Double)
-    corpusChunks = chunksOf chunkSize initialCorpus ++ repeat []
+    corpusChunks = (if chunkSize > 0 then chunksOf chunkSize initialCorpus else []) ++ repeat []
 
   workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
     uncurry (spawnWorker env perWorkerTestLimit)
