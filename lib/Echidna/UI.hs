@@ -203,6 +203,7 @@ ui vm world dict initialCorpus = do
     stateRef <- newIORef initialWorkerState
 
     threadId <- forkIO $ do
+      -- TODO: maybe figure this out with forkFinally?
       stopReason <- catches (do
           let timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
           maybeResult <- timeout timeoutUsecs $
@@ -237,9 +238,7 @@ spawnListener
   -> MVar () -- ^ use to join this thread
   -> IO ()
 spawnListener env forwardEvent nworkers stopVar =
-  void . forkIO $ do
-    loop nworkers
-    putMVar stopVar ()
+  void $ forkFinally (loop nworkers) (const $ putMVar stopVar ())
   where
   loop !workersAlive =
     when (workersAlive > 0) $ do
