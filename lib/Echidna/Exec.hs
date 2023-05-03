@@ -308,13 +308,19 @@ execTxWithCov tx = do
               -- bytecode for external contract, we could have a "virtual" location
               -- that PC landed at and record that.
               pure (new, lastLoc)
-          Just vec -> do
-            VMut.read vec pc >>= \case
-              (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
-                VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
-                pure (True, Just (meta, pc))
-              _ ->
-                pure (new, Just (meta, pc))
+          Just vec ->
+            if pc < VMut.length vec then
+              VMut.read vec pc >>= \case
+                (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
+                  VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
+                  pure (True, Just (meta, pc))
+                _ ->
+                  pure (new, Just (meta, pc))
+            else
+              -- TODO: no-op: pc is out-of-bounds. This shouldn't happen but we
+              -- observed this in some real-world scenarios. This is likely a bug
+              -- in another place, investigate.
+              pure (new, lastLoc)
 
       -- | Get the VM's current execution location
       currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames)
