@@ -354,6 +354,6 @@ statusLine env states = do
   let totalCalls = sum ((.ncalls) <$> states)
   pure $ "tests: " <> show (length $ filter didFail tests) <> "/" <> show (length tests)
     <> ", fuzzing: " <> show totalCalls <> "/" <> show env.cfg.campaignConf.testLimit
-    <> ", values: " <> show (map (.value) $ filter (\t -> isOptimizationTest t.testType) tests)
+    <> ", values: " <> show ((.value) <$> filter isOptimizationTest tests)
     <> ", cov: " <> show points
     <> ", corpus: " <> show (corpusSize corpus)

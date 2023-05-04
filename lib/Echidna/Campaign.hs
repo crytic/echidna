@@ -44,6 +44,7 @@ import Echidna.Types.Coverage (scoveragePoints)
 import Echidna.Types.Config
 import Echidna.Types.Signature (makeBytecodeCache, FunctionName)
 import Echidna.Types.Test
+import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), call)
 import Echidna.Types.World (World)
 import Echidna.Utility (getTimestamp)
@@ -112,7 +113,8 @@ runWorker callback vm world dict workerId initialCorpus testLimit = do
 
   where
   run = do
-    tests <- liftIO . readIORef =<< asks (.testsRef)
+    testsRef <- asks (.testsRef)
+    tests <- liftIO $ readIORef testsRef
     CampaignConf{stopOnFail, shrinkLimit} <- asks (.cfg.campaignConf)
     ncalls <- gets (.ncalls)
 
@@ -126,11 +128,20 @@ runWorker callback vm world dict workerId initialCorpus testLimit = do
                           Large n -> n < shrinkLimit
                           _       -> False
 
+      closeOptimizationTest test = case test.testType of
+        OptimizationTest _ _ -> test { Test.state = Large 0 }
+        _                    -> test
+
     if | stopOnFail && any final tests ->
          lift callback >> pure FastFailed
 
        | (null tests || any isOpen tests) && ncalls < testLimit ->
          fuzz >> continue
+
+       | ncalls >= testLimit && any (\t -> isOpen t && isOptimizationTest t) tests -> do
+         liftIO $ atomicModifyIORef' testsRef $ \sharedTests ->
+            (closeOptimizationTest <$> sharedTests, ())
+         continue
 
        | any shrinkable tests ->
          continue

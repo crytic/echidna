@@ -88,9 +88,9 @@ data EchidnaTest = EchidnaTest
   , events     :: Events
   } deriving (Eq, Show)
 
-isOptimizationTest :: TestType -> Bool
-isOptimizationTest (OptimizationTest _ _) = True
-isOptimizationTest _                      = False
+isOptimizationTest :: EchidnaTest -> Bool
+isOptimizationTest EchidnaTest{testType = OptimizationTest _ _} = True
+isOptimizationTest _ = False
 
 isOpen :: EchidnaTest -> Bool
 isOpen t = case t.state of

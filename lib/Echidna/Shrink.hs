@@ -45,7 +45,7 @@ shrinkTest vm test = do
             -- No success with shrinking this time, just bump trials
             Just test { state = Large (i + 1) }
       else
-        pure $ Just test { state = if isOptimizationTest test.testType
+        pure $ Just test { state = if isOptimizationTest test
                                  then Large (i + 1)
                                  else Solved }
     _ -> pure Nothing
