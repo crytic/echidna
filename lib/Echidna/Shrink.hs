@@ -29,7 +29,7 @@ shrinkTest
 shrinkTest vm test = do
   env <- ask
   case test.state of
-    Large i | i >= env.cfg.campaignConf.shrinkLimit ->
+    Large i | i >= env.cfg.campaignConf.shrinkLimit && not (isOptimizationTest test) ->
       pure $ Just test { state = Solved }
     Large i ->
       if length test.reproducer > 1 || any canShrinkTx test.reproducer then do
