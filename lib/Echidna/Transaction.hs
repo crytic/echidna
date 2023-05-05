@@ -52,7 +52,7 @@ getSignatures hmm (Just lmm) =
 
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
 genTx
-  :: (MonadRandom m, MonadState Campaign m)
+  :: (MonadRandom m, MonadState WorkerState m)
   => MetadataCache
   -> World
   -> TxConf

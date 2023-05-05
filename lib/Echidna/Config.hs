@@ -96,6 +96,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "corpusDir" ..!= Nothing
         <*> v ..:? "mutConsts" ..!= defaultMutationConsts
         <*> v ..:? "coverageFormats" ..!= [Txt,Html,Lcov]
+        <*> v ..:? "workers"
 
       solConfParser = SolConf
         <$> v ..:? "contractAddr"    ..!= defaultContractAddr

@@ -1,40 +1,51 @@
 module Echidna.UI.Report where
 
-import Control.Monad.Reader (MonadReader, asks, MonadIO (liftIO))
+import Control.Monad.Reader (MonadReader, MonadIO (liftIO), asks)
+import Data.IORef (readIORef)
 import Data.List (intercalate, nub, sortOn)
 import Data.Map (toList)
 import Data.Maybe (catMaybes)
 import Data.Text (Text, unpack)
 import Data.Text qualified as T
+import Data.Time (LocalTime)
 
 import Echidna.ABI (GenDict(..), encodeSig)
 import Echidna.Events (Events)
 import Echidna.Pretty (ppTxCall)
 import Echidna.Types (Gas)
 import Echidna.Types.Campaign
-import Echidna.Types.Corpus (Corpus, corpusSize)
-import Echidna.Types.Coverage (CoverageMap, FrozenCoverageMap, scoveragePoints, scoveragePointsFrozen)
+import Echidna.Types.Coverage (scoveragePoints)
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
 import Echidna.Types.Config
 
 import EVM.Types (W256)
+import Echidna.Types.Corpus (corpusSize)
+import Echidna.Utility (timePrefix)
+import qualified Data.Map as Map
 
-ppCampaign :: (MonadIO m, MonadReader Env m) => Campaign -> m String
-ppCampaign campaign = do
-  testsPrinted <- ppTests campaign
-  gasInfoPrinted <- ppGasInfo campaign
-  coveragePrinted <- liftIO $ ppCoverage campaign.coverage
-  let corpusPrinted = "\n" <> ppCorpus campaign.corpus
-      seedPrinted = "\nSeed: " <> show campaign.genDict.defSeed
-  pure $
-    testsPrinted
-    <> gasInfoPrinted
-    <> coveragePrinted
-    <> corpusPrinted
-    <> seedPrinted
+ppLogLine :: (Int, LocalTime, CampaignEvent) -> String
+ppLogLine (workerId, time, event) =
+  timePrefix time <> "[Worker " <> show workerId <> "] " <> ppCampaignEvent event
 
--- | Given rules for pretty-printing associated address, and whether to print them, pretty-print a 'Transaction'.
+ppCampaign :: (MonadIO m, MonadReader Env m) => [WorkerState] -> m String
+ppCampaign workerStates = do
+  tests <- liftIO . readIORef =<< asks (.testsRef)
+  testsPrinted <- ppTests tests
+  gasInfoPrinted <- ppGasInfo workerStates
+  coveragePrinted <- ppCoverage
+  let seedPrinted = "Seed: " <> show (head workerStates).genDict.defSeed
+  corpusPrinted <- ppCorpus
+  pure $ unlines
+    [ testsPrinted
+    , gasInfoPrinted
+    , coveragePrinted
+    , corpusPrinted
+    , seedPrinted
+    ]
+
+-- | Given rules for pretty-printing associated address, and whether to print
+-- them, pretty-print a 'Transaction'.
 ppTx :: MonadReader Env m => Bool -> Tx -> m String
 ppTx _ Tx { call = NoCall, delay } =
   pure $ "*wait*" <> ppDelay delay
@@ -55,27 +66,23 @@ ppDelay (time, block) =
   <> (if block == 0 then "" else " Block delay: " <> show (toInteger block))
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
-ppCoverage :: CoverageMap -> IO String
-ppCoverage s = do
-  points <- scoveragePoints s
-  pure $ ppCoverageCommon points (length s)
-
-ppFrozenCoverage :: FrozenCoverageMap -> String
-ppFrozenCoverage s = ppCoverageCommon (scoveragePointsFrozen s) (length s)
-
-ppCoverageCommon :: Int -> Int -> String
-ppCoverageCommon points ncodehashes =
-  "Unique instructions: " <> show points
-    <> "\nUnique codehashes: " <> show ncodehashes
+ppCoverage :: (MonadIO m, MonadReader Env m) => m String
+ppCoverage = do
+  coverage <- liftIO . readIORef =<< asks (.coverageRef)
+  points <- liftIO $ scoveragePoints coverage
+  pure $ "Unique instructions: " <> show points <> "\n" <>
+         "Unique codehashes: " <> show (length coverage)
 
 -- | Pretty-print the corpus a 'Campaign' has obtained.
-ppCorpus :: Corpus -> String
-ppCorpus c = "Corpus size: " <> show (corpusSize c)
+ppCorpus :: (MonadIO m, MonadReader Env m) => m String
+ppCorpus = do
+  corpus <- liftIO . readIORef =<< asks (.corpusRef)
+  pure $ "Corpus size: " <> show (corpusSize corpus)
 
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
-ppGasInfo :: MonadReader Env m => Campaign -> m String
-ppGasInfo Campaign { gasInfo } | gasInfo == mempty = pure ""
-ppGasInfo Campaign { gasInfo } = do
+ppGasInfo :: MonadReader Env m => [WorkerState] -> m String
+ppGasInfo workerStates = do
+  let gasInfo = Map.unionsWith max ((.gasInfo) <$> workerStates)
   items <- mapM ppGasOne $ sortOn (\(_, (n, _)) -> n) $ toList gasInfo
   pure $ intercalate "" items
 
@@ -109,10 +116,8 @@ ppTS :: MonadReader Env m => TestState -> Events -> [Tx] -> m String
 ppTS (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
 ppTS Solved     es l = ppFail Nothing es l
 ppTS Passed     _ _  = pure " passed! 🎉"
-ppTS (Open i)   es [] = do
-  t <- asks (.cfg.campaignConf.testLimit)
-  if i >= t then ppTS Passed es [] else pure $ " fuzzing " <> progress i t
-ppTS (Open _)   es r = ppFail Nothing es r
+ppTS Open      _ []  = pure "passing"
+ppTS Open      es r  = ppFail Nothing es r
 ppTS (Large n) es l  = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
   ppFail (if n < m then Just (n, m) else Nothing) es l
@@ -121,7 +126,7 @@ ppOPT :: MonadReader Env m => TestState -> Events -> [Tx] -> m String
 ppOPT (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
 ppOPT Solved     es l = ppOptimized Nothing es l
 ppOPT Passed     _ _  = pure " passed! 🎉"
-ppOPT (Open _)   es r = ppOptimized Nothing es r
+ppOPT Open      es r  = ppOptimized Nothing es r
 ppOPT (Large n) es l  = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
   ppOptimized (if n < m then Just (n, m) else Nothing) es l
@@ -139,8 +144,9 @@ ppOptimized b es xs = do
          <> ppEvents es
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
-ppTests :: MonadReader Env m => Campaign -> m String
-ppTests Campaign { tests } = unlines . catMaybes <$> mapM pp tests
+ppTests :: (MonadReader Env m) => [EchidnaTest] -> m String
+ppTests tests = do
+  unlines . catMaybes <$> mapM pp tests
   where
   pp t =
     case t.testType of
@@ -158,6 +164,7 @@ ppTests Campaign { tests } = unlines . catMaybes <$> mapM pp tests
         pure $ Just (T.unpack n <> ": max value: " <> show t.value <> "\n" <> status)
       Exploration -> pure Nothing
 
--- | Given a number of boxes checked and a number of total boxes, pretty-print progress in box-checking.
+-- | Given a number of boxes checked and a number of total boxes, pretty-print
+-- progress in box-checking.
 progress :: Int -> Int -> String
-progress n m = "(" <> show n <> "/" <> show m <> ")"
+progress n m = show n <> "/" <> show m

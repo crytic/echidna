@@ -25,30 +25,30 @@ shrinkTest
   :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
   => VM
   -> EchidnaTest
-  -> m EchidnaTest
+  -> m (Maybe EchidnaTest)
 shrinkTest vm test = do
   env <- ask
   case test.state of
-    Large i | i >= env.cfg.campaignConf.shrinkLimit ->
-      pure $ test { state = Solved }
+    Large i | i >= env.cfg.campaignConf.shrinkLimit && not (isOptimizationTest test) ->
+      pure $ Just test { state = Solved }
     Large i ->
       if length test.reproducer > 1 || any canShrinkTx test.reproducer then do
         maybeShrunk <- evalStateT (shrinkSeq (checkETest test) test.value test.reproducer) vm
         pure $ case maybeShrunk of
           Just (txs, val, vm') -> do
-            test { state = Large (i + 1)
+            Just test { state = Large (i + 1)
                  , reproducer = txs
                  , events = extractEvents False env.dapp vm'
                  , result = getResultFromVM vm'
                  , value = val }
           Nothing ->
             -- No success with shrinking this time, just bump trials
-            test { state = Large (i + 1) }
+            Just test { state = Large (i + 1) }
       else
-        pure $ test { state = if isOptimizationTest test.testType
+        pure $ Just test { state = if isOptimizationTest test
                                  then Large (i + 1)
                                  else Solved }
-    _ -> pure test
+    _ -> pure Nothing
 
 -- | Given a call sequence that solves some Echidna test, try to randomly
 -- generate a smaller one that still solves that test.
