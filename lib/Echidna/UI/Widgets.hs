@@ -8,12 +8,16 @@ import Brick
 import Brick.AttrMap qualified as A
 import Brick.Widgets.Border
 import Brick.Widgets.Center
-import Control.Monad.Reader (MonadReader, asks)
+import Brick.Widgets.Dialog qualified as B
+import Control.Monad.Reader (MonadReader, asks, ask)
 import Data.List (nub, intersperse, sortBy)
+import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust)
+import Data.Sequence (Seq)
+import Data.Sequence qualified as Seq
 import Data.Text qualified as T
-import Data.Time (UTCTime, NominalDiffTime, formatTime, defaultTimeLocale, diffUTCTime)
+import Data.Time (LocalTime, NominalDiffTime, formatTime, defaultTimeLocale, diffLocalTime)
 import Data.Version (showVersion)
 import Graphics.Vty qualified as V
 import Paths_echidna qualified (version)
@@ -21,31 +25,41 @@ import Text.Printf (printf)
 import Text.Wrap
 
 import Echidna.ABI
-import Echidna.Campaign (isDone)
 import Echidna.Events (Events)
 import Echidna.Types.Campaign
+import Echidna.Types.Config
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxResult(..))
 import Echidna.UI.Report
-import Echidna.Types.Config
-import Data.Map (Map)
+import Echidna.Utility (timePrefix)
+
 import EVM.Types (Addr, W256)
 import EVM (Contract)
-import Brick.Widgets.Dialog qualified as B
 
 data UIState = UIState
   { status :: UIStateStatus
-  , campaign :: FrozenCampaign
-  , timeStarted :: UTCTime
-  , now :: UTCTime
-
+  , campaigns :: [WorkerState]
+  , timeStarted :: LocalTime
+  , timeStopped :: Maybe LocalTime
+  , now :: LocalTime
   , fetchedContracts :: Map Addr (Maybe Contract)
   , fetchedSlots :: Map Addr (Map W256 (Maybe W256))
   , fetchedDialog :: B.Dialog ()
   , displayFetchedDialog :: Bool
+
+  , workerEvents :: Seq (Int, LocalTime, CampaignEvent)
+  , workersAlive :: Int
+
+  , corpusSize :: Int
+  , coverage :: Int
+  , numCodehashes :: Int
+  , lastNewCov :: LocalTime
+  -- ^ last timestamp of 'NewCoverage' event
+
+  , tests :: [EchidnaTest]
   }
 
-data UIStateStatus = Uninitialized | Running | Timedout | Crashed String
+data UIStateStatus = Uninitialized | Running
 
 attrs :: A.AttrMap
 attrs = A.attrMap (V.white `on` V.black)
@@ -57,6 +71,7 @@ attrs = A.attrMap (V.white `on` V.black)
   , (attrName "success", fg V.brightGreen)
   , (attrName "title", fg V.brightYellow `V.withStyle` V.bold)
   , (attrName "subtitle", fg V.brightCyan `V.withStyle` V.bold)
+  , (attrName "time", fg (V.rgbColor (0x70 :: Int) 0x70 0x70))
   ]
 
 bold :: Widget n -> Widget n
@@ -68,41 +83,41 @@ failure = withAttr (attrName "failure")
 success :: Widget n -> Widget n
 success = withAttr (attrName "success")
 
-data Name =
-  TestsViewPort
+data Name
+  = LogViewPort
+  | TestsViewPort
   | SBClick ClickableScrollbarElement Name
   deriving (Ord, Show, Eq)
 
 -- | Render 'Campaign' progress as a 'Widget'.
 campaignStatus :: MonadReader Env m => UIState -> m (Widget Name)
 campaignStatus uiState = do
-  done <- isDone uiState.campaign
-  case (uiState.status, done) of
-    (Uninitialized, _) ->
-      mainbox (padLeft (Pad 1) $ str "Starting up, please wait...") emptyWidget
-    (Crashed e, _) ->
-      mainbox (padLeft (Pad 1) $ failure $ strBreak $ formatCrashReport e) emptyWidget
-    (Timedout, _) -> do
-      tests <- testsWidget uiState.campaign.tests
-      mainbox tests (finalStatus "Timed out, C-c or esc to exit")
-    (_, True) -> do
-      tests <- testsWidget uiState.campaign.tests
-      mainbox tests (finalStatus "Campaign complete, C-c or esc to exit")
-    _ -> do
-      tests <- testsWidget uiState.campaign.tests
-      mainbox tests emptyWidget
+  tests <- testsWidget uiState.tests
+
+  if uiState.workersAlive == 0 then
+    mainbox tests (finalStatus "Campaign complete, C-c or esc to exit")
+  else
+    case uiState.status of
+      Uninitialized ->
+        mainbox (padLeft (Pad 1) $ str "Starting up, please wait...") emptyWidget
+      Running ->
+        mainbox tests emptyWidget
   where
-  mainbox inner underneath =
-    hCenter . hLimit 120 <$> wrapInner inner underneath
-  wrapInner inner underneath = do
-    chainId <- asks (.chainId)
-    pure $ joinBorders $ borderWithLabel echidnaTitle $
-      summaryWidget uiState chainId
+  mainbox inner underneath = do
+    env <- ask
+    pure $ hCenter . hLimit 120 $
+      joinBorders $ borderWithLabel echidnaTitle $
+      summaryWidget env uiState
       <=>
       hBorderWithLabel (withAttr (attrName "subtitle") $ str $
-        (" Tests (" <> show (length uiState.campaign.tests)) <> ") ")
+        (" Tests (" <> show (length uiState.tests)) <> ") ")
       <=>
       inner
+      <=>
+      hBorderWithLabel (withAttr (attrName "subtitle") $ str $
+        " Log (" <> show (length uiState.workerEvents) <> ") ")
+      <=>
+      logPane uiState
       <=>
       underneath
   echidnaTitle =
@@ -112,39 +127,57 @@ campaignStatus uiState = do
     str " ]"
   finalStatus s = hBorder <=> hCenter (bold $ str s)
 
-formatCrashReport :: String -> String
-formatCrashReport e =
-  "Echidna crashed with an error:\n\n" <>
-  e <>
-  "\n\nPlease report it to https://github.com/crytic/echidna/issues"
+logPane :: UIState -> Widget Name
+logPane uiState =
+  vLimitPercent 33 .
+  padLeft (Pad 1) $
+  withClickableVScrollBars SBClick .
+  withVScrollBars OnRight .
+  withVScrollBarHandles .
+  viewport LogViewPort Vertical $
+  foldl (<=>) emptyWidget (showLogLine <$> Seq.reverse uiState.workerEvents)
 
-summaryWidget :: UIState -> Maybe W256 -> Widget Name
-summaryWidget uiState chainId =
-  vLimit 3 $ -- limit to 3 rows
+showLogLine :: (Int, LocalTime, CampaignEvent) -> Widget Name
+showLogLine (workerId, time, event) =
+  (withAttr (attrName "time") $ str $ (timePrefix time) <> "[Worker " <> show workerId <> "] ")
+    <+> strBreak (ppCampaignEvent event)
+
+summaryWidget :: Env -> UIState -> Widget Name
+summaryWidget env uiState =
+  vLimit 5 $ -- limit to 5 rows
     hLimitPercent 33 leftSide <+> vBorder <+>
     hLimitPercent 50 middle <+> vBorder <+>
     rightSide
   where
   leftSide =
-    let c = uiState.campaign in
     padLeft (Pad 1) $
-      timeElapsedWidget uiState
+      (str ("Time elapsed: " <> timeElapsed uiState uiState.timeStarted) <+> fill ' ')
       <=>
-      str ("Seed: " <> show c.genDict.defSeed) <+> fill ' '
+      (str "Workers: " <+> outOf uiState.workersAlive (length uiState.campaigns))
+      <=>
+      str ("Seed: " ++ ppSeed uiState.campaigns)
+      <=>
+      perfWidget uiState
+      <=>
+      str ("Total calls: " <> progress (sum $ (.ncalls) <$> uiState.campaigns)
+                                     env.cfg.campaignConf.testLimit)
   middle =
-    let c = uiState.campaign in
     padLeft (Pad 1) $
-      str (ppFrozenCoverage c.coverage) <+> fill ' '
+      str ("Unique instructions: " <> show uiState.coverage)
       <=>
-      str (ppCorpus c.corpus)
+      str ("Unique codehashes: " <> show uiState.numCodehashes)
+      <=>
+      str ("Corpus size: " <> show uiState.corpusSize <> " seqs")
+      <=>
+      str ("New coverage: " <> timeElapsed uiState uiState.lastNewCov <> " ago") <+> fill ' '
   rightSide =
     padLeft (Pad 1) $
-      (rpcInfoWidget uiState.fetchedContracts uiState.fetchedSlots chainId)
+      (rpcInfoWidget uiState.fetchedContracts uiState.fetchedSlots env.chainId)
 
-timeElapsedWidget :: UIState -> Widget n
-timeElapsedWidget uiState =
-  str "Time elapsed: " <+>
-  str ((formatNominalDiffTime . diffUTCTime uiState.now) uiState.timeStarted)
+timeElapsed :: UIState -> LocalTime -> String
+timeElapsed uiState since =
+  formatNominalDiffTime $
+    diffLocalTime (fromMaybe uiState.now uiState.timeStopped) since
 
 formatNominalDiffTime :: NominalDiffTime -> String
 formatNominalDiffTime diff =
@@ -168,8 +201,27 @@ rpcInfoWidget contracts slots chainId =
   where
   countWidget fetches =
     let successful = filter isJust fetches
-        style = if length successful == length fetches then success else failure
-    in style . str $ show (length successful) <> "/" <> show (length fetches)
+    in outOf (length successful) (length fetches)
+
+outOf :: Int -> Int -> Widget n
+outOf n m =
+  let style = if n == m then success else failure
+  in style . str $ progress n m
+
+perfWidget :: UIState -> Widget n
+perfWidget uiState =
+  str $ "Calls/s: " <>
+    if totalTime > 0
+       then show $ totalCalls `div` totalTime
+       else "-"
+  where
+  totalCalls = sum $ (.ncalls) <$> uiState.campaigns
+  totalTime = round $
+    diffLocalTime (fromMaybe uiState.now uiState.timeStopped)
+                  uiState.timeStarted
+
+ppSeed :: [WorkerState] -> String
+ppSeed campaigns = show (head campaigns).genDict.defSeed
 
 fetchedDialogWidget :: UIState -> Widget n
 fetchedDialogWidget uiState =
@@ -189,7 +241,6 @@ fetchedDialogWidget uiState =
     padLeft (Pad 1) $ strBreak (show slot <> " => " <> show value)
   renderSlot slot Nothing =
     padLeft (Pad 1) $ failure $ str (show slot)
-
 
 failedFirst :: EchidnaTest -> EchidnaTest -> Ordering
 failedFirst t1 _ | didFail t1 = LT
@@ -228,12 +279,7 @@ tsWidget
 tsWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 tsWidget Solved     t = failWidget Nothing t.reproducer t.events t.value t.result
 tsWidget Passed     _ = pure (success $ str "PASSED!", emptyWidget)
-tsWidget (Open i)   t = do
-  n <- asks (.cfg.campaignConf.testLimit)
-  if i >= n then
-    tsWidget Passed t
-  else
-    pure (withAttr (attrName "working") $ str $ "fuzzing " ++ progress i n, emptyWidget)
+tsWidget Open       _ = pure (success $ str "passing", emptyWidget)
 tsWidget (Large n)  t = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
   failWidget (if n < m then Just (n,m) else Nothing) t.reproducer t.events t.value t.result
@@ -277,13 +323,9 @@ optWidget
 optWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 optWidget Solved     _ = error "optimization tests cannot be solved"
 optWidget Passed     t = pure (str $ "max value found: " ++ show t.value, emptyWidget)
-optWidget (Open i)   t = do
-  n <- asks (.cfg.campaignConf.testLimit)
-  if i >= n then
-    optWidget Passed t
-  else
-    pure (withAttr (attrName "working") $ str $ "optimizing " ++ progress i n
-      ++ ", current max value: " ++ show t.value, emptyWidget)
+optWidget Open       t =
+  pure (withAttr (attrName "working") $ str $
+    "optimizing, max value: " ++ show t.value, emptyWidget)
 optWidget (Large n)  t = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
   maxWidget (if n < m then Just (n,m) else Nothing) t.reproducer t.events t.value

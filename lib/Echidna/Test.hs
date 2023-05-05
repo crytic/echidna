@@ -47,7 +47,7 @@ getResultFromVM vm =
     Nothing -> error "getResultFromVM failed"
 
 createTest :: TestType -> EchidnaTest
-createTest m = EchidnaTest (Open 0) m v [] Stop []
+createTest m = EchidnaTest Open m v [] Stop []
   where v = case m of
               PropertyTest _ _     -> BoolValue True
               OptimizationTest _ _ -> IntValue minBound
@@ -114,27 +114,25 @@ createTests m td ts r ss = case m of
 updateOpenTest
   :: EchidnaTest
   -> [Tx]
-  -> Int
   -> (TestValue, Events, TxResult)
   -> EchidnaTest
-updateOpenTest test txs _ (BoolValue False,es,r) =
-  test { Test.state = Large (-1), reproducer = txs, events = es, result = r }
-updateOpenTest test _   i (BoolValue True,_,_)   =
-  test { Test.state = Open (i + 1) }
-updateOpenTest test txs i (IntValue v',es,r) =
+updateOpenTest test txs (BoolValue False, es, r) =
+  test { Test.state = Large 0, reproducer = txs, events = es, result = r }
+updateOpenTest test _   (BoolValue True, _, _) =
+  test
+updateOpenTest test txs (IntValue v',es,r) =
   if v' > v then
-    test { state = Open (i + 1)
-         , reproducer = txs
+    test { reproducer = txs
          , value = IntValue v'
          , events = es
          , result = r }
   else
-    test { Test.state = Open (i + 1) }
+    test
   where
     v = case test.value of
           IntValue x -> x
           _          -> error "Invalid type of value for optimization"
-updateOpenTest _ _ _ _ = error "Invalid type of test"
+updateOpenTest _ _ _ = error "Invalid type of test"
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest
@@ -190,8 +188,11 @@ getIntFromResult (Just (VMSuccess b)) =
 getIntFromResult _ = IntValue minBound
 
 -- | Given a property test, evaluate it and see if it currently passes.
-checkOptimization :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
-                  => Text -> Addr -> m (TestValue, VM)
+checkOptimization
+  :: (MonadIO m, MonadReader Env m, MonadState VM m, MonadThrow m)
+  => Text
+  -> Addr
+  -> m (TestValue, VM)
 checkOptimization f a = do
   TestConf _ s <- asks (.cfg.testConf)
   (vm, vm') <- runTx f s a

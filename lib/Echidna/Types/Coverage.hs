@@ -5,7 +5,6 @@ import Data.ByteString (ByteString)
 import Data.List (foldl')
 import Data.Map qualified as Map
 import Data.Map.Strict (Map)
-import Data.Vector.Unboxed qualified as VU
 import Data.Vector.Unboxed.Mutable (IOVector)
 import Data.Vector.Unboxed.Mutable qualified as V
 import Data.Word (Word64)
@@ -14,9 +13,6 @@ import Echidna.Types.Tx (TxResult)
 
 -- | Map with the coverage information needed for fuzzing and source code printing
 type CoverageMap = Map ByteString (IOVector CoverageInfo)
-
--- | Immutable CoverageMap used to pass into pure functions
-type FrozenCoverageMap = Map ByteString (VU.Vector CoverageInfo)
 
 -- | Basic coverage information
 type CoverageInfo = (OpIx, StackDepths, TxResults)
@@ -36,10 +32,6 @@ type TxResults = Word64
 scoveragePoints :: CoverageMap -> IO Int
 scoveragePoints cm = do
   sum <$> mapM (V.foldl' countCovered 0) (Map.elems cm)
-
-scoveragePointsFrozen :: FrozenCoverageMap -> Int
-scoveragePointsFrozen cm =
-  sum $ VU.foldl' countCovered 0 <$> Map.elems cm
 
 countCovered :: Int -> CoverageInfo -> Int
 countCovered acc (opIx,_,_) = if opIx == -1 then acc else acc + 1
