@@ -283,7 +283,7 @@ monitor = do
         modify' $ \state -> state { workerEvents = state.workerEvents |> event }
 
         case campaignEvent of
-          NewCoverage coverage numCodehashes size ->
+          NewCoverage coverage numCodehashes size _ ->
             modify' $ \state ->
               state { coverage = max state.coverage coverage -- max not really needed
                     , corpusSize = size
