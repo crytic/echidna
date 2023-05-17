@@ -242,7 +242,7 @@ callseq vm txSeq = do
 
     cov <- liftIO . readIORef =<< asks (.coverageRef)
     points <- liftIO $ scoveragePoints cov
-    pushEvent (NewCoverage points (length cov) newSize)
+    pushEvent (NewCoverage points (length cov) newSize (fst <$> res))
 
   -- Update the campaign state
   put campaign'

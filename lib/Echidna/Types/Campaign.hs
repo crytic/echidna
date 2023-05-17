@@ -44,7 +44,7 @@ data CampaignConf = CampaignConf
 data CampaignEvent
   = TestFalsified !EchidnaTest
   | TestOptimized !EchidnaTest
-  | NewCoverage !Int !Int !Int
+  | NewCoverage !Int !Int !Int [Tx]
   | TxSequenceReplayed !Int !Int
   | WorkerStopped WorkerStopReason
   -- ^ This is a terminal event. Worker exits and won't push any events after
@@ -71,7 +71,7 @@ ppCampaignEvent = \case
   TestOptimized test ->
     let name = case test.testType of OptimizationTest n _ -> n; _ -> error "fixme"
     in "New maximum value of " <> T.unpack name <> ": " <> show test.value
-  NewCoverage points codehashes corpus ->
+  NewCoverage points codehashes corpus _ ->
     "New coverage: " <> show points <> " instr, "
       <> show codehashes <> " contracts, "
       <> show corpus <> " seqs in corpus"

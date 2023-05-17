@@ -4,7 +4,7 @@ module Main where
 
 import Optics.Core (view)
 
-import Control.Concurrent (newChan)
+import Control.Concurrent (newChan, readChan)
 import Control.Monad (unless, forM_, when)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
@@ -118,6 +118,9 @@ main = withUtf8 $ withCP65001 $ do
   (vm, world, dict) <-
     prepareContract env contracts cliFilePath cliSelectedContract seed
 
+  -- get ready to save corpus in the background
+  corpusSaverChan <- runCorpusSaver env
+
   initialCorpus <- loadInitialCorpus env world
   -- start ui and run tests
   _campaign <- runReaderT (ui vm world dict initialCorpus) env
@@ -126,6 +129,9 @@ main = withUtf8 $ withCP65001 $ do
   slotsCache <- readIORef cacheSlotsRef
 
   tests <- readIORef testsRef
+
+  -- wait for corpus saver thread to finish, so we don't try to write files at the same time
+  readChan corpusSaverChan
 
   -- save corpus
   case cfg.campaignConf.corpusDir of
