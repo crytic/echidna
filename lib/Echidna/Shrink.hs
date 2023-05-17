@@ -18,11 +18,11 @@ import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (TestValue(..), EchidnaTest(..), TestState(..), isOptimizationTest)
 import Echidna.Types.Tx (Tx(..))
 import Echidna.Types.Config
-import Echidna.Types.Campaign (CampaignConf(..))
+import Echidna.Types.Campaign (CampaignConf(..), CampaignEvent(..), WorkerState(..))
 import Echidna.Test (getResultFromVM, checkETest)
 
 shrinkTest
-  :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
+  :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM
   -> EchidnaTest
   -> m (Maybe EchidnaTest)
@@ -30,7 +30,7 @@ shrinkTest vm test = do
   env <- ask
   case test.state of
     Large i | i >= env.cfg.campaignConf.shrinkLimit && not (isOptimizationTest test) ->
-      pure $ Just test { state = Solved }
+      solvedEvent $ test { state = Solved }
     Large i ->
       if length test.reproducer > 1 || any canShrinkTx test.reproducer then do
         maybeShrunk <- evalStateT (shrinkSeq (checkETest test) test.value test.reproducer) vm
@@ -44,11 +44,13 @@ shrinkTest vm test = do
           Nothing ->
             -- No success with shrinking this time, just bump trials
             Just test { state = Large (i + 1) }
+      else if isOptimizationTest test then
+        pure $ Just test { state = Large (i + 1) }
       else
-        pure $ Just test { state = if isOptimizationTest test
-                                 then Large (i + 1)
-                                 else Solved }
+        solvedEvent $ test { state = Solved }
     _ -> pure Nothing
+  where
+    solvedEvent test' = pushEvent (TestSimplified test') >> pure (Just test')
 
 -- | Given a call sequence that solves some Echidna test, try to randomly
 -- generate a smaller one that still solves that test.

@@ -59,6 +59,7 @@ runCorpusSaver env = case env.cfg.campaignConf.corpusDir of
 
     saveEvent dir (TestFalsified test) = saveFile dir "reproducers" test.reproducer
     saveEvent dir (TestOptimized test) = saveFile dir "reproducers" test.reproducer
+    saveEvent dir (TestSimplified test) = saveFile dir "reproducers" test.reproducer
     saveEvent dir (NewCoverage _ _ _ txs) = saveFile dir "coverage" txs
     saveEvent _ _ = pure ()
 

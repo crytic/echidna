@@ -4,7 +4,6 @@ module Echidna.Campaign where
 
 import Optics.Core hiding ((|>))
 
-import Control.Concurrent (writeChan)
 import Control.DeepSeq (force)
 import Control.Monad (replicateM, when, void, forM_)
 import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
@@ -47,7 +46,6 @@ import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), call)
 import Echidna.Types.World (World)
-import Echidna.Utility (getTimestamp)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -392,13 +390,3 @@ updateTest vmForShrink (vm, xs) test = do
       -- but requires passing `vmForShrink` and feels a bit wrong.
       shrinkTest vmForShrink test
     _ -> pure Nothing
-
-pushEvent
-  :: (MonadReader Env m, MonadState WorkerState m, MonadIO m)
-  => CampaignEvent
-  -> m ()
-pushEvent event = do
-  workerId <- gets (.workerId)
-  time <- liftIO getTimestamp
-  chan <- asks (.eventQueue)
-  liftIO $ writeChan chan (workerId, time, event)

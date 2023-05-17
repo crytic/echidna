@@ -1,6 +1,9 @@
 module Echidna.Types.Config where
 
-import Control.Concurrent (Chan)
+import Control.Concurrent (Chan, writeChan)
+import Control.Monad.Reader (MonadReader, asks)
+import Control.Monad.State.Strict (MonadState, gets)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson.Key (Key)
 import Data.IORef (IORef)
 import Data.Map (Map)
@@ -13,13 +16,14 @@ import EVM (Contract)
 import EVM.Dapp (DappInfo)
 import EVM.Types (Addr, W256)
 
-import Echidna.Types.Campaign (CampaignConf, CampaignEvent)
+import Echidna.Types.Campaign (CampaignConf, CampaignEvent, WorkerState(..))
 import Echidna.Types.Corpus (Corpus)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Signature (MetadataCache)
 import Echidna.Types.Solidity (SolConf)
 import Echidna.Types.Test (TestConf, EchidnaTest)
 import Echidna.Types.Tx (TxConf)
+import Echidna.Utility (getTimestamp)
 
 data OperationMode = Interactive | NonInteractive OutputFormat deriving (Show, Eq)
 data OutputFormat = Text | JSON | None deriving (Show, Eq)
@@ -77,3 +81,13 @@ data Env = Env
   , fetchSlotCache :: IORef (Map Addr (Map W256 (Maybe W256)))
   , chainId :: Maybe W256
   }
+
+pushEvent
+  :: (MonadReader Env m, MonadState WorkerState m, MonadIO m)
+  => CampaignEvent
+  -> m ()
+pushEvent event = do
+  workerId <- gets (.workerId)
+  time <- liftIO getTimestamp
+  chan <- asks (.eventQueue)
+  liftIO $ writeChan chan (workerId, time, event)

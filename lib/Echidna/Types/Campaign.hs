@@ -44,6 +44,7 @@ data CampaignConf = CampaignConf
 data CampaignEvent
   = TestFalsified !EchidnaTest
   | TestOptimized !EchidnaTest
+  | TestSimplified !EchidnaTest
   | NewCoverage !Int !Int !Int [Tx]
   | TxSequenceReplayed !Int !Int
   | WorkerStopped WorkerStopReason
@@ -62,15 +63,12 @@ data WorkerStopReason
 ppCampaignEvent :: CampaignEvent -> String
 ppCampaignEvent = \case
   TestFalsified test ->
-    let name = case test.testType of
-                 PropertyTest n _ -> n
-                 AssertionTest _ n _ -> encodeSig n
-                 CallTest n _ -> n
-                 _ -> error "impossible"
-    in "Test " <> T.unpack name <> " falsified!"
+    "Test " <> T.unpack (showTest test) <> " falsified!"
   TestOptimized test ->
     let name = case test.testType of OptimizationTest n _ -> n; _ -> error "fixme"
     in "New maximum value of " <> T.unpack name <> ": " <> show test.value
+  TestSimplified test ->
+    "Test " <> T.unpack (showTest test) <> " simplified."
   NewCoverage points codehashes corpus _ ->
     "New coverage: " <> show points <> " instr, "
       <> show codehashes <> " contracts, "
@@ -89,6 +87,12 @@ ppCampaignEvent = \case
     "Crashed:\n\n" <>
     e <>
     "\n\nPlease report it to https://github.com/crytic/echidna/issues"
+  where
+    showTest test = case test.testType of
+      PropertyTest n _ -> n
+      AssertionTest _ n _ -> encodeSig n
+      CallTest n _ -> n
+      _ -> error "impossible"
 
 -- | The state of a fuzzing campaign.
 data WorkerState = WorkerState
