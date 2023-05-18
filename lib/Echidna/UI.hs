@@ -36,6 +36,7 @@ import EVM (VM, Contract)
 import EVM.Types (Addr, W256)
 
 import Echidna.ABI
+import Echidna.Async (addEventHandler, pushEventIO)
 import Echidna.Campaign (runWorker)
 import Echidna.Output.JSON qualified
 import Echidna.Types.Campaign
@@ -88,16 +89,13 @@ ui vm world dict initialCorpus = do
   workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
     uncurry (spawnWorker env perWorkerTestLimit)
 
-  -- A var used to block and wait for listener to finish
-  listenerStopVar <- newEmptyMVar
-
   case effectiveMode of
 #ifdef INTERACTIVE_UI
     Interactive -> do
       -- Channel to push events to update UI
       uiChannel <- liftIO $ newBChan 1000
       let forwardEvent = writeBChan uiChannel . WorkerEvent
-      liftIO $ spawnListener env forwardEvent nworkers listenerStopVar
+      addEventHandler forwardEvent
 
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 200_000 -- 200 ms
@@ -145,9 +143,6 @@ ui vm world dict initialCorpus = do
       -- Exited from the UI, stop the workers, not needed anymore
       stopWorkers workers
 
-      -- wait for all events to be processed
-      takeMVar listenerStopVar
-
       liftIO $ killThread ticker
 
       states <- workerStates workers
@@ -165,7 +160,7 @@ ui vm world dict initialCorpus = do
         installHandler sig (Catch $ stopWorkers workers) Nothing
 #endif
       let forwardEvent = putStrLn . ppLogLine
-      liftIO $ spawnListener env forwardEvent nworkers listenerStopVar
+      addEventHandler forwardEvent
 
       let printStatus = do
             states <- liftIO $ workerStates workers
@@ -177,9 +172,6 @@ ui vm world dict initialCorpus = do
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 3_000_000 -- 3 seconds
         printStatus
-
-      -- wait for all events to be processed
-      takeMVar listenerStopVar
 
       liftIO $ killThread ticker
 
@@ -217,36 +209,13 @@ ui vm world dict initialCorpus = do
         , Handler $ \(e :: SomeException)  -> pure $ Crashed (show e)
         ]
 
-      time <- liftIO getTimestamp
-      writeChan env.eventQueue (workerId, time, WorkerStopped stopReason)
+      liftIO $ pushEventIO env workerId (WorkerStopped stopReason)
 
     pure (threadId, stateRef)
 
   -- | Get a snapshot of all worker states
   workerStates workers =
     forM workers $ \(_, stateRef) -> readIORef stateRef
-
--- | Listener reads events and forwards all of them to the UI using the
--- 'forwardEvent' function. It exits after receiving all 'WorkerStopped'
--- events and sets the passed 'MVar' so the parent thread can block on listener
--- until all workers are done.
-spawnListener
-  :: Env
-  -> ((Int, LocalTime, CampaignEvent) -> IO ())
-  -- ^ a function that forwards event to the UI
-  -> Int     -- ^ number of workers
-  -> MVar () -- ^ use to join this thread
-  -> IO ()
-spawnListener env forwardEvent nworkers stopVar =
-  void $ forkFinally (loop nworkers) (const $ putMVar stopVar ())
-  where
-  loop !workersAlive =
-    when (workersAlive > 0) $ do
-      event <- readChan env.eventQueue
-      forwardEvent event
-      case event of
-        (_, _, WorkerStopped _) -> loop (workersAlive - 1)
-        _                       -> loop workersAlive
 
 #ifdef INTERACTIVE_UI
  -- | Order the workers to stop immediately

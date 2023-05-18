@@ -4,7 +4,6 @@ module Main where
 
 import Optics.Core (view)
 
-import Control.Concurrent (newChan, readChan)
 import Control.Monad (unless, forM_, when)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
@@ -41,6 +40,7 @@ import EVM.Solidity (SolcContract(..), SourceCache(..))
 import EVM.Types (Addr, keccak', W256)
 
 import Echidna
+import Echidna.Async (awaitThreads)
 import Echidna.Config
 import Echidna.Types.Buffer (forceBuf)
 import Echidna.Types.Campaign
@@ -92,7 +92,8 @@ main = withUtf8 $ withCP65001 $ do
   cacheSlotsRef <- newIORef $ fromMaybe mempty loadedSlotsCache
   cacheMetaRef <- newIORef mempty
   chainId <- RPC.fetchChainId cfg.rpcUrl
-  eventQueue <- newChan
+  eventHandlers <- newIORef mempty
+  numUnfinishedThreads <- newIORef 0
   coverageRef <- newIORef mempty
   corpusRef <- newIORef mempty
   testsRef <- newIORef mempty
@@ -107,7 +108,8 @@ main = withUtf8 $ withCP65001 $ do
               , fetchContractCache = cacheContractsRef
               , fetchSlotCache = cacheSlotsRef
               , chainId = chainId
-              , eventQueue
+              , eventHandlers
+              , numUnfinishedThreads
               , coverageRef
               , corpusRef
               , testsRef
@@ -118,8 +120,7 @@ main = withUtf8 $ withCP65001 $ do
   (vm, world, dict) <-
     prepareContract env contracts cliFilePath cliSelectedContract seed
 
-  -- get ready to save corpus in the background
-  corpusSaverChan <- runCorpusSaver env
+  runReaderT setupCorpusSaver env
 
   initialCorpus <- loadInitialCorpus env world
   -- start ui and run tests
@@ -130,8 +131,7 @@ main = withUtf8 $ withCP65001 $ do
 
   tests <- readIORef testsRef
 
-  -- wait for corpus saver thread to finish, so we don't try to write files at the same time
-  readChan corpusSaverChan
+  awaitThreads env
 
   -- save corpus
   case cfg.campaignConf.corpusDir of

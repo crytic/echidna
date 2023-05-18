@@ -1,15 +1,17 @@
 module Echidna.Output.Corpus where
 
-import Control.Concurrent (forkFinally, Chan, dupChan, newChan, readChan, writeChan)
-import Control.Monad (unless, void, when)
+import Control.Monad (unless)
+import Control.Monad.Reader (MonadReader, ask)
+import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Extra (unlessM)
 import Data.Aeson (ToJSON(..), decodeStrict, encodeFile)
 import Data.ByteString qualified as BS
 import Data.Hashable (hash)
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (catMaybes)
 import System.Directory (createDirectoryIfMissing, makeRelativeToCurrentDirectory, doesFileExist)
 import System.FilePath ((</>), (<.>))
 
+import Echidna.Async (addEventHandler, spawnThread)
 import Echidna.Types.Campaign (CampaignEvent(..), CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Test (EchidnaTest(..))
@@ -32,35 +34,16 @@ loadTxs dir = do
   pure txSeqs
   where readCall f = decodeStrict <$> BS.readFile f
 
--- save to corpus in the background while tests are running
--- returns a channel that gets sent () when the process is done
-runCorpusSaver :: Env -> IO (Chan ())
-runCorpusSaver env = case env.cfg.campaignConf.corpusDir of
-  Nothing -> do
-    finishChan <- newChan
-    writeChan finishChan ()
-    pure finishChan
-  Just dir -> do
-    -- we want to dupChan *before* forking so we don't miss any events
-    chan <- dupChan env.eventQueue
-    finishChan <- newChan
-    void $ forkFinally (loop dir chan nworkers) (const $ writeChan finishChan ())
-    pure finishChan
+-- setup a handler to save to corpus in the background while tests are running
+setupCorpusSaver :: (MonadReader Env m, MonadIO m) => m ()
+setupCorpusSaver = do
+  env <- ask
+  maybe (pure ()) (addEventHandler . saveEvent env) env.cfg.campaignConf.corpusDir
   where
-    nworkers :: Int
-    nworkers = fromIntegral $ fromMaybe 1 env.cfg.campaignConf.workers
+    saveEvent env dir (_, _, TestFalsified test) = saveFile env dir "reproducers" test.reproducer
+    saveEvent env dir (_, _, TestOptimized test) = saveFile env dir "reproducers" test.reproducer
+    saveEvent env dir (_, _, TestSimplified test) = saveFile env dir "reproducers" test.reproducer
+    saveEvent env dir (_, _, NewCoverage _ _ _ txs) = saveFile env dir "coverage" txs
+    saveEvent _ _ _ = pure ()
 
-    loop !dir !chan !workersAlive = when (workersAlive > 0) $ do
-      (_, _, event) <- readChan chan
-      saveEvent dir event
-      case event of
-        WorkerStopped _ -> loop dir chan (workersAlive - 1)
-        _               -> loop dir chan workersAlive
-
-    saveEvent dir (TestFalsified test) = saveFile dir "reproducers" test.reproducer
-    saveEvent dir (TestOptimized test) = saveFile dir "reproducers" test.reproducer
-    saveEvent dir (TestSimplified test) = saveFile dir "reproducers" test.reproducer
-    saveEvent dir (NewCoverage _ _ _ txs) = saveFile dir "coverage" txs
-    saveEvent _ _ = pure ()
-
-    saveFile dir subdir txs = unless (null txs) $ saveTxs (dir </> subdir) [txs]
+    saveFile env dir subdir txs = unless (null txs) $ spawnThread env $ saveTxs (dir </> subdir) [txs]

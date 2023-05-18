@@ -29,6 +29,7 @@ import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types (Addr, Expr(ConcreteBuf))
 
 import Echidna.ABI
+import Echidna.Async (pushEvent)
 import Echidna.Exec
 import Echidna.Events (extractEvents)
 import Echidna.Mutator.Corpus

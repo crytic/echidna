@@ -11,6 +11,7 @@ import Data.List qualified as List
 
 import EVM (VM)
 
+import Echidna.Async (pushEvent)
 import Echidna.Events (extractEvents)
 import Echidna.Exec
 import Echidna.Transaction

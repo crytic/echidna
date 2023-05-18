@@ -1,11 +1,10 @@
 module Echidna.Types.Config where
 
-import Control.Concurrent (Chan, writeChan)
-import Control.Monad.Reader (MonadReader, asks)
+import Control.Monad.Reader (MonadReader, asks, ask)
 import Control.Monad.State.Strict (MonadState, gets)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson.Key (Key)
-import Data.IORef (IORef)
+import Data.IORef (IORef, atomicModifyIORef', readIORef)
 import Data.Map (Map)
 import Data.Set (Set)
 import Data.Text (Text)
@@ -68,9 +67,8 @@ data Env = Env
   { cfg :: EConfig
   , dapp :: DappInfo
 
-  -- | Shared between all workers. Events are fairly rare so contention is
-  -- minimal.
-  , eventQueue :: Chan (Int, LocalTime, CampaignEvent)
+  , eventHandlers :: IORef [(Int, LocalTime, CampaignEvent) -> IO ()]
+  , numUnfinishedThreads :: IORef Int
 
   , testsRef :: IORef [EchidnaTest]
   , coverageRef :: IORef CoverageMap
@@ -81,13 +79,3 @@ data Env = Env
   , fetchSlotCache :: IORef (Map Addr (Map W256 (Maybe W256)))
   , chainId :: Maybe W256
   }
-
-pushEvent
-  :: (MonadReader Env m, MonadState WorkerState m, MonadIO m)
-  => CampaignEvent
-  -> m ()
-pushEvent event = do
-  workerId <- gets (.workerId)
-  time <- liftIO getTimestamp
-  chan <- asks (.eventQueue)
-  liftIO $ writeChan chan (workerId, time, event)
