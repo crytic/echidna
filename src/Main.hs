@@ -21,7 +21,6 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
-import Data.Text qualified as Text
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Vector qualified as Vector
 import Data.Version (showVersion)
@@ -35,10 +34,10 @@ import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 import System.IO.CodePage (withCP65001)
 
-import EVM (Contract(..), bytecode)
+import EVM (bytecode)
 import EVM.Dapp (dappInfo)
 import EVM.Solidity (SolcContract(..), SourceCache(..))
-import EVM.Types (Addr, keccak', W256)
+import EVM.Types (Addr, Contract(..), keccak', W256)
 
 import Echidna
 import Echidna.Config
@@ -195,8 +194,8 @@ main = withUtf8 $ withCP65001 $ do
       src <- srcRet
       (_, srcmap) <- srcmapRet
       let sourceCache = SourceCache
-            { files = [(Text.pack (show addr), UTF8.fromString src.code)]
-            , lines = [(Vector.fromList . BS.split 0xa . UTF8.fromString) src.code]
+            { files = Map.singleton 0 (show addr, UTF8.fromString src.code)
+            , lines = Map.singleton 0 ((Vector.fromList . BS.split 0xa . UTF8.fromString) src.code)
             , asts = mempty
             }
       let solcContract = SolcContract

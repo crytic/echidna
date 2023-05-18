@@ -5,9 +5,8 @@ import Data.DoubleWord (Int256)
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
 
-import EVM (VM)
 import EVM.Dapp (DappInfo)
-import EVM.Types (Addr)
+import EVM.Types (VM, Addr)
 
 import Echidna.Events (Events)
 import Echidna.Types (ExecException)

@@ -25,9 +25,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import System.Random (mkStdGen)
 
-import EVM hiding (Env, Frame(state))
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
-import EVM.Types (Addr, Expr(ConcreteBuf))
+import EVM.Types hiding (Env, Frame(state))
 
 import Echidna.ABI
 import Echidna.Exec
@@ -48,6 +47,7 @@ import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), call)
 import Echidna.Types.World (World)
 import Echidna.Utility (getTimestamp)
+import EVM (cheatCode, bytecode)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM

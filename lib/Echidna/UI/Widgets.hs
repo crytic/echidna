@@ -33,8 +33,7 @@ import Echidna.Types.Tx (Tx(..), TxResult(..))
 import Echidna.UI.Report
 import Echidna.Utility (timePrefix)
 
-import EVM.Types (Addr, W256)
-import EVM (Contract)
+import EVM.Types (Addr, Contract, W256)
 
 data UIState = UIState
   { status :: UIStateStatus

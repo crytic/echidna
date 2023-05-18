@@ -1,13 +1,16 @@
+{-# LANGUAGE ViewPatterns #-}
+
 module Echidna.Output.Source where
 
 import Prelude hiding (writeFile)
 
 import Data.Aeson (ToJSON(..), FromJSON(..), withText)
+import Data.ByteString qualified as BS
 import Data.Foldable
 import Data.List (nub, sort)
-import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Sequence qualified as Seq
 import Data.Set qualified as S
 import Data.Text (Text, pack, toLower)
@@ -25,10 +28,8 @@ import EVM.Debug (srcMapCodePos)
 import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
 
 import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap)
-import Echidna.Types.Tx (TxResult(..))
 import Echidna.Types.Signature (getBytecodeMetadata)
-
-type FilePathText = Text
+import Echidna.Types.Tx (TxResult(..))
 
 saveCoverages
   :: [CoverageFileType]
@@ -78,18 +79,18 @@ coverageFileExtension Txt = ".txt"
 ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> CoverageMap -> IO Text
 ppCoveredCode fileType sc cs s | null s = pure "Coverage map is empty"
   | otherwise = do
-  let allFiles = zipWith (\(srcPath, _rawSource) srcLines -> (srcPath, V.map decodeUtf8 srcLines))
-                   sc.files
-                   sc.lines
       -- ^ Collect all the possible lines from all the files
   covLines <- srcMapCov sc s cs
       -- ^ List of covered lines during the fuzzing campaing
   let
     runtimeLinesMap = buildRuntimeLinesMap sc cs
     -- ^ Excludes lines such as comments or blanks
-    ppFile (srcPath, srcLines) =
-      let runtimeLines = fromMaybe mempty $ Map.lookup srcPath runtimeLinesMap
-          marked = markLines fileType srcLines runtimeLines (fromMaybe Map.empty (Map.lookup srcPath covLines))
+    ppFile (srcPath, src) =
+      let
+        srcLines = decodeUtf8 <$> (V.fromList . BS.split 0xa) src
+        runtimeLines = fromMaybe mempty $ Map.lookup srcPath runtimeLinesMap
+        marked = markLines fileType srcLines runtimeLines
+          (fromMaybe Map.empty (Map.lookup srcPath covLines))
       in T.unlines (changeFileName srcPath : changeFileLines (V.toList marked))
     -- ^ Pretty print individual file coverage
     topHeader = case fileType of
@@ -102,7 +103,7 @@ ppCoveredCode fileType sc cs s | null s = pure "Coverage map is empty"
               "</style>"
       Txt  -> ""
     -- ^ Text to add to top of the file
-    changeFileName fn = case fileType of
+    changeFileName (T.pack -> fn) = case fileType of
       Lcov -> "SF:" <> fn
       Html -> "<b>" <> HTML.text fn <> "</b>"
       Txt  -> fn
@@ -112,7 +113,7 @@ ppCoveredCode fileType sc cs s | null s = pure "Coverage map is empty"
       Html -> "<code>" : ls ++ ["", "</code>","<br />"]
       Txt  -> ls
     -- ^ Alter file contents, in the case of html encasing it in <code> and adding a line break
-  pure $ topHeader <> T.unlines (map ppFile allFiles)
+  pure $ topHeader <> T.unlines (map ppFile (Map.elems sc.files))
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
 markLines :: CoverageFileType -> V.Vector Text -> S.Set Int -> Map Int [TxResult] -> V.Vector Text
@@ -158,11 +159,11 @@ getMarker ErrorOutOfGas = 'o'
 getMarker _             = 'e'
 
 -- | Given a source cache, a coverage map, a contract returns a list of covered lines
-srcMapCov :: SourceCache -> CoverageMap -> [SolcContract] -> IO (Map FilePathText (Map Int [TxResult]))
+srcMapCov :: SourceCache -> CoverageMap -> [SolcContract] -> IO (Map FilePath (Map Int [TxResult]))
 srcMapCov sc covMap contracts = do
   Map.unionsWith Map.union <$> mapM linesCovered contracts
   where
-  linesCovered :: SolcContract -> IO (Map Text (Map Int [TxResult]))
+  linesCovered :: SolcContract -> IO (Map FilePath (Map Int [TxResult]))
   linesCovered c =
     case Map.lookup (getBytecodeMetadata c.runtimeCode) covMap of
       Just vec -> VU.foldl' (\acc covInfo -> case covInfo of
@@ -188,7 +189,7 @@ srcMapForOpLocation contract opIx =
 
 -- | Builds a Map from file paths to lines that can be executed, this excludes
 -- for example lines with comments
-buildRuntimeLinesMap :: SourceCache -> [SolcContract] -> Map Text (S.Set Int)
+buildRuntimeLinesMap :: SourceCache -> [SolcContract] -> Map FilePath (S.Set Int)
 buildRuntimeLinesMap sc contracts =
   Map.fromListWith (<>)
     [(k, S.singleton v) | (k, v) <- mapMaybe (srcMapCodePos sc) srcMaps]

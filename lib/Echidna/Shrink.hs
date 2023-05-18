@@ -9,7 +9,7 @@ import Data.Foldable (traverse_)
 import Data.Set qualified as Set
 import Data.List qualified as List
 
-import EVM (VM)
+import EVM.Types (VM)
 
 import Echidna.Events (extractEvents)
 import Echidna.Exec

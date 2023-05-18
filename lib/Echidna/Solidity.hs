@@ -1,8 +1,8 @@
+{-# LANGUAGE ViewPatterns #-}
 module Echidna.Solidity where
 
 import Optics.Core hiding (filtered)
 
-import Control.Arrow (first)
 import Control.Monad (when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Extra (whenM)
@@ -13,7 +13,6 @@ import Data.List (find, partition, isSuffixOf, (\\))
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NEE
-import Data.Map (Map, keys, unions, member)
 import Data.Map qualified as Map
 import Data.Maybe (isJust, isNothing, catMaybes, listToMaybe)
 import Data.Set (Set)
@@ -28,10 +27,9 @@ import System.FilePath (joinPath, splitDirectories, (</>))
 import System.IO (openFile, IOMode(..))
 import System.Info (os)
 
-import EVM hiding (Env)
 import EVM.ABI
 import EVM.Solidity
-import EVM.Types (Addr, FunctionSelector)
+import EVM.Types hiding (Env)
 
 import Echidna.ABI
   ( encodeSig, encodeSigWithName, hashSig, fallback
@@ -52,10 +50,13 @@ import Echidna.Types.Tx
   , initialBlockNumber )
 import Echidna.Types.World (World(..))
 import Echidna.Utility (measureIO)
+import EVM (currentContract, initialContract)
+import Data.Either (rights)
 
 -- | Given a list of source caches (SourceCaches) and an optional contract name,
 -- select one that includes that contract (if possible). Otherwise, use the first source
 -- cache available (or fail if it is empty)
+  {-
 selectSourceCache :: Maybe ContractName -> SourceCaches -> SourceCache
 selectSourceCache (Just c) scs =
   let
@@ -65,19 +66,23 @@ selectSourceCache (Just c) scs =
   in case r of
     (sc:_) -> sc
     _      -> error "Source cache selection returned no result"
+    -}
 
 selectSourceCache _ scs =
   case scs of
-    (_,sc):_ -> sc
+    sc:_ -> sc
     _        -> error "Empty source cache"
 
-readSolcBatch :: FilePath -> IO (Maybe (Map Text SolcContract, SourceCaches))
+readSolcBatch :: FilePath -> IO (Maybe BuildOutput)
 readSolcBatch d = do
   fs <- listDirectory d
-  mxs <- mapM (\f -> readSolc (d </> f)) fs
-  case catMaybes mxs of
-    [] -> return Nothing
-    xs -> return $ Just (unions $ map fst xs, map (first keys) xs)
+  xd <- readFile (d </> (head fs))
+  error xd
+  mxs <- mapM (\f -> readSolc DappTools "/" (d </> f)) fs
+  error $ show mxs --  pure Nothing
+  case mxs of
+    buildOutput:_ -> pure $ undefined -- Just buildOutput
+    hehe -> error $ show hehe --  pure Nothing
 
 -- | Given a list of files, use its extenstion to check if it is a precompiled
 -- contract or try to compile it and get a list of its contracts and a list of source
@@ -85,17 +90,17 @@ readSolcBatch d = do
 compileContracts
   :: SolConf
   -> NonEmpty FilePath
-  -> IO ([SolcContract], SourceCaches)
+  -> IO BuildOutput -- ([SolcContract], SourceCaches)
 compileContracts solConf fp = do
   path <- findExecutable "crytic-compile" >>= \case
     Nothing -> throwM NoCryticCompile
     Just path -> pure path
 
   let
-    usual = ["--solc-disable-warnings", "--export-format", "solc"]
+    usual = ["--solc-disable-warnings", "--export-format", "standard"]
     solargs = solConf.solcArgs ++ linkLibraries solConf.solcLibs & (usual ++) .
               (\sa -> if null sa then [] else ["--solc-args", sa])
-    compileOne :: FilePath -> IO ([SolcContract], SourceCaches)
+    compileOne :: FilePath -> IO BuildOutput
     compileOne x = do
       mSolc <- do
         stderr <- if solConf.quiet
@@ -108,18 +113,17 @@ compileContracts solConf fp = do
           ExitSuccess -> readSolcBatch "crytic-export"
           ExitFailure _ -> throwM $ CompileFailure out err
 
-      maybe (throwM SolcReadFailure) (pure . first toList) mSolc
+      maybe (throwM SolcReadFailure) pure mSolc
     -- | OS-specific path to the "null" file, which accepts writes without storing them
     nullFilePath :: String
     nullFilePath = if os == "mingw32" then "\\\\.\\NUL" else "/dev/null"
   -- clean up previous artifacts
   removeJsonFiles "crytic-export"
-  cps <- mapM compileOne fp
-  let (cs, ss) = NE.unzip cps
-  when (length ss > 1) $
+  buildOutputs <- mapM compileOne fp
+  when (length buildOutputs > 1) $
     putStrLn "WARNING: more than one SourceCaches was found after compile. \
              \Only the first one will be used."
-  pure (concat cs, NE.head ss)
+  pure $ NE.head buildOutputs
 
 removeJsonFiles :: FilePath -> IO ()
 removeJsonFiles dir =
@@ -146,7 +150,7 @@ populateAddresses addrs b vm =
     account =
       (initialContract (RuntimeCode (ConcreteRuntimeCode mempty)))
         { nonce = 0, balance = fromInteger b }
-    deployed addr = addr `member` vm.env.contracts
+    deployed addr = addr `Map.member` vm.env.contracts
 
 -- | Address to load the first library
 addrLibrary :: Addr
@@ -367,7 +371,8 @@ loadSolTests
   -> IO (VM, World, [EchidnaTest])
 loadSolTests env fp name = do
   let solConf = env.cfg.solConf
-  (contracts, _) <- compileContracts solConf fp
+  BuildOutput{contracts = Contracts (Map.elems -> contracts) } <-
+    compileContracts solConf fp
   (vm, funs, testNames, _signatureMap) <- loadSpecified env name contracts
   let
     eventMap = Map.unions $ map (.eventMap) contracts

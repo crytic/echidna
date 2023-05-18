@@ -26,7 +26,7 @@ import Text.Read (readMaybe)
 import EVM
 import EVM.ABI (AbiType(..), AbiValue(..), decodeAbiValue, selector)
 import EVM.Exec (exec)
-import EVM.Types (Addr, W256, Expr(ConcreteBuf))
+import EVM.Types
 
 import Echidna.Exec
 import Echidna.Transaction
@@ -172,7 +172,7 @@ execEthenoTxs et = do
   case (res, et) of
     (_        , AccountCreated _)  -> pure ()
     (Reversion,   _)               -> void $ put vm
-    (VMFailure (Query q), _)       -> crashWithQueryError q et
+    (HandleEffect (Query q), _)    -> crashWithQueryError q et
     (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
     (VMSuccess (ConcreteBuf bc),
      ContractCreated _ ca _ _ _ _) -> do

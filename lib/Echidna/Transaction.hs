@@ -16,9 +16,9 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
 
-import EVM hiding (resetState, VMOpts(timestamp, gasprice))
+import EVM (bytecode, initialContract, loadContract)
 import EVM.ABI (abiValueType)
-import EVM.Types (Expr(ConcreteBuf, Lit), Addr, W256, FunctionSelector)
+import EVM.Types hiding (VMOpts(timestamp, gasprice))
 
 import Echidna.ABI
 import Echidna.Types.Random
