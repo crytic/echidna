@@ -4,7 +4,7 @@ module Main where
 
 import Optics.Core (view)
 
-import Control.Concurrent (newChan)
+import Control.Concurrent.Thread.Group qualified as ThreadGroup
 import Control.Monad (unless, forM_, when)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
@@ -91,7 +91,8 @@ main = withUtf8 $ withCP65001 $ do
   cacheSlotsRef <- newIORef $ fromMaybe mempty loadedSlotsCache
   codehashMap <- newIORef mempty
   chainId <- RPC.fetchChainId cfg.rpcUrl
-  eventQueue <- newChan
+  eventHandlers <- newIORef mempty
+  threadGroup <- ThreadGroup.new
   coverageRef <- newIORef mempty
   corpusRef <- newIORef mempty
   testsRef <- newIORef mempty
@@ -106,7 +107,8 @@ main = withUtf8 $ withCP65001 $ do
               , fetchContractCache = cacheContractsRef
               , fetchSlotCache = cacheSlotsRef
               , chainId = chainId
-              , eventQueue
+              , eventHandlers
+              , threadGroup
               , coverageRef
               , corpusRef
               , testsRef
@@ -117,6 +119,8 @@ main = withUtf8 $ withCP65001 $ do
   (vm, world, dict) <-
     prepareContract env contracts cliFilePath cliSelectedContract seed
 
+  runReaderT setupCorpusSaver env
+
   initialCorpus <- loadInitialCorpus env world
   -- start ui and run tests
   _campaign <- runReaderT (ui vm world dict initialCorpus) env
@@ -125,6 +129,8 @@ main = withUtf8 $ withCP65001 $ do
   slotsCache <- readIORef cacheSlotsRef
 
   tests <- readIORef testsRef
+
+  ThreadGroup.wait threadGroup
 
   -- save corpus
   case cfg.campaignConf.corpusDir of
@@ -142,10 +148,10 @@ main = withUtf8 $ withCP65001 $ do
           pure ()
 
       measureIO cfg.solConf.quiet "Saving test reproducers" $
-        saveTxs (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> tests)
+        saveTxs (dir </> "reproducers") "" (filter (not . null) $ (.reproducer) <$> tests)
       measureIO cfg.solConf.quiet "Saving corpus" $ do
         corpus <- readIORef corpusRef
-        saveTxs (dir </> "coverage") (snd <$> Set.toList corpus)
+        saveTxs (dir </> "coverage") "" (snd <$> Set.toList corpus)
 
       -- TODO: We use the corpus dir to save coverage reports which is confusing.
       -- Add config option to pass dir for saving coverage report and decouple it

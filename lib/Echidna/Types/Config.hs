@@ -1,6 +1,6 @@
 module Echidna.Types.Config where
 
-import Control.Concurrent (Chan)
+import Control.Concurrent.Thread.Group (ThreadGroup)
 import Data.Aeson.Key (Key)
 import Data.IORef (IORef)
 import Data.Map (Map)
@@ -63,9 +63,11 @@ data Env = Env
   { cfg :: EConfig
   , dapp :: DappInfo
 
-  -- | Shared between all workers. Events are fairly rare so contention is
-  -- minimal.
-  , eventQueue :: Chan (Int, LocalTime, CampaignEvent)
+  , eventHandlers :: IORef [(Int, LocalTime, CampaignEvent) -> IO ()]
+
+  -- mainly for handling events, but can be used for any purpose
+  -- `wait` is called on this group before echidna closes
+  , threadGroup :: ThreadGroup
 
   , testsRef :: IORef [EchidnaTest]
   , coverageRef :: IORef CoverageMap

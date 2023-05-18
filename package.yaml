@@ -38,6 +38,7 @@ dependencies:
   - semver
   - split
   - text
+  - threads
   - transformers
   - time
   - unliftio

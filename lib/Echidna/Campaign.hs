@@ -3,7 +3,6 @@
 
 module Echidna.Campaign where
 
-import Control.Concurrent (writeChan)
 import Control.DeepSeq (force)
 import Control.Monad (replicateM, when, void, forM_)
 import Control.Monad.Catch (MonadThrow(..))
@@ -29,6 +28,7 @@ import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types hiding (Env, Frame(state))
 
 import Echidna.ABI
+import Echidna.Async (pushEvent)
 import Echidna.Exec
 import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
@@ -45,7 +45,6 @@ import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), call)
 import Echidna.Types.World (World)
-import Echidna.Utility (getTimestamp)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -206,7 +205,7 @@ callseq vm txSeq = do
 
     cov <- liftIO . readIORef =<< asks (.coverageRef)
     points <- liftIO $ scoveragePoints cov
-    pushEvent (NewCoverage points (length cov) newSize)
+    pushEvent (NewCoverage points (length cov) newSize (fst <$> results))
 
   modify' $ \workerState ->
 
@@ -380,13 +379,3 @@ updateTest vmForShrink (vm, xs) test = do
       -- but requires passing `vmForShrink` and feels a bit wrong.
       shrinkTest vmForShrink test
     _ -> pure Nothing
-
-pushEvent
-  :: (MonadReader Env m, MonadState WorkerState m, MonadIO m)
-  => CampaignEvent
-  -> m ()
-pushEvent event = do
-  workerId <- gets (.workerId)
-  time <- liftIO getTimestamp
-  chan <- asks (.eventQueue)
-  liftIO $ writeChan chan (workerId, time, event)

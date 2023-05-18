@@ -4,6 +4,7 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool)
 
 import Common (testConfig)
+import Control.Concurrent.Thread.Group qualified as ThreadGroup
 import Control.Monad (void)
 import Control.Monad.Catch (catch)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -13,7 +14,6 @@ import Echidna.Solidity (loadSolTests)
 import Echidna.Types.Config (Env(..))
 import EVM.Dapp (emptyDapp)
 import Data.IORef (newIORef)
-import Control.Concurrent (newChan)
 
 compilationTests :: TestTree
 compilationTests = testGroup "Compilation and loading tests"
@@ -45,7 +45,8 @@ loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
     codehashMap <- newIORef mempty
     cacheContracts <- newIORef mempty
     cacheSlots <- newIORef mempty
-    eventQueue <- newChan
+    eventHandlers <- newIORef mempty
+    threadGroup <- ThreadGroup.new
     coverageRef <- newIORef mempty
     corpusRef <- newIORef mempty
     testsRef <- newIORef mempty
@@ -55,7 +56,8 @@ loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
                   , fetchContractCache = cacheContracts
                   , fetchSlotCache = cacheSlots
                   , chainId = Nothing
-                  , eventQueue
+                  , eventHandlers
+                  , threadGroup
                   , coverageRef
                   , corpusRef
                   , testsRef

@@ -44,8 +44,12 @@ data CampaignConf = CampaignConf
 data CampaignEvent
   = TestFalsified !EchidnaTest
   | TestOptimized !EchidnaTest
-  | NewCoverage !Int !Int !Int
+  | TestShrunk !EchidnaTest
+  | NewCoverage !Int !Int !Int [Tx]
   | TxSequenceReplayed !Int !Int
+  | HandlerFailed !String
+  -- ^ Error occurred while handling another event
+  -- (e.g. failed to write coverage to a file)
   | WorkerStopped WorkerStopReason
   -- ^ This is a terminal event. Worker exits and won't push any events after
   -- this one
@@ -62,21 +66,19 @@ data WorkerStopReason
 ppCampaignEvent :: CampaignEvent -> String
 ppCampaignEvent = \case
   TestFalsified test ->
-    let name = case test.testType of
-                 PropertyTest n _ -> n
-                 AssertionTest _ n _ -> encodeSig n
-                 CallTest n _ -> n
-                 _ -> error "impossible"
-    in "Test " <> T.unpack name <> " falsified!"
+    "Test " <> T.unpack (showTest test) <> " falsified!"
   TestOptimized test ->
     let name = case test.testType of OptimizationTest n _ -> n; _ -> error "fixme"
     in "New maximum value of " <> T.unpack name <> ": " <> show test.value
-  NewCoverage points codehashes corpus ->
+  TestShrunk test ->
+    "Test " <> T.unpack (showTest test) <> " shrunk."
+  NewCoverage points codehashes corpus _ ->
     "New coverage: " <> show points <> " instr, "
       <> show codehashes <> " contracts, "
       <> show corpus <> " seqs in corpus"
   TxSequenceReplayed current total ->
     "Sequence replayed from corpus (" <> show current <> "/" <> show total <> ")"
+  HandlerFailed s -> "Error while handling event: " ++ s
   WorkerStopped TestLimitReached ->
     "Test limit reached. Stopping."
   WorkerStopped TimeLimitReached ->
@@ -89,6 +91,12 @@ ppCampaignEvent = \case
     "Crashed:\n\n" <>
     e <>
     "\n\nPlease report it to https://github.com/crytic/echidna/issues"
+  where
+    showTest test = case test.testType of
+      PropertyTest n _ -> n
+      AssertionTest _ n _ -> encodeSig n
+      CallTest n _ -> n
+      _ -> error "impossible"
 
 -- | The state of a fuzzing campaign.
 data WorkerState = WorkerState

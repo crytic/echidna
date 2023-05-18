@@ -2,26 +2,28 @@ module Echidna.Shrink (shrinkTest) where
 
 import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadThrow)
+import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader (ask), asks)
-import Control.Monad.State.Strict (MonadIO)
 import Control.Monad.ST (RealWorld)
+import Control.Monad.State.Strict (MonadState)
 import Data.Set qualified as Set
 import Data.List qualified as List
 
 import EVM.Types (VM)
 
+import Echidna.Async (pushEvent)
 import Echidna.Exec
 import Echidna.Transaction
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (TestValue(..), EchidnaTest(..), TestState(..), isOptimizationTest)
 import Echidna.Types.Tx (Tx(..))
 import Echidna.Types.Config
-import Echidna.Types.Campaign (CampaignConf(..))
+import Echidna.Types.Campaign (CampaignConf(..), CampaignEvent(..), WorkerState(..))
 import Echidna.Test (getResultFromVM, checkETest)
 
 shrinkTest
-  :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m)
+  :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM RealWorld
   -> EchidnaTest
   -> m (Maybe EchidnaTest)
@@ -29,7 +31,7 @@ shrinkTest vm test = do
   env <- ask
   case test.state of
     Large i | i >= env.cfg.campaignConf.shrinkLimit && not (isOptimizationTest test) ->
-      pure $ Just test { state = Solved }
+      solvedEvent $ test { state = Solved }
     Large i ->
       if length test.reproducer > 1 || any canShrinkTx test.reproducer then do
         maybeShrunk <- shrinkSeq vm (checkETest test) test.value test.reproducer
@@ -43,11 +45,13 @@ shrinkTest vm test = do
           Nothing ->
             -- No success with shrinking this time, just bump trials
             Just test { state = Large (i + 1) }
+      else if isOptimizationTest test then
+        pure $ Just test { state = Large (i + 1) }
       else
-        pure $ Just test { state = if isOptimizationTest test
-                                 then Large (i + 1)
-                                 else Solved }
+        solvedEvent $ test { state = Solved }
     _ -> pure Nothing
+  where
+    solvedEvent test' = pushEvent (TestShrunk test') >> pure (Just test')
 
 -- | Given a call sequence that solves some Echidna test, try to randomly
 -- generate a smaller one that still solves that test.

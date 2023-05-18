@@ -25,6 +25,7 @@ import Prelude hiding (lookup)
 import Test.Tasty (TestTree)
 import Test.Tasty.HUnit (testCase, assertBool)
 
+import Control.Concurrent.Thread.Group qualified as ThreadGroup
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
 import Data.DoubleWord (Int256)
@@ -53,7 +54,6 @@ import Echidna.Types.Tx (Tx(..), TxCall(..), call)
 
 import EVM.Dapp (dappInfo, emptyDapp)
 import EVM.Solidity (BuildOutput(..), Contracts (Contracts))
-import Control.Concurrent (newChan)
 import Control.Monad (forM_)
 
 testConfig :: EConfig
@@ -102,7 +102,8 @@ runContract f selectedContract cfg = do
   fetchSlotCache <- newIORef mempty
   coverageRef <- newIORef mempty
   corpusRef <- newIORef mempty
-  eventQueue <- newChan
+  eventHandlers <- newIORef mempty
+  threadGroup <- ThreadGroup.new
   testsRef <- newIORef mempty
   let env = Env { cfg = cfg
                 , dapp = dappInfo "/" buildOutput
@@ -111,7 +112,8 @@ runContract f selectedContract cfg = do
                 , fetchSlotCache
                 , coverageRef
                 , corpusRef
-                , eventQueue
+                , eventHandlers
+                , threadGroup
                 , testsRef
                 , chainId = Nothing }
   (vm, world, dict) <- prepareContract env contracts (f :| []) selectedContract seed
@@ -167,7 +169,8 @@ checkConstructorConditions fp as = testCase fp $ do
   coverageRef <- newIORef mempty
   corpusRef <- newIORef mempty
   testsRef <- newIORef mempty
-  eventQueue <- newChan
+  eventHandlers <- newIORef mempty
+  threadGroup <- ThreadGroup.new
   let env = Env { cfg = testConfig
                 , dapp = emptyDapp
                 , codehashMap
@@ -175,7 +178,8 @@ checkConstructorConditions fp as = testCase fp $ do
                 , fetchSlotCache = cacheSlots
                 , coverageRef
                 , corpusRef
-                , eventQueue
+                , eventHandlers
+                , threadGroup
                 , testsRef
                 , chainId = Nothing }
   (v, _, t) <- loadSolTests env (fp :| []) Nothing
