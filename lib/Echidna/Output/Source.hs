@@ -173,9 +173,14 @@ srcMapCov sc covMap contracts = do
               case srcMapCodePos sc srcMap of
                 Just (file, line) ->
                   Map.alter
-                    (Just . Map.insert line (unpackTxResults txResults) . fromMaybe mempty)
+                    (Just . innerUpdate . fromMaybe mempty)
                     file
                     acc
+                  where
+                  innerUpdate =
+                    Map.alter
+                      (Just . (<> unpackTxResults txResults) . fromMaybe mempty)
+                      line
                 Nothing -> acc
             Nothing -> acc
         ) mempty vec
