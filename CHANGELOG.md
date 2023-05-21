@@ -1,7 +1,14 @@
-## Unreleased
+## 2.2.0
 
-* Added support for lcov coverage report
-* Added a "coverageFormats" config option to choose which coverage reports to make
+* Multicore fuzzing (#963, #1033, #1026, #1035)
+* Lcov format support (#1029)
+* Experimental power number generator for uints (#892)
+* Coverage collection optimization (#1003, #1041)
+* On-chain fuzzing improvements (#1017)
+* Refactored code (#1020, #1021)
+* Updated dependencies (#1022, #1023)
+* UI improvements (#1031, #1032, #1034, #1040)
+* Readme improvements (#1019)
 
 ## 2.1.1
 
