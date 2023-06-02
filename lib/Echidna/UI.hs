@@ -77,8 +77,10 @@ ui vm world dict initialCorpus = do
 
     -- Distribute over all workers, could be slightly bigger overall due to
     -- ceiling but this doesn't matter
-    perWorkerTestLimit = ceiling
-      (fromIntegral conf.campaignConf.testLimit / fromIntegral nworkers :: Double)
+    perWorkerTestLimit =
+      case conf.campaignConf.testLimit of
+        Nothing -> Nothing
+        Just t -> Just $ ceiling (fromIntegral t / fromIntegral nworkers :: Double)
 
     chunkSize = ceiling
       (fromIntegral (length initialCorpus) / fromIntegral nworkers :: Double)

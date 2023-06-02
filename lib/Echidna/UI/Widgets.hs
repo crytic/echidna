@@ -169,8 +169,8 @@ summaryWidget env uiState =
       <=>
       perfWidget uiState
       <=>
-      str ("Total calls: " <> progress (sum $ (.ncalls) <$> uiState.campaigns)
-                                     env.cfg.campaignConf.testLimit)
+      str ("Total calls: " <> maybe (show totalCalls) (progress totalCalls) env.cfg.campaignConf.testLimit)
+  totalCalls = (sum $ (.ncalls) <$> uiState.campaigns)
   middle =
     padLeft (Pad 1) $
       str ("Unique instructions: " <> show uiState.coverage)
