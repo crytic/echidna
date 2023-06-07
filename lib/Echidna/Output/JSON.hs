@@ -16,6 +16,7 @@ import Numeric (showHex)
 import EVM.Types (keccak')
 
 import Echidna.ABI (ppAbiValue, GenDict(..))
+import Echidna.Events (Events)
 import Echidna.Types (Gas)
 import Echidna.Types.Campaign (WorkerState(..))
 import Echidna.Types.Config (Env(..))
@@ -48,6 +49,7 @@ data Test = Test
   , name :: Text
   , status :: TestStatus
   , _error :: Maybe String
+  , events :: Events
   , testType :: TestType
   , transactions :: Maybe [Transaction]
   }
@@ -58,6 +60,7 @@ instance ToJSON Test where
     , "name" .= name
     , "status" .= status
     , "error" .= _error
+    , "events" .= events
     , "type" .= testType
     , "transactions" .= transactions
     ]
@@ -118,6 +121,7 @@ mapTest test =
     , name = "name" -- TODO add a proper name here
     , status = status
     , _error = err
+    , events = test.events
     , testType = Property
     , transactions = transactions
     }
