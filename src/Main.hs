@@ -96,6 +96,7 @@ main = withUtf8 $ withCP65001 $ do
   coverageRef <- newIORef mempty
   corpusRef <- newIORef mempty
   testsRef <- newIORef mempty
+  bytecodesRef <- newIORef mempty
 
   let
     sourceCache = selectSourceCache cliSelectedContract sourceCaches
@@ -111,6 +112,7 @@ main = withUtf8 $ withCP65001 $ do
               , coverageRef
               , corpusRef
               , testsRef
+              , bytecodesRef
               }
 
   -- take the seed from config, otherwise generate a new one
@@ -158,6 +160,7 @@ main = withUtf8 $ withCP65001 $ do
         runId <- fromIntegral . systemSeconds <$> getSystemTime
 
         coverage <- readIORef coverageRef
+        bytecodes <- readIORef bytecodesRef
 
         -- coverage reports for external contracts, we only support
         -- Ethereum Mainnet for now
@@ -169,12 +172,12 @@ main = withUtf8 $ withCP65001 $ do
                 case r of
                   Just (externalSourceCache, solcContract) -> do
                     let dir' = dir </> show addr
-                    saveCoverages cfg.campaignConf.coverageFormats runId dir' externalSourceCache [solcContract] coverage
+                    saveCoverages cfg.campaignConf.coverageFormats runId dir' externalSourceCache [solcContract] coverage bytecodes
                   Nothing -> pure ()
               Nothing -> pure ()
 
         -- save source coverage reports
-        saveCoverages cfg.campaignConf.coverageFormats runId dir sourceCache contracts coverage
+        saveCoverages cfg.campaignConf.coverageFormats runId dir sourceCache contracts coverage bytecodes
 
   if isSuccessful tests then exitSuccess else exitWith (ExitFailure 1)
 

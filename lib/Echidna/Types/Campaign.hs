@@ -39,6 +39,7 @@ data CampaignConf = CampaignConf
   , coverageFormats :: [CoverageFileType]
     -- ^ List of file formats to save coverage reports
   , workers         :: Maybe Word8
+    -- ^ Number of workers to use for parallel execution
   }
 
 data CampaignEvent

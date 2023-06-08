@@ -1,7 +1,6 @@
 module Echidna.Types.Coverage where
 
 import Data.Bits (testBit)
-import Data.ByteString (ByteString)
 import Data.List (foldl')
 import Data.Map qualified as Map
 import Data.Map.Strict (Map)
@@ -10,9 +9,10 @@ import Data.Vector.Unboxed.Mutable qualified as V
 import Data.Word (Word64)
 
 import Echidna.Types.Tx (TxResult)
+import EVM.Types (Addr)
 
 -- | Map with the coverage information needed for fuzzing and source code printing
-type CoverageMap = Map ByteString (IOVector CoverageInfo)
+type CoverageMap = Map Addr (IOVector CoverageInfo)
 
 -- | Basic coverage information
 type CoverageInfo = (OpIx, StackDepths, TxResults)

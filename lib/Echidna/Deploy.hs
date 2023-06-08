@@ -2,7 +2,7 @@ module Echidna.Deploy where
 
 import Control.Monad (foldM)
 import Control.Monad.Catch (MonadThrow(..), throwM)
-import Control.Monad.Reader (MonadReader, asks)
+import Control.Monad.Reader (MonadReader, asks, liftIO)
 import Control.Monad.State.Strict (execStateT, MonadIO)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -20,6 +20,8 @@ import Echidna.Events (extractEvents)
 import Echidna.Types.Config (Env(..))
 import Echidna.Types.Solidity (SolException(..))
 import Echidna.Types.Tx (createTx, unlimitedGasPerBlock)
+import qualified Data.Map as Map
+import GHC.IORef (atomicModifyIORef')
 
 deployContracts
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
@@ -50,10 +52,13 @@ deployBytecodes'
 deployBytecodes' cs src initialVM = foldM deployOne initialVM cs
   where
   deployOne vm (dst, bytecode) = do
+    bytecodesRef <- asks (.bytecodesRef)
     vm' <- flip execStateT vm $
       execTx $ createTx (bytecode <> zeros) src dst unlimitedGasPerBlock (0, 0)
     case vm'.result of
-      Just (VMSuccess _) -> pure vm'
+      Just (VMSuccess _) -> do
+        liftIO $ atomicModifyIORef' bytecodesRef $ \bytecodes -> (Map.insert dst bytecode bytecodes, ())
+        pure vm'
       _ -> do
         di <- asks (.dapp)
         throwM $ DeploymentFailed dst (Data.Text.unlines $ extractEvents True di vm')

@@ -11,9 +11,6 @@ import Data.Map qualified as Map
 import Data.Text
 import Data.Text.Encoding (decodeUtf8)
 import Data.Vector.Unboxed qualified as VU
-import Numeric (showHex)
-
-import EVM.Types (keccak')
 
 import Echidna.ABI (ppAbiValue, GenDict(..))
 import Echidna.Events (Events)
@@ -109,7 +106,7 @@ encodeCampaign env workerStates = do
     , _error = Nothing
     , _tests = mapTest <$> tests
     , seed = worker0.genDict.defSeed
-    , coverage = Map.mapKeys (("0x" ++) . (`showHex` "") . keccak') $ VU.toList <$> frozenCov
+    , coverage = Map.mapKeys show $ VU.toList <$> frozenCov
     , gasInfo = Map.toList $ Map.unionsWith max ((.gasInfo) <$> workerStates)
     }
 

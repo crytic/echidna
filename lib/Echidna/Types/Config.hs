@@ -20,6 +20,7 @@ import Echidna.Types.Signature (MetadataCache)
 import Echidna.Types.Solidity (SolConf)
 import Echidna.Types.Test (TestConf, EchidnaTest)
 import Echidna.Types.Tx (TxConf)
+import Data.ByteString (ByteString)
 
 data OperationMode = Interactive | NonInteractive OutputFormat deriving (Show, Eq)
 data OutputFormat = Text | JSON | None deriving (Show, Eq)
@@ -71,6 +72,7 @@ data Env = Env
   , testsRef :: IORef [EchidnaTest]
   , coverageRef :: IORef CoverageMap
   , corpusRef :: IORef Corpus
+  , bytecodesRef :: IORef (Map Addr ByteString)
 
   , metadataCache :: IORef MetadataCache
   , fetchContractCache :: IORef (Map Addr (Maybe Contract))

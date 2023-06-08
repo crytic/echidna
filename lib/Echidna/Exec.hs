@@ -26,7 +26,7 @@ import EVM hiding (Env)
 import EVM.ABI
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Fetch qualified
-import EVM.Types (Expr(ConcreteBuf, Lit), hexText)
+import EVM.Types (Expr(ConcreteBuf, Lit), hexText, Addr)
 
 import Echidna.Events (emptyEvents)
 import Echidna.RPC (safeFetchContractFrom, safeFetchSlotFrom)
@@ -34,7 +34,6 @@ import Echidna.Transaction
 import Echidna.Types (ExecException(..), Gas, fromEVM, emptyAccount)
 import Echidna.Types.Buffer (forceBuf)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
-import Echidna.Types.Signature (getBytecodeMetadata, lookupBytecodeMetadata)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber, getResult)
 import Echidna.Utility (getTimestamp, timePrefix)
@@ -121,11 +120,6 @@ execTxWith l onErr executeTx tx = do
                 case ret of
                   -- TODO: fix hevm to not return an empty contract in case of an error
                   Just contract | contract.contractcode /= EVM.RuntimeCode (EVM.ConcreteRuntimeCode "") -> do
-                    metaCacheRef <- asks (.metadataCache)
-                    metaCache <- liftIO $ readIORef metaCacheRef
-                    let bc = forceBuf (contract ^. bytecode)
-                    liftIO $ atomicWriteIORef metaCacheRef $ Map.insert bc (getBytecodeMetadata bc) metaCache
-
                     l %= execState (continuation contract)
                     liftIO $ atomicWriteIORef cacheRef $ Map.insert addr (Just contract) cache
                   _ -> do
@@ -229,7 +223,7 @@ execTx
 execTx = execTxWith equality' vmExcept $ fromEVM exec
 
 -- | A type alias for the context we carry while executing instructions
-type CoverageContext = (Bool, Maybe (BS.ByteString, Int))
+type CoverageContext = (Bool, Maybe (Addr, Int))
 
 -- | Execute a transaction, logging coverage at every step.
 execTxWithCov
@@ -239,10 +233,8 @@ execTxWithCov
 execTxWithCov tx = do
   covRef <- asks (.coverageRef)
   vm <- get
-  metaCacheRef <- asks (.metadataCache)
-  cache <- liftIO $ readIORef metaCacheRef
   (r, (vm', (grew, lastLoc))) <-
-    runStateT (execTxWith _1 vmExcept (execCov covRef cache) tx) (vm, (False, Nothing))
+    runStateT (execTxWith _1 vmExcept (execCov covRef) tx) (vm, (False, Nothing))
   put vm'
 
   -- Update the last valid location with the transaction result
@@ -263,7 +255,7 @@ execTxWithCov tx = do
   pure (r, grew || grew')
   where
     -- the same as EVM.exec but collects coverage, will stop on a query
-    execCov covRef cache = do
+    execCov covRef = do
       (vm, cm) <- get
       (r, vm', cm') <- liftIO $ loop vm cm
       put (vm', cm')
@@ -283,9 +275,8 @@ execTxWithCov tx = do
       addCoverage :: VM -> CoverageContext -> IO CoverageContext
       addCoverage !vm (new, lastLoc) = do
         let (pc, opIx, depth) = currentCovLoc vm
-            meta = currentMeta vm
         cov <- readIORef covRef
-        case Map.lookup meta cov of
+        case Map.lookup vm.state.contract cov of
           Nothing -> do
             let size = BS.length . forceBuf . view bytecode . fromJust $
                   Map.lookup vm.state.contract vm.env.contracts
@@ -296,13 +287,13 @@ execTxWithCov tx = do
 
               vec' <- atomicModifyIORef' covRef $ \cm ->
                 -- this should reduce races
-                case Map.lookup meta cm of
-                  Nothing -> (Map.insert meta vec cm, vec)
+                case Map.lookup vm.state.contract cm of
+                  Nothing -> (Map.insert vm.state.contract vec cm, vec)
                   Just vec' -> (cm, vec')
 
               VMut.write vec' pc (opIx, fromIntegral depth, 0 `setBit` fromEnum Stop)
 
-              pure (True, Just (meta, pc))
+              pure (True, Just (vm.state.contract, pc))
             else do
               -- TODO: should we collect the coverage here? Even if there is no
               -- bytecode for external contract, we could have a "virtual" location
@@ -313,9 +304,9 @@ execTxWithCov tx = do
               VMut.read vec pc >>= \case
                 (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
                   VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
-                  pure (True, Just (meta, pc))
+                  pure (True, Just (vm.state.contract, pc))
                 _ ->
-                  pure (new, Just (meta, pc))
+                  pure (new, Just (vm.state.contract, pc))
             else
               -- TODO: no-op: pc is out-of-bounds. This shouldn't happen but we
               -- observed this in some real-world scenarios. This is likely a bug
@@ -324,12 +315,6 @@ execTxWithCov tx = do
 
       -- | Get the VM's current execution location
       currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames)
-
-      -- | Get the current contract's bytecode metadata
-      currentMeta vm = fromMaybe (error "no contract information on coverage") $ do
-        buffer <- vm ^? #env % #contracts % at vm.state.contract % _Just % bytecode
-        let bc = forceBuf buffer
-        pure $ lookupBytecodeMetadata cache bc
 
 initialVM :: Bool -> VM
 initialVM ffi = vmForEthrunCreation mempty

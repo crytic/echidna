@@ -104,6 +104,7 @@ runContract f selectedContract cfg = do
   corpusRef <- newIORef mempty
   eventQueue <- newChan
   testsRef <- newIORef mempty
+  bytecodesRef <- newIORef mempty
   let env = Env { cfg = cfg
                 , dapp = dappInfo "/" solcByName sourceCache
                 , metadataCache
@@ -113,6 +114,7 @@ runContract f selectedContract cfg = do
                 , corpusRef
                 , eventQueue
                 , testsRef
+                , bytecodesRef
                 , chainId = Nothing }
   (vm, world, dict) <- prepareContract env contracts (f :| []) selectedContract seed
 
@@ -167,6 +169,7 @@ checkConstructorConditions fp as = testCase fp $ do
   coverageRef <- newIORef mempty
   corpusRef <- newIORef mempty
   testsRef <- newIORef mempty
+  bytecodesRef <- newIORef mempty
   eventQueue <- newChan
   let env = Env { cfg = testConfig
                 , dapp = emptyDapp
@@ -175,6 +178,7 @@ checkConstructorConditions fp as = testCase fp $ do
                 , fetchSlotCache = cacheSlots
                 , coverageRef
                 , corpusRef
+                , bytecodesRef
                 , eventQueue
                 , testsRef
                 , chainId = Nothing }

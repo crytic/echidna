@@ -5,7 +5,7 @@ import Prelude hiding (writeFile)
 import Data.Aeson (ToJSON(..), FromJSON(..), withText)
 import Data.Foldable
 import Data.List (nub, sort)
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe, fromJust)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Sequence qualified as Seq
@@ -23,6 +23,8 @@ import Text.Printf (printf)
 
 import EVM.Debug (srcMapCodePos)
 import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
+import EVM.Types (Addr)
+import Data.ByteString (ByteString)
 
 import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap)
 import Echidna.Types.Tx (TxResult(..))
@@ -37,9 +39,10 @@ saveCoverages
   -> SourceCache
   -> [SolcContract]
   -> CoverageMap
+  -> Map Addr ByteString
   -> IO ()
-saveCoverages fileTypes seed d sc cs s =
-  mapM_ (\ty -> saveCoverage ty seed d sc cs s) fileTypes
+saveCoverages fileTypes seed d sc cs s bytecodes =
+  mapM_ (\ty -> saveCoverage ty seed d sc cs s bytecodes) fileTypes
 
 saveCoverage
   :: CoverageFileType
@@ -48,11 +51,12 @@ saveCoverage
   -> SourceCache
   -> [SolcContract]
   -> CoverageMap
+  -> Map Addr ByteString
   -> IO ()
-saveCoverage fileType seed d sc cs covMap = do
+saveCoverage fileType seed d sc cs covMap bytecodes = do
   let extension = coverageFileExtension fileType
       fn = d </> "covered." <> show seed <> extension
-  cc <- ppCoveredCode fileType sc cs covMap
+  cc <- ppCoveredCode fileType sc cs covMap bytecodes
   createDirectoryIfMissing True d
   writeFile fn cc
 
@@ -75,22 +79,23 @@ coverageFileExtension Html = ".html"
 coverageFileExtension Txt = ".txt"
 
 -- | Pretty-print the covered code
-ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> CoverageMap -> IO Text
-ppCoveredCode fileType sc cs s | null s = pure "Coverage map is empty"
+ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> CoverageMap -> Map Addr ByteString -> IO Text
+ppCoveredCode fileType sc cs s bytecodes | null s = pure "Coverage map is empty"
   | otherwise = do
   let allFiles = zipWith (\(srcPath, _rawSource) srcLines -> (srcPath, V.map decodeUtf8 srcLines))
                    sc.files
                    sc.lines
       -- ^ Collect all the possible lines from all the files
-  covLines <- srcMapCov sc s cs
+      covLines = srcMapCov sc s cs
       -- ^ List of covered lines during the fuzzing campaing
   let
     runtimeLinesMap = buildRuntimeLinesMap sc cs
     -- ^ Excludes lines such as comments or blanks
-    ppFile (srcPath, srcLines) =
+    ppFile (srcPath, srcLines) = do
       let runtimeLines = fromMaybe mempty $ Map.lookup srcPath runtimeLinesMap
-          marked = markLines fileType srcLines runtimeLines (fromMaybe Map.empty (Map.lookup srcPath covLines))
-      in T.unlines (changeFileName srcPath : changeFileLines (V.toList marked))
+      bb <- covLines bytecodes
+      let marked = markLines fileType srcLines runtimeLines (fromMaybe Map.empty (Map.lookup srcPath bb))
+      pure $ T.unlines (changeFileName srcPath : changeFileLines (V.toList marked))
     -- ^ Pretty print individual file coverage
     topHeader = case fileType of
       Lcov -> "TN:\n"
@@ -111,8 +116,9 @@ ppCoveredCode fileType sc cs s | null s = pure "Coverage map is empty"
       Lcov -> ls ++ ["end_of_record"]
       Html -> "<code>" : ls ++ ["", "</code>","<br />"]
       Txt  -> ls
+      
     -- ^ Alter file contents, in the case of html encasing it in <code> and adding a line break
-  pure $ topHeader <> T.unlines (map ppFile allFiles)
+  (topHeader <>) . T.unlines <$> mapM ppFile allFiles
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
 markLines :: CoverageFileType -> V.Vector Text -> S.Set Int -> Map Int [TxResult] -> V.Vector Text
@@ -158,13 +164,13 @@ getMarker ErrorOutOfGas = 'o'
 getMarker _             = 'e'
 
 -- | Given a source cache, a coverage map, a contract returns a list of covered lines
-srcMapCov :: SourceCache -> CoverageMap -> [SolcContract] -> IO (Map FilePathText (Map Int [TxResult]))
-srcMapCov sc covMap contracts = do
+srcMapCov :: SourceCache -> CoverageMap -> [SolcContract] -> Map Addr ByteString -> IO (Map FilePathText (Map Int [TxResult]))
+srcMapCov sc covMap contracts bytecodes = do
   Map.unionsWith Map.union <$> mapM linesCovered contracts
   where
   linesCovered :: SolcContract -> IO (Map Text (Map Int [TxResult]))
   linesCovered c =
-    case Map.lookup (getBytecodeMetadata c.runtimeCode) covMap of
+    case Map.lookup (getBytecodeMetadata c.runtimeCode) (Map.mapKeys (\addr -> getBytecodeMetadata . fromJust $ Map.lookup addr bytecodes) covMap) of
       Just vec -> VU.foldl' (\acc covInfo -> case covInfo of
         (-1, _, _) -> acc -- not covered
         (opIx, _stackDepths, txResults) ->
