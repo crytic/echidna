@@ -1,4 +1,5 @@
 dist
+result
 dist-*
 cabal-dev
 *.o
