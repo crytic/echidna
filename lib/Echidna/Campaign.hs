@@ -11,7 +11,7 @@ import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
 import Control.Monad.State.Strict
-  (MonadState(..), StateT(..), evalStateT, execStateT, gets, MonadIO, modify')
+  (MonadState(..), StateT(..), evalStateT, gets, MonadIO, modify')
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Binary.Get (runGetOrFail)
@@ -203,62 +203,61 @@ callseq vm txSeq = do
     execFunc =
       if coverageEnabled
          then execTxOptC
-         else \tx -> do
-           (v, ca) <- get
-           (r, vm') <- runStateT (execTx tx) v
-           put (vm', ca)
-           pure r
-  -- Then, we get the current campaign state
-  campaign <- get
+         else \vm' tx -> runStateT (execTx tx) vm'
 
   -- Run each call sequentially. This gives us the result of each call
   -- and the new state
-  (res, (vm', campaign')) <- runStateT (evalSeq vm execFunc txSeq) (vm, campaign)
-
-  let
-    -- compute the addresses not present in the old VM via set difference
-    newAddrs = Map.keys $ vm'.env.contracts \\ vm.env.contracts
-    -- and construct a set to union to the constants table
-    diffs = Map.fromList [(AbiAddressType, Set.fromList $ AbiAddress <$> newAddrs)]
-    -- Now we try to parse the return values as solidity constants, and add them to 'GenDict'
-    results = returnValues (map (\(t, (vr, _)) -> (t, vr)) res) campaign'.genDict.rTypes
-    -- union the return results with the new addresses
-    additions = Map.unionWith Set.union diffs results
-    -- append to the constants dictionary
-    updatedDict = campaign'.genDict
-      { constants = Map.unionWith Set.union additions campaign'.genDict.constants
-      , dictValues = Set.union (mkDictValues $ Set.unions $ Map.elems additions)
-                               campaign'.genDict.dictValues
-      }
+  (results, vm') <- evalSeq vm execFunc txSeq
 
   -- If there is new coverage, add the transaction list to the corpus
-  when campaign'.newCoverage $ do
+  newCoverage <- gets (.newCoverage)
+  when newCoverage $ do
+    ncallseqs <- gets (.ncallseqs)
     -- Even if this takes a bit of time, this is okay as finding new coverage
     -- is expected to be infrequent in the long term
     newSize <- liftIO $ atomicModifyIORef' env.corpusRef $ \corp ->
       -- Corpus is a bit too lazy, force the evaluation to reduce the memory usage
-      let !corp' = force $ addToCorpus (campaign'.ncallseqs + 1) res corp
+      let !corp' = force $ addToCorpus (ncallseqs + 1) results corp
       in (corp', corpusSize corp')
 
     cov <- liftIO . readIORef =<< asks (.coverageRef)
     points <- liftIO $ scoveragePoints cov
     pushEvent (NewCoverage points (length cov) newSize)
 
-  -- Update the campaign state
-  put campaign'
-    { genDict = updatedDict
-      -- Update the gas estimation
-    , gasInfo =
-        if conf.estimateGas
-           then updateGasInfo res [] campaign'.gasInfo
-           else campaign'.gasInfo
-      -- Reset the new coverage flag
-    , newCoverage = False
-      -- Keep track of the number of calls to `callseq`
-    , ncallseqs = campaign'.ncallseqs + 1
-    }
+  modify' $ \workerState ->
+
+    let
+      -- compute the addresses not present in the old VM via set difference
+      newAddrs = Map.keys $ vm'.env.contracts \\ vm.env.contracts
+      -- and construct a set to union to the constants table
+      diffs = Map.fromList [(AbiAddressType, Set.fromList $ AbiAddress <$> newAddrs)]
+      -- Now we try to parse the return values as solidity constants, and add them to 'GenDict'
+      resultMap = returnValues (map (\(t, (vr, _)) -> (t, vr)) results) workerState.genDict.rTypes
+      -- union the return results with the new addresses
+      additions = Map.unionWith Set.union diffs resultMap
+      -- append to the constants dictionary
+      updatedDict = workerState.genDict
+        { constants = Map.unionWith Set.union additions workerState.genDict.constants
+        , dictValues = Set.union (mkDictValues $ Set.unions $ Map.elems additions)
+                                 workerState.genDict.dictValues
+        }
+
+    -- Update the worker state
+    in workerState
+      { genDict = updatedDict
+        -- Update the gas estimation
+      , gasInfo =
+          if conf.estimateGas
+             then updateGasInfo results [] workerState.gasInfo
+             else workerState.gasInfo
+        -- Reset the new coverage flag
+      , newCoverage = False
+        -- Keep track of the number of calls to `callseq`
+      , ncallseqs = workerState.ncallseqs + 1
+      }
 
   pure vm'
+
   where
   -- Given a list of transactions and a return typing rule, checks whether we
   -- know the return type for each function called. If yes, tries to parse the
@@ -291,19 +290,19 @@ callseq vm txSeq = do
 -- | Execute a transaction, capturing the PC and codehash of each instruction
 -- executed, saving the transaction if it finds new coverage.
 execTxOptC
-  :: (MonadIO m, MonadReader Env m, MonadState (VM, WorkerState) m, MonadThrow m)
-  => Tx
-  -> m (VMResult, Gas)
-execTxOptC tx = do
-  (vm, camp) <- get
+  :: (MonadIO m, MonadReader Env m, MonadState WorkerState m, MonadThrow m)
+  => VM -> Tx
+  -> m ((VMResult, Gas), VM)
+execTxOptC vm tx = do
   ((res, grew), vm') <- runStateT (execTxWithCov tx) vm
-  put (vm', camp)
   when grew $ do
-    let dict' = case tx.call of
-          SolCall c -> gaddCalls (Set.singleton c) camp.genDict
-          _ -> camp.genDict
-    modify' $ \(_vm, c) -> (_vm, c { newCoverage = True, genDict = dict' })
-  pure res
+    modify' $ \workerState ->
+      let
+        dict' = case tx.call of
+          SolCall c -> gaddCalls (Set.singleton c) workerState.genDict
+          _ -> workerState.genDict
+      in workerState { newCoverage = True, genDict = dict' }
+  pure (res, vm')
 
 -- | Given current `gasInfo` and a sequence of executed transactions, updates
 -- information on highest gas usage for each call
@@ -328,19 +327,26 @@ updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 -- of transactions, constantly checking if we've solved any tests or can shrink
 -- known solves.
 evalSeq
-  :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m, MonadState (VM, WorkerState) m)
-  => VM
-  -> (Tx -> m a)
+  :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
+  => VM -- ^ Initial VM
+  -> (VM -> Tx -> m (result, VM))
   -> [Tx]
-  -> m [(Tx, a)]
-evalSeq vmForShrink e = go [] where
-  go r xs = do
-    (v', camp) <- get
-    camp' <- execStateT (runUpdate (updateTest vmForShrink (v', reverse r))) camp
-    put (v', camp' { ncalls = camp'.ncalls + 1 })
-    case xs of
-      []     -> pure []
-      (y:ys) -> e y >>= \a -> ((y, a) :) <$> go (y:r) ys
+  -> m ([(Tx, result)], VM)
+evalSeq vm0 execFunc = go vm0 [] where
+  go vm executedSoFar toExecute = do
+    -- NOTE: we do reverse here because we build up this list by prepending,
+    -- see the last line of this function.
+    runUpdate (updateTest vm0 (vm, reverse executedSoFar))
+    modify' $ \workerState -> workerState { ncalls = workerState.ncalls + 1 }
+    case toExecute of
+      [] -> pure ([], vm)
+      (tx:remainingTxs) -> do
+        (result, vm') <- execFunc vm tx
+        -- NOTE: we don't use the intermediate VMs, just the last one. If any of
+        -- the intermediate VMs are needed, they can be put next to the result
+        -- of each transaction - `m ([(Tx, result, VM)])`
+        (remaining, _vm) <- go vm' (tx:executedSoFar) remainingTxs
+        pure ((tx, result) : remaining, vm')
 
 -- | Given a rule for updating a particular test's state, apply it to each test
 -- in a 'Campaign'.
