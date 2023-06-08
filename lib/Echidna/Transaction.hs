@@ -12,6 +12,7 @@ import Control.Monad.State.Strict (MonadState, gets, modify')
 import Data.Map (Map, toList)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
+import Data.Sequence (Seq)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
@@ -157,6 +158,7 @@ setupTx tx@Tx{call = NoCall} = fromEVM $ do
   modify' $ \vm -> vm
     { state = resetState vm.state
     , block = advanceBlock vm.block tx.delay
+    , forks = advanceForks vm.forks tx.delay
     }
   loadContract tx.dst
 
@@ -169,6 +171,7 @@ setupTx tx@Tx{call} = fromEVM $ do
                  , callvalue = Lit tx.value
                  }
     , block = advanceBlock vm.block tx.delay
+    , forks = advanceForks vm.forks tx.delay
     , tx = vm.tx { gasprice = tx.gasprice, origin = tx.src }
     }
   case call of
@@ -195,3 +198,7 @@ advanceBlock :: Block -> (W256, W256) -> Block
 advanceBlock blk (t,b) =
   blk { timestamp = Lit (forceLit blk.timestamp + t)
       , number = blk.number + b }
+
+advanceForks :: Seq ForkState -> (W256, W256) -> Seq ForkState
+advanceForks forks delay =
+  (\(ForkState env block cache) -> ForkState env (advanceBlock block delay) cache) <$> forks
