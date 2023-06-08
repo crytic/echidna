@@ -40,10 +40,11 @@
 
         hevm = pkgs.haskell.lib.dontCheck (
           pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
-            owner = "ethereum";
+            owner = "arcz";
             repo = "hevm";
-            rev = "release/0.50.5";
-            sha256 = "sha256-Vi6kL1nJdujfS1oePwqks1owVPlS5Dd5hAn0r8Rpw+k=";
+            # https://github.com/arcz/hevm/tree/forking-0.50.5
+            rev = "1f1f2989e2ddc9393c2bbb42c69aeb0b80ae82ea";
+            sha256 = "sha256-rlGcvVezqNrJ4okqBw1fvplijU7sFZtL9rtv2NmSrrw=";
         }) { secp256k1 = pkgs.secp256k1; });
 
         echidna = with pkgs; lib.pipe
