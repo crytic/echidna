@@ -38,18 +38,32 @@
           '';
         };
 
-        hevm = pkgs.haskell.lib.dontCheck (
-          pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
-            owner = "ethereum";
-            repo = "hevm";
-            rev = "release/0.50.5";
-            sha256 = "sha256-Vi6kL1nJdujfS1oePwqks1owVPlS5Dd5hAn0r8Rpw+k=";
-        }) { secp256k1 = pkgs.secp256k1; });
+        patchedHaskellPackages = pkgs.haskell.packages.ghc94.override {
+          overrides = self: super: {
+            # disable tests in optics
+            optics = pkgs.haskell.lib.dontCheck super.optics;
+            # use obsidian systems fork of string-qq
+            string-qq = self.callCabal2nix "string-qq" (pkgs.fetchFromGitHub {
+              owner = "obsidiansystems";
+              repo = "string-qq";
+              rev = "82ad6d72b694dc61e9b6b7eb856cb2d3d27e2865";
+              sha256 = "sha256-CNtB8jkNyNBR+ZJbtLoeA6U1ivT3gEs4UVFVHIZe27w=";
+            }) {};
+            # hevm needs to be jailbroken (all cabal version constraints removed)
+            hevm = pkgs.haskell.lib.doJailbreak (pkgs.haskell.lib.dontCheck (
+              self.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
+                owner = "ethereum";
+                repo = "hevm";
+                rev = "release/0.50.5";
+                sha256 = "sha256-Vi6kL1nJdujfS1oePwqks1owVPlS5Dd5hAn0r8Rpw+k=";
+              }) { secp256k1 = pkgs.secp256k1; }));
+          };
+        };
 
         echidna = with pkgs; lib.pipe
-          (haskellPackages.callCabal2nix "echidna" ./. { inherit hevm; })
+          (patchedHaskellPackages.callCabal2nix "echidna" ./. {})
           [
-            (haskell.lib.compose.addTestToolDepends [ haskellPackages.hpack slither-analyzer solc ])
+            (haskell.lib.compose.addTestToolDepends [ patchedHaskellPackages.hpack slither-analyzer solc ])
             (haskell.lib.compose.disableCabalFlag "static")
           ];
       in rec {
@@ -60,14 +74,14 @@
           pkgs.callPackage nix-bundle-exe {} (pkgs.haskell.lib.dontCheck echidna);
 
         devShell = with pkgs;
-          haskellPackages.shellFor {
+          patchedHaskellPackages.shellFor {
             packages = _: [ echidna ];
             shellHook = "hpack";
-            buildInputs = [
+            buildInputs = with patchedHaskellPackages; [
               solc
-              haskellPackages.hlint
-              haskellPackages.cabal-install
-              haskellPackages.haskell-language-server
+              hlint
+              cabal-install
+              haskell-language-server
             ];
             withHoogle = true;
           };
