@@ -7,7 +7,6 @@ import Control.Monad (when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Extra (whenM)
 import Control.Monad.Reader (ReaderT(runReaderT))
-import Control.Monad.State.Strict (execStateT)
 import Data.Foldable (toList)
 import Data.List (find, partition, isSuffixOf, (\\))
 import Data.List.NonEmpty (NonEmpty((:|)))
@@ -266,27 +265,27 @@ loadSpecified env name cs = do
     vm2 <- deployBytecodes solConf.deployBytecodes solConf.deployer vm1
 
     -- main contract deployment
-    let deployment = execTx $ createTxWithValue
-                                mainContract.creationCode
-                                solConf.deployer
-                                solConf.contractAddr
-                                unlimitedGasPerBlock
-                                (fromIntegral solConf.balanceContract)
-                                (0, 0)
-    vm3 <- execStateT deployment vm2
+    let deployment = execTx vm2 $ createTxWithValue
+                                    mainContract.creationCode
+                                    solConf.deployer
+                                    solConf.contractAddr
+                                    unlimitedGasPerBlock
+                                    (fromIntegral solConf.balanceContract)
+                                    (0, 0)
+    (_, vm3) <- deployment
     when (isNothing $ currentContract vm3) $
       throwM $ DeploymentFailed solConf.contractAddr $ T.unlines $ extractEvents True env.dapp vm3
 
     -- Run
-    let transaction = execTx $ uncurry basicTx
-                                         setUpFunction
-                                         solConf.deployer
-                                         solConf.contractAddr
-                                         unlimitedGasPerBlock
-                                         (0, 0)
+    let transaction = execTx vm3 $ uncurry basicTx
+                                             setUpFunction
+                                             solConf.deployer
+                                             solConf.contractAddr
+                                             unlimitedGasPerBlock
+                                             (0, 0)
     vm4 <- if isDapptestMode solConf.testMode && setUpFunction `elem` abi
-              then execStateT transaction vm3
-              else return vm3
+              then snd <$> transaction
+              else pure vm3
 
     case vm4.result of
       Just (VMFailure _) -> throwM SetUpCallFailed

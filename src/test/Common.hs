@@ -27,7 +27,6 @@ import Test.Tasty.HUnit (testCase, assertBool)
 
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
-import Control.Monad.State.Strict (evalStateT)
 import Data.DoubleWord (Int256)
 import Data.Function ((&))
 import Data.IORef
@@ -179,8 +178,7 @@ checkConstructorConditions fp as = testCase fp $ do
                 , testsRef
                 , chainId = Nothing }
   (v, _, t) <- loadSolTests env (fp :| []) Nothing
-  r <- flip runReaderT env $
-    mapM (\u -> evalStateT (checkETest u) v) t
+  r <- flip runReaderT env $ mapM (`checkETest` v) t
   mapM_ (\(x,_) -> assertBool as (forceBool x)) r
   where forceBool (BoolValue b) = b
         forceBool _ = error "BoolValue expected"

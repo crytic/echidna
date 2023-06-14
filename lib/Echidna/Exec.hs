@@ -223,10 +223,11 @@ logMsg msg = do
 
 -- | Execute a transaction "as normal".
 execTx
-  :: (MonadIO m, MonadState VM m, MonadReader Env m, MonadThrow m)
-  => Tx
-  -> m (VMResult, Gas)
-execTx = execTxWith equality' vmExcept $ fromEVM exec
+  :: (MonadIO m, MonadReader Env m, MonadThrow m)
+  => VM
+  -> Tx
+  -> m ((VMResult, Gas), VM)
+execTx vm tx = runStateT (execTxWith equality' vmExcept (fromEVM exec) tx) vm
 
 -- | A type alias for the context we carry while executing instructions
 type CoverageContext = (Bool, Maybe (BS.ByteString, Int))
