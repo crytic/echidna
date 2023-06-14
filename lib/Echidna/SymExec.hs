@@ -30,7 +30,7 @@ exploreContract dst contract = do
     forM methods $ \method -> do
       let
         calldata = mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
-        vmSym = abstractVM calldata contract.runtimeCode Nothing AbstractStore
+        vmSym = abstractVM calldata contract.runtimeCode Nothing (ConcreteStore mempty)
         maxIter = Just 10
         askSmtIters = 5
         rpcInfo = Nothing
