@@ -7,13 +7,12 @@ import Optics.Core hiding ((|>))
 import Control.Concurrent (writeChan)
 import Control.DeepSeq (force)
 import Control.Monad (replicateM, when, void, forM_)
-import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
+import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
 import Control.Monad.State.Strict
-  (MonadState(..), StateT(..), evalStateT, gets, MonadIO, modify')
+  (MonadState(..), StateT(..), gets, MonadIO, modify')
 import Control.Monad.Trans (lift)
-import Control.Monad.Trans.Random.Strict (liftCatch)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
 import Data.IORef (readIORef, writeIORef, atomicModifyIORef')
@@ -51,8 +50,6 @@ import Echidna.Utility (getTimestamp)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
-instance MonadCatch m => MonadCatch (RandT g m) where
-  catch = liftCatch catch
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
@@ -64,7 +61,7 @@ isSuccessful tests =
 -- state. Can be used to minimize corpus as the final campaign state will
 -- contain minized corpus without sequences that didn't increase the coverage.
 replayCorpus
-  :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
+  :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM     -- ^ VM to start replaying from
   -> [[Tx]] -- ^ corpus to replay
   -> m ()
@@ -77,7 +74,7 @@ replayCorpus vm txSeqs =
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
 -- we can't solve or shrink anything.
 runWorker
-  :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m)
+  :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m)
   => StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
   -> VM      -- ^ Initial VM state
@@ -189,7 +186,7 @@ randseq deployedContracts world = do
 -- | Runs a transaction sequence and checks if any test got falsified or can be
 -- minimized. Stores any useful data in the campaign state if coverage increased.
 callseq
-  :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
+  :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM
   -> [Tx]
   -> m VM
@@ -200,10 +197,7 @@ callseq vm txSeq = do
   let
     conf = env.cfg.campaignConf
     coverageEnabled = isJust conf.knownCoverage
-    execFunc =
-      if coverageEnabled
-         then execTxOptC
-         else \vm' tx -> runStateT (execTx tx) vm'
+    execFunc = if coverageEnabled then execTxOptC else execTx
 
   -- Run each call sequentially. This gives us the result of each call
   -- and the new state
@@ -327,7 +321,7 @@ updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 -- of transactions, constantly checking if we've solved any tests or can shrink
 -- known solves.
 evalSeq
-  :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
+  :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM -- ^ Initial VM
   -> (VM -> Tx -> m (result, VM))
   -> [Tx]
@@ -370,7 +364,7 @@ runUpdate f = do
 -- (3): The test is unshrunk, and we can shrink it
 -- Then update accordingly, keeping track of how many times we've tried to solve or shrink.
 updateTest
-  :: (MonadIO m, MonadCatch m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
+  :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM
   -> (VM, [Tx])
   -> EchidnaTest
@@ -379,7 +373,7 @@ updateTest vmForShrink (vm, xs) test = do
   dappInfo <- asks (.dapp)
   case test.state of
     Open -> do
-      (testValue, vm') <- evalStateT (checkETest test) vm
+      (testValue, vm') <- checkETest test vm
       let
         events = extractEvents False dappInfo vm'
         results = getResultFromVM vm'
