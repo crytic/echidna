@@ -28,7 +28,6 @@ import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Fetch qualified
 import EVM.Types (Expr(ConcreteBuf, Lit), hexText)
 
-import Echidna.Events (emptyEvents)
 import Echidna.RPC (safeFetchContractFrom, safeFetchSlotFrom)
 import Echidna.Transaction
 import Echidna.Types (ExecException(..), Gas, fromEVM, emptyAccount)
@@ -86,7 +85,6 @@ execTxWith l onErr executeTx tx = do
   if hasSelfdestructed vm tx.dst then
     pure (VMFailure (Revert (ConcreteBuf "")), 0)
   else do
-    l % #traces .= emptyEvents
     vmBeforeTx <- use l
     l %= execState (setupTx tx)
     gasLeftBeforeTx <- use $ l % #state % #gas
