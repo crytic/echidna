@@ -28,7 +28,6 @@ import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Fetch qualified
 import EVM.Types (Expr(ConcreteBuf, Lit), hexText)
 
-import Echidna.Events (emptyEvents)
 import Echidna.RPC (safeFetchContractFrom, safeFetchSlotFrom)
 import Echidna.Transaction
 import Echidna.Types (ExecException(..), Gas, fromEVM, emptyAccount)
@@ -86,7 +85,6 @@ execTxWith l onErr executeTx tx = do
   if hasSelfdestructed vm tx.dst then
     pure (VMFailure (Revert (ConcreteBuf "")), 0)
   else do
-    l % #traces .= emptyEvents
     vmBeforeTx <- use l
     l %= execState (setupTx tx)
     gasLeftBeforeTx <- use $ l % #state % #gas
@@ -223,10 +221,11 @@ logMsg msg = do
 
 -- | Execute a transaction "as normal".
 execTx
-  :: (MonadIO m, MonadState VM m, MonadReader Env m, MonadThrow m)
-  => Tx
-  -> m (VMResult, Gas)
-execTx = execTxWith equality' vmExcept $ fromEVM exec
+  :: (MonadIO m, MonadReader Env m, MonadThrow m)
+  => VM
+  -> Tx
+  -> m ((VMResult, Gas), VM)
+execTx vm tx = runStateT (execTxWith equality' vmExcept (fromEVM exec) tx) vm
 
 -- | A type alias for the context we carry while executing instructions
 type CoverageContext = (Bool, Maybe (BS.ByteString, Int))
