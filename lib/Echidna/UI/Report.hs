@@ -108,7 +108,7 @@ ppFail b es xs = do
          <> ppEvents es
 
 ppEvents :: Events -> String
-ppEvents es = if null es then "" else "Event sequence: " <> T.unpack (T.intercalate ", " es)
+ppEvents es = if null es then "" else unlines $ "Event sequence:" : (T.unpack <$> es)
 
 -- | Pretty-print the status of a test.
 
