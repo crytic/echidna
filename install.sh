@@ -4,6 +4,12 @@ set -e
 version="2.2.0"
 
 # Do nothing if echidna is already installed
+if echidna-test --version > /dev/null 2>&1
+then
+  echo "WARNING: $(echidna-test --version) is installed but is out-of-date, we recommend removing it"
+fi
+
+# Do nothing if echidna is already installed
 if echidna --version > /dev/null 2>&1
 then
   echo "$(echidna --version) is already installed" && exit
