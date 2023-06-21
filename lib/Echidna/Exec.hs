@@ -328,7 +328,7 @@ execTxWithCov tx = do
 
       -- | Get the current contract's bytecode metadata
       currentMeta vm = fromMaybe (error "no contract information on coverage") $ do
-        buffer <- vm ^? #env % #contracts % at vm.state.contract % _Just % bytecode
+        buffer <- vm ^? #env % #contracts % at vm.state.codeContract % _Just % bytecode
         let bc = forceBuf buffer
         pure $ lookupBytecodeMetadata cache bc
 
