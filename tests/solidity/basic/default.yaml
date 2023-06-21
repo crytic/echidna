@@ -87,3 +87,5 @@ maxValue: 100000000000000000000 # 100 eth
 rpcUrl: null
 # block number to use when fetching over RPC
 rpcBlock: null
+# number of workers
+workers: 1

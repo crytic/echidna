@@ -30,7 +30,7 @@ data TestConf = TestConf
 -- | State of a particular Echidna test. N.B.: 'Solved' means a falsifying
 -- call sequence was found.
 data TestState
-  = Open !Int  -- ^ Maybe solvable, tracking attempts already made
+  = Open
   | Large !Int -- ^ Solved, maybe shrinable, tracking shrinks tried
   | Passed     -- ^ Presumed unsolvable
   | Solved     -- ^ Solved with no need for shrinking
@@ -41,7 +41,7 @@ data TestValue
   = BoolValue Bool
   | IntValue Int256
   | NoValue
-  deriving Eq
+  deriving (Eq, Ord)
 
 instance Show TestValue where
   show (BoolValue x) = show x
@@ -63,8 +63,16 @@ instance Eq TestType where
   Exploration          == Exploration            = True
   _                    == _                      = False
 
+instance Show TestType where
+  show = \case
+    PropertyTest t _     -> show t
+    AssertionTest _ s _  -> show s
+    OptimizationTest s _ -> show s
+    CallTest t _         -> show t
+    Exploration          -> "Exploration"
+
 instance Eq TestState where
-  Open i  == Open j  = i == j
+  Open    == Open    = True
   Large i == Large j = i == j
   Passed  == Passed  = True
   Solved  == Solved  = True
@@ -78,16 +86,16 @@ data EchidnaTest = EchidnaTest
   , reproducer :: [Tx]
   , result     :: TxResult
   , events     :: Events
-  } deriving Eq
+  } deriving (Eq, Show)
 
-isOptimizationTest :: TestType -> Bool
-isOptimizationTest (OptimizationTest _ _) = True
-isOptimizationTest _                      = False
+isOptimizationTest :: EchidnaTest -> Bool
+isOptimizationTest EchidnaTest{testType = OptimizationTest _ _} = True
+isOptimizationTest _ = False
 
 isOpen :: EchidnaTest -> Bool
 isOpen t = case t.state of
-  Open _ -> True
-  _      -> False
+  Open -> True
+  _    -> False
 
 didFail :: EchidnaTest -> Bool
 didFail t = case t.state of
@@ -105,7 +113,7 @@ instance ToJSON TestState where
     object $ ("passed", toJSON passed) : maybeToList desc
     where
     (passed, desc) = case s of
-      Open _   -> (True, Nothing)
+      Open     -> (True, Nothing)
       Passed   -> (True, Nothing)
       Large _  -> (False, Nothing)
       Solved   -> (False, Nothing)

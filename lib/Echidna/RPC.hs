@@ -2,8 +2,7 @@
 
 module Echidna.RPC where
 
-import Control.Exception (SomeException)
-import Control.Monad.Catch (catchAll)
+import Control.Exception (catch)
 import Data.Aeson (ToJSON, FromJSON, ToJSONKey(toJSONKey))
 import Data.Aeson.Types (toJSONKeyText)
 import Data.ByteString (ByteString)
@@ -11,6 +10,7 @@ import Data.Text qualified as Text
 import Data.Text (Text)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
+import Network.HTTP.Simple (HttpException)
 import System.Environment
 import Text.Read (readMaybe)
 
@@ -18,8 +18,8 @@ import EVM (Contract(..), ContractCode(RuntimeCode), RuntimeCode (..), initialCo
 import EVM.Fetch qualified
 import EVM.Types (Addr, W256)
 
-import Echidna.Types (emptyAccount)
 import Echidna.Orphans.JSON ()
+import Echidna.Types (emptyAccount)
 
 rpcUrlEnv :: IO (Maybe Text)
 rpcUrlEnv = do
@@ -34,16 +34,16 @@ rpcBlockEnv = do
 -- TODO: temporary solution, handle errors gracefully
 safeFetchContractFrom :: EVM.Fetch.BlockNumber -> Text -> Addr -> IO (Maybe Contract)
 safeFetchContractFrom rpcBlock rpcUrl addr =
-  catchAll
+  catch
     (EVM.Fetch.fetchContractFrom rpcBlock rpcUrl addr)
-    (\(_e :: SomeException) -> pure $ Just emptyAccount)
+    (\(_ :: HttpException) -> pure $ Just emptyAccount)
 
 -- TODO: temporary solution, handle errors gracefully
 safeFetchSlotFrom :: EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (Maybe W256)
 safeFetchSlotFrom rpcBlock rpcUrl addr slot =
-  catchAll
+  catch
     (EVM.Fetch.fetchSlotFrom rpcBlock rpcUrl addr slot)
-    (\(_e :: SomeException) -> pure $ Just 0)
+    (\(_ :: HttpException) -> pure $ Just 0)
 
 fetchChainId :: Maybe Text -> IO (Maybe W256)
 fetchChainId (Just url) = EVM.Fetch.fetchChainIdFrom url

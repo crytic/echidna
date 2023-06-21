@@ -4,7 +4,8 @@ module Echidna.Output.JSON where
 
 import Data.Aeson hiding (Error)
 import Data.ByteString.Base16 qualified as BS16
-import Data.ByteString.Lazy (ByteString)
+import Data.ByteString.Lazy qualified as L
+import Data.IORef (readIORef)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text
@@ -15,9 +16,11 @@ import Numeric (showHex)
 import EVM.Types (keccak')
 
 import Echidna.ABI (ppAbiValue, GenDict(..))
+import Echidna.Events (Events)
 import Echidna.Types (Gas)
+import Echidna.Types.Campaign (WorkerState(..))
+import Echidna.Types.Config (Env(..))
 import Echidna.Types.Coverage (CoverageInfo)
-import Echidna.Types.Campaign qualified as C
 import Echidna.Types.Test qualified as T
 import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
@@ -46,6 +49,7 @@ data Test = Test
   , name :: Text
   , status :: TestStatus
   , _error :: Maybe String
+  , events :: Events
   , testType :: TestType
   , transactions :: Maybe [Transaction]
   }
@@ -56,6 +60,7 @@ instance ToJSON Test where
     , "name" .= name
     , "status" .= status
     , "error" .= _error
+    , "events" .= events
     , "type" .= testType
     , "transactions" .= transactions
     ]
@@ -93,16 +98,19 @@ instance ToJSON Transaction where
     , "gasprice" .= gasprice
     ]
 
-encodeCampaign :: C.Campaign -> IO ByteString
-encodeCampaign C.Campaign{..} = do
-  frozenCov <- mapM VU.freeze coverage
+encodeCampaign :: Env -> [WorkerState] -> IO L.ByteString
+encodeCampaign env workerStates = do
+  tests <- readIORef env.testsRef
+  frozenCov <- mapM VU.freeze =<< readIORef env.coverageRef
+  -- TODO: this is ugly, refactor seed to live in Env
+  let worker0 = Prelude.head workerStates
   pure $ encode Campaign
     { _success = True
     , _error = Nothing
     , _tests = mapTest <$> tests
-    , seed = genDict.defSeed
+    , seed = worker0.genDict.defSeed
     , coverage = Map.mapKeys (("0x" ++) . (`showHex` "") . keccak') $ VU.toList <$> frozenCov
-    , gasInfo = Map.toList gasInfo
+    , gasInfo = Map.toList $ Map.unionsWith max ((.gasInfo) <$> workerStates)
     }
 
 mapTest :: EchidnaTest -> Test
@@ -113,11 +121,12 @@ mapTest test =
     , name = "name" -- TODO add a proper name here
     , status = status
     , _error = err
+    , events = test.events
     , testType = Property
     , transactions = transactions
     }
   where
-  mapTestState (T.Open _) _ = (Fuzzing, Nothing, Nothing)
+  mapTestState T.Open _ = (Fuzzing, Nothing, Nothing)
   mapTestState T.Passed _ = (Passed, Nothing, Nothing)
   mapTestState T.Solved txs = (Solved, Just $ mapTx <$> txs, Nothing)
   mapTestState (T.Large _) txs = (Shrinking, Just $ mapTx <$> txs, Nothing)

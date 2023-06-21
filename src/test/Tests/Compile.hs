@@ -13,6 +13,7 @@ import Echidna.Solidity (loadSolTests)
 import Echidna.Types.Config (Env(..))
 import EVM.Dapp (emptyDapp)
 import Data.IORef (newIORef)
+import Control.Concurrent (newChan)
 
 compilationTests :: TestTree
 compilationTests = testGroup "Compilation and loading tests"
@@ -42,11 +43,19 @@ loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
     cacheMeta <- newIORef mempty
     cacheContracts <- newIORef mempty
     cacheSlots <- newIORef mempty
+    eventQueue <- newChan
+    coverageRef <- newIORef mempty
+    corpusRef <- newIORef mempty
+    testsRef <- newIORef mempty
     let env = Env { cfg = testConfig
                   , dapp = emptyDapp
                   , metadataCache = cacheMeta
                   , fetchContractCache = cacheContracts
                   , fetchSlotCache = cacheSlots
                   , chainId = Nothing
+                  , eventQueue
+                  , coverageRef
+                  , corpusRef
+                  , testsRef
                   }
     void $ loadSolTests env (fp :| []) c

@@ -45,7 +45,7 @@ instance Show SolException where
     TestArgsFound t        -> "Test " ++ show t ++ " has arguments, aborting"
     NoBytecode t           -> "No bytecode found for contract " ++ show t
     NoFuncs                -> "ABI is empty, are you sure your constructor is right?"
-    NoTests                -> "No tests found in ABI"
+    NoTests                -> "No tests found in ABI. If you are using assert(), use --test-mode assertion"
     OnlyTests              -> "Only tests and no public functions found in ABI"
     ConstructorArgs s      -> "Constructor arguments are required: " ++ s
     NoCryticCompile        -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
