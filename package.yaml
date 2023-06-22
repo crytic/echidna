@@ -89,6 +89,7 @@ executables:
       - condition: os(darwin)
         extra-libraries: c++
         ld-options: -Wl,-keep_dwarf_unwind
+        ghc-options: -fcompact-unwind
       - condition: os(windows)
         extra-libraries: stdc++
 
@@ -112,6 +113,7 @@ tests:
         - condition: os(darwin)
           extra-libraries: c++
           ld-options: -Wl,-keep_dwarf_unwind
+          ghc-options: -fcompact-unwind
         - condition: os(windows)
           extra-libraries: stdc++
 
