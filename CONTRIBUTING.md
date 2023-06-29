@@ -4,7 +4,7 @@ First, thanks for your interest in contributing to Echidna! We welcome and
 appreciate all contributions, including bug reports, feature suggestions,
 tutorials/blog posts, and code improvements.
 
-If you're unsure where to start, we recommend to join our [chat room](https://empireslacking.herokuapp.com/)
+If you're unsure where to start, we recommend to join our [chat room](https://slack.empirehacking.nyc/)
 (in the #ethereum channel) to discuss new ideas to improve this tool. You can also take a look to the [`help wanted`](https://github.com/crytic/echidna/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
 issue labels.
 
@@ -20,7 +20,7 @@ instead.
 ## Questions
 
 Questions can be submitted to the issue tracker, but you may get a faster
-response if you ask in our [chat room](https://empireslacking.herokuapp.com/)
+response if you ask in our [chat room](https://slack.empirehacking.nyc/)
 (in the #ethereum channel).
 
 ## Code
