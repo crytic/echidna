@@ -353,7 +353,7 @@ If you are using Echidna for academic work, consider applying to the [Crytic $10
 
 ## Getting help
 
-Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://empireslacking.herokuapp.com/) for help using or extending Echidna.
+Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://slack.empirehacking.nyc/) for help using or extending Echidna.
 
 * Get started by reviewing these simple [Echidna invariants](tests/solidity/basic/flags.sol)
 
