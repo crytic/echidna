@@ -31,6 +31,8 @@ compilationTests = testGroup "Compilation and loading tests"
       \case TestArgsFound _ -> True; _ -> False
   , loadFails "bad/consargs.sol"   Nothing    "failed to warn on cons args found" $
       \case ConstructorArgs _ -> True; _ -> False
+  , loadFails "bad/precompile.sol"  Nothing   "failed to warn on a failed deployment" $
+      \case DeploymentFailed _ _ -> True; _ -> False
   , loadFails "bad/revert.sol"     Nothing    "failed to warn on a failed deployment" $
       \case DeploymentFailed _ _ -> True; _ -> False
   , loadFails "basic/eip-170.sol"  Nothing    "failed to warn on a failed deployment" $
