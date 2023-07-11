@@ -1,12 +1,13 @@
 module Echidna.Types where
 
-import EVM (Error, EVM, VM, Contract, initialContract, ContractCode (RuntimeCode), RuntimeCode (ConcreteRuntimeCode))
 import Control.Exception (Exception)
 import Control.Monad.State.Strict (MonadState, runState, get, put)
 import Data.Word (Word64)
+import EVM (initialContract)
+import EVM.Types
 
 -- | We throw this when our execution fails due to something other than reversion.
-data ExecException = IllegalExec Error | UnknownFailure Error
+data ExecException = IllegalExec EvmError | UnknownFailure EvmError
 
 instance Show ExecException where
   show (IllegalExec e) = "VM attempted an illegal operation: " ++ show e

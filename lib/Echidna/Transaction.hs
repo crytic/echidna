@@ -16,9 +16,9 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
 
-import EVM hiding (resetState, VMOpts(timestamp, gasprice))
+import EVM (initialContract, loadContract, bytecode)
 import EVM.ABI (abiValueType)
-import EVM.Types (Expr(ConcreteBuf, Lit), Addr, W256, FunctionSelector)
+import EVM.Types hiding (VMOpts(timestamp, gasprice))
 
 import Echidna.ABI
 import Echidna.Types.Random
@@ -116,7 +116,7 @@ canShrinkTx Tx { call, gasprice = 0, value = 0, delay = (0, 0) } =
 canShrinkTx _ = True
 
 removeCallTx :: Tx -> Tx
-removeCallTx t = Tx NoCall 0 t.src 0 0 0 t.delay
+removeCallTx t = Tx NoCall t.src t.dst 0 0 0 t.delay
 
 -- | Given a 'Transaction', generate a random \"smaller\" 'Transaction', preserving origin,
 -- destination, value, and call signature.
@@ -173,7 +173,8 @@ setupTx tx@Tx{call} = fromEVM $ do
     }
   case call of
     SolCreate bc -> do
-      #env % #contracts % at tx.dst .= Just (initialContract (InitCode bc mempty) & set #balance tx.value)
+      #env % #contracts % at tx.dst .=
+        Just (initialContract (InitCode bc mempty) & set #balance tx.value)
       loadContract tx.dst
       #state % #code .= RuntimeCode (ConcreteRuntimeCode bc)
     SolCall cd -> do

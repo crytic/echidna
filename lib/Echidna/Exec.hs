@@ -22,11 +22,12 @@ import Data.Vector qualified as V
 import Data.Vector.Unboxed.Mutable qualified as VMut
 import System.Process (readProcessWithExitCode)
 
-import EVM hiding (Env)
+import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, vmOpIx)
 import EVM.ABI
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Fetch qualified
-import EVM.Types (Expr(ConcreteBuf, Lit), hexText)
+import EVM.Format (hexText)
+import EVM.Types hiding (Env)
 
 import Echidna.Events (emptyEvents)
 import Echidna.RPC (safeFetchContractFrom, safeFetchSlotFrom)
@@ -43,7 +44,7 @@ import Echidna.Utility (getTimestamp, timePrefix)
 data ErrorClass = RevertE | IllegalE | UnknownE
 
 -- | Given an execution error, classify it. Mostly useful for nice @pattern@s ('Reversion', 'Illegal').
-classifyError :: Error -> ErrorClass
+classifyError :: EvmError -> ErrorClass
 classifyError = \case
   OutOfGas _ _         -> RevertE
   Revert _             -> RevertE
@@ -56,8 +57,8 @@ classifyError = \case
 
 -- | Extracts the 'Query' if there is one.
 getQuery :: VMResult -> Maybe Query
-getQuery (VMFailure (Query q)) = Just q
-getQuery _                     = Nothing
+getQuery (HandleEffect (Query q)) = Just q
+getQuery _ = Nothing
 
 -- | Matches execution errors that just cause a reversion.
 pattern Reversion :: VMResult
@@ -68,7 +69,7 @@ pattern Illegal :: VMResult
 pattern Illegal <- VMFailure (classifyError -> IllegalE)
 
 -- | Given an execution error, throw the appropriate exception.
-vmExcept :: MonadThrow m => Error -> m ()
+vmExcept :: MonadThrow m => EvmError -> m ()
 vmExcept e = throwM $
   case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e}
 
@@ -77,7 +78,7 @@ vmExcept e = throwM $
 execTxWith
   :: (MonadIO m, MonadState s m, MonadReader Env m)
   => Lens' s VM
-  -> (Error -> m ())
+  -> (EvmError -> m ())
   -> m VMResult
   -> Tx
   -> m (VMResult, Gas)
@@ -120,7 +121,7 @@ execTxWith l onErr executeTx tx = do
                 ret <- liftIO $ safeFetchContractFrom rpcBlock rpcUrl addr
                 case ret of
                   -- TODO: fix hevm to not return an empty contract in case of an error
-                  Just contract | contract.contractcode /= EVM.RuntimeCode (EVM.ConcreteRuntimeCode "") -> do
+                  Just contract | contract.contractcode /= RuntimeCode (ConcreteRuntimeCode "") -> do
                     metaCacheRef <- asks (.metadataCache)
                     metaCache <- liftIO $ readIORef metaCacheRef
                     let bc = forceBuf (contract ^. bytecode)
@@ -181,6 +182,16 @@ execTxWith l onErr executeTx tx = do
               AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.pack $ stdout])
         l %= execState (continuation encodedResponse)
         runFully
+
+      Just (PleaseAskSMT (Lit c) _ continue) -> do
+        -- NOTE: this is not a real SMT query, we know it is concrete and can
+        -- resume right away. It is done this way to support iterations counting
+        -- in hevm.
+        l %= execState (continue (Case (c > 0)))
+        runFully
+
+      Just q@(PleaseAskSMT {}) ->
+        error $ "Unexpected SMT query: " <> show q
 
       -- No queries to answer, the tx is fully executed and the result is final
       _ -> pure vmResult

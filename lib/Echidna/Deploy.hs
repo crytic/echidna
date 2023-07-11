@@ -11,9 +11,8 @@ import Data.Either (fromRight)
 import Data.Text (Text, unlines)
 import Data.Text.Encoding (encodeUtf8)
 
-import EVM hiding (bytecode, Env)
 import EVM.Solidity
-import EVM.Types (Addr)
+import EVM.Types hiding (Env)
 
 import Echidna.Exec (execTx)
 import Echidna.Events (extractEvents)

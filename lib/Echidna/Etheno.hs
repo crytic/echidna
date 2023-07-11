@@ -11,7 +11,7 @@ import Control.Exception (Exception)
 import Control.Monad (void)
 import Control.Monad.Catch (MonadThrow, throwM)
 import Control.Monad.Fail qualified as M (MonadFail(..))
-import Control.Monad.State.Strict (MonadState, get, put, execStateT, gets)
+import Control.Monad.State.Strict (MonadState, get, put, execStateT, gets, modify', execState)
 import Data.Aeson (FromJSON(..), (.:), withObject, eitherDecodeFileStrict)
 import Data.ByteString.Base16 qualified as BS16 (decode)
 import Data.ByteString.Char8 (ByteString)
@@ -26,7 +26,7 @@ import Text.Read (readMaybe)
 import EVM
 import EVM.ABI (AbiType(..), AbiValue(..), decodeAbiValue, selector)
 import EVM.Exec (exec)
-import EVM.Types (Addr, W256, Expr(ConcreteBuf))
+import EVM.Types
 
 import Echidna.Exec
 import Echidna.Transaction
@@ -168,19 +168,28 @@ execEthenoTxs :: (MonadState VM m, MonadFail m, MonadThrow m) => Etheno -> m ()
 execEthenoTxs et = do
   setupEthenoTx et
   vm <- get
-  res <- fromEVM exec
-  case (res, et) of
-    (_        , AccountCreated _)  -> pure ()
-    (Reversion,   _)               -> void $ put vm
-    (VMFailure (Query q), _)       -> crashWithQueryError q et
-    (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
-    (VMSuccess (ConcreteBuf bc),
-     ContractCreated _ ca _ _ _ _) -> do
-      #env % #contracts % at ca % _Just % #contractcode .= InitCode mempty mempty
-      fromEVM $ do
-        replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bc))
-        loadContract ca
-    _ -> pure ()
+  runFully vm
+  where
+  runFully vm = do
+    res <- fromEVM exec
+    case (res, et) of
+      (_        , AccountCreated _)  -> pure ()
+      (Reversion,   _)               -> void $ put vm
+      (HandleEffect (Query (PleaseAskSMT (Lit c) _ continue)), _) -> do
+        -- NOTE: this is not a real SMT query, we know it is concrete and can
+        -- resume right away. It is done this way to support iterations counting
+        -- in hevm.
+        modify' $ execState (continue (Case (c > 0)))
+        runFully vm
+      (HandleEffect (Query q), _)    -> crashWithQueryError q et
+      (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
+      (VMSuccess (ConcreteBuf bc),
+       ContractCreated _ ca _ _ _ _) -> do
+        #env % #contracts % at ca % _Just % #contractcode .= InitCode mempty mempty
+        fromEVM $ do
+          replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bc))
+          loadContract ca
+      _ -> pure ()
 
 -- | For an etheno txn, set up VM to execute txn
 setupEthenoTx :: MonadState VM m => Etheno -> m ()
