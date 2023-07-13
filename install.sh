@@ -3,6 +3,9 @@ set -e
 
 version="2.2.0"
 
+ECHIDNA_MAC_DIGEST="33f4aa8d5e0693711520d1470cd2511d0443a4cf6602d6000e4de00f6208340b"
+ECHIDNA_UBUNTU_DIGEST="4301d2e83343ce448a53e8dcc233cdbf29450d2bb6ce52f083ea7bd479989883"
+
 # Do nothing if echidna is already installed
 if echidna-test --version > /dev/null 2>&1
 then
@@ -42,31 +45,25 @@ ECHIDNA_DIR=${ECHIDNA_DIR-"$BASE_DIR/.echidna"}
 ECHIDNA_BIN_DIR="$ECHIDNA_DIR/bin"
 ECHIDNA_ARCHIVE_DIR="$ECHIDNA_DIR/v$version"
 ECHIDNA_ARCHIVE_PATH="$ECHIDNA_ARCHIVE_DIR/echidna.tar.gz"
-ECHIDNA_DIGEST_PATH="$ECHIDNA_ARCHIVE_DIR/echidna.sha256"
 TRUE_BIN_PATH="$ECHIDNA_ARCHIVE_DIR/echidna/echidna"
 BIN_PATH="$ECHIDNA_BIN_DIR/echidna"
 
 if [[ "$(uname)" == "Darwin" ]]
-then arch="MacOS"
+then
+  arch="MacOS"
+  digest="$ECHIDNA_MAC_DIGEST"
 elif [[ "$(uname)" == "Linux" ]]
-then arch="Ubuntu"
+then
+  arch="Ubuntu"
+  digest="$ECHIDNA_UBUNTU_DIGEST"
 else echo "Unsupported system: $(uname)" && exit 1
 fi
 
 TARBALL_URL="https://github.com/crytic/echidna/releases/download/v$version/echidna-$version-$arch.tar.gz"
-DIGEST_URL="https://github.com/crytic/echidna/releases/download/v$version/echidna-$version-$arch.tar.gz.sha256"
 
 # Create the .echidna bin directory and echidna binary if it doesn't exist.
 mkdir -p "$ECHIDNA_ARCHIVE_DIR"
 pushd "$ECHIDNA_ARCHIVE_DIR" > /dev/null || exit 1
-
-# Fetch the digest if not already present
-if [[ ! -f "$ECHIDNA_DIGEST_PATH" ]]
-then
-  echo "Downloading the sha256 digest of the echidna archive"
-  curl -# -L "$DIGEST_URL" -o "$ECHIDNA_DIGEST_PATH"
-fi
-digest="$(cut -d " " -f 1 < "$ECHIDNA_DIGEST_PATH")"
 
 # Download the tarball if it's not present or if the digest is wrong
 if [[ -f "$ECHIDNA_ARCHIVE_PATH" ]]
