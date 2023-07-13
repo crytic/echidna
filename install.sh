@@ -2,6 +2,7 @@
 set -e
 
 version="2.2.0"
+slither_version="0.9.3"
 
 ECHIDNA_MAC_DIGEST="33f4aa8d5e0693711520d1470cd2511d0443a4cf6602d6000e4de00f6208340b"
 ECHIDNA_UBUNTU_DIGEST="4301d2e83343ce448a53e8dcc233cdbf29450d2bb6ce52f083ea7bd479989883"
@@ -36,6 +37,10 @@ if ! slither --version > /dev/null 2>&1
 then
   echo "slither is not available, installing it now.."
   pip3 install slither-analyzer --user
+elif [[ "$(slither --version)" != "$slither_version" ]]
+then
+  echo "slither is out of date, upgrading it now.."
+  pip3 install --upgrade slither-analyzer --user
 fi
 
 echo "Installing Echidna v$version.."
