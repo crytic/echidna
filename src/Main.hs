@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Main where
 
@@ -21,7 +22,6 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
-import Data.Text qualified as Text
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Vector qualified as Vector
 import Data.Version (showVersion)
@@ -35,10 +35,10 @@ import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 import System.IO.CodePage (withCP65001)
 
-import EVM (Contract(..), bytecode)
+import EVM (bytecode)
 import EVM.Dapp (dappInfo)
-import EVM.Solidity (SolcContract(..), SourceCache(..))
-import EVM.Types (Addr, keccak', W256)
+import EVM.Solidity (SolcContract(..), SourceCache(..), BuildOutput(..), Contracts (Contracts))
+import EVM.Types (Addr, Contract(..), keccak', W256)
 
 import Echidna
 import Echidna.Config
@@ -53,7 +53,7 @@ import Echidna.UI
 import Echidna.Output.Source
 import Echidna.Output.Corpus
 import Echidna.RPC qualified as RPC
-import Echidna.Solidity (compileContracts, selectSourceCache)
+import Echidna.Solidity (compileContracts)
 import Echidna.Utility (measureIO)
 import Etherscan qualified
 
@@ -87,7 +87,7 @@ main = withUtf8 $ withCP65001 $ do
           Nothing ->
             pure (Nothing, Nothing)
 
-  (contracts, sourceCaches) <- compileContracts cfg.solConf cliFilePath
+  buildOutput <- compileContracts cfg.solConf cliFilePath
   cacheContractsRef <- newIORef $ fromMaybe mempty loadedContractsCache
   cacheSlotsRef <- newIORef $ fromMaybe mempty loadedSlotsCache
   cacheMetaRef <- newIORef mempty
@@ -98,11 +98,12 @@ main = withUtf8 $ withCP65001 $ do
   testsRef <- newIORef mempty
 
   let
-    sourceCache = selectSourceCache cliSelectedContract sourceCaches
-    solcByName = Map.fromList [(c.contractName, c) | c <- contracts]
+    BuildOutput{ sources = sourceCache
+               , contracts = Contracts (Map.elems -> contracts)
+               } = buildOutput
     env = Env { cfg
                 -- TODO put in real path
-              , dapp = dappInfo "/" solcByName sourceCache
+              , dapp = dappInfo "/" buildOutput
               , metadataCache = cacheMetaRef
               , fetchContractCache = cacheContractsRef
               , fetchSlotCache = cacheSlotsRef
@@ -194,26 +195,28 @@ main = withUtf8 $ withCP65001 $ do
     pure $ do
       src <- srcRet
       (_, srcmap) <- srcmapRet
-      let sourceCache = SourceCache
-            { files = [(Text.pack (show addr), UTF8.fromString src.code)]
-            , lines = [(Vector.fromList . BS.split 0xa . UTF8.fromString) src.code]
-            , asts = mempty
-            }
-      let solcContract = SolcContract
-            { runtimeCode = runtimeCode
-            , creationCode = mempty
-            , runtimeCodehash = keccak' runtimeCode
-            , creationCodehash = keccak' mempty
-            , runtimeSrcmap = mempty
-            , creationSrcmap = srcmap
-            , contractName = src.name
-            , constructorInputs = [] -- error "TODO: mkConstructor abis TODO"
-            , abiMap = mempty -- error "TODO: mkAbiMap abis"
-            , eventMap = mempty -- error "TODO: mkEventMap abis"
-            , errorMap = mempty -- error "TODO: mkErrorMap abis"
-            , storageLayout = Nothing
-            , immutableReferences = mempty
-            }
+      let
+        files = Map.singleton 0 (show addr, UTF8.fromString src.code)
+        sourceCache = SourceCache
+          { files
+          , lines = Vector.fromList . BS.split 0xa . snd <$> files
+          , asts = mempty
+          }
+        solcContract = SolcContract
+          { runtimeCode = runtimeCode
+          , creationCode = mempty
+          , runtimeCodehash = keccak' runtimeCode
+          , creationCodehash = keccak' mempty
+          , runtimeSrcmap = mempty
+          , creationSrcmap = srcmap
+          , contractName = src.name
+          , constructorInputs = [] -- error "TODO: mkConstructor abis TODO"
+          , abiMap = mempty -- error "TODO: mkAbiMap abis"
+          , eventMap = mempty -- error "TODO: mkEventMap abis"
+          , errorMap = mempty -- error "TODO: mkErrorMap abis"
+          , storageLayout = Nothing
+          , immutableReferences = mempty
+          }
       pure (sourceCache, solcContract)
 
 readFileIfExists :: FilePath -> IO (Maybe BS.ByteString)

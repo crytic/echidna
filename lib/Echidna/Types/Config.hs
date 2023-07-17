@@ -9,9 +9,8 @@ import Data.Text (Text)
 import Data.Time (LocalTime)
 import Data.Word (Word64)
 
-import EVM (Contract)
 import EVM.Dapp (DappInfo)
-import EVM.Types (Addr, W256)
+import EVM.Types (Addr, Contract, W256)
 
 import Echidna.Types.Campaign (CampaignConf, CampaignEvent)
 import Echidna.Types.Corpus (Corpus)

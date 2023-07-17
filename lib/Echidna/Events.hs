@@ -13,12 +13,12 @@ import Data.Tree (flatten)
 import Data.Tree.Zipper (fromForest, TreePos, Empty)
 import Data.Vector (fromList)
 
-import EVM hiding (code)
+import EVM (traceForest)
 import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, AbiType(..), AbiValue(..))
 import EVM.Dapp (DappContext(..), DappInfo(..))
 import EVM.Format (showValues, showError, contractNamePart)
 import EVM.Solidity (SolcContract(..))
-import EVM.Types (Expr(ConcreteBuf), W256, maybeLitWord)
+import EVM.Types
 
 import Echidna.Types.Buffer (forceLit, forceBuf)
 import Data.ByteString (ByteString)

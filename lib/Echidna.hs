@@ -9,9 +9,10 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import System.FilePath ((</>))
 
-import EVM hiding (Env)
+import EVM (cheatCode)
 import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Solidity (SolcContract(..))
+import EVM.Types hiding (Env)
 
 import Echidna.ABI
 import Echidna.Etheno (loadEtheno, extractFromEtheno)

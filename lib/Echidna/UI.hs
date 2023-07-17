@@ -32,8 +32,7 @@ import UnliftIO
   )
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
-import EVM (VM, Contract)
-import EVM.Types (Addr, W256)
+import EVM.Types (Addr, Contract, VM, W256)
 
 import Echidna.ABI
 import Echidna.Campaign (runWorker)
