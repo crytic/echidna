@@ -16,9 +16,8 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Data.Word (Word64)
 
-import EVM (VMResult(..), Error(..))
 import EVM.ABI (encodeAbiValue, AbiValue(..), AbiType)
-import EVM.Types (Addr, W256)
+import EVM.Types
 
 import Echidna.Orphans.JSON ()
 import Echidna.Types.Buffer (forceBuf)
@@ -173,6 +172,8 @@ data TxResult
   | ErrorInvalidMemoryAccess
   | ErrorCallDepthLimitReached
   | ErrorMaxCodeSizeExceeded
+  | ErrorMaxInitCodeSizeExceeded
+  | ErrorMaxIterationsReached
   | ErrorPrecompileFailure
   | ErrorUnexpectedSymbolic
   | ErrorDeadPath
@@ -207,31 +208,31 @@ getResult = \case
               | forceBuf b == encodeAbiValue (AbiBool False) -> ReturnFalse
               | otherwise                                    -> Stop
 
-  VMFailure (BalanceTooLow _ _)       -> ErrorBalanceTooLow
-  VMFailure (UnrecognizedOpcode _)    -> ErrorUnrecognizedOpcode
-  VMFailure SelfDestruction           -> ErrorSelfDestruction
-  VMFailure StackUnderrun             -> ErrorStackUnderrun
-  VMFailure BadJumpDestination        -> ErrorBadJumpDestination
-  VMFailure (Revert _)                -> ErrorRevert
-  VMFailure (OutOfGas _ _)            -> ErrorOutOfGas
-  VMFailure (BadCheatCode _)          -> ErrorBadCheatCode
-  VMFailure StackLimitExceeded        -> ErrorStackLimitExceeded
-  VMFailure IllegalOverflow           -> ErrorIllegalOverflow
-  VMFailure (Query _)                 -> ErrorQuery
-  VMFailure StateChangeWhileStatic    -> ErrorStateChangeWhileStatic
-  VMFailure InvalidFormat             -> ErrorInvalidFormat
-  VMFailure InvalidMemoryAccess       -> ErrorInvalidMemoryAccess
-  VMFailure CallDepthLimitReached     -> ErrorCallDepthLimitReached
-  VMFailure (MaxCodeSizeExceeded _ _) -> ErrorMaxCodeSizeExceeded
-  VMFailure PrecompileFailure         -> ErrorPrecompileFailure
-  VMFailure (UnexpectedSymbolicArg{}) -> ErrorUnexpectedSymbolic
-  VMFailure DeadPath                  -> ErrorDeadPath
-  VMFailure (Choose _)                -> ErrorChoose -- not entirely sure what this is
-  VMFailure (NotUnique _)             -> ErrorWhiffNotUnique
-  VMFailure SMTTimeout                -> ErrorSMTTimeout
-  VMFailure (FFI _)                   -> ErrorFFI
-  VMFailure NonceOverflow             -> ErrorNonceOverflow
-  VMFailure ReturnDataOutOfBounds     -> ErrorReturnDataOutOfBounds
+  HandleEffect (Choose _)                 -> ErrorChoose
+  HandleEffect (Query _)                  -> ErrorQuery
+
+  Unfinished (UnexpectedSymbolicArg{})    -> ErrorUnexpectedSymbolic
+  Unfinished (MaxIterationsReached _ _)   -> ErrorMaxIterationsReached
+
+  VMFailure (BalanceTooLow _ _)           -> ErrorBalanceTooLow
+  VMFailure (UnrecognizedOpcode _)        -> ErrorUnrecognizedOpcode
+  VMFailure SelfDestruction               -> ErrorSelfDestruction
+  VMFailure StackUnderrun                 -> ErrorStackUnderrun
+  VMFailure BadJumpDestination            -> ErrorBadJumpDestination
+  VMFailure (Revert _)                    -> ErrorRevert
+  VMFailure (OutOfGas _ _)                -> ErrorOutOfGas
+  VMFailure (BadCheatCode _)              -> ErrorBadCheatCode
+  VMFailure StackLimitExceeded            -> ErrorStackLimitExceeded
+  VMFailure IllegalOverflow               -> ErrorIllegalOverflow
+  VMFailure StateChangeWhileStatic        -> ErrorStateChangeWhileStatic
+  VMFailure InvalidFormat                 -> ErrorInvalidFormat
+  VMFailure InvalidMemoryAccess           -> ErrorInvalidMemoryAccess
+  VMFailure CallDepthLimitReached         -> ErrorCallDepthLimitReached
+  VMFailure (MaxCodeSizeExceeded _ _)     -> ErrorMaxCodeSizeExceeded
+  VMFailure (MaxInitCodeSizeExceeded _ _) -> ErrorMaxInitCodeSizeExceeded
+  VMFailure PrecompileFailure             -> ErrorPrecompileFailure
+  VMFailure NonceOverflow                 -> ErrorNonceOverflow
+  VMFailure ReturnDataOutOfBounds         -> ErrorReturnDataOutOfBounds
 
 makeSingleTx :: Addr -> Addr -> W256 -> TxCall -> [Tx]
 makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d maxGasPerBlock 0 v (0, 0)]

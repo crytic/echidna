@@ -32,7 +32,7 @@ import Data.Function ((&))
 import Data.IORef
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
-import Data.Map (fromList, lookup)
+import Data.Map qualified as Map
 import Data.Maybe (isJust)
 import Data.Text (Text, pack)
 import Data.SemVer (Version, version, fromText)
@@ -41,7 +41,7 @@ import System.Process (readProcess)
 import Echidna (prepareContract)
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Campaign (runWorker)
-import Echidna.Solidity (loadSolTests, compileContracts, selectSourceCache)
+import Echidna.Solidity (loadSolTests, compileContracts)
 import Echidna.Test (checkETest)
 import Echidna.Types (Gas)
 import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
@@ -52,7 +52,7 @@ import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
 
 import EVM.Dapp (dappInfo, emptyDapp)
-import EVM.Solidity (SolcContract(..))
+import EVM.Solidity (BuildOutput(..), Contracts (Contracts))
 import Control.Concurrent (newChan)
 import Control.Monad (forM_)
 
@@ -92,9 +92,9 @@ withSolcVersion (Just f) t = do
 runContract :: FilePath -> Maybe ContractName -> EConfig -> IO (Env, WorkerState)
 runContract f selectedContract cfg = do
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
-  (contracts, sourceCaches) <- compileContracts cfg.solConf (f :| [])
-  let sourceCache = selectSourceCache selectedContract sourceCaches
-  let solcByName = fromList [(c.contractName, c) | c <- contracts]
+  buildOutput <- compileContracts cfg.solConf (f :| [])
+  let BuildOutput{contracts = Contracts cs} = buildOutput
+  let contracts = Map.elems cs
 
   metadataCache <- newIORef mempty
   fetchContractCache <- newIORef mempty
@@ -104,7 +104,7 @@ runContract f selectedContract cfg = do
   eventQueue <- newChan
   testsRef <- newIORef mempty
   let env = Env { cfg = cfg
-                , dapp = dappInfo "/" solcByName sourceCache
+                , dapp = dappInfo "/" buildOutput
                 , metadataCache
                 , fetchContractCache
                 , fetchSlotCache
@@ -251,7 +251,7 @@ solvedWithout tx t final =
   maybe False (all $ (/= tx) . (.call)) <$> solnFor t final
 
 getGas :: Text -> WorkerState -> Maybe (Gas, [Tx])
-getGas t camp = lookup t camp.gasInfo
+getGas t camp = Map.lookup t camp.gasInfo
 
 gasInRange :: Text -> Gas -> Gas -> (Env, WorkerState) -> IO Bool
 gasInRange t l h (_, workerState) = do

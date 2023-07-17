@@ -13,8 +13,7 @@ import Data.Set qualified as Set
 import Data.Text (isPrefixOf)
 import Data.Yaml qualified as Y
 
-import EVM (VM(..))
-import EVM.Types (W256)
+import EVM.Types (VM(..), W256)
 
 import Echidna.Test
 import Echidna.Types.Campaign

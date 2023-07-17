@@ -12,10 +12,9 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Text (Text)
 import Data.Text qualified as T
 
-import EVM hiding (Env)
 import EVM.ABI (AbiValue(..), AbiType(..), encodeAbiValue, decodeAbiValue)
 import EVM.Dapp (DappInfo)
-import EVM.Types (Addr, Expr (ConcreteBuf, Lit))
+import EVM.Types hiding (Env)
 
 import Echidna.ABI
 import Echidna.Events (Events, extractEvents)

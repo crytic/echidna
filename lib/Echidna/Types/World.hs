@@ -19,3 +19,4 @@ data World = World
   , payableSigs      :: [FunctionSelector]
   , eventMap         :: EventMap
   }
+  deriving Show

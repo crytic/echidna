@@ -14,9 +14,9 @@ import Network.HTTP.Simple (HttpException)
 import System.Environment
 import Text.Read (readMaybe)
 
-import EVM (Contract(..), ContractCode(RuntimeCode), RuntimeCode (..), initialContract)
+import EVM (initialContract)
 import EVM.Fetch qualified
-import EVM.Types (Addr, W256)
+import EVM.Types
 
 import Echidna.Orphans.JSON ()
 import Echidna.Types (emptyAccount)
