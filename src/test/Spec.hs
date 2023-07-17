@@ -32,4 +32,5 @@ main = withCurrentDirectory "./tests/solidity" . defaultMain $
            , dapptestTests
            , encodingJSONTests
            , cheatTests
+           -- , symbolicTests
            ]
