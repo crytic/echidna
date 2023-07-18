@@ -41,7 +41,7 @@ import System.Process (readProcess)
 import Echidna (prepareContract)
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Campaign (runWorker)
-import Echidna.Solidity (loadSolTests, compileContracts)
+import Echidna.Solidity (loadSolTests, compileContracts, selectBuildOutput)
 import Echidna.Test (checkETest)
 import Echidna.Types (Gas)
 import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
@@ -92,9 +92,10 @@ withSolcVersion (Just f) t = do
 runContract :: FilePath -> Maybe ContractName -> EConfig -> IO (Env, WorkerState)
 runContract f selectedContract cfg = do
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
-  buildOutput <- compileContracts cfg.solConf (f :| [])
-  let BuildOutput{contracts = Contracts cs} = buildOutput
-  let contracts = Map.elems cs
+  buildOutputs <- compileContracts cfg.solConf (f :| [])
+  let
+    buildOutput = selectBuildOutput selectedContract buildOutputs
+    contracts = Map.elems . Map.unions $ (\(BuildOutput (Contracts c) _) -> c) <$> buildOutputs
 
   metadataCache <- newIORef mempty
   fetchContractCache <- newIORef mempty

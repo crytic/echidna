@@ -1,5 +1,3 @@
-{-# LANGUAGE ViewPatterns #-}
-
 module Echidna.Solidity where
 
 import Optics.Core hiding (filtered)
@@ -52,34 +50,34 @@ import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 import Echidna.Utility (measureIO)
 
--- | Given a list of source caches (SourceCaches) and an optional contract name,
--- select one that includes that contract (if possible). Otherwise, use the first source
--- cache available (or fail if it is empty)
-selectSourceCache :: Maybe ContractName -> SourceCaches -> SourceCache
-selectSourceCache (Just c) scs =
+-- | Given a list of build outputs and an optional contract name, select one
+-- that includes that contract (if possible). Otherwise, use the first build
+-- output available (or fail if it is empty)
+selectBuildOutput :: Maybe ContractName -> [BuildOutput] -> BuildOutput
+selectBuildOutput (Just c) buildOutputs =
   let
-    r = concatMap (\(cs,sc) ->
-          [sc | isJust $ find (Data.Text.isSuffixOf (":" <> c)) cs]
-        ) scs
+    r = concatMap (\buildOutput@(BuildOutput (Contracts contracts) _) ->
+          [buildOutput | isJust $ find (Data.Text.isSuffixOf (":" <> c)) (Map.keys contracts)]
+        ) buildOutputs
   in case r of
-    (sc:_) -> sc
-    _      -> error "Source cache selection returned no result"
+    (buildOutput:_) -> buildOutput
+    _ -> error "Build output selection returned no result"
 
-selectSourceCache _ scs =
+selectBuildOutput _ scs =
   case scs of
-    (_,sc):_ -> sc
-    _        -> error "Empty source cache"
+    sc:_ -> sc
+    _    -> error "Empty source cache"
 
-readSolcBatch :: FilePath -> IO (Maybe BuildOutput)
+readSolcBatch :: FilePath -> IO [BuildOutput]
 readSolcBatch d = do
-  fs <- listDirectory d
-  case fs of
-    [f] ->
-      readSolc CombinedJSON "" (d </> f) >>= \case
-        Right buildOutput -> pure $ Just buildOutput
-        Left e ->
-          error $ "Failed to parse combined JSON file " <> (d </> f) <> "\n" <> e
-    _ -> error "too many files"
+  fs <- filter (".json" `Data.List.isSuffixOf`) <$> listDirectory d
+  mapM parseOne fs
+  where
+  parseOne f =
+    readSolc CombinedJSON "" (d </> f) >>= \case
+      Right buildOutput -> pure buildOutput
+      Left e ->
+        error $ "Failed to parse combined JSON file " <> (d </> f) <> "\n" <> e
 
 -- | Given a list of files, use its extenstion to check if it is a precompiled
 -- contract or try to compile it and get a list of its contracts and a list of source
@@ -87,7 +85,7 @@ readSolcBatch d = do
 compileContracts
   :: SolConf
   -> NonEmpty FilePath
-  -> IO BuildOutput
+  -> IO [BuildOutput]
 compileContracts solConf fp = do
   path <- findExecutable "crytic-compile" >>= \case
     Nothing -> throwM NoCryticCompile
@@ -97,20 +95,18 @@ compileContracts solConf fp = do
     usual = ["--solc-disable-warnings", "--export-format", "solc"]
     solargs = solConf.solcArgs ++ linkLibraries solConf.solcLibs & (usual ++) .
               (\sa -> if null sa then [] else ["--solc-args", sa])
-    compileOne :: FilePath -> IO BuildOutput
+    compileOne :: FilePath -> IO [BuildOutput]
     compileOne x = do
-      mSolc <- do
-        stderr <- if solConf.quiet
-                     then UseHandle <$> openFile nullFilePath WriteMode
-                     else pure Inherit
-        (ec, out, err) <- measureIO solConf.quiet ("Compiling " <> x) $ do
-          readCreateProcessWithExitCode
-            (proc path $ (solConf.cryticArgs ++ solargs) |> x) {std_err = stderr} ""
-        case ec of
-          ExitSuccess -> readSolcBatch "crytic-export"
-          ExitFailure _ -> throwM $ CompileFailure out err
+      stderr <- if solConf.quiet
+                   then UseHandle <$> openFile nullFilePath WriteMode
+                   else pure Inherit
+      (ec, out, err) <- measureIO solConf.quiet ("Compiling " <> x) $ do
+        readCreateProcessWithExitCode
+          (proc path $ (solConf.cryticArgs ++ solargs) |> x) {std_err = stderr} ""
+      case ec of
+        ExitSuccess -> readSolcBatch "crytic-export"
+        ExitFailure _ -> throwM $ CompileFailure out err
 
-      maybe (throwM SolcReadFailure) pure mSolc
     -- | OS-specific path to the "null" file, which accepts writes without storing them
     nullFilePath :: String
     nullFilePath = if os == "mingw32" then "\\\\.\\NUL" else "/dev/null"
@@ -368,7 +364,8 @@ loadSolTests
   -> IO (VM, World, [EchidnaTest])
 loadSolTests env fp name = do
   let solConf = env.cfg.solConf
-  BuildOutput{contracts = Contracts (Map.elems -> contracts)} <- compileContracts solConf fp
+  buildOutputs <- compileContracts solConf fp
+  let contracts = Map.elems . Map.unions $ (\(BuildOutput (Contracts c) _) -> c) <$> buildOutputs
   (vm, funs, testNames, _signatureMap) <- loadSpecified env name contracts
   let
     eventMap = Map.unions $ map (.eventMap) contracts
