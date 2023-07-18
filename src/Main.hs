@@ -1,5 +1,4 @@
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ViewPatterns #-}
 
 module Main where
 
@@ -37,7 +36,7 @@ import System.IO.CodePage (withCP65001)
 
 import EVM (bytecode)
 import EVM.Dapp (dappInfo)
-import EVM.Solidity (SolcContract(..), SourceCache(..), BuildOutput(..), Contracts (Contracts))
+import EVM.Solidity (SolcContract(..), SourceCache(..), BuildOutput(..), Contracts(..))
 import EVM.Types (Addr, Contract(..), keccak', W256)
 
 import Echidna
@@ -53,7 +52,7 @@ import Echidna.UI
 import Echidna.Output.Source
 import Echidna.Output.Corpus
 import Echidna.RPC qualified as RPC
-import Echidna.Solidity (compileContracts)
+import Echidna.Solidity (compileContracts, selectBuildOutput)
 import Echidna.Utility (measureIO)
 import Etherscan qualified
 
@@ -87,7 +86,7 @@ main = withUtf8 $ withCP65001 $ do
           Nothing ->
             pure (Nothing, Nothing)
 
-  buildOutput <- compileContracts cfg.solConf cliFilePath
+  buildOutputs <- compileContracts cfg.solConf cliFilePath
   cacheContractsRef <- newIORef $ fromMaybe mempty loadedContractsCache
   cacheSlotsRef <- newIORef $ fromMaybe mempty loadedSlotsCache
   cacheMetaRef <- newIORef mempty
@@ -98,9 +97,8 @@ main = withUtf8 $ withCP65001 $ do
   testsRef <- newIORef mempty
 
   let
-    BuildOutput{ sources = sourceCache
-               , contracts = Contracts (Map.elems -> contracts)
-               } = buildOutput
+    contracts = Map.elems . Map.unions $ (\(BuildOutput (Contracts c) _) -> c) <$> buildOutputs
+    buildOutput = selectBuildOutput cliSelectedContract buildOutputs
     env = Env { cfg
                 -- TODO put in real path
               , dapp = dappInfo "/" buildOutput
@@ -175,7 +173,7 @@ main = withUtf8 $ withCP65001 $ do
               Nothing -> pure ()
 
         -- save source coverage reports
-        saveCoverages cfg.campaignConf.coverageFormats runId dir sourceCache contracts coverage
+        saveCoverages cfg.campaignConf.coverageFormats runId dir buildOutput.sources contracts coverage
 
   if isSuccessful tests then exitSuccess else exitWith (ExitFailure 1)
 
