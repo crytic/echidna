@@ -5,10 +5,7 @@ import Data.SemVer (Version, version, toString)
 import Data.Set (Set)
 import Data.Text (Text, unpack)
 
-import EVM.Solidity
 import EVM.Types (Addr)
-
-import Echidna.Types.Signature (ContractName)
 
 minSupportedSolcVersion :: Version
 minSupportedSolcVersion = version 0 4 25 [] []
@@ -79,9 +76,6 @@ data SolConf = SolConf
   , allowFFI        :: Bool             -- ^ Whether or not to allow FFI hevm cheatcode
   , methodFilter    :: Filter           -- ^ List of methods to avoid or include calling during a campaign
   }
-
--- | List of contract names from every source cache
-type SourceCaches = [([ContractName], SourceCache)]
 
 defaultContractAddr :: Addr
 defaultContractAddr = 0x00a329c0648769a73afac7f9381e08fb43dbea72
