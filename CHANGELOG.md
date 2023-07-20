@@ -1,3 +1,12 @@
+## 2.2.1
+
+* Shanghai fork support with hevm 0.51.3 (#1090)
+* Fixed coverage collection for delegatecalls (#1083)
+* Added events to JSON output (#1069)
+* Changed event sequence to be displayed on new lines (#1079)
+* Improved "No tests found in ABI" error message (#1077)
+* Refactored code (#1070, #1074)
+
 ## 2.2.0
 
 * Multicore fuzzing (#963, #1033, #1026, #1035)
