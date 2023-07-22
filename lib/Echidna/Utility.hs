@@ -4,6 +4,7 @@ import Control.Monad (unless)
 import Control.Monad.Catch (bracket)
 import Data.Time (diffUTCTime, getCurrentTime, zonedTimeToLocalTime, LocalTime, getZonedTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
+import Language.Haskell.TH
 import System.Directory (getDirectoryContents, getCurrentDirectory, setCurrentDirectory)
 import System.IO (hFlush, stdout)
 
@@ -38,3 +39,6 @@ withCurrentDirectory dir action =
   bracket getCurrentDirectory setCurrentDirectory $ \_ -> do
     setCurrentDirectory dir
     action
+
+includeFile :: FilePath -> Q Exp
+includeFile fp = LitE . StringL <$> runIO (readFile fp)
