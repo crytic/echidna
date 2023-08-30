@@ -18,7 +18,7 @@ import Data.Maybe (catMaybes, fromMaybe)
 import Data.SemVer (Version, fromText)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text (pack, isSuffixOf)
+import Data.Text (pack)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode(..))
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
@@ -124,7 +124,6 @@ instance FromJSON SlitherInfo where
 
 -- Slither processing
 runSlither :: FilePath -> SolConf -> IO SlitherInfo
-runSlither fp _ | ".vy" `isSuffixOf` pack fp = pure noInfo
 runSlither fp solConf = do
   path <- findExecutable "slither" >>= \case
     Nothing -> throwM $
