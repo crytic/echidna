@@ -10,6 +10,9 @@ import EVM.Types (Addr)
 minSupportedSolcVersion :: Version
 minSupportedSolcVersion = version 0 4 25 [] []
 
+detectVyperVersion :: Version -> Bool
+detectVyperVersion x = x > version 0 3 0 [] [] && x < version 0 4 0 [] []
+
 data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
 
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing.

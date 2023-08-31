@@ -55,7 +55,8 @@ prepareContract env contracts solFiles specifiedContract seed = do
   -- run processors
   slitherInfo <- runSlither (NE.head solFiles) solConf
   case find (< minSupportedSolcVersion) slitherInfo.solcVersions of
-    Just outdatedVersion -> throwM $ OutdatedSolcVersion outdatedVersion
+    Just version | detectVyperVersion version -> pure ()
+    Just version                              -> throwM $ OutdatedSolcVersion version
     Nothing -> pure ()
 
   let
