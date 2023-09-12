@@ -201,7 +201,7 @@ If you have Homebrew installed on your Mac or Linux machine, you can install Ech
 
 You can also compile and install the latest `master` branch code by running `brew install --HEAD echidna`
 
-You can get further information in the [`echidna` Homebrew Formula](https://formulae.brew.sh/formula/echidna) page. The formula itself is maintained as part of the [homebrew-core repository](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/echidna.rb)
+You can get further information in the [`echidna` Homebrew Formula](https://formulae.brew.sh/formula/echidna) page. The formula itself is maintained as part of the [homebrew-core repository](https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/e/echidna.rb)
 
 ### Docker container
 
