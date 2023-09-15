@@ -71,6 +71,7 @@ ppAbiValue = \case
   AbiInt  _ n         -> show n
   AbiAddress n        -> "0x" <> showHex n ""
   AbiBool b           -> if b then "true" else "false"
+  AbiBytes 32 b       -> "0x" <> BS.foldr showHex "" b
   AbiBytes _ b        -> show b
   AbiBytesDynamic b   -> show b
   AbiString s         -> show s
