@@ -72,7 +72,7 @@ ppAbiValue = \case
   AbiInt  _ n         -> show n
   AbiAddress n        -> "0x" <> showHex n ""
   AbiBool b           -> if b then "true" else "false"
-  AbiBytes 32 b       -> "0x" <> (BS.foldr (\x -> (<>) (printf "%02x" x)) "" b)
+  AbiBytes 32 b       -> "0x" <> BS.foldr ((<>) . printf "%02x") "" b
   AbiBytes _ b        -> show b
   AbiBytesDynamic b   -> show b
   AbiString s         -> show s
