@@ -25,7 +25,7 @@ jobs:
 
       - name: Set Docker metadata (Ubuntu & NVM variant)
         id: meta-ubuntu
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: |
             ghcr.io/${{ github.repository }}/echidna
@@ -37,7 +37,7 @@ jobs:
 
       - name: Set Docker metadata (Distroless variant)
         id: meta-distroless
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         if: ${{ env.WORKFLOW_BUILD_DISTROLESS == true }}
         with:
           images: ghcr.io/${{ github.repository }}/distroless
