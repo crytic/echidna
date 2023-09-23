@@ -34,6 +34,8 @@ data CampaignConf = CampaignConf
     -- ^ Frequency for the use of dictionary values in the random transactions
   , corpusDir       :: Maybe FilePath
     -- ^ Directory to load and save lists of transactions
+  , slitherInfoDir  :: Maybe FilePath
+    -- ^ Directory to load additional slither info files
   , mutConsts       :: MutationConsts Integer
     -- ^ Directory to load and save lists of transactions
   , coverageFormats :: [CoverageFileType]

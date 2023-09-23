@@ -10,7 +10,7 @@ import Data.ByteString.Base16 qualified as BS16 (decode)
 import Data.ByteString.Lazy.Char8 qualified as BSL
 import Data.ByteString.UTF8 qualified as BSU
 import Data.Either (fromRight)
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, isSuffixOf)
 import Data.List.NonEmpty qualified as NE
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -19,7 +19,7 @@ import Data.SemVer (Version, fromText)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (pack)
-import System.Directory (findExecutable)
+import System.Directory (findExecutable, listDirectory)
 import System.Exit (ExitCode(..))
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import Text.Read (readMaybe)
@@ -30,6 +30,7 @@ import EVM.Types (Addr(..), FunctionSelector)
 import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
 import Echidna.Types.Signature (ContractName, FunctionName)
 import Echidna.Types.Solidity (SolConf(..))
+import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Utility (measureIO)
 
 -- | Things that can go wrong trying to run a processor. Read the 'Show'
@@ -135,12 +136,39 @@ runSlither fp solConf = do
   (ec, out, err) <- measureIO solConf.quiet ("Running slither on " <> fp) $
     readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
   case ec of
-    ExitSuccess ->
-      case eitherDecode (BSL.pack out) of
-        Right si -> pure si
-        Left msg -> throwM $
-          ProcessorFailure "slither" ("decoding slither output failed:\n" ++ msg)
+    ExitSuccess -> decodeSlitherPrinterJSON (BSL.pack out)
     ExitFailure _ -> throwM $ ProcessorFailure "slither" err
+
+decodeSlitherPrinterJSON :: (MonadThrow f) => BSL.ByteString -> f SlitherInfo
+decodeSlitherPrinterJSON buffer =
+       case eitherDecode buffer of
+           Right si -> pure si
+           Left msg -> throwM $ ProcessorFailure "slither" ("decoding slither output failed:\n" ++ msg)
+
+loadSlitherInfos :: CampaignConf -> IO SlitherInfo
+loadSlitherInfos solConf = case solConf.slitherInfoDir of
+    Nothing -> return noInfo
+    Just d -> decodeSlitherPrinterJSONBatch d
+
+decodeSlitherPrinterJSONBatch :: FilePath -> IO SlitherInfo
+decodeSlitherPrinterJSONBatch d = do
+  fs <- filter (".json" `Data.List.isSuffixOf`) <$> listDirectory d
+  bbs <- mapM BSL.readFile fs
+  sis <- mapM decodeSlitherPrinterJSON bbs
+  return $ foldr appendSlitherInfo noInfo sis
+
+appendSlitherInfo :: SlitherInfo -> SlitherInfo -> SlitherInfo
+appendSlitherInfo si1 si2 =
+    SlitherInfo {
+        payableFunctions = Map.union si1.payableFunctions si2.payableFunctions,
+        constantFunctions = Map.union si1.constantFunctions si2.constantFunctions,
+        asserts = Map.union si1.asserts si2.asserts,
+        constantValues = Map.union si1.constantValues si2.constantValues,
+        generationGraph = Map.union si1.generationGraph si2.generationGraph,
+        solcVersions = si1.solcVersions ++ si2.solcVersions,
+        fallbackDefined = si1.fallbackDefined ++ si2.fallbackDefined,
+        receiveDefined = si1.receiveDefined ++ si2.receiveDefined
+    }
 
 noInfo :: SlitherInfo
 noInfo = SlitherInfo mempty mempty mempty mempty mempty [] [] []
