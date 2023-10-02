@@ -10,7 +10,7 @@ on:
 
 env:
   # Tag for cache invalidation
-  CACHE_VERSION: v6
+  CACHE_VERSION: v1
 
 jobs:
   build:
@@ -25,6 +25,8 @@ jobs:
             container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.4.7\", \"options\": \"--user 1001\"}"
           - os: macos-latest
             shell: bash
+          - os: macos-latest-xlarge
+            shell: bash
           - os: windows-latest
             shell: msys2 {0}
 
@@ -35,7 +37,7 @@ jobs:
     steps:
       - name: Get Packages (macOS)
         if: runner.os == 'macOS'
-        run: brew install automake
+        run: brew install autoconf automake libtool
 
       - name: Get Packages (Windows)
         uses: msys2/setup-msys2@v2
@@ -76,10 +78,12 @@ jobs:
           { echo "extra-include-dirs:";
             echo "- $HOME/.local/include";
             echo "$EXTRA_INCLUDE_WIN";
+            echo "$EXTRA_INCLUDE_MAC_AARCH64";
             echo;
             echo "extra-lib-dirs:";
             echo "- $HOME/.local/lib";
             echo "$EXTRA_LIB_WIN";
+            echo "$EXTRA_LIB_MAC_AARCH64";
             echo;
             echo "ghc-options:";
             echo -n '  "$locals": -Werror'
@@ -93,6 +97,8 @@ jobs:
           EXTRA_INCLUDE_WIN: ${{ (runner.os == 'Windows' && '- C:/msys64/clang64/include') || '' }}
           EXTRA_LIB_WIN: ${{ (runner.os == 'Windows' && '- C:/msys64/clang64/lib') || '' }}
           REPLACE_LINKER_WIN: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
+          EXTRA_INCLUDE_MAC_AARCH64: ${{ (runner.os == 'macOS' && runner.arch == 'ARM64' && '- /opt/homebrew/include') || '' }}
+          EXTRA_LIB_MAC_AARCH64: ${{ (runner.os == 'macOS' && runner.arch == 'ARM64' && '- /opt/homebrew/lib') || '' }}
           SKIP_MSYS: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
 
       - name: Configure Haskell paths (Windows)
@@ -114,7 +120,7 @@ jobs:
           path: |
             ~/.local
             C:\msys64\home\runneradmin\.local
-          key: ${{ runner.os }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
 
       - name: Cache Stack & Cabal
         uses: actions/cache@v3
@@ -126,7 +132,7 @@ jobs:
             !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar
             !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar.gz
             !${{ steps.stack.outputs.stack-root || '~/.stack' }}/config.yaml
-          key: ${{ runner.os }}-stack-${{ env.CACHE_VERSION }}-${{ hashFiles('package.yaml', 'stack.yaml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-stack-${{ env.CACHE_VERSION }}-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Build Libraries
         run: |
@@ -160,7 +166,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
-          name: echidna-${{ runner.os }}
+          name: echidna-${{ runner.os }}-${{ runner.arch }}
           path: echidna.tar.gz
 
       - name: Build and copy test suite
