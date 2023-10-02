@@ -63,7 +63,7 @@ jobs:
             openssl:p
 
       - name: Install Stack
-        uses: haskell-actions/setup@v2
+        uses: elopez/haskell-actions-setup@m1-support
         id: stack
         if: matrix.container == ''
         with:
