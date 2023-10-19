@@ -1,4 +1,4 @@
-FROM fpco/alpine-haskell-stack:9.2.7
+FROM ghcr.io/fpco/alpine-haskell-stack:9.4.5
 
 RUN apk upgrade --no-cache &&\
     apk add --no-cache \
