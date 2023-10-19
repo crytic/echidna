@@ -4,6 +4,7 @@ on:
   push:
     branches:
     - master
+    - test-windows
   pull_request:
     branches:
     - master
@@ -20,11 +21,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-20.04
-            shell: bash
-            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:9.4.5\", \"options\": \"--user 1001\"}"
-          - os: macos-latest
-            shell: bash
           - os: windows-latest
             shell: msys2 {0}
 
@@ -95,6 +91,11 @@ jobs:
           .github/scripts/install-libff.sh
         env:
           HOST_OS: ${{ runner.os }}
+
+      - name: Install GMP in Stack MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          stack exec -- pacman --noconfirm -S mingw-w64-x86_64-gmp
 
       - name: Build Dependencies
         run: |
