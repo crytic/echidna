@@ -177,11 +177,11 @@ ui vm world dict initialCorpus = do
             putStrLn $ time <> "[status] " <> line
             hFlush stdout
 
+      sseChan <- dupChan env.eventQueue
+
       let streamStatus = do
-            states <- liftIO $ workerStates workers
-            time <- timePrefix <$> getTimestamp
-            line <- statusLine env states
-            return $ ServerEvent { eventName = Nothing, eventId = Nothing, eventData = [ putStringUtf8 line ]}
+            (_, _, event) <- readChan sseChan
+            return $ ServerEvent { eventName = Nothing, eventId = Nothing, eventData = [ putStringUtf8 $ show event ]}
 
       server <- liftIO . forkIO $ do
        run 3413 $ eventSourceAppIO streamStatus
