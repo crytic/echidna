@@ -22,6 +22,7 @@ import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader
 import Control.Monad.State.Strict hiding (state)
 import Control.Monad.ST (RealWorld)
+import Data.Binary.Builder
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
@@ -32,6 +33,8 @@ import UnliftIO
   , writeIORef, atomicModifyIORef', timeout
   )
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
+import Network.Wai.Handler.Warp (run)
+import Network.Wai.EventSource (eventSourceAppIO, ServerEvent(..))
 
 import EVM.Types (Addr, Contract, VM, W256)
 
@@ -173,6 +176,15 @@ ui vm world dict initialCorpus = do
             line <- statusLine env states
             putStrLn $ time <> "[status] " <> line
             hFlush stdout
+
+      let streamStatus = do
+            states <- liftIO $ workerStates workers
+            time <- timePrefix <$> getTimestamp
+            line <- statusLine env states
+            return $ ServerEvent { eventName = Nothing, eventId = Nothing, eventData = [ putStringUtf8 line ]}
+
+      server <- liftIO . forkIO $ do
+       run 3413 $ eventSourceAppIO streamStatus
 
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 3_000_000 -- 3 seconds
