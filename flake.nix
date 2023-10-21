@@ -40,10 +40,10 @@
 
         hevm = pkgs.haskell.lib.dontCheck (
           pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
-            owner = "ethereum";
+            owner = "elopez";
             repo = "hevm";
-            rev = "release/0.51.3";
-            sha256 = "sha256-H6oURBGoQWSOuPhBB+UKg2UarVzXgv1tmfDBLnOtdhU=";
+            rev = "windows-9.4-echidna";
+            sha256 = "sha256-mHSvIe1B0t7kPArVpOcKV5AsszSfo3ymiQ+XoLsVCBg=";
         }) { secp256k1 = pkgs.secp256k1; });
 
         # FIXME: figure out solc situation, it conflicts with the one from
