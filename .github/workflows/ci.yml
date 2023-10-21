@@ -67,6 +67,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Configure MSYS2 in Stack (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo 'skip-msys: true' >> stack.yaml
+
       - name: Cache Local
         uses: actions/cache@v3
         with:
