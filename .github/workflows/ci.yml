@@ -37,7 +37,8 @@ jobs:
         uses: msys2/setup-msys2@v2
         if: runner.os == 'Windows'
         with:
-          msystem: UCRT64
+          msystem: MINGW64
+          release: false
           path-type: inherit
           update: true
           install: >-
@@ -71,7 +72,7 @@ jobs:
         with:
           path: |
             ~/.local
-            D:\a\_temp\msys64\home\runneradmin\.local
+            C:\msys64\home\runneradmin\.local
           key: ${{ runner.os }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
 
       - name: Cache Stack & Cabal
@@ -91,11 +92,6 @@ jobs:
           .github/scripts/install-libff.sh
         env:
           HOST_OS: ${{ runner.os }}
-
-      - name: Install GMP in Stack MSYS2 (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          stack exec -- pacman --noconfirm -S mingw-w64-x86_64-gmp
 
       - name: Build Dependencies
         run: |
