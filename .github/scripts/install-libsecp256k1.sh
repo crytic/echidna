@@ -15,6 +15,11 @@ curl -LO "https://github.com/bitcoin-core/secp256k1/archive/$gitRef.zip"
 unzip "$gitRef.zip"
 cd "secp256k1-$gitRef"
 
+if [ "$HOST_OS" = "Windows" ]; then
+  export CC=clang
+  export CXX=clang++
+fi
+
 ./autogen.sh
 # hevm needs reecovery module
 # enable pic so static library can link against dynamic correctly
