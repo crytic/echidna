@@ -91,7 +91,7 @@ executables:
         ld-options: -Wl,-keep_dwarf_unwind
         ghc-options: -fcompact-unwind
       - condition: os(windows) && impl(ghc >= 9.4)
-        build-depends: system-cxx-std-lib
+        dependencies: system-cxx-std-lib
       - condition: os(windows) && impl(ghc < 9.4)
         extra-libraries: stdc++
 
@@ -117,7 +117,7 @@ tests:
           ld-options: -Wl,-keep_dwarf_unwind
           ghc-options: -fcompact-unwind
         - condition: os(windows) && impl(ghc >= 9.4)
-          build-depends: system-cxx-std-lib
+          dependencies: system-cxx-std-lib
         - condition: os(windows) && impl(ghc < 9.4)
           extra-libraries: stdc++
 
