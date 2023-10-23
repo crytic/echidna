@@ -72,6 +72,9 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           echo 'skip-msys: true' >> stack.yaml
+          echo "HASKELL_PATHS=$HASKELL_PATHS" >> "$GITHUB_ENV"
+        env:
+          HASKELL_PATHS: ${{ steps.stack.outputs.ghc-path }}:${{ steps.stack.outputs.cabal-path }}:${{ steps.stack.outputs.stack-path }}
 
       - name: Cache Local
         uses: actions/cache@v3
@@ -101,9 +104,11 @@ jobs:
 
       - name: Build Dependencies
         run: |
+          export PATH="$HASKELL_PATHS:$PATH"
           stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib --only-dependencies
       - name: Build and install echidna
         run: |
+          export PATH="$HASKELL_PATHS:$PATH"
           stack install --flag echidna:static --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
 
       - name: Amend and compress binaries (macOS)
