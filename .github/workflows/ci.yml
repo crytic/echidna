@@ -72,7 +72,7 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           echo 'skip-msys: true' >> stack.yaml
-          HASKELL_PATHS="$(cygpath -u "GHC_PATH"):$(cygpath -u "CABAL_PATH"):$(cygpath -u "STACK_PATH")"
+          HASKELL_PATHS="$(cygpath -u "$GHC_PATH"):$(cygpath -u "$CABAL_PATH"):$(cygpath -u "$STACK_PATH")"
           echo "HASKELL_PATHS=$HASKELL_PATHS" >> "$GITHUB_ENV"
         env:
           GHC_PATH: ${{ steps.stack.outputs.ghc-path }}
