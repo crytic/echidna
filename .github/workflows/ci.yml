@@ -37,7 +37,7 @@ jobs:
         uses: msys2/setup-msys2@v2
         if: runner.os == 'Windows'
         with:
-          msystem: MINGW64
+          msystem: CLANG64
           release: false
           path-type: inherit
           update: true
