@@ -39,7 +39,7 @@ jobs:
         with:
           msystem: CLANG64
           release: false
-          path-type: inherit
+          path-type: minimal
           update: true
           install: >-
             base-devel
