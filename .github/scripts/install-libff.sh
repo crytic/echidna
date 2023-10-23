@@ -37,9 +37,6 @@ fi
 if [ "$HOST_OS" = "Windows" ]; then
   ARGS+=("-G" "Ninja")
   sed -i 's/find_library(GMP_LIBRARY gmp)/find_library(GMP_LIBRARY NAMES libgmp.a)/' CMakeLists.txt
-  export CC=/clang64/bin/clang.exe
-  export CXX=/clang64/bin/clang++.exe
-  export LD=/clang64/bin/lld.exe
 fi
 
 mkdir -p build
