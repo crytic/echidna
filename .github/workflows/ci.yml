@@ -68,10 +68,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure MSYS2 in Stack (Windows)
+      - name: Configure Haskell paths in MSYS2 (Windows)
         if: runner.os == 'Windows'
         run: |
-          echo 'skip-msys: true' >> stack.yaml
           HASKELL_PATHS="$(cygpath -u "$GHC_PATH"):$(cygpath -u "$CABAL_PATH"):$(cygpath -u "$STACK_PATH")"
           echo "HASKELL_PATHS=$HASKELL_PATHS" >> "$GITHUB_ENV"
         env:
