@@ -16,8 +16,9 @@ unzip "$gitRef.zip"
 cd "secp256k1-$gitRef"
 
 if [ "$HOST_OS" = "Windows" ]; then
-  export CC=clang
-  export CXX=clang++
+  export CC=/mingw64/bin/clang.exe
+  export CXX=/mingw64/bin/clang++.exe
+  export LD=/mingw64/bin/lld.exe
 fi
 
 ./autogen.sh

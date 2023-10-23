@@ -50,7 +50,8 @@ jobs:
           pacboy: >-
             cmake:p
             ninja:p
-            gcc:p
+            clang:p
+            lld:p
             autotools:p
             gmp:p
             openssl:p
