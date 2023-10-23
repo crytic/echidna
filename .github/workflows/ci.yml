@@ -72,9 +72,12 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           echo 'skip-msys: true' >> stack.yaml
+          HASKELL_PATHS="$(cygpath -u "GHC_PATH"):$(cygpath -u "CABAL_PATH"):$(cygpath -u "STACK_PATH")"
           echo "HASKELL_PATHS=$HASKELL_PATHS" >> "$GITHUB_ENV"
         env:
-          HASKELL_PATHS: ${{ steps.stack.outputs.ghc-path }}:${{ steps.stack.outputs.cabal-path }}:${{ steps.stack.outputs.stack-path }}
+          GHC_PATH: ${{ steps.stack.outputs.ghc-path }}
+          CABAL_PATH: ${{ steps.stack.outputs.cabal-path }}
+          STACK_PATH: ${{ steps.stack.outputs.stack-path }}
 
       - name: Cache Local
         uses: actions/cache@v3
