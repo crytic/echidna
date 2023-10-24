@@ -65,13 +65,38 @@ jobs:
           enable-stack: true
           stack-version: 'latest'
 
+      - name: Configure Stack environment
+        run: |
+          mkdir -p "$STACK_ROOT"
+          ( echo;
+            echo "extra-include-dirs:";
+            echo "- $HOME/.local/include";
+            echo "$EXTRA_INCLUDE_WIN";
+            echo;
+            echo "extra-lib-dirs:";
+            echo "- $HOME/.local/lib";
+            echo "$EXTRA_LIB_WIN";
+            echo;
+            echo "ghc-options:";
+            echo -n '  "$locals": -Werror'
+            "$REPLACE_LINKER_WIN" && echo ' -pgml=C:/msys64/clang64/bin/clang.exe -pgml-supports-no-pie' || echo;
+            echo;
+            "$SKIP_MSYS" && echo "skip-msys: true" || true
+          ) >> "$STACK_ROOT/config.yaml"
+          cat "$STACK_ROOT/config.yaml"
+        env:
+          STACK_ROOT: ${{ steps.stack.outputs.stack-root }}
+          EXTRA_INCLUDE_WIN: ${{ (runner.os == 'Windows' && '- C:/msys64/clang64/include') || '' }}
+          EXTRA_LIB_WIN: ${{ (runner.os == 'Windows' && '- C:/msys64/clang64/lib') || '' }}
+          REPLACE_LINKER_WIN: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
+          SKIP_MSYS: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
+
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure MSYS2 in Stack (Windows)
+      - name: Configure Haskell paths (Windows)
         if: runner.os == 'Windows'
         run: |
-          echo 'skip-msys: true' >> stack.yaml
           HASKELL_PATHS="$(cygpath -u "$GHC_PATH"):$(cygpath -u "$CABAL_PATH"):$(cygpath -u "$STACK_PATH")"
           echo "HASKELL_PATHS=$HASKELL_PATHS" >> "$GITHUB_ENV"
         env:
@@ -108,16 +133,12 @@ jobs:
       - name: Build Dependencies
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib --only-dependencies $EXTRA_ARGS_WIN
-        env:
-          EXTRA_ARGS_WIN: ${{ (runner.os == 'Windows' && ' --extra-include-dirs=C:/msys64/clang64/include --extra-lib-dirs=C:/msys64/clang64/lib --ghc-options=-pgml=C:/msys64/clang64/bin/clang.exe --ghc-options=-pgml-supports-no-pie') || '' }}
+          stack build --ghc-options="-Werror" --only-dependencies
 
       - name: Build and install echidna
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack install --flag echidna:static --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib $EXTRA_ARGS_WIN
-        env:
-          EXTRA_ARGS_WIN: ${{ (runner.os == 'Windows' && ' --extra-include-dirs=C:/msys64/clang64/include --extra-lib-dirs=C:/msys64/clang64/lib --ghc-options=-pgml=C:/msys64/clang64/bin/clang.exe --ghc-options=-pgml-supports-no-pie') || '' }}
+          stack install --flag echidna:static --ghc-options="-Werror"
 
       - name: Amend and compress binaries (macOS)
         if: runner.os == 'macOS'
@@ -141,10 +162,8 @@ jobs:
         if: runner.os != 'macOS'
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib $EXTRA_ARGS_WIN
+          stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror"
           cp "$(find "$PWD" -name 'echidna-testsuite*' -type f)" .
-        env:
-          EXTRA_ARGS_WIN: ${{ (runner.os == 'Windows' && ' --extra-include-dirs=C:/msys64/clang64/include --extra-lib-dirs=C:/msys64/clang64/lib --ghc-options=-pgml=C:/msys64/clang64/bin/clang.exe --ghc-options=-pgml-supports-no-pie') || '' }}  
 
       - name: Upload testsuite
         if: runner.os != 'macOS'
