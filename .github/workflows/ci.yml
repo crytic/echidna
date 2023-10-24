@@ -125,6 +125,7 @@ jobs:
             ${{ steps.stack.outputs.stack-root || '~/.stack' }}/*
             !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar
             !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar.gz
+            !${{ steps.stack.outputs.stack-root || '~/.stack' }}/config.yaml
           key: ${{ runner.os }}-stack-${{ env.CACHE_VERSION }}-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Build Libraries
