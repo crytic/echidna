@@ -67,6 +67,7 @@ jobs:
 
       - name: Configure Stack environment
         run: |
+          HOME="${{ (runner.os == 'Windows' && '$(cygpath -m ~)') || '$HOME' }}"
           mkdir -p "$STACK_ROOT"
           ( echo;
             echo "extra-include-dirs:";
