@@ -22,7 +22,7 @@ jobs:
         include:
           - os: ubuntu-20.04
             shell: bash
-            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:9.2.7\", \"options\": \"--user 1001\"}"
+            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.4.7\", \"options\": \"--user 1001\"}"
           - os: macos-latest
             shell: bash
           - os: windows-latest
@@ -41,8 +41,9 @@ jobs:
         uses: msys2/setup-msys2@v2
         if: runner.os == 'Windows'
         with:
-          msystem: UCRT64
-          path-type: inherit
+          msystem: CLANG64
+          release: false
+          path-type: minimal
           update: true
           install: >-
             base-devel
@@ -53,19 +54,56 @@ jobs:
           pacboy: >-
             cmake:p
             ninja:p
-            gcc:p
+            clang:p
+            lld:p
             autotools:p
             gmp:p
             openssl:p
 
       - name: Install Stack
-        uses: haskell/actions/setup@v2
+        uses: haskell-actions/setup@v2
         id: stack
         if: matrix.container == ''
         with:
-          ghc-version: '9.2'
+          ghc-version: '9.4'
           enable-stack: true
           stack-version: 'latest'
+
+      - name: Configure Stack environment
+        run: |
+          HOME="${{ (runner.os == 'Windows' && '$(cygpath -m ~)') || '$HOME' }}"
+          mkdir -p "$STACK_ROOT"
+          { echo "extra-include-dirs:";
+            echo "- $HOME/.local/include";
+            echo "$EXTRA_INCLUDE_WIN";
+            echo;
+            echo "extra-lib-dirs:";
+            echo "- $HOME/.local/lib";
+            echo "$EXTRA_LIB_WIN";
+            echo;
+            echo "ghc-options:";
+            echo -n '  "$locals": -Werror'
+            "$REPLACE_LINKER_WIN" && echo ' -pgml=C:/msys64/clang64/bin/clang.exe -pgml-supports-no-pie' || echo;
+            echo;
+            "$SKIP_MSYS" && echo "skip-msys: true" || true
+          } >> "$STACK_ROOT/config.yaml"
+          cat "$STACK_ROOT/config.yaml"
+        env:
+          STACK_ROOT: ${{ steps.stack.outputs.stack-root || '/etc/stack' }}
+          EXTRA_INCLUDE_WIN: ${{ (runner.os == 'Windows' && '- C:/msys64/clang64/include') || '' }}
+          EXTRA_LIB_WIN: ${{ (runner.os == 'Windows' && '- C:/msys64/clang64/lib') || '' }}
+          REPLACE_LINKER_WIN: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
+          SKIP_MSYS: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
+
+      - name: Configure Haskell paths (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          HASKELL_PATHS="$(cygpath -u "$GHC_PATH"):$(cygpath -u "$CABAL_PATH"):$(cygpath -u "$STACK_PATH")"
+          echo "HASKELL_PATHS=$HASKELL_PATHS" >> "$GITHUB_ENV"
+        env:
+          GHC_PATH: ${{ steps.stack.outputs.ghc-path }}
+          CABAL_PATH: ${{ steps.stack.outputs.cabal-path }}
+          STACK_PATH: ${{ steps.stack.outputs.stack-path }}
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -75,7 +113,7 @@ jobs:
         with:
           path: |
             ~/.local
-            D:\a\_temp\msys64\home\runneradmin\.local
+            C:\msys64\home\runneradmin\.local
           key: ${{ runner.os }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
 
       - name: Cache Stack & Cabal
@@ -87,6 +125,7 @@ jobs:
             ${{ steps.stack.outputs.stack-root || '~/.stack' }}/*
             !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar
             !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar.gz
+            !${{ steps.stack.outputs.stack-root || '~/.stack' }}/config.yaml
           key: ${{ runner.os }}-stack-${{ env.CACHE_VERSION }}-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Build Libraries
@@ -98,11 +137,13 @@ jobs:
 
       - name: Build Dependencies
         run: |
-          stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib --only-dependencies
+          export PATH="$HASKELL_PATHS:$PATH"
+          stack build --ghc-options="-Werror" --only-dependencies
 
       - name: Build and install echidna
         run: |
-          stack install --flag echidna:static --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+          export PATH="$HASKELL_PATHS:$PATH"
+          stack install --flag echidna:static --ghc-options="-Werror"
 
       - name: Amend and compress binaries (macOS)
         if: runner.os == 'macOS'
@@ -125,12 +166,9 @@ jobs:
       - name: Build and copy test suite
         if: runner.os != 'macOS'
         run: |
-          stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+          export PATH="$HASKELL_PATHS:$PATH"
+          stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror"
           cp "$(find "$PWD" -name 'echidna-testsuite*' -type f)" .
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            # work around https://gitlab.haskell.org/ghc/ghc/-/issues/21109
-            strip echidna-testsuite*
-          fi
 
       - name: Upload testsuite
         if: runner.os != 'macOS'

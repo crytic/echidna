@@ -1,11 +1,11 @@
-resolver: lts-20.17
+resolver: lts-21.17
 
 packages:
 - '.'
 
 extra-deps:
-- git: https://github.com/ethereum/hevm.git
-  commit: 211fff90a32824c39bed48e61d4ef722b8d1bad1
+- git: https://github.com/elopez/hevm.git
+  commit: 6ffb685574b556ef148c884b412a92c6909c2b4f
 
 - restless-git-0.7@sha256:346a5775a586f07ecb291036a8d3016c3484ccdc188b574bcdec0a82c12db293,968
 - s-cargot-0.1.4.0@sha256:61ea1833fbb4c80d93577144870e449d2007d311c34d74252850bb48aa8c31fb,3525
