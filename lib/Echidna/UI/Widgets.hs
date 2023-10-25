@@ -4,7 +4,7 @@ module Echidna.UI.Widgets where
 
 #ifdef INTERACTIVE_UI
 
-import Brick
+import Brick hiding (style)
 import Brick.AttrMap qualified as A
 import Brick.Widgets.Border
 import Brick.Widgets.Center
@@ -43,7 +43,7 @@ data UIState = UIState
   , now :: LocalTime
   , fetchedContracts :: Map Addr (Maybe Contract)
   , fetchedSlots :: Map Addr (Map W256 (Maybe W256))
-  , fetchedDialog :: B.Dialog ()
+  , fetchedDialog :: B.Dialog () Name
   , displayFetchedDialog :: Bool
 
   , workerEvents :: Seq (Int, LocalTime, CampaignEvent)
@@ -222,7 +222,7 @@ perfWidget uiState =
 ppSeed :: [WorkerState] -> String
 ppSeed campaigns = show (head campaigns).genDict.defSeed
 
-fetchedDialogWidget :: UIState -> Widget n
+fetchedDialogWidget :: UIState -> Widget Name
 fetchedDialogWidget uiState =
   B.renderDialog uiState.fetchedDialog $ padLeftRight 1 $
     foldl (<=>) emptyWidget (Map.mapWithKey renderContract uiState.fetchedContracts)
