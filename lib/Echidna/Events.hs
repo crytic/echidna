@@ -7,7 +7,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy (fromStrict)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromJust, catMaybes, maybeToList)
+import Data.Maybe (fromJust, catMaybes, mapMaybe, maybeToList)
 import Data.Text (pack, Text)
 import Data.Tree (flatten)
 import Data.Tree.Zipper (fromForest, TreePos, Empty)
@@ -33,7 +33,7 @@ extractEvents :: Bool -> DappInfo -> VM -> Events
 extractEvents decodeErrors dappInfo vm =
   let forest = traceForest vm
   in maybeToList (decodeRevert decodeErrors vm)
-     ++ catMaybes (concatMap flatten (fmap (fmap showTrace) forest))
+     ++ concatMap ((catMaybes . flatten) . fmap showTrace) forest
   where
   showTrace trace =
     let ?context = DappContext { info = dappInfo, env = vm.env.contracts } in
