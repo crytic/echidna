@@ -163,10 +163,36 @@ jobs:
         if: runner.os == 'Windows'
         run: GZIP=-9 tar -czf echidna.tar.gz -C $APPDATA/local/bin/ echidna.exe
 
+      - name: Generate artifact name
+        id: artifact-name
+        run: |
+          case "$OS-$ARCH" in
+            macOS-ARM64)
+              NAME="aarch64-macos"
+            ;;
+            macOS-X64)
+              NAME="x86_64-macos"
+            ;;
+            Windows-X64)
+              NAME="x86_64-windows"
+            ;;
+            Linux-X64)
+              NAME="x86_64-linux"
+            ;;
+            *)
+              echo "Unknown os-arch combo: ${OS}-${ARCH}"
+              exit 1
+            ;;
+          esac
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+        env:
+          OS: ${{ runner.os }}
+          ARCH: ${{ runner.arch }}
+
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
-          name: echidna-${{ runner.os }}-${{ runner.arch }}
+          name: echidna-${{ steps.artifact-name.outputs.name }}
           path: echidna.tar.gz
 
       - name: Build and copy test suite
