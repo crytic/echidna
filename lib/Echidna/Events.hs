@@ -7,7 +7,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy (fromStrict)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromJust, catMaybes, mapMaybe, maybeToList)
+import Data.Maybe (fromJust, catMaybes, maybeToList)
 import Data.Text (pack, Text)
 import Data.Tree (flatten)
 import Data.Tree.Zipper (fromForest, TreePos, Empty)
