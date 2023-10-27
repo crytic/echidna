@@ -54,8 +54,8 @@ instance MonadThrow m => MonadThrow (RandT g m) where
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.
 isSuccessful :: [EchidnaTest] -> Bool
-isSuccessful tests =
-  all (\case { Passed -> True; Open -> True; _ -> False; }) ((.state) <$> tests)
+isSuccessful =
+  all (\case { Passed -> True; Open -> True; _ -> False; } . (.state))
 
 -- | Run all the transaction sequences from the corpus and accumulate campaign
 -- state. Can be used to minimize corpus as the final campaign state will
