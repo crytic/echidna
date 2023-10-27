@@ -12,7 +12,7 @@ import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NEE
 import Data.Map qualified as Map
-import Data.Maybe (isJust, isNothing, catMaybes, listToMaybe)
+import Data.Maybe (isJust, isNothing, catMaybes, listToMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text, isPrefixOf, isSuffixOf, append)
@@ -211,11 +211,12 @@ loadSpecified env name cs = do
     -- Construct ABI mapping for World
     abiMapping =
       if solConf.allContracts then
-        Map.fromList $ catMaybes $ cs <&> \contract ->
-          let filtered = filterMethods contract.contractName
-                                       solConf.methodFilter
-                                       (abiOf solConf.prefix contract)
-          in (getBytecodeMetadata contract.runtimeCode,) <$> NE.nonEmpty filtered
+        Map.fromList $ mapMaybe (\contract ->
+            let filtered = filterMethods contract.contractName
+                                         solConf.methodFilter
+                                         (abiOf solConf.prefix contract)
+            in (getBytecodeMetadata contract.runtimeCode,) <$> NE.nonEmpty filtered)
+          cs
       else
         case NE.nonEmpty fabiOfc of
           Just ne -> Map.singleton (getBytecodeMetadata mainContract.runtimeCode) ne

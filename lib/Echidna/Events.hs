@@ -33,7 +33,7 @@ extractEvents :: Bool -> DappInfo -> VM -> Events
 extractEvents decodeErrors dappInfo vm =
   let forest = traceForest vm
   in maybeToList (decodeRevert decodeErrors vm)
-     ++ catMaybes (concatMap flatten (fmap (fmap showTrace) forest))
+     ++ concatMap ((catMaybes . flatten) . fmap showTrace) forest
   where
   showTrace trace =
     let ?context = DappContext { info = dappInfo, env = vm.env.contracts } in
