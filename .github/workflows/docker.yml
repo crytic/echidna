@@ -4,18 +4,40 @@ on:
   push:
     branches:
       - master
+      - docker-multi-platform
     tags:
-      - '*'
+      - "*"
 
 env:
   WORKFLOW_BUILD_DISTROLESS: false
 
 jobs:
   docker:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platforms: linux/amd64
+          - os: macos-latest-xlarge
+            platforms: linux/arm64
+    outputs:
+      meta-ubuntu: ${{ steps.meta-ubuntu.outputs.json }}
+      meta-distroless: ${{ steps.meta-distroless.outputs.json }}
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Docker
+        if: runner.os == 'macOS'
+        uses: crazy-max/ghaction-setup-docker@v2
+        env:
+          COLIMA_START_ARGS: --cpu 6 --memory 12 --disk 12 --network-driver slirp
+          # macOS M1 large runners don't support nested virtualization (accel=hvf)
+          # network-driver needs to be changed from the default to allow this override to work
+          # otherwise colima creates some wrapper scripts and overrides this env variable
+          # which doesn't get to lima
+          QEMU_SYSTEM_AARCH64: qemu-system-aarch64 -machine virt,accel=tcg,highmem=on -cpu cortex-a53
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -62,27 +84,94 @@ jobs:
 
       - name: Docker Build and Push (Ubuntu & NVM variant)
         uses: docker/build-push-action@v5
+        id: ubuntu
         with:
-          platforms: linux/amd64
+          platforms: ${{ matrix.platforms }}
           target: final-ubuntu
           file: docker/Dockerfile
           pull: true
           push: true
           tags: ${{ steps.meta-ubuntu.outputs.tags }}
           labels: ${{ steps.meta-ubuntu.outputs.labels }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }}/echidna,push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Docker Build and Push (Distroless variant)
         uses: docker/build-push-action@v5
         if: ${{ env.WORKFLOW_BUILD_DISTROLESS == true }}
+        id: distroless
         with:
-          platforms: linux/amd64
+          platforms: ${{ matrix.platforms }}
           target: final-distroless
           file: docker/Dockerfile
           pull: true
           push: true
           tags: ${{ steps.meta-distroless.outputs.tags }}
           labels: ${{ steps.meta-distroless.outputs.labels }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }}/distroless,push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Export digests
+        run: |
+          mkdir -p /tmp/digests/ubuntu /tmp/digests/distroless
+          digest="${{ steps.ubuntu.outputs.digest }}"
+          touch "/tmp/digests/ubuntu/${digest#sha256:}"
+          if [ ! "${{ env.WORKFLOW_BUILD_DISTROLESS }}" = "" ]; then
+            digest="${{ steps.distroless.outputs.digest }}"
+            touch "/tmp/digests/distroless/${digest#sha256:}"
+          fi
+
+      - name: Upload digests
+        uses: actions/upload-artifact@v3
+        with:
+          name: digests
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-latest
+    needs:
+      - docker
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v3
+        with:
+          name: digests
+          path: /tmp/digests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: GitHub Container Registry Login
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker Hub Login
+        uses: docker/login-action@v3
+        if: github.repository == 'crytic/echidna'
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
+
+      - name: Create manifest list and push (Ubuntu & NVM variant)
+        working-directory: /tmp/digests/ubuntu
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'ghcr.io/${{ github.repository }}/echidna@sha256:%s ' *)
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ needs.docker.outputs.meta-ubuntu }}
+
+      - name: Create manifest list and push (Distroless variant)
+        if: ${{ env.WORKFLOW_BUILD_DISTROLESS == true }}
+        working-directory: /tmp/digests/distroless
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'ghcr.io/${{ github.repository }}/distroless@sha256:%s ' *)
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ needs.docker.outputs.meta-distroless }}
