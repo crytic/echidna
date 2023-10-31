@@ -95,8 +95,13 @@
           codesign_allocate = "${pkgs.darwin.binutils.bintools}/bin/codesign_allocate";
           codesign = "${pkgs.darwin.sigtool}/bin/codesign";
         in if pkgs.stdenv.isLinux
-        then pkgs.haskell.lib.dontCheck echidna-static
-        else pkgs.runCommand "echidna-stripNixRefs" {} ''
+        then pkgs.runCommand "echidna-stripNixRefs" {} ''
+          mkdir -p $out/bin
+          cp ${pkgs.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
+          # fix TERMINFO path in ncurses
+          ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/usr/share/terminfo" . "\x0" x (length($1) - 19)#e' $out/bin/echidna
+          chmod 555 $out/bin/echidna
+        '' else pkgs.runCommand "echidna-stripNixRefs" {} ''
           mkdir -p $out/bin
           cp ${pkgs.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
           # get the list of dynamic libs from otool and tidy the output
