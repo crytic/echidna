@@ -20,10 +20,16 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     strategy:
       matrix:
+        target: ["echidna-redistributable"]
         include:
           - os: ubuntu-latest
             name: Linux (x86_64)
             tuple: x86_64-linux
+            timeout: 180
+          - os: ubuntu-latest
+            name: Linux (aarch64)
+            tuple: aarch64-linux
+            target: echidna-redistributable-aarch64-linux
             timeout: 180
           - os: macos-latest
             name: macOS (x86_64)
@@ -64,12 +70,13 @@ jobs:
           GIT_SHA: ${{ github.sha }}
 
       - name: Build dynamic echidna
+        if: matrix.target == 'echidna-redistributable'
         run: |
           nix build .#echidna
 
       - name: Build redistributable echidna
         run: |
-          nix build .#echidna-redistributable --out-link redistributable
+          nix build .#${{ matrix.target }} --out-link redistributable
           tar -czf "echidna-${{ steps.version.outputs.version }}-${{ matrix.tuple }}.tar.gz" -C ./redistributable/bin/ echidna
 
       - name: Upload artifact
