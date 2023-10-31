@@ -41,9 +41,9 @@
           '';
         };
 
-        secp256k1-static = stripDylib (pkgs.secp256k1.overrideAttrs (attrs: {
+        secp256k1-static = pkgs.secp256k1.overrideAttrs (attrs: {
           configureFlags = attrs.configureFlags ++ [ "--enable-static" ];
-        }));
+        });
 
         ncurses-static = pkgs.ncurses.override { enableStatic = true; };
 
