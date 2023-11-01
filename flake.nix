@@ -12,7 +12,6 @@
     self,
     nixpkgs,
     flake-utils,
-    nix-bundle-exe,
     ...
   }:
     flake-utils.lib.eachDefaultSystem (
