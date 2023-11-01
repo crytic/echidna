@@ -5,16 +5,15 @@
 module Echidna.Exec where
 
 import Optics.Core
-import Optics.State
 import Optics.State.Operators
 
 import Control.Monad (when, forM_)
 import Control.Monad.Catch (MonadThrow(..))
-import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO))
+import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO), gets, modify')
 import Control.Monad.Reader (MonadReader, asks)
 import Data.Bits
 import Data.ByteString qualified as BS
-import Data.IORef (readIORef, atomicWriteIORef, atomicModifyIORef')
+import Data.IORef (readIORef, atomicWriteIORef, atomicModifyIORef', newIORef, writeIORef, modifyIORef')
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
@@ -73,26 +72,22 @@ vmExcept :: MonadThrow m => EvmError -> m ()
 vmExcept e = throwM $
   case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e}
 
--- | Given an error handler `onErr`, an execution strategy `executeTx`, and a transaction `tx`,
--- execute that transaction using the given execution strategy, calling `onErr` on errors.
 execTxWith
-  :: (MonadIO m, MonadState s m, MonadReader Env m)
-  => Lens' s VM
-  -> (EvmError -> m ())
-  -> m VMResult
+  :: (MonadIO m, MonadState VM m, MonadReader Env m, MonadThrow m)
+  => m VMResult
   -> Tx
   -> m (VMResult, Gas)
-execTxWith l onErr executeTx tx = do
-  vm <- use l
+execTxWith executeTx tx = do
+  vm <- get
   if hasSelfdestructed vm tx.dst then
     pure (VMFailure (Revert (ConcreteBuf "")), 0)
   else do
-    l % #traces .= emptyEvents
-    vmBeforeTx <- use l
-    l %= execState (setupTx tx)
-    gasLeftBeforeTx <- use $ l % #state % #gas
+    #traces .= emptyEvents
+    vmBeforeTx <- get
+    setupTx tx
+    gasLeftBeforeTx <- gets (.state.gas)
     vmResult <- runFully
-    gasLeftAfterTx <- use $ l % #state % #gas
+    gasLeftAfterTx <- gets (.state.gas)
     handleErrorsAndConstruction vmResult vmBeforeTx
     pure (vmResult, gasLeftBeforeTx - gasLeftAfterTx)
   where
@@ -111,9 +106,9 @@ execTxWith l onErr executeTx tx = do
         cacheRef <- asks (.fetchContractCache)
         cache <- liftIO $ readIORef cacheRef
         case Map.lookup addr cache of
-          Just (Just contract) -> l %= execState (continuation contract)
+          Just (Just contract) -> modify' $ execState (continuation contract)
           Just Nothing ->
-            l %= execState (continuation emptyAccount)
+            modify' $ execState (continuation emptyAccount)
           Nothing -> do
             logMsg $ "INFO: Performing RPC: " <> show q
             case config.rpcUrl of
@@ -127,7 +122,7 @@ execTxWith l onErr executeTx tx = do
                     let bc = forceBuf (contract ^. bytecode)
                     liftIO $ atomicWriteIORef metaCacheRef $ Map.insert bc (getBytecodeMetadata bc) metaCache
 
-                    l %= execState (continuation contract)
+                    modify' $ execState (continuation contract)
                     liftIO $ atomicWriteIORef cacheRef $ Map.insert addr (Just contract) cache
                   _ -> do
                     -- TODO: better error reporting in HEVM, when intermmittent
@@ -136,13 +131,13 @@ execTxWith l onErr executeTx tx = do
                     logMsg $ "ERROR: Failed to fetch contract: " <> show q
                     -- TODO: How should we fail here? It could be a network error,
                     -- RPC server returning junk etc.
-                    l %= execState (continuation emptyAccount)
+                    modify' $ execState (continuation emptyAccount)
               Nothing -> do
                 liftIO $ atomicWriteIORef cacheRef $ Map.insert addr Nothing cache
                 logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
                 -- TODO: How should we fail here? RPC is not configured but VM
                 -- wants to fetch
-                l %= execState (continuation emptyAccount)
+                modify' $ execState (continuation emptyAccount)
         runFully -- resume execution
 
       -- A previously unknown slot is required
@@ -150,8 +145,8 @@ execTxWith l onErr executeTx tx = do
         cacheRef <- asks (.fetchSlotCache)
         cache <- liftIO $ readIORef cacheRef
         case Map.lookup addr cache >>= Map.lookup slot of
-          Just (Just value) -> l %= execState (continuation value)
-          Just Nothing -> l %= execState (continuation 0)
+          Just (Just value) -> modify' $ execState (continuation value)
+          Just Nothing -> modify' $ execState (continuation 0)
           Nothing -> do
             logMsg $ "INFO: Performing RPC: " <> show q
             case config.rpcUrl of
@@ -159,7 +154,7 @@ execTxWith l onErr executeTx tx = do
                 ret <- liftIO $ safeFetchSlotFrom rpcBlock rpcUrl addr slot
                 case ret of
                   Just value -> do
-                    l %= execState (continuation value)
+                    modify' $ execState (continuation value)
                     liftIO $ atomicWriteIORef cacheRef $
                       Map.insertWith Map.union addr (Map.singleton slot (Just value)) cache
                   Nothing -> do
@@ -168,11 +163,11 @@ execTxWith l onErr executeTx tx = do
                     logMsg $ "ERROR: Failed to fetch slot: " <> show q
                     liftIO $ atomicWriteIORef cacheRef $
                       Map.insertWith Map.union addr (Map.singleton slot Nothing) cache
-                    l %= execState (continuation 0)
+                    modify' $ execState (continuation 0)
               Nothing -> do
                 logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
                 -- Use the zero slot
-                l %= execState (continuation 0)
+                modify' $ execState (continuation 0)
         runFully -- resume execution
 
       -- Execute a FFI call
@@ -180,14 +175,14 @@ execTxWith l onErr executeTx tx = do
         (_, stdout, _) <- liftIO $ readProcessWithExitCode cmd args ""
         let encodedResponse = encodeAbiValue $
               AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.pack $ stdout])
-        l %= execState (continuation encodedResponse)
+        modify' $ execState (continuation encodedResponse)
         runFully
 
       Just (PleaseAskSMT (Lit c) _ continue) -> do
         -- NOTE: this is not a real SMT query, we know it is concrete and can
         -- resume right away. It is done this way to support iterations counting
         -- in hevm.
-        l %= execState (continue (Case (c > 0)))
+        modify' $ execState (continue (Case (c > 0)))
         runFully
 
       Just q@(PleaseAskSMT {}) ->
@@ -200,24 +195,24 @@ execTxWith l onErr executeTx tx = do
   -- (`vmResult`) of executing transaction `tx`.
   handleErrorsAndConstruction vmResult vmBeforeTx = case (vmResult, tx.call) of
     (Reversion, _) -> do
-      tracesBeforeVMReset <- use $ l % #traces
-      codeContractBeforeVMReset <- use $ l % #state % #codeContract
-      calldataBeforeVMReset <- use $ l % #state % #calldata
-      callvalueBeforeVMReset <- use $ l % #state % #callvalue
+      tracesBeforeVMReset <- gets (.traces)
+      codeContractBeforeVMReset <- gets (.state.codeContract)
+      calldataBeforeVMReset <- gets (.state.calldata)
+      callvalueBeforeVMReset <- gets (.state.callvalue)
       -- If a transaction reverts reset VM to state before the transaction.
-      l .= vmBeforeTx
+      put vmBeforeTx
       -- Undo reset of some of the VM state.
       -- Otherwise we'd loose all information about the reverted transaction like
       -- contract address, calldata, result and traces.
-      l % #result ?= vmResult
-      l % #state % #calldata .= calldataBeforeVMReset
-      l % #state % #callvalue .= callvalueBeforeVMReset
-      l % #traces .= tracesBeforeVMReset
-      l % #state % #codeContract .= codeContractBeforeVMReset
-    (VMFailure x, _) -> onErr x
+      #result ?= vmResult
+      #state % #calldata .= calldataBeforeVMReset
+      #state % #callvalue .= callvalueBeforeVMReset
+      #traces .= tracesBeforeVMReset
+      #state % #codeContract .= codeContractBeforeVMReset
+    (VMFailure x, _) -> vmExcept x
     (VMSuccess (ConcreteBuf bytecode'), SolCreate _) ->
       -- Handle contract creation.
-      l %= execState (do
+      modify' $ execState (do
         #env % #contracts % at tx.dst % _Just % #contractcode .= InitCode mempty mempty
         replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bytecode'))
         loadContract tx.dst)
@@ -238,7 +233,7 @@ execTx
   => VM
   -> Tx
   -> m ((VMResult, Gas), VM)
-execTx vm tx = runStateT (execTxWith equality' vmExcept (fromEVM exec) tx) vm
+execTx vm tx = runStateT (execTxWith (fromEVM exec) tx) vm
 
 -- | A type alias for the context we carry while executing instructions
 type CoverageContext = (Bool, Maybe (BS.ByteString, Int))
@@ -250,12 +245,14 @@ execTxWithCov
   -> m ((VMResult, Gas), Bool)
 execTxWithCov tx = do
   covRef <- asks (.coverageRef)
-  vm <- get
   metaCacheRef <- asks (.metadataCache)
   cache <- liftIO $ readIORef metaCacheRef
-  (r, (vm', (grew, lastLoc))) <-
-    runStateT (execTxWith _1 vmExcept (execCov covRef cache) tx) (vm, (False, Nothing))
-  put vm'
+
+  covContextRef <- liftIO $ newIORef (False, Nothing)
+
+  r <- execTxWith (execCov covRef covContextRef cache) tx
+
+  (grew, lastLoc) <- liftIO $ readIORef covContextRef
 
   -- Update the last valid location with the transaction result
   grew' <- liftIO $ case lastLoc of
@@ -275,25 +272,25 @@ execTxWithCov tx = do
   pure (r, grew || grew')
   where
     -- the same as EVM.exec but collects coverage, will stop on a query
-    execCov covRef cache = do
-      (vm, cm) <- get
-      (r, vm', cm') <- liftIO $ loop vm cm
-      put (vm', cm')
+    execCov covRef covContextRef cache = do
+      vm <- get
+      (r, vm') <- liftIO $ loop vm
+      put vm'
       pure r
       where
       -- | Repeatedly exec a step and add coverage until we have an end result
-      loop :: VM -> CoverageContext -> IO (VMResult, VM, CoverageContext)
-      loop !vm !cc = case vm.result of
-        Nothing -> addCoverage vm cc >>= loop (stepVM vm)
-        Just r -> pure (r, vm, cc)
+      loop :: VM -> IO (VMResult, VM)
+      loop !vm = case vm.result of
+        Nothing -> addCoverage vm >> loop (stepVM vm)
+        Just r -> pure (r, vm)
 
       -- | Execute one instruction on the EVM
       stepVM :: VM -> VM
       stepVM = execState exec1
 
       -- | Add current location to the CoverageMap
-      addCoverage :: VM -> CoverageContext -> IO CoverageContext
-      addCoverage !vm (new, lastLoc) = do
+      addCoverage :: VM -> IO ()
+      addCoverage !vm = do
         let (pc, opIx, depth) = currentCovLoc vm
             meta = currentMeta vm
         cov <- readIORef covRef
@@ -314,25 +311,25 @@ execTxWithCov tx = do
 
               VMut.write vec' pc (opIx, fromIntegral depth, 0 `setBit` fromEnum Stop)
 
-              pure (True, Just (meta, pc))
+              writeIORef covContextRef (True, Just (meta, pc))
             else do
               -- TODO: should we collect the coverage here? Even if there is no
               -- bytecode for external contract, we could have a "virtual" location
               -- that PC landed at and record that.
-              pure (new, lastLoc)
+              pure ()
           Just vec ->
             if pc < VMut.length vec then
               VMut.read vec pc >>= \case
                 (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
                   VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
-                  pure (True, Just (meta, pc))
+                  writeIORef covContextRef (True, Just (meta, pc))
                 _ ->
-                  pure (new, Just (meta, pc))
+                  modifyIORef' covContextRef $ \(new, _) -> (new, Just (meta, pc))
             else
               -- TODO: no-op: pc is out-of-bounds. This shouldn't happen but we
               -- observed this in some real-world scenarios. This is likely a bug
               -- in another place, investigate.
-              pure (new, lastLoc)
+              pure ()
 
       -- | Get the VM's current execution location
       currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames)
