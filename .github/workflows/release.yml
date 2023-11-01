@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - master
+      - nix-refactor-cross-builds
     tags:
       - "v*"
   pull_request:
