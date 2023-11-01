@@ -34,22 +34,6 @@
         "type": "github"
       }
     },
-    "nix-bundle-exe": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1682949567,
-        "narHash": "sha256-K9PT8LVvTLOm3gX9ZFxag0X85DFgB2vvJB+S12disWw=",
-        "owner": "3noch",
-        "repo": "nix-bundle-exe",
-        "rev": "3522ae68aa4188f4366ed96b41a5881d6a88af97",
-        "type": "github"
-      },
-      "original": {
-        "owner": "3noch",
-        "repo": "nix-bundle-exe",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1698336494,
@@ -70,7 +54,6 @@
       "inputs": {
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
-        "nix-bundle-exe": "nix-bundle-exe",
         "nixpkgs": "nixpkgs"
       }
     },

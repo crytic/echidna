@@ -22,6 +22,7 @@ jobs:
     strategy:
       matrix:
         target: ["echidna-redistributable"]
+        os: ["ubuntu-latest", "macos-latest", "macos-latest-xlarge"]
         include:
           - os: ubuntu-latest
             name: Linux (x86_64)
