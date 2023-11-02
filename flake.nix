@@ -49,10 +49,10 @@
 
         hevm = pkgs.haskell.lib.dontCheck (
           pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
-            owner = "elopez";
+            owner = "ethereum";
             repo = "hevm";
-            rev = "release/0.51.3-plus-ghc-9.4-support";
-            sha256 = "sha256-gJMFYfsPqf5XZyyPDGJLqr9q9RpXkemGeUQUvFT6V0E";
+            rev = "release/0.52.0";
+            sha256 = "sha256-LCv3m6AbLr9mV7pHj7r08dzsg1UVpQDn0zyJXbzRS2Q=";
         }) { secp256k1 = pkgs.secp256k1; });
 
         # FIXME: figure out solc situation, it conflicts with the one from
@@ -141,6 +141,7 @@
             shellHook = "hpack";
             buildInputs = [
               solc
+              slither-analyzer
               haskellPackages.hlint
               haskellPackages.cabal-install
               haskellPackages.haskell-language-server

@@ -20,7 +20,7 @@ import EVM.ABI (encodeAbiValue, AbiValue(..), AbiType)
 import EVM.Types
 
 import Echidna.Orphans.JSON ()
-import Echidna.Types.Buffer (forceBuf)
+import Echidna.Symbolic (forceBuf)
 import Echidna.Types.Signature (SolCall)
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
@@ -176,6 +176,7 @@ data TxResult
   | ErrorMaxIterationsReached
   | ErrorPrecompileFailure
   | ErrorUnexpectedSymbolic
+  | ErrorJumpIntoSymbolicCode
   | ErrorDeadPath
   | ErrorChoose -- not entirely sure what this is
   | ErrorWhiffNotUnique
@@ -202,7 +203,7 @@ data TxConf = TxConf
   }
 
 -- | Transform a VMResult into a more hash friendly sum type
-getResult :: VMResult -> TxResult
+getResult :: VMResult s -> TxResult
 getResult = \case
   VMSuccess b | forceBuf b == encodeAbiValue (AbiBool True)  -> ReturnTrue
               | forceBuf b == encodeAbiValue (AbiBool False) -> ReturnFalse
@@ -213,6 +214,7 @@ getResult = \case
 
   Unfinished (UnexpectedSymbolicArg{})    -> ErrorUnexpectedSymbolic
   Unfinished (MaxIterationsReached _ _)   -> ErrorMaxIterationsReached
+  Unfinished (JumpIntoSymbolicCode _ _)   -> ErrorJumpIntoSymbolicCode
 
   VMFailure (BalanceTooLow _ _)           -> ErrorBalanceTooLow
   VMFailure (UnrecognizedOpcode _)        -> ErrorUnrecognizedOpcode

@@ -3,6 +3,7 @@
 
 module Echidna.Events where
 
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy (fromStrict)
 import Data.Map (Map)
@@ -20,8 +21,7 @@ import EVM.Format (showValues, showError, contractNamePart)
 import EVM.Solidity (SolcContract(..))
 import EVM.Types
 
-import Echidna.Types.Buffer (forceLit, forceBuf)
-import Data.ByteString (ByteString)
+import Echidna.Symbolic (forceWord, forceBuf)
 
 type EventMap = Map W256 Event
 type Events = [Text]
@@ -29,7 +29,7 @@ type Events = [Text]
 emptyEvents :: TreePos Empty a
 emptyEvents = fromForest []
 
-extractEvents :: Bool -> DappInfo -> VM -> Events
+extractEvents :: Bool -> DappInfo -> VM s -> Events
 extractEvents decodeErrors dappInfo vm =
   let forest = traceForest vm
   in maybeToList (decodeRevert decodeErrors vm)
@@ -41,7 +41,7 @@ extractEvents decodeErrors dappInfo vm =
         maybeContractName = maybeContractNameFromCodeHash dappInfo codehash'
     in case trace.tracedata of
       EventTrace addr bytes (topic:_) ->
-        case Map.lookup (forceLit topic) dappInfo.eventMap of
+        case Map.lookup (forceWord topic) dappInfo.eventMap of
           Just (Event name _ types) ->
             -- TODO this is where indexed types are filtered out
             -- they are filtered out for a reason as they only contain
@@ -51,8 +51,8 @@ extractEvents decodeErrors dappInfo vm =
               <> showValues [t | (_, t, NotIndexed) <- types] bytes
               <> " from: "
               <> maybe mempty (<> "@") maybeContractName
-              <> pack (show $ forceLit addr)
-          Nothing -> Just $ pack $ show (forceLit topic)
+              <> pack (show $ forceWord addr)
+          Nothing -> Just $ pack $ show (forceWord topic)
       ErrorTrace e ->
         case e of
           Revert out ->
@@ -76,7 +76,7 @@ maybeContractNameFromCodeHash info codeHash = contractToName <$> maybeContract
   where maybeContract = snd <$> Map.lookup codeHash info.solcByHash
         contractToName c = contractNamePart c.contractName
 
-decodeRevert :: Bool -> VM -> Maybe Text
+decodeRevert :: Bool -> VM s -> Maybe Text
 decodeRevert decodeErrors vm =
   case vm.result of
     Just (VMFailure (Revert (ConcreteBuf bs))) -> decodeRevertMsg decodeErrors bs

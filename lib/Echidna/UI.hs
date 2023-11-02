@@ -21,6 +21,7 @@ import Control.Monad.Catch
 import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader
 import Control.Monad.State.Strict hiding (state)
+import Control.Monad.ST (RealWorld)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
@@ -57,7 +58,7 @@ data UIEvent =
 -- print non-interactive output in desired format at the end
 ui
   :: (MonadCatch m, MonadRandom m, MonadReader Env m, MonadUnliftIO m)
-  => VM      -- ^ Initial VM state
+  => VM RealWorld -- ^ Initial VM state
   -> World   -- ^ Initial world state
   -> GenDict
   -> [[Tx]]

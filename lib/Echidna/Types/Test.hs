@@ -1,5 +1,6 @@
 module Echidna.Types.Test where
 
+import Control.Monad.ST (RealWorld)
 import Data.Aeson (ToJSON(..), object)
 import Data.DoubleWord (Int256)
 import Data.Maybe (maybeToList)
@@ -18,7 +19,7 @@ type TestMode = String
 
 -- | Configuration for the creation of Echidna tests.
 data TestConf = TestConf
-  { classifier :: Text -> VM -> Bool
+  { classifier :: Text -> VM RealWorld -> Bool
     -- ^ Given a VM state and test name, check if a test just passed (typically
     -- examining '_result'.)
   , testSender :: Addr -> Addr
@@ -51,7 +52,7 @@ data TestType
   = PropertyTest Text Addr
   | OptimizationTest Text Addr
   | AssertionTest Bool SolSignature Addr
-  | CallTest Text (DappInfo -> VM -> TestValue)
+  | CallTest Text (DappInfo -> VM RealWorld -> TestValue)
   | Exploration
 
 instance Eq TestType where
