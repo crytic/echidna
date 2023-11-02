@@ -1,7 +1,8 @@
 module Echidna.Types where
 
 import Control.Exception (Exception)
-import Control.Monad.State.Strict (MonadState, runState, get, put)
+import Control.Monad.State.Strict (MonadState, get, put, MonadIO(liftIO), runStateT)
+import Control.Monad.ST (RealWorld, stToIO)
 import Data.Word (Word64)
 import EVM (initialContract)
 import EVM.Types
@@ -21,12 +22,12 @@ type Gas = Word64
 type MutationConsts a = (a, a, a, a)
 
 -- | Transform an EVM action from HEVM to our MonadState VM
-fromEVM :: MonadState VM m => EVM a -> m a
+fromEVM :: (MonadIO m, MonadState (VM RealWorld) m) => EVM RealWorld r -> m r
 fromEVM evmAction = do
   vm <- get
-  let (r, vm') = runState evmAction vm
+  (result, vm') <- liftIO $ stToIO $ runStateT evmAction vm
   put vm'
-  pure r
+  pure result
 
 emptyAccount :: Contract
 emptyAccount = initialContract (RuntimeCode (ConcreteRuntimeCode mempty))

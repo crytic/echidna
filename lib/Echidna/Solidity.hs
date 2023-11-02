@@ -6,6 +6,7 @@ import Control.Monad (when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Extra (whenM)
 import Control.Monad.Reader (ReaderT(runReaderT))
+import Control.Monad.ST (stToIO, RealWorld)
 import Data.Foldable (toList)
 import Data.List (find, partition, isSuffixOf, (\\))
 import Data.List.NonEmpty (NonEmpty((:|)))
@@ -38,6 +39,7 @@ import Echidna.Etheno (loadEthenoBatch)
 import Echidna.Events (EventMap, extractEvents)
 import Echidna.Exec (execTx, initialVM)
 import Echidna.Processor
+import Echidna.Symbolic (forceAddr)
 import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
@@ -132,18 +134,19 @@ staticAddresses SolConf{contractAddr, deployer, sender} =
   Set.map AbiAddress $
     Set.union sender (Set.fromList [contractAddr, deployer, 0x0])
 
-populateAddresses :: Set Addr -> Integer -> VM -> VM
+populateAddresses :: Set Addr -> Integer -> VM s -> VM s
 populateAddresses addrs b vm =
   Set.foldl' (\vm' addr ->
     if deployed addr
        then vm'
-       else vm' & set (#env % #contracts % at addr) (Just account)
+       else vm' & set (#env % #contracts % at (LitAddr addr)) (Just account)
   ) vm addrs
   where
     account =
-      (initialContract (RuntimeCode (ConcreteRuntimeCode mempty)))
-        { nonce = 0, balance = fromInteger b }
-    deployed addr = addr `Map.member` vm.env.contracts
+      initialContract (RuntimeCode (ConcreteRuntimeCode mempty))
+        & set #nonce (Just 0)
+        & set #balance (Lit $ fromInteger b)
+    deployed addr = LitAddr addr `Map.member` vm.env.contracts
 
 -- | Address to load the first library
 addrLibrary :: Addr
@@ -185,7 +188,7 @@ loadSpecified
   :: Env
   -> Maybe Text
   -> [SolcContract]
-  -> IO (VM, [SolSignature], [Text], SignatureMap)
+  -> IO (VM RealWorld, [SolSignature], [Text], SignatureMap)
 loadSpecified env name cs = do
   let solConf = env.cfg.solConf
 
@@ -222,11 +225,11 @@ loadSpecified env name cs = do
           Just ne -> Map.singleton (getBytecodeMetadata mainContract.runtimeCode) ne
           Nothing -> mempty
 
-    -- Set up initial VM, either with chosen contract or Etheno initialization file
-    -- need to use snd to add to ABI dict
-    vm = initialVM solConf.allowFFI
-           & #block % #gaslimit .~ unlimitedGasPerBlock
-           & #block % #maxCodeSize .~ fromIntegral solConf.codeSize
+  -- Set up initial VM, either with chosen contract or Etheno initialization file
+  -- need to use snd to add to ABI dict
+  initVM <- stToIO $ initialVM solConf.allowFFI
+  let vm = initVM & #block % #gaslimit .~ unlimitedGasPerBlock
+                  & #block % #maxCodeSize .~ fromIntegral solConf.codeSize
 
   blank' <- maybe (pure vm) (loadEthenoBatch solConf.allowFFI) solConf.initialize
   let blank = populateAddresses (Set.insert solConf.deployer solConf.sender)
@@ -362,7 +365,7 @@ loadSolTests
   :: Env
   -> NonEmpty FilePath
   -> Maybe Text
-  -> IO (VM, World, [EchidnaTest])
+  -> IO (VM RealWorld, World, [EchidnaTest])
 loadSolTests env fp name = do
   let solConf = env.cfg.solConf
   buildOutputs <- compileContracts solConf fp
@@ -371,7 +374,7 @@ loadSolTests env fp name = do
   let
     eventMap = Map.unions $ map (.eventMap) contracts
     world = World solConf.sender mempty Nothing [] eventMap
-    echidnaTests = createTests solConf.testMode True testNames vm.state.contract funs
+    echidnaTests = createTests solConf.testMode True testNames (forceAddr vm.state.contract) funs
   pure (vm, world, echidnaTests)
 
 mkLargeAbiInt :: Int -> AbiValue

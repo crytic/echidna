@@ -1,6 +1,7 @@
 module Echidna where
 
 import Control.Monad.Catch (MonadThrow(..))
+import Control.Monad.ST (RealWorld)
 import Data.IORef (writeIORef)
 import Data.List (find)
 import Data.List.NonEmpty (NonEmpty)
@@ -19,6 +20,7 @@ import Echidna.Etheno (loadEtheno, extractFromEtheno)
 import Echidna.Output.Corpus
 import Echidna.Processor
 import Echidna.Solidity
+import Echidna.Symbolic (forceAddr)
 import Echidna.Test (createTests)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
@@ -45,7 +47,7 @@ prepareContract
   -> NonEmpty FilePath
   -> Maybe ContractName
   -> Seed
-  -> IO (VM, World, GenDict)
+  -> IO (VM RealWorld, World, GenDict)
 prepareContract env contracts solFiles specifiedContract seed = do
   let solConf = env.cfg.solConf
 
@@ -64,13 +66,13 @@ prepareContract env contracts solFiles specifiedContract seed = do
     echidnaTests = createTests solConf.testMode
                                solConf.testDestruction
                                testNames
-                               vm.state.contract
+                               (forceAddr vm.state.contract)
                                funs
 
     eventMap = Map.unions $ map (.eventMap) contracts
     world = mkWorld solConf eventMap signatureMap specifiedContract slitherInfo
 
-    deployedAddresses = Set.fromList $ AbiAddress <$> Map.keys vm.env.contracts
+    deployedAddresses = Set.fromList $ AbiAddress . forceAddr <$> Map.keys vm.env.contracts
     constants = enhanceConstants slitherInfo
                 <> timeConstants
                 <> extremeConstants
@@ -79,7 +81,7 @@ prepareContract env contracts solFiles specifiedContract seed = do
 
     dict = mkGenDict env.cfg.campaignConf.dictFreq
                      -- make sure we don't use cheat codes to form fuzzing call sequences
-                     (Set.delete (AbiAddress cheatCode) constants)
+                     (Set.delete (AbiAddress $ forceAddr cheatCode) constants)
                      Set.empty
                      seed
                      (returnTypes contracts)
