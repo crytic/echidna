@@ -1,5 +1,6 @@
 module Echidna.Types.Campaign where
 
+import Data.Aeson
 import Data.Map (Map)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -50,6 +51,15 @@ data CampaignEvent
   -- ^ This is a terminal event. Worker exits and won't push any events after
   -- this one
   deriving Show
+
+instance ToJSON CampaignEvent where
+  toJSON = \case
+    TestFalsified test -> toJSON test
+    TestOptimized test -> toJSON test
+    NewCoverage coverage numContracts corpusSize ->
+      object [ "coverage" .= coverage, "contracts" .= numContracts, "corpus_size" .= corpusSize]
+    TxSequenceReplayed current total -> object [ "current" .= current, "total" .= total ]
+    WorkerStopped reason -> object [ "reason" .= show reason ]
 
 data WorkerStopReason
   = TestLimitReached

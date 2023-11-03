@@ -75,7 +75,7 @@ replayCorpus vm txSeqs =
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
 -- we can't solve or shrink anything.
 runWorker
-  :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m)
+  :: (MonadIO m, MonadThrow m, MonadReader Env m)
   => StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
   -> VM RealWorld -- ^ Initial VM state
