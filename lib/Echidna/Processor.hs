@@ -130,7 +130,7 @@ runSlither fp solConf = do
       ProcessorNotFound "slither" "You should install it using 'pip3 install slither-analyzer --user'"
     Just path -> pure path
 
-  let args = ["--ignore-compile", "--print", "echidna", "--json", "-"]
+  let args = ["--ignore-compile", "--print", "echidna", "--json", "--no-fail", "-"]
              ++ solConf.cryticArgs ++ [fp]
   (ec, out, err) <- measureIO solConf.quiet ("Running slither on " <> fp) $
     readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
