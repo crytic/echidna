@@ -272,10 +272,11 @@ $ nix run github:crytic/echidna/v2.1.1 # specific ref (tag/branch/commit)
 ```
 
 To build a standalone release for non-Nix macOS systems, the following will
-bundle Echidna and all linked dylibs:
+build Echidna in a mostly static binary. This can also be used on Linux systems
+to produce a fully static binary.
 
 ```sh
-$ nix build .#echidna-bundle
+$ nix build .#echidna-redistributable
 ```
 
 Nix will automatically install all the dependencies required for development
