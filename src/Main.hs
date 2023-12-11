@@ -114,7 +114,7 @@ main = withUtf8 $ withCP65001 $ do
 
   -- take the seed from config, otherwise generate a new one
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
-  (vm, world, dict) <-
+  (vm, world, dict, asserts) <-
     prepareContract env contracts cliFilePath cliSelectedContract seed
 
   initialCorpus <- loadInitialCorpus env world
@@ -125,6 +125,8 @@ main = withUtf8 $ withCP65001 $ do
   slotsCache <- readIORef cacheSlotsRef
 
   tests <- readIORef testsRef
+  coverage <- readIORef coverageRef
+  checkAssertionsCoverage buildOutput.sources contracts coverage asserts
 
   -- save corpus
   case cfg.campaignConf.corpusDir of
@@ -155,8 +157,6 @@ main = withUtf8 $ withCP65001 $ do
         -- don't collide with the next runs. We use the current time for this
         -- as it orders the runs chronologically.
         runId <- fromIntegral . systemSeconds <$> getSystemTime
-
-        coverage <- readIORef coverageRef
 
         -- coverage reports for external contracts, we only support
         -- Ethereum Mainnet for now

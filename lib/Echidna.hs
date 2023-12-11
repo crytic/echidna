@@ -45,7 +45,7 @@ prepareContract
   -> NonEmpty FilePath
   -> Maybe ContractName
   -> Seed
-  -> IO (VM, World, GenDict)
+  -> IO (VM, World, GenDict, AssertMappingByContract)
 prepareContract env contracts solFiles specifiedContract seed = do
   let solConf = env.cfg.solConf
 
@@ -85,7 +85,7 @@ prepareContract env contracts solFiles specifiedContract seed = do
                      (returnTypes contracts)
 
   writeIORef env.testsRef echidnaTests
-  pure (vm, world, dict)
+  pure (vm, world, dict, slitherInfo.asserts)
 
 loadInitialCorpus :: Env -> World -> IO [[Tx]]
 loadInitialCorpus env world = do

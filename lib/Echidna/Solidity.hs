@@ -38,7 +38,7 @@ import Echidna.Etheno (loadEthenoBatch)
 import Echidna.Events (EventMap, extractEvents)
 import Echidna.Exec (execTx, initialVM)
 import Echidna.Processor
-import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
+import Echidna.Test (createTests, isPropertyMode, isDapptestMode)
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
   (ContractName, SolSignature, SignatureMap, getBytecodeMetadata)
@@ -316,7 +316,7 @@ mkWorld
 mkWorld SolConf{sender, testMode} em m c si =
   let
     ps = filterResults c si.payableFunctions
-    as = if isAssertionMode testMode then filterResults c si.asserts else []
+    as = {-if isAssertionMode testMode then filterResults c (Map.keys si.asserts) else-} []
     cs = if isDapptestMode testMode then [] else filterResults c si.constantFunctions \\ as
     (hm, lm) = prepareHashMaps cs as $ filterFallbacks c si.fallbackDefined si.receiveDefined m
   in World sender hm lm ps em
