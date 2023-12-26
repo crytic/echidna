@@ -15,10 +15,7 @@
   outputs = { self, nixpkgs, flake-utils, nix-bundle-exe, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        systemPkgs = nixpkgs.legacyPackages.${system};
-        # prefer musl on Linux, static glibc + threading does not work properly
-        # TODO: maybe only override it for echidna-redistributable?
-        pkgs = if systemPkgs.stdenv.hostPlatform.isLinux then systemPkgs.pkgsMusl else systemPkgs;
+        pkgs = nixpkgs.legacyPackages.${system};
         # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
         # would be great to integrate solc-select to be more flexible, improve this in future
         solc = pkgs.stdenv.mkDerivation {
@@ -88,22 +85,24 @@
         # statically linked. we can be confident that these two will always
         # be provided in a well known location by macos itself.
         echidnaRedistributable = let
-          grep = "${pkgs.gnugrep}/bin/grep";
-          perl = "${pkgs.perl}/bin/perl";
-          otool = "${pkgs.darwin.binutils.bintools}/bin/otool";
-          install_name_tool = "${pkgs.darwin.binutils.bintools}/bin/install_name_tool";
-          codesign_allocate = "${pkgs.darwin.binutils.bintools}/bin/codesign_allocate";
-          codesign = "${pkgs.darwin.sigtool}/bin/codesign";
-        in if pkgs.stdenv.isLinux
-        then pkgs.runCommand "echidna-stripNixRefs" {} ''
+          # prefer musl on Linux, static glibc + threading does not work properly
+          pkgs' = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsMusl else pkgs;
+          grep = "${pkgs'.gnugrep}/bin/grep";
+          perl = "${pkgs'.perl}/bin/perl";
+          otool = "${pkgs'.darwin.binutils.bintools}/bin/otool";
+          install_name_tool = "${pkgs'.darwin.binutils.bintools}/bin/install_name_tool";
+          codesign_allocate = "${pkgs'.darwin.binutils.bintools}/bin/codesign_allocate";
+          codesign = "${pkgs'.darwin.sigtool}/bin/codesign";
+        in if pkgs'.stdenv.isLinux
+        then pkgs'.runCommand "echidna-stripNixRefs" {} ''
           mkdir -p $out/bin
-          cp ${pkgs.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
+          cp ${pkgs'.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
           # fix TERMINFO path in ncurses
           ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/usr/share/terminfo" . "\x0" x (length($1) - 19)#e' $out/bin/echidna
           chmod 555 $out/bin/echidna
-        '' else pkgs.runCommand "echidna-stripNixRefs" {} ''
+        '' else pkgs'.runCommand "echidna-stripNixRefs" {} ''
           mkdir -p $out/bin
-          cp ${pkgs.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
+          cp ${pkgs'.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
           # get the list of dynamic libs from otool and tidy the output
           libs=$(${otool} -L $out/bin/echidna | tail -n +2 | sed 's/^[[:space:]]*//' | cut -d' ' -f1)
           # get the path for libcxx
