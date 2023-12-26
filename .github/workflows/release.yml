@@ -97,7 +97,7 @@ jobs:
           name: echidna-redistributable
 
       - name: Sign binaries
-        uses: sigstore/gh-action-sigstore-python@v2.1.0
+        uses: sigstore/gh-action-sigstore-python@v2.1.1
         with:
           inputs: ./echidna-*.tar.gz
 
