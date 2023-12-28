@@ -24,7 +24,7 @@ import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import Text.Printf (printf)
 
-import EVM.Debug (srcMapCodePos)
+import EVM.Dapp (srcMapCodePos)
 import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
 
 import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap)

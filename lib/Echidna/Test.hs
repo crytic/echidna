@@ -7,6 +7,7 @@ import Prelude hiding (Word)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
+import Control.Monad.ST (RealWorld)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as LBS
 import Data.Text (Text)
@@ -19,7 +20,7 @@ import EVM.Types hiding (Env)
 import Echidna.ABI
 import Echidna.Events (Events, extractEvents)
 import Echidna.Exec
-import Echidna.Types.Buffer (forceBuf)
+import Echidna.Symbolic (forceBuf)
 import Echidna.Types.Config
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Test
@@ -31,7 +32,7 @@ data CallRes = ResFalse | ResTrue | ResRevert | ResOther
   deriving (Eq, Show)
 
 --- | Given a 'VMResult', classify it assuming it was the result of a call to an Echidna test.
-classifyRes :: VMResult -> CallRes
+classifyRes :: VMResult s -> CallRes
 classifyRes (VMSuccess b)
   | forceBuf b == encodeAbiValue (AbiBool True)  = ResTrue
   | forceBuf b == encodeAbiValue (AbiBool False) = ResFalse
@@ -39,7 +40,7 @@ classifyRes (VMSuccess b)
 classifyRes Reversion = ResRevert
 classifyRes _         = ResOther
 
-getResultFromVM :: VM -> TxResult
+getResultFromVM :: VM s -> TxResult
 getResultFromVM vm =
   case vm.result of
     Just r -> getResult r
@@ -137,8 +138,8 @@ updateOpenTest _ _ _ = error "Invalid type of test"
 checkETest
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
   => EchidnaTest
-  -> VM
-  -> m (TestValue, VM)
+  -> VM RealWorld
+  -> m (TestValue, VM RealWorld)
 checkETest test vm = case test.testType of
   Exploration -> pure (BoolValue True, vm) -- These values are never used
   PropertyTest n a -> checkProperty vm n a
@@ -150,10 +151,10 @@ checkETest test vm = case test.testType of
 -- | Given a property test, evaluate it and see if it currently passes.
 checkProperty
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
-  => VM
+  => VM RealWorld
   -> Text
   -> Addr
-  -> m (TestValue, VM)
+  -> m (TestValue, VM RealWorld)
 checkProperty vm f a = do
   case vm.result of
     Just (VMSuccess _) -> do
@@ -164,11 +165,11 @@ checkProperty vm f a = do
 
 runTx
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
-  => VM
+  => VM RealWorld
   -> Text
   -> (Addr -> Addr)
   -> Addr
-  -> m VM
+  -> m (VM RealWorld)
 runTx vm f s a = do
   -- Our test is a regular user-defined test, we exec it and check the result
   g <- asks (.cfg.txConf.propGas)
@@ -176,7 +177,7 @@ runTx vm f s a = do
   pure vm'
 
 --- | Extract a test value from an execution.
-getIntFromResult :: Maybe VMResult -> TestValue
+getIntFromResult :: Maybe (VMResult RealWorld) -> TestValue
 getIntFromResult (Just (VMSuccess b)) =
   let bs = forceBuf b
   in case decodeAbiValue (AbiIntType 256) $ LBS.fromStrict bs of
@@ -187,10 +188,10 @@ getIntFromResult _ = IntValue minBound
 -- | Given a property test, evaluate it and see if it currently passes.
 checkOptimization
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
-  => VM
+  => VM RealWorld
   -> Text
   -> Addr
-  -> m (TestValue, VM)
+  -> m (TestValue, VM RealWorld)
 checkOptimization vm f a = do
   TestConf _ s <- asks (.cfg.testConf)
   vm' <- runTx vm f s a
@@ -198,10 +199,10 @@ checkOptimization vm f a = do
 
 checkStatefulAssertion
   :: (MonadReader Env m, MonadThrow m)
-  => VM
+  => VM RealWorld
   -> SolSignature
   -> Addr
-  -> m (TestValue, VM)
+  -> m (TestValue, VM RealWorld)
 checkStatefulAssertion vm sig addr = do
   dappInfo <- asks (.dapp)
   let
@@ -210,7 +211,7 @@ checkStatefulAssertion vm sig addr = do
       BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty))
                     (forceBuf vm.state.calldata)
     -- Whether the last transaction executed a function on the contract `addr`.
-    isCorrectAddr = addr == vm.state.codeContract
+    isCorrectAddr = LitAddr addr == vm.state.codeContract
     isCorrectTarget = isCorrectFn && isCorrectAddr
     -- Whether the last transaction executed opcode 0xfe, meaning an assertion failure.
     isAssertionFailure = case vm.result of
@@ -228,10 +229,10 @@ assumeMagicReturnCode = "FOUNDRY::ASSUME\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
 
 checkDapptestAssertion
   :: (MonadReader Env m, MonadThrow m)
-  => VM
+  => VM RealWorld
   -> SolSignature
   -> Addr
-  -> m (TestValue, VM)
+  -> m (TestValue, VM RealWorld)
 checkDapptestAssertion vm sig addr = do
   let
     -- Whether the last transaction has any value
@@ -245,21 +246,21 @@ checkDapptestAssertion vm sig addr = do
         not $ BS.isSuffixOf assumeMagicReturnCode bs
       Just (VMFailure _) -> True
       _ -> False
-    isCorrectAddr = addr == vm.state.codeContract
+    isCorrectAddr = LitAddr addr == vm.state.codeContract
     isCorrectTarget = isCorrectFn && isCorrectAddr
     isFailure = not hasValue && (isCorrectTarget && isAssertionFailure)
   pure (BoolValue (not isFailure), vm)
 
 checkCall
   :: (MonadReader Env m, MonadThrow m)
-  => VM
-  -> (DappInfo -> VM -> TestValue)
-  -> m (TestValue, VM)
+  => VM RealWorld
+  -> (DappInfo -> VM RealWorld -> TestValue)
+  -> m (TestValue, VM RealWorld)
 checkCall vm f = do
   dappInfo <- asks (.dapp)
   pure (f dappInfo vm, vm)
 
-checkAssertionTest :: DappInfo -> VM -> TestValue
+checkAssertionTest :: DappInfo -> VM RealWorld -> TestValue
 checkAssertionTest dappInfo vm =
   let events = extractEvents False dappInfo vm
   in BoolValue $ null events || not (checkAssertionEvent events)
@@ -267,19 +268,19 @@ checkAssertionTest dappInfo vm =
 checkAssertionEvent :: Events -> Bool
 checkAssertionEvent = any (T.isPrefixOf "AssertionFailed(")
 
-checkSelfDestructedTarget :: Addr -> DappInfo -> VM -> TestValue
+checkSelfDestructedTarget :: Addr -> DappInfo -> VM RealWorld -> TestValue
 checkSelfDestructedTarget addr _ vm =
   let selfdestructs' = vm.tx.substate.selfdestructs
-  in BoolValue $ addr `notElem` selfdestructs'
+  in BoolValue $ LitAddr addr `notElem` selfdestructs'
 
-checkAnySelfDestructed :: DappInfo -> VM -> TestValue
+checkAnySelfDestructed :: DappInfo -> VM RealWorld -> TestValue
 checkAnySelfDestructed _ vm =
   BoolValue $ null vm.tx.substate.selfdestructs
 
 checkPanicEvent :: T.Text -> Events -> Bool
 checkPanicEvent n = any (T.isPrefixOf ("Panic(" <> n <> ")"))
 
-checkOverflowTest :: DappInfo -> VM -> TestValue
+checkOverflowTest :: DappInfo -> VM RealWorld-> TestValue
 checkOverflowTest dappInfo vm =
   let es = extractEvents False dappInfo vm
   in BoolValue $ null es || not (checkPanicEvent "17" es)

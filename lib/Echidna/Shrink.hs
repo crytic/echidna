@@ -5,6 +5,7 @@ import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader (ask), asks)
 import Control.Monad.State.Strict (MonadIO)
+import Control.Monad.ST (RealWorld)
 import Data.Set qualified as Set
 import Data.List qualified as List
 
@@ -22,7 +23,7 @@ import Echidna.Test (getResultFromVM, checkETest)
 
 shrinkTest
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m)
-  => VM
+  => VM RealWorld
   -> EchidnaTest
   -> m (Maybe EchidnaTest)
 shrinkTest vm test = do
@@ -53,11 +54,11 @@ shrinkTest vm test = do
 -- generate a smaller one that still solves that test.
 shrinkSeq
   :: (MonadIO m, MonadRandom m, MonadReader Env m, MonadThrow m)
-  => VM
-  -> (VM -> m (TestValue, VM))
+  => VM RealWorld
+  -> (VM RealWorld -> m (TestValue, VM RealWorld))
   -> TestValue
   -> [Tx]
-  -> m (Maybe ([Tx], TestValue, VM))
+  -> m (Maybe ([Tx], TestValue, VM RealWorld))
 shrinkSeq vm f v txs = do
   txs' <- uniform =<< sequence [shorten, shrunk]
   (value, vm') <- check txs' vm
