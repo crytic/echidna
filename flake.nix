@@ -15,10 +15,10 @@
   outputs = { self, nixpkgs, flake-utils, nix-bundle-exe, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        systemPkgs = nixpkgs.legacyPackages.${system};
+        pkgs = nixpkgs.legacyPackages.${system};
         # prefer musl on Linux, static glibc + threading does not work properly
         # TODO: maybe only override it for echidna-redistributable?
-        pkgs = if systemPkgs.stdenv.hostPlatform.isLinux then systemPkgs.pkgsMusl else systemPkgs;
+        pkgsStatic = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsMusl else pkgs;
         # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
         # would be great to integrate solc-select to be more flexible, improve this in future
         solc = pkgs.stdenv.mkDerivation {
@@ -41,13 +41,13 @@
           '';
         };
 
-        secp256k1-static = pkgs.secp256k1.overrideAttrs (attrs: {
+        secp256k1-static = pkgsStatic.secp256k1.overrideAttrs (attrs: {
           configureFlags = attrs.configureFlags ++ [ "--enable-static" ];
         });
 
-        ncurses-static = pkgs.ncurses.override { enableStatic = true; };
+        ncurses-static = pkgsStatic.ncurses.override { enableStatic = true; };
 
-        hevm = pkgs.haskell.lib.dontCheck (
+        hevm = pkgs: pkgs.haskell.lib.dontCheck (
           pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "ethereum";
             repo = "hevm";
@@ -57,16 +57,16 @@
 
         # FIXME: figure out solc situation, it conflicts with the one from
         # solc-select that is installed with slither, disable tests in the meantime
-        echidna = pkgs.haskell.lib.dontCheck (
+        echidna = pkgs: pkgs.haskell.lib.dontCheck (
           with pkgs; lib.pipe
-          (haskellPackages.callCabal2nix "echidna" ./. { inherit hevm; })
+          (haskellPackages.callCabal2nix "echidna" ./. { inherit (hevm pkgs); })
           [
             (haskell.lib.compose.addTestToolDepends [ haskellPackages.hpack slither-analyzer solc ])
             (haskell.lib.compose.disableCabalFlag "static")
           ]);
 
-        echidna-static = with pkgs; lib.pipe
-          echidna
+        echidna-static = with pkgsStatic; lib.pipe
+          (echidna pkgsStatic)
           [
             (haskell.lib.compose.appendConfigureFlags
               ([
@@ -130,14 +130,14 @@
         '';
 
       in rec {
-        packages.echidna = echidna;
-        packages.default = echidna;
+        packages.echidna = echidna pkgs;
+        packages.default = echidna pkgs;
 
         packages.echidna-redistributable = echidnaRedistributable;
 
         devShell = with pkgs;
           haskellPackages.shellFor {
-            packages = _: [ echidna ];
+            packages = _: [ (echidna pkgs) ];
             shellHook = "hpack";
             buildInputs = [
               solc
