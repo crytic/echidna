@@ -50,12 +50,15 @@ prepareContract
   -> IO (VM RealWorld, World, GenDict)
 prepareContract env contracts solFiles specifiedContract seed = do
   let solConf = env.cfg.solConf
+  let campaignConf = env.cfg.campaignConf
 
   -- compile and load contracts
   (vm, funs, testNames, signatureMap) <- loadSpecified env specifiedContract contracts
 
   -- run processors
-  slitherInfo <- runSlither (NE.head solFiles) solConf
+  mainSlitherInfo <- runSlither (NE.head solFiles) solConf
+  complementarySlitherInfo <- loadSlitherInfos campaignConf
+  let slitherInfo = appendSlitherInfo mainSlitherInfo complementarySlitherInfo
   case find (< minSupportedSolcVersion) slitherInfo.solcVersions of
     Just version | detectVyperVersion version -> pure ()
     Just version                              -> throwM $ OutdatedSolcVersion version
