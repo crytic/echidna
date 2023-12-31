@@ -49,6 +49,7 @@ dependencies:
   - http-conduit
   - html-conduit
   - xml-conduit
+  - template-haskell
 
 language: GHC2021
 
