@@ -78,6 +78,7 @@
                 "--extra-lib-dirs=${stripDylib (ncurses-static)}/lib"
               ] ++ (if stdenv.hostPlatform.isDarwin then [
                 "--extra-lib-dirs=${stripDylib (libiconv.override { enableStatic = true; })}/lib"
+                "--extra-lib-dirs=${stripDylib (libcxxabi)}/lib"
               ] else [])))
             (haskell.lib.compose.enableCabalFlag "static")
           ];
@@ -107,7 +108,7 @@
           # get the list of dynamic libs from otool and tidy the output
           libs=$(${otool} -L $out/bin/echidna | tail -n +2 | sed 's/^[[:space:]]*//' | cut -d' ' -f1)
           # get the path for libcxx
-          cxx=$(echo "$libs" | ${grep} '^/nix/store/.*-libcxx')
+          cxx=$(echo "$libs" | ${grep} '^/nix/store/.*-libcxx-')
           # rewrite /nix/... library paths to point to /usr/lib
           chmod 777 $out/bin/echidna
           ${install_name_tool} -change "$cxx" /usr/lib/libc++.1.dylib $out/bin/echidna
