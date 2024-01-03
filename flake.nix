@@ -113,6 +113,12 @@
           ${install_name_tool} -change "$cxx" /usr/lib/libc++.1.dylib $out/bin/echidna
           # fix TERMINFO path in ncurses
           ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/usr/share/terminfo" . "\x0" x (length($1) - 19)#e' $out/bin/echidna
+          # check that no nix deps remain
+          nixdeps=$(${otool} -L $out/bin/echidna | tail -n +2 | { ${grep} /nix/store -c || test $? = 1; })
+          if [ ! "$nixdeps" = "0" ]; then
+            echo "Nix deps remain in redistributable binary!"
+            exit 255
+          fi
           # re-sign binary
           CODESIGN_ALLOCATE=${codesign_allocate} ${codesign} -f -s - $out/bin/echidna
           chmod 555 $out/bin/echidna
