@@ -1,28 +1,29 @@
 module Echidna.UI.Report where
 
 import Control.Monad.Reader (MonadReader, MonadIO (liftIO), asks)
+import Control.Monad.ST (RealWorld)
 import Data.IORef (readIORef)
 import Data.List (intercalate, nub, sortOn)
 import Data.Map (toList)
-import Data.Maybe (catMaybes)
+import Data.Map qualified as Map
+import Data.Maybe (catMaybes, fromJust)
 import Data.Text (Text, unpack)
 import Data.Text qualified as T
 import Data.Time (LocalTime)
 
 import Echidna.ABI (GenDict(..), encodeSig)
-import Echidna.Events (Events)
 import Echidna.Pretty (ppTxCall)
 import Echidna.Types (Gas)
 import Echidna.Types.Campaign
+import Echidna.Types.Config
+import Echidna.Types.Corpus (corpusSize)
 import Echidna.Types.Coverage (scoveragePoints)
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
-import Echidna.Types.Config
-
-import EVM.Types (W256)
-import Echidna.Types.Corpus (corpusSize)
 import Echidna.Utility (timePrefix)
-import qualified Data.Map as Map
+
+import EVM.Format (showTraceTree)
+import EVM.Types (W256, VM)
 
 ppLogLine :: (Int, LocalTime, CampaignEvent) -> String
 ppLogLine (workerId, time, event) =
@@ -96,71 +97,70 @@ ppGasOne (func, (gas, txs)) = do
   pure $ header <> unlines (("    " <>) <$> prettyTxs)
 
 -- | Pretty-print the status of a solved test.
-ppFail :: MonadReader Env m => Maybe (Int, Int) -> Events -> [Tx] -> m String
-ppFail _ _ []  = pure "failed with no transactions made ⁉️  "
-ppFail b es xs = do
+ppFail :: MonadReader Env m => Maybe (Int, Int) -> VM RealWorld -> [Tx] -> m String
+ppFail _ _ []  = pure "failed with no transactions made ⁉️ "
+ppFail b vm xs = do
   let status = case b of
         Nothing    -> ""
         Just (n,m) -> ", shrinking " <> progress n m
   prettyTxs <- mapM (ppTx $ length (nub $ (.src) <$> xs) /= 1) xs
+  dappInfo <- asks (.dapp)
   pure $ "failed!💥  \n  Call sequence" <> status <> ":\n"
          <> unlines (("    " <>) <$> prettyTxs) <> "\n"
-         <> ppEvents es
-
-ppEvents :: Events -> String
-ppEvents es = if null es then "" else unlines $ "Event sequence:" : (T.unpack <$> es)
+         <> "Traces: \n" <> T.unpack (showTraceTree dappInfo vm)
 
 -- | Pretty-print the status of a test.
 
-ppTS :: MonadReader Env m => TestState -> Events -> [Tx] -> m String
+ppTS :: MonadReader Env m => TestState -> VM RealWorld -> [Tx] -> m String
 ppTS (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
-ppTS Solved     es l = ppFail Nothing es l
+ppTS Solved     vm l = ppFail Nothing vm l
 ppTS Passed     _ _  = pure " passed! 🎉"
 ppTS Open      _ []  = pure "passing"
-ppTS Open      es r  = ppFail Nothing es r
-ppTS (Large n) es l  = do
+ppTS Open      vm r  = ppFail Nothing vm r
+ppTS (Large n) vm l  = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
-  ppFail (if n < m then Just (n, m) else Nothing) es l
+  ppFail (if n < m then Just (n, m) else Nothing) vm l
 
-ppOPT :: MonadReader Env m => TestState -> Events -> [Tx] -> m String
+ppOPT :: MonadReader Env m => TestState -> VM RealWorld -> [Tx] -> m String
 ppOPT (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
-ppOPT Solved     es l = ppOptimized Nothing es l
+ppOPT Solved     vm l = ppOptimized Nothing vm l
 ppOPT Passed     _ _  = pure " passed! 🎉"
-ppOPT Open      es r  = ppOptimized Nothing es r
-ppOPT (Large n) es l  = do
+ppOPT Open      vm r  = ppOptimized Nothing vm r
+ppOPT (Large n) vm l  = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
-  ppOptimized (if n < m then Just (n, m) else Nothing) es l
+  ppOptimized (if n < m then Just (n, m) else Nothing) vm l
 
 -- | Pretty-print the status of a optimized test.
-ppOptimized :: MonadReader Env m => Maybe (Int, Int) -> Events -> [Tx] -> m String
+ppOptimized :: MonadReader Env m => Maybe (Int, Int) -> VM RealWorld -> [Tx] -> m String
 ppOptimized _ _ []  = pure "Call sequence:\n(no transactions)"
-ppOptimized b es xs = do
+ppOptimized b vm xs = do
   let status = case b of
         Nothing    -> ""
         Just (n,m) -> ", shrinking " <> progress n m
   prettyTxs <- mapM (ppTx $ length (nub $ (.src) <$> xs) /= 1) xs
+  dappInfo <- asks (.dapp)
   pure $ "\n  Call sequence" <> status <> ":\n"
          <> unlines (("    " <>) <$> prettyTxs) <> "\n"
-         <> ppEvents es
+         <> "Traces: \n" <> T.unpack (showTraceTree dappInfo vm)
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
-ppTests :: (MonadReader Env m) => [EchidnaTest] -> m String
+ppTests :: MonadReader Env m => [EchidnaTest] -> m String
 ppTests tests = do
   unlines . catMaybes <$> mapM pp tests
   where
   pp t =
     case t.testType of
       PropertyTest n _ -> do
-        status <- ppTS t.state t.events t.reproducer
+        status <- ppTS t.state (fromJust t.vm) t.reproducer
         pure $ Just (T.unpack n <> ": " <> status)
       CallTest n _ -> do
-        status <- ppTS t.state t.events t.reproducer
+        status <- ppTS t.state (fromJust t.vm) t.reproducer
         pure $ Just (T.unpack n <> ": " <> status)
       AssertionTest _ s _ -> do
-        status <- ppTS t.state t.events t.reproducer
+        status <- ppTS t.state (fromJust t.vm) t.reproducer
         pure $ Just (T.unpack (encodeSig s) <> ": " <> status)
       OptimizationTest n _ -> do
-        status <- ppOPT t.state t.events t.reproducer
+        status <- ppOPT t.state (fromJust t.vm) t.reproducer
         pure $ Just (T.unpack n <> ": max value: " <> show t.value <> "\n" <> status)
       Exploration -> pure Nothing
 

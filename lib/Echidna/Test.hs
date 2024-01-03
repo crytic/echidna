@@ -47,7 +47,7 @@ getResultFromVM vm =
     Nothing -> error "getResultFromVM failed"
 
 createTest :: TestType -> EchidnaTest
-createTest m = EchidnaTest Open m v [] Stop []
+createTest m = EchidnaTest Open m v [] Stop Nothing
   where v = case m of
               PropertyTest _ _     -> BoolValue True
               OptimizationTest _ _ -> IntValue minBound
@@ -114,17 +114,17 @@ createTests m td ts r ss = case m of
 updateOpenTest
   :: EchidnaTest
   -> [Tx]
-  -> (TestValue, Events, TxResult)
+  -> (TestValue, VM RealWorld, TxResult)
   -> EchidnaTest
-updateOpenTest test txs (BoolValue False, es, r) =
-  test { Test.state = Large 0, reproducer = txs, events = es, result = r }
+updateOpenTest test txs (BoolValue False, vm, r) =
+  test { Test.state = Large 0, reproducer = txs, vm = Just vm, result = r }
 updateOpenTest test _   (BoolValue True, _, _) =
   test
-updateOpenTest test txs (IntValue v',es,r) =
+updateOpenTest test txs (IntValue v', vm, r) =
   if v' > v then
     test { reproducer = txs
          , value = IntValue v'
-         , events = es
+         , vm = Just vm
          , result = r }
   else
     test

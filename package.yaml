@@ -49,6 +49,7 @@ dependencies:
   - http-conduit
   - html-conduit
   - xml-conduit
+  - strip-ansi-escape
 
 language: GHC2021
 

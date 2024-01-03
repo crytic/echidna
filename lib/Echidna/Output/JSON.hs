@@ -13,10 +13,11 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Vector.Unboxed qualified as VU
 import Numeric (showHex)
 
+import EVM.Dapp (DappInfo)
 import EVM.Types (keccak')
 
 import Echidna.ABI (ppAbiValue, GenDict(..))
-import Echidna.Events (Events)
+import Echidna.Events (Events, extractEvents)
 import Echidna.Types (Gas)
 import Echidna.Types.Campaign (WorkerState(..))
 import Echidna.Types.Config (Env(..))
@@ -107,21 +108,21 @@ encodeCampaign env workerStates = do
   pure $ encode Campaign
     { _success = True
     , _error = Nothing
-    , _tests = mapTest <$> tests
+    , _tests = mapTest env.dapp <$> tests
     , seed = worker0.genDict.defSeed
     , coverage = Map.mapKeys (("0x" ++) . (`showHex` "") . keccak') $ VU.toList <$> frozenCov
     , gasInfo = Map.toList $ Map.unionsWith max ((.gasInfo) <$> workerStates)
     }
 
-mapTest :: EchidnaTest -> Test
-mapTest test =
+mapTest :: DappInfo -> EchidnaTest -> Test
+mapTest dappInfo test =
   let (status, transactions, err) = mapTestState test.state test.reproducer
   in Test
     { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
     , name = "name" -- TODO add a proper name here
     , status = status
     , _error = err
-    , events = test.events
+    , events = maybe [] (extractEvents False dappInfo) test.vm
     , testType = Property
     , transactions = transactions
     }
