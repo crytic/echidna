@@ -98,13 +98,13 @@
         in if pkgs.stdenv.isLinux
         then pkgs.runCommand "echidna-stripNixRefs" {} ''
           mkdir -p $out/bin
-          cp ${pkgs.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
+          cp ${pkgsStatic.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
           # fix TERMINFO path in ncurses
           ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/usr/share/terminfo" . "\x0" x (length($1) - 19)#e' $out/bin/echidna
           chmod 555 $out/bin/echidna
         '' else pkgs.runCommand "echidna-stripNixRefs" {} ''
           mkdir -p $out/bin
-          cp ${pkgs.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
+          cp ${pkgsStatic.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
           # get the list of dynamic libs from otool and tidy the output
           libs=$(${otool} -L $out/bin/echidna | tail -n +2 | sed 's/^[[:space:]]*//' | cut -d' ' -f1)
           # get the path for libcxx
