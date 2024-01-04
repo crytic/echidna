@@ -25,7 +25,7 @@ import Data.Binary.Builder
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Time
 import UnliftIO
   ( MonadUnliftIO, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
@@ -36,7 +36,7 @@ import EVM.Types (Addr, Contract, VM, W256)
 import Echidna.ABI
 import Echidna.Campaign (runWorker)
 import Echidna.Output.JSON qualified
-import Echidna.SSE (runSSEServer)
+import Echidna.Server (runSSEServer)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (corpusSize)
@@ -158,10 +158,11 @@ ui vm world dict initialCorpus = do
 #endif
 
     NonInteractive outputFormat -> do
+      serverStopVar <- newEmptyMVar
 #ifdef INTERACTIVE_UI
       -- Handles ctrl-c, TODO: this doesn't work on Windows
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
-        installHandler sig (Catch $ stopWorkers workers) Nothing
+        installHandler sig (Catch $ stopWorkers workers >> putMVar serverStopVar ()) Nothing
 #endif
       let forwardEvent = putStrLn . ppLogLine
       liftIO $ spawnListener env forwardEvent nworkers listenerStopVar
@@ -173,7 +174,9 @@ ui vm world dict initialCorpus = do
             putStrLn $ time <> "[status] " <> line
             hFlush stdout
 
-      sseFinished <- liftIO $ runSSEServer env nworkers
+      case conf.campaignConf.serverPort of
+        Just port -> liftIO $ runSSEServer serverStopVar env port nworkers
+        Nothing -> pure ()
 
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 3_000_000 -- 3 seconds
@@ -187,9 +190,10 @@ ui vm world dict initialCorpus = do
       -- print final status regardless the last scheduled update
       liftIO printStatus
 
-      -- wait until we send all SSE events
-      liftIO $ putStrLn "Waiting until all SSE are received..."
-      readMVar sseFinished
+      when (isJust conf.campaignConf.serverPort) $ do
+        -- wait until we send all SSE events
+        liftIO $ putStrLn "Waiting until all SSE are received..."
+        readMVar serverStopVar
 
       states <- liftIO $ workerStates workers
 

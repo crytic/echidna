@@ -24,7 +24,7 @@ import Data.Text (Text)
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Vector qualified as Vector
 import Data.Version (showVersion)
-import Data.Word (Word8)
+import Data.Word (Word8, Word16)
 import Main.Utf8 (withUtf8)
 import Options.Applicative
 import Paths_echidna (version)
@@ -225,6 +225,7 @@ readFileIfExists path = do
 data Options = Options
   { cliFilePath         :: NE.NonEmpty FilePath
   , cliWorkers          :: Maybe Word8
+  , cliServerPort       :: Maybe Word16
   , cliSelectedContract :: Maybe Text
   , cliConfigFilepath   :: Maybe FilePath
   , cliOutputFormat     :: Maybe OutputFormat
@@ -255,6 +256,9 @@ options = Options
   <*> optional (option auto $ long "workers"
     <> metavar "N"
     <> help "Number of workers to run")
+  <*> optional (option auto $ long "server"
+    <> metavar "PORT"
+    <> help "Run events server on the given port")
   <*> optional (option str $ long "contract"
     <> metavar "CONTRACT"
     <> help "Contract to analyze")
@@ -339,6 +343,7 @@ overrideConfig config Options{..} = do
       , seqLen = fromMaybe campaignConf.seqLen cliSeqLen
       , seed = cliSeed <|> campaignConf.seed
       , workers = cliWorkers <|> campaignConf.workers
+      , serverPort = cliServerPort <|> campaignConf.serverPort
       }
 
     overrideSolConf solConf = solConf

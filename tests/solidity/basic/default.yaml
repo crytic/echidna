@@ -89,3 +89,5 @@ rpcUrl: null
 rpcBlock: null
 # number of workers
 workers: 1
+# events server port
+server: null

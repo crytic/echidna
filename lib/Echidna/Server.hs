@@ -1,11 +1,12 @@
-module Echidna.SSE where
+module Echidna.Server where
 
 import Control.Concurrent
-import Control.Monad (when)
+import Control.Monad (when, void)
 import Data.Aeson
 import Data.Binary.Builder (fromLazyByteString)
 import Data.IORef
 import Data.Time (LocalTime)
+import Data.Word (Word16)
 import Network.Wai.EventSource (ServerEvent(..), eventSourceAppIO)
 import Network.Wai.Handler.Warp (run)
 
@@ -21,10 +22,9 @@ instance ToJSON SSE where
            , "data" .= event
            ]
 
-runSSEServer :: Env -> Int -> IO (MVar ())
-runSSEServer env nworkers = do
+runSSEServer :: MVar () -> Env -> Word16 -> Int -> IO ()
+runSSEServer serverStopVar env port nworkers = do
   aliveRef <- newIORef nworkers
-  sseFinished <- newEmptyMVar
   sseChan <- dupChan env.eventQueue
 
   let sseListener = do
@@ -42,7 +42,7 @@ runSSEServer env nworkers = do
           case campaignEvent of
             WorkerStopped _ -> do
               aliveAfter <- atomicModifyIORef' aliveRef (\n -> (n-1, n-1))
-              when (aliveAfter == 0) $ putMVar sseFinished ()
+              when (aliveAfter == 0) $ putMVar serverStopVar ()
             _ -> pure ()
           pure $ ServerEvent
             { eventName = Just (eventName campaignEvent)
@@ -50,6 +50,5 @@ runSSEServer env nworkers = do
             , eventData = [ fromLazyByteString $ encode (SSE event) ]
             }
 
-  _serverTid <- forkIO $ do
-    run 3413 $ eventSourceAppIO sseListener
-  pure sseFinished
+  void . forkIO $ do
+    run (fromIntegral port) $ eventSourceAppIO sseListener
