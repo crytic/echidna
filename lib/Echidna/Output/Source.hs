@@ -162,8 +162,8 @@ srcMapCov sc covMap contracts = do
   Map.unionsWith Map.union <$> mapM linesCovered contracts
   where
   linesCovered :: SolcContract -> IO (Map FilePath (Map Int [TxResult]))
-  linesCovered c =
-    case Map.lookup (getBytecodeMetadata c.runtimeCode) covMap of
+  linesCovered c = undefined -- TODO
+    {- case Map.lookup (getBytecodeMetadata c.runtimeCode) covMap of
       Just vec -> VU.foldl' (\acc covInfo -> case covInfo of
         (-1, _, _) -> acc -- not covered
         (opIx, _stackDepths, txResults) ->
@@ -183,7 +183,7 @@ srcMapCov sc covMap contracts = do
                 Nothing -> acc
             Nothing -> acc
         ) mempty vec
-      Nothing -> mempty
+      Nothing -> mempty -}
 
 -- | Given a contract, and tuple as coverage, return the corresponding mapped line (if any)
 srcMapForOpLocation :: SolcContract -> OpIx -> Maybe SrcMap

@@ -13,6 +13,7 @@ import EVM.Dapp (DappInfo)
 import EVM.Types (Addr, Contract, W256)
 
 import Echidna.Types.Campaign (CampaignConf, CampaignEvent)
+import Echidna.Types.CodehashMap (CodehashMap)
 import Echidna.Types.Corpus (Corpus)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Signature (MetadataCache)
@@ -69,6 +70,7 @@ data Env = Env
 
   , testsRef :: IORef [EchidnaTest]
   , coverageRef :: IORef CoverageMap
+  , codehashMap :: CodehashMap
   , corpusRef :: IORef Corpus
 
   , metadataCache :: IORef MetadataCache
