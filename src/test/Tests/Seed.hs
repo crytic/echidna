@@ -7,8 +7,9 @@ import Common (runContract, overrideQuiet)
 import Data.Function ((&))
 import Data.IORef (readIORef)
 import Echidna.Output.Source (CoverageFileType(..))
-import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Campaign
+import Echidna.Types.Config (Env(..), EConfig(..))
+import Echidna.Types.Test
 import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Config (defaultConfig)
 
@@ -39,4 +40,4 @@ seedTests =
     gen s = do
       (env, _) <- runContract "basic/flags.sol" Nothing (cfg s)
       readIORef env.testsRef
-    same s t = (==) <$> gen s <*> gen t
+    same s t = (\x y -> ((.reproducer) <$> x) == ((.reproducer) <$> y)) <$> gen s <*> gen t

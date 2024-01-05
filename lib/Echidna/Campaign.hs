@@ -32,7 +32,6 @@ import EVM.Types hiding (Env, Frame(state))
 
 import Echidna.ABI
 import Echidna.Exec
-import Echidna.Events (extractEvents)
 import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
 import Echidna.Symbolic (forceBuf, forceAddr)
@@ -373,14 +372,12 @@ updateTest
   -> EchidnaTest
   -> m (Maybe EchidnaTest)
 updateTest vmForShrink (vm, xs) test = do
-  dappInfo <- asks (.dapp)
   case test.state of
     Open -> do
       (testValue, vm') <- checkETest test vm
       let
-        events = extractEvents False dappInfo vm'
         results = getResultFromVM vm'
-        test' = updateOpenTest test xs (testValue, events, results)
+        test' = updateOpenTest test xs (testValue, vm', results)
       case test'.state of
         Large _ -> do
           pushEvent (TestFalsified test')
