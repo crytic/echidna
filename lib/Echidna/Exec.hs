@@ -35,6 +35,7 @@ import Echidna.Symbolic (forceBuf)
 import Echidna.Transaction
 import Echidna.Types (ExecException(..), Gas, fromEVM, emptyAccount)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
+import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Signature (getBytecodeMetadata, lookupBytecodeMetadata)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber, getResult)
@@ -237,7 +238,7 @@ execTx
 execTx vm tx = runStateT (execTxWith (fromEVM exec) tx) vm
 
 -- | A type alias for the context we carry while executing instructions
-type CoverageContext = (Bool, Maybe (BS.ByteString, Int))
+type CoverageContext = (Bool, Maybe (VMut.IOVector CoverageInfo, Int))
 
 -- | Execute a transaction, logging coverage at every step.
 execTxWithCov
@@ -257,17 +258,13 @@ execTxWithCov tx = do
 
   -- Update the last valid location with the transaction result
   grew' <- liftIO $ case lastLoc of
-    Just (meta, pc) -> do
-      cov <- readIORef covRef
-      case Map.lookup meta cov of
-        Nothing -> pure False -- shouldn't happen
-        Just vec -> do
-          let txResultBit = fromEnum $ getResult $ fst r
-          VMut.read vec pc >>= \case
-            (opIx, depths, txResults) | not (txResults `testBit` txResultBit) -> do
-              VMut.write vec pc (opIx, depths, txResults `setBit` txResultBit)
-              pure True -- we count this as new coverage
-            _ -> pure False
+    Just (vec, pc) -> do
+      let txResultBit = fromEnum $ getResult $ fst r
+      VMut.read vec pc >>= \case
+        (opIx, depths, txResults) | not (txResults `testBit` txResultBit) -> do
+          VMut.write vec pc (opIx, depths, txResults `setBit` txResultBit)
+          pure True -- we count this as new coverage
+        _ -> pure False
     _ -> pure False
 
   pure (r, grew || grew')
@@ -314,7 +311,7 @@ execTxWithCov tx = do
 
               VMut.write vec' pc (opIx, fromIntegral depth, 0 `setBit` fromEnum Stop)
 
-              writeIORef covContextRef (True, Just (meta, pc))
+              writeIORef covContextRef (True, Just (vec', pc))
             else do
               -- TODO: should we collect the coverage here? Even if there is no
               -- bytecode for external contract, we could have a "virtual" location
@@ -328,9 +325,9 @@ execTxWithCov tx = do
               VMut.read vec pc >>= \case
                 (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
                   VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
-                  writeIORef covContextRef (True, Just (meta, pc))
+                  writeIORef covContextRef (True, Just (vec, pc))
                 _ ->
-                  modifyIORef' covContextRef $ \(new, _) -> (new, Just (meta, pc))
+                  modifyIORef' covContextRef $ \(new, _) -> (new, Just (vec, pc))
 
       -- | Get the VM's current execution location
       currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames)
