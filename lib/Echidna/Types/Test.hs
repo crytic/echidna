@@ -9,7 +9,6 @@ import Data.Text (Text)
 import EVM.Dapp (DappInfo)
 import EVM.Types (Addr, VM)
 
-import Echidna.Events (Events)
 import Echidna.Types (ExecException)
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Tx (Tx, TxResult)
@@ -85,8 +84,8 @@ data EchidnaTest = EchidnaTest
   , value      :: TestValue
   , reproducer :: [Tx]
   , result     :: TxResult
-  , events     :: Events
-  } deriving (Eq, Show)
+  , vm         :: Maybe (VM RealWorld)
+  } deriving (Show)
 
 isOptimizationTest :: EchidnaTest -> Bool
 isOptimizationTest EchidnaTest{testType = OptimizationTest _ _} = True

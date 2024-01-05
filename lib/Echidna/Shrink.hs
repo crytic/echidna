@@ -11,7 +11,6 @@ import Data.List qualified as List
 
 import EVM.Types (VM)
 
-import Echidna.Events (extractEvents)
 import Echidna.Exec
 import Echidna.Transaction
 import Echidna.Types.Solidity (SolConf(..))
@@ -38,7 +37,7 @@ shrinkTest vm test = do
           Just (txs, val, vm') -> do
             Just test { state = Large (i + 1)
                  , reproducer = txs
-                 , events = extractEvents False env.dapp vm'
+                 , vm = Just vm'
                  , result = getResultFromVM vm'
                  , value = val }
           Nothing ->
