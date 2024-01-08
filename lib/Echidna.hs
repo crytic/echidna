@@ -18,7 +18,7 @@ import EVM.Types hiding (Env)
 import Echidna.ABI
 import Echidna.Etheno (loadEtheno, extractFromEtheno)
 import Echidna.Output.Corpus
-import Echidna.Processor
+import Echidna.SourceAnalysis.Slither
 import Echidna.Solidity
 import Echidna.Symbolic (forceAddr)
 import Echidna.Test (createTests)
