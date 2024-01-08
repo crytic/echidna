@@ -1,9 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Echidna.Processor where
+module Echidna.SourceAnalysis.Slither where
 
-import Control.Exception (Exception)
-import Control.Monad.Catch (MonadThrow(..))
 import Data.Aeson ((.:), (.:?), (.!=), eitherDecode, parseJSON, withEmbeddedJSON, withObject)
 import Data.Aeson.Types (FromJSON, Parser, Value(String))
 import Data.ByteString.Base16 qualified as BS16 (decode)
@@ -25,33 +23,13 @@ import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_e
 import Text.Read (readMaybe)
 
 import EVM.ABI (AbiValue(..))
-import EVM.Types (Addr(..), FunctionSelector)
+import EVM.Types (Addr(..))
 
-import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
+import Echidna.ABI (makeNumAbiValues, makeArrayAbiValues)
 import Echidna.Types.Signature (ContractName, FunctionName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Utility (measureIO)
-
--- | Things that can go wrong trying to run a processor. Read the 'Show'
--- instance for more detailed explanations.
-data ProcException = ProcessorFailure String String
-                   | ProcessorNotFound String String
-
-instance Show ProcException where
-  show = \case
-    ProcessorFailure p e -> "Error running " ++ p ++ ":\n" ++ e
-    ProcessorNotFound p e -> "Cannot find " ++ p ++ " in PATH.\n" ++ e
-
-instance Exception ProcException
-
--- | This function is used to filter the lists of function names according to the supplied
--- contract name (if any) and returns a list of hashes
-filterResults :: Maybe ContractName -> Map ContractName [FunctionName] -> [FunctionSelector]
-filterResults (Just c) rs =
-  case Map.lookup c rs of
-    Nothing -> filterResults Nothing rs
-    Just s -> hashSig <$> s
-filterResults Nothing rs = hashSig <$> (concat . Map.elems) rs
+import System.IO (stderr, hPutStrLn)
 
 enhanceConstants :: SlitherInfo -> Set AbiValue
 enhanceConstants si =
@@ -125,22 +103,34 @@ instance FromJSON SlitherInfo where
 -- Slither processing
 runSlither :: FilePath -> SolConf -> IO SlitherInfo
 runSlither fp solConf = do
-  path <- findExecutable "slither" >>= \case
-    Nothing -> throwM $
-      ProcessorNotFound "slither" "You should install it using 'pip3 install slither-analyzer --user'"
-    Just path -> pure path
+  findExecutable "slither" >>= \case
+    Nothing -> do
+      hPutStrLn stderr $
+        "WARNING: slither not found. Echidna uses Slither (https://github.com/crytic/slither)"
+        <> " to perform source analysis, which makes fuzzing more effective. You should install it with"
+        <> " 'pip3 install slither-analyzer --user'"
+      pure emptySlitherInfo
+    Just path -> do
+      let args = ["--ignore-compile", "--print", "echidna", "--json", "-"]
+                 ++ solConf.cryticArgs ++ [fp]
+      (exitCode, out, err) <- measureIO solConf.quiet ("Running slither on " <> fp) $
+        readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
+      case exitCode of
+        ExitSuccess ->
+          case eitherDecode (BSL.pack out) of
+            Right si -> pure si
+            Left msg -> do
+              hPutStrLn stderr $
+                "WARNING: Decoding slither output failed. Echidna will continue,"
+                <> " however fuzzing will likely be less effective.\n"
+                <> msg
+              pure emptySlitherInfo
+        ExitFailure _ -> do
+          hPutStrLn stderr $
+            "WARNING: Running slither failed. Echidna will continue,"
+            <> " however fuzzing will likely be less effective.\n"
+            <> err
+          pure emptySlitherInfo
 
-  let args = ["--ignore-compile", "--print", "echidna", "--json", "-"]
-             ++ solConf.cryticArgs ++ [fp]
-  (ec, out, err) <- measureIO solConf.quiet ("Running slither on " <> fp) $
-    readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
-  case ec of
-    ExitSuccess ->
-      case eitherDecode (BSL.pack out) of
-        Right si -> pure si
-        Left msg -> throwM $
-          ProcessorFailure "slither" ("decoding slither output failed:\n" ++ msg)
-    ExitFailure _ -> throwM $ ProcessorFailure "slither" err
-
-noInfo :: SlitherInfo
-noInfo = SlitherInfo mempty mempty mempty mempty mempty [] [] []
+emptySlitherInfo :: SlitherInfo
+emptySlitherInfo = SlitherInfo mempty mempty mempty mempty mempty [] [] []
