@@ -90,6 +90,7 @@ main = withUtf8 $ withCP65001 $ do
   cacheContractsRef <- newIORef $ fromMaybe mempty loadedContractsCache
   cacheSlotsRef <- newIORef $ fromMaybe mempty loadedSlotsCache
   cacheMetaRef <- newIORef mempty
+  codehashMap <- newIORef mempty
   chainId <- RPC.fetchChainId cfg.rpcUrl
   eventQueue <- newChan
   coverageRef <- newIORef mempty
@@ -103,6 +104,7 @@ main = withUtf8 $ withCP65001 $ do
                 -- TODO put in real path
               , dapp = dappInfo "/" buildOutput
               , metadataCache = cacheMetaRef
+              , codehashMap = codehashMap
               , fetchContractCache = cacheContractsRef
               , fetchSlotCache = cacheSlotsRef
               , chainId = chainId

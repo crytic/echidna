@@ -307,7 +307,7 @@ execTxWithCov tx = do
 
         case maybeMetaVec of
           Nothing -> pure ()
-          Just (meta, vec) -> do
+          Just vec -> do
             -- TODO: no-op when pc is out-of-bounds. This shouldn't happen but
             -- we observed this in some real-world scenarios. This is likely a
             -- bug in another place, investigate.

@@ -1,7 +1,6 @@
 module Echidna.Types.Coverage where
 
 import Data.Bits (testBit)
-import Data.ByteString (ByteString)
 import Data.List (foldl')
 import Data.Map qualified as Map
 import Data.Map.Strict (Map)

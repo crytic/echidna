@@ -43,6 +43,7 @@ loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestT
 loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
   tryLoad = do
     cacheMeta <- newIORef mempty
+    codehashMap <- newIORef mempty
     cacheContracts <- newIORef mempty
     cacheSlots <- newIORef mempty
     eventQueue <- newChan
@@ -52,6 +53,7 @@ loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
     let env = Env { cfg = testConfig
                   , dapp = emptyDapp
                   , metadataCache = cacheMeta
+                  , codehashMap
                   , fetchContractCache = cacheContracts
                   , fetchSlotCache = cacheSlots
                   , chainId = Nothing
