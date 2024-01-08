@@ -16,7 +16,6 @@ import Echidna.Types.Campaign (CampaignConf, CampaignEvent)
 import Echidna.Types.CodehashMap (CodehashMap)
 import Echidna.Types.Corpus (Corpus)
 import Echidna.Types.Coverage (CoverageMap)
-import Echidna.Types.Signature (MetadataCache)
 import Echidna.Types.Solidity (SolConf)
 import Echidna.Types.Test (TestConf, EchidnaTest)
 import Echidna.Types.Tx (TxConf)
@@ -73,7 +72,6 @@ data Env = Env
   , codehashMap :: CodehashMap
   , corpusRef :: IORef Corpus
 
-  , metadataCache :: IORef MetadataCache
   , fetchContractCache :: IORef (Map Addr (Maybe Contract))
   , fetchSlotCache :: IORef (Map Addr (Map W256 (Maybe W256)))
   , chainId :: Maybe W256

@@ -97,7 +97,6 @@ runContract f selectedContract cfg = do
     buildOutput = selectBuildOutput selectedContract buildOutputs
     contracts = Map.elems . Map.unions $ (\(BuildOutput (Contracts c) _) -> c) <$> buildOutputs
 
-  metadataCache <- newIORef mempty
   codehashMap <- newIORef mempty
   fetchContractCache <- newIORef mempty
   fetchSlotCache <- newIORef mempty
@@ -107,7 +106,6 @@ runContract f selectedContract cfg = do
   testsRef <- newIORef mempty
   let env = Env { cfg = cfg
                 , dapp = dappInfo "/" buildOutput
-                , metadataCache
                 , codehashMap
                 , fetchContractCache
                 , fetchSlotCache
@@ -163,7 +161,6 @@ testContract' fp n v configPath s expectations = testCase fp $ withSolcVersion v
 
 checkConstructorConditions :: FilePath -> String -> TestTree
 checkConstructorConditions fp as = testCase fp $ do
-  cacheMeta <- newIORef mempty
   codehashMap <- newIORef mempty
   cacheContracts <- newIORef mempty
   cacheSlots <- newIORef mempty
@@ -173,7 +170,6 @@ checkConstructorConditions fp as = testCase fp $ do
   eventQueue <- newChan
   let env = Env { cfg = testConfig
                 , dapp = emptyDapp
-                , metadataCache = cacheMeta
                 , codehashMap
                 , fetchContractCache = cacheContracts
                 , fetchSlotCache = cacheSlots

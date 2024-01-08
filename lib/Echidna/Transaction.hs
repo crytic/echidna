@@ -30,7 +30,7 @@ import Echidna.Types.CodehashMap (lookupUsingCodehashNoInsert)
 import Echidna.Types.Config (Env(..))
 import Echidna.Types.Random
 import Echidna.Types.Signature
-  (SignatureMap, SolCall, ContractA, MetadataCache)
+  (SignatureMap, SolCall, ContractA)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign
@@ -57,12 +57,11 @@ getSignatures hmm (Just lmm) =
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
 genTx
   :: (MonadIO m, MonadRandom m, MonadState WorkerState m, MonadReader Env m)
-  => MetadataCache
-  -> World
+  => World
   -> TxConf
   -> Map (Expr EAddr) Contract
   -> m Tx
-genTx memo world txConf deployedContracts = do
+genTx world txConf deployedContracts = do
   env <- ask
   genDict <- gets (.genDict)
   sigMap <- getSignatures world.highSignatureMap world.lowSignatureMap

@@ -37,7 +37,6 @@ import Echidna.Types (ExecException(..), Gas, fromEVM, emptyAccount)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.CodehashMap (lookupUsingCodehash)
-import Echidna.Types.Signature (getBytecodeMetadata)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber, getResult)
 import Echidna.Utility (getTimestamp, timePrefix)
@@ -122,11 +121,6 @@ execTxWith executeTx tx = do
                 case ret of
                   -- TODO: fix hevm to not return an empty contract in case of an error
                   Just contract | contract.code /= RuntimeCode (ConcreteRuntimeCode "") -> do
-                    metaCacheRef <- asks (.metadataCache)
-                    metaCache <- liftIO $ readIORef metaCacheRef
-                    let bc = forceBuf $ fromJust (contract ^. bytecode)
-                    liftIO $ atomicWriteIORef metaCacheRef $ Map.insert bc (getBytecodeMetadata bc) metaCache
-
                     fromEVM (continuation contract)
                     liftIO $ atomicWriteIORef cacheRef $ Map.insert addr (Just contract) cache
                   _ -> do

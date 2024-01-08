@@ -89,7 +89,6 @@ main = withUtf8 $ withCP65001 $ do
   buildOutputs <- compileContracts cfg.solConf cliFilePath
   cacheContractsRef <- newIORef $ fromMaybe mempty loadedContractsCache
   cacheSlotsRef <- newIORef $ fromMaybe mempty loadedSlotsCache
-  cacheMetaRef <- newIORef mempty
   codehashMap <- newIORef mempty
   chainId <- RPC.fetchChainId cfg.rpcUrl
   eventQueue <- newChan
@@ -103,7 +102,6 @@ main = withUtf8 $ withCP65001 $ do
     env = Env { cfg
                 -- TODO put in real path
               , dapp = dappInfo "/" buildOutput
-              , metadataCache = cacheMetaRef
               , codehashMap = codehashMap
               , fetchContractCache = cacheContractsRef
               , fetchSlotCache = cacheSlotsRef
