@@ -12,6 +12,7 @@ import Data.List (find, partition, isSuffixOf, (\\))
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NEE
+import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (isJust, isNothing, catMaybes, listToMaybe, mapMaybe)
 import Data.Set (Set)
@@ -38,12 +39,12 @@ import Echidna.Deploy (deployContracts, deployBytecodes)
 import Echidna.Etheno (loadEthenoBatch)
 import Echidna.Events (EventMap, extractEvents)
 import Echidna.Exec (execTx, initialVM)
-import Echidna.Processor
+import Echidna.SourceAnalysis.Slither
 import Echidna.Symbolic (forceAddr)
 import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
-  (ContractName, SolSignature, SignatureMap, getBytecodeMetadata)
+  (ContractName, SolSignature, SignatureMap, getBytecodeMetadata, FunctionName)
 import Echidna.Types.Solidity
 import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx
@@ -316,13 +317,28 @@ mkWorld
   -> Maybe ContractName
   -> SlitherInfo
   -> World
-mkWorld SolConf{sender, testMode} em m c si =
+mkWorld SolConf{sender, testMode} eventMap sigMap maybeContract slitherInfo =
   let
-    ps = filterResults c si.payableFunctions
-    as = if isAssertionMode testMode then filterResults c si.asserts else []
-    cs = if isDapptestMode testMode then [] else filterResults c si.constantFunctions \\ as
-    (hm, lm) = prepareHashMaps cs as $ filterFallbacks c si.fallbackDefined si.receiveDefined m
-  in World sender hm lm ps em
+    payableSigs = filterResults maybeContract slitherInfo.payableFunctions
+    as = if isAssertionMode testMode then filterResults maybeContract slitherInfo.asserts else []
+    cs = if isDapptestMode testMode then [] else filterResults maybeContract slitherInfo.constantFunctions \\ as
+    (highSignatureMap, lowSignatureMap) = prepareHashMaps cs as $
+      filterFallbacks maybeContract slitherInfo.fallbackDefined slitherInfo.receiveDefined sigMap
+  in World { senders = sender
+           , highSignatureMap
+           , lowSignatureMap
+           , payableSigs
+           , eventMap
+           }
+
+-- | This function is used to filter the lists of function names according to the supplied
+-- contract name (if any) and returns a list of hashes
+filterResults :: Maybe ContractName -> Map ContractName [FunctionName] -> [FunctionSelector]
+filterResults (Just contractName) rs =
+  case Map.lookup contractName rs of
+    Nothing -> filterResults Nothing rs
+    Just sig -> hashSig <$> sig
+filterResults Nothing rs = hashSig <$> (concat . Map.elems) rs
 
 filterFallbacks
   :: Maybe ContractName
