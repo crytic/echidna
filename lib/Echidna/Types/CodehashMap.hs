@@ -39,3 +39,14 @@ lookupUsingCodehash chmap contr dapp mapRef make = do
     modifyFn key val oldMap = case (Map.lookup key oldMap) of
       Just val' -> (oldMap, Just val')
       Nothing -> (Map.insert key val oldMap, Just val)
+
+lookupUsingCodehashNoInsert :: CodehashMap -> Contract -> DappInfo -> Map W256 a -> IO (Maybe a)
+lookupUsingCodehashNoInsert chmap contr dapp mapVal = do
+  ifNotFound codehash $ do
+    codehash' <- lookupCodehash chmap codehash contr dapp
+    ifNotFound codehash' $ pure Nothing
+  where
+    codehash = forceWord contr.codehash
+    ifNotFound key notFoundCase = case (Map.lookup key mapVal) of
+      Nothing -> notFoundCase
+      Just val -> pure (Just val)

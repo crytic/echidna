@@ -7,27 +7,30 @@ import Optics.Core
 import Optics.State.Operators
 
 import Control.Monad (join)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform, MonadIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
+import Control.Monad.Reader (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Control.Monad.ST (RealWorld)
 import Data.Map (Map, toList)
-import Data.Map qualified as Map
-import Data.Maybe (mapMaybe, fromJust)
+import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
 
-import EVM (initialContract, loadContract, bytecode, resetState)
+import EVM (initialContract, loadContract, resetState)
 import EVM.ABI (abiValueType)
-import EVM.Types hiding (VMOpts(timestamp, gasprice))
+import EVM.Types hiding (Env, VMOpts(timestamp, gasprice))
 
 import Echidna.ABI
 import Echidna.Orphans.JSON ()
-import Echidna.Symbolic (forceBuf, forceWord, forceAddr)
+import Echidna.Symbolic (forceWord, forceAddr)
 import Echidna.Types (fromEVM)
+import Echidna.Types.CodehashMap (lookupUsingCodehashNoInsert)
+import Echidna.Types.Config (Env(..))
 import Echidna.Types.Random
 import Echidna.Types.Signature
-  (SignatureMap, SolCall, ContractA, MetadataCache, lookupBytecodeMetadata)
+  (SignatureMap, SolCall, ContractA, MetadataCache)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign
@@ -53,18 +56,19 @@ getSignatures hmm (Just lmm) =
 
 -- | Generate a random 'Transaction' with either synthesis or mutation of dictionary entries.
 genTx
-  :: (MonadRandom m, MonadState WorkerState m)
+  :: (MonadIO m, MonadRandom m, MonadState WorkerState m, MonadReader Env m)
   => MetadataCache
   -> World
   -> TxConf
   -> Map (Expr EAddr) Contract
   -> m Tx
 genTx memo world txConf deployedContracts = do
+  env <- ask
   genDict <- gets (.genDict)
   sigMap <- getSignatures world.highSignatureMap world.lowSignatureMap
   sender <- rElem' world.senders
-  (dstAddr, dstAbis) <- rElem' $ Set.fromList $
-    mapMaybe (toContractA sigMap) (toList deployedContracts)
+  mappedList <- liftIO $ mapM (toContractA env sigMap) (toList deployedContracts)
+  (dstAddr, dstAbis) <- rElem' $ Set.fromList $ mapMaybe id mappedList
   solCall <- genInteractionsM genDict dstAbis
   value <- genValue txConf.maxValue genDict.dictValues world.payableSigs solCall
   ts <- (,) <$> genDelay txConf.maxTimeDelay genDict.dictValues
@@ -78,11 +82,9 @@ genTx memo world txConf deployedContracts = do
             , delay = level ts
             }
   where
-    toContractA :: SignatureMap -> (Expr EAddr, Contract) -> Maybe ContractA
-    toContractA sigMap (addr, c) =
-      let bc = forceBuf $ fromJust $ view bytecode c
-          metadata = lookupBytecodeMetadata memo bc
-      in (forceAddr addr,) <$> Map.lookup metadata sigMap
+    toContractA :: Env -> SignatureMap -> (Expr EAddr, Contract) -> IO (Maybe ContractA)
+    toContractA env sigMap (addr, c) =
+      fmap (forceAddr addr,) <$> lookupUsingCodehashNoInsert env.codehashMap c env.dapp sigMap
 
 genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
 genDelay mv ds = do

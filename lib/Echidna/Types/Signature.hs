@@ -11,7 +11,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 
 import EVM.ABI (AbiType, AbiValue)
-import EVM.Types (Addr)
+import EVM.Types (Addr, W256)
 import Data.Map (Map)
 
 -- | Name of the contract
@@ -34,7 +34,7 @@ type ContractA = (Addr, NonEmpty SolSignature)
 -- | Used to memoize results of getBytecodeMetadata
 type MetadataCache = Map ByteString ByteString
 
-type SignatureMap = Map ByteString (NonEmpty SolSignature)
+type SignatureMap = Map W256 (NonEmpty SolSignature)
 
 getBytecodeMetadata :: ByteString -> ByteString
 getBytecodeMetadata bs =
