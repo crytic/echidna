@@ -19,34 +19,28 @@ lookupCodehash chmap codehash contr dapp = Map.lookup codehash <$> readIORef chm
     atomicModifyIORef' chmap $ (, ()) . Map.insert codehash originalCodehash
     pure originalCodehash
 
-lookupUsingCodehash :: CodehashMap -> Contract -> DappInfo -> IORef (Map W256 a) -> IO (Maybe a) -> IO (Maybe a)
-lookupUsingCodehash chmap contr dapp mapRef make = do
-  mapVal <- readIORef mapRef
-  ifNotFound codehash mapVal $ do
+lookupUsingCodehash :: CodehashMap -> Contract -> DappInfo -> Map W256 a -> IO (W256, Maybe a)
+lookupUsingCodehash chmap contr dapp mapVal = do
+  ifNotFound codehash $ do
     codehash' <- lookupCodehash chmap codehash contr dapp
-    ifNotFound codehash' mapVal $ do
-      toInsert <- make
-      applyModification codehash' toInsert
+    ifNotFound codehash' $ pure (codehash', Nothing)
   where
     codehash = forceWord contr.codehash
-    ifNotFound key mapVal notFoundCase = case (Map.lookup key mapVal) of
+    ifNotFound key notFoundCase = case (Map.lookup key mapVal) of
       Nothing -> notFoundCase
-      Just val -> pure (Just val)
+      Just val -> pure (key, Just val)
 
+lookupUsingCodehashOrInsert :: CodehashMap -> Contract -> DappInfo -> IORef (Map W256 a) -> IO (Maybe a) -> IO (Maybe a)
+lookupUsingCodehashOrInsert chmap contr dapp mapRef make = do
+  mapVal <- readIORef mapRef
+  (key, valFound) <- lookupUsingCodehash chmap contr dapp mapVal
+  case valFound of
+    Just val -> pure (Just val)
+    Nothing -> applyModification key =<< make
+  where
     applyModification _ Nothing = pure Nothing
     applyModification key (Just val) = atomicModifyIORef' mapRef $ modifyFn key val
 
     modifyFn key val oldMap = case (Map.lookup key oldMap) of
       Just val' -> (oldMap, Just val')
       Nothing -> (Map.insert key val oldMap, Just val)
-
-lookupUsingCodehashNoInsert :: CodehashMap -> Contract -> DappInfo -> Map W256 a -> IO (Maybe a)
-lookupUsingCodehashNoInsert chmap contr dapp mapVal = do
-  ifNotFound codehash $ do
-    codehash' <- lookupCodehash chmap codehash contr dapp
-    ifNotFound codehash' $ pure Nothing
-  where
-    codehash = forceWord contr.codehash
-    ifNotFound key notFoundCase = case (Map.lookup key mapVal) of
-      Nothing -> notFoundCase
-      Just val -> pure (Just val)

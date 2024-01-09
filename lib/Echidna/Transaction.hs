@@ -26,7 +26,7 @@ import Echidna.ABI
 import Echidna.Orphans.JSON ()
 import Echidna.Symbolic (forceWord, forceAddr)
 import Echidna.Types (fromEVM)
-import Echidna.Types.CodehashMap (lookupUsingCodehashNoInsert)
+import Echidna.Types.CodehashMap (lookupUsingCodehash)
 import Echidna.Types.Config (Env(..))
 import Echidna.Types.Random
 import Echidna.Types.Signature
@@ -83,7 +83,7 @@ genTx world txConf deployedContracts = do
   where
     toContractA :: Env -> SignatureMap -> (Expr EAddr, Contract) -> IO (Maybe ContractA)
     toContractA env sigMap (addr, c) =
-      fmap (forceAddr addr,) <$> lookupUsingCodehashNoInsert env.codehashMap c env.dapp sigMap
+      fmap (forceAddr addr,) . snd <$> lookupUsingCodehash env.codehashMap c env.dapp sigMap
 
 genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
 genDelay mv ds = do

@@ -36,7 +36,7 @@ import Echidna.Transaction
 import Echidna.Types (ExecException(..), Gas, fromEVM, emptyAccount)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
 import Echidna.Types.Coverage (CoverageInfo)
-import Echidna.Types.CodehashMap (lookupUsingCodehash)
+import Echidna.Types.CodehashMap (lookupUsingCodehashOrInsert)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber, getResult)
 import Echidna.Utility (getTimestamp, timePrefix)
@@ -287,7 +287,7 @@ execTxWithCov tx = do
         let (pc, opIx, depth) = currentCovLoc vm
             contract = currentContract vm
 
-        maybeMetaVec <- lookupUsingCodehash env.codehashMap contract env.dapp env.coverageRef $ do
+        maybeMetaVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp env.coverageRef $ do
           let size = BS.length . forceBuf . fromJust . view bytecode $ contract
           if size == 0 then pure Nothing else do
             -- IO for making a new vec
