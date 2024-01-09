@@ -10,7 +10,7 @@ import Optics.State.Operators
 import Control.Monad (when, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO), gets, modify', execStateT)
-import Control.Monad.Reader (MonadReader, asks)
+import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.ST (ST, stToIO, RealWorld)
 import Data.Bits
 import Data.ByteString qualified as BS
@@ -241,13 +241,11 @@ execTxWithCov
   => Tx
   -> m ((VMResult RealWorld, Gas), Bool)
 execTxWithCov tx = do
-  covRef <- asks (.coverageRef)
-  codehashMap <- asks (.codehashMap)
-  dapp <- asks (.dapp)
+  env <- ask
 
   covContextRef <- liftIO $ newIORef (False, Nothing)
 
-  r <- execTxWith (execCov covRef codehashMap dapp covContextRef) tx
+  r <- execTxWith (execCov env covContextRef) tx
 
   (grew, lastLoc) <- liftIO $ readIORef covContextRef
 
@@ -265,7 +263,7 @@ execTxWithCov tx = do
   pure (r, grew || grew')
   where
     -- the same as EVM.exec but collects coverage, will stop on a query
-    execCov covRef codehashMap dapp covContextRef = do
+    execCov env covContextRef = do
       vm <- get
       (r, vm') <- liftIO $ loop vm
       put vm'
@@ -287,11 +285,10 @@ execTxWithCov tx = do
       addCoverage :: VM RealWorld -> IO ()
       addCoverage !vm = do
         let (pc, opIx, depth) = currentCovLoc vm
-            contr = currentContract vm
+            contract = currentContract vm
 
-        maybeMetaVec <- lookupUsingCodehash codehashMap contr dapp covRef $ do
-          let size = BS.length . forceBuf . fromJust . view bytecode . fromJust $
-                Map.lookup vm.state.contract vm.env.contracts
+        maybeMetaVec <- lookupUsingCodehash env.codehashMap contract env.dapp env.coverageRef $ do
+          let size = BS.length . forceBuf . fromJust . view bytecode $ contract
           if size == 0 then pure Nothing else do
             -- IO for making a new vec
             vec <- VMut.new size
