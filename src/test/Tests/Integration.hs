@@ -70,6 +70,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_timestamp passed",               solved    "echidna_timestamp") ]
   , testContractV "basic/immutable.sol"    (Just (>= solcV (0,6,0))) Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
+  , testContractV "basic/immutable-2.sol"    (Just (>= solcV (0,6,0))) Nothing
+      [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "basic/construct.sol"    Nothing
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
   , testContract "basic/gasprice.sol"     (Just "basic/gasprice.yaml")
