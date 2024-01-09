@@ -13,7 +13,7 @@ import Control.Monad.Reader (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Control.Monad.ST (RealWorld)
 import Data.Map (Map, toList)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
@@ -67,7 +67,7 @@ genTx world txConf deployedContracts = do
   sigMap <- getSignatures world.highSignatureMap world.lowSignatureMap
   sender <- rElem' world.senders
   mappedList <- liftIO $ mapM (toContractA env sigMap) (toList deployedContracts)
-  (dstAddr, dstAbis) <- rElem' $ Set.fromList $ mapMaybe id mappedList
+  (dstAddr, dstAbis) <- rElem' $ Set.fromList $ catMaybes mappedList
   solCall <- genInteractionsM genDict dstAbis
   value <- genValue txConf.maxValue genDict.dictValues world.payableSigs solCall
   ts <- (,) <$> genDelay txConf.maxTimeDelay genDict.dictValues
