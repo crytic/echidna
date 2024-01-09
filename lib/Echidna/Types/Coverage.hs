@@ -11,7 +11,8 @@ import EVM.Types (W256)
 
 import Echidna.Types.Tx (TxResult)
 
--- | Map with the coverage information needed for fuzzing and source code printing
+-- | Map with the coverage information needed for fuzzing and source code printing.
+-- Indexed by contracts' "real" codehash; see `CodehashMap`.
 type CoverageMap = Map W256 (IOVector CoverageInfo)
 
 -- | Basic coverage information

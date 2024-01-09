@@ -69,9 +69,9 @@ data Env = Env
 
   , testsRef :: IORef [EchidnaTest]
   , coverageRef :: IORef CoverageMap
-  , codehashMap :: CodehashMap
   , corpusRef :: IORef Corpus
 
+  , codehashMap :: CodehashMap
   , fetchContractCache :: IORef (Map Addr (Maybe Contract))
   , fetchSlotCache :: IORef (Map Addr (Map W256 (Maybe W256)))
   , chainId :: Maybe W256

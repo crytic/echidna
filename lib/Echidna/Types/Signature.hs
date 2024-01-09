@@ -28,6 +28,7 @@ type SolCall = (FunctionName, [AbiValue])
 -- | A contract is just an address with an ABI (for our purposes).
 type ContractA = (Addr, NonEmpty SolSignature)
 
+-- | Indexed by contracts' "real" codehash; see `CodehashMap`.
 type SignatureMap = Map W256 (NonEmpty SolSignature)
 
 knownBzzrPrefixes :: [ByteString]

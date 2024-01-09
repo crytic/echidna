@@ -66,8 +66,8 @@ genTx world txConf deployedContracts = do
   genDict <- gets (.genDict)
   sigMap <- getSignatures world.highSignatureMap world.lowSignatureMap
   sender <- rElem' world.senders
-  mappedList <- liftIO $ mapM (toContractA env sigMap) (toList deployedContracts)
-  (dstAddr, dstAbis) <- rElem' $ Set.fromList $ catMaybes mappedList
+  contractAList <- liftIO $ mapM (toContractA env sigMap) (toList deployedContracts)
+  (dstAddr, dstAbis) <- rElem' $ Set.fromList $ catMaybes contractAList
   solCall <- genInteractionsM genDict dstAbis
   value <- genValue txConf.maxValue genDict.dictValues world.payableSigs solCall
   ts <- (,) <$> genDelay txConf.maxTimeDelay genDict.dictValues

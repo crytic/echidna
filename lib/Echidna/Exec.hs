@@ -302,6 +302,8 @@ execTxWithCov tx = do
             -- TODO: no-op when pc is out-of-bounds. This shouldn't happen but
             -- we observed this in some real-world scenarios. This is likely a
             -- bug in another place, investigate.
+            -- ... this should be fixed now, since we use `codeContract` instead
+            -- of `contract` for everything; it may be safe to remove this check.
             when (pc < VMut.length vec) $
               VMut.read vec pc >>= \case
                 (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
@@ -313,7 +315,7 @@ execTxWithCov tx = do
       -- | Get the VM's current execution location
       currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames)
 
-      -- | Get the current contract
+      -- | Get the current contract being executed
       currentContract vm = fromMaybe (error "no contract information on coverage") $
         vm ^? #env % #contracts % at vm.state.codeContract % _Just
 
