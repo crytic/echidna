@@ -156,14 +156,13 @@ randseq deployedContracts world = do
 
   let
     mutConsts = env.cfg.campaignConf.mutConsts
-    txConf = env.cfg.txConf
     seqLen = env.cfg.campaignConf.seqLen
 
   -- TODO: include reproducer when optimizing
   --let rs = filter (not . null) $ map (.testReproducer) $ ca._tests
 
   -- Generate new random transactions
-  randTxs <- replicateM seqLen (genTx world txConf deployedContracts)
+  randTxs <- replicateM seqLen (genTx world deployedContracts)
   -- Generate a random mutator
   cmut <- if seqLen == 1 then seqMutatorsStateless (fromConsts mutConsts)
                          else seqMutatorsStateful (fromConsts mutConsts)

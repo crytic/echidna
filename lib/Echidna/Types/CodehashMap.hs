@@ -8,14 +8,14 @@ import EVM.Dapp (DappInfo, findSrc)
 import EVM.Solidity (SolcContract(..))
 import EVM.Types (Contract(..), W256)
 
--- | Map from contracts' codehashes to their "real" (compile-time) codehash.
+-- | Map from contracts' codehashes to their compile-time codehash.
 -- This is relevant when the immutables solidity feature is used;
 -- when this feature is not used, the map will just end up being an identity map.
 -- `CodehashMap` is used in signature map and coverage map lookups.
 type CodehashMap = IORef (Map W256 W256)
 
 -- | Lookup a codehash in the `CodehashMap`.
--- In the case that it's not found, find the "real" (compile-time) codehash and add it to the map.
+-- In the case that it's not found, find the compile-time codehash and add it to the map.
 -- This is done using hevm's `findSrc` function.
 lookupCodehash :: CodehashMap -> W256 -> Contract -> DappInfo -> IO W256
 lookupCodehash chmap codehash contr dapp = do
@@ -29,7 +29,7 @@ lookupCodehash chmap codehash contr dapp = do
 
 -- | Given a map from codehash to some values of type `a`, lookup a contract in the map using its codehash.
 -- In current use, the `Map W256 a` will be either a `SignatureMap` or a `CoverageMap`.
--- Returns the "real" codehash, and the map entry if it is found.
+-- Returns the compile-time codehash, and the map entry if it is found.
 lookupUsingCodehash :: CodehashMap -> Contract -> DappInfo -> Map W256 a -> IO (W256, Maybe a)
 lookupUsingCodehash chmap contr dapp mapVal =
   ifNotFound codehash $ do

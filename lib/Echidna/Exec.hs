@@ -287,7 +287,7 @@ execTxWithCov tx = do
         let (pc, opIx, depth) = currentCovLoc vm
             contract = currentContract vm
 
-        maybeMetaVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp env.coverageRef $ do
+        maybeCovVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp env.coverageRef $ do
           let size = BS.length . forceBuf . fromJust . view bytecode $ contract
           if size == 0 then pure Nothing else do
             -- IO for making a new vec
@@ -296,7 +296,7 @@ execTxWithCov tx = do
             forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0)
             pure $ Just vec
 
-        case maybeMetaVec of
+        case maybeCovVec of
           Nothing -> pure ()
           Just vec -> do
             -- TODO: no-op when pc is out-of-bounds. This shouldn't happen but

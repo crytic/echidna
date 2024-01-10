@@ -27,7 +27,7 @@ import Echidna.Orphans.JSON ()
 import Echidna.Symbolic (forceWord, forceAddr)
 import Echidna.Types (fromEVM)
 import Echidna.Types.CodehashMap (lookupUsingCodehash)
-import Echidna.Types.Config (Env(..))
+import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Random
 import Echidna.Types.Signature
   (SignatureMap, SolCall, ContractA)
@@ -58,11 +58,11 @@ getSignatures hmm (Just lmm) =
 genTx
   :: (MonadIO m, MonadRandom m, MonadState WorkerState m, MonadReader Env m)
   => World
-  -> TxConf
   -> Map (Expr EAddr) Contract
   -> m Tx
-genTx world txConf deployedContracts = do
+genTx world deployedContracts = do
   env <- ask
+  let txConf = env.cfg.txConf
   genDict <- gets (.genDict)
   sigMap <- getSignatures world.highSignatureMap world.lowSignatureMap
   sender <- rElem' world.senders
