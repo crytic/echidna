@@ -1,12 +1,18 @@
 module Echidna.Types.CodehashMap where
 
+import Control.Applicative ((<|>))
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.IORef (IORef, readIORef, atomicModifyIORef')
+import Data.List (find)
 import Data.Map.Strict qualified as Map
 import Data.Map.Strict (Map)
+import Data.Maybe (mapMaybe)
+import Data.Vector qualified as V
 import Echidna.Symbolic (forceWord)
-import EVM.Dapp (DappInfo, findSrc)
+import EVM.Dapp (DappInfo(..), findSrc)
 import EVM.Solidity (SolcContract(..))
-import EVM.Types (Contract(..), W256)
+import EVM.Types (Contract(..), ContractCode(..), RuntimeCode(..), W256, maybeLitByte)
 
 -- | Map from contracts' codehashes to their compile-time codehash.
 -- This is relevant when the immutables solidity feature is used;
@@ -23,7 +29,9 @@ lookupCodehash chmap codehash contr dapp = do
   case Map.lookup codehash chmapVal of
     Just val -> pure val
     Nothing -> do
-      let originalCodehash = maybe codehash (.runtimeCodehash) (findSrc contr dapp)
+      -- hevm's `findSrc` doesn't always work, since `SolcContract.immutableReferences` isn't always populated
+      let solcContract = findSrc contr dapp <|> findSrcByMetadata contr dapp
+          originalCodehash = maybe codehash (.runtimeCodehash) solcContract
       atomicModifyIORef' chmap $ (, ()) . Map.insert codehash originalCodehash
       pure originalCodehash
 
@@ -62,3 +70,33 @@ lookupUsingCodehashOrInsert chmap contr dapp mapRef make = do
     modifyFn key val oldMap = case Map.lookup key oldMap of
       Just val' -> (oldMap, Just val')
       Nothing -> (Map.insert key val oldMap, Just val)
+
+-- | Try to find a SolcContract with a matching bytecode metadata
+findSrcByMetadata :: Contract -> DappInfo -> Maybe SolcContract
+findSrcByMetadata contr dapp = find compareMetadata (snd <$> Map.elems dapp.solcByHash) where
+  compareMetadata solc = contrMeta == Just (getBytecodeMetadata solc.runtimeCode)
+  contrMeta = getBytecodeMetadata <$> contrCode
+  contrCode = case contr.code of
+    (UnknownCode _) -> Nothing
+    (InitCode c _) -> Just c
+    (RuntimeCode (ConcreteRuntimeCode c)) -> Just c
+    (RuntimeCode (SymbolicRuntimeCode c)) -> Just $ BS.pack $ mapMaybe maybeLitByte $ V.toList c
+
+getBytecodeMetadata :: ByteString -> ByteString
+getBytecodeMetadata bs =
+  let stripCandidates = flip BS.breakSubstring bs <$> knownBzzrPrefixes in
+    case find ((/= mempty) . snd) stripCandidates of
+      Nothing     -> bs -- if no metadata is found, return the complete bytecode
+      Just (_, m) -> m
+
+knownBzzrPrefixes :: [ByteString]
+knownBzzrPrefixes =
+  -- a1 65 "bzzr0" 0x58 0x20 (solc <= 0.5.8)
+  [ BS.pack [0xa1, 0x65, 98, 122, 122, 114, 48, 0x58, 0x20]
+  -- a2 65 "bzzr0" 0x58 0x20 (solc >= 0.5.9)
+  , BS.pack [0xa2, 0x65, 98, 122, 122, 114, 48, 0x58, 0x20]
+  -- a2 65 "bzzr1" 0x58 0x20 (solc >= 0.5.11)
+  , BS.pack [0xa2, 0x65, 98, 122, 122, 114, 49, 0x58, 0x20]
+  -- a2 64 "ipfs" 0x58 0x22 (solc >= 0.6.0)
+  , BS.pack [0xa2, 0x64, 0x69, 0x70, 0x66, 0x73, 0x58, 0x22]
+  ]

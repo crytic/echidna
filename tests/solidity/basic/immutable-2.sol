@@ -5,9 +5,9 @@ contract C {
   constructor() {
     d = new D(0);
   }
-  function set(uint256 n, uint256 m) external {
+  function set(uint256 n) external {
     d = new D(n);
-    d.set(m);
+    d.set();
   }
   function echidna_test() public returns (bool) {
     return d.state();
