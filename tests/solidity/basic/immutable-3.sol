@@ -1,7 +1,7 @@
 contract D {
   uint256 public immutable n;
   bool public state = true;
-  constructor(uint256 _n) {
+  constructor(uint256 _n) public {
     n = _n;
   }
   function set() external {
