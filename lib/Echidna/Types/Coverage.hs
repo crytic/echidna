@@ -1,18 +1,19 @@
 module Echidna.Types.Coverage where
 
 import Data.Bits (testBit)
-import Data.ByteString (ByteString)
 import Data.List (foldl')
 import Data.Map qualified as Map
 import Data.Map.Strict (Map)
 import Data.Vector.Unboxed.Mutable (IOVector)
 import Data.Vector.Unboxed.Mutable qualified as V
 import Data.Word (Word64)
+import EVM.Types (W256)
 
 import Echidna.Types.Tx (TxResult)
 
--- | Map with the coverage information needed for fuzzing and source code printing
-type CoverageMap = Map ByteString (IOVector CoverageInfo)
+-- | Map with the coverage information needed for fuzzing and source code printing.
+-- Indexed by contracts' compile-time codehash; see `CodehashMap`.
+type CoverageMap = Map W256 (IOVector CoverageInfo)
 
 -- | Basic coverage information
 type CoverageInfo = (OpIx, StackDepths, TxResults)

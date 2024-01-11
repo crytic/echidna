@@ -10,11 +10,11 @@ import Optics.State.Operators
 import Control.Monad (when, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO), gets, modify', execStateT)
-import Control.Monad.Reader (MonadReader, asks)
+import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.ST (ST, stToIO, RealWorld)
 import Data.Bits
 import Data.ByteString qualified as BS
-import Data.IORef (readIORef, atomicWriteIORef, atomicModifyIORef', newIORef, writeIORef, modifyIORef')
+import Data.IORef (readIORef, atomicWriteIORef, newIORef, writeIORef, modifyIORef')
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
@@ -31,12 +31,12 @@ import EVM.Types hiding (Env)
 
 import Echidna.Events (emptyEvents)
 import Echidna.RPC (safeFetchContractFrom, safeFetchSlotFrom)
+import Echidna.SourceMapping (lookupUsingCodehashOrInsert)
 import Echidna.Symbolic (forceBuf)
 import Echidna.Transaction
 import Echidna.Types (ExecException(..), Gas, fromEVM, emptyAccount)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
 import Echidna.Types.Coverage (CoverageInfo)
-import Echidna.Types.Signature (getBytecodeMetadata, lookupBytecodeMetadata)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber, getResult)
 import Echidna.Utility (getTimestamp, timePrefix)
@@ -121,11 +121,6 @@ execTxWith executeTx tx = do
                 case ret of
                   -- TODO: fix hevm to not return an empty contract in case of an error
                   Just contract | contract.code /= RuntimeCode (ConcreteRuntimeCode "") -> do
-                    metaCacheRef <- asks (.metadataCache)
-                    metaCache <- liftIO $ readIORef metaCacheRef
-                    let bc = forceBuf $ fromJust (contract ^. bytecode)
-                    liftIO $ atomicWriteIORef metaCacheRef $ Map.insert bc (getBytecodeMetadata bc) metaCache
-
                     fromEVM (continuation contract)
                     liftIO $ atomicWriteIORef cacheRef $ Map.insert addr (Just contract) cache
                   _ -> do
@@ -246,13 +241,11 @@ execTxWithCov
   => Tx
   -> m ((VMResult RealWorld, Gas), Bool)
 execTxWithCov tx = do
-  covRef <- asks (.coverageRef)
-  metaCacheRef <- asks (.metadataCache)
-  cache <- liftIO $ readIORef metaCacheRef
+  env <- ask
 
   covContextRef <- liftIO $ newIORef (False, Nothing)
 
-  r <- execTxWith (execCov covRef covContextRef cache) tx
+  r <- execTxWith (execCov env covContextRef) tx
 
   (grew, lastLoc) <- liftIO $ readIORef covContextRef
 
@@ -270,7 +263,7 @@ execTxWithCov tx = do
   pure (r, grew || grew')
   where
     -- the same as EVM.exec but collects coverage, will stop on a query
-    execCov covRef covContextRef cache = do
+    execCov env covContextRef = do
       vm <- get
       (r, vm') <- liftIO $ loop vm
       put vm'
@@ -292,35 +285,25 @@ execTxWithCov tx = do
       addCoverage :: VM RealWorld -> IO ()
       addCoverage !vm = do
         let (pc, opIx, depth) = currentCovLoc vm
-            meta = currentMeta vm
-        cov <- readIORef covRef
-        case Map.lookup meta cov of
-          Nothing -> do
-            let size = BS.length . forceBuf . fromJust . view bytecode . fromJust $
-                  Map.lookup vm.state.contract vm.env.contracts
-            if size > 0 then do
-              vec <- VMut.new size
-              -- We use -1 for opIx to indicate that the location was not covered
-              forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0)
+            contract = currentContract vm
 
-              vec' <- atomicModifyIORef' covRef $ \cm ->
-                -- this should reduce races
-                case Map.lookup meta cm of
-                  Nothing -> (Map.insert meta vec cm, vec)
-                  Just vec' -> (cm, vec')
+        maybeCovVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp env.coverageRef $ do
+          let size = BS.length . forceBuf . fromJust . view bytecode $ contract
+          if size == 0 then pure Nothing else do
+            -- IO for making a new vec
+            vec <- VMut.new size
+            -- We use -1 for opIx to indicate that the location was not covered
+            forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0)
+            pure $ Just vec
 
-              VMut.write vec' pc (opIx, fromIntegral depth, 0 `setBit` fromEnum Stop)
-
-              writeIORef covContextRef (True, Just (vec', pc))
-            else do
-              -- TODO: should we collect the coverage here? Even if there is no
-              -- bytecode for external contract, we could have a "virtual" location
-              -- that PC landed at and record that.
-              pure ()
-          Just vec ->
+        case maybeCovVec of
+          Nothing -> pure ()
+          Just vec -> do
             -- TODO: no-op when pc is out-of-bounds. This shouldn't happen but
             -- we observed this in some real-world scenarios. This is likely a
             -- bug in another place, investigate.
+            -- ... this should be fixed now, since we use `codeContract` instead
+            -- of `contract` for everything; it may be safe to remove this check.
             when (pc < VMut.length vec) $
               VMut.read vec pc >>= \case
                 (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
@@ -332,11 +315,9 @@ execTxWithCov tx = do
       -- | Get the VM's current execution location
       currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames)
 
-      -- | Get the current contract's bytecode metadata
-      currentMeta vm = fromMaybe (error "no contract information on coverage") $ do
-        buffer <- vm ^? #env % #contracts % at vm.state.codeContract % _Just % bytecode
-        let bc = forceBuf $ fromJust buffer
-        pure $ lookupBytecodeMetadata cache bc
+      -- | Get the current contract being executed
+      currentContract vm = fromMaybe (error "no contract information on coverage") $
+        vm ^? #env % #contracts % at vm.state.codeContract % _Just
 
 initialVM :: Bool -> ST s (VM s)
 initialVM ffi = do

@@ -29,7 +29,6 @@ import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
 
 import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap)
 import Echidna.Types.Tx (TxResult(..))
-import Echidna.Types.Signature (getBytecodeMetadata)
 
 saveCoverages
   :: [CoverageFileType]
@@ -163,7 +162,7 @@ srcMapCov sc covMap contracts = do
   where
   linesCovered :: SolcContract -> IO (Map FilePath (Map Int [TxResult]))
   linesCovered c =
-    case Map.lookup (getBytecodeMetadata c.runtimeCode) covMap of
+    case Map.lookup c.runtimeCodehash covMap of
       Just vec -> VU.foldl' (\acc covInfo -> case covInfo of
         (-1, _, _) -> acc -- not covered
         (opIx, _stackDepths, txResults) ->
