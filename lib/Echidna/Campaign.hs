@@ -3,8 +3,6 @@
 
 module Echidna.Campaign where
 
-import Optics.Core hiding ((|>))
-
 import Control.Concurrent (writeChan)
 import Control.DeepSeq (force)
 import Control.Monad (replicateM, when, void, forM_)
@@ -17,16 +15,16 @@ import Control.Monad.ST (RealWorld)
 import Control.Monad.Trans (lift)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
-import Data.IORef (readIORef, writeIORef, atomicModifyIORef')
+import Data.IORef (readIORef, atomicModifyIORef')
 import Data.Map qualified as Map
 import Data.Map (Map, (\\))
-import Data.Maybe (isJust, mapMaybe, fromMaybe, fromJust)
+import Data.Maybe (isJust, mapMaybe, fromMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import System.Random (mkStdGen)
 
-import EVM (bytecode, cheatCode)
+import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Types hiding (Env, Frame(state))
 
@@ -34,7 +32,7 @@ import Echidna.ABI
 import Echidna.Exec
 import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
-import Echidna.Symbolic (forceBuf, forceAddr)
+import Echidna.Symbolic (forceAddr)
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types (Gas)
@@ -42,7 +40,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (scoveragePoints)
 import Echidna.Types.Config
-import Echidna.Types.Signature (makeBytecodeCache, FunctionName)
+import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), call)
@@ -86,12 +84,6 @@ runWorker
   -> Int     -- ^ Test limit for this worker
   -> m (WorkerStopReason, WorkerState)
 runWorker callback vm world dict workerId initialCorpus testLimit = do
-  metaCacheRef <- asks (.metadataCache)
-  fetchContractCacheRef <- asks (.fetchContractCache)
-  external <- liftIO $ Map.mapMaybe id <$> readIORef fetchContractCacheRef
-  let concretizeKeys = Map.foldrWithKey (Map.insert . forceAddr) mempty
-  liftIO $ writeIORef metaCacheRef (mkMemo (concretizeKeys vm.env.contracts <> external))
-
   let
     effectiveSeed = dict.defSeed + workerId
     effectiveGenDict = dict { defSeed = effectiveSeed }
@@ -152,8 +144,6 @@ runWorker callback vm world dict workerId initialCorpus testLimit = do
 
   continue = runUpdate (shrinkTest vm) >> lift callback >> run
 
-  mkMemo = makeBytecodeCache . map (forceBuf . fromJust . (^. bytecode)) . Map.elems
-
 -- | Generate a new sequences of transactions, either using the corpus or with
 -- randomly created transactions
 randseq
@@ -163,18 +153,16 @@ randseq
   -> m [Tx]
 randseq deployedContracts world = do
   env <- ask
-  memo <- liftIO $ readIORef env.metadataCache
 
   let
     mutConsts = env.cfg.campaignConf.mutConsts
-    txConf = env.cfg.txConf
     seqLen = env.cfg.campaignConf.seqLen
 
   -- TODO: include reproducer when optimizing
   --let rs = filter (not . null) $ map (.testReproducer) $ ca._tests
 
   -- Generate new random transactions
-  randTxs <- replicateM seqLen (genTx memo world txConf deployedContracts)
+  randTxs <- replicateM seqLen (genTx world deployedContracts)
   -- Generate a random mutator
   cmut <- if seqLen == 1 then seqMutatorsStateless (fromConsts mutConsts)
                          else seqMutatorsStateful (fromConsts mutConsts)
