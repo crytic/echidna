@@ -1,4 +1,4 @@
-module Echidna.Types.CodehashMap where
+module Echidna.SourceMapping where
 
 import Control.Applicative ((<|>))
 import Data.ByteString (ByteString)
