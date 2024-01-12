@@ -34,6 +34,7 @@ seedTests =
         , mutConsts = defaultMutationConsts
         , coverageFormats = [Txt,Html,Lcov]
         , workers = Nothing
+        , serverPort = Nothing
         }
       }
       & overrideQuiet

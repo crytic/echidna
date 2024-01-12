@@ -1,9 +1,10 @@
 module Echidna.Types.Campaign where
 
+import Data.Aeson
 import Data.Map (Map)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Word (Word8)
+import Data.Word (Word8, Word16)
 
 import Echidna.ABI (GenDict, emptyDict, encodeSig)
 import Echidna.Output.Source (CoverageFileType)
@@ -39,6 +40,9 @@ data CampaignConf = CampaignConf
   , coverageFormats :: [CoverageFileType]
     -- ^ List of file formats to save coverage reports
   , workers         :: Maybe Word8
+    -- ^ Number of fuzzing workers
+  , serverPort      :: Maybe Word16
+    -- ^ Server-Sent Events HTTP port number, if missing server is not ran
   }
 
 data CampaignEvent
@@ -50,6 +54,15 @@ data CampaignEvent
   -- ^ This is a terminal event. Worker exits and won't push any events after
   -- this one
   deriving Show
+
+instance ToJSON CampaignEvent where
+  toJSON = \case
+    TestFalsified test -> toJSON test
+    TestOptimized test -> toJSON test
+    NewCoverage coverage numContracts corpusSize ->
+      object [ "coverage" .= coverage, "contracts" .= numContracts, "corpus_size" .= corpusSize]
+    TxSequenceReplayed current total -> object [ "current" .= current, "total" .= total ]
+    WorkerStopped reason -> object [ "reason" .= show reason ]
 
 data WorkerStopReason
   = TestLimitReached

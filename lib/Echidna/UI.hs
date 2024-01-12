@@ -18,19 +18,17 @@ import Control.Concurrent (killThread, threadDelay)
 import Control.Exception (AsyncException)
 import Control.Monad
 import Control.Monad.Catch
-import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader
 import Control.Monad.State.Strict hiding (state)
 import Control.Monad.ST (RealWorld)
+import Data.Binary.Builder
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Time
 import UnliftIO
-  ( MonadUnliftIO, newIORef, readIORef, atomicWriteIORef, hFlush, stdout
-  , writeIORef, atomicModifyIORef', timeout
-  )
+  ( MonadUnliftIO, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
 import EVM.Types (Addr, Contract, VM, W256)
@@ -38,11 +36,12 @@ import EVM.Types (Addr, Contract, VM, W256)
 import Echidna.ABI
 import Echidna.Campaign (runWorker)
 import Echidna.Output.JSON qualified
+import Echidna.Server (runSSEServer)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (corpusSize)
 import Echidna.Types.Coverage (scoveragePoints)
-import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest, TestType, TestState(..))
+import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
@@ -57,7 +56,7 @@ data UIEvent =
 -- | Set up and run an Echidna 'Campaign' and display interactive UI or
 -- print non-interactive output in desired format at the end
 ui
-  :: (MonadCatch m, MonadRandom m, MonadReader Env m, MonadUnliftIO m)
+  :: (MonadCatch m, MonadReader Env m, MonadUnliftIO m)
   => VM RealWorld -- ^ Initial VM state
   -> World   -- ^ Initial world state
   -> GenDict
@@ -159,10 +158,11 @@ ui vm world dict initialCorpus = do
 #endif
 
     NonInteractive outputFormat -> do
+      serverStopVar <- newEmptyMVar
 #ifdef INTERACTIVE_UI
       -- Handles ctrl-c, TODO: this doesn't work on Windows
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
-        installHandler sig (Catch $ stopWorkers workers) Nothing
+        installHandler sig (Catch $ stopWorkers workers >> putMVar serverStopVar ()) Nothing
 #endif
       let forwardEvent = putStrLn . ppLogLine
       liftIO $ spawnListener env forwardEvent nworkers listenerStopVar
@@ -173,6 +173,10 @@ ui vm world dict initialCorpus = do
             line <- statusLine env states
             putStrLn $ time <> "[status] " <> line
             hFlush stdout
+
+      case conf.campaignConf.serverPort of
+        Just port -> liftIO $ runSSEServer serverStopVar env port nworkers
+        Nothing -> pure ()
 
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 3_000_000 -- 3 seconds
@@ -185,6 +189,11 @@ ui vm world dict initialCorpus = do
 
       -- print final status regardless the last scheduled update
       liftIO printStatus
+
+      when (isJust conf.campaignConf.serverPort) $ do
+        -- wait until we send all SSE events
+        liftIO $ putStrLn "Waiting until all SSE are received..."
+        readMVar serverStopVar
 
       states <- liftIO $ workerStates workers
 

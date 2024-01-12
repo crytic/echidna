@@ -1,7 +1,10 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE RecordWildCards #-}
+
 module Echidna.Types.Test where
 
 import Control.Monad.ST (RealWorld)
-import Data.Aeson (ToJSON(..), object)
+import Data.Aeson
 import Data.DoubleWord (Int256)
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
@@ -12,6 +15,7 @@ import EVM.Types (Addr, VM)
 import Echidna.Types (ExecException)
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Tx (Tx, TxResult)
+import GHC.Generics (Generic)
 
 -- | Test mode is parsed from a string
 type TestMode = String
@@ -40,7 +44,7 @@ data TestValue
   = BoolValue Bool
   | IntValue Int256
   | NoValue
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Generic, ToJSON)
 
 instance Show TestValue where
   show (BoolValue x) = show x
@@ -70,6 +74,19 @@ instance Show TestType where
     CallTest t _         -> show t
     Exploration          -> "Exploration"
 
+instance ToJSON TestType where
+  toJSON = \case
+    PropertyTest name addr ->
+      object [ "type" .= ("property_test" :: String), "name" .= name, "addr" .= addr ]
+    OptimizationTest name addr ->
+      object [ "type" .= ("optimization_test" :: String), "name" .= name, "addr" .= addr ]
+    AssertionTest _ sig addr ->
+      object [ "type" .= ("assertion_test" :: String), "signature" .= sig, "addr" .= addr ]
+    CallTest name _ ->
+      object [ "type" .= ("call_test" :: String), "name" .= name ]
+    Exploration ->
+      object [ "type" .= ("exploration_test" :: String) ]
+
 instance Eq TestState where
   Open    == Open    = True
   Large i == Large j = i == j
@@ -86,6 +103,15 @@ data EchidnaTest = EchidnaTest
   , result     :: TxResult
   , vm         :: Maybe (VM RealWorld)
   } deriving (Show)
+
+instance ToJSON EchidnaTest where
+  toJSON EchidnaTest{..} = object
+    [ "state" .= state
+    , "type" .= testType
+    , "value" .= value
+    , "reproducer" .= reproducer
+    , "result" .= result
+    ]
 
 isOptimizationTest :: EchidnaTest -> Bool
 isOptimizationTest EchidnaTest{testType = OptimizationTest _ _} = True
