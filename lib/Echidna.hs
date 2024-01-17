@@ -52,8 +52,10 @@ prepareContract env contracts solFiles specifiedContract seed = do
   let solConf = env.cfg.solConf
 
   -- compile and load contracts
-  (vm, funs, testNames, signatureMap, symTxs) <-
+  (vm, funs, testNames, signatureMap) <-
     loadSpecified env specifiedContract contracts
+
+  symTxs <- createSymTx env specifiedContract contracts vm
 
   -- run processors
   slitherInfo <- runSlither (NE.head solFiles) solConf

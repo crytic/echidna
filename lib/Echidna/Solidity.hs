@@ -180,6 +180,25 @@ abiOf pref solcContract =
     filter (not . isPrefixOf pref . fst)
            (Map.elems solcContract.abiMap <&> \method -> (method.name, snd <$> method.inputs))
 
+createSymTx :: Env -> Maybe Text -> [SolcContract] -> VM RealWorld -> IO [Tx]
+createSymTx env name cs vm = do
+    mainContract <- choose cs name
+    Echidna.SymExec.exploreContract solConf.contractAddr mainContract vm
+  where
+    -- copied from loadSpecified
+    solConf = env.cfg.solConf
+    choose [] _ = throwM NoContracts
+    choose (c:_) Nothing = pure c
+    choose _ (Just n) =
+      maybe (throwM $ ContractNotFound n) pure $
+        find (Data.Text.isSuffixOf (contractId n) . (.contractName)) cs
+    contractId n
+      | T.any (== ':') n =
+        let (splitPath, splitName) = T.breakOn ":" n
+        in rewritePathSeparators splitPath `T.append` splitName
+      | otherwise = ":" `append` n
+    rewritePathSeparators = T.pack . joinPath . splitDirectories . T.unpack
+
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
 -- testing and extract an ABI and list of tests. Throws exceptions if anything returned doesn't look
@@ -189,7 +208,7 @@ loadSpecified
   :: Env
   -> Maybe Text
   -> [SolcContract]
-  -> IO (VM RealWorld, [SolSignature], [Text], SignatureMap, [Tx])
+  -> IO (VM RealWorld, [SolSignature], [Text], SignatureMap)
 loadSpecified env name cs = do
   let solConf = env.cfg.solConf
 
@@ -199,10 +218,6 @@ loadSpecified env name cs = do
     putStrLn "Multiple contracts found, only analyzing the first"
   unless solConf.quiet $
     putStrLn $ "Analyzing contract: " <> T.unpack mainContract.contractName
-
-  symTxs <- if solConf.symExec
-    then Echidna.SymExec.exploreContract solConf.contractAddr mainContract
-    else pure []
 
   let
     -- generate the complete abi mapping
@@ -296,7 +311,7 @@ loadSpecified env name cs = do
 
     case vm4.result of
       Just (VMFailure _) -> throwM SetUpCallFailed
-      _ -> pure (vm4, neFuns, fst <$> tests, abiMapping, symTxs)
+      _ -> pure (vm4, neFuns, fst <$> tests, abiMapping)
 
   where
     choose [] _ = throwM NoContracts
@@ -375,7 +390,7 @@ loadSolTests env fp name = do
   let solConf = env.cfg.solConf
   foo <- compileContracts solConf fp
   let contracts = Map.elems . Map.unions $ (\(BuildOutput (Contracts c) _) -> c) <$> foo
-  (vm, funs, testNames, _signatureMap, _) <- loadSpecified env name contracts
+  (vm, funs, testNames, _signatureMap) <- loadSpecified env name contracts
   let
     eventMap = Map.unions $ map (.eventMap) contracts
     world = World solConf.sender mempty Nothing [] eventMap
