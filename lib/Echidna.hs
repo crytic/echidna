@@ -55,7 +55,9 @@ prepareContract env solFiles specifiedContract seed = do
       contracts = Map.elems env.dapp.solcByName
 
   -- deploy contracts
-  (vm, funs, testNames, signatureMap, symTxs) <- loadSpecified env specifiedContract contracts
+  (vm, funs, testNames, signatureMap) <- loadSpecified env specifiedContract contracts
+
+  symTxs <- createSymTx env specifiedContract contracts vm
 
   -- run processors
   slitherInfo <- runSlither (NE.head solFiles) solConf

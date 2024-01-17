@@ -67,7 +67,7 @@ main = withUtf8 $ withCP65001 $ do
   (vm, world, dict, symTxs) <- prepareContract env cliFilePath cliSelectedContract seed
 
   initialCorpus <- loadInitialCorpus env world
-  let corpus = initialCorpus <> (pure <$> symTxs)
+  let corpus = initialCorpus <> (pure . pure <$> symTxs)
   -- start ui and run tests
   _campaign <- runReaderT (ui vm world dict corpus) env
 
