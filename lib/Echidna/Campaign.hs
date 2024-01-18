@@ -3,7 +3,7 @@
 
 module Echidna.Campaign where
 
-import Control.Concurrent (writeChan)
+import Control.Concurrent
 import Control.DeepSeq (force)
 import Control.Monad (replicateM, when, void, forM_)
 import Control.Monad.Catch (MonadThrow(..))
@@ -22,6 +22,7 @@ import Data.Maybe (isJust, mapMaybe, fromMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
+import Data.Time (LocalTime)
 import System.Random (mkStdGen)
 
 import EVM (cheatCode)
@@ -67,7 +68,7 @@ replayCorpus
 replayCorpus vm txSeqs =
   forM_ (zip [1..] txSeqs) $ \(i, txSeq) -> do
     _ <- callseq vm txSeq
-    pushEvent (TxSequenceReplayed i (length txSeqs))
+    pushWorkerEvent (TxSequenceReplayed i (length txSeqs))
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
@@ -206,7 +207,11 @@ callseq vm txSeq = do
 
     cov <- liftIO . readIORef =<< asks (.coverageRef)
     points <- liftIO $ scoveragePoints cov
-    pushEvent (NewCoverage points (length cov) newSize)
+    pushWorkerEvent NewCoverage { points
+                                , numCodehashes = length cov
+                                , corpusSize = newSize
+                                , transactions = fst <$> results
+                                }
 
   modify' $ \workerState ->
 
@@ -368,10 +373,10 @@ updateTest vmForShrink (vm, xs) test = do
         test' = updateOpenTest test xs (testValue, vm', results)
       case test'.state of
         Large _ -> do
-          pushEvent (TestFalsified test')
+          pushWorkerEvent (TestFalsified test')
           pure (Just test')
         _ | test'.value > test.value -> do
-          pushEvent (TestOptimized test')
+          pushWorkerEvent (TestOptimized test')
           pure (Just test')
         _ -> pure Nothing
     Large _ ->
@@ -381,12 +386,46 @@ updateTest vmForShrink (vm, xs) test = do
       shrinkTest vmForShrink test
     _ -> pure Nothing
 
-pushEvent
+pushWorkerEvent
   :: (MonadReader Env m, MonadState WorkerState m, MonadIO m)
-  => CampaignEvent
+  => WorkerEvent
   -> m ()
-pushEvent event = do
+pushWorkerEvent event = do
   workerId <- gets (.workerId)
+  env <- ask
+  liftIO $ pushCampaignEvent env (WorkerEvent workerId event)
+
+pushCampaignEvent :: Env -> CampaignEvent -> IO ()
+pushCampaignEvent env event = do
   time <- liftIO getTimestamp
-  chan <- asks (.eventQueue)
-  liftIO $ writeChan chan (workerId, time, event)
+  writeChan env.eventQueue (time, event)
+
+-- | Listener reads events and runs the given 'handler' function. It exits after
+-- receiving all 'WorkerStopped' events and sets the returned 'MVar' so the
+-- parent thread can safely block on listener until all events are processed.
+--
+-- NOTE: because the 'Failure' event does not come from a specific fuzzing worker
+-- it is possible that a listener won't process it if emitted after all workers
+-- are stopped. This is quite unlikely and non-critical but should be addressed
+-- in the long term.
+spawnListener
+  :: (MonadReader Env m, MonadIO m)
+  => ((LocalTime, CampaignEvent) -> IO ())
+  -- ^ a function that handles the events
+  -> m (MVar ())
+spawnListener handler = do
+  cfg <- asks (.cfg)
+  let nworkers = fromMaybe 1 cfg.campaignConf.workers
+  eventQueue <- asks (.eventQueue)
+  chan <- liftIO $ dupChan eventQueue
+  stopVar <- liftIO newEmptyMVar
+  liftIO $ void $ forkFinally (loop chan nworkers) (const $ putMVar stopVar ())
+  pure stopVar
+  where
+  loop chan !workersAlive =
+    when (workersAlive > 0) $ do
+      event <- readChan chan
+      handler event
+      case event of
+        (_, WorkerEvent _ (WorkerStopped _)) -> loop chan (workersAlive - 1)
+        _                                    -> loop chan workersAlive

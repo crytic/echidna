@@ -10,16 +10,20 @@ import Data.Word (Word16)
 import Network.Wai.EventSource (ServerEvent(..), eventSourceAppIO)
 import Network.Wai.Handler.Warp (run)
 
-import Echidna.Types.Campaign (CampaignEvent (..))
+import Echidna.Types.Campaign
 import Echidna.Types.Config (Env(..))
 
-newtype SSE = SSE (Int, LocalTime, CampaignEvent)
+newtype SSE = SSE (LocalTime, CampaignEvent)
 
 instance ToJSON SSE where
-  toJSON (SSE (workerId, time, event)) =
+  toJSON (SSE (time, WorkerEvent workerId event)) =
     object [ "worker" .= workerId
            , "timestamp" .= time
            , "data" .= event
+           ]
+  toJSON (SSE (time, Failure reason)) =
+    object [ "timestamp" .= time
+           , "data" .= reason
            ]
 
 runSSEServer :: MVar () -> Env -> Word16 -> Int -> IO ()
@@ -32,15 +36,18 @@ runSSEServer serverStopVar env port nworkers = do
         if aliveNow == 0 then
           pure CloseEvent
         else do
-          event@(_, _, campaignEvent) <- readChan sseChan
+          event@(_, campaignEvent) <- readChan sseChan
           let eventName = \case
-                TestFalsified _ -> "test_falsified"
-                TestOptimized _ -> "test_optimized"
-                NewCoverage {} -> "new_coverage"
-                TxSequenceReplayed _ _ -> "tx_sequence_replayed"
-                WorkerStopped _ -> "worker_stopped"
+                WorkerEvent _ workerEvent ->
+                  case workerEvent of
+                    TestFalsified _ -> "test_falsified"
+                    TestOptimized _ -> "test_optimized"
+                    NewCoverage {} -> "new_coverage"
+                    TxSequenceReplayed _ _ -> "tx_sequence_replayed"
+                    WorkerStopped _ -> "worker_stopped"
+                Failure _err -> "failure"
           case campaignEvent of
-            WorkerStopped _ -> do
+            WorkerEvent _ (WorkerStopped _) -> do
               aliveAfter <- atomicModifyIORef' aliveRef (\n -> (n-1, n-1))
               when (aliveAfter == 0) $ putMVar serverStopVar ()
             _ -> pure ()

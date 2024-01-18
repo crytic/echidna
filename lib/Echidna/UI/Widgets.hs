@@ -49,7 +49,7 @@ data UIState = UIState
   , fetchedDialog :: B.Dialog () Name
   , displayFetchedDialog :: Bool
 
-  , workerEvents :: Seq (Int, LocalTime, CampaignEvent)
+  , events :: Seq (LocalTime, CampaignEvent)
   , workersAlive :: Int
 
   , corpusSize :: Int
@@ -117,7 +117,7 @@ campaignStatus uiState = do
       inner
       <=>
       hBorderWithLabel (withAttr (attrName "subtitle") $ str $
-        " Log (" <> show (length uiState.workerEvents) <> ") ")
+        " Log (" <> show (length uiState.events) <> ") ")
       <=>
       logPane uiState
       <=>
@@ -137,12 +137,14 @@ logPane uiState =
   withVScrollBars OnRight .
   withVScrollBarHandles .
   viewport LogViewPort Vertical $
-  foldl (<=>) emptyWidget (showLogLine <$> Seq.reverse uiState.workerEvents)
+  foldl (<=>) emptyWidget (showLogLine <$> Seq.reverse uiState.events)
 
-showLogLine :: (Int, LocalTime, CampaignEvent) -> Widget Name
-showLogLine (workerId, time, event) =
+showLogLine :: (LocalTime, CampaignEvent) -> Widget Name
+showLogLine (time, event@(WorkerEvent workerId _)) =
   (withAttr (attrName "time") $ str $ (timePrefix time) <> "[Worker " <> show workerId <> "] ")
     <+> strBreak (ppCampaignEvent event)
+showLogLine (time, event) =
+  (withAttr (attrName "time") $ str $ (timePrefix time) <> " ") <+> strBreak (ppCampaignEvent event)
 
 summaryWidget :: Env -> UIState -> Widget Name
 summaryWidget env uiState =

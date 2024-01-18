@@ -25,9 +25,11 @@ import Echidna.Utility (timePrefix)
 import EVM.Format (showTraceTree)
 import EVM.Types (W256, VM)
 
-ppLogLine :: (Int, LocalTime, CampaignEvent) -> String
-ppLogLine (workerId, time, event) =
+ppLogLine :: (LocalTime, CampaignEvent) -> String
+ppLogLine (time, event@(WorkerEvent workerId _)) =
   timePrefix time <> "[Worker " <> show workerId <> "] " <> ppCampaignEvent event
+ppLogLine (time, event) =
+  timePrefix time <> " " <> ppCampaignEvent event
 
 ppCampaign :: (MonadIO m, MonadReader Env m) => [WorkerState] -> m String
 ppCampaign workerStates = do
