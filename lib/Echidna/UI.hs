@@ -21,7 +21,6 @@ import Control.Monad.Catch
 import Control.Monad.Reader
 import Control.Monad.State.Strict hiding (state)
 import Control.Monad.ST (RealWorld)
-import Data.Binary.Builder
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
@@ -34,12 +33,13 @@ import UnliftIO.Concurrent hiding (killThread, threadDelay)
 import EVM.Types (Addr, Contract, VM, W256)
 
 import Echidna.ABI
-import Echidna.Campaign (runWorker)
+import Echidna.Campaign (runWorker, spawnListener)
+import Echidna.Output.Corpus (saveCorpusEvent)
 import Echidna.Output.JSON qualified
 import Echidna.Server (runSSEServer)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
-import Echidna.Types.Corpus (corpusSize)
+import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage (scoveragePoints)
 import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
@@ -51,7 +51,7 @@ data UIEvent =
   CampaignUpdated LocalTime [EchidnaTest] [WorkerState]
   | FetchCacheUpdated (Map Addr (Maybe Contract))
                       (Map Addr (Map W256 (Maybe W256)))
-  | WorkerEvent (Int, LocalTime, CampaignEvent)
+  | EventReceived (LocalTime, CampaignEvent)
 
 -- | Set up and run an Echidna 'Campaign' and display interactive UI or
 -- print non-interactive output in desired format at the end
@@ -84,19 +84,18 @@ ui vm world dict initialCorpus = do
       (fromIntegral (length initialCorpus) / fromIntegral nworkers :: Double)
     corpusChunks = chunksOf chunkSize initialCorpus ++ repeat []
 
+  corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
+
   workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
     uncurry (spawnWorker env perWorkerTestLimit)
-
-  -- A var used to block and wait for listener to finish
-  listenerStopVar <- newEmptyMVar
 
   case effectiveMode of
 #ifdef INTERACTIVE_UI
     Interactive -> do
       -- Channel to push events to update UI
       uiChannel <- liftIO $ newBChan 1000
-      let forwardEvent = writeBChan uiChannel . WorkerEvent
-      liftIO $ spawnListener env forwardEvent nworkers listenerStopVar
+      let forwardEvent = writeBChan uiChannel . EventReceived
+      uiEventsForwarderStopVar <- spawnListener forwardEvent
 
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 200_000 -- 200 ms
@@ -133,7 +132,7 @@ ui vm world dict initialCorpus = do
           , fetchedSlots = mempty
           , fetchedDialog = B.dialog (Just $ str " Fetched contracts/slots ") Nothing 80
           , displayFetchedDialog = False
-          , workerEvents = mempty
+          , events = mempty
           , corpusSize = 0
           , coverage = 0
           , numCodehashes = 0
@@ -145,7 +144,7 @@ ui vm world dict initialCorpus = do
       stopWorkers workers
 
       -- wait for all events to be processed
-      takeMVar listenerStopVar
+      forM_ [uiEventsForwarderStopVar, corpusSaverStopVar] takeMVar
 
       liftIO $ killThread ticker
 
@@ -162,10 +161,13 @@ ui vm world dict initialCorpus = do
 #ifdef INTERACTIVE_UI
       -- Handles ctrl-c, TODO: this doesn't work on Windows
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
-        installHandler sig (Catch $ stopWorkers workers >> putMVar serverStopVar ()) Nothing
+        let handler = Catch $ do
+              stopWorkers workers
+              void $ tryPutMVar serverStopVar ()
+        in installHandler sig handler Nothing
 #endif
       let forwardEvent = putStrLn . ppLogLine
-      liftIO $ spawnListener env forwardEvent nworkers listenerStopVar
+      uiEventsForwarderStopVar <- spawnListener forwardEvent
 
       let printStatus = do
             states <- liftIO $ workerStates workers
@@ -183,7 +185,7 @@ ui vm world dict initialCorpus = do
         printStatus
 
       -- wait for all events to be processed
-      takeMVar listenerStopVar
+      forM_ [uiEventsForwarderStopVar, corpusSaverStopVar] takeMVar
 
       liftIO $ killThread ticker
 
@@ -227,35 +229,13 @@ ui vm world dict initialCorpus = do
         ]
 
       time <- liftIO getTimestamp
-      writeChan env.eventQueue (workerId, time, WorkerStopped stopReason)
+      writeChan env.eventQueue (time, WorkerEvent workerId (WorkerStopped stopReason))
 
     pure (threadId, stateRef)
 
   -- | Get a snapshot of all worker states
   workerStates workers =
     forM workers $ \(_, stateRef) -> readIORef stateRef
-
--- | Listener reads events and forwards all of them to the UI using the
--- 'forwardEvent' function. It exits after receiving all 'WorkerStopped'
--- events and sets the passed 'MVar' so the parent thread can block on listener
--- until all workers are done.
-spawnListener
-  :: Env
-  -> ((Int, LocalTime, CampaignEvent) -> IO ())
-  -- ^ a function that forwards event to the UI
-  -> Int     -- ^ number of workers
-  -> MVar () -- ^ use to join this thread
-  -> IO ()
-spawnListener env forwardEvent nworkers stopVar =
-  void $ forkFinally (loop nworkers) (const $ putMVar stopVar ())
-  where
-  loop !workersAlive =
-    when (workersAlive > 0) $ do
-      event <- readChan env.eventQueue
-      forwardEvent event
-      case event of
-        (_, _, WorkerStopped _) -> loop (workersAlive - 1)
-        _                       -> loop workersAlive
 
 #ifdef INTERACTIVE_UI
  -- | Order the workers to stop immediately
@@ -288,18 +268,18 @@ monitor = do
         modify' $ \state ->
           state { fetchedContracts = contracts
                 , fetchedSlots = slots }
-      AppEvent (WorkerEvent event@(_,time,campaignEvent)) -> do
-        modify' $ \state -> state { workerEvents = state.workerEvents |> event }
+      AppEvent (EventReceived event@(time,campaignEvent)) -> do
+        modify' $ \state -> state { events = state.events |> event }
 
         case campaignEvent of
-          NewCoverage coverage numCodehashes size ->
+          WorkerEvent _ (NewCoverage { points, numCodehashes, corpusSize }) ->
             modify' $ \state ->
-              state { coverage = max state.coverage coverage -- max not really needed
-                    , corpusSize = size
+              state { coverage = max state.coverage points -- max not really needed
+                    , corpusSize
                     , numCodehashes
                     , lastNewCov = time
                     }
-          WorkerStopped _ ->
+          WorkerEvent _ (WorkerStopped _) ->
             modify' $ \state ->
               state { workersAlive = state.workersAlive - 1
                     , timeStopped = if state.workersAlive == 1
@@ -365,4 +345,5 @@ statusLine env states = do
     <> ", fuzzing: " <> show totalCalls <> "/" <> show env.cfg.campaignConf.testLimit
     <> ", values: " <> show ((.value) <$> filter isOptimizationTest tests)
     <> ", cov: " <> show points
-    <> ", corpus: " <> show (corpusSize corpus)
+    <> ", corpus: " <> show (Corpus.corpusSize corpus)
+

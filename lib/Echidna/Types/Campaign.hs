@@ -45,22 +45,28 @@ data CampaignConf = CampaignConf
     -- ^ Server-Sent Events HTTP port number, if missing server is not ran
   }
 
+type WorkerId = Int
+
 data CampaignEvent
+  = WorkerEvent WorkerId WorkerEvent
+  | Failure String
+
+data WorkerEvent
   = TestFalsified !EchidnaTest
   | TestOptimized !EchidnaTest
-  | NewCoverage !Int !Int !Int
+  | NewCoverage { points :: !Int, numCodehashes :: !Int, corpusSize :: !Int, transactions :: [Tx] }
   | TxSequenceReplayed !Int !Int
   | WorkerStopped WorkerStopReason
   -- ^ This is a terminal event. Worker exits and won't push any events after
   -- this one
   deriving Show
 
-instance ToJSON CampaignEvent where
+instance ToJSON WorkerEvent where
   toJSON = \case
     TestFalsified test -> toJSON test
     TestOptimized test -> toJSON test
-    NewCoverage coverage numContracts corpusSize ->
-      object [ "coverage" .= coverage, "contracts" .= numContracts, "corpus_size" .= corpusSize]
+    NewCoverage { points, numCodehashes, corpusSize } ->
+      object [ "coverage" .= points, "contracts" .= numCodehashes, "corpus_size" .= corpusSize]
     TxSequenceReplayed current total -> object [ "current" .= current, "total" .= total ]
     WorkerStopped reason -> object [ "reason" .= show reason ]
 
@@ -74,20 +80,20 @@ data WorkerStopReason
 
 ppCampaignEvent :: CampaignEvent -> String
 ppCampaignEvent = \case
+  WorkerEvent _ e -> ppWorkerEvent e
+  Failure err -> err
+
+ppWorkerEvent :: WorkerEvent -> String
+ppWorkerEvent = \case
   TestFalsified test ->
-    let name = case test.testType of
-                 PropertyTest n _ -> n
-                 AssertionTest _ n _ -> encodeSig n
-                 CallTest n _ -> n
-                 _ -> error "impossible"
-    in "Test " <> T.unpack name <> " falsified!"
+    "Test " <> T.unpack (showTest test) <> " falsified!"
   TestOptimized test ->
     let name = case test.testType of OptimizationTest n _ -> n; _ -> error "fixme"
     in "New maximum value of " <> T.unpack name <> ": " <> show test.value
-  NewCoverage points codehashes corpus ->
+  NewCoverage { points, numCodehashes, corpusSize } ->
     "New coverage: " <> show points <> " instr, "
-      <> show codehashes <> " contracts, "
-      <> show corpus <> " seqs in corpus"
+      <> show numCodehashes <> " contracts, "
+      <> show corpusSize <> " seqs in corpus"
   TxSequenceReplayed current total ->
     "Sequence replayed from corpus (" <> show current <> "/" <> show total <> ")"
   WorkerStopped TestLimitReached ->
@@ -102,6 +108,12 @@ ppCampaignEvent = \case
     "Crashed:\n\n" <>
     e <>
     "\n\nPlease report it to https://github.com/crytic/echidna/issues"
+  where
+    showTest test = case test.testType of
+      PropertyTest n _ -> n
+      AssertionTest _ n _ -> encodeSig n
+      CallTest n _ -> n
+      _ -> error "impossible"
 
 -- | The state of a fuzzing campaign.
 data WorkerState = WorkerState
