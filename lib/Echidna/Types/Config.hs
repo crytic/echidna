@@ -65,7 +65,7 @@ data Env = Env
 
   -- | Shared between all workers. Events are fairly rare so contention is
   -- minimal.
-  , eventQueue :: Chan (Int, LocalTime, CampaignEvent)
+  , eventQueue :: Chan (LocalTime, CampaignEvent)
 
   , testsRef :: IORef [EchidnaTest]
   , coverageRef :: IORef CoverageMap
