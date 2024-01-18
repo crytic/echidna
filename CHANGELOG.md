@@ -1,3 +1,14 @@
+## 2.2.2
+
+* Save corpus and reproducers continuously (#1167)
+* Deliver status information using server-sent events (#1131)
+* Performance improvements for coverage collection (#1160)
+* Make slither optional (#1159)
+* Rich trace printing (#1157)
+* Static builds and release workflow (#1133)
+* Re-enables using slither for vyper files (#1108)
+* Dependency updates (#1153, #1096, #1154)
+
 ## 2.2.1
 
 * Shanghai fork support with hevm 0.51.3 (#1090)
