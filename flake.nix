@@ -2,6 +2,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    foundry.url = "github:shazow/foundry.nix/monthly";
     flake-compat = {
       url = "github:edolstra/flake-compat";
       flake = false;
@@ -12,7 +13,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, nix-bundle-exe, ... }:
+  outputs = { self, nixpkgs, flake-utils, foundry, nix-bundle-exe, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -149,6 +150,7 @@
             buildInputs = [
               solc
               slither-analyzer
+              foundry.defaultPackage.${system}
               haskellPackages.hlint
               haskellPackages.cabal-install
               haskellPackages.haskell-language-server

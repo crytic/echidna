@@ -21,11 +21,11 @@ import Data.Text (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text qualified as T
 import System.Directory
   (doesDirectoryExist, doesFileExist, findExecutable, listDirectory, removeFile)
-import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit (ExitCode(..))
 import System.FilePath (joinPath, splitDirectories, (</>))
 import System.IO (openFile, IOMode(..))
 import System.Info (os)
+import System.Process
 
 import EVM (initialContract, currentContract)
 import EVM.ABI
@@ -85,14 +85,47 @@ readSolcBatch d = do
 -- | Given a list of files, use its extenstion to check if it is a precompiled
 -- contract or try to compile it and get a list of its contracts and a list of source
 -- cache, throwing exceptions if necessary.
-compileContracts
-  :: SolConf
-  -> NonEmpty FilePath
-  -> IO [BuildOutput]
-compileContracts solConf fp = do
-  path <- findExecutable "crytic-compile" >>= \case
+compileContracts :: SolConf -> NonEmpty FilePath -> IO [BuildOutput]
+compileContracts solConf targetPaths = do
+  case targetPaths of
+    targetPath :| [] ->
+      doesFileExist (targetPath </> "foundry.toml") >>= \case
+        True -> do
+          buildWithFoundry solConf targetPath >>= \case
+            Nothing -> buildWithCryticCompile solConf targetPaths
+            Just buildOutput -> pure [buildOutput]
+        False -> buildWithCryticCompile solConf targetPaths
+    _ -> buildWithCryticCompile solConf targetPaths
+
+buildWithFoundry :: SolConf -> FilePath -> IO (Maybe BuildOutput)
+buildWithFoundry solConf projectPath = do
+  findExecutable "forge" >>= \case
+    Nothing -> pure Nothing
+    Just forge -> do
+      unless solConf.quiet $ putStrLn "Foundry project detected, running forge."
+      stream <- if solConf.quiet
+                  then UseHandle <$> openFile nullFilePath WriteMode
+                  else pure Inherit
+      let processParams = (proc forge ["build"])
+                            { cwd = Just projectPath
+                            , std_out = stream
+                            , std_err = stream
+                            }
+      (_, _, _, processHandle) <- createProcess processParams
+      waitForProcess processHandle >>= \case
+        ExitFailure code ->
+          throwM $ CompileFailure ("forge failed with error code: " <> show code) ""
+        ExitSuccess ->
+          readBuildOutput projectPath Foundry >>= \case
+            Right buildOutput -> pure (Just buildOutput)
+            Left err ->
+              throwM $ CompileFailure ("reading forge build output failed with error:\n" <> err) ""
+
+buildWithCryticCompile :: SolConf -> NonEmpty FilePath -> IO [BuildOutput]
+buildWithCryticCompile solConf targetPaths = do
+  cryticCompile <- findExecutable "crytic-compile" >>= \case
     Nothing -> throwM NoCryticCompile
-    Just path -> pure path
+    Just cryticCompile -> pure cryticCompile
 
   let
     usual = ["--solc-disable-warnings", "--export-format", "solc"]
@@ -100,26 +133,24 @@ compileContracts solConf fp = do
               (\sa -> if null sa then [] else ["--solc-args", sa])
     compileOne :: FilePath -> IO [BuildOutput]
     compileOne x = do
-      stderr <- if solConf.quiet
-                   then UseHandle <$> openFile nullFilePath WriteMode
-                   else pure Inherit
       (ec, out, err) <- measureIO solConf.quiet ("Compiling " <> x) $ do
         readCreateProcessWithExitCode
-          (proc path $ (solConf.cryticArgs ++ solargs) |> x) {std_err = stderr} ""
+          (proc cryticCompile $ (solConf.cryticArgs ++ solargs) |> x) ""
       case ec of
         ExitSuccess -> readSolcBatch "crytic-export"
         ExitFailure _ -> throwM $ CompileFailure out err
 
-    -- | OS-specific path to the "null" file, which accepts writes without storing them
-    nullFilePath :: String
-    nullFilePath = if os == "mingw32" then "\\\\.\\NUL" else "/dev/null"
   -- clean up previous artifacts
   removeJsonFiles "crytic-export"
-  buildOutputs <- mapM compileOne fp
+  buildOutputs <- mapM compileOne targetPaths
   when (length buildOutputs > 1) $
     putStrLn "WARNING: more than one SourceCaches was found after compile. \
              \Only the first one will be used."
   pure $ NE.head buildOutputs
+
+-- | OS-specific path to the "null" file, which accepts writes without storing them
+nullFilePath :: String
+nullFilePath = if os == "mingw32" then "\\\\.\\NUL" else "/dev/null"
 
 removeJsonFiles :: FilePath -> IO ()
 removeJsonFiles dir =
