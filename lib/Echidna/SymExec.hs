@@ -15,15 +15,21 @@ import EVM.ABI
 import EVM.Expr (simplify)
 import EVM.Fetch qualified as Fetch
 import EVM.SMT
+import EVM (loadContract)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers, Solver(Z3), CheckSatResult(Sat))
 import EVM.SymExec (interpret, runExpr, abstractVM, mkCalldata, produceModels, LoopHeuristic (Naive))
 import EVM.Types
 import Control.Monad.ST (stToIO, RealWorld)
+import Control.Monad.State.Strict (execState)
 import Echidna.Types.Tx
 import Data.Vector.Unboxed qualified as VUnboxed
 import Data.Vector.Unboxed.Mutable qualified as VUnboxed.Mutable
 
+
+-- test with applying multiple state modifying transactions before
+-- running exploreContract
+-- use execTxWithCov
 exploreContract :: Addr -> SolcContract -> VM RealWorld -> IO [Tx]
 exploreContract dst contract vm = do
   let methods = Map.elems contract.abiMap
@@ -39,19 +45,25 @@ exploreContract dst contract vm = do
         rpcInfo = Nothing
       memory <- stToIO (ConcreteMemory <$> VUnboxed.Mutable.new 0)
       vmSym <- stToIO vmSym'
-      let vm' = vm & #state .~ vmSym.state
+      let vm2 = execState (loadContract (LitAddr dst)) vm
+      let vm' = vm2 -- & #state .~ vmSym.state
                    & #frames .~ []
-                   & #state % #calldata .~ cd
                    & #constraints .~ constraints
-                   & #state % #contract .~ SymAddr "entrypoint"
-                   & #state % #codeContract .~ SymAddr "entrypoint"
+                   -- & #state % #contract .~ SymAddr "entrypoint"
+                   -- & #state % #codeContract .~ SymAddr "entrypoint"
                    & #state % #callvalue .~ TxValue
+                   & #state % #caller .~ SymAddr "caller"
+                   & #state % #calldata .~ cd
+                   & #state % #pc .~ 0
+                   & #state % #stack .~ []
                    & #result .~ Nothing
                    & #config % #baseState .~ AbstractBase
-                   & #state % #caller .~ SymAddr "caller"
-                   & #env .~ vmSym.env
+                   & #env % #contracts .~ (Map.union vmSym.env.contracts vm.env.contracts)
+      -- print $ vmSym.state
+      -- print $ vm'.state
       exprInter <- interpret (Fetch.oracle solvers rpcInfo) maxIter askSmtIters Naive vm' runExpr
       models <- produceModels solvers (simplify exprInter)
+      print (mapMaybe (modelToTx dst method) models)
       pure $ mapMaybe (modelToTx dst method) models
 
   pure $ mconcat res
