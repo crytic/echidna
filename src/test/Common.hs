@@ -41,7 +41,7 @@ import System.Process (readProcess)
 import Echidna (prepareContract)
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Campaign (runWorker)
-import Echidna.Solidity (loadSolTests, compileContracts, selectBuildOutput)
+import Echidna.Solidity (loadSolTests, compileContracts)
 import Echidna.Test (checkETest)
 import Echidna.Types (Gas)
 import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
@@ -52,7 +52,6 @@ import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
 
 import EVM.Dapp (dappInfo, emptyDapp)
-import EVM.Solidity (BuildOutput(..), Contracts (Contracts))
 import Control.Concurrent (newChan)
 import Control.Monad (forM_)
 
@@ -92,10 +91,7 @@ withSolcVersion (Just f) t = do
 runContract :: FilePath -> Maybe ContractName -> EConfig -> IO (Env, WorkerState)
 runContract f selectedContract cfg = do
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
-  buildOutputs <- compileContracts cfg.solConf (f :| [])
-  let
-    buildOutput = selectBuildOutput selectedContract buildOutputs
-    contracts = Map.elems . Map.unions $ (\(BuildOutput (Contracts c) _) -> c) <$> buildOutputs
+  buildOutput <- compileContracts cfg.solConf (f :| [])
 
   codehashMap <- newIORef mempty
   fetchContractCache <- newIORef mempty
@@ -114,7 +110,7 @@ runContract f selectedContract cfg = do
                 , eventQueue
                 , testsRef
                 , chainId = Nothing }
-  (vm, world, dict) <- prepareContract env contracts (f :| []) selectedContract seed
+  (vm, world, dict) <- prepareContract env (f :| []) selectedContract seed
 
   let corpus = []
   (_stopReason, finalState) <- flip runReaderT env $
