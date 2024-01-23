@@ -20,11 +20,10 @@ module Common
   , overrideQuiet
   ) where
 
-import Prelude hiding (lookup)
-
 import Test.Tasty (TestTree)
 import Test.Tasty.HUnit (testCase, assertBool)
 
+import Control.Monad (forM_)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
 import Data.DoubleWord (Int256)
@@ -34,11 +33,11 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
 import Data.Map qualified as Map
 import Data.Maybe (isJust)
-import Data.Text (Text, pack)
 import Data.SemVer (Version, version, fromText)
+import Data.Text (Text, pack)
 import System.Process (readProcess)
 
-import Echidna (prepareContract)
+import Echidna (mkEnv, prepareContract)
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Campaign (runWorker)
 import Echidna.Solidity (loadSolTests, compileContracts)
@@ -50,10 +49,6 @@ import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
-
-import EVM.Dapp (dappInfo, emptyDapp)
-import Control.Concurrent (newChan)
-import Control.Monad (forM_)
 
 testConfig :: EConfig
 testConfig = defaultConfig & overrideQuiet
@@ -92,24 +87,8 @@ runContract :: FilePath -> Maybe ContractName -> EConfig -> IO (Env, WorkerState
 runContract f selectedContract cfg = do
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
   buildOutput <- compileContracts cfg.solConf (f :| [])
+  env <- mkEnv cfg buildOutput
 
-  codehashMap <- newIORef mempty
-  fetchContractCache <- newIORef mempty
-  fetchSlotCache <- newIORef mempty
-  coverageRef <- newIORef mempty
-  corpusRef <- newIORef mempty
-  eventQueue <- newChan
-  testsRef <- newIORef mempty
-  let env = Env { cfg = cfg
-                , dapp = dappInfo "/" buildOutput
-                , codehashMap
-                , fetchContractCache
-                , fetchSlotCache
-                , coverageRef
-                , corpusRef
-                , eventQueue
-                , testsRef
-                , chainId = Nothing }
   (vm, world, dict) <- prepareContract env (f :| []) selectedContract seed
 
   let corpus = []
@@ -157,29 +136,14 @@ testContract' fp n v configPath s expectations = testCase fp $ withSolcVersion v
 
 checkConstructorConditions :: FilePath -> String -> TestTree
 checkConstructorConditions fp as = testCase fp $ do
-  codehashMap <- newIORef mempty
-  cacheContracts <- newIORef mempty
-  cacheSlots <- newIORef mempty
-  coverageRef <- newIORef mempty
-  corpusRef <- newIORef mempty
-  testsRef <- newIORef mempty
-  eventQueue <- newChan
-  let env = Env { cfg = testConfig
-                , dapp = emptyDapp
-                , codehashMap
-                , fetchContractCache = cacheContracts
-                , fetchSlotCache = cacheSlots
-                , coverageRef
-                , corpusRef
-                , eventQueue
-                , testsRef
-                , chainId = Nothing }
-  (v, _, t) <- loadSolTests env (fp :| []) Nothing
+  let cfg = testConfig
+  buildOutput <- compileContracts cfg.solConf (pure fp)
+  env <- mkEnv cfg buildOutput
+  (v, _, t) <- loadSolTests env Nothing
   r <- flip runReaderT env $ mapM (`checkETest` v) t
   mapM_ (\(x,_) -> assertBool as (forceBool x)) r
   where forceBool (BoolValue b) = b
         forceBool _ = error "BoolValue expected"
-
 
 getResult :: Text -> [EchidnaTest] -> Maybe EchidnaTest
 getResult n tests =

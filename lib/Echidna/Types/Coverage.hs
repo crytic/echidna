@@ -1,9 +1,11 @@
 module Echidna.Types.Coverage where
 
+import Data.Aeson (ToJSON(toJSON), FromJSON(parseJSON), withText)
 import Data.Bits (testBit)
 import Data.List (foldl')
 import Data.Map qualified as Map
 import Data.Map.Strict (Map)
+import Data.Text (toLower)
 import Data.Vector.Unboxed.Mutable (IOVector)
 import Data.Vector.Unboxed.Mutable qualified as V
 import Data.Word (Word64)
@@ -44,3 +46,16 @@ unpackTxResults txResults =
       then toEnum bit : results
       else results
   ) [] [0..63]
+
+data CoverageFileType = Lcov | Html | Txt deriving (Eq, Show)
+
+instance ToJSON CoverageFileType where
+  toJSON = toJSON . show
+
+instance FromJSON CoverageFileType where
+  parseJSON = withText "CoverageFileType" $ readFn . toLower where
+    readFn "lcov" = pure Lcov
+    readFn "html" = pure Html
+    readFn "text" = pure Txt
+    readFn "txt"  = pure Txt
+    readFn _ = fail "could not parse CoverageFileType"

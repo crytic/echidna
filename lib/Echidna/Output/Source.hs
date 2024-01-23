@@ -4,16 +4,16 @@ module Echidna.Output.Source where
 
 import Prelude hiding (writeFile)
 
-import Data.Aeson (ToJSON(..), FromJSON(..), withText)
 import Data.ByteString qualified as BS
 import Data.Foldable
+import Data.IORef (readIORef)
 import Data.List (nub, sort)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Sequence qualified as Seq
 import Data.Set qualified as S
-import Data.Text (Text, pack, toLower)
+import Data.Text (Text, pack)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
@@ -27,19 +27,22 @@ import Text.Printf (printf)
 import EVM.Dapp (srcMapCodePos)
 import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
 
-import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap)
+import Echidna.Types.Campaign (CampaignConf(..))
+import Echidna.Types.Config (Env(..), EConfig(..))
+import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..))
 import Echidna.Types.Tx (TxResult(..))
 
 saveCoverages
-  :: [CoverageFileType]
+  :: Env
   -> Int
   -> FilePath
   -> SourceCache
   -> [SolcContract]
-  -> CoverageMap
   -> IO ()
-saveCoverages fileTypes seed d sc cs s =
-  mapM_ (\ty -> saveCoverage ty seed d sc cs s) fileTypes
+saveCoverages env seed d sc cs = do
+  let fileTypes = env.cfg.campaignConf.coverageFormats
+  coverage <- readIORef env.coverageRef
+  mapM_ (\ty -> saveCoverage ty seed d sc cs coverage) fileTypes
 
 saveCoverage
   :: CoverageFileType
@@ -55,19 +58,6 @@ saveCoverage fileType seed d sc cs covMap = do
   cc <- ppCoveredCode fileType sc cs covMap
   createDirectoryIfMissing True d
   writeFile fn cc
-
-data CoverageFileType = Lcov | Html | Txt deriving (Eq, Show)
-
-instance ToJSON CoverageFileType where
-  toJSON = toJSON . show
-
-instance FromJSON CoverageFileType where
-  parseJSON = withText "CoverageFileType" $ readFn . toLower where
-    readFn "lcov" = pure Lcov
-    readFn "html" = pure Html
-    readFn "text" = pure Txt
-    readFn "txt"  = pure Txt
-    readFn _ = fail "could not parse CoverageFileType"
 
 coverageFileExtension :: CoverageFileType -> String
 coverageFileExtension Lcov = ".lcov"
