@@ -109,7 +109,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Cache Local
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.local
@@ -117,7 +117,7 @@ jobs:
           key: ${{ runner.os }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
 
       - name: Cache Stack & Cabal
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             .stack-work
