@@ -43,7 +43,8 @@ runSSEServer serverStopVar env port nworkers = do
                     TestFalsified _ -> "test_falsified"
                     TestOptimized _ -> "test_optimized"
                     NewCoverage {} -> "new_coverage"
-                    TxSequenceReplayed _ _ -> "tx_sequence_replayed"
+                    TxSequenceReplayed {} -> "tx_sequence_replayed"
+                    TxSequenceReplayFailed {} -> "tx_sequence_replay_failed"
                     WorkerStopped _ -> "worker_stopped"
                 Failure _err -> "failure"
           case campaignEvent of

@@ -25,11 +25,11 @@ saveTxs dir = mapM_ saveTxSeq where
     let file = dir </> (show . abs . hash . show) txSeq <.> "txt"
     unlessM (doesFileExist file) $ encodeFile file (toJSON txSeq)
 
-loadTxs :: FilePath -> IO [[Tx]]
+loadTxs :: FilePath -> IO [(FilePath, [Tx])]
 loadTxs dir = do
   createDirectoryIfMissing True dir
   files <- listDirectory dir
-  css <- mapM readCall <$> mapM makeRelativeToCurrentDirectory files
+  css <- mapM (\file -> fmap (file,) <$> readCall file) <$> mapM makeRelativeToCurrentDirectory files
   txSeqs <- catMaybes <$> withCurrentDirectory dir css
   putStrLn ("Loaded " ++ show (length txSeqs) ++ " transaction sequences from " ++ dir)
   pure txSeqs
