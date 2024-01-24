@@ -35,8 +35,8 @@ import System.IO (hPutStrLn, stderr)
 import System.IO.CodePage (withCP65001)
 
 import EVM (bytecode)
-import EVM.Dapp (dappInfo)
-import EVM.Solidity (SolcContract(..), SourceCache(..), BuildOutput(..), Contracts(..))
+import EVM.Dapp (DappInfo(..), dappInfo)
+import EVM.Solidity (SolcContract(..), SourceCache(..), BuildOutput(..))
 import EVM.Types (Addr, Contract(..), keccak', W256)
 
 import Echidna
@@ -52,7 +52,7 @@ import Echidna.UI
 import Echidna.Output.Source
 import Echidna.Output.Corpus
 import Echidna.RPC qualified as RPC
-import Echidna.Solidity (compileContracts, selectBuildOutput)
+import Echidna.Solidity (compileContracts)
 import Echidna.Utility (measureIO)
 import Etherscan qualified
 
@@ -86,7 +86,7 @@ main = withUtf8 $ withCP65001 $ do
           Nothing ->
             pure (Nothing, Nothing)
 
-  buildOutputs <- compileContracts cfg.solConf cliFilePath
+  buildOutput <- compileContracts cfg.solConf cliFilePath
   cacheContractsRef <- newIORef $ fromMaybe mempty loadedContractsCache
   cacheSlotsRef <- newIORef $ fromMaybe mempty loadedSlotsCache
   codehashMap <- newIORef mempty
@@ -97,11 +97,10 @@ main = withUtf8 $ withCP65001 $ do
   testsRef <- newIORef mempty
 
   let
-    contracts = Map.elems . Map.unions $ (\(BuildOutput (Contracts c) _) -> c) <$> buildOutputs
-    buildOutput = selectBuildOutput cliSelectedContract buildOutputs
+    -- TODO put in real path
+    dapp = dappInfo "/" buildOutput
     env = Env { cfg
-                -- TODO put in real path
-              , dapp = dappInfo "/" buildOutput
+              , dapp
               , codehashMap = codehashMap
               , fetchContractCache = cacheContractsRef
               , fetchSlotCache = cacheSlotsRef
@@ -114,8 +113,7 @@ main = withUtf8 $ withCP65001 $ do
 
   -- take the seed from config, otherwise generate a new one
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
-  (vm, world, dict) <-
-    prepareContract env contracts cliFilePath cliSelectedContract seed
+  (vm, world, dict) <- prepareContract env cliFilePath cliSelectedContract seed
 
   initialCorpus <- loadInitialCorpus env world
   -- start ui and run tests
@@ -173,6 +171,7 @@ main = withUtf8 $ withCP65001 $ do
               Nothing -> pure ()
 
         -- save source coverage reports
+        let contracts = Map.elems dapp.solcByName
         saveCoverages cfg.campaignConf.coverageFormats runId dir buildOutput.sources contracts coverage
 
   if isSuccessful tests then exitSuccess else exitWith (ExitFailure 1)

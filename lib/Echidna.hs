@@ -12,6 +12,7 @@ import System.FilePath ((</>))
 
 import EVM (cheatCode)
 import EVM.ABI (AbiValue(AbiAddress))
+import EVM.Dapp (DappInfo(..))
 import EVM.Solidity (SolcContract(..))
 import EVM.Types hiding (Env)
 
@@ -43,13 +44,13 @@ import Echidna.Types.World
 -- * A prepopulated dictionary
 prepareContract
   :: Env
-  -> [SolcContract]
   -> NonEmpty FilePath
   -> Maybe ContractName
   -> Seed
   -> IO (VM RealWorld, World, GenDict)
-prepareContract env contracts solFiles specifiedContract seed = do
+prepareContract env solFiles specifiedContract seed = do
   let solConf = env.cfg.solConf
+      contracts = Map.elems env.dapp.solcByName
 
   -- compile and load contracts
   (vm, funs, testNames, signatureMap) <- loadSpecified env specifiedContract contracts

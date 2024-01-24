@@ -53,24 +53,6 @@ import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 import Echidna.Utility (measureIO)
 
--- | Given a list of build outputs and an optional contract name, select one
--- that includes that contract (if possible). Otherwise, use the first build
--- output available (or fail if it is empty)
-selectBuildOutput :: Maybe ContractName -> [BuildOutput] -> BuildOutput
-selectBuildOutput (Just c) buildOutputs =
-  let
-    r = concatMap (\buildOutput@(BuildOutput (Contracts contracts) _) ->
-          [buildOutput | isJust $ find (Data.Text.isSuffixOf (":" <> c)) (Map.keys contracts)]
-        ) buildOutputs
-  in case r of
-    (buildOutput:_) -> buildOutput
-    _ -> error "Build output selection returned no result"
-
-selectBuildOutput _ scs =
-  case scs of
-    sc:_ -> sc
-    _    -> error "Empty source cache"
-
 readSolcBatch :: FilePath -> IO [BuildOutput]
 readSolcBatch d = do
   fs <- filter (".json" `Data.List.isSuffixOf`) <$> listDirectory d
@@ -88,7 +70,7 @@ readSolcBatch d = do
 compileContracts
   :: SolConf
   -> NonEmpty FilePath
-  -> IO [BuildOutput]
+  -> IO BuildOutput
 compileContracts solConf fp = do
   path <- findExecutable "crytic-compile" >>= \case
     Nothing -> throwM NoCryticCompile
@@ -98,7 +80,7 @@ compileContracts solConf fp = do
     usual = ["--solc-disable-warnings", "--export-format", "solc"]
     solargs = solConf.solcArgs ++ linkLibraries solConf.solcLibs & (usual ++) .
               (\sa -> if null sa then [] else ["--solc-args", sa])
-    compileOne :: FilePath -> IO [BuildOutput]
+    compileOne :: FilePath -> IO BuildOutput
     compileOne x = do
       stderr <- if solConf.quiet
                    then UseHandle <$> openFile nullFilePath WriteMode
@@ -107,7 +89,7 @@ compileContracts solConf fp = do
         readCreateProcessWithExitCode
           (proc path $ (solConf.cryticArgs ++ solargs) |> x) {std_err = stderr} ""
       case ec of
-        ExitSuccess -> readSolcBatch "crytic-export"
+        ExitSuccess -> mconcat <$> readSolcBatch "crytic-export"
         ExitFailure _ -> throwM $ CompileFailure out err
 
     -- | OS-specific path to the "null" file, which accepts writes without storing them
@@ -115,11 +97,7 @@ compileContracts solConf fp = do
     nullFilePath = if os == "mingw32" then "\\\\.\\NUL" else "/dev/null"
   -- clean up previous artifacts
   removeJsonFiles "crytic-export"
-  buildOutputs <- mapM compileOne fp
-  when (length buildOutputs > 1) $
-    putStrLn "WARNING: more than one SourceCaches was found after compile. \
-             \Only the first one will be used."
-  pure $ NE.head buildOutputs
+  mconcat . NE.toList <$> mapM compileOne fp
 
 removeJsonFiles :: FilePath -> IO ()
 removeJsonFiles dir =
@@ -384,8 +362,8 @@ loadSolTests
   -> IO (VM RealWorld, World, [EchidnaTest])
 loadSolTests env fp name = do
   let solConf = env.cfg.solConf
-  buildOutputs <- compileContracts solConf fp
-  let contracts = Map.elems . Map.unions $ (\(BuildOutput (Contracts c) _) -> c) <$> buildOutputs
+  buildOutput <- compileContracts solConf fp
+  let contracts = Map.elems . (\(BuildOutput (Contracts c) _) -> c) $ buildOutput
   (vm, funs, testNames, _signatureMap) <- loadSpecified env name contracts
   let
     eventMap = Map.unions $ map (.eventMap) contracts
