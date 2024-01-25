@@ -29,6 +29,7 @@ import System.Info (os)
 
 import EVM (initialContract, currentContract)
 import EVM.ABI
+import EVM.Dapp (DappInfo(..))
 import EVM.Solidity
 import EVM.Types hiding (Env)
 
@@ -357,13 +358,11 @@ prepareHashMaps cs as m =
 -- contract names passed here don't need the file they occur in specified.
 loadSolTests
   :: Env
-  -> NonEmpty FilePath
   -> Maybe Text
   -> IO (VM RealWorld, World, [EchidnaTest])
-loadSolTests env fp name = do
+loadSolTests env name = do
   let solConf = env.cfg.solConf
-  buildOutput <- compileContracts solConf fp
-  let contracts = Map.elems . (\(BuildOutput (Contracts c) _) -> c) $ buildOutput
+  let contracts = Map.elems env.dapp.solcByName
   (vm, funs, testNames, _signatureMap) <- loadSpecified env name contracts
   let
     eventMap = Map.unions $ map (.eventMap) contracts

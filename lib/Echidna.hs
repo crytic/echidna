@@ -1,8 +1,9 @@
 module Echidna where
 
+import Control.Concurrent (newChan)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.ST (RealWorld)
-import Data.IORef (writeIORef)
+import Data.IORef (writeIORef, newIORef)
 import Data.List (find)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
@@ -12,8 +13,9 @@ import System.FilePath ((</>))
 
 import EVM (cheatCode)
 import EVM.ABI (AbiValue(AbiAddress))
-import EVM.Dapp (DappInfo(..))
-import EVM.Solidity (SolcContract(..))
+import EVM.Dapp (DappInfo(..), dappInfo)
+import EVM.Fetch qualified
+import EVM.Solidity (SolcContract(..), BuildOutput)
 import EVM.Types hiding (Env)
 
 import Echidna.ABI
@@ -52,7 +54,7 @@ prepareContract env solFiles specifiedContract seed = do
   let solConf = env.cfg.solConf
       contracts = Map.elems env.dapp.solcByName
 
-  -- compile and load contracts
+  -- deploy contracts
   (vm, funs, testNames, signatureMap) <- loadSpecified env specifiedContract contracts
 
   -- run processors
@@ -110,3 +112,19 @@ loadInitialCorpus env world = do
         pure (ctxs1 ++ ctxs2)
 
   pure $ persistedCorpus ++ ethenoCorpus
+
+mkEnv :: EConfig -> BuildOutput -> IO Env
+mkEnv cfg buildOutput = do
+  fetchContractCache <- newIORef mempty
+  fetchSlotCache <- newIORef mempty
+  codehashMap <- newIORef mempty
+  chainId <- maybe (pure Nothing) EVM.Fetch.fetchChainIdFrom cfg.rpcUrl
+  eventQueue <- newChan
+  coverageRef <- newIORef mempty
+  corpusRef <- newIORef mempty
+  testsRef <- newIORef mempty
+  -- TODO put in real path
+  let dapp = dappInfo "/" buildOutput
+  pure $ Env { cfg, dapp, codehashMap, fetchContractCache, fetchSlotCache
+             , chainId, eventQueue, coverageRef, corpusRef, testsRef
+             }

@@ -15,14 +15,14 @@ import Data.Yaml qualified as Y
 
 import EVM.Types (VM(..), W256)
 
+import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Test
 import Echidna.Types.Campaign
-import Echidna.Mutator.Corpus (defaultMutationConsts)
-import Echidna.Output.Source (CoverageFileType(..))
-import Echidna.Types.Solidity
-import Echidna.Types.Tx (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
-import Echidna.Types.Test (TestConf(..))
 import Echidna.Types.Config
+import Echidna.Types.Coverage (CoverageFileType(..))
+import Echidna.Types.Solidity
+import Echidna.Types.Test (TestConf(..))
+import Echidna.Types.Tx (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
 
 instance FromJSON EConfig where
   -- retrieve the config from the key usage annotated parse

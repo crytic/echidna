@@ -6,12 +6,12 @@ import Test.Tasty.HUnit (testCase, assertBool)
 import Common (runContract, overrideQuiet)
 import Data.Function ((&))
 import Data.IORef (readIORef)
-import Echidna.Output.Source (CoverageFileType(..))
+import Echidna.Config (defaultConfig)
+import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Types.Campaign
 import Echidna.Types.Config (Env(..), EConfig(..))
+import Echidna.Types.Coverage (CoverageFileType(..))
 import Echidna.Types.Test
-import Echidna.Mutator.Corpus (defaultMutationConsts)
-import Echidna.Config (defaultConfig)
 
 seedTests :: TestTree
 seedTests =
