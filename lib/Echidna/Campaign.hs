@@ -16,6 +16,7 @@ import Control.Monad.Trans (lift)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
 import Data.IORef (readIORef, atomicModifyIORef')
+import Data.List qualified as List
 import Data.Map qualified as Map
 import Data.Map (Map, (\\))
 import Data.Maybe (isJust, mapMaybe, fromMaybe)
@@ -47,7 +48,6 @@ import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), call)
 import Echidna.Types.World (World)
 import Echidna.Utility (getTimestamp)
-import qualified Data.List as List
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
