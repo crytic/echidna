@@ -55,7 +55,8 @@ data WorkerEvent
   = TestFalsified !EchidnaTest
   | TestOptimized !EchidnaTest
   | NewCoverage { points :: !Int, numCodehashes :: !Int, corpusSize :: !Int, transactions :: [Tx] }
-  | TxSequenceReplayed !Int !Int
+  | TxSequenceReplayed FilePath !Int !Int
+  | TxSequenceReplayFailed FilePath Tx
   | WorkerStopped WorkerStopReason
   -- ^ This is a terminal event. Worker exits and won't push any events after
   -- this one
@@ -67,7 +68,10 @@ instance ToJSON WorkerEvent where
     TestOptimized test -> toJSON test
     NewCoverage { points, numCodehashes, corpusSize } ->
       object [ "coverage" .= points, "contracts" .= numCodehashes, "corpus_size" .= corpusSize]
-    TxSequenceReplayed current total -> object [ "current" .= current, "total" .= total ]
+    TxSequenceReplayed file current total ->
+      object [ "file" .= file, "current" .= current, "total" .= total ]
+    TxSequenceReplayFailed file tx ->
+      object [ "file" .= file, "tx" .= tx ]
     WorkerStopped reason -> object [ "reason" .= show reason ]
 
 data WorkerStopReason
@@ -94,8 +98,12 @@ ppWorkerEvent = \case
     "New coverage: " <> show points <> " instr, "
       <> show numCodehashes <> " contracts, "
       <> show corpusSize <> " seqs in corpus"
-  TxSequenceReplayed current total ->
-    "Sequence replayed from corpus (" <> show current <> "/" <> show total <> ")"
+  TxSequenceReplayed file current total ->
+    "Sequence replayed from corpus file " <> file <> " (" <> show current <> "/" <> show total <> ")"
+  TxSequenceReplayFailed file tx ->
+    "WARNING: Sequence replay from corpus file " <> file <> " failed. " <>
+    "The destination contract is not deployed for this transaction: " <> show tx <> ". " <>
+    "Remove the file or the transaction to fix the issue."
   WorkerStopped TestLimitReached ->
     "Test limit reached. Stopping."
   WorkerStopped TimeLimitReached ->

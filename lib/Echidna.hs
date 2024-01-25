@@ -90,7 +90,7 @@ prepareContract env solFiles specifiedContract seed = do
   writeIORef env.testsRef echidnaTests
   pure (vm, world, dict)
 
-loadInitialCorpus :: Env -> World -> IO [[Tx]]
+loadInitialCorpus :: Env -> World -> IO [(FilePath, [Tx])]
 loadInitialCorpus env world = do
   -- load transactions from init sequence (if any)
   let sigs = Set.fromList $ concatMap NE.toList (Map.elems world.highSignatureMap)
@@ -99,7 +99,7 @@ loadInitialCorpus env world = do
       Nothing -> pure []
       Just dir -> do
         ethenos <- loadEtheno dir
-        pure [extractFromEtheno ethenos sigs]
+        pure [(dir, extractFromEtheno ethenos sigs)]
 
   persistedCorpus <-
     case env.cfg.campaignConf.corpusDir of
