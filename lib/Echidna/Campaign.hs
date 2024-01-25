@@ -47,6 +47,7 @@ import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), call)
 import Echidna.Types.World (World)
 import Echidna.Utility (getTimestamp)
+import qualified Data.List as List
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -63,12 +64,17 @@ isSuccessful =
 replayCorpus
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM RealWorld -- ^ VM to start replaying from
-  -> [[Tx]] -- ^ corpus to replay
+  -> [(FilePath, [Tx])] -- ^ corpus to replay
   -> m ()
 replayCorpus vm txSeqs =
-  forM_ (zip [1..] txSeqs) $ \(i, txSeq) -> do
-    _ <- callseq vm txSeq
-    pushWorkerEvent (TxSequenceReplayed i (length txSeqs))
+  forM_ (zip [1..] txSeqs) $ \(i, (file, txSeq)) -> do
+    let maybeFaultyTx = List.find (\tx -> LitAddr tx.dst `notElem` Map.keys vm.env.contracts) txSeq
+    case maybeFaultyTx of
+      Nothing -> do
+        _ <- callseq vm txSeq
+        pushWorkerEvent (TxSequenceReplayed file i (length txSeqs))
+      Just faultyTx ->
+        pushWorkerEvent (TxSequenceReplayFailed file faultyTx)
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
@@ -81,7 +87,8 @@ runWorker
   -> World   -- ^ Initial world state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
-  -> [[Tx]]  -- ^ Initial corpus of transactions
+  -> [(FilePath, [Tx])]
+  -- ^ Initial corpus of transactions
   -> Int     -- ^ Test limit for this worker
   -> m (WorkerStopReason, WorkerState)
 runWorker callback vm world dict workerId initialCorpus testLimit = do

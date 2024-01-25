@@ -107,7 +107,7 @@ campaignStatus uiState = do
   where
   mainbox inner underneath = do
     env <- ask
-    pure $ hCenter . hLimit 120 $
+    pure $ hCenter . hLimit 160 $
       joinBorders $ borderWithLabel echidnaTitle $
       summaryWidget env uiState
       <=>

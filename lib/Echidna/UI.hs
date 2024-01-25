@@ -60,7 +60,7 @@ ui
   => VM RealWorld -- ^ Initial VM state
   -> World   -- ^ Initial world state
   -> GenDict
-  -> [[Tx]]
+  -> [(FilePath, [Tx])]
   -> m [WorkerState]
 ui vm world dict initialCorpus = do
   env <- ask
