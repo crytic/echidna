@@ -2,59 +2,46 @@
 
 module Main where
 
-import Optics.Core (view)
-
-import Control.Concurrent (newChan)
-import Control.Monad (unless, forM_, when)
+import Control.Monad (unless, forM_)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
-import Data.Aeson qualified as JSON
 import Data.Aeson.Key qualified as Aeson.Key
-import Data.ByteString qualified as BS
-import Data.ByteString.UTF8 qualified as UTF8
 import Data.Function ((&))
-import Data.Functor ((<&>))
-import Data.IORef (newIORef, readIORef)
+import Data.IORef (readIORef)
 import Data.List.NonEmpty qualified as NE
-import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, isJust, fromJust)
+import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
-import Data.Vector qualified as Vector
 import Data.Version (showVersion)
 import Data.Word (Word8, Word16)
 import Main.Utf8 (withUtf8)
 import Options.Applicative
 import Paths_echidna (version)
-import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 import System.IO.CodePage (withCP65001)
 
-import EVM (bytecode)
-import EVM.Dapp (DappInfo(..), dappInfo)
-import EVM.Solidity (SolcContract(..), SourceCache(..), BuildOutput(..))
-import EVM.Types (Addr, Contract(..), keccak', W256)
+import EVM.Dapp (DappInfo(..))
+import EVM.Solidity (BuildOutput(..))
+import EVM.Types (Addr)
 
 import Echidna
+import Echidna.Campaign (isSuccessful)
 import Echidna.Config
-import Echidna.Symbolic (forceBuf)
+import Echidna.Onchain qualified as Onchain
+import Echidna.Output.Corpus
+import Echidna.Output.Source
+import Echidna.Solidity (compileContracts)
+import Echidna.Test (validateTestMode)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Solidity
 import Echidna.Types.Test (TestMode, EchidnaTest(..))
-import Echidna.Test (validateTestMode)
-import Echidna.Campaign (isSuccessful)
 import Echidna.UI
-import Echidna.Output.Source
-import Echidna.Output.Corpus
-import Echidna.RPC qualified as RPC
-import Echidna.Solidity (compileContracts)
 import Echidna.Utility (measureIO)
-import Etherscan qualified
 
 main :: IO ()
 main = withUtf8 $ withCP65001 $ do
@@ -66,50 +53,10 @@ main = withUtf8 $ withCP65001 $ do
   unless cfg.solConf.quiet $
     forM_ ks $ hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString
 
-  -- Try to load the persisted RPC cache. TODO: we use the corpus dir for now,
-  -- think where to place it
-  (loadedContractsCache, loadedSlotsCache) <-
-    case cfg.campaignConf.corpusDir of
-      Nothing -> pure (Nothing, Nothing)
-      Just dir -> do
-        let cache_dir = dir </> "cache"
-        createDirectoryIfMissing True cache_dir
-        case cfg.rpcBlock of
-          Just block -> do
-            parsedContracts :: Maybe (Map Addr RPC.FetchedContractData) <-
-              readFileIfExists (cache_dir </> "block_" <> show block <> "_fetch_cache_contracts.json")
-              <&> (>>= JSON.decodeStrict)
-            parsedSlots :: Maybe (Map Addr (Map W256 (Maybe W256))) <-
-              readFileIfExists (cache_dir </> "block_" <> show block <> "_fetch_cache_slots.json")
-              <&> (>>= JSON.decodeStrict)
-            pure (Map.map (Just . RPC.fromFetchedContractData) <$> parsedContracts, parsedSlots)
-          Nothing ->
-            pure (Nothing, Nothing)
-
   buildOutput <- compileContracts cfg.solConf cliFilePath
-  cacheContractsRef <- newIORef $ fromMaybe mempty loadedContractsCache
-  cacheSlotsRef <- newIORef $ fromMaybe mempty loadedSlotsCache
-  codehashMap <- newIORef mempty
-  chainId <- RPC.fetchChainId cfg.rpcUrl
-  eventQueue <- newChan
-  coverageRef <- newIORef mempty
-  corpusRef <- newIORef mempty
-  testsRef <- newIORef mempty
+  env <- mkEnv cfg buildOutput
 
-  let
-    -- TODO put in real path
-    dapp = dappInfo "/" buildOutput
-    env = Env { cfg
-              , dapp
-              , codehashMap = codehashMap
-              , fetchContractCache = cacheContractsRef
-              , fetchSlotCache = cacheSlotsRef
-              , chainId = chainId
-              , eventQueue
-              , coverageRef
-              , corpusRef
-              , testsRef
-              }
+  Onchain.loadRpcCache env
 
   -- take the seed from config, otherwise generate a new one
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
@@ -119,30 +66,18 @@ main = withUtf8 $ withCP65001 $ do
   -- start ui and run tests
   _campaign <- runReaderT (ui vm world dict initialCorpus) env
 
-  contractsCache <- readIORef cacheContractsRef
-  slotsCache <- readIORef cacheSlotsRef
+  tests <- readIORef env.testsRef
 
-  tests <- readIORef testsRef
+  Onchain.saveRpcCache env
 
   -- save corpus
   case cfg.campaignConf.corpusDir of
     Nothing -> pure ()
     Just dir -> do
-      let cache_dir = dir </> "cache"
-      case cfg.rpcBlock of
-        Just block -> do
-          -- Save fetched data, it's okay to override as the cache only grows
-          JSON.encodeFile (cache_dir </> "block_" <> show block <> "_fetch_cache_contracts.json")
-                          (RPC.toFetchedContractData <$> Map.mapMaybe id contractsCache)
-          JSON.encodeFile (cache_dir </> "block_" <> show block <> "_fetch_cache_slots.json")
-                          slotsCache
-        Nothing ->
-          pure ()
-
       measureIO cfg.solConf.quiet "Saving test reproducers" $
         saveTxs (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> tests)
       measureIO cfg.solConf.quiet "Saving corpus" $ do
-        corpus <- readIORef corpusRef
+        corpus <- readIORef env.corpusRef
         saveTxs (dir </> "coverage") (snd <$> Set.toList corpus)
 
       -- TODO: We use the corpus dir to save coverage reports which is confusing.
@@ -154,72 +89,13 @@ main = withUtf8 $ withCP65001 $ do
         -- as it orders the runs chronologically.
         runId <- fromIntegral . systemSeconds <$> getSystemTime
 
-        coverage <- readIORef coverageRef
-
-        -- coverage reports for external contracts, we only support
-        -- Ethereum Mainnet for now
-        when (chainId == Just 1) $ do
-          forM_ (Map.toList contractsCache) $ \(addr, mc) ->
-            case mc of
-              Just contract -> do
-                r <- externalSolcContract addr contract
-                case r of
-                  Just (externalSourceCache, solcContract) -> do
-                    let dir' = dir </> show addr
-                    saveCoverages cfg.campaignConf.coverageFormats runId dir' externalSourceCache [solcContract] coverage
-                  Nothing -> pure ()
-              Nothing -> pure ()
+        Onchain.saveCoverageReport env runId
 
         -- save source coverage reports
-        let contracts = Map.elems dapp.solcByName
-        saveCoverages cfg.campaignConf.coverageFormats runId dir buildOutput.sources contracts coverage
+        let contracts = Map.elems env.dapp.solcByName
+        saveCoverages env runId dir buildOutput.sources contracts
 
   if isSuccessful tests then exitSuccess else exitWith (ExitFailure 1)
-
-  where
-
-  -- | "Reverse engineer" the SolcContract and SourceCache structures for the
-  -- code fetched from the outside
-  externalSolcContract :: Addr -> Contract -> IO (Maybe (SourceCache, SolcContract))
-  externalSolcContract addr c = do
-    let runtimeCode = forceBuf $ fromJust $ view bytecode c
-    putStr $ "Fetching Solidity source for contract at address " <> show addr <> "... "
-    srcRet <- Etherscan.fetchContractSource addr
-    putStrLn $ if isJust srcRet then "Success!" else "Error!"
-    putStr $ "Fetching Solidity source map for contract at address " <> show addr <> "... "
-    srcmapRet <- Etherscan.fetchContractSourceMap addr
-    putStrLn $ if isJust srcmapRet then "Success!" else "Error!"
-    pure $ do
-      src <- srcRet
-      (_, srcmap) <- srcmapRet
-      let
-        files = Map.singleton 0 (show addr, UTF8.fromString src.code)
-        sourceCache = SourceCache
-          { files
-          , lines = Vector.fromList . BS.split 0xa . snd <$> files
-          , asts = mempty
-          }
-        solcContract = SolcContract
-          { runtimeCode = runtimeCode
-          , creationCode = mempty
-          , runtimeCodehash = keccak' runtimeCode
-          , creationCodehash = keccak' mempty
-          , runtimeSrcmap = mempty
-          , creationSrcmap = srcmap
-          , contractName = src.name
-          , constructorInputs = [] -- error "TODO: mkConstructor abis TODO"
-          , abiMap = mempty -- error "TODO: mkAbiMap abis"
-          , eventMap = mempty -- error "TODO: mkEventMap abis"
-          , errorMap = mempty -- error "TODO: mkErrorMap abis"
-          , storageLayout = Nothing
-          , immutableReferences = mempty
-          }
-      pure (sourceCache, solcContract)
-
-readFileIfExists :: FilePath -> IO (Maybe BS.ByteString)
-readFileIfExists path = do
-  exists <- doesFileExist path
-  if exists then Just <$> BS.readFile path else pure Nothing
 
 data Options = Options
   { cliFilePath         :: NE.NonEmpty FilePath
@@ -312,8 +188,8 @@ versionOption = infoOption
 
 overrideConfig :: EConfig -> Options -> IO EConfig
 overrideConfig config Options{..} = do
-  rpcUrl <- RPC.rpcUrlEnv
-  rpcBlock <- RPC.rpcBlockEnv
+  rpcUrl <- Onchain.rpcUrlEnv
+  rpcBlock <- Onchain.rpcBlockEnv
   pure $
     config { solConf = overrideSolConf config.solConf
            , campaignConf = overrideCampaignConf config.campaignConf

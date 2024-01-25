@@ -7,9 +7,8 @@ import Data.Text qualified as T
 import Data.Word (Word8, Word16)
 
 import Echidna.ABI (GenDict, emptyDict, encodeSig)
-import Echidna.Output.Source (CoverageFileType)
 import Echidna.Types
-import Echidna.Types.Coverage (CoverageMap)
+import Echidna.Types.Coverage (CoverageFileType, CoverageMap)
 import Echidna.Types.Test (TestType (..), EchidnaTest(..))
 import Echidna.Types.Tx (Tx)
 

@@ -30,7 +30,7 @@ import EVM.Format (hexText)
 import EVM.Types hiding (Env)
 
 import Echidna.Events (emptyEvents)
-import Echidna.RPC (safeFetchContractFrom, safeFetchSlotFrom)
+import Echidna.Onchain (safeFetchContractFrom, safeFetchSlotFrom)
 import Echidna.SourceMapping (lookupUsingCodehashOrInsert)
 import Echidna.Symbolic (forceBuf)
 import Echidna.Transaction
