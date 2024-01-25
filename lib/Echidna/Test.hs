@@ -284,3 +284,23 @@ checkOverflowTest :: DappInfo -> VM RealWorld-> TestValue
 checkOverflowTest dappInfo vm =
   let es = extractEvents False dappInfo vm
   in BoolValue $ null es || not (checkPanicEvent "17" es)
+
+-- | Reproduce a test saving VM snapshot after every transaction
+reproduceTest
+  :: (MonadIO m, MonadThrow m, MonadReader Env m)
+  => VM RealWorld -- ^ Initial VM
+  -> EchidnaTest
+  -> m ([(Tx, VM RealWorld)], VM RealWorld)
+reproduceTest vm0 test = do
+  let txs = test.reproducer
+  (results, vm) <- go vm0 [] txs
+  (_, vm') <- checkETest test vm
+  pure (results, vm')
+  where
+    go vm executedSoFar toExecute =
+      case toExecute of
+        [] -> pure ([], vm)
+        tx:remainingTxs -> do
+          (_, vm') <- execTx vm tx
+          (remaining, _) <- go vm' (tx:executedSoFar) remainingTxs
+          pure ((tx, vm') : remaining, vm')

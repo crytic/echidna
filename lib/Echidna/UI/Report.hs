@@ -1,5 +1,6 @@
 module Echidna.UI.Report where
 
+import Control.Monad (forM)
 import Control.Monad.Reader (MonadReader, MonadIO (liftIO), asks)
 import Control.Monad.ST (RealWorld)
 import Data.IORef (readIORef)
@@ -111,6 +112,23 @@ ppFail b vm xs = do
          <> unlines (("    " <>) <$> prettyTxs) <> "\n"
          <> "Traces: \n" <> T.unpack (showTraceTree dappInfo vm)
 
+-- | Pretty-print the status of a solved test.
+ppFailWithTraces :: MonadReader Env m => Maybe (Int, Int) -> VM RealWorld -> [(Tx, VM RealWorld)] -> m String
+ppFailWithTraces  _ _ []  = pure "failed with no transactions made ⁉️ "
+ppFailWithTraces b finalVM results = do
+  dappInfo <- asks (.dapp)
+  let xs = fst <$> results
+  let status = case b of
+        Nothing    -> ""
+        Just (n,m) -> ", shrinking " <> progress n m
+  let printName = length (nub $ (.src) <$> xs) /= 1
+  prettyTxs <- forM results $ \(tx, vm) -> do
+    txPrinted <- ppTx printName tx
+    pure $ txPrinted <> "\nTraces:\n" <> T.unpack (showTraceTree dappInfo vm)
+  pure $ "failed!💥  \n  Call sequence" <> status <> ":\n"
+         <> unlines (("    " <>) <$> prettyTxs) <> "\n"
+         <> "Test traces: \n" <> T.unpack (showTraceTree dappInfo finalVM)
+
 -- | Pretty-print the status of a test.
 
 ppTS :: MonadReader Env m => TestState -> VM RealWorld -> [Tx] -> m String
@@ -165,6 +183,15 @@ ppTests tests = do
         status <- ppOPT t.state (fromJust t.vm) t.reproducer
         pure $ Just (T.unpack n <> ": max value: " <> show t.value <> "\n" <> status)
       Exploration -> pure Nothing
+
+ppTestName :: EchidnaTest -> String
+ppTestName t =
+  case t.testType of
+    PropertyTest n _ -> T.unpack n
+    CallTest n _ -> T.unpack n
+    AssertionTest _ s _ -> T.unpack (encodeSig s)
+    OptimizationTest n _ -> T.unpack n <> ": max value: " <> show t.value
+    Exploration -> "<exploration>"
 
 -- | Given a number of boxes checked and a number of total boxes, pretty-print
 -- progress in box-checking.
