@@ -149,7 +149,7 @@ ui vm world dict initialCorpus = do
       liftIO $ killThread ticker
 
       states <- workerStates workers
-      liftIO . putStrLn =<< ppCampaign states
+      liftIO . putStrLn =<< ppCampaign vm states
 
       pure states
 #else
@@ -203,7 +203,7 @@ ui vm world dict initialCorpus = do
         JSON ->
           liftIO $ BS.putStr =<< Echidna.Output.JSON.encodeCampaign env states
         Text -> do
-          liftIO . putStrLn =<< ppCampaign states
+          liftIO . putStrLn =<< ppCampaign vm states
         None ->
           pure ()
       pure states
