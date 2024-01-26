@@ -312,7 +312,7 @@ failWidget
   -> m (Widget Name, Widget Name)
 failWidget _ [] _  _  _= pure (failureBadge, str "*no transactions made*")
 failWidget b xs vm _ r = do
-  s <- seqWidget xs
+  s <- seqWidget vm xs
   traces <- tracesWidget vm
   pure
     ( failureBadge <+> str (" with " ++ show r)
@@ -349,7 +349,7 @@ maxWidget
   -> m (Widget Name, Widget Name)
 maxWidget _ [] _  _ = pure (failureBadge, str "*no transactions made*")
 maxWidget b xs vm v = do
-  s <- seqWidget xs
+  s <- seqWidget vm xs
   traces <- tracesWidget vm
   pure
     ( maximumBadge <+> str (" max value: " ++ show v)
@@ -362,10 +362,10 @@ maxWidget b xs vm v = do
       str "Current action: " <+>
         withAttr (attrName "working") (str ("shrinking " ++ progress n m))
 
-seqWidget :: MonadReader Env m => [Tx] -> m (Widget Name)
-seqWidget xs = do
-  ppTxs <- mapM (ppTx $ length (nub $ (.src) <$> xs) /= 1) xs
-  let ordinals = str . printf "%d." <$> [1 :: Int ..]
+seqWidget :: MonadReader Env m => VM RealWorld -> [Tx] -> m (Widget Name)
+seqWidget vm xs = do
+  ppTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> xs) /= 1) xs
+  let ordinals = str . printf "%d. " <$> [1 :: Int ..]
   pure $
     foldl (<=>) emptyWidget $
       zipWith (<+>) ordinals (withAttr (attrName "tx") . strBreak <$> ppTxs)

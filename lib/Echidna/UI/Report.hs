@@ -7,13 +7,15 @@ import Data.IORef (readIORef)
 import Data.List (intercalate, nub, sortOn)
 import Data.Map (toList)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, fromJust)
+import Data.Maybe (catMaybes, fromJust, fromMaybe)
 import Data.Text (Text, unpack)
 import Data.Text qualified as T
 import Data.Time (LocalTime)
+import Optics
 
 import Echidna.ABI (GenDict(..), encodeSig)
 import Echidna.Pretty (ppTxCall)
+import Echidna.SourceMapping (findSrcByMetadata)
 import Echidna.Types (Gas)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
@@ -23,8 +25,9 @@ import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
 import Echidna.Utility (timePrefix)
 
-import EVM.Format (showTraceTree)
-import EVM.Types (W256, VM)
+import EVM.Format (showTraceTree, contractNamePart)
+import EVM.Solidity (SolcContract(..))
+import EVM.Types (W256, VM, Addr, Expr (LitAddr))
 
 ppLogLine :: (LocalTime, CampaignEvent) -> String
 ppLogLine (time, event@(WorkerEvent workerId _)) =
@@ -32,11 +35,11 @@ ppLogLine (time, event@(WorkerEvent workerId _)) =
 ppLogLine (time, event) =
   timePrefix time <> " " <> ppCampaignEvent event
 
-ppCampaign :: (MonadIO m, MonadReader Env m) => [WorkerState] -> m String
-ppCampaign workerStates = do
+ppCampaign :: (MonadIO m, MonadReader Env m) => VM RealWorld -> [WorkerState] -> m String
+ppCampaign vm workerStates = do
   tests <- liftIO . readIORef =<< asks (.testsRef)
   testsPrinted <- ppTests tests
-  gasInfoPrinted <- ppGasInfo workerStates
+  gasInfoPrinted <- ppGasInfo vm workerStates
   coveragePrinted <- ppCoverage
   let seedPrinted = "Seed: " <> show (head workerStates).genDict.defSeed
   corpusPrinted <- ppCorpus
@@ -50,19 +53,33 @@ ppCampaign workerStates = do
 
 -- | Given rules for pretty-printing associated address, and whether to print
 -- them, pretty-print a 'Transaction'.
-ppTx :: MonadReader Env m => Bool -> Tx -> m String
-ppTx _ Tx { call = NoCall, delay } =
+ppTx :: MonadReader Env m => VM RealWorld -> Bool -> Tx -> m String
+ppTx _ _ Tx { call = NoCall, delay } =
   pure $ "*wait*" <> ppDelay delay
-ppTx printName tx = do
+ppTx vm printName tx = do
+  contractName <- case tx.call of
+    SolCall _ -> Just <$> contractNameForAddr vm tx.dst
+    _ -> pure Nothing
   names <- asks (.cfg.namesConf)
   tGas  <- asks (.cfg.txConf.txGas)
   pure $
-    ppTxCall tx.call
+    unpack (maybe "" (<> ".") contractName) <> ppTxCall tx.call
     <> (if not printName then "" else names Sender tx.src <> names Receiver tx.dst)
     <> (if tx.gas == tGas then "" else " Gas: " <> show tx.gas)
     <> (if tx.gasprice == 0 then "" else " Gas price: " <> show tx.gasprice)
     <> (if tx.value == 0 then "" else " Value: " <> show tx.value)
     <> ppDelay tx.delay
+
+contractNameForAddr :: MonadReader Env m => VM RealWorld -> Addr -> m Text
+contractNameForAddr vm addr = do
+  dapp <- asks (.dapp)
+  maybeName <- case Map.lookup (LitAddr addr) (vm ^. #env % #contracts) of
+    Just contract ->
+      case findSrcByMetadata contract dapp of
+        Just solcContract -> pure $ Just $ contractNamePart solcContract.contractName
+        Nothing -> pure Nothing
+    Nothing -> pure Nothing
+  pure $ fromMaybe (T.pack $ show addr) maybeName
 
 ppDelay :: (W256, W256) -> [Char]
 ppDelay (time, block) =
@@ -84,19 +101,19 @@ ppCorpus = do
   pure $ "Corpus size: " <> show (corpusSize corpus)
 
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
-ppGasInfo :: MonadReader Env m => [WorkerState] -> m String
-ppGasInfo workerStates = do
+ppGasInfo :: MonadReader Env m => VM RealWorld -> [WorkerState] -> m String
+ppGasInfo vm workerStates = do
   let gasInfo = Map.unionsWith max ((.gasInfo) <$> workerStates)
-  items <- mapM ppGasOne $ sortOn (\(_, (n, _)) -> n) $ toList gasInfo
+  items <- mapM (ppGasOne vm) $ sortOn (\(_, (n, _)) -> n) $ toList gasInfo
   pure $ intercalate "" items
 
 -- | Pretty-print the gas usage for a function.
-ppGasOne :: MonadReader Env m => (Text, (Gas, [Tx])) -> m String
-ppGasOne ("", _)      = pure ""
-ppGasOne (func, (gas, txs)) = do
+ppGasOne :: MonadReader Env m => VM RealWorld -> (Text, (Gas, [Tx])) -> m String
+ppGasOne _  ("", _)      = pure ""
+ppGasOne vm (func, (gas, txs)) = do
   let header = "\n" <> unpack func <> " used a maximum of " <> show gas <> " gas\n"
                <> "  Call sequence:\n"
-  prettyTxs <- mapM (ppTx $ length (nub $ (.src) <$> txs) /= 1) txs
+  prettyTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> txs) /= 1) txs
   pure $ header <> unlines (("    " <>) <$> prettyTxs)
 
 -- | Pretty-print the status of a solved test.
@@ -106,7 +123,7 @@ ppFail b vm xs = do
   let status = case b of
         Nothing    -> ""
         Just (n,m) -> ", shrinking " <> progress n m
-  prettyTxs <- mapM (ppTx $ length (nub $ (.src) <$> xs) /= 1) xs
+  prettyTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> xs) /= 1) xs
   dappInfo <- asks (.dapp)
   pure $ "failed!💥  \n  Call sequence" <> status <> ":\n"
          <> unlines (("    " <>) <$> prettyTxs) <> "\n"
@@ -123,7 +140,7 @@ ppFailWithTraces b finalVM results = do
         Just (n,m) -> ", shrinking " <> progress n m
   let printName = length (nub $ (.src) <$> xs) /= 1
   prettyTxs <- forM results $ \(tx, vm) -> do
-    txPrinted <- ppTx printName tx
+    txPrinted <- ppTx vm printName tx
     pure $ txPrinted <> "\nTraces:\n" <> T.unpack (showTraceTree dappInfo vm)
   pure $ "failed!💥  \n  Call sequence" <> status <> ":\n"
          <> unlines (("    " <>) <$> prettyTxs) <> "\n"
@@ -157,7 +174,7 @@ ppOptimized b vm xs = do
   let status = case b of
         Nothing    -> ""
         Just (n,m) -> ", shrinking " <> progress n m
-  prettyTxs <- mapM (ppTx $ length (nub $ (.src) <$> xs) /= 1) xs
+  prettyTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> xs) /= 1) xs
   dappInfo <- asks (.dapp)
   pure $ "\n  Call sequence" <> status <> ":\n"
          <> unlines (("    " <>) <$> prettyTxs) <> "\n"
