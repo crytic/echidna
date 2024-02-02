@@ -68,7 +68,9 @@ replayCorpus
   -> m ()
 replayCorpus vm txSeqs =
   forM_ (zip [1..] txSeqs) $ \(i, (file, txSeq)) -> do
-    let maybeFaultyTx = List.find (\tx -> LitAddr tx.dst `notElem` Map.keys vm.env.contracts) txSeq
+    let maybeFaultyTx =
+          List.find (\tx -> LitAddr tx.dst `notElem` Map.keys vm.env.contracts) $
+            List.filter (\case Tx { call = NoCall } -> False; _ -> True) txSeq
     case maybeFaultyTx of
       Nothing -> do
         _ <- callseq vm txSeq
