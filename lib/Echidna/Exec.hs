@@ -87,11 +87,14 @@ execTxWith executeTx tx = do
     #traces .= emptyEvents
     vmBeforeTx <- get
     setupTx tx
-    gasLeftBeforeTx <- gets (.state.gas)
-    vmResult <- runFully
-    gasLeftAfterTx <- gets (.state.gas)
-    handleErrorsAndConstruction vmResult vmBeforeTx
-    pure (vmResult, gasLeftBeforeTx - gasLeftAfterTx)
+    case tx.call of
+      NoCall -> pure (VMSuccess (ConcreteBuf ""), 0)
+      _ -> do
+        gasLeftBeforeTx <- gets (.state.gas)
+        vmResult <- runFully
+        gasLeftAfterTx <- gets (.state.gas)
+        handleErrorsAndConstruction vmResult vmBeforeTx
+        pure (vmResult, gasLeftBeforeTx - gasLeftAfterTx)
   where
   runFully = do
     config <- asks (.cfg)

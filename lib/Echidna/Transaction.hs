@@ -161,7 +161,6 @@ setupTx tx@Tx{call = NoCall} = fromEVM $ do
     { state = vm.state
     , block = advanceBlock vm.block tx.delay
     }
-  modify' $ execState $ loadContract (LitAddr tx.dst)
 
 setupTx tx@Tx{call} = fromEVM $ do
   resetState
