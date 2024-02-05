@@ -47,7 +47,7 @@ jobs:
       - name: Configure Nix cache
         if: runner.arch == 'X64'
         # Unfortunately the action does not work on ARM runners
-        uses: DeterminateSystems/magic-nix-cache-action@v2
+        uses: DeterminateSystems/magic-nix-cache-action@v3
         with:
           upstream-cache: https://trailofbits.cachix.org
 
