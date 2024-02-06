@@ -100,7 +100,7 @@
           mkdir -p $out/bin
           cp ${pkgsStatic.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
           # fix TERMINFO path in ncurses
-          ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/usr/share/terminfo" . "\x0" x (length($1) - 19)#e' $out/bin/echidna
+          ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo" . "\x0" x (length($1) - 65)#e' $out/bin/echidna
           chmod 555 $out/bin/echidna
         '' else pkgs.runCommand "echidna-stripNixRefs" {} ''
           mkdir -p $out/bin
