@@ -30,7 +30,7 @@ import UnliftIO
   ( MonadUnliftIO, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
-import EVM.Types (Addr, Contract, VM, W256)
+import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
 import Echidna.Campaign (runWorker, spawnListener)
@@ -57,7 +57,7 @@ data UIEvent =
 -- print non-interactive output in desired format at the end
 ui
   :: (MonadCatch m, MonadReader Env m, MonadUnliftIO m)
-  => VM RealWorld -- ^ Initial VM state
+  => VM Concrete RealWorld -- ^ Initial VM state
   -> World   -- ^ Initial world state
   -> GenDict
   -> [(FilePath, [Tx])]

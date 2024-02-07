@@ -28,7 +28,7 @@ import System.Random (mkStdGen)
 
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
-import EVM.Types hiding (Env, Frame(state))
+import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
 import Echidna.Exec
@@ -63,7 +63,7 @@ isSuccessful =
 -- contain minized corpus without sequences that didn't increase the coverage.
 replayCorpus
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
-  => VM RealWorld -- ^ VM to start replaying from
+  => VM Concrete RealWorld -- ^ VM to start replaying from
   -> [(FilePath, [Tx])] -- ^ corpus to replay
   -> m ()
 replayCorpus vm txSeqs =
@@ -85,7 +85,7 @@ runWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
   => StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
-  -> VM RealWorld -- ^ Initial VM state
+  -> VM Concrete RealWorld -- ^ Initial VM state
   -> World   -- ^ Initial world state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
@@ -187,9 +187,9 @@ randseq deployedContracts world = do
 -- minimized. Stores any useful data in the campaign state if coverage increased.
 callseq
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
-  => VM RealWorld
+  => VM Concrete RealWorld
   -> [Tx]
-  -> m (VM RealWorld)
+  -> m (VM Concrete RealWorld)
 callseq vm txSeq = do
   env <- ask
   -- First, we figure out whether we need to execute with or without coverage
@@ -261,7 +261,7 @@ callseq vm txSeq = do
   -- know the return type for each function called. If yes, tries to parse the
   -- return value as a value of that type. Returns a 'GenDict' style Map.
   returnValues
-    :: [(Tx, VMResult RealWorld)]
+    :: [(Tx, VMResult Concrete RealWorld)]
     -> (FunctionName -> Maybe AbiType)
     -> Map AbiType (Set AbiValue)
   returnValues txResults returnTypeOf =
@@ -280,7 +280,7 @@ callseq vm txSeq = do
         _ -> Nothing
 
   -- | Add transactions to the corpus discarding reverted ones
-  addToCorpus :: Int -> [(Tx, (VMResult RealWorld, Gas))] -> Corpus -> Corpus
+  addToCorpus :: Int -> [(Tx, (VMResult Concrete RealWorld, Gas))] -> Corpus -> Corpus
   addToCorpus n res corpus =
     if null rtxs then corpus else Set.insert (n, rtxs) corpus
     where rtxs = fst <$> res
@@ -289,8 +289,8 @@ callseq vm txSeq = do
 -- executed, saving the transaction if it finds new coverage.
 execTxOptC
   :: (MonadIO m, MonadReader Env m, MonadState WorkerState m, MonadThrow m)
-  => VM RealWorld -> Tx
-  -> m ((VMResult RealWorld, Gas), VM RealWorld)
+  => VM Concrete RealWorld -> Tx
+  -> m ((VMResult Concrete RealWorld, Gas), VM Concrete RealWorld)
 execTxOptC vm tx = do
   ((res, grew), vm') <- runStateT (execTxWithCov tx) vm
   when grew $ do
@@ -305,7 +305,7 @@ execTxOptC vm tx = do
 -- | Given current `gasInfo` and a sequence of executed transactions, updates
 -- information on highest gas usage for each call
 updateGasInfo
-  :: [(Tx, (VMResult RealWorld, Gas))]
+  :: [(Tx, (VMResult Concrete RealWorld, Gas))]
   -> [Tx]
   -> Map Text (Gas, [Tx])
   -> Map Text (Gas, [Tx])
@@ -326,10 +326,10 @@ updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 -- known solves.
 evalSeq
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
-  => VM RealWorld -- ^ Initial VM
-  -> (VM RealWorld -> Tx -> m (result, VM RealWorld))
+  => VM Concrete RealWorld -- ^ Initial VM
+  -> (VM Concrete RealWorld -> Tx -> m (result, VM Concrete RealWorld))
   -> [Tx]
-  -> m ([(Tx, result)], VM RealWorld)
+  -> m ([(Tx, result)], VM Concrete RealWorld)
 evalSeq vm0 execFunc = go vm0 [] where
   go vm executedSoFar toExecute = do
     -- NOTE: we do reverse here because we build up this list by prepending,
@@ -369,8 +369,8 @@ runUpdate f = do
 -- Then update accordingly, keeping track of how many times we've tried to solve or shrink.
 updateTest
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
-  => VM RealWorld
-  -> (VM RealWorld, [Tx])
+  => VM Concrete RealWorld
+  -> (VM Concrete RealWorld, [Tx])
   -> EchidnaTest
   -> m (Maybe EchidnaTest)
 updateTest vmForShrink (vm, xs) test = do

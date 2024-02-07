@@ -114,7 +114,7 @@ staticAddresses SolConf{contractAddr, deployer, sender} =
   Set.map AbiAddress $
     Set.union sender (Set.fromList [contractAddr, deployer, 0x0])
 
-populateAddresses :: Set Addr -> Integer -> VM s -> VM s
+populateAddresses :: Set Addr -> Integer -> VM Concrete s -> VM Concrete s
 populateAddresses addrs b vm =
   Set.foldl' (\vm' addr ->
     if deployed addr
@@ -168,7 +168,7 @@ loadSpecified
   :: Env
   -> Maybe Text
   -> [SolcContract]
-  -> IO (VM RealWorld, [SolSignature], [Text], SignatureMap)
+  -> IO (VM Concrete RealWorld, [SolSignature], [Text], SignatureMap)
 loadSpecified env name cs = do
   let solConf = env.cfg.solConf
 
@@ -359,7 +359,7 @@ prepareHashMaps cs as m =
 loadSolTests
   :: Env
   -> Maybe Text
-  -> IO (VM RealWorld, World, [EchidnaTest])
+  -> IO (VM Concrete RealWorld, World, [EchidnaTest])
 loadSolTests env name = do
   let solConf = env.cfg.solConf
   let contracts = Map.elems env.dapp.solcByName

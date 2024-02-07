@@ -8,21 +8,21 @@ import Data.Aeson
 import Data.DoubleWord (Int256)
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
+import GHC.Generics (Generic)
 
 import EVM.Dapp (DappInfo)
-import EVM.Types (Addr, VM)
+import EVM.Types (Addr, VM, VMType(Concrete))
 
 import Echidna.Types (ExecException)
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Tx (Tx, TxResult)
-import GHC.Generics (Generic)
 
 -- | Test mode is parsed from a string
 type TestMode = String
 
 -- | Configuration for the creation of Echidna tests.
 data TestConf = TestConf
-  { classifier :: Text -> VM RealWorld -> Bool
+  { classifier :: Text -> VM Concrete RealWorld -> Bool
     -- ^ Given a VM state and test name, check if a test just passed (typically
     -- examining '_result'.)
   , testSender :: Addr -> Addr
@@ -55,7 +55,7 @@ data TestType
   = PropertyTest Text Addr
   | OptimizationTest Text Addr
   | AssertionTest Bool SolSignature Addr
-  | CallTest Text (DappInfo -> VM RealWorld -> TestValue)
+  | CallTest Text (DappInfo -> VM Concrete RealWorld -> TestValue)
   | Exploration
 
 instance Eq TestType where
@@ -101,7 +101,7 @@ data EchidnaTest = EchidnaTest
   , value      :: TestValue
   , reproducer :: [Tx]
   , result     :: TxResult
-  , vm         :: Maybe (VM RealWorld)
+  , vm         :: Maybe (VM Concrete RealWorld)
   } deriving (Show)
 
 instance ToJSON EchidnaTest where

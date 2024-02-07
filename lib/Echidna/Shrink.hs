@@ -9,7 +9,7 @@ import Control.Monad.ST (RealWorld)
 import Data.Set qualified as Set
 import Data.List qualified as List
 
-import EVM.Types (VM)
+import EVM.Types (VM, VMType(Concrete))
 
 import Echidna.Exec
 import Echidna.Transaction
@@ -22,7 +22,7 @@ import Echidna.Test (getResultFromVM, checkETest)
 
 shrinkTest
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m)
-  => VM RealWorld
+  => VM Concrete RealWorld
   -> EchidnaTest
   -> m (Maybe EchidnaTest)
 shrinkTest vm test = do
@@ -53,11 +53,11 @@ shrinkTest vm test = do
 -- generate a smaller one that still solves that test.
 shrinkSeq
   :: (MonadIO m, MonadRandom m, MonadReader Env m, MonadThrow m)
-  => VM RealWorld
-  -> (VM RealWorld -> m (TestValue, VM RealWorld))
+  => VM Concrete RealWorld
+  -> (VM Concrete RealWorld -> m (TestValue, VM Concrete RealWorld))
   -> TestValue
   -> [Tx]
-  -> m (Maybe ([Tx], TestValue, VM RealWorld))
+  -> m (Maybe ([Tx], TestValue, VM Concrete RealWorld))
 shrinkSeq vm f v txs = do
   txs' <- uniform =<< sequence [shorten, shrunk]
   (value, vm') <- check txs' vm

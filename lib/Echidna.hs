@@ -49,7 +49,7 @@ prepareContract
   -> NonEmpty FilePath
   -> Maybe ContractName
   -> Seed
-  -> IO (VM RealWorld, World, GenDict)
+  -> IO (VM Concrete RealWorld, World, GenDict)
 prepareContract env solFiles specifiedContract seed = do
   let solConf = env.cfg.solConf
       contracts = Map.elems env.dapp.solcByName

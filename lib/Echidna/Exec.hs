@@ -27,7 +27,7 @@ import EVM.ABI
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Fetch qualified
 import EVM.Format (hexText)
-import EVM.Types hiding (Env)
+import EVM.Types hiding (Env, Gas)
 
 import Echidna.Events (emptyEvents)
 import Echidna.Onchain (safeFetchContractFrom, safeFetchSlotFrom)
@@ -57,16 +57,16 @@ classifyError = \case
   _                    -> UnknownE
 
 -- | Extracts the 'Query' if there is one.
-getQuery :: VMResult s -> Maybe (Query s)
+getQuery :: VMResult Concrete s -> Maybe (Query Concrete s)
 getQuery (HandleEffect (Query q)) = Just q
 getQuery _ = Nothing
 
 -- | Matches execution errors that just cause a reversion.
-pattern Reversion :: VMResult s
+pattern Reversion :: VMResult Concrete s
 pattern Reversion <- VMFailure (classifyError -> RevertE)
 
 -- | Matches execution errors caused by illegal behavior.
-pattern Illegal :: VMResult s
+pattern Illegal :: VMResult Concrete s
 pattern Illegal <- VMFailure (classifyError -> IllegalE)
 
 -- | Given an execution error, throw the appropriate exception.
@@ -75,10 +75,10 @@ vmExcept e = throwM $
   case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e}
 
 execTxWith
-  :: (MonadIO m, MonadState (VM RealWorld) m, MonadReader Env m, MonadThrow m)
-  => m (VMResult RealWorld)
+  :: (MonadIO m, MonadState (VM Concrete RealWorld) m, MonadReader Env m, MonadThrow m)
+  => m (VMResult Concrete RealWorld)
   -> Tx
-  -> m (VMResult RealWorld, Gas)
+  -> m (VMResult Concrete RealWorld, Gas)
 execTxWith executeTx tx = do
   vm <- get
   if hasSelfdestructed vm tx.dst then
@@ -180,16 +180,6 @@ execTxWith executeTx tx = do
         fromEVM (continuation encodedResponse)
         runFully
 
-      Just (PleaseAskSMT (Lit c) _ continue) -> do
-        -- NOTE: this is not a real SMT query, we know it is concrete and can
-        -- resume right away. It is done this way to support iterations counting
-        -- in hevm.
-        fromEVM (continue (Case (c > 0)))
-        runFully
-
-      Just q@(PleaseAskSMT {}) ->
-        error $ "Unexpected SMT query: " <> show q
-
       -- No queries to answer, the tx is fully executed and the result is final
       _ -> pure vmResult
 
@@ -230,9 +220,9 @@ logMsg msg = do
 -- | Execute a transaction "as normal".
 execTx
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
-  => VM RealWorld
+  => VM Concrete RealWorld
   -> Tx
-  -> m ((VMResult RealWorld, Gas), VM RealWorld)
+  -> m ((VMResult Concrete RealWorld, Gas), VM Concrete RealWorld)
 execTx vm tx = runStateT (execTxWith (fromEVM exec) tx) vm
 
 -- | A type alias for the context we carry while executing instructions
@@ -240,9 +230,9 @@ type CoverageContext = (Bool, Maybe (VMut.IOVector CoverageInfo, Int))
 
 -- | Execute a transaction, logging coverage at every step.
 execTxWithCov
-  :: (MonadIO m, MonadState (VM RealWorld) m, MonadReader Env m, MonadThrow m)
+  :: (MonadIO m, MonadState (VM Concrete RealWorld) m, MonadReader Env m, MonadThrow m)
   => Tx
-  -> m ((VMResult RealWorld, Gas), Bool)
+  -> m ((VMResult Concrete RealWorld, Gas), Bool)
 execTxWithCov tx = do
   env <- ask
 
@@ -273,7 +263,7 @@ execTxWithCov tx = do
       pure r
       where
       -- | Repeatedly exec a step and add coverage until we have an end result
-      loop :: VM RealWorld -> IO (VMResult RealWorld, VM RealWorld)
+      loop :: VM Concrete RealWorld -> IO (VMResult Concrete RealWorld, VM Concrete RealWorld)
       loop !vm = case vm.result of
         Nothing -> do
           addCoverage vm
@@ -281,11 +271,11 @@ execTxWithCov tx = do
         Just r -> pure (r, vm)
 
       -- | Execute one instruction on the EVM
-      stepVM :: VM RealWorld -> IO (VM RealWorld)
+      stepVM :: VM Concrete RealWorld -> IO (VM Concrete RealWorld)
       stepVM = stToIO . execStateT exec1
 
       -- | Add current location to the CoverageMap
-      addCoverage :: VM RealWorld -> IO ()
+      addCoverage :: VM Concrete RealWorld -> IO ()
       addCoverage !vm = do
         let (pc, opIx, depth) = currentCovLoc vm
             contract = currentContract vm
@@ -322,7 +312,7 @@ execTxWithCov tx = do
       currentContract vm = fromMaybe (error "no contract information on coverage") $
         vm ^? #env % #contracts % at vm.state.codeContract % _Just
 
-initialVM :: Bool -> ST s (VM s)
+initialVM :: Bool -> ST s (VM Concrete s)
 initialVM ffi = do
   vm <- vmForEthrunCreation mempty
   pure $ vm & #block % #timestamp .~ Lit initialTimestamp

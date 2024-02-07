@@ -35,7 +35,7 @@ import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign
 
-hasSelfdestructed :: VM s -> Addr -> Bool
+hasSelfdestructed :: VM Concrete s -> Addr -> Bool
 hasSelfdestructed vm addr = LitAddr addr `elem` vm.tx.substate.selfdestructs
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating
@@ -154,7 +154,7 @@ mutateTx tx = pure tx
 
 -- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
 -- 'Transaction's \"on-chain\".
-setupTx :: (MonadIO m, MonadState (VM RealWorld) m) => Tx -> m ()
+setupTx :: (MonadIO m, MonadState (VM Concrete RealWorld) m) => Tx -> m ()
 setupTx tx@Tx{call = NoCall} = fromEVM $ do
   resetState
   modify' $ \vm -> vm
