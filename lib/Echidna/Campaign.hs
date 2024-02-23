@@ -81,9 +81,29 @@ replayCorpus vm txSeqs =
       Just faultyTx ->
         pushWorkerEvent (TxSequenceReplayFailed file faultyTx)
 
+runWorker
+  :: (MonadIO m, MonadThrow m, MonadReader Env m)
+  => Bool -- Sym?
+  -> StateT WorkerState m ()
+  -- ^ Callback to run after each state update (for instrumentation)
+  -> VM RealWorld -- ^ Initial VM state
+  -> World   -- ^ Initial world state
+  -> GenDict -- ^ Generation dictionary
+  -> Int     -- ^ Worker id starting from 0
+  -> [(FilePath, [Tx])]
+  -- ^ Initial corpus of transactions
+  -> Int     -- ^ Test limit for this worker
+  -> Maybe Text
+  -> [SolcContract]
+  -> m (WorkerStopReason, WorkerState)
+runWorker True callback vm _ dict workerId initialCorpus _ name cs = runSymWorker callback vm dict workerId initialCorpus name cs
+runWorker False callback vm world dict workerId initialCorpus testLimit _ _ = runFuzzWorker callback vm world dict workerId initialCorpus testLimit
+
 runSymWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
-  => VM RealWorld -- ^ Initial VM state
+  => StateT WorkerState m ()
+  -- ^ Callback to run after each state update (for instrumentation)
+  -> VM RealWorld -- ^ Initial VM state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
   -> [(FilePath, [Tx])]
@@ -91,16 +111,21 @@ runSymWorker
   -> Maybe Text
   -> [SolcContract]
   -> m (WorkerStopReason, WorkerState)
-runSymWorker vm dict workerId initialCorpus name cs = do
+runSymWorker callback vm dict workerId initialCorpus name cs = do
+  cfg <- asks (.cfg)
+  let threadsLeft = fromMaybe 1 cfg.campaignConf.workers
+
   continueLoopMVar <- liftIO $ newMVar ()
-  newCovTxs <- liftIO $ newIORef $ map snd initialCorpus
+  threadsLeftRef <- liftIO $ newIORef threadsLeft
+  newCovTxs <- liftIO $ newIORef $ ([] : map snd initialCorpus)
   txsToApplyToState <- liftIO $ newIORef []
-  let objs = (continueLoopMVar, newCovTxs, txsToApplyToState)
+  let objs = (continueLoopMVar, threadsLeftRef, newCovTxs, txsToApplyToState)
 
   _ <- spawnListener (listenerFunc objs)
 
   flip runStateT initialState $
     flip evalRandT (mkStdGen effectiveSeed) $ do
+      lift callback
       void $ replayCorpus vm initialCorpus
       run objs
 
@@ -126,21 +151,31 @@ runSymWorker vm dict workerId initialCorpus name cs = do
       [] -> ([], Nothing)
       (h:t) -> (t, Just h))
 
-  listenerFunc (continueLoopMVar, newCovTxs, txsToApplyToState) (_, (WorkerEvent _ (NewCoverage {transactions}))) = do
+  listenerFunc (continueLoopMVar, _, newCovTxs, txsToApplyToState) (_, (WorkerEvent _ (NewCoverage {transactions}))) = do
     enqueueIORef newCovTxs transactions
     enqueueIORef txsToApplyToState transactions
     void $ tryPutMVar continueLoopMVar ()
+  listenerFunc (continueLoopMVar, threadsLeftRef, _, _) (_, (WorkerEvent _ (WorkerStopped _))) = do
+    newThreadsLeft <- atomicModifyIORef' threadsLeftRef (\n -> (n-1, n-1))
+    when (newThreadsLeft <= 0) $ void $ tryPutMVar continueLoopMVar ()
   listenerFunc _ _ = pure ()
 
-  run objs@(continueLoopMVar, newCovTxs, txsToApplyToState) = do
+  run objs@(continueLoopMVar, threadsLeftRef, newCovTxs, txsToApplyToState) = do
     liftIO $ takeMVar continueLoopMVar
     mapM_ (callseq vm) =<< liftIO (dequeueAllIORef txsToApplyToState)
     liftIO (dequeueIORef newCovTxs) >>= \case
-      Nothing -> pure ()
+      Nothing -> do
+        -- no more txs for the moment. if everyone else is done, we can finish too
+        threadsLeft <- liftIO (readIORef threadsLeftRef)
+        if threadsLeft <= 0
+          then pure TestLimitReached
+          else continue
       Just txs -> do
         symexecTxs txs
         liftIO $ void $ tryPutMVar continueLoopMVar ()
-    run objs
+        continue
+    where
+    continue = lift callback >> run objs
 
   symexecTxs txs = do
     env <- ask
@@ -151,7 +186,7 @@ runSymWorker vm dict workerId initialCorpus name cs = do
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
 -- we can't solve or shrink anything.
-runWorker
+runFuzzWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
   => StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
@@ -163,7 +198,7 @@ runWorker
   -- ^ Initial corpus of transactions
   -> Int     -- ^ Test limit for this worker
   -> m (WorkerStopReason, WorkerState)
-runWorker callback vm world dict workerId initialCorpus testLimit = do
+runFuzzWorker callback vm world dict workerId initialCorpus testLimit = do
   let
     effectiveSeed = dict.defSeed + workerId
     effectiveGenDict = dict { defSeed = effectiveSeed }
@@ -494,7 +529,7 @@ spawnListener
   -> m (MVar ())
 spawnListener handler = do
   cfg <- asks (.cfg)
-  let nworkers = fromMaybe 1 cfg.campaignConf.workers
+  let nworkers = (fromMaybe 1 cfg.campaignConf.workers)+1
   eventQueue <- asks (.eventQueue)
   chan <- liftIO $ dupChan eventQueue
   stopVar <- liftIO newEmptyMVar

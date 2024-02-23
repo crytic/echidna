@@ -33,7 +33,7 @@ import Data.Vector.Unboxed.Mutable qualified as VUnboxed.Mutable
 exploreContract :: Addr -> SolcContract -> VM RealWorld -> IO [Tx]
 exploreContract dst contract vm = do
   let methods = Map.elems contract.abiMap
-      timeout = Just 30 -- seconds
+      timeout = Just 2 -- seconds
 
   res <- withSolvers Z3 2 timeout $ \solvers -> do
     forM methods $ \method -> do
@@ -63,7 +63,7 @@ exploreContract dst contract vm = do
       -- print $ vm'.state
       exprInter <- interpret (Fetch.oracle solvers rpcInfo) maxIter askSmtIters Naive vm' runExpr
       models <- produceModels solvers (simplify exprInter)
-      print (mapMaybe (modelToTx dst method) models)
+      -- print (mapMaybe (modelToTx dst method) models)
       pure $ mapMaybe (modelToTx dst method) models
 
   pure $ mconcat res

@@ -39,7 +39,7 @@ import System.Process (readProcess)
 
 import Echidna (mkEnv, prepareContract)
 import Echidna.Config (parseConfig, defaultConfig)
-import Echidna.Campaign (runWorker)
+import Echidna.Campaign (runFuzzWorker)
 import Echidna.Solidity (loadSolTests, compileContracts)
 import Echidna.Test (checkETest)
 import Echidna.Types (Gas)
@@ -89,11 +89,10 @@ runContract f selectedContract cfg = do
   buildOutput <- compileContracts cfg.solConf (f :| [])
   env <- mkEnv cfg buildOutput
 
-  (vm, world, dict, symTxs) <- prepareContract env (f :| []) selectedContract seed
+  (vm, world, dict) <- prepareContract env (f :| []) selectedContract seed
 
-  let corpus = pure <$> symTxs
   (_stopReason, finalState) <- flip runReaderT env $
-    runWorker (pure ()) vm world dict 0 corpus cfg.campaignConf.testLimit
+    runFuzzWorker (pure ()) vm world dict 0 [] cfg.campaignConf.testLimit
 
   -- TODO: consider snapshotting the state so checking function don't need to
   -- be IO

@@ -25,11 +25,13 @@ import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe, isJust)
+import Data.Text (Text)
 import Data.Time
 import UnliftIO
   ( MonadUnliftIO, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
+import EVM.Solidity (SolcContract)
 import EVM.Types (Addr, Contract, VM, W256)
 
 import Echidna.ABI
@@ -61,15 +63,17 @@ ui
   -> World   -- ^ Initial world state
   -> GenDict
   -> [(FilePath, [Tx])]
+  -> Maybe Text
+  -> [SolcContract]
   -> m [WorkerState]
-ui vm world dict initialCorpus = do
+ui vm world dict initialCorpus name cs = do
   env <- ask
   conf <- asks (.cfg)
   terminalPresent <- liftIO isTerminal
 
   let
     -- default to one worker if not configured
-    nworkers = fromIntegral $ fromMaybe 1 conf.campaignConf.workers
+    nworkers = fromIntegral . (+ 1) $ fromMaybe 1 conf.campaignConf.workers
 
     effectiveMode = case conf.uiConf.operationMode of
       Interactive | not terminalPresent -> NonInteractive Text
@@ -78,16 +82,16 @@ ui vm world dict initialCorpus = do
     -- Distribute over all workers, could be slightly bigger overall due to
     -- ceiling but this doesn't matter
     perWorkerTestLimit = ceiling
-      (fromIntegral conf.campaignConf.testLimit / fromIntegral nworkers :: Double)
+      (fromIntegral conf.campaignConf.testLimit / fromIntegral (nworkers-1) :: Double)
 
     chunkSize = ceiling
-      (fromIntegral (length initialCorpus) / fromIntegral nworkers :: Double)
+      (fromIntegral (length initialCorpus) / fromIntegral (nworkers-1) :: Double)
     corpusChunks = chunksOf chunkSize initialCorpus ++ repeat []
 
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
   workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
-    uncurry (spawnWorker env perWorkerTestLimit)
+    uncurry (spawnWorker env perWorkerTestLimit nworkers)
 
   case effectiveMode of
 #ifdef INTERACTIVE_UI
@@ -210,16 +214,19 @@ ui vm world dict initialCorpus = do
 
   where
 
-  spawnWorker env testLimit corpusChunk workerId = do
+  spawnWorker env testLimit nworkers corpusChunk workerId = do
     stateRef <- newIORef initialWorkerState
 
     threadId <- forkIO $ do
       -- TODO: maybe figure this out with forkFinally?
       stopReason <- catches (do
-          let timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
+          let
+            timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
+            isSym = workerId == nworkers-1
+            corpus = if isSym then initialCorpus else corpusChunk
           maybeResult <- timeout timeoutUsecs $
-            runWorker (get >>= writeIORef stateRef)
-                      vm world dict workerId corpusChunk testLimit
+            runWorker isSym (get >>= writeIORef stateRef)
+                      vm world dict workerId corpus testLimit name cs
           pure $ case maybeResult of
             Just (stopReason, _finalState) -> stopReason
             Nothing -> TimeLimitReached
