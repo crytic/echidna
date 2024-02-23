@@ -15,7 +15,8 @@ import Control.Monad.ST (RealWorld)
 import Control.Monad.Trans (lift)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
-import Data.IORef (readIORef, atomicModifyIORef')
+import Data.IORef (newIORef, readIORef, atomicModifyIORef')
+import Data.Foldable (foldlM)
 import Data.List qualified as List
 import Data.Map qualified as Map
 import Data.Map (Map, (\\))
@@ -28,12 +29,14 @@ import System.Random (mkStdGen)
 
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
+import EVM.Solidity (SolcContract)
 import EVM.Types hiding (Env, Frame(state))
 
 import Echidna.ABI
 import Echidna.Exec
 import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
+import Echidna.Solidity (createSymTx)
 import Echidna.Symbolic (forceAddr)
 import Echidna.Test
 import Echidna.Transaction
@@ -77,6 +80,73 @@ replayCorpus vm txSeqs =
         pushWorkerEvent (TxSequenceReplayed file i (length txSeqs))
       Just faultyTx ->
         pushWorkerEvent (TxSequenceReplayFailed file faultyTx)
+
+runSymWorker
+  :: (MonadIO m, MonadThrow m, MonadReader Env m)
+  => VM RealWorld -- ^ Initial VM state
+  -> GenDict -- ^ Generation dictionary
+  -> Int     -- ^ Worker id starting from 0
+  -> [(FilePath, [Tx])]
+  -- ^ Initial corpus of transactions
+  -> Maybe Text
+  -> [SolcContract]
+  -> m (WorkerStopReason, WorkerState)
+runSymWorker vm dict workerId initialCorpus name cs = do
+  continueLoopMVar <- liftIO $ newMVar ()
+  newCovTxs <- liftIO $ newIORef $ map snd initialCorpus
+  txsToApplyToState <- liftIO $ newIORef []
+  let objs = (continueLoopMVar, newCovTxs, txsToApplyToState)
+
+  _ <- spawnListener (listenerFunc objs)
+
+  flip runStateT initialState $
+    flip evalRandT (mkStdGen effectiveSeed) $ do
+      void $ replayCorpus vm initialCorpus
+      run objs
+
+  where
+
+  effectiveSeed = dict.defSeed + workerId
+  effectiveGenDict = dict { defSeed = effectiveSeed }
+  initialState =
+    WorkerState { workerId
+                , gasInfo = mempty
+                , genDict = effectiveGenDict
+                , newCoverage = False
+                , ncallseqs = 0
+                , ncalls = 0
+                }
+
+  enqueueIORef ref x = atomicModifyIORef' ref (\q -> (q ++ [x], ()))
+
+  dequeueAllIORef ref = atomicModifyIORef' ref (\q -> ([], q))
+
+  dequeueIORef ref = atomicModifyIORef' ref
+    (\case
+      [] -> ([], Nothing)
+      (h:t) -> (t, Just h))
+
+  listenerFunc (continueLoopMVar, newCovTxs, txsToApplyToState) (_, (WorkerEvent _ (NewCoverage {transactions}))) = do
+    enqueueIORef newCovTxs transactions
+    enqueueIORef txsToApplyToState transactions
+    void $ tryPutMVar continueLoopMVar ()
+  listenerFunc _ _ = pure ()
+
+  run objs@(continueLoopMVar, newCovTxs, txsToApplyToState) = do
+    liftIO $ takeMVar continueLoopMVar
+    mapM_ (callseq vm) =<< liftIO (dequeueAllIORef txsToApplyToState)
+    liftIO (dequeueIORef newCovTxs) >>= \case
+      Nothing -> pure ()
+      Just txs -> do
+        symexecTxs txs
+        liftIO $ void $ tryPutMVar continueLoopMVar ()
+    run objs
+
+  symexecTxs txs = do
+    env <- ask
+    vm' <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm txs
+    symTxs <- liftIO $ createSymTx env name cs vm'
+    void $ callseq vm (txs ++ symTxs)
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
