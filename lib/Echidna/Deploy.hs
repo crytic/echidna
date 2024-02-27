@@ -25,16 +25,16 @@ deployContracts
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
   => [(Addr, SolcContract)]
   -> Addr
-  -> VM RealWorld
-  -> m (VM RealWorld)
+  -> VM Concrete RealWorld
+  -> m (VM Concrete RealWorld)
 deployContracts cs = deployBytecodes' $ map (\(a, c) -> (a, c.creationCode)) cs
 
 deployBytecodes
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
   => [(Addr, Text)]
   -> Addr
-  -> VM RealWorld
-  -> m (VM RealWorld)
+  -> VM Concrete RealWorld
+  -> m (VM Concrete RealWorld)
 deployBytecodes cs = deployBytecodes' $
   (\(a, bc) ->
     (a, fromRight (error ("invalid b16 decoding of: " ++ show bc)) $ BS16.decode $ encodeUtf8 bc)
@@ -45,8 +45,8 @@ deployBytecodes'
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
   => [(Addr, ByteString)]
   -> Addr
-  -> VM RealWorld
-  -> m (VM RealWorld)
+  -> VM Concrete RealWorld
+  -> m (VM Concrete RealWorld)
 deployBytecodes' cs src initialVM = foldM deployOne initialVM cs
   where
   deployOne vm (dst, bytecode) = do

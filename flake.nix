@@ -51,15 +51,15 @@
           pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "ethereum";
             repo = "hevm";
-            rev = "release/0.52.0";
-            sha256 = "sha256-LCv3m6AbLr9mV7pHj7r08dzsg1UVpQDn0zyJXbzRS2Q=";
+            rev = "release/0.53.0";
+            sha256 = "sha256-/B+McCJBcIxYCmYMcJ5FiwMqPeSCL97WbNusabTUb34=";
         }) { secp256k1 = pkgs.secp256k1; });
 
         # FIXME: figure out solc situation, it conflicts with the one from
         # solc-select that is installed with slither, disable tests in the meantime
         echidna = pkgs: pkgs.haskell.lib.dontCheck (
           with pkgs; lib.pipe
-          (haskellPackages.callCabal2nix "echidna" ./. { inherit (hevm pkgs); })
+          (haskellPackages.callCabal2nix "echidna" ./. { hevm = hevm pkgs; })
           [
             (haskell.lib.compose.addTestToolDepends [ haskellPackages.hpack slither-analyzer solc ])
             (haskell.lib.compose.disableCabalFlag "static")

@@ -27,7 +27,7 @@ import Echidna.Utility (timePrefix)
 
 import EVM.Format (showTraceTree, contractNamePart)
 import EVM.Solidity (SolcContract(..))
-import EVM.Types (W256, VM, Addr, Expr (LitAddr))
+import EVM.Types (W256, VM, VMType(Concrete), Addr, Expr (LitAddr))
 
 ppLogLine :: (LocalTime, CampaignEvent) -> String
 ppLogLine (time, event@(WorkerEvent workerId _)) =
@@ -35,7 +35,7 @@ ppLogLine (time, event@(WorkerEvent workerId _)) =
 ppLogLine (time, event) =
   timePrefix time <> " " <> ppCampaignEvent event
 
-ppCampaign :: (MonadIO m, MonadReader Env m) => VM RealWorld -> [WorkerState] -> m String
+ppCampaign :: (MonadIO m, MonadReader Env m) => VM Concrete RealWorld -> [WorkerState] -> m String
 ppCampaign vm workerStates = do
   tests <- liftIO . readIORef =<< asks (.testsRef)
   testsPrinted <- ppTests tests
@@ -53,7 +53,7 @@ ppCampaign vm workerStates = do
 
 -- | Given rules for pretty-printing associated address, and whether to print
 -- them, pretty-print a 'Transaction'.
-ppTx :: MonadReader Env m => VM RealWorld -> Bool -> Tx -> m String
+ppTx :: MonadReader Env m => VM Concrete RealWorld -> Bool -> Tx -> m String
 ppTx _ _ Tx { call = NoCall, delay } =
   pure $ "*wait*" <> ppDelay delay
 ppTx vm printName tx = do
@@ -70,7 +70,7 @@ ppTx vm printName tx = do
     <> (if tx.value == 0 then "" else " Value: " <> show tx.value)
     <> ppDelay tx.delay
 
-contractNameForAddr :: MonadReader Env m => VM RealWorld -> Addr -> m Text
+contractNameForAddr :: MonadReader Env m => VM Concrete RealWorld -> Addr -> m Text
 contractNameForAddr vm addr = do
   dapp <- asks (.dapp)
   maybeName <- case Map.lookup (LitAddr addr) (vm ^. #env % #contracts) of
@@ -101,14 +101,14 @@ ppCorpus = do
   pure $ "Corpus size: " <> show (corpusSize corpus)
 
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
-ppGasInfo :: MonadReader Env m => VM RealWorld -> [WorkerState] -> m String
+ppGasInfo :: MonadReader Env m => VM Concrete RealWorld -> [WorkerState] -> m String
 ppGasInfo vm workerStates = do
   let gasInfo = Map.unionsWith max ((.gasInfo) <$> workerStates)
   items <- mapM (ppGasOne vm) $ sortOn (\(_, (n, _)) -> n) $ toList gasInfo
   pure $ intercalate "" items
 
 -- | Pretty-print the gas usage for a function.
-ppGasOne :: MonadReader Env m => VM RealWorld -> (Text, (Gas, [Tx])) -> m String
+ppGasOne :: MonadReader Env m => VM Concrete RealWorld -> (Text, (Gas, [Tx])) -> m String
 ppGasOne _  ("", _)      = pure ""
 ppGasOne vm (func, (gas, txs)) = do
   let header = "\n" <> unpack func <> " used a maximum of " <> show gas <> " gas\n"
@@ -117,7 +117,7 @@ ppGasOne vm (func, (gas, txs)) = do
   pure $ header <> unlines (("    " <>) <$> prettyTxs)
 
 -- | Pretty-print the status of a solved test.
-ppFail :: MonadReader Env m => Maybe (Int, Int) -> VM RealWorld -> [Tx] -> m String
+ppFail :: MonadReader Env m => Maybe (Int, Int) -> VM Concrete RealWorld -> [Tx] -> m String
 ppFail _ _ []  = pure "failed with no transactions made ⁉️ "
 ppFail b vm xs = do
   let status = case b of
@@ -130,7 +130,7 @@ ppFail b vm xs = do
          <> "Traces: \n" <> T.unpack (showTraceTree dappInfo vm)
 
 -- | Pretty-print the status of a solved test.
-ppFailWithTraces :: MonadReader Env m => Maybe (Int, Int) -> VM RealWorld -> [(Tx, VM RealWorld)] -> m String
+ppFailWithTraces :: MonadReader Env m => Maybe (Int, Int) -> VM Concrete RealWorld -> [(Tx, VM Concrete RealWorld)] -> m String
 ppFailWithTraces  _ _ []  = pure "failed with no transactions made ⁉️ "
 ppFailWithTraces b finalVM results = do
   dappInfo <- asks (.dapp)
@@ -148,7 +148,7 @@ ppFailWithTraces b finalVM results = do
 
 -- | Pretty-print the status of a test.
 
-ppTS :: MonadReader Env m => TestState -> VM RealWorld -> [Tx] -> m String
+ppTS :: MonadReader Env m => TestState -> VM Concrete RealWorld -> [Tx] -> m String
 ppTS (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
 ppTS Solved     vm l = ppFail Nothing vm l
 ppTS Passed     _ _  = pure " passed! 🎉"
@@ -158,7 +158,7 @@ ppTS (Large n) vm l  = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
   ppFail (if n < m then Just (n, m) else Nothing) vm l
 
-ppOPT :: MonadReader Env m => TestState -> VM RealWorld -> [Tx] -> m String
+ppOPT :: MonadReader Env m => TestState -> VM Concrete RealWorld -> [Tx] -> m String
 ppOPT (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
 ppOPT Solved     vm l = ppOptimized Nothing vm l
 ppOPT Passed     _ _  = pure " passed! 🎉"
@@ -168,7 +168,7 @@ ppOPT (Large n) vm l  = do
   ppOptimized (if n < m then Just (n, m) else Nothing) vm l
 
 -- | Pretty-print the status of a optimized test.
-ppOptimized :: MonadReader Env m => Maybe (Int, Int) -> VM RealWorld -> [Tx] -> m String
+ppOptimized :: MonadReader Env m => Maybe (Int, Int) -> VM Concrete RealWorld -> [Tx] -> m String
 ppOptimized _ _ []  = pure "Call sequence:\n(no transactions)"
 ppOptimized b vm xs = do
   let status = case b of

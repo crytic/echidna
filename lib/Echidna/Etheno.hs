@@ -121,7 +121,7 @@ matchSignatureAndCreateTx _ _ = []
 
 -- | Main function: takes a filepath where the initialization sequence lives and returns
 -- | the initialized VM along with a list of Addr's to put in GenConf
-loadEthenoBatch :: Bool -> FilePath -> IO (VM RealWorld)
+loadEthenoBatch :: Bool -> FilePath -> IO (VM Concrete RealWorld)
 loadEthenoBatch ffi fp = do
   bs <- eitherDecodeFileStrict fp
   case bs of
@@ -132,7 +132,7 @@ loadEthenoBatch ffi fp = do
       vm <- stToIO $ initialVM ffi
       execStateT initVM vm
 
-initAddress :: MonadState (VM s) m => Addr -> m ()
+initAddress :: MonadState (VM Concrete s) m => Addr -> m ()
 initAddress addr = do
   cs <- gets (.env.contracts)
   if LitAddr addr `member` cs then pure ()
@@ -144,8 +144,8 @@ initAddress addr = do
         & set #balance (Lit 100000000000000000000) -- default balance for EOAs in etheno
 
 crashWithQueryError
-  :: (MonadState (VM s) m, MonadFail m, MonadThrow m)
-  => Query s
+  :: (MonadState (VM Concrete s) m, MonadFail m, MonadThrow m)
+  => Query Concrete s
   -> Etheno
   -> m ()
 crashWithQueryError q et =
@@ -166,7 +166,7 @@ crashWithQueryError q et =
 
 -- | Takes a list of Etheno transactions and loads them into the VM, returning the
 -- | address containing echidna tests
-execEthenoTxs :: (MonadIO m, MonadState (VM RealWorld) m, MonadFail m, MonadThrow m) => Etheno -> m ()
+execEthenoTxs :: (MonadIO m, MonadState (VM Concrete RealWorld) m, MonadFail m, MonadThrow m) => Etheno -> m ()
 execEthenoTxs et = do
   setupEthenoTx et
   vm <- get
@@ -177,12 +177,6 @@ execEthenoTxs et = do
     case (res, et) of
       (_        , AccountCreated _)  -> pure ()
       (Reversion,   _)               -> void $ put vm
-      (HandleEffect (Query (PleaseAskSMT (Lit c) _ continue)), _) -> do
-        -- NOTE: this is not a real SMT query, we know it is concrete and can
-        -- resume right away. It is done this way to support iterations counting
-        -- in hevm.
-        fromEVM (continue (Case (c > 0)))
-        runFully vm
       (HandleEffect (Query q), _)    -> crashWithQueryError q et
       (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
       (VMSuccess (ConcreteBuf bc),
@@ -194,7 +188,7 @@ execEthenoTxs et = do
       _ -> pure ()
 
 -- | For an etheno txn, set up VM to execute txn
-setupEthenoTx :: (MonadIO m, MonadState (VM RealWorld) m) => Etheno -> m ()
+setupEthenoTx :: (MonadIO m, MonadState (VM Concrete RealWorld) m) => Etheno -> m ()
 setupEthenoTx (AccountCreated f) =
   initAddress f -- TODO: improve etheno to include initial balance
 setupEthenoTx (ContractCreated f c _ _ d v) =
