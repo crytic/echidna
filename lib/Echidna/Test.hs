@@ -32,7 +32,7 @@ data CallRes = ResFalse | ResTrue | ResRevert | ResOther
   deriving (Eq, Show)
 
 --- | Given a 'VMResult', classify it assuming it was the result of a call to an Echidna test.
-classifyRes :: VMResult s -> CallRes
+classifyRes :: VMResult Concrete s -> CallRes
 classifyRes (VMSuccess b)
   | forceBuf b == encodeAbiValue (AbiBool True)  = ResTrue
   | forceBuf b == encodeAbiValue (AbiBool False) = ResFalse
@@ -40,7 +40,7 @@ classifyRes (VMSuccess b)
 classifyRes Reversion = ResRevert
 classifyRes _         = ResOther
 
-getResultFromVM :: VM s -> TxResult
+getResultFromVM :: VM Concrete s -> TxResult
 getResultFromVM vm =
   case vm.result of
     Just r -> getResult r
@@ -114,7 +114,7 @@ createTests m td ts r ss = case m of
 updateOpenTest
   :: EchidnaTest
   -> [Tx]
-  -> (TestValue, VM RealWorld, TxResult)
+  -> (TestValue, VM Concrete RealWorld, TxResult)
   -> EchidnaTest
 updateOpenTest test txs (BoolValue False, vm, r) =
   test { Test.state = Large 0, reproducer = txs, vm = Just vm, result = r }
@@ -138,8 +138,8 @@ updateOpenTest _ _ _ = error "Invalid type of test"
 checkETest
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
   => EchidnaTest
-  -> VM RealWorld
-  -> m (TestValue, VM RealWorld)
+  -> VM Concrete RealWorld
+  -> m (TestValue, VM Concrete RealWorld)
 checkETest test vm = case test.testType of
   Exploration -> pure (BoolValue True, vm) -- These values are never used
   PropertyTest n a -> checkProperty vm n a
@@ -151,10 +151,10 @@ checkETest test vm = case test.testType of
 -- | Given a property test, evaluate it and see if it currently passes.
 checkProperty
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
-  => VM RealWorld
+  => VM Concrete RealWorld
   -> Text
   -> Addr
-  -> m (TestValue, VM RealWorld)
+  -> m (TestValue, VM Concrete RealWorld)
 checkProperty vm f a = do
   case vm.result of
     Just (VMSuccess _) -> do
@@ -165,11 +165,11 @@ checkProperty vm f a = do
 
 runTx
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
-  => VM RealWorld
+  => VM Concrete RealWorld
   -> Text
   -> (Addr -> Addr)
   -> Addr
-  -> m (VM RealWorld)
+  -> m (VM Concrete RealWorld)
 runTx vm f s a = do
   -- Our test is a regular user-defined test, we exec it and check the result
   g <- asks (.cfg.txConf.propGas)
@@ -177,7 +177,7 @@ runTx vm f s a = do
   pure vm'
 
 --- | Extract a test value from an execution.
-getIntFromResult :: Maybe (VMResult RealWorld) -> TestValue
+getIntFromResult :: Maybe (VMResult Concrete RealWorld) -> TestValue
 getIntFromResult (Just (VMSuccess b)) =
   let bs = forceBuf b
   in case decodeAbiValue (AbiIntType 256) $ LBS.fromStrict bs of
@@ -188,10 +188,10 @@ getIntFromResult _ = IntValue minBound
 -- | Given a property test, evaluate it and see if it currently passes.
 checkOptimization
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
-  => VM RealWorld
+  => VM Concrete RealWorld
   -> Text
   -> Addr
-  -> m (TestValue, VM RealWorld)
+  -> m (TestValue, VM Concrete RealWorld)
 checkOptimization vm f a = do
   TestConf _ s <- asks (.cfg.testConf)
   vm' <- runTx vm f s a
@@ -199,10 +199,10 @@ checkOptimization vm f a = do
 
 checkStatefulAssertion
   :: (MonadReader Env m, MonadThrow m)
-  => VM RealWorld
+  => VM Concrete RealWorld
   -> SolSignature
   -> Addr
-  -> m (TestValue, VM RealWorld)
+  -> m (TestValue, VM Concrete RealWorld)
 checkStatefulAssertion vm sig addr = do
   dappInfo <- asks (.dapp)
   let
@@ -229,10 +229,10 @@ assumeMagicReturnCode = "FOUNDRY::ASSUME\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
 
 checkDapptestAssertion
   :: (MonadReader Env m, MonadThrow m)
-  => VM RealWorld
+  => VM Concrete RealWorld
   -> SolSignature
   -> Addr
-  -> m (TestValue, VM RealWorld)
+  -> m (TestValue, VM Concrete RealWorld)
 checkDapptestAssertion vm sig addr = do
   let
     -- Whether the last transaction has any value
@@ -253,14 +253,14 @@ checkDapptestAssertion vm sig addr = do
 
 checkCall
   :: (MonadReader Env m, MonadThrow m)
-  => VM RealWorld
-  -> (DappInfo -> VM RealWorld -> TestValue)
-  -> m (TestValue, VM RealWorld)
+  => VM Concrete RealWorld
+  -> (DappInfo -> VM Concrete RealWorld -> TestValue)
+  -> m (TestValue, VM Concrete RealWorld)
 checkCall vm f = do
   dappInfo <- asks (.dapp)
   pure (f dappInfo vm, vm)
 
-checkAssertionTest :: DappInfo -> VM RealWorld -> TestValue
+checkAssertionTest :: DappInfo -> VM Concrete RealWorld -> TestValue
 checkAssertionTest dappInfo vm =
   let events = extractEvents False dappInfo vm
   in BoolValue $ null events || not (checkAssertionEvent events)
@@ -268,19 +268,19 @@ checkAssertionTest dappInfo vm =
 checkAssertionEvent :: Events -> Bool
 checkAssertionEvent = any (T.isPrefixOf "AssertionFailed(")
 
-checkSelfDestructedTarget :: Addr -> DappInfo -> VM RealWorld -> TestValue
+checkSelfDestructedTarget :: Addr -> DappInfo -> VM Concrete RealWorld -> TestValue
 checkSelfDestructedTarget addr _ vm =
   let selfdestructs' = vm.tx.substate.selfdestructs
   in BoolValue $ LitAddr addr `notElem` selfdestructs'
 
-checkAnySelfDestructed :: DappInfo -> VM RealWorld -> TestValue
+checkAnySelfDestructed :: DappInfo -> VM Concrete RealWorld -> TestValue
 checkAnySelfDestructed _ vm =
   BoolValue $ null vm.tx.substate.selfdestructs
 
 checkPanicEvent :: T.Text -> Events -> Bool
 checkPanicEvent n = any (T.isPrefixOf ("Panic(" <> n <> ")"))
 
-checkOverflowTest :: DappInfo -> VM RealWorld-> TestValue
+checkOverflowTest :: DappInfo -> VM Concrete RealWorld-> TestValue
 checkOverflowTest dappInfo vm =
   let es = extractEvents False dappInfo vm
   in BoolValue $ null es || not (checkPanicEvent "17" es)
@@ -288,9 +288,9 @@ checkOverflowTest dappInfo vm =
 -- | Reproduce a test saving VM snapshot after every transaction
 reproduceTest
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
-  => VM RealWorld -- ^ Initial VM
+  => VM Concrete RealWorld -- ^ Initial VM
   -> EchidnaTest
-  -> m ([(Tx, VM RealWorld)], VM RealWorld)
+  -> m ([(Tx, VM Concrete RealWorld)], VM Concrete RealWorld)
 reproduceTest vm0 test = do
   let txs = test.reproducer
   (results, vm) <- go vm0 [] txs

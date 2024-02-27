@@ -173,17 +173,14 @@ data TxResult
   | ErrorCallDepthLimitReached
   | ErrorMaxCodeSizeExceeded
   | ErrorMaxInitCodeSizeExceeded
-  | ErrorMaxIterationsReached
   | ErrorPrecompileFailure
-  | ErrorUnexpectedSymbolic
-  | ErrorJumpIntoSymbolicCode
   | ErrorDeadPath
-  | ErrorChoose -- not entirely sure what this is
   | ErrorWhiffNotUnique
   | ErrorSMTTimeout
   | ErrorFFI
   | ErrorNonceOverflow
   | ErrorReturnDataOutOfBounds
+  | ErrorNonexistentFork
   deriving (Eq, Ord, Show, Enum)
 $(deriveJSON defaultOptions ''TxResult)
 
@@ -203,18 +200,13 @@ data TxConf = TxConf
   }
 
 -- | Transform a VMResult into a more hash friendly sum type
-getResult :: VMResult s -> TxResult
+getResult :: VMResult Concrete s -> TxResult
 getResult = \case
   VMSuccess b | forceBuf b == encodeAbiValue (AbiBool True)  -> ReturnTrue
               | forceBuf b == encodeAbiValue (AbiBool False) -> ReturnFalse
               | otherwise                                    -> Stop
 
-  HandleEffect (Choose _)                 -> ErrorChoose
   HandleEffect (Query _)                  -> ErrorQuery
-
-  Unfinished (UnexpectedSymbolicArg{})    -> ErrorUnexpectedSymbolic
-  Unfinished (MaxIterationsReached _ _)   -> ErrorMaxIterationsReached
-  Unfinished (JumpIntoSymbolicCode _ _)   -> ErrorJumpIntoSymbolicCode
 
   VMFailure (BalanceTooLow _ _)           -> ErrorBalanceTooLow
   VMFailure (UnrecognizedOpcode _)        -> ErrorUnrecognizedOpcode
@@ -235,6 +227,7 @@ getResult = \case
   VMFailure PrecompileFailure             -> ErrorPrecompileFailure
   VMFailure NonceOverflow                 -> ErrorNonceOverflow
   VMFailure ReturnDataOutOfBounds         -> ErrorReturnDataOutOfBounds
+  VMFailure (NonexistentFork _)           -> ErrorNonexistentFork
 
 makeSingleTx :: Addr -> Addr -> W256 -> TxCall -> [Tx]
 makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d maxGasPerBlock 0 v (0, 0)]

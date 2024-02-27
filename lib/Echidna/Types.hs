@@ -22,7 +22,7 @@ type Gas = Word64
 type MutationConsts a = (a, a, a, a)
 
 -- | Transform an EVM action from HEVM to our MonadState VM
-fromEVM :: (MonadIO m, MonadState (VM RealWorld) m) => EVM RealWorld r -> m r
+fromEVM :: (MonadIO m, MonadState (VM Concrete RealWorld) m) => EVM Concrete RealWorld r -> m r
 fromEVM evmAction = do
   vm <- get
   (result, vm') <- liftIO $ stToIO $ runStateT evmAction vm

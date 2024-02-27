@@ -36,7 +36,7 @@ import Echidna.UI.Report
 import Echidna.Utility (timePrefix)
 
 import EVM.Format (showTraceTree)
-import EVM.Types (Addr, Contract, W256, VM(..))
+import EVM.Types (Addr, Contract, W256, VM(..), VMType(Concrete))
 
 data UIState = UIState
   { status :: UIStateStatus
@@ -291,7 +291,7 @@ tsWidget (Large n)  t = do
 titleWidget :: Widget n
 titleWidget = str "Call sequence" <+> str ":"
 
-tracesWidget :: MonadReader Env m => VM RealWorld -> m (Widget n)
+tracesWidget :: MonadReader Env m => VM Concrete RealWorld -> m (Widget n)
 tracesWidget vm = do
   dappInfo <- asks (.dapp)
   -- TODO: showTraceTree does coloring with ANSI escape codes, we need to strip
@@ -306,7 +306,7 @@ failWidget
   :: MonadReader Env m
   => Maybe (Int, Int)
   -> [Tx]
-  -> VM RealWorld
+  -> VM Concrete RealWorld
   -> TestValue
   -> TxResult
   -> m (Widget Name, Widget Name)
@@ -344,7 +344,7 @@ maxWidget
   :: MonadReader Env m
   => Maybe (Int, Int)
   -> [Tx]
-  -> VM RealWorld
+  -> VM Concrete RealWorld
   -> TestValue
   -> m (Widget Name, Widget Name)
 maxWidget _ [] _  _ = pure (failureBadge, str "*no transactions made*")
@@ -362,7 +362,7 @@ maxWidget b xs vm v = do
       str "Current action: " <+>
         withAttr (attrName "working") (str ("shrinking " ++ progress n m))
 
-seqWidget :: MonadReader Env m => VM RealWorld -> [Tx] -> m (Widget Name)
+seqWidget :: MonadReader Env m => VM Concrete RealWorld -> [Tx] -> m (Widget Name)
 seqWidget vm xs = do
   ppTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> xs) /= 1) xs
   let ordinals = str . printf "%d. " <$> [1 :: Int ..]
