@@ -297,6 +297,7 @@ $ nix develop # alternatively nix-shell
 
 This is a partial list of smart contracts projects that use Echidna for testing:
 
+* [Curvance](https://github.com/curvance/Curvance-CantinaCompetition/tree/CodeFAQAndAdjustments/tests/fuzzing)
 * [Primitive](https://github.com/primitivefinance/rmm-core/tree/main/contracts/crytic)
 * [Uniswap-v3](https://github.com/search?q=org%3AUniswap+echidna&type=commits)
 * [Balancer](https://github.com/balancer-labs/balancer-core/tree/master/echidna)
