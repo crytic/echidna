@@ -127,14 +127,14 @@ data Options = Options
   , cliAllContracts     :: Bool
   , cliTimeout          :: Maybe Int
   , cliTestLimit        :: Maybe Int
+  , cliRpcBlock         :: Maybe Word64
+  , cliRpcUrl           :: Maybe Text
   , cliShrinkLimit      :: Maybe Int
   , cliSeqLen           :: Maybe Int
   , cliContractAddr     :: Maybe Addr
   , cliDeployer         :: Maybe Addr
   , cliSender           :: [Addr]
   , cliSeed             :: Maybe Int
-  , cliRpcUrl           :: Maybe Text
-  , cliRpcBlock         :: Maybe Word64
   , cliCryticArgs       :: Maybe String
   , cliSolcArgs         :: Maybe String
   }
@@ -176,6 +176,12 @@ options = Options
   <*> optional (option auto $ long "test-limit"
     <> metavar "INTEGER"
     <> help ("Number of sequences of transactions to generate during testing. Default is " ++ show defaultTestLimit))
+  <*> optional (option auto $ long "rpc-block"
+    <> metavar "BLOCK"
+    <> help "Block number to use when fetching over RPC.")
+  <*> optional (option str $ long "rpc-url"
+    <> metavar "URL"
+    <> help "Fetch contracts over a RPC URL.")
   <*> optional (option auto $ long "shrink-limit"
     <> metavar "INTEGER"
     <> help ("Number of tries to attempt to shrink a failing sequence of transactions. Default is " ++ show defaultShrinkLimit))
@@ -194,12 +200,6 @@ options = Options
   <*> optional (option auto $ long "seed"
     <> metavar "SEED"
     <> help "Run with a specific seed.")
-  <*> optional (option str $ long "rpc-url"
-    <> metavar "URL"
-    <> help "Fetch contracts over a RPC URL.")
-  <*> optional (option auto $ long "rpc-block"
-    <> metavar "BLOCK"
-    <> help "Block number to use when fetching over RPC.")
   <*> optional (option str $ long "crytic-args"
     <> metavar "ARGS"
     <> help "Additional arguments to use in crytic-compile for the compilation of the contract to test.")
