@@ -214,8 +214,8 @@ versionOption = infoOption
 
 overrideConfig :: EConfig -> Options -> IO EConfig
 overrideConfig config Options{..} = do
-  rpcUrl <- maybe (Onchain.rpcUrlEnv) (pure . Just) cliRpcUrl
-  rpcBlock <- maybe (Onchain.rpcBlockEnv) (pure . Just) cliRpcBlock
+  rpcUrl <- (pure cliRpcUrl) <|> Onchain.rpcUrlEnv
+  rpcBlock <- (pure cliRpcBlock) <|> Onchain.rpcBlockEnv
   pure $
     config { solConf = overrideSolConf config.solConf
            , campaignConf = overrideCampaignConf config.campaignConf
