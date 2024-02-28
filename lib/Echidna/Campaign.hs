@@ -117,7 +117,7 @@ runSymWorker callback vm dict workerId initialCorpus name cs = do
 
   continueLoopMVar <- liftIO $ newMVar ()
   threadsLeftRef <- liftIO $ newIORef threadsLeft
-  newCovTxs <- liftIO $ newIORef $ ([] : map snd initialCorpus)
+  newCovTxs <- liftIO $ newIORef ([] : map snd initialCorpus)
   txsToApplyToState <- liftIO $ newIORef []
   let objs = (continueLoopMVar, threadsLeftRef, newCovTxs, txsToApplyToState)
 
@@ -144,18 +144,18 @@ runSymWorker callback vm dict workerId initialCorpus name cs = do
 
   enqueueIORef ref x = atomicModifyIORef' ref (\q -> (q ++ [x], ()))
 
-  dequeueAllIORef ref = atomicModifyIORef' ref (\q -> ([], q))
+  dequeueAllIORef ref = atomicModifyIORef' ref ([], q)
 
   dequeueIORef ref = atomicModifyIORef' ref
     (\case
       [] -> ([], Nothing)
       (h:t) -> (t, Just h))
 
-  listenerFunc (continueLoopMVar, _, newCovTxs, txsToApplyToState) (_, (WorkerEvent _ (NewCoverage {transactions}))) = do
+  listenerFunc (continueLoopMVar, _, newCovTxs, txsToApplyToState) (_, WorkerEvent _ (NewCoverage {transactions})) = do
     enqueueIORef newCovTxs transactions
     enqueueIORef txsToApplyToState transactions
     void $ tryPutMVar continueLoopMVar ()
-  listenerFunc (continueLoopMVar, threadsLeftRef, _, _) (_, (WorkerEvent _ (WorkerStopped _))) = do
+  listenerFunc (continueLoopMVar, threadsLeftRef, _, _) (_, WorkerEvent _ (WorkerStopped _)) = do
     newThreadsLeft <- atomicModifyIORef' threadsLeftRef (\n -> (n-1, n-1))
     when (newThreadsLeft <= 0) $ void $ tryPutMVar continueLoopMVar ()
   listenerFunc _ _ = pure ()
