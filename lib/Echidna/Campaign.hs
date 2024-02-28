@@ -181,7 +181,7 @@ runSymWorker callback vm dict workerId initialCorpus name cs = do
     env <- ask
     vm' <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm txs
     symTxs <- liftIO $ createSymTx env name cs vm'
-    void $ callseq vm (txs ++ symTxs)
+    mapM_ (\symTx -> void $ callseq vm (txs ++ [symTx])) symTxs
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
