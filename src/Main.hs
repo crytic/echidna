@@ -16,7 +16,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Version (showVersion)
-import Data.Word (Word8, Word16)
+import Data.Word (Word8, Word16, Word64)
 import Main.Utf8 (withUtf8)
 import Options.Applicative
 import Paths_echidna (version)
@@ -133,6 +133,8 @@ data Options = Options
   , cliDeployer         :: Maybe Addr
   , cliSender           :: [Addr]
   , cliSeed             :: Maybe Int
+  , cliRpcUrl           :: Maybe Text
+  , cliRpcBlock         :: Maybe Word64
   , cliCryticArgs       :: Maybe String
   , cliSolcArgs         :: Maybe String
   }
@@ -192,6 +194,12 @@ options = Options
   <*> optional (option auto $ long "seed"
     <> metavar "SEED"
     <> help "Run with a specific seed.")
+  <*> optional (option str $ long "rpc-url"
+    <> metavar "URL"
+    <> help "Fetch contracts over a RPC URL.")
+  <*> optional (option auto $ long "rpc-block"
+    <> metavar "BLOCK"
+    <> help "Block number to use when fetching over RPC.")
   <*> optional (option str $ long "crytic-args"
     <> metavar "ARGS"
     <> help "Additional arguments to use in crytic-compile for the compilation of the contract to test.")
@@ -206,8 +214,8 @@ versionOption = infoOption
 
 overrideConfig :: EConfig -> Options -> IO EConfig
 overrideConfig config Options{..} = do
-  rpcUrl <- Onchain.rpcUrlEnv
-  rpcBlock <- Onchain.rpcBlockEnv
+  rpcUrl <- maybe (Onchain.rpcUrlEnv) (pure . Just) cliRpcUrl
+  rpcBlock <- maybe (Onchain.rpcBlockEnv) (pure . Just) cliRpcBlock
   pure $
     config { solConf = overrideSolConf config.solConf
            , campaignConf = overrideCampaignConf config.campaignConf
