@@ -214,14 +214,14 @@ versionOption = infoOption
 
 overrideConfig :: EConfig -> Options -> IO EConfig
 overrideConfig config Options{..} = do
-  rpcUrl <- pure cliRpcUrl <|> Onchain.rpcUrlEnv
-  rpcBlock <- pure cliRpcBlock <|> Onchain.rpcBlockEnv
+  envRpcUrl <- Onchain.rpcUrlEnv
+  envRpcBlock <- Onchain.rpcBlockEnv
   pure $
     config { solConf = overrideSolConf config.solConf
            , campaignConf = overrideCampaignConf config.campaignConf
            , uiConf = overrideUiConf config.uiConf
-           , rpcUrl = rpcUrl <|> config.rpcUrl
-           , rpcBlock = rpcBlock <|> config.rpcBlock
+           , rpcUrl = cliRpcUrl <|> envRpcUrl <|> config.rpcUrl
+           , rpcBlock = cliRpcBlock <|> envRpcBlock <|> config.rpcBlock
            }
            & overrideFormat
   where
