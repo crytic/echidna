@@ -181,7 +181,7 @@ options = Options
     <> help "Block number to use when fetching over RPC.")
   <*> optional (option str $ long "rpc-url"
     <> metavar "URL"
-    <> help "Fetch contracts over a RPC URL.")
+    <> help "RPC URL to fetch contracts over.")
   <*> optional (option auto $ long "shrink-limit"
     <> metavar "INTEGER"
     <> help ("Number of tries to attempt to shrink a failing sequence of transactions. Default is " ++ show defaultShrinkLimit))
@@ -214,8 +214,8 @@ versionOption = infoOption
 
 overrideConfig :: EConfig -> Options -> IO EConfig
 overrideConfig config Options{..} = do
-  rpcUrl <- (pure cliRpcUrl) <|> Onchain.rpcUrlEnv
-  rpcBlock <- (pure cliRpcBlock) <|> Onchain.rpcBlockEnv
+  rpcUrl <- pure cliRpcUrl <|> Onchain.rpcUrlEnv
+  rpcBlock <- pure cliRpcBlock <|> Onchain.rpcBlockEnv
   pure $
     config { solConf = overrideSolConf config.solConf
            , campaignConf = overrideCampaignConf config.campaignConf
