@@ -16,7 +16,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Version (showVersion)
-import Data.Word (Word8, Word16)
+import Data.Word (Word8, Word16, Word64)
 import Main.Utf8 (withUtf8)
 import Options.Applicative
 import Paths_echidna (version)
@@ -127,6 +127,8 @@ data Options = Options
   , cliAllContracts     :: Bool
   , cliTimeout          :: Maybe Int
   , cliTestLimit        :: Maybe Int
+  , cliRpcBlock         :: Maybe Word64
+  , cliRpcUrl           :: Maybe Text
   , cliShrinkLimit      :: Maybe Int
   , cliSeqLen           :: Maybe Int
   , cliContractAddr     :: Maybe Addr
@@ -174,6 +176,12 @@ options = Options
   <*> optional (option auto $ long "test-limit"
     <> metavar "INTEGER"
     <> help ("Number of sequences of transactions to generate during testing. Default is " ++ show defaultTestLimit))
+  <*> optional (option auto $ long "rpc-block"
+    <> metavar "BLOCK"
+    <> help "Block number to use when fetching over RPC.")
+  <*> optional (option str $ long "rpc-url"
+    <> metavar "URL"
+    <> help "RPC URL to fetch contracts over.")
   <*> optional (option auto $ long "shrink-limit"
     <> metavar "INTEGER"
     <> help ("Number of tries to attempt to shrink a failing sequence of transactions. Default is " ++ show defaultShrinkLimit))
@@ -206,14 +214,14 @@ versionOption = infoOption
 
 overrideConfig :: EConfig -> Options -> IO EConfig
 overrideConfig config Options{..} = do
-  rpcUrl <- Onchain.rpcUrlEnv
-  rpcBlock <- Onchain.rpcBlockEnv
+  envRpcUrl <- Onchain.rpcUrlEnv
+  envRpcBlock <- Onchain.rpcBlockEnv
   pure $
     config { solConf = overrideSolConf config.solConf
            , campaignConf = overrideCampaignConf config.campaignConf
            , uiConf = overrideUiConf config.uiConf
-           , rpcUrl = rpcUrl <|> config.rpcUrl
-           , rpcBlock = rpcBlock <|> config.rpcBlock
+           , rpcUrl = cliRpcUrl <|> envRpcUrl <|> config.rpcUrl
+           , rpcBlock = cliRpcBlock <|> envRpcBlock <|> config.rpcBlock
            }
            & overrideFormat
   where
