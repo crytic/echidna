@@ -1,3 +1,14 @@
+## 2.2.3
+
+* feat: add CLI commands for RPC URL and block number (#1194)
+* Speed up shrinking (#1192)
+* Update hevm to 0.53.0 (#1189)
+* Fix faulty corpus transaction detection (#1184)
+* Display contract names in UI (#1181)
+* Save traces for every transaction in reproducer (#1180)
+* Validate corpus while replaying (#1177)
+* Refactors (#1174, #1178)
+
 ## 2.2.2
 
 * Save corpus and reproducers continuously (#1167)
