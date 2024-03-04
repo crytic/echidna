@@ -132,6 +132,8 @@ ui vm world dict initialCorpus = do
           , fetchedSlots = mempty
           , fetchedDialog = B.dialog (Just $ str " Fetched contracts/slots ") Nothing 80
           , displayFetchedDialog = False
+          , displayLogPane = True
+          , displayTestsPane = True
           , events = mempty
           , corpusSize = 0
           , coverage = 0
@@ -290,6 +292,12 @@ monitor = do
       VtyEvent (EvKey (KChar 'f') _) ->
         modify' $ \state ->
           state { displayFetchedDialog = not state.displayFetchedDialog }
+      VtyEvent (EvKey (KChar 'l') _) ->
+        modify' $ \state ->
+          state { displayLogPane = not state.displayLogPane }
+      VtyEvent (EvKey (KChar 't') _) ->
+        modify' $ \state ->
+          state { displayTestsPane = not state.displayTestsPane }
       VtyEvent (EvKey KEsc _)                         -> halt
       VtyEvent (EvKey (KChar 'c') l) | MCtrl `elem` l -> halt
       MouseDown (SBClick el n) _ _ _ ->

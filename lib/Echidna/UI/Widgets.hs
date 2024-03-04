@@ -48,6 +48,8 @@ data UIState = UIState
   , fetchedSlots :: Map Addr (Map W256 (Maybe W256))
   , fetchedDialog :: B.Dialog () Name
   , displayFetchedDialog :: Bool
+  , displayLogPane :: Bool
+  , displayTestsPane :: Bool
 
   , events :: Seq (LocalTime, CampaignEvent)
   , workersAlive :: Int
@@ -111,15 +113,19 @@ campaignStatus uiState = do
       joinBorders $ borderWithLabel echidnaTitle $
       summaryWidget env uiState
       <=>
-      hBorderWithLabel (withAttr (attrName "subtitle") $ str $
-        (" Tests (" <> show (length uiState.tests)) <> ") ")
+      (if uiState.displayTestsPane then
+        hBorderWithLabel (withAttr (attrName "subtitle") $ str $
+          (" Tests (" <> show (length uiState.tests)) <> ") ")
+        <=>
+        inner
+      else emptyWidget)
       <=>
-      inner
-      <=>
-      hBorderWithLabel (withAttr (attrName "subtitle") $ str $
-        " Log (" <> show (length uiState.events) <> ") ")
-      <=>
-      logPane uiState
+      (if uiState.displayLogPane then
+        hBorderWithLabel (withAttr (attrName "subtitle") $ str $
+          " Log (" <> show (length uiState.events) <> ") ")
+        <=>
+        logPane uiState
+      else emptyWidget)
       <=>
       underneath
   echidnaTitle =
