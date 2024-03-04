@@ -123,26 +123,29 @@ removeCallTx t = Tx NoCall t.src t.dst 0 0 0 t.delay
 -- | Given a 'Transaction', generate a random \"smaller\" 'Transaction', preserving origin,
 -- destination, value, and call signature.
 shrinkTx :: MonadRandom m => Tx -> m Tx
-shrinkTx tx' =
+shrinkTx tx =
   let
-    shrinkCall = case tx'.call of
+    shrinkCall = case tx.call of
       SolCall sc -> SolCall <$> shrinkAbiCall sc
-      _ -> pure tx'.call
+      _ -> pure tx.call
     lower 0 = pure 0
     lower x = (getRandomR (0 :: Integer, fromIntegral x)
                 >>= (\r -> uniform [0, r]) . fromIntegral) -- try 0 quicker
     possibilities =
       [ do call' <- shrinkCall
-           pure tx' { call = call' }
-      , do value' <- lower tx'.value
-           pure tx' { Echidna.Types.Tx.value = value' }
-      , do gasprice' <- lower tx'.gasprice
-           pure tx' { Echidna.Types.Tx.gasprice = gasprice' }
-      , do let (time, blocks) = tx'.delay
-           delay' <- level <$> ((,) <$> lower time <*> lower blocks)
-           pure tx' { delay = delay' }
+           pure tx { call = call' }
+      , do value' <- lower tx.value
+           pure tx { Echidna.Types.Tx.value = value' }
+      , do gasprice' <- lower tx.gasprice
+           pure tx { Echidna.Types.Tx.gasprice = gasprice' }
+      , do let (time, blocks) = tx.delay
+           delay' <- join $ uniform [ (time,) <$> lower blocks
+                                    , (,blocks) <$> lower time
+                                    , (,) <$> lower time <*> lower blocks
+                                    ]
+           pure tx { delay = level delay' }
       ]
-  in join $ usuallyRarely (join (uniform possibilities)) (pure $ removeCallTx tx')
+  in join $ usuallyRarely (join (uniform possibilities)) (pure $ removeCallTx tx)
 
 mutateTx :: (MonadRandom m) => Tx -> m Tx
 mutateTx tx@Tx{call = SolCall c} = do
