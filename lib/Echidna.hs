@@ -15,7 +15,7 @@ import EVM (cheatCode)
 import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Dapp (DappInfo(..), dappInfo)
 import EVM.Fetch qualified
-import EVM.Solidity (SolcContract(..), BuildOutput)
+import EVM.Solidity (BuildOutput)
 import EVM.Types hiding (Env)
 
 import Echidna.ABI
@@ -72,8 +72,7 @@ prepareContract env solFiles specifiedContract seed = do
                                (forceAddr vm.state.contract)
                                funs
 
-    eventMap = Map.unions $ map (.eventMap) contracts
-    world = mkWorld solConf eventMap signatureMap specifiedContract slitherInfo contracts
+    world = mkWorld solConf signatureMap specifiedContract slitherInfo contracts
 
     deployedAddresses = Set.fromList $ AbiAddress . forceAddr <$> Map.keys vm.env.contracts
     constants = enhanceConstants slitherInfo

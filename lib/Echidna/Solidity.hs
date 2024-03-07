@@ -38,7 +38,7 @@ import Echidna.ABI
   , commonTypeSizes, mkValidAbiInt, mkValidAbiUInt )
 import Echidna.Deploy (deployContracts, deployBytecodes)
 import Echidna.Etheno (loadEthenoBatch)
-import Echidna.Events (EventMap, extractEvents)
+import Echidna.Events (extractEvents)
 import Echidna.Exec (execTx, initialVM)
 import Echidna.SourceAnalysis.Slither
 import Echidna.Symbolic (forceAddr)
@@ -291,14 +291,14 @@ loadSpecified env name cs = do
 -- for running a 'Campaign' against the tests found.
 mkWorld
   :: SolConf
-  -> EventMap
   -> SignatureMap
   -> Maybe ContractName
   -> SlitherInfo
   -> [SolcContract]
   -> World
-mkWorld SolConf{sender, testMode} eventMap sigMap maybeContract slitherInfo contracts =
+mkWorld SolConf{sender, testMode} sigMap maybeContract slitherInfo contracts =
   let
+    eventMap = Map.unions $ map (.eventMap) contracts
     payableSigs = filterResults maybeContract slitherInfo.payableFunctions
     as = if isAssertionMode testMode then filterResults maybeContract slitherInfo.asserts else []
     cs = if isDapptestMode testMode then [] else filterResults maybeContract slitherInfo.constantFunctions \\ as
