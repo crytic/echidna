@@ -333,7 +333,7 @@ filterFallbacks la lb contracts = Map.mapWithKey f
                 []  -> [fallback] -- No other alternative
                 ss' -> ss'
     keysToIgnore = concatMap contractNameToCodehashes (la ++ lb)
-    contractNameToCodehashes name = map (.runtimeCodehash) $ filter (\c -> c.contractName == name) contracts
+    contractNameToCodehashes name = map (.runtimeCodehash) $ filter (\c -> last (T.splitOn ":" c.contractName) == name) contracts
 
 prepareHashMaps
   :: [FunctionSelector]
