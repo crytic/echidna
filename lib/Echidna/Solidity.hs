@@ -326,7 +326,7 @@ filterFallbacks
   -> [SolcContract]
   -> SignatureMap
   -> SignatureMap
-filterFallbacks la lb contracts sm = Map.mapWithKey f sm
+filterFallbacks la lb contracts = Map.mapWithKey f
   where
     f k ss | k `elem` keysToIgnore = ss
     f _ ss = NE.fromList $ case NE.filter (/= fallback) ss of
