@@ -295,14 +295,15 @@ mkWorld
   -> SignatureMap
   -> Maybe ContractName
   -> SlitherInfo
+  -> [SolcContract]
   -> World
-mkWorld SolConf{sender, testMode} eventMap sigMap maybeContract slitherInfo =
+mkWorld SolConf{sender, testMode} eventMap sigMap maybeContract slitherInfo contracts =
   let
     payableSigs = filterResults maybeContract slitherInfo.payableFunctions
     as = if isAssertionMode testMode then filterResults maybeContract slitherInfo.asserts else []
     cs = if isDapptestMode testMode then [] else filterResults maybeContract slitherInfo.constantFunctions \\ as
     (highSignatureMap, lowSignatureMap) = prepareHashMaps cs as $
-      filterFallbacks maybeContract slitherInfo.fallbackDefined slitherInfo.receiveDefined sigMap
+      filterFallbacks slitherInfo.fallbackDefined slitherInfo.receiveDefined contracts sigMap
   in World { senders = sender
            , highSignatureMap
            , lowSignatureMap
@@ -320,16 +321,19 @@ filterResults (Just contractName) rs =
 filterResults Nothing rs = hashSig <$> (concat . Map.elems) rs
 
 filterFallbacks
-  :: Maybe ContractName
+  :: [ContractName]
   -> [ContractName]
-  -> [ContractName]
+  -> [SolcContract]
   -> SignatureMap
   -> SignatureMap
-filterFallbacks _ [] [] sm = Map.map f sm
-  where f ss = NE.fromList $ case NE.filter (/= fallback) ss of
+filterFallbacks la lb contracts sm = Map.mapWithKey f sm
+  where
+    f k ss | k `elem` keysToIgnore = ss
+    f _ ss = NE.fromList $ case NE.filter (/= fallback) ss of
                 []  -> [fallback] -- No other alternative
                 ss' -> ss'
-filterFallbacks _ _ _ sm = sm
+    keysToIgnore = concatMap contractNameToCodehashes (la ++ lb)
+    contractNameToCodehashes name = map (.runtimeCodehash) $ filter (\c -> c.contractName == name) contracts
 
 prepareHashMaps
   :: [FunctionSelector]

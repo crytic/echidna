@@ -73,7 +73,7 @@ prepareContract env solFiles specifiedContract seed = do
                                funs
 
     eventMap = Map.unions $ map (.eventMap) contracts
-    world = mkWorld solConf eventMap signatureMap specifiedContract slitherInfo
+    world = mkWorld solConf eventMap signatureMap specifiedContract slitherInfo contracts
 
     deployedAddresses = Set.fromList $ AbiAddress . forceAddr <$> Map.keys vm.env.contracts
     constants = enhanceConstants slitherInfo
