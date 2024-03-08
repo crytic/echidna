@@ -101,7 +101,7 @@ main = withUtf8 $ withCP65001 $ do
       -- TODO: We use the corpus dir to save coverage reports which is confusing.
       -- Add config option to pass dir for saving coverage report and decouple it
       -- from corpusDir.
-      unless (null cfg.campaignConf.coverageFormats) $ do
+      unless (null cfg.campaignConf.coverageFormats) $ measureIO cfg.solConf.quiet "Saving coverage" $ do
         -- We need runId to have a unique directory to save files under so they
         -- don't collide with the next runs. We use the current time for this
         -- as it orders the runs chronologically.
