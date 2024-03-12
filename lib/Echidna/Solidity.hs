@@ -2,6 +2,8 @@ module Echidna.Solidity where
 
 import Optics.Core hiding (filtered)
 
+import Control.Concurrent (ThreadId)
+import Control.Concurrent.MVar (MVar)
 import Control.Monad (when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Extra (whenM)
@@ -160,7 +162,7 @@ abiOf pref solcContract =
     filter (not . isPrefixOf pref . fst)
            (Map.elems solcContract.abiMap <&> \method -> (method.name, snd <$> method.inputs))
 
-createSymTx :: Env -> Maybe Text -> [SolcContract] -> VM RealWorld -> IO [Tx]
+createSymTx :: Env -> Maybe Text -> [SolcContract] -> VM RealWorld -> IO (ThreadId, MVar [Tx])
 createSymTx env name cs vm = do
     mainContract <- choose cs name
     Echidna.SymExec.exploreContract solConf.contractAddr mainContract vm

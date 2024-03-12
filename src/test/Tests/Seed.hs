@@ -39,6 +39,6 @@ seedTests =
       }
       & overrideQuiet
     gen s = do
-      (env, _) <- runContract "basic/flags.sol" Nothing (cfg s)
+      (env, _) <- runContract "basic/flags.sol" Nothing (cfg s) False
       readIORef env.testsRef
     same s t = (\x y -> ((.reproducer) <$> x) == ((.reproducer) <$> y)) <$> gen s <*> gen t

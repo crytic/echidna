@@ -4,6 +4,7 @@ import Control.Concurrent (Chan)
 import Data.Aeson.Key (Key)
 import Data.IORef (IORef)
 import Data.Map (Map)
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Time (LocalTime)
@@ -13,10 +14,10 @@ import EVM.Dapp (DappInfo)
 import EVM.Types (Addr, Contract, W256)
 
 import Echidna.SourceMapping (CodehashMap)
-import Echidna.Types.Campaign (CampaignConf, CampaignEvent)
+import Echidna.Types.Campaign (CampaignConf(..), CampaignEvent)
 import Echidna.Types.Corpus (Corpus)
 import Echidna.Types.Coverage (CoverageMap)
-import Echidna.Types.Solidity (SolConf)
+import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (TestConf, EchidnaTest)
 import Echidna.Types.Tx (TxConf)
 
@@ -76,3 +77,11 @@ data Env = Env
   , fetchSlotCache :: IORef (Map Addr (Map W256 (Maybe W256)))
   , chainId :: Maybe W256
   }
+
+-- | TODO write desc, also move?
+getNFuzzWorkers :: CampaignConf -> Int
+getNFuzzWorkers conf = fromIntegral (fromMaybe 1 (conf.workers))
+
+-- | Number of workers, including SymExec worker if there is one
+getNWorkers :: EConfig -> Int
+getNWorkers conf = getNFuzzWorkers conf.campaignConf + (if conf.solConf.symExec then 1 else 0)

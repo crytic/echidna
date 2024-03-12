@@ -113,7 +113,7 @@ runSymWorker
   -> m (WorkerStopReason, WorkerState)
 runSymWorker callback vm dict workerId initialCorpus name cs = do
   cfg <- asks (.cfg)
-  let threadsLeft = fromMaybe 1 cfg.campaignConf.workers
+  let threadsLeft = getNFuzzWorkers cfg.campaignConf
 
   continueLoopMVar <- liftIO $ newMVar ()
   threadsLeftRef <- liftIO $ newIORef threadsLeft
@@ -140,11 +140,12 @@ runSymWorker callback vm dict workerId initialCorpus name cs = do
                 , newCoverage = False
                 , ncallseqs = 0
                 , ncalls = 0
+                , runningThreads = []
                 }
 
   enqueueIORef ref x = atomicModifyIORef' ref (\q -> (q ++ [x], ()))
 
-  dequeueAllIORef ref = atomicModifyIORef' ref ([], q)
+  dequeueAllIORef ref = atomicModifyIORef' ref ([],)
 
   dequeueIORef ref = atomicModifyIORef' ref
     (\case
@@ -180,7 +181,16 @@ runSymWorker callback vm dict workerId initialCorpus name cs = do
   symexecTxs txs = do
     env <- ask
     vm' <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm txs
-    symTxs <- liftIO $ createSymTx env name cs vm'
+    (threadId, symTxsChan) <- liftIO $ createSymTx env name cs vm'
+
+    modify' (\ws -> ws { runningThreads = [threadId] })
+    lift callback
+
+    symTxs <- liftIO $ takeMVar symTxsChan
+
+    modify' (\ws -> ws { runningThreads = [] })
+    lift callback
+
     mapM_ (\symTx -> void $ callseq vm (txs ++ [symTx])) symTxs
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
@@ -209,6 +219,7 @@ runFuzzWorker callback vm world dict workerId initialCorpus testLimit = do
                   , newCoverage = False
                   , ncallseqs = 0
                   , ncalls = 0
+                  , runningThreads = []
                   }
 
   flip runStateT initialState $ do
@@ -529,7 +540,7 @@ spawnListener
   -> m (MVar ())
 spawnListener handler = do
   cfg <- asks (.cfg)
-  let nworkers = (fromMaybe 1 cfg.campaignConf.workers)+1
+  let nworkers = getNWorkers cfg
   eventQueue <- asks (.eventQueue)
   chan <- liftIO $ dupChan eventQueue
   stopVar <- liftIO newEmptyMVar

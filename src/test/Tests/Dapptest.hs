@@ -6,7 +6,7 @@ import Common (testContract', solcV, solved, passed)
 
 dapptestTests :: TestTree
 dapptestTests = testGroup "Dapptest Integration Testing"
-  [ testContract' "dapptest/basic.sol" (Just "GreeterTest") (Just (\v -> v >= solcV (0,7,5))) (Just "dapptest/config.yaml") False
+  [ testContract' "dapptest/basic.sol" (Just "GreeterTest") (Just (\v -> v >= solcV (0,7,5))) (Just "dapptest/config.yaml") False False
      [ 
         ("testShrinking passed", solved "testShrinking"),
         ("testFuzzFixedArray passed", solved "testFuzzFixedArray"),

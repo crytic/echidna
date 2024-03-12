@@ -1,5 +1,6 @@
 module Echidna.Types.Campaign where
 
+import Control.Concurrent (ThreadId)
 import Data.Aeson
 import Data.Map (Map)
 import Data.Text (Text)
@@ -136,6 +137,8 @@ data WorkerState = WorkerState
     -- ^ Number of times the callseq is called
   , ncalls      :: !Int
     -- ^ Number of calls executed while fuzzing
+  , runningThreads :: [ThreadId]
+    -- ^ TODO description goes here
   }
 
 initialWorkerState :: WorkerState
@@ -146,6 +149,7 @@ initialWorkerState =
               , newCoverage = False
               , ncallseqs = 0
               , ncalls = 0
+              , runningThreads = []
               }
 
 defaultTestLimit :: Int

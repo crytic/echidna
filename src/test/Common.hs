@@ -39,7 +39,7 @@ import System.Process (readProcess)
 
 import Echidna (mkEnv, prepareContract)
 import Echidna.Config (parseConfig, defaultConfig)
-import Echidna.Campaign (runFuzzWorker)
+import Echidna.Campaign (runWorker)
 import Echidna.Solidity (loadSolTests, compileContracts)
 import Echidna.Test (checkETest)
 import Echidna.Types (Gas)
@@ -49,6 +49,8 @@ import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
+
+import EVM.Solidity (Contracts(..), BuildOutput(..))
 
 testConfig :: EConfig
 testConfig = defaultConfig & overrideQuiet
@@ -83,16 +85,18 @@ withSolcVersion (Just f) t = do
     Right v' -> if f v' then t else assertBool "skip" True
     Left e   -> error $ show e
 
-runContract :: FilePath -> Maybe ContractName -> EConfig -> IO (Env, WorkerState)
-runContract f selectedContract cfg = do
+runContract :: FilePath -> Maybe ContractName -> EConfig -> Bool -> IO (Env, WorkerState)
+runContract f selectedContract cfg isSym = do
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
   buildOutput <- compileContracts cfg.solConf (f :| [])
   env <- mkEnv cfg buildOutput
 
   (vm, world, dict) <- prepareContract env (f :| []) selectedContract seed
 
+  let (Contracts contractMap) = buildOutput.contracts
+
   (_stopReason, finalState) <- flip runReaderT env $
-    runFuzzWorker (pure ()) vm world dict 0 [] cfg.campaignConf.testLimit
+    runWorker isSym (pure ()) vm world dict 0 [] cfg.campaignConf.testLimit selectedContract (Map.elems contractMap)
 
   -- TODO: consider snapshotting the state so checking function don't need to
   -- be IO
@@ -103,7 +107,7 @@ testContract
   -> Maybe FilePath
   -> [(String, (Env, WorkerState) -> IO Bool)]
   -> TestTree
-testContract fp cfg = testContract' fp Nothing Nothing cfg True
+testContract fp cfg = testContract' fp Nothing Nothing cfg True False
 
 testContractV
   :: FilePath
@@ -111,7 +115,7 @@ testContractV
   -> Maybe FilePath
   -> [(String, (Env, WorkerState) -> IO Bool)]
   -> TestTree
-testContractV fp v cfg = testContract' fp Nothing v cfg True
+testContractV fp v cfg = testContract' fp Nothing v cfg True False
 
 testContract'
   :: FilePath
@@ -119,9 +123,10 @@ testContract'
   -> Maybe SolcVersionComp
   -> Maybe FilePath
   -> Bool
+  -> Bool
   -> [(String, (Env, WorkerState) -> IO Bool)]
   -> TestTree
-testContract' fp n v configPath s expectations = testCase fp $ withSolcVersion v $ do
+testContract' fp n v configPath s isSym expectations = testCase fp $ withSolcVersion v $ do
   c <- case configPath of
     Just path -> do
       parsed <- parseConfig path
@@ -129,7 +134,7 @@ testContract' fp n v configPath s expectations = testCase fp $ withSolcVersion v
     Nothing -> pure testConfig
   let c' = c & overrideQuiet
              & (if s then overrideLimits else id)
-  result <- runContract fp n c'
+  result <- runContract fp n c' isSym
   forM_ expectations $ \(message, assertion) -> do
     assertion result >>= assertBool message
 

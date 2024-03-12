@@ -28,7 +28,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Time
 import UnliftIO
-  ( MonadUnliftIO, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
+  ( MonadUnliftIO, IORef, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
 import EVM.Solidity (SolcContract)
@@ -43,6 +43,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage (scoveragePoints)
+import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
@@ -72,8 +73,8 @@ ui vm world dict initialCorpus name cs = do
   terminalPresent <- liftIO isTerminal
 
   let
-    -- default to one worker if not configured
-    nworkers = fromIntegral . (+ 1) $ fromMaybe 1 conf.campaignConf.workers
+    nFuzzWorkers = getNFuzzWorkers conf.campaignConf
+    nworkers = getNWorkers conf
 
     effectiveMode = case conf.uiConf.operationMode of
       Interactive | not terminalPresent -> NonInteractive Text
@@ -82,16 +83,16 @@ ui vm world dict initialCorpus name cs = do
     -- Distribute over all workers, could be slightly bigger overall due to
     -- ceiling but this doesn't matter
     perWorkerTestLimit = ceiling
-      (fromIntegral conf.campaignConf.testLimit / fromIntegral (nworkers-1) :: Double)
+      (fromIntegral conf.campaignConf.testLimit / fromIntegral nFuzzWorkers :: Double)
 
     chunkSize = ceiling
-      (fromIntegral (length initialCorpus) / fromIntegral (nworkers-1) :: Double)
+      (fromIntegral (length initialCorpus) / fromIntegral nFuzzWorkers :: Double)
     corpusChunks = chunksOf chunkSize initialCorpus ++ repeat []
 
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
   workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
-    uncurry (spawnWorker env perWorkerTestLimit nworkers)
+    uncurry (spawnWorker env perWorkerTestLimit)
 
   case effectiveMode of
 #ifdef INTERACTIVE_UI
@@ -214,7 +215,7 @@ ui vm world dict initialCorpus name cs = do
 
   where
 
-  spawnWorker env testLimit nworkers corpusChunk workerId = do
+  spawnWorker env testLimit corpusChunk workerId = do
     stateRef <- newIORef initialWorkerState
 
     threadId <- forkIO $ do
@@ -222,7 +223,7 @@ ui vm world dict initialCorpus name cs = do
       stopReason <- catches (do
           let
             timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
-            isSym = workerId == nworkers-1
+            isSym = env.cfg.solConf.symExec && workerId == (getNWorkers env.cfg)-1
             corpus = if isSym then initialCorpus else corpusChunk
           maybeResult <- timeout timeoutUsecs $
             runWorker isSym (get >>= writeIORef stateRef)
@@ -246,9 +247,11 @@ ui vm world dict initialCorpus name cs = do
 
 #ifdef INTERACTIVE_UI
  -- | Order the workers to stop immediately
-stopWorkers :: MonadIO m => [(ThreadId, a)] -> m ()
+stopWorkers :: MonadIO m => [(ThreadId, IORef WorkerState)] -> m ()
 stopWorkers workers =
-  forM_ workers $ \(threadId, _) -> liftIO $ killThread threadId
+  forM_ workers $ \(threadId, workerStateRef) -> do
+    workerState <- readIORef workerStateRef
+    liftIO $ mapM_ killThread (threadId : workerState.runningThreads)
 
 vtyConfig :: IO Config
 vtyConfig = do
