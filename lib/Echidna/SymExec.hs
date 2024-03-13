@@ -5,28 +5,25 @@ module Echidna.SymExec where
 import Control.Concurrent (ThreadId, forkIO)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (forM)
-import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BS
+import Data.Function ((&))
 import Data.Functor ((<&>))
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text qualified as T
-import Optics.State.Operators
-import Optics.Core
-import EVM.ABI
+import Optics.Core ((.~), (%))
+import EVM.ABI (Sig(..), decodeAbiValue)
 import EVM.Expr (simplify)
 import EVM.Fetch qualified as Fetch
-import EVM.SMT
+import EVM.SMT (SMTCex(..))
 import EVM (loadContract)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers, Solver(Z3), CheckSatResult(Sat))
 import EVM.SymExec (interpret, runExpr, abstractVM, mkCalldata, produceModels, LoopHeuristic (Naive))
-import EVM.Types
+import EVM.Types (Addr, VM(..), Env(..), Expr(..), EType(..), BaseState(..), word256Bytes)
 import Control.Monad.ST (stToIO, RealWorld)
 import Control.Monad.State.Strict (execState)
-import Echidna.Types.Tx
-import Data.Vector.Unboxed qualified as VUnboxed
-import Data.Vector.Unboxed.Mutable qualified as VUnboxed.Mutable
+import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock)
 
 
 -- test with applying multiple state modifying transactions before
@@ -50,14 +47,10 @@ exploreContract dst contract vm = do
           maxIter = Just 10
           askSmtIters = 5
           rpcInfo = Nothing
-        memory <- stToIO (ConcreteMemory <$> VUnboxed.Mutable.new 0)
         vmSym <- stToIO vmSym'
-        let vm2 = execState (loadContract (LitAddr dst)) vm
-        let vm' = vm2 -- & #state .~ vmSym.state
+        let vm' = vm & execState (loadContract (LitAddr dst))
                      & #frames .~ []
                      & #constraints .~ constraints
-                     -- & #state % #contract .~ SymAddr "entrypoint"
-                     -- & #state % #codeContract .~ SymAddr "entrypoint"
                      & #state % #callvalue .~ TxValue
                      & #state % #caller .~ SymAddr "caller"
                      & #state % #calldata .~ cd
@@ -66,11 +59,8 @@ exploreContract dst contract vm = do
                      & #result .~ Nothing
                      & #config % #baseState .~ AbstractBase
                      & #env % #contracts .~ (Map.union vmSym.env.contracts vm.env.contracts)
-        -- print $ vmSym.state
-        -- print $ vm'.state
         exprInter <- interpret (Fetch.oracle solvers rpcInfo) maxIter askSmtIters Naive vm' runExpr
         models <- produceModels solvers (simplify exprInter)
-        -- print (mapMaybe (modelToTx dst method) models)
         pure $ mapMaybe (modelToTx dst method) models
       putMVar resultChan (mconcat res)
       putMVar doneChan ()
