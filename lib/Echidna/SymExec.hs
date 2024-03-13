@@ -33,7 +33,7 @@ import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock)
 exploreContract :: SolConf -> SolcContract -> VM RealWorld -> IO (ThreadId, MVar [Tx])
 exploreContract conf contract vm = do
   let methods = Map.elems contract.abiMap -- TODO randomize order? in case we hit timeout
-      timeout = Just (fromIntegral conf.symExecTimeout) -- seconds
+      timeout = Just (fromIntegral conf.symExecTimeout)
 
   threadIdChan <- newEmptyMVar
   doneChan <- newEmptyMVar

@@ -64,7 +64,7 @@ main = withUtf8 $ withCP65001 $ do
 
   -- take the seed from config, otherwise generate a new one
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
-  (vm, world, dict) <- prepareContract env cliFilePath cliSelectedContract seed -- TODO
+  (vm, world, dict) <- prepareContract env cliFilePath cliSelectedContract seed
 
   initialCorpus <- loadInitialCorpus env world
   let (Contracts contractMap) = buildOutput.contracts

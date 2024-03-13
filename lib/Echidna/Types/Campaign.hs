@@ -3,6 +3,7 @@ module Echidna.Types.Campaign where
 import Control.Concurrent (ThreadId)
 import Data.Aeson
 import Data.Map (Map)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word8, Word16)
@@ -138,7 +139,8 @@ data WorkerState = WorkerState
   , ncalls      :: !Int
     -- ^ Number of calls executed while fuzzing
   , runningThreads :: [ThreadId]
-    -- ^ TODO description goes here
+    -- ^ Extra threads currently being run,
+    --   aside from the main worker thread
   }
 
 initialWorkerState :: WorkerState
@@ -160,3 +162,8 @@ defaultSequenceLength = 100
 
 defaultShrinkLimit :: Int
 defaultShrinkLimit = 5000
+
+-- | Get number of fuzzing workers (doesn't include sym exec worker)
+-- Defaults to 1 if set to Nothing
+getNFuzzWorkers :: CampaignConf -> Int
+getNFuzzWorkers conf = fromIntegral (fromMaybe 1 (conf.workers))
