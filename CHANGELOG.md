@@ -238,7 +238,7 @@
 * Prioritization to mutate each list of transactions from the corpus (#376, #395)
 * Improved array generation using generic mutations (#357)
 * Multiple coverage tracking according to the result of a transaction (#369)
-* Allow to control corpus mutation constans using a configuration file (#373)
+* Allow to control corpus mutation constants using a configuration file (#373)
 
 ## 1.4.0.1
 * HEVM updated to [af84e2ee0a0654fdaa91186384233cf1731ee7ce]
