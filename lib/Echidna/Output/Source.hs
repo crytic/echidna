@@ -68,7 +68,7 @@ coverageFileExtension Txt = ".txt"
 ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> CoverageMap -> IO Text
 ppCoveredCode fileType sc cs s | null s = pure "Coverage map is empty"
   | otherwise = do
-  -- List of covered lines during the fuzzing campaing
+  -- List of covered lines during the fuzzing campaign
   covLines <- srcMapCov sc s cs
   let
     -- Collect all the possible lines from all the files
