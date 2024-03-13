@@ -12,6 +12,7 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text qualified as T
 import Optics.Core ((.~), (%))
+import Echidna.Types.Solidity (SolConf(..))
 import EVM.ABI (Sig(..), decodeAbiValue)
 import EVM.Expr (simplify)
 import EVM.Fetch qualified as Fetch
@@ -29,19 +30,20 @@ import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock)
 -- test with applying multiple state modifying transactions before
 -- running exploreContract
 -- use execTxWithCov
-exploreContract :: Addr -> SolcContract -> VM RealWorld -> IO (ThreadId, MVar [Tx])
-exploreContract dst contract vm = do
+exploreContract :: SolConf -> SolcContract -> VM RealWorld -> IO (ThreadId, MVar [Tx])
+exploreContract conf contract vm = do
   let methods = Map.elems contract.abiMap -- TODO randomize order? in case we hit timeout
-      timeout = Just 120 -- seconds
+      timeout = Just (fromIntegral conf.symExecTimeout) -- seconds
 
   threadIdChan <- newEmptyMVar
   doneChan <- newEmptyMVar
   resultChan <- newEmptyMVar
 
-  withSolvers Z3 2 timeout $ \solvers -> do
+  withSolvers Z3 (fromIntegral conf.symExecNWorkers) timeout $ \solvers -> do
     threadId <- forkIO $ do
       res <- forM methods $ \method -> do
         let
+          dst = conf.contractAddr
           calldata@(cd, constraints) = mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
           vmSym' = abstractVM calldata contract.runtimeCode Nothing False
           maxIter = Just 10

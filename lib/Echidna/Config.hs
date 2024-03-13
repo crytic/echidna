@@ -121,6 +121,8 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "allowFFI"        ..!= False
         <*> fnFilter
         <*> v ..:? "symExec"         ..!= False
+        <*> v ..:? "symExecTimeout"  ..!= 30
+        <*> v ..:? "symExecNWorkers" ..!= 1
         where
         mode = v ..:? "testMode" >>= \case
           Just s  -> pure $ validateTestMode s
