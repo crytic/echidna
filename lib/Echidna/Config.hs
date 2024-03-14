@@ -97,6 +97,9 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "coverageFormats" ..!= [Txt,Html,Lcov]
         <*> v ..:? "workers"
         <*> v ..:? "server"
+        <*> v ..:? "symExec"         ..!= False
+        <*> v ..:? "symExecTimeout"  ..!= 30
+        <*> v ..:? "symExecNSolvers" ..!= 1
 
       solConfParser = SolConf
         <$> v ..:? "contractAddr"    ..!= defaultContractAddr
@@ -120,9 +123,6 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "testDestruction" ..!= False
         <*> v ..:? "allowFFI"        ..!= False
         <*> fnFilter
-        <*> v ..:? "symExec"         ..!= False
-        <*> v ..:? "symExecTimeout"  ..!= 30
-        <*> v ..:? "symExecNWorkers" ..!= 1
         where
         mode = v ..:? "testMode" >>= \case
           Just s  -> pure $ validateTestMode s

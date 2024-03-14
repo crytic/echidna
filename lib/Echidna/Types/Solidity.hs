@@ -78,9 +78,6 @@ data SolConf = SolConf
   , testDestruction :: Bool             -- ^ Whether or not to add a property to detect contract destruction
   , allowFFI        :: Bool             -- ^ Whether or not to allow FFI hevm cheatcode
   , methodFilter    :: Filter           -- ^ List of methods to avoid or include calling during a campaign
-  , symExec         :: Bool
-  , symExecTimeout  :: Int
-  , symExecNWorkers :: Int
   }
 
 defaultContractAddr :: Addr

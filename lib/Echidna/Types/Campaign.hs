@@ -44,6 +44,14 @@ data CampaignConf = CampaignConf
     -- ^ Number of fuzzing workers
   , serverPort      :: Maybe Word16
     -- ^ Server-Sent Events HTTP port number, if missing server is not ran
+  , symExec         :: Bool
+    -- ^ Whether to add an additional symbolic execution worker
+  , symExecTimeout  :: Int
+    -- ^ Timeout for symbolic execution SMT solver.
+    -- Only relevant if symExec is True
+  , symExecNSolvers :: Int
+    -- ^ Number of SMT solvers used in symbolic execution.
+    -- Only relevant if symExec is True
   }
 
 type WorkerId = Int
@@ -167,3 +175,7 @@ defaultShrinkLimit = 5000
 -- Defaults to 1 if set to Nothing
 getNFuzzWorkers :: CampaignConf -> Int
 getNFuzzWorkers conf = fromIntegral (fromMaybe 1 (conf.workers))
+
+-- | Number of workers, including SymExec worker if there is one
+getNWorkers :: CampaignConf -> Int
+getNWorkers conf = getNFuzzWorkers conf + (if conf.symExec then 1 else 0)

@@ -13,7 +13,7 @@ import EVM.Dapp (DappInfo)
 import EVM.Types (Addr, Contract, W256)
 
 import Echidna.SourceMapping (CodehashMap)
-import Echidna.Types.Campaign (CampaignConf(..), CampaignEvent, getNFuzzWorkers)
+import Echidna.Types.Campaign (CampaignConf, CampaignEvent)
 import Echidna.Types.Corpus (Corpus)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Solidity (SolConf(..))
@@ -76,7 +76,3 @@ data Env = Env
   , fetchSlotCache :: IORef (Map Addr (Map W256 (Maybe W256)))
   , chainId :: Maybe W256
   }
-
--- | Number of workers, including SymExec worker if there is one
-getNWorkers :: EConfig -> Int
-getNWorkers conf = getNFuzzWorkers conf.campaignConf + (if conf.solConf.symExec then 1 else 0)

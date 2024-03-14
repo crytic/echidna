@@ -74,7 +74,7 @@ ui vm world dict initialCorpus name cs = do
 
   let
     nFuzzWorkers = getNFuzzWorkers conf.campaignConf
-    nworkers = getNWorkers conf
+    nworkers = getNWorkers conf.campaignConf
 
     effectiveMode = case conf.uiConf.operationMode of
       Interactive | not terminalPresent -> NonInteractive Text
@@ -223,7 +223,7 @@ ui vm world dict initialCorpus name cs = do
       stopReason <- catches (do
           let
             timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
-            isSym = env.cfg.solConf.symExec && workerId == (getNWorkers env.cfg)-1
+            isSym = env.cfg.campaignConf.symExec && workerId == (getNWorkers env.cfg.campaignConf)-1
             corpus = if isSym then initialCorpus else corpusChunk
           maybeResult <- timeout timeoutUsecs $
             runWorker isSym (get >>= writeIORef stateRef)

@@ -165,10 +165,9 @@ abiOf pref solcContract =
 createSymTx :: Env -> Maybe Text -> [SolcContract] -> VM RealWorld -> IO (ThreadId, MVar [Tx])
 createSymTx env name cs vm = do
     mainContract <- choose cs name
-    Echidna.SymExec.exploreContract solConf mainContract vm
+    Echidna.SymExec.exploreContract env.cfg mainContract vm
   where
     -- copied from loadSpecified
-    solConf = env.cfg.solConf
     choose [] _ = throwM NoContracts
     choose (c:_) Nothing = pure c
     choose _ (Just n) =

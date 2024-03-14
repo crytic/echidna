@@ -540,7 +540,7 @@ spawnListener
   -> m (MVar ())
 spawnListener handler = do
   cfg <- asks (.cfg)
-  let nworkers = getNWorkers cfg
+  let nworkers = getNWorkers cfg.campaignConf
   eventQueue <- asks (.eventQueue)
   chan <- liftIO $ dupChan eventQueue
   stopVar <- liftIO newEmptyMVar
