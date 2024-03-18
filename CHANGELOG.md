@@ -273,7 +273,7 @@
 * `default.yaml` kept up to date via CI checks (#301)
 * Improved shrinking (#310)
 * Solidity ABIv2 support (#284, #303, #317)
-* Early termination on property falure (#323)
+* Early termination on property failure (#323)
 * Timeouts (#320)
 * HEVM updated to [2cc059b49cae613025b925f0273b906e25484b68]
 * Dictionary control (#312, #321)
