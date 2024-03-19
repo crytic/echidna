@@ -91,3 +91,11 @@ rpcBlock: null
 workers: 1
 # events server port
 server: null
+# whether to add an additional symbolic execution worker
+symExec: false
+# timeout for symbolic execution SMT solver
+# only relevant if symExec is true
+symExecNSolvers: 1
+# number of SMT solvers used in symbolic execution
+# only relevant if symExec is true
+symExecTimeout: 30

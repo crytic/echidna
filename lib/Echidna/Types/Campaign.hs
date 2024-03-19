@@ -1,7 +1,9 @@
 module Echidna.Types.Campaign where
 
+import Control.Concurrent (ThreadId)
 import Data.Aeson
 import Data.Map (Map)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word8, Word16)
@@ -42,6 +44,14 @@ data CampaignConf = CampaignConf
     -- ^ Number of fuzzing workers
   , serverPort      :: Maybe Word16
     -- ^ Server-Sent Events HTTP port number, if missing server is not ran
+  , symExec         :: Bool
+    -- ^ Whether to add an additional symbolic execution worker
+  , symExecTimeout  :: Int
+    -- ^ Timeout for symbolic execution SMT solver.
+    -- Only relevant if symExec is True
+  , symExecNSolvers :: Int
+    -- ^ Number of SMT solvers used in symbolic execution.
+    -- Only relevant if symExec is True
   }
 
 type WorkerId = Int
@@ -136,6 +146,9 @@ data WorkerState = WorkerState
     -- ^ Number of times the callseq is called
   , ncalls      :: !Int
     -- ^ Number of calls executed while fuzzing
+  , runningThreads :: [ThreadId]
+    -- ^ Extra threads currently being run,
+    --   aside from the main worker thread
   }
 
 initialWorkerState :: WorkerState
@@ -146,6 +159,7 @@ initialWorkerState =
               , newCoverage = False
               , ncallseqs = 0
               , ncalls = 0
+              , runningThreads = []
               }
 
 defaultTestLimit :: Int
@@ -156,3 +170,12 @@ defaultSequenceLength = 100
 
 defaultShrinkLimit :: Int
 defaultShrinkLimit = 5000
+
+-- | Get number of fuzzing workers (doesn't include sym exec worker)
+-- Defaults to 1 if set to Nothing
+getNFuzzWorkers :: CampaignConf -> Int
+getNFuzzWorkers conf = fromIntegral (fromMaybe 1 (conf.workers))
+
+-- | Number of workers, including SymExec worker if there is one
+getNWorkers :: CampaignConf -> Int
+getNWorkers conf = getNFuzzWorkers conf + (if conf.symExec then 1 else 0)
