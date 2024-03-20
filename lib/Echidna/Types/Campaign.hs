@@ -14,7 +14,7 @@ import Echidna.Types.Tx (Tx)
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf
-  { testLimit       :: Int
+  { testLimit       :: Maybe Int
     -- ^ Maximum number of function calls to execute while fuzzing
   , stopOnFail      :: Bool
     -- ^ Whether to stop the campaign immediately if any property fails
@@ -147,9 +147,6 @@ initialWorkerState =
               , ncallseqs = 0
               , ncalls = 0
               }
-
-defaultTestLimit :: Int
-defaultTestLimit = 50000
 
 defaultSequenceLength :: Int
 defaultSequenceLength = 100

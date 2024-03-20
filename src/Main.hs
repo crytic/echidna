@@ -175,7 +175,7 @@ options = Options
     <> help "Timeout given in seconds.")
   <*> optional (option auto $ long "test-limit"
     <> metavar "INTEGER"
-    <> help ("Number of sequences of transactions to generate during testing. Default is " ++ show defaultTestLimit))
+    <> help "Number of sequences of transactions to generate during testing. Default is unbounded.")
   <*> optional (option auto $ long "rpc-block"
     <> metavar "BLOCK"
     <> help "Block number to use when fetching over RPC.")
@@ -239,7 +239,7 @@ overrideConfig config Options{..} = do
 
     overrideCampaignConf campaignConf = campaignConf
       { corpusDir = cliCorpusDir <|> campaignConf.corpusDir
-      , testLimit = fromMaybe campaignConf.testLimit cliTestLimit
+      , testLimit = cliTestLimit <|> campaignConf.testLimit
       , shrinkLimit = fromMaybe campaignConf.shrinkLimit cliShrinkLimit
       , seqLen = fromMaybe campaignConf.seqLen cliSeqLen
       , seed = cliSeed <|> campaignConf.seed
