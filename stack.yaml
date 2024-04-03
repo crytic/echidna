@@ -4,8 +4,8 @@ packages:
 - '.'
 
 extra-deps:
-- git: https://github.com/ethereum/hevm.git
-  commit: a39b1c07a3f643330f920042eb94a43d7e6454b5
+- git: https://github.com/elopez/hevm.git
+  commit: 02a24b95d4cc5b230d1ae6851e2db3b29366cbed
 
 - restless-git-0.7@sha256:346a5775a586f07ecb291036a8d3016c3484ccdc188b574bcdec0a82c12db293,968
 - s-cargot-0.1.4.0@sha256:61ea1833fbb4c80d93577144870e449d2007d311c34d74252850bb48aa8c31fb,3525
