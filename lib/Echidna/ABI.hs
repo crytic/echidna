@@ -179,7 +179,7 @@ getRandomInt n =
 
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Doesn't use a dictionary.
 -- Note that we define the dictionary case ('genAbiValueM') first (below), so
--- recursive types can be be generated using the same dictionary easily
+-- recursive types can be generated using the same dictionary easily
 genAbiValue :: MonadRandom m => AbiType -> m AbiValue
 genAbiValue = genAbiValueM emptyDict
 
