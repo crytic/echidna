@@ -24,6 +24,7 @@ import System.Directory
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit (ExitCode(..))
 import System.FilePath (joinPath, splitDirectories, (</>))
+import System.FilePath.Posix qualified as FPP
 import System.IO (openFile, IOMode(..))
 import System.Info (os)
 
@@ -278,13 +279,17 @@ loadSpecified env name cs = do
     choose (c:_) Nothing = pure c
     choose _ (Just n) =
       maybe (throwM $ ContractNotFound n) pure $
-        find (Data.Text.isSuffixOf (contractId n) . (.contractName)) cs
-    contractId n
+        find (isMatch n) cs
+    isMatch n s =
+      (Data.Text.isSuffixOf (contractId rewriteOsPathSeparators n) . (.contractName)) s ||
+      (Data.Text.isSuffixOf (contractId rewritePosixPathSeparators n) . (.contractName)) s
+    contractId rewrite n
       | T.any (== ':') n =
         let (splitPath, splitName) = T.breakOn ":" n
-        in rewritePathSeparators splitPath `T.append` splitName
+        in rewrite splitPath `T.append` splitName
       | otherwise = ":" `append` n
-    rewritePathSeparators = T.pack . joinPath . splitDirectories . T.unpack
+    rewriteOsPathSeparators = T.pack . joinPath . splitDirectories . T.unpack
+    rewritePosixPathSeparators = T.pack . FPP.joinPath . FPP.splitDirectories . T.unpack
     setUpFunction = ("setUp", [])
 
 -- | Given the results of 'loadSolidity', assuming a single-contract test, get everything ready
