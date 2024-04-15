@@ -87,7 +87,9 @@ executables:
     main: Main.hs
     source-dirs: src/
     dependencies: echidna
-    ghc-options: -threaded -with-rtsopts=-N
+    ghc-options:
+      - -threaded
+      - '"-with-rtsopts=-A64m -N"'
     when:
       - condition: (os(linux) || os(windows)) && flag(static)
         ghc-options:
