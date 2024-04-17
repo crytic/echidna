@@ -60,7 +60,7 @@ isSuccessful =
 
 -- | Run all the transaction sequences from the corpus and accumulate campaign
 -- state. Can be used to minimize corpus as the final campaign state will
--- contain minized corpus without sequences that didn't increase the coverage.
+-- contain minimized corpus without sequences that didn't increase the coverage.
 replayCorpus
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM Concrete RealWorld -- ^ VM to start replaying from
