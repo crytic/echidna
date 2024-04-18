@@ -66,7 +66,7 @@ readSolcBatch d = do
       Left e ->
         error $ "Failed to parse combined JSON file " <> (d </> f) <> "\n" <> e
 
--- | Given a list of files, use its extenstion to check if it is a precompiled
+-- | Given a list of files, use its extension to check if it is a precompiled
 -- contract or try to compile it and get a list of its contracts and a list of source
 -- cache, throwing exceptions if necessary.
 compileContracts
