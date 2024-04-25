@@ -93,15 +93,18 @@ workers: 1
 server: null
 # whether to add an additional symbolic execution worker
 symExec: false
-# timeout for symbolic execution SMT solver
+# whether symbolic execution will be concolic (vs full symbolic execution)
+# only relevant if symExec is true
+symExecConcolic: true
+# number of SMT solvers used in symbolic execution
 # only relevant if symExec is true
 symExecNSolvers: 1
-# number of SMT solvers used in symbolic execution
+# timeout for symbolic execution SMT solver
 # only relevant if symExec is true
 symExecTimeout: 30
 # Number of times we may revisit a particular branching point
-# only relevant if symExec is true
+# only relevant if symExec is true and symExecConcolic is false
 symExecMaxIters: 10
 # Number of times we may revisit a particular branching point before we consult the smt solver to check reachability
-# only relevant if symExec is true
+# only relevant if symExec is true and symExecConcolic is false
 symExecAskSMTIters: 1

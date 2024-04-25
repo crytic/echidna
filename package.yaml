@@ -17,6 +17,7 @@ ghc-options:
 dependencies:
   - base
   - aeson
+  - async
   - base16-bytestring
   - binary
   - bytestring

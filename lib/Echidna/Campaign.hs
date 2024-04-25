@@ -148,10 +148,31 @@ runSymWorker callback vm dict workerId initialCorpus name cs = do
     symexecTxs transactions
   listenerFunc _ = pure ()
 
-  symexecTxs txs = do
-    cfg <- asks (.cfg)
+  symexecTxs txs = mapM_ symexecTx =<< txsToTxAndVms txs
+
+  -- | Turn a list of transactions into inputs for symexecTx:
+  -- (maybe txn to concolic execute on, vm to symexec on, list of txns we're on top of)
+  txsToTxAndVms txs = do
+    isConc <- asks (.cfg.campaignConf.symExecConcolic)
+    if isConc
+      then txsToTxAndVmsConc txs vm []
+      else txsToTxAndVmsSym txs
+
+  txsToTxAndVmsConc [] _ _ = pure []
+  txsToTxAndVmsConc (h:t) vm' txsBase = do
+    (_, vm'') <- execTx vm' h
+    rest <- txsToTxAndVmsConc t vm'' (txsBase <> [h])
+    pure $ case h of
+             (Tx { call = SolCall _ }) -> (Just h,vm',txsBase):rest
+             _ -> rest
+
+  txsToTxAndVmsSym txs = do
     vm' <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm txs
-    (threadId, symTxsChan) <- liftIO $ createSymTx cfg name cs vm'
+    pure [(Nothing,vm',txs)]
+
+  symexecTx (tx, vm', txsBase) = do
+    cfg <- asks (.cfg)
+    (threadId, symTxsChan) <- liftIO $ createSymTx cfg name cs tx vm'
 
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
@@ -161,7 +182,8 @@ runSymWorker callback vm dict workerId initialCorpus name cs = do
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
 
-    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm' [symTx]) symTxs
+    -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
+    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) symTxs
 
     unless newCoverage (pushWorkerEvent SymNoNewCoverage)
 

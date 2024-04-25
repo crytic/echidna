@@ -1,12 +1,11 @@
 module Tests.Symbolic (symbolicTests) where
 
-import System.Info (os)
 import Test.Tasty (TestTree, testGroup)
 import Common (testContract', solved, passed)
 import Echidna.Types.Campaign (WorkerType(..))
 
 symbolicTests :: TestTree
-symbolicTests = testGroup "Symbolic tests" $ if os /= "linux" then [] else
+symbolicTests = testGroup "Symbolic tests"
   [ testContract' "symbolic/sym.sol" Nothing Nothing (Just "symbolic/sym.yaml") True SymbolicWorker
       [ ("echidna_sym passed", passed "echidna_sym") ]
 

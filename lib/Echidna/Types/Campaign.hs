@@ -46,6 +46,9 @@ data CampaignConf = CampaignConf
     -- ^ Server-Sent Events HTTP port number, if missing server is not ran
   , symExec            :: Bool
     -- ^ Whether to add an additional symbolic execution worker
+  , symExecConcolic    :: Bool
+    -- ^ Whether symbolic execution will be concolic (vs full symbolic execution)
+    -- Only relevant if symExec is True
   , symExecTimeout     :: Int
     -- ^ Timeout for symbolic execution SMT solver.
     -- Only relevant if symExec is True
@@ -54,11 +57,11 @@ data CampaignConf = CampaignConf
     -- Only relevant if symExec is True
   , symExecMaxIters    :: Integer
     -- ^ Number of times we may revisit a particular branching point.
-    -- Only relevant if symExec is True
+    -- Only relevant if symExec is True and symExecConcolic is False
   , symExecAskSMTIters :: Integer
     -- ^ Number of times we may revisit a particular branching point
-    -- before we consult the smt solver to check reachability.
-    -- Only relevant if symExec is True
+    -- before we consult the SMT solver to check reachability.
+    -- Only relevant if symExec is True and symExecConcolic is False
   }
 
 data WorkerType = FuzzWorker | SymbolicWorker deriving (Eq)

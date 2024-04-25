@@ -1,3 +1,4 @@
 testMode: assertion
 symExec: true
+symExecConcolic: false
 workers: 0

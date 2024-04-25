@@ -98,6 +98,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "workers"
         <*> v ..:? "server"
         <*> v ..:? "symExec"            ..!= False
+        <*> v ..:? "symExecConcolic"    ..!= True
         <*> v ..:? "symExecTimeout"     ..!= defaultSymExecTimeout
         <*> v ..:? "symExecNSolvers"    ..!= defaultSymExecNWorkers
         <*> v ..:? "symExecMaxIters"    ..!= defaultSymExecMaxIters
