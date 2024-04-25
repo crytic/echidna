@@ -15,6 +15,10 @@ ghc-options:
   - -fexpose-all-unfoldings
 
 dependencies:
+  - operational
+  - aeson-optics
+  - haskeline
+  - ansi-wl-pprint
   - base
   - aeson
   - base16-bytestring
