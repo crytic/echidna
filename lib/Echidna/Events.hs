@@ -36,7 +36,7 @@ extractEvents decodeErrors dappInfo vm =
      ++ concatMap ((catMaybes . flatten) . fmap showTrace) forest
   where
   showTrace trace =
-    let ?context = DappContext { info = dappInfo, env = vm.env.contracts } in
+    let ?context = DappContext { info = dappInfo, contracts = vm.env.contracts, labels = vm.labels } in
     let codehash' = fromJust $ maybeLitWord trace.contract.codehash
         maybeContractName = maybeContractNameFromCodeHash dappInfo codehash'
     in case trace.tracedata of
