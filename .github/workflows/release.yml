@@ -25,10 +25,10 @@ jobs:
             name: Linux (x86_64)
             tuple: x86_64-linux
             timeout: 180
-          - os: macos-latest
+          - os: macos-13
             name: macOS (x86_64)
             tuple: x86_64-macos
-          - os: macos-latest-xlarge
+          - os: macos-14
             name: macOS (aarch64)
             tuple: aarch64-macos
     steps:
