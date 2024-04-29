@@ -75,8 +75,9 @@ library:
     - condition: "!os(windows)"
       cpp-options: -DINTERACTIVE_UI
       dependencies:
+        - ansi-terminal
         - brick
-        - unix
+        - signal
         - vty
         - vty-crossplatform
 

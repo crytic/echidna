@@ -13,7 +13,8 @@ import Graphics.Vty.CrossPlatform (mkVty)
 import Graphics.Vty.Input.Events
 import Graphics.Vty (Event(..), Key(..), Modifier(..))
 import Graphics.Vty qualified as Vty
-import System.Posix
+import System.Console.ANSI (hSupportsANSI)
+import System.Signal
 import Echidna.UI.Widgets
 #endif
 
@@ -164,12 +165,12 @@ ui vm world dict initialCorpus = do
     NonInteractive outputFormat -> do
       serverStopVar <- newEmptyMVar
 #ifdef INTERACTIVE_UI
-      -- Handles ctrl-c, TODO: this doesn't work on Windows
+      -- Handles ctrl-c
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
-        let handler = Catch $ do
+        let handler = \_ -> do
               stopWorkers workers
               void $ tryPutMVar serverStopVar ()
-        in installHandler sig handler Nothing
+        in installHandler sig handler
 #endif
       let forwardEvent = putStrLn . ppLogLine
       uiEventsForwarderStopVar <- spawnListener forwardEvent
@@ -337,7 +338,7 @@ monitor = do
 isTerminal :: IO Bool
 isTerminal =
 #ifdef INTERACTIVE_UI
-  (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
+  hSupportsANSI stdout
 #else
   pure False
 #endif
