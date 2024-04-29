@@ -91,7 +91,7 @@ runWorker
   -> Int     -- ^ Worker id starting from 0
   -> [(FilePath, [Tx])]
   -- ^ Initial corpus of transactions
-  -> Int     -- ^ Test limit for this worker
+  -> Maybe Int     -- ^ Test limit for this worker
   -> m (WorkerStopReason, WorkerState)
 runWorker callback vm world dict workerId initialCorpus testLimit = do
   let
@@ -136,10 +136,10 @@ runWorker callback vm world dict workerId initialCorpus testLimit = do
     if | stopOnFail && any final tests ->
          lift callback >> pure FastFailed
 
-       | (null tests || any isOpen tests) && ncalls < testLimit ->
+       | (null tests || any isOpen tests) && maybe True (ncalls <) testLimit ->
          fuzz >> continue
 
-       | ncalls >= testLimit && any (\t -> isOpen t && isOptimizationTest t) tests -> do
+       | maybe False (ncalls >=) testLimit && any (\t -> isOpen t && isOptimizationTest t) tests -> do
          liftIO $ atomicModifyIORef' testsRef $ \sharedTests ->
             (closeOptimizationTest <$> sharedTests, ())
          continue

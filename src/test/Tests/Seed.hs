@@ -22,7 +22,7 @@ seedTests =
     where
     cfg s = defaultConfig
       { campaignConf = CampaignConf
-        { testLimit = 600
+        { testLimit = Just 600
         , stopOnFail = False
         , estimateGas = False
         , seqLen = 20
