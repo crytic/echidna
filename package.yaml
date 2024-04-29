@@ -39,9 +39,12 @@ default-extensions:
 
 library:
   source-dirs: lib/
+  cpp-options: -DINTERACTIVE_UI
   dependencies:
+    - ansi-terminal
     - base16-bytestring
     - binary
+    - brick
     - bytestring
     - data-bword
     - data-dword
@@ -60,26 +63,20 @@ library:
     - random
     - rosezipper
     - semver
+    - signal
     - split
     - strip-ansi-escape
     - time
     - unliftio
     - utf8-string
     - vector
+    - vty
+    - vty-crossplatform
     - wai-extra
     - warp
     - word-wrap
     - xml-conduit
     - yaml
-  when:
-    - condition: "!os(windows)"
-      cpp-options: -DINTERACTIVE_UI
-      dependencies:
-        - ansi-terminal
-        - brick
-        - signal
-        - vty
-        - vty-crossplatform
 
 executables:
   echidna:
