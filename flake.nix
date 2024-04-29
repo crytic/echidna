@@ -47,22 +47,37 @@
 
         ncurses-static = pkgsStatic.ncurses.override { enableStatic = true; };
 
-        hevm = pkgs: pkgs.haskell.lib.dontCheck (
-          pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
-            owner = "trail-of-forks";
-            repo = "hevm";
-            rev = "4605dd0f2ed958f2cabe055bd4d5dac8c0e2b77e";
-            sha256 = "sha256-NLdqY3DIb9G2JJRZrXBBh9LxxylZM8Mnr7rqSJdrPUg=";
-        }) { secp256k1 = pkgs.secp256k1; });
+        cc-workaround-nix-23138 =
+          pkgs.writeScriptBin "cc-workaround-nix-23138" ''
+          if [ "$1" = "--print-file-name" ] && [ "$2" = "c++" ]; then
+              echo c++
+          else
+              exec cc "$@"
+          fi
+          '';
 
-        # FIXME: figure out solc situation, it conflicts with the one from
-        # solc-select that is installed with slither, disable tests in the meantime
-        echidna = pkgs: pkgs.haskell.lib.dontCheck (
-          with pkgs; lib.pipe
+        hevm = pkgs: pkgs.lib.pipe (pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
+            owner = "elopez";
+            repo = "hevm";
+            rev = "3065046b2a3d2ac0ea23347ba2699a0f008d26c7";
+            sha256 = "sha256-tTgtOgNzmjaLQjJj1/bYvEp0DXabswpl47usTmfqLP8=";
+        }) { secp256k1 = pkgs.secp256k1; })
+        ([
+          pkgs.haskell.lib.compose.dontCheck
+        ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+          (pkgs.haskell.lib.compose.appendConfigureFlag "--ghc-options=-pgml=${cc-workaround-nix-23138}/bin/cc-workaround-nix-23138")
+        ]);
+
+        echidna = pkgs: with pkgs; lib.pipe
           (haskellPackages.callCabal2nix "echidna" ./. { hevm = hevm pkgs; })
-          [
+          ([
+            # FIXME: figure out solc situation, it conflicts with the one from
+            # solc-select that is installed with slither, disable tests in the meantime
+            haskell.lib.compose.dontCheck
             (haskell.lib.compose.addTestToolDepends [ haskellPackages.hpack slither-analyzer solc ])
             (haskell.lib.compose.disableCabalFlag "static")
+          ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+            (pkgs.haskell.lib.compose.appendConfigureFlag "--ghc-options=-pgml=${cc-workaround-nix-23138}/bin/cc-workaround-nix-23138")
           ]);
 
         echidna-static = with pkgsStatic; lib.pipe
@@ -78,7 +93,6 @@
                 "--extra-lib-dirs=${stripDylib (ncurses-static)}/lib"
               ] ++ (if stdenv.hostPlatform.isDarwin then [
                 "--extra-lib-dirs=${stripDylib (libiconv.override { enableStatic = true; })}/lib"
-                "--extra-lib-dirs=${stripDylib (libcxxabi)}/lib"
               ] else [])))
             (haskell.lib.compose.enableCabalFlag "static")
           ];
@@ -108,10 +122,12 @@
           # get the list of dynamic libs from otool and tidy the output
           libs=$(${otool} -L $out/bin/echidna | tail -n +2 | sed 's/^[[:space:]]*//' | cut -d' ' -f1)
           # get the path for libcxx
-          cxx=$(echo "$libs" | ${grep} '^/nix/store/.*-libcxx-')
+          cxx=$(echo "$libs" | ${grep} '^/nix/store/.*/libc++\.')
+          cxxabi=$(echo "$libs" | ${grep} '^/nix/store/.*/libc++abi\.')
           # rewrite /nix/... library paths to point to /usr/lib
           chmod 777 $out/bin/echidna
           ${install_name_tool} -change "$cxx" /usr/lib/libc++.1.dylib $out/bin/echidna
+          ${install_name_tool} -change "$cxxabi" /usr/lib/libc++abi.dylib $out/bin/echidna
           # fix TERMINFO path in ncurses
           ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/usr/share/terminfo" . "\x0" x (length($1) - 19)#e' $out/bin/echidna
           # check that no nix deps remain
@@ -145,7 +161,11 @@
         devShell = with pkgs;
           haskellPackages.shellFor {
             packages = _: [ (echidna pkgs) ];
-            shellHook = "hpack";
+            shellHook = ''
+              hpack
+            '' + (if pkgs.stdenv.isDarwin then ''
+              cabal configure --ghc-options=-pgml=${cc-workaround-nix-23138}/bin/cc-workaround-nix-23138
+            '' else "");
             buildInputs = [
               solc
               slither-analyzer

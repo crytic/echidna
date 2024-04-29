@@ -65,7 +65,7 @@ jobs:
         id: stack
         if: matrix.container == ''
         with:
-          ghc-version: '9.4'
+          ghc-version: '9.6'
           enable-stack: true
           stack-version: 'latest'
 

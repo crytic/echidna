@@ -8,7 +8,10 @@ import Brick
 import Brick.BChan
 import Brick.Widgets.Dialog qualified as B
 import Data.Sequence ((|>))
-import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
+import Graphics.Vty.Config (VtyUserConfig, defaultConfig, configInputMap)
+import Graphics.Vty.CrossPlatform (mkVty)
+import Graphics.Vty.Input.Events
+import Graphics.Vty (Event(..), Key(..), Modifier(..))
 import Graphics.Vty qualified as Vty
 import System.Posix
 import Echidna.UI.Widgets
@@ -245,12 +248,12 @@ stopWorkers :: MonadIO m => [(ThreadId, a)] -> m ()
 stopWorkers workers =
   forM_ workers $ \(threadId, _) -> liftIO $ killThread threadId
 
-vtyConfig :: IO Config
+vtyConfig :: IO VtyUserConfig
 vtyConfig = do
-  config <- Vty.standardIOConfig
-  pure config { inputMap = (Nothing, "\ESC[6;2~", EvKey KPageDown [MShift]) :
-                           (Nothing, "\ESC[5;2~", EvKey KPageUp [MShift]) :
-                           inputMap defaultConfig }
+  pure defaultConfig { configInputMap = [
+    (Nothing, "\ESC[6;2~", EvKey KPageDown [MShift]),
+    (Nothing, "\ESC[5;2~", EvKey KPageUp [MShift])
+    ] }
 
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
 monitor :: MonadReader Env m => m (App UIState UIEvent Name)
