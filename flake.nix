@@ -18,7 +18,7 @@
         pkgs = nixpkgs.legacyPackages.${system};
         # prefer musl on Linux, static glibc + threading does not work properly
         # TODO: maybe only override it for echidna-redistributable?
-        pkgsStatic = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsMusl else pkgs;
+        pkgsStatic = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsStatic else pkgs;
         # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
         # would be great to integrate solc-select to be more flexible, improve this in future
         solc = pkgs.stdenv.mkDerivation {
@@ -88,7 +88,7 @@
                 "--extra-lib-dirs=${stripDylib (gmp.override { withStatic = true; })}/lib"
                 "--extra-lib-dirs=${stripDylib secp256k1-static}/lib"
                 "--extra-lib-dirs=${stripDylib (libff.override { enableStatic = true; })}/lib"
-                "--extra-lib-dirs=${zlib.static}/lib"
+                "--extra-lib-dirs=${zlib.override { static = true; shared = false; }}/lib"
                 "--extra-lib-dirs=${stripDylib (libffi.overrideAttrs (_: { dontDisableStatic = true; }))}/lib"
                 "--extra-lib-dirs=${stripDylib (ncurses-static)}/lib"
               ] ++ (if stdenv.hostPlatform.isDarwin then [
