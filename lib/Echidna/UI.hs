@@ -1,23 +1,10 @@
 {-# LANGUAGE CPP #-}
-{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Echidna.UI where
 
-#ifdef INTERACTIVE_UI
 import Brick
 import Brick.BChan
 import Brick.Widgets.Dialog qualified as B
-import Data.Sequence ((|>))
-import Graphics.Vty.Config (VtyUserConfig, defaultConfig, configInputMap)
-import Graphics.Vty.CrossPlatform (mkVty)
-import Graphics.Vty.Input.Events
-import Graphics.Vty (Event(..), Key(..), Modifier(..))
-import Graphics.Vty qualified as Vty
-import System.Console.ANSI (hSupportsANSI)
-import System.Signal
-import Echidna.UI.Widgets
-#endif
-
 import Control.Concurrent (killThread, threadDelay)
 import Control.Exception (AsyncException)
 import Control.Monad
@@ -29,7 +16,14 @@ import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe, isJust)
+import Data.Sequence ((|>))
 import Data.Time
+import Graphics.Vty.Config (VtyUserConfig, defaultConfig, configInputMap)
+import Graphics.Vty.CrossPlatform (mkVty)
+import Graphics.Vty.Input.Events
+import Graphics.Vty qualified as Vty
+import System.Console.ANSI (hSupportsANSI)
+import System.Signal
 import UnliftIO
   ( MonadUnliftIO, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
@@ -49,6 +43,7 @@ import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
 import Echidna.UI.Report
+import Echidna.UI.Widgets
 import Echidna.Utility (timePrefix, getTimestamp)
 
 data UIEvent =
@@ -94,7 +89,6 @@ ui vm world dict initialCorpus = do
     uncurry (spawnWorker env perWorkerTestLimit)
 
   case effectiveMode of
-#ifdef INTERACTIVE_UI
     Interactive -> do
       -- Channel to push events to update UI
       uiChannel <- liftIO $ newBChan 1000
@@ -158,20 +152,17 @@ ui vm world dict initialCorpus = do
       liftIO . putStrLn =<< ppCampaign vm states
 
       pure states
-#else
-    Interactive -> error "Interactive UI is not available"
-#endif
 
     NonInteractive outputFormat -> do
       serverStopVar <- newEmptyMVar
-#ifdef INTERACTIVE_UI
+
       -- Handles ctrl-c
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
         let handler = \_ -> do
               stopWorkers workers
               void $ tryPutMVar serverStopVar ()
         in installHandler sig handler
-#endif
+
       let forwardEvent = putStrLn . ppLogLine
       uiEventsForwarderStopVar <- spawnListener forwardEvent
 
@@ -243,7 +234,6 @@ ui vm world dict initialCorpus = do
   workerStates workers =
     forM workers $ \(_, stateRef) -> readIORef stateRef
 
-#ifdef INTERACTIVE_UI
  -- | Order the workers to stop immediately
 stopWorkers :: MonadIO m => [(ThreadId, a)] -> m ()
 stopWorkers workers =
@@ -332,16 +322,10 @@ monitor = do
              , appAttrMap = const attrs
              , appChooseCursor = neverShowCursor
              }
-#endif
 
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
 isTerminal :: IO Bool
-isTerminal =
-#ifdef INTERACTIVE_UI
-  hSupportsANSI stdout
-#else
-  pure False
-#endif
+isTerminal = hSupportsANSI stdout
 
 -- | Composes a compact text status line of the campaign
 statusLine

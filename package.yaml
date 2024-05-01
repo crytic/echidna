@@ -39,7 +39,6 @@ default-extensions:
 
 library:
   source-dirs: lib/
-  cpp-options: -DINTERACTIVE_UI
   dependencies:
     - ansi-terminal
     - base16-bytestring

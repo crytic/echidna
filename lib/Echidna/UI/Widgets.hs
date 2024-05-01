@@ -2,8 +2,6 @@
 
 module Echidna.UI.Widgets where
 
-#ifdef INTERACTIVE_UI
-
 import Brick hiding (style)
 import Brick.AttrMap qualified as A
 import Brick.Widgets.Border
@@ -387,5 +385,3 @@ strBreak = strWrapWith $ defaultWrapSettings { breakLongWords = True }
 
 txtBreak :: Text -> Widget n
 txtBreak = txtWrapWith $ defaultWrapSettings { breakLongWords = True }
-
-#endif
