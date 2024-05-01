@@ -158,7 +158,7 @@ ui vm world dict initialCorpus = do
 
       -- Handles ctrl-c
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
-        let handler = \_ -> do
+        let handler _ = do
               stopWorkers workers
               void $ tryPutMVar serverStopVar ()
         in installHandler sig handler

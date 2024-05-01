@@ -145,10 +145,10 @@ logPane uiState =
 
 showLogLine :: (LocalTime, CampaignEvent) -> Widget Name
 showLogLine (time, event@(WorkerEvent workerId _)) =
-  (withAttr (attrName "time") $ str $ (timePrefix time) <> "[Worker " <> show workerId <> "] ")
+  withAttr (attrName "time") (str $ timePrefix time <> "[Worker " <> show workerId <> "] ")
     <+> strBreak (ppCampaignEvent event)
 showLogLine (time, event) =
-  (withAttr (attrName "time") $ str $ (timePrefix time) <> " ") <+> strBreak (ppCampaignEvent event)
+  withAttr (attrName "time") (str $ timePrefix time <> " ") <+> strBreak (ppCampaignEvent event)
 
 summaryWidget :: Env -> UIState -> Widget Name
 summaryWidget env uiState =
@@ -179,7 +179,7 @@ summaryWidget env uiState =
       <=>
       str ("New coverage: " <> timeElapsed uiState uiState.lastNewCov <> " ago") <+> fill ' '
   rightSide =
-    padLeft (Pad 1) $
+    padLeft (Pad 1)
       (rpcInfoWidget uiState.fetchedContracts uiState.fetchedSlots env.chainId)
 
 timeElapsed :: UIState -> LocalTime -> String
@@ -304,7 +304,7 @@ tracesWidget vm = do
   let traces = stripAnsiEscapeCodes $ showTraceTree dappInfo vm
   pure $
     if T.null traces then str ""
-    else str "Traces" <+> str ":" <=> (txtBreak traces)
+    else str "Traces" <+> str ":" <=> txtBreak traces
 
 failWidget
   :: MonadReader Env m
