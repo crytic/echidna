@@ -22,7 +22,7 @@ import Graphics.Vty.Config (VtyUserConfig, defaultConfig, configInputMap)
 import Graphics.Vty.CrossPlatform (mkVty)
 import Graphics.Vty.Input.Events
 import Graphics.Vty qualified as Vty
-import System.Console.ANSI (hSupportsANSI)
+import System.Console.ANSI (hNowSupportsANSI)
 import System.Signal
 import UnliftIO
   ( MonadUnliftIO, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
@@ -325,7 +325,7 @@ monitor = do
 
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
 isTerminal :: IO Bool
-isTerminal = hSupportsANSI stdout
+isTerminal = hNowSupportsANSI stdout
 
 -- | Composes a compact text status line of the campaign
 statusLine
