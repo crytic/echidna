@@ -9,6 +9,7 @@ ghc-options:
   - -O2
   - -Wall
   - -fno-warn-orphans
+  - -feager-blackholing
   # https://github.com/haskell/cabal/issues/4739
   - -optP-Wno-nonportable-include-path
   - -fspecialize-aggressively
