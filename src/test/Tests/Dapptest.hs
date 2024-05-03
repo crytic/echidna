@@ -4,9 +4,11 @@ import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract', solcV, solved, passed)
 
+import Echidna.Types.Campaign (WorkerType(..))
+
 dapptestTests :: TestTree
 dapptestTests = testGroup "Dapptest Integration Testing"
-  [ testContract' "dapptest/basic.sol" (Just "GreeterTest") (Just (\v -> v >= solcV (0,7,5))) (Just "dapptest/config.yaml") False
+  [ testContract' "dapptest/basic.sol" (Just "GreeterTest") (Just (\v -> v >= solcV (0,7,5))) (Just "dapptest/config.yaml") False FuzzWorker
      [ 
         ("testShrinking passed", solved "testShrinking"),
         ("testFuzzFixedArray passed", solved "testFuzzFixedArray"),

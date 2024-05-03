@@ -1,7 +1,9 @@
 module Echidna.Types.Campaign where
 
+import Control.Concurrent (ThreadId)
 import Data.Aeson
 import Data.Map (Map)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word8, Word16)
@@ -14,46 +16,67 @@ import Echidna.Types.Tx (Tx)
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf
-  { testLimit       :: Int
+  { testLimit          :: Int
     -- ^ Maximum number of function calls to execute while fuzzing
-  , stopOnFail      :: Bool
+  , stopOnFail         :: Bool
     -- ^ Whether to stop the campaign immediately if any property fails
-  , estimateGas     :: Bool
+  , estimateGas        :: Bool
     -- ^ Whether to collect gas usage statistics
-  , seqLen          :: Int
+  , seqLen             :: Int
     -- ^ Number of calls between state resets (e.g. \"every 10 calls,
     -- reset the state to avoid unrecoverable states/save memory\"
-  , shrinkLimit     :: Int
+  , shrinkLimit        :: Int
     -- ^ Maximum number of candidate sequences to evaluate while shrinking
-  , knownCoverage   :: Maybe CoverageMap
+  , knownCoverage      :: Maybe CoverageMap
     -- ^ If applicable, initially known coverage. If this is 'Nothing',
     -- Echidna won't collect coverage information (and will go faster)
-  , seed            :: Maybe Int
+  , seed               :: Maybe Int
     -- ^ Seed used for the generation of random transactions
-  , dictFreq        :: Float
+  , dictFreq           :: Float
     -- ^ Frequency for the use of dictionary values in the random transactions
-  , corpusDir       :: Maybe FilePath
+  , corpusDir          :: Maybe FilePath
     -- ^ Directory to load and save lists of transactions
-  , mutConsts       :: MutationConsts Integer
+  , mutConsts          :: MutationConsts Integer
     -- ^ Directory to load and save lists of transactions
-  , coverageFormats :: [CoverageFileType]
+  , coverageFormats    :: [CoverageFileType]
     -- ^ List of file formats to save coverage reports
-  , workers         :: Maybe Word8
+  , workers            :: Maybe Word8
     -- ^ Number of fuzzing workers
-  , serverPort      :: Maybe Word16
+  , serverPort         :: Maybe Word16
     -- ^ Server-Sent Events HTTP port number, if missing server is not ran
+  , symExec            :: Bool
+    -- ^ Whether to add an additional symbolic execution worker
+  , symExecConcolic    :: Bool
+    -- ^ Whether symbolic execution will be concolic (vs full symbolic execution)
+    -- Only relevant if symExec is True
+  , symExecTimeout     :: Int
+    -- ^ Timeout for symbolic execution SMT solver.
+    -- Only relevant if symExec is True
+  , symExecNSolvers    :: Int
+    -- ^ Number of SMT solvers used in symbolic execution.
+    -- Only relevant if symExec is True
+  , symExecMaxIters    :: Integer
+    -- ^ Number of times we may revisit a particular branching point.
+    -- Only relevant if symExec is True and symExecConcolic is False
+  , symExecAskSMTIters :: Integer
+    -- ^ Number of times we may revisit a particular branching point
+    -- before we consult the SMT solver to check reachability.
+    -- Only relevant if symExec is True and symExecConcolic is False
   }
+
+data WorkerType = FuzzWorker | SymbolicWorker deriving (Eq)
 
 type WorkerId = Int
 
 data CampaignEvent
-  = WorkerEvent WorkerId WorkerEvent
+  = WorkerEvent WorkerId WorkerType WorkerEvent
   | Failure String
 
 data WorkerEvent
   = TestFalsified !EchidnaTest
   | TestOptimized !EchidnaTest
   | NewCoverage { points :: !Int, numCodehashes :: !Int, corpusSize :: !Int, transactions :: [Tx] }
+  | SymNoNewCoverage
   | TxSequenceReplayed FilePath !Int !Int
   | TxSequenceReplayFailed FilePath Tx
   | WorkerStopped WorkerStopReason
@@ -67,6 +90,7 @@ instance ToJSON WorkerEvent where
     TestOptimized test -> toJSON test
     NewCoverage { points, numCodehashes, corpusSize } ->
       object [ "coverage" .= points, "contracts" .= numCodehashes, "corpus_size" .= corpusSize]
+    SymNoNewCoverage -> object []
     TxSequenceReplayed file current total ->
       object [ "file" .= file, "current" .= current, "total" .= total ]
     TxSequenceReplayFailed file tx ->
@@ -75,6 +99,7 @@ instance ToJSON WorkerEvent where
 
 data WorkerStopReason
   = TestLimitReached
+  | SymbolicDone
   | TimeLimitReached
   | FastFailed
   | Killed !String
@@ -83,7 +108,7 @@ data WorkerStopReason
 
 ppCampaignEvent :: CampaignEvent -> String
 ppCampaignEvent = \case
-  WorkerEvent _ e -> ppWorkerEvent e
+  WorkerEvent _ _ e -> ppWorkerEvent e
   Failure err -> err
 
 ppWorkerEvent :: WorkerEvent -> String
@@ -97,6 +122,8 @@ ppWorkerEvent = \case
     "New coverage: " <> show points <> " instr, "
       <> show numCodehashes <> " contracts, "
       <> show corpusSize <> " seqs in corpus"
+  SymNoNewCoverage ->
+    "Symbolic execution finished with no new coverage."
   TxSequenceReplayed file current total ->
     "Sequence replayed from corpus file " <> file <> " (" <> show current <> "/" <> show total <> ")"
   TxSequenceReplayFailed file tx ->
@@ -105,6 +132,8 @@ ppWorkerEvent = \case
     "Remove the file or the transaction to fix the issue."
   WorkerStopped TestLimitReached ->
     "Test limit reached. Stopping."
+  WorkerStopped SymbolicDone ->
+    "Symbolic worker ran out of transactions to work on. Stopping."
   WorkerStopped TimeLimitReached ->
     "Time limit reached. Stopping."
   WorkerStopped FastFailed ->
@@ -136,6 +165,9 @@ data WorkerState = WorkerState
     -- ^ Number of times the callseq is called
   , ncalls      :: !Int
     -- ^ Number of calls executed while fuzzing
+  , runningThreads :: [ThreadId]
+    -- ^ Extra threads currently being run,
+    --   aside from the main worker thread
   }
 
 initialWorkerState :: WorkerState
@@ -146,6 +178,7 @@ initialWorkerState =
               , newCoverage = False
               , ncallseqs = 0
               , ncalls = 0
+              , runningThreads = []
               }
 
 defaultTestLimit :: Int
@@ -156,3 +189,29 @@ defaultSequenceLength = 100
 
 defaultShrinkLimit :: Int
 defaultShrinkLimit = 5000
+
+defaultSymExecTimeout :: Int
+defaultSymExecTimeout = 30
+
+defaultSymExecNWorkers :: Int
+defaultSymExecNWorkers = 1
+
+defaultSymExecMaxIters :: Integer
+defaultSymExecMaxIters = 10
+
+-- | Same default as in hevm, "everything else is unsound"
+-- (https://github.com/ethereum/hevm/pull/252)
+defaultSymExecAskSMTIters :: Integer
+defaultSymExecAskSMTIters = 1
+
+-- | Get number of fuzzing workers (doesn't include sym exec worker)
+-- Defaults to 1 if set to Nothing
+getNFuzzWorkers :: CampaignConf -> Int
+getNFuzzWorkers conf = fromIntegral (fromMaybe 1 (conf.workers))
+
+-- | Number of workers, including SymExec worker if there is one
+getNWorkers :: CampaignConf -> Int
+getNWorkers conf = getNFuzzWorkers conf + (if conf.symExec then 1 else 0)
+
+workerIDToType :: CampaignConf -> WorkerId -> WorkerType
+workerIDToType conf wid = if conf.symExec && wid == (getNWorkers conf - 1) then SymbolicWorker else FuzzWorker
