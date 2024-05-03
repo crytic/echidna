@@ -5,6 +5,7 @@ import Test.Tasty (TestTree, testGroup)
 import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout, gasInRange)
 import Data.Functor ((<&>))
 import Data.Text (unpack)
+import Echidna.Types.Campaign (WorkerType(..))
 import Echidna.Types.Tx (TxCall(..))
 import EVM.ABI (AbiValue(..))
 
@@ -76,7 +77,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_construct passed",               solved      "echidna_construct") ]
   , testContract "basic/gasprice.sol"     (Just "basic/gasprice.yaml")
       [ ("echidna_state passed",                   solved      "echidna_state") ]
-  , testContract' "basic/allContracts.sol" (Just "B") Nothing (Just "basic/allContracts.yaml") True
+  , testContract' "basic/allContracts.sol" (Just "B") Nothing (Just "basic/allContracts.yaml") True FuzzWorker
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContract "basic/array-mutation.sol"   Nothing
       [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
@@ -97,9 +98,9 @@ integrationTests = testGroup "Solidity Integration Testing"
       "invalid codesize"
   , testContractV "basic/eip-170.sol" (Just (>= solcV (0,5,0))) (Just "basic/eip-170.yaml")
       [ ("echidna_test passed",                    passed      "echidna_test") ]
-  , testContract' "basic/deploy.sol" (Just "Test") Nothing (Just "basic/deployContract.yaml") True
+  , testContract' "basic/deploy.sol" (Just "Test") Nothing (Just "basic/deployContract.yaml") True FuzzWorker
       [ ("test passed",                    solved     "test") ]
-  , testContract' "basic/deploy.sol" (Just "Test") Nothing (Just "basic/deployBytecode.yaml") True
+  , testContract' "basic/deploy.sol" (Just "Test") Nothing (Just "basic/deployBytecode.yaml") True FuzzWorker
       [ ("test passed",                    solved     "test") ]
   , testContract "basic/flags.sol" (Just "basic/etheno-query-error.yaml")
       [] -- Just check if the etheno config does not crash Echidna

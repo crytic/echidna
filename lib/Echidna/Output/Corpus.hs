@@ -42,7 +42,7 @@ saveCorpusEvent env (_time, campaignEvent) = do
     Just corpusDir -> saveEvent corpusDir campaignEvent
     Nothing -> pure ()
   where
-    saveEvent dir (WorkerEvent _workerId event) =
+    saveEvent dir (WorkerEvent _workerId _workerType event) =
       maybe (pure ()) (saveFile dir) $ getEventInfo event
     saveEvent _ _ = pure ()
 

@@ -1,0 +1,3 @@
+symExec: true
+workers: 0
+symExecConcolic: false

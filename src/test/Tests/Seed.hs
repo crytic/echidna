@@ -21,7 +21,7 @@ seedTests =
     ]
     where
     cfg s = defaultConfig
-      { campaignConf = CampaignConf
+      { campaignConf = defaultConfig.campaignConf
         { testLimit = 600
         , stopOnFail = False
         , estimateGas = False
@@ -39,6 +39,6 @@ seedTests =
       }
       & overrideQuiet
     gen s = do
-      (env, _) <- runContract "basic/flags.sol" Nothing (cfg s)
+      (env, _) <- runContract "basic/flags.sol" Nothing (cfg s) FuzzWorker
       readIORef env.testsRef
     same s t = (\x y -> ((.reproducer) <$> x) == ((.reproducer) <$> y)) <$> gen s <*> gen t
