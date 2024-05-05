@@ -17,6 +17,7 @@ import Data.List.Split (chunksOf)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Sequence ((|>))
+import Data.Text (Text)
 import Data.Time
 import Graphics.Vty.Config (VtyUserConfig, defaultConfig, configInputMap)
 import Graphics.Vty.CrossPlatform (mkVty)
@@ -25,9 +26,10 @@ import Graphics.Vty qualified as Vty
 import System.Console.ANSI (hNowSupportsANSI)
 import System.Signal
 import UnliftIO
-  ( MonadUnliftIO, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
+  ( MonadUnliftIO, IORef, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
+import EVM.Solidity (SolcContract)
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
@@ -39,6 +41,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage (scoveragePoints)
+import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.World (World)
@@ -60,15 +63,17 @@ ui
   -> World   -- ^ Initial world state
   -> GenDict
   -> [(FilePath, [Tx])]
+  -> Maybe Text
+  -> [SolcContract]
   -> m [WorkerState]
-ui vm world dict initialCorpus = do
+ui vm world dict initialCorpus cliSelectedContract cs = do
   env <- ask
   conf <- asks (.cfg)
   terminalPresent <- liftIO isTerminal
 
   let
-    -- default to one worker if not configured
-    nworkers = fromIntegral $ fromMaybe 1 conf.campaignConf.workers
+    nFuzzWorkers = getNFuzzWorkers conf.campaignConf
+    nworkers = getNWorkers conf.campaignConf
 
     effectiveMode = case conf.uiConf.operationMode of
       Interactive | not terminalPresent -> NonInteractive Text
@@ -77,10 +82,10 @@ ui vm world dict initialCorpus = do
     -- Distribute over all workers, could be slightly bigger overall due to
     -- ceiling but this doesn't matter
     perWorkerTestLimit = ceiling
-      (fromIntegral conf.campaignConf.testLimit / fromIntegral nworkers :: Double)
+      (fromIntegral conf.campaignConf.testLimit / fromIntegral nFuzzWorkers :: Double)
 
     chunkSize = ceiling
-      (fromIntegral (length initialCorpus) / fromIntegral nworkers :: Double)
+      (fromIntegral (length initialCorpus) / fromIntegral nFuzzWorkers :: Double)
     corpusChunks = chunksOf chunkSize initialCorpus ++ repeat []
 
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
@@ -212,11 +217,14 @@ ui vm world dict initialCorpus = do
 
     threadId <- forkIO $ do
       -- TODO: maybe figure this out with forkFinally?
+      let workerType = workerIDToType env.cfg.campaignConf workerId
       stopReason <- catches (do
-          let timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
+          let
+            timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
+            corpus = if workerType == SymbolicWorker then initialCorpus else corpusChunk
           maybeResult <- timeout timeoutUsecs $
-            runWorker (get >>= writeIORef stateRef)
-                      vm world dict workerId corpusChunk testLimit
+            runWorker workerType (get >>= writeIORef stateRef)
+                      vm world dict workerId corpus testLimit cliSelectedContract cs
           pure $ case maybeResult of
             Just (stopReason, _finalState) -> stopReason
             Nothing -> TimeLimitReached
@@ -226,7 +234,7 @@ ui vm world dict initialCorpus = do
         ]
 
       time <- liftIO getTimestamp
-      writeChan env.eventQueue (time, WorkerEvent workerId (WorkerStopped stopReason))
+      writeChan env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
 
     pure (threadId, stateRef)
 
@@ -235,9 +243,11 @@ ui vm world dict initialCorpus = do
     forM workers $ \(_, stateRef) -> readIORef stateRef
 
  -- | Order the workers to stop immediately
-stopWorkers :: MonadIO m => [(ThreadId, a)] -> m ()
+stopWorkers :: MonadIO m => [(ThreadId, IORef WorkerState)] -> m ()
 stopWorkers workers =
-  forM_ workers $ \(threadId, _) -> liftIO $ killThread threadId
+  forM_ workers $ \(threadId, workerStateRef) -> do
+    workerState <- readIORef workerStateRef
+    liftIO $ mapM_ killThread (threadId : workerState.runningThreads)
 
 vtyConfig :: IO VtyUserConfig
 vtyConfig = do
@@ -268,14 +278,14 @@ monitor = do
         modify' $ \state -> state { events = state.events |> event }
 
         case campaignEvent of
-          WorkerEvent _ (NewCoverage { points, numCodehashes, corpusSize }) ->
+          WorkerEvent _ _ (NewCoverage { points, numCodehashes, corpusSize }) ->
             modify' $ \state ->
               state { coverage = max state.coverage points -- max not really needed
                     , corpusSize
                     , numCodehashes
                     , lastNewCov = time
                     }
-          WorkerEvent _ (WorkerStopped _) ->
+          WorkerEvent _ _ (WorkerStopped _) ->
             modify' $ \state ->
               state { workersAlive = state.workersAlive - 1
                     , timeStopped = if state.workersAlive == 1

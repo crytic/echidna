@@ -30,8 +30,10 @@ import EVM.Solidity (SolcContract(..))
 import EVM.Types (W256, VM, VMType(Concrete), Addr, Expr (LitAddr))
 
 ppLogLine :: (LocalTime, CampaignEvent) -> String
-ppLogLine (time, event@(WorkerEvent workerId _)) =
+ppLogLine (time, event@(WorkerEvent workerId FuzzWorker _)) =
   timePrefix time <> "[Worker " <> show workerId <> "] " <> ppCampaignEvent event
+ppLogLine (time, event@(WorkerEvent workerId SymbolicWorker _)) =
+  timePrefix time <> "[Worker " <> show workerId <> ", symbolic] " <> ppCampaignEvent event
 ppLogLine (time, event) =
   timePrefix time <> " " <> ppCampaignEvent event
 
