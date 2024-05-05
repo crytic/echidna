@@ -145,7 +145,7 @@ logPane uiState =
 
 showLogLine :: (LocalTime, CampaignEvent) -> Widget Name
 showLogLine (time, event@(WorkerEvent workerId workerType _)) =
-  (withAttr (attrName "time") $ str $ (timePrefix time) <> "[Worker " <> show workerId <> symSuffix <> "] ")
+  withAttr (attrName "time") (str $ timePrefix time <> "[Worker " <> show workerId <> symSuffix <> "] ")
     <+> strBreak (ppCampaignEvent event)
   where
   symSuffix = case workerType of
