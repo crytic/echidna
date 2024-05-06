@@ -236,12 +236,14 @@ overrideConfig :: EConfig -> Options -> IO EConfig
 overrideConfig config Options{..} = do
   envRpcUrl <- Onchain.rpcUrlEnv
   envRpcBlock <- Onchain.rpcBlockEnv
+  envEtherscanApiKey <- Onchain.etherscanApiKey
   pure $
     config { solConf = overrideSolConf config.solConf
            , campaignConf = overrideCampaignConf config.campaignConf
            , uiConf = overrideUiConf config.uiConf
            , rpcUrl = cliRpcUrl <|> envRpcUrl <|> config.rpcUrl
            , rpcBlock = cliRpcBlock <|> envRpcBlock <|> config.rpcBlock
+           , etherscanApiKey = envEtherscanApiKey <|> config.etherscanApiKey
            }
            & overrideFormat
   where
