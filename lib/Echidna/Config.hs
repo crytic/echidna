@@ -56,6 +56,7 @@ instance FromJSON EConfigWithUsage where
               <*> (UIConf <$> v ..:? "timeout" <*> formatParser)
               <*> v ..:? "rpcUrl"
               <*> v ..:? "rpcBlock"
+              <*> v ..:? "etherscanApiKey"
       where
       useKey k = modify' $ Set.insert k
       x ..:? k = useKey k >> lift (x .:? k)
