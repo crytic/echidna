@@ -207,7 +207,7 @@ hasReverted vm = let r = vm.result in
     _                    -> True
 
 isUselessNoCall :: Tx -> Bool
-isUselessNoCall tx = (tx.call == NoCall)
+isUselessNoCall tx = tx.call == NoCall
 
 -- | Transform a VMResult into a more hash friendly sum type
 getResult :: VMResult Concrete s -> TxResult

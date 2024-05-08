@@ -54,8 +54,9 @@ shrinkTest vm test = do
 replaceByNoCall :: Tx -> Tx
 replaceByNoCall tx = tx { call = NoCall }
 
+removeUselessNoCalls :: [Tx] -> [Tx]
 removeUselessNoCalls = mapMaybe f
-  where f tx = if (isUselessNoCall tx) then Nothing else Just tx 
+  where f tx = if isUselessNoCall tx then Nothing else Just tx 
 
 removeReverts :: (MonadIO m, MonadReader Env m, MonadThrow m) => VM Concrete RealWorld -> [Tx] -> m [Tx]
 removeReverts vm txs = do
@@ -67,7 +68,7 @@ removeReverts' :: (MonadIO m, MonadReader Env m, MonadThrow m) => VM Concrete Re
 removeReverts' _ [] ftxs = return ftxs
 removeReverts' vm (t:txs) ftxs = do
   (_, vm') <- execTx vm t
-  if (hasReverted vm') 
+  if hasReverted vm'
   then removeReverts' vm' txs (replaceByNoCall t: ftxs) 
   else removeReverts' vm' txs (t:ftxs) 
 
