@@ -9,6 +9,7 @@ module Echidna.Types.Tx where
 import Prelude hiding (Word)
 
 import Control.Applicative ((<|>))
+import Control.Monad.ST (RealWorld)
 import Data.Aeson (FromJSON, ToJSON, parseJSON, toJSON, object, withObject, (.=), (.:))
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.Aeson.Types (Parser)
@@ -198,6 +199,15 @@ data TxConf = TxConf
   , maxValue      :: W256
   -- ^ Maximum value to use in transactions
   }
+
+hasReverted :: VM Concrete RealWorld -> Bool
+hasReverted vm = let r = vm.result in
+  case r of
+    (Just (VMSuccess _)) -> False
+    _                    -> True
+
+isUselessNoCall :: Tx -> Bool
+isUselessNoCall tx = (tx.call == NoCall)
 
 -- | Transform a VMResult into a more hash friendly sum type
 getResult :: VMResult Concrete s -> TxResult

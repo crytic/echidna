@@ -8,14 +8,15 @@ import Control.Monad.State.Strict (MonadIO)
 import Control.Monad.ST (RealWorld)
 import Data.Set qualified as Set
 import Data.List qualified as List
+import Data.Maybe (mapMaybe)
 
-import EVM.Types (VM, VMType(Concrete))
+import EVM.Types (VM, VMType(..))
 
 import Echidna.Exec
 import Echidna.Transaction
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (TestValue(..), EchidnaTest(..), TestState(..), isOptimizationTest)
-import Echidna.Types.Tx (Tx(..))
+import Echidna.Types.Tx (Tx(..), hasReverted, isUselessNoCall, TxCall(..))
 import Echidna.Types.Config
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Test (getResultFromVM, checkETest)
@@ -31,23 +32,44 @@ shrinkTest vm test = do
     Large i | i >= env.cfg.campaignConf.shrinkLimit && not (isOptimizationTest test) ->
       pure $ Just test { state = Solved }
     Large i ->
-      if length test.reproducer > 1 || any canShrinkTx test.reproducer then do
-        maybeShrunk <- shrinkSeq vm (checkETest test) test.value test.reproducer
-        pure $ case maybeShrunk of
-          Just (txs, val, vm') -> do
-            Just test { state = Large (i + 1)
-                 , reproducer = txs
-                 , vm = Just vm'
-                 , result = getResultFromVM vm'
-                 , value = val }
-          Nothing ->
-            -- No success with shrinking this time, just bump trials
-            Just test { state = Large (i + 1) }
-      else
-        pure $ Just test { state = if isOptimizationTest test
-                                 then Large (i + 1)
-                                 else Solved }
+      do  repro <- removeReverts vm test.reproducer
+          if length repro > 1 || any canShrinkTx repro then do
+            maybeShrunk <- shrinkSeq vm (checkETest test) test.value repro
+            pure $ case maybeShrunk of
+              Just (txs, val, vm') -> do
+                Just test { state = Large (i + 1)
+                    , reproducer = txs
+                    , vm = Just vm'
+                    , result = getResultFromVM vm'
+                    , value = val }
+              Nothing ->
+                -- No success with shrinking this time, just bump trials
+                Just test { state = Large (i + 1) }
+          else
+            pure $ Just test { state = if isOptimizationTest test
+                                    then Large (i + 1)
+                                    else Solved }
     _ -> pure Nothing
+
+replaceByNoCall :: Tx -> Tx
+replaceByNoCall tx = tx { call = NoCall }
+
+removeUselessNoCalls = mapMaybe f
+  where f tx = if (isUselessNoCall tx) then Nothing else Just tx 
+
+removeReverts :: (MonadIO m, MonadReader Env m, MonadThrow m) => VM Concrete RealWorld -> [Tx] -> m [Tx]
+removeReverts vm txs = do
+  let (itxs, le) = (init txs, last txs)
+  ftxs <- removeReverts' vm itxs []
+  return (ftxs ++ [le])
+
+removeReverts' :: (MonadIO m, MonadReader Env m, MonadThrow m) => VM Concrete RealWorld -> [Tx] -> [Tx] -> m [Tx]
+removeReverts' _ [] ftxs = return ftxs
+removeReverts' vm (t:txs) ftxs = do
+  (_, vm') <- execTx vm t
+  if (hasReverted vm') 
+  then removeReverts' vm' txs (replaceByNoCall t: ftxs) 
+  else removeReverts' vm' txs (t:ftxs) 
 
 -- | Given a call sequence that solves some Echidna test, try to randomly
 -- generate a smaller one that still solves that test.
@@ -60,11 +82,12 @@ shrinkSeq
   -> m (Maybe ([Tx], TestValue, VM Concrete RealWorld))
 shrinkSeq vm f v txs = do
   txs' <- uniform =<< sequence [shorten, shrunk]
-  (value, vm') <- check txs' vm
+  let txs'' = removeUselessNoCalls txs' 
+  (value, vm') <- check txs'' vm
   -- if the test passed it means we didn't shrink successfully
   pure $ case (value,v) of
-    (BoolValue False, _)              -> Just (txs', value, vm')
-    (IntValue x, IntValue y) | x >= y -> Just (txs', value, vm')
+    (BoolValue False, _)              -> Just (txs'', value, vm')
+    (IntValue x, IntValue y) | x >= y -> Just (txs'', value, vm')
     _                                 -> Nothing
   where
     check [] vm' = f vm'
