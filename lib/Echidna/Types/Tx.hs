@@ -212,7 +212,10 @@ isUselessNoCall tx = tx.call == NoCall && tx.delay == (0, 0)
 catNoCalls :: [Tx] -> [Tx]
 catNoCalls [] = []
 catNoCalls [tx] = [tx]
-catNoCalls (tx1:tx2:xs) = if tx1.call == NoCall && tx2.call == NoCall then catNoCalls (nc:xs) else tx1 : catNoCalls (tx2:xs)
+catNoCalls (tx1:tx2:xs) = 
+    case (tx1.call, tx2.call) of 
+      (NoCall, NoCall) -> catNoCalls (nc:xs)
+      _                -> tx1 : catNoCalls (tx2:xs)
   where nc = tx1 { delay = (fst tx1.delay + fst tx2.delay, snd tx1.delay + snd tx2.delay) }  
 
 -- | Transform a VMResult into a more hash friendly sum type

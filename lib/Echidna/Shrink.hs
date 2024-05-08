@@ -33,7 +33,7 @@ shrinkTest vm test = do
       pure $ Just test { state = Solved }
     Large i ->
       do  repro <- removeReverts vm test.reproducer
-          let rr = catNoCalls repro 
+          let rr = removeUselessNoCalls $ catNoCalls repro 
           if length rr > 1 || any canShrinkTx rr then do
             maybeShrunk <- shrinkSeq vm (checkETest test) test.value rr
             pure $ case maybeShrunk of
