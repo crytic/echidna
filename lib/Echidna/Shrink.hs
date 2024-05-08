@@ -66,7 +66,7 @@ removeReverts vm txs = do
   return (ftxs ++ [le])
 
 removeReverts' :: (MonadIO m, MonadReader Env m, MonadThrow m) => VM Concrete RealWorld -> [Tx] -> [Tx] -> m [Tx]
-removeReverts' _ [] ftxs = return ftxs
+removeReverts' _ [] ftxs = return $ reverse ftxs
 removeReverts' vm (t:txs) ftxs = do
   (_, vm') <- execTx vm t
   if hasReverted vm'
