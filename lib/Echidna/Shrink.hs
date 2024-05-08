@@ -16,7 +16,7 @@ import Echidna.Exec
 import Echidna.Transaction
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (TestValue(..), EchidnaTest(..), TestState(..), isOptimizationTest)
-import Echidna.Types.Tx (Tx(..), hasReverted, isUselessNoCall, TxCall(..))
+import Echidna.Types.Tx (Tx(..), hasReverted, isUselessNoCall, catNoCalls, TxCall(..))
 import Echidna.Types.Config
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Test (getResultFromVM, checkETest)
@@ -33,8 +33,9 @@ shrinkTest vm test = do
       pure $ Just test { state = Solved }
     Large i ->
       do  repro <- removeReverts vm test.reproducer
-          if length repro > 1 || any canShrinkTx repro then do
-            maybeShrunk <- shrinkSeq vm (checkETest test) test.value repro
+          let rr = catNoCalls repro 
+          if length rr > 1 || any canShrinkTx rr then do
+            maybeShrunk <- shrinkSeq vm (checkETest test) test.value rr
             pure $ case maybeShrunk of
               Just (txs, val, vm') -> do
                 Just test { state = Large (i + 1)
@@ -44,7 +45,7 @@ shrinkTest vm test = do
                     , value = val }
               Nothing ->
                 -- No success with shrinking this time, just bump trials
-                Just test { state = Large (i + 1) }
+                Just test { state = Large (i + 1), reproducer = rr}
           else
             pure $ Just test { state = if isOptimizationTest test
                                     then Large (i + 1)
