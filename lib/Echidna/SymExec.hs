@@ -60,7 +60,11 @@ exploreContract conf contract tx vm = do
   let
     isConc = isJust tx
     allMethods = Map.elems contract.abiMap
-    concMethods (Tx { call = SolCall (methodName, _) }) = filter (\method -> method.name == methodName) allMethods
+    filterMethod name method = method.name == name &&
+      case conf.campaignConf.symExecTargets of
+        Just ms -> name `elem` ms
+        _       -> True
+    concMethods (Tx { call = SolCall (methodName, _) }) = filter (filterMethod methodName) allMethods
     concMethods _ = error "`exploreContract` should only be called with Nothing or Just Tx{call=SolCall _} for its tx argument"
     methods = maybe allMethods concMethods tx
     timeout = Just (fromIntegral conf.campaignConf.symExecTimeout)
