@@ -50,6 +50,11 @@ rpcBlockEnv = do
   val <- lookupEnv "ECHIDNA_RPC_BLOCK"
   pure (val >>= readMaybe)
 
+etherscanApiKey :: IO (Maybe Text)
+etherscanApiKey = do
+  val <- lookupEnv "ETHERSCAN_API_KEY"
+  pure (Text.pack <$> val)
+
 -- TODO: temporary solution, handle errors gracefully
 safeFetchContractFrom :: EVM.Fetch.BlockNumber -> Text -> Addr -> IO (Maybe Contract)
 safeFetchContractFrom rpcBlock rpcUrl addr =
@@ -122,11 +127,11 @@ readFileIfExists path = do
 
 -- | "Reverse engineer" the SolcContract and SourceCache structures for the
 -- code fetched from the outside
-externalSolcContract :: Addr -> Contract -> IO (Maybe (SourceCache, SolcContract))
-externalSolcContract addr c = do
+externalSolcContract :: Env -> Addr -> Contract -> IO (Maybe (SourceCache, SolcContract))
+externalSolcContract env addr c = do
   let runtimeCode = forceBuf $ fromJust $ view bytecode c
   putStr $ "Fetching Solidity source for contract at address " <> show addr <> "... "
-  srcRet <- Etherscan.fetchContractSource addr
+  srcRet <- Etherscan.fetchContractSource env.cfg.etherscanApiKey addr
   putStrLn $ if isJust srcRet then "Success!" else "Error!"
   putStr $ "Fetching Solidity source map for contract at address " <> show addr <> "... "
   srcmapRet <- Etherscan.fetchContractSourceMap addr
@@ -189,7 +194,7 @@ saveCoverageReport env runId = do
         forM_ (Map.toList contractsCache) $ \(addr, mc) ->
           case mc of
             Just contract -> do
-              r <- externalSolcContract addr contract
+              r <- externalSolcContract env addr contract
               case r of
                 Just (externalSourceCache, solcContract) -> do
                   let dir' = dir </> show addr
