@@ -110,3 +110,6 @@ symExecMaxIters: 10
 # Number of times we may revisit a particular branching point before we consult the smt solver to check reachability
 # only relevant if symExec is true and symExecConcolic is false
 symExecAskSMTIters: 1
+# List of whitelisted functions for using symbolic/concolic exploration
+# only relevant if symExec is true
+symExecTargets: null
