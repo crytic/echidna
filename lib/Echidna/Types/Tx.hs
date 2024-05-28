@@ -9,6 +9,7 @@ module Echidna.Types.Tx where
 import Prelude hiding (Word)
 
 import Control.Applicative ((<|>))
+import Control.Monad.ST (RealWorld)
 import Data.Aeson (FromJSON, ToJSON, parseJSON, toJSON, object, withObject, (.=), (.:))
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.Aeson.Types (Parser)
@@ -198,6 +199,24 @@ data TxConf = TxConf
   , maxValue      :: W256
   -- ^ Maximum value to use in transactions
   }
+
+hasReverted :: VM Concrete RealWorld -> Bool
+hasReverted vm = let r = vm.result in
+  case r of
+    (Just (VMSuccess _)) -> False
+    _                    -> True
+
+isUselessNoCall :: Tx -> Bool
+isUselessNoCall tx = tx.call == NoCall && tx.delay == (0, 0)
+
+catNoCalls :: [Tx] -> [Tx]
+catNoCalls [] = []
+catNoCalls [tx] = [tx]
+catNoCalls (tx1:tx2:xs) = 
+    case (tx1.call, tx2.call) of 
+      (NoCall, NoCall) -> catNoCalls (nc:xs)
+      _                -> tx1 : catNoCalls (tx2:xs)
+  where nc = tx1 { delay = (fst tx1.delay + fst tx2.delay, snd tx1.delay + snd tx2.delay) }  
 
 -- | Transform a VMResult into a more hash friendly sum type
 getResult :: VMResult Concrete s -> TxResult
