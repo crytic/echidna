@@ -49,6 +49,7 @@ data CampaignConf = CampaignConf
   , symExecConcolic    :: Bool
     -- ^ Whether symbolic execution will be concolic (vs full symbolic execution)
     -- Only relevant if symExec is True
+  , symExecTargets     :: Maybe [Text]
   , symExecTimeout     :: Int
     -- ^ Timeout for symbolic execution SMT solver.
     -- Only relevant if symExec is True

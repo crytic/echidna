@@ -185,7 +185,7 @@ runSymWorker callback vm dict workerId initialCorpus name cs = do
     -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
     newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) symTxs
 
-    unless newCoverage (pushWorkerEvent SymNoNewCoverage)
+    unless (newCoverage || null symTxs) (pushWorkerEvent SymNoNewCoverage)
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
