@@ -206,6 +206,9 @@ loadSpecified env name cs = do
           Just ne -> Map.singleton mainContract.runtimeCodehash ne
           Nothing -> mempty
 
+  when (Map.null abiMapping) $
+    throwM $ InvalidMethodFilters solConf.methodFilter
+
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
   initVM <- stToIO $ initialVM solConf.allowFFI
