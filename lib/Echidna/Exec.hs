@@ -254,8 +254,8 @@ execTxWithCov tx = do
     Just (vec, pc) -> do
       let txResultBit = fromEnum $ getResult $ fst r
       VMut.read vec pc >>= \case
-        (opIx, depths, txResults) | not (txResults `testBit` txResultBit) -> do
-          VMut.write vec pc (opIx, depths, txResults `setBit` txResultBit)
+        (opIx, depths, txResults, execQty) | not (txResults `testBit` txResultBit) -> do
+          VMut.write vec pc (opIx, depths, txResults `setBit` txResultBit, execQty)
           pure True -- we count this as new coverage
         _ -> pure False
     _ -> pure False
@@ -293,7 +293,7 @@ execTxWithCov tx = do
             -- IO for making a new vec
             vec <- VMut.new size
             -- We use -1 for opIx to indicate that the location was not covered
-            forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0)
+            forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0, 0)
             pure $ Just vec
 
         case maybeCovVec of
@@ -306,10 +306,11 @@ execTxWithCov tx = do
             -- of `contract` for everything; it may be safe to remove this check.
             when (pc < VMut.length vec) $
               VMut.read vec pc >>= \case
-                (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
-                  VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
+                (_, depths, results, execQty) | depth < 64 && not (depths `testBit` depth) -> do
+                  VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop, execQty + 1)
                   writeIORef covContextRef (True, Just (vec, pc))
-                _ ->
+                (opIx', depths, results, execQty) -> do
+                  VMut.write vec pc (opIx', depths, results, execQty + 1)
                   modifyIORef' covContextRef $ \(new, _) -> (new, Just (vec, pc))
 
       -- | Get the VM's current execution location

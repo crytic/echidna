@@ -29,7 +29,7 @@ import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
 
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
-import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..))
+import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..), ExecQty)
 import Echidna.Types.Tx (TxResult(..))
 
 saveCoverages
@@ -103,7 +103,7 @@ ppCoveredCode fileType sc cs s | null s = pure "Coverage map is empty"
   pure $ topHeader <> T.unlines (map ppFile allFiles)
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
-markLines :: CoverageFileType -> V.Vector Text -> S.Set Int -> Map Int [TxResult] -> V.Vector Text
+markLines :: CoverageFileType -> V.Vector Text -> S.Set Int -> Map Int ([TxResult], ExecQty) -> V.Vector Text
 markLines fileType codeLines runtimeLines resultMap =
   V.map markLine . V.filter shouldUseLine $ V.indexed codeLines
   where
@@ -112,7 +112,7 @@ markLines fileType codeLines runtimeLines resultMap =
     _ -> True
   markLine (i, codeLine) =
     let n = i + 1
-        results  = fromMaybe [] (Map.lookup n resultMap)
+        (results, execs) = fromMaybe ([], 0) (Map.lookup n resultMap)
         markers = sort $ nub $ getMarker <$> results
         wrapLine :: Text -> Text
         wrapLine line = case fileType of
@@ -123,11 +123,16 @@ markLines fileType codeLines runtimeLines resultMap =
           where
           cssClass = if n `elem` runtimeLines then getCSSClass markers else "neutral"
         result = case fileType of
-          Lcov -> pack $ printf "DA:%d,%d" n (length results)
-          _ -> pack $ printf " %*d | %-4s| %s" lineNrSpan n markers (wrapLine codeLine)
+          Lcov -> pack $ printf "DA:%d,%d" n execs
+          Html -> pack $ printf "%*d | %4s | %-4s| %s" lineNrSpan n (prettyExecs execs) markers (wrapLine codeLine)
+          _    -> pack $ printf "%*d | %-4s| %s" lineNrSpan n markers (wrapLine codeLine)
 
     in result
   lineNrSpan = length . show $ V.length codeLines + 1
+  prettyExecs x = prettyExecs' x 0
+  prettyExecs' x n | x >= 1000          = prettyExecs' (x `div` 1000) (n + 1)
+                   | x < 1000 && n == 0 = show x
+                   | otherwise          = show x <> [" kMGTPEZY" !! n]
 
 getCSSClass :: String -> Text
 getCSSClass markers =
@@ -146,16 +151,16 @@ getMarker ErrorOutOfGas = 'o'
 getMarker _             = 'e'
 
 -- | Given a source cache, a coverage map, a contract returns a list of covered lines
-srcMapCov :: SourceCache -> CoverageMap -> [SolcContract] -> IO (Map FilePath (Map Int [TxResult]))
+srcMapCov :: SourceCache -> CoverageMap -> [SolcContract] -> IO (Map FilePath (Map Int ([TxResult], ExecQty)))
 srcMapCov sc covMap contracts = do
   Map.unionsWith Map.union <$> mapM linesCovered contracts
   where
-  linesCovered :: SolcContract -> IO (Map FilePath (Map Int [TxResult]))
+  linesCovered :: SolcContract -> IO (Map FilePath (Map Int ([TxResult], ExecQty)))
   linesCovered c =
     case Map.lookup c.runtimeCodehash covMap of
       Just vec -> VU.foldl' (\acc covInfo -> case covInfo of
-        (-1, _, _) -> acc -- not covered
-        (opIx, _stackDepths, txResults) ->
+        (-1, _, _, _) -> acc -- not covered
+        (opIx, _stackDepths, txResults, execQty) ->
           case srcMapForOpLocation c opIx of
             Just srcMap ->
               case srcMapCodePos sc srcMap of
@@ -167,8 +172,10 @@ srcMapCov sc covMap contracts = do
                   where
                   innerUpdate =
                     Map.alter
-                      (Just . (<> unpackTxResults txResults) . fromMaybe mempty)
+                      updateLine
                       line
+                  updateLine (Just (r, q)) = Just ((<> unpackTxResults txResults) r, max q execQty)
+                  updateLine Nothing = Just (unpackTxResults txResults, execQty)
                 Nothing -> acc
             Nothing -> acc
         ) mempty vec
