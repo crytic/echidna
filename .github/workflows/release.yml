@@ -39,7 +39,7 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@v11
 
       - name: Configure Cachix
-        uses: cachix/cachix-action@v14
+        uses: cachix/cachix-action@v15
         with:
           name: trailofbits
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
