@@ -45,7 +45,7 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Configure Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v6
+        uses: DeterminateSystems/magic-nix-cache-action@v7
         with:
           upstream-cache: https://trailofbits.cachix.org
 
