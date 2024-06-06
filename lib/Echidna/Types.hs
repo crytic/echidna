@@ -11,9 +11,18 @@ import EVM.Types
 data ExecException = IllegalExec EvmError | UnknownFailure EvmError
 
 instance Show ExecException where
-  show (IllegalExec e) = "VM attempted an illegal operation: " ++ show e
-  show (UnknownFailure e) = "VM failed for unhandled reason, " ++ show e
-    ++ ". This shouldn't happen. Please file a ticket with this error message and steps to reproduce!"
+  show = \case
+    IllegalExec e -> "VM attempted an illegal operation: " ++ show e
+    UnknownFailure (MaxCodeSizeExceeded limit actual) ->
+      "Max code size exceeded. " ++ codeSizeErrorDetails limit actual
+    UnknownFailure (MaxInitCodeSizeExceeded limit actual) ->
+      "Max init code size exceeded. " ++ codeSizeErrorDetails limit actual
+    UnknownFailure e -> "VM failed for unhandled reason, " ++ show e
+      ++ ". This shouldn't happen. Please file a ticket with this error message and steps to reproduce!"
+    where
+      codeSizeErrorDetails limit actual =
+        "Configured limit: " ++ show limit ++ ", actual: " ++ show actual
+        ++ ". Set 'codeSize: 0xffffffff' in the config file to increase the limit."
 
 instance Exception ExecException
 
