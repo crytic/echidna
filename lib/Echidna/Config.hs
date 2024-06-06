@@ -112,7 +112,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "sender"          ..!= Set.fromList [0x10000, 0x20000, defaultDeployerAddr]
         <*> v ..:? "balanceAddr"     ..!= 0xffffffff
         <*> v ..:? "balanceContract" ..!= 0
-        <*> v ..:? "codeSize"        ..!= 0x6000      -- 24576 (EIP-170)
+        <*> v ..:? "codeSize"        ..!= 0xffffffff
         <*> v ..:? "prefix"          ..!= "echidna_"
         <*> v ..:? "cryticArgs"      ..!= []
         <*> v ..:? "solcArgs"        ..!= ""
