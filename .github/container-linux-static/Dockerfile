@@ -1,4 +1,4 @@
-FROM alpine:3.18.4
+FROM alpine:3.18.6
 # Based on https://github.com/fpco/alpine-haskell-stack/blob/9.2.8v2/ghc-Dockerfile
 
 RUN apk upgrade --no-cache &&\
@@ -36,12 +36,12 @@ RUN ln -s /usr/lib/libncurses.a /usr/lib/libtinfo.a
 COPY stack-config.yaml /root/.stack/config.yaml
 
 RUN cd /tmp && \
-    curl -sSLo /tmp/ghc.tar.xz https://downloads.haskell.org/~ghc/9.4.7/ghc-9.4.7-x86_64-alpine3_12-linux.tar.xz && \
+    curl -sSLo /tmp/ghc.tar.xz https://downloads.haskell.org/~ghc/9.6.5/ghc-9.6.5-x86_64-alpine3_12-linux.tar.xz && \
     tar xf ghc.tar.xz && \
-    cd ghc-9.4.7-x86_64-unknown-linux && \
+    cd ghc-9.6.5-x86_64-unknown-linux && \
     ./configure --prefix=/usr/local && \
     make install && \
-    rm -rf /tmp/ghc.tar.xz /tmp/ghc-9.4.7-x86_64-unknown-linux
+    rm -rf /tmp/ghc.tar.xz /tmp/ghc-9.6.5-x86_64-unknown-linux
 
 RUN apk upgrade --no-cache &&\
     apk add --no-cache \

@@ -18,7 +18,7 @@
         pkgs = nixpkgs.legacyPackages.${system};
         # prefer musl on Linux, static glibc + threading does not work properly
         # TODO: maybe only override it for echidna-redistributable?
-        pkgsStatic = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsMusl else pkgs;
+        pkgsStatic = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsStatic else pkgs;
         # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
         # would be great to integrate solc-select to be more flexible, improve this in future
         solc = pkgs.stdenv.mkDerivation {
@@ -47,22 +47,37 @@
 
         ncurses-static = pkgsStatic.ncurses.override { enableStatic = true; };
 
-        hevm = pkgs: pkgs.haskell.lib.dontCheck (
-          pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
-            owner = "trail-of-forks";
-            repo = "hevm";
-            rev = "2aa7b3e5fea0e0657fe44549ccefbb18f61eb024";
-            sha256 = "sha256-/9NMvSOzP0agJ1qEFDN/OQvV0DXRTN3AbntTAzPXbCw=";
-        }) { secp256k1 = pkgs.secp256k1; });
+        cc-workaround-nix-23138 =
+          pkgs.writeScriptBin "cc-workaround-nix-23138" ''
+          if [ "$1" = "--print-file-name" ] && [ "$2" = "c++" ]; then
+              echo c++
+          else
+              exec cc "$@"
+          fi
+          '';
 
-        # FIXME: figure out solc situation, it conflicts with the one from
-        # solc-select that is installed with slither, disable tests in the meantime
-        echidna = pkgs: pkgs.haskell.lib.dontCheck (
-          with pkgs; lib.pipe
+        hevm = pkgs: pkgs.lib.pipe (pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
+            owner = "elopez";
+            repo = "hevm";
+            rev = "c263a35ca676c4d10df72d3f81536e5fb0297dc2";
+            sha256 = "sha256-GO5rDgVV+Nj8OhmxEylJ0qv0hDxf+sJ1DLA8syjdNyM=";
+        }) { secp256k1 = pkgs.secp256k1; })
+        ([
+          pkgs.haskell.lib.compose.dontCheck
+        ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+          (pkgs.haskell.lib.compose.appendConfigureFlag "--ghc-options=-pgml=${cc-workaround-nix-23138}/bin/cc-workaround-nix-23138")
+        ]);
+
+        echidna = pkgs: with pkgs; lib.pipe
           (haskellPackages.callCabal2nix "echidna" ./. { hevm = hevm pkgs; })
-          [
+          ([
+            # FIXME: figure out solc situation, it conflicts with the one from
+            # solc-select that is installed with slither, disable tests in the meantime
+            haskell.lib.compose.dontCheck
             (haskell.lib.compose.addTestToolDepends [ haskellPackages.hpack slither-analyzer solc ])
             (haskell.lib.compose.disableCabalFlag "static")
+          ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+            (pkgs.haskell.lib.compose.appendConfigureFlag "--ghc-options=-pgml=${cc-workaround-nix-23138}/bin/cc-workaround-nix-23138")
           ]);
 
         echidna-static = with pkgsStatic; lib.pipe
@@ -73,12 +88,11 @@
                 "--extra-lib-dirs=${stripDylib (gmp.override { withStatic = true; })}/lib"
                 "--extra-lib-dirs=${stripDylib secp256k1-static}/lib"
                 "--extra-lib-dirs=${stripDylib (libff.override { enableStatic = true; })}/lib"
-                "--extra-lib-dirs=${zlib.static}/lib"
+                "--extra-lib-dirs=${zlib.override { static = true; shared = false; }}/lib"
                 "--extra-lib-dirs=${stripDylib (libffi.overrideAttrs (_: { dontDisableStatic = true; }))}/lib"
                 "--extra-lib-dirs=${stripDylib (ncurses-static)}/lib"
               ] ++ (if stdenv.hostPlatform.isDarwin then [
                 "--extra-lib-dirs=${stripDylib (libiconv.override { enableStatic = true; })}/lib"
-                "--extra-lib-dirs=${stripDylib (libcxxabi)}/lib"
               ] else [])))
             (haskell.lib.compose.enableCabalFlag "static")
           ];
@@ -108,10 +122,12 @@
           # get the list of dynamic libs from otool and tidy the output
           libs=$(${otool} -L $out/bin/echidna | tail -n +2 | sed 's/^[[:space:]]*//' | cut -d' ' -f1)
           # get the path for libcxx
-          cxx=$(echo "$libs" | ${grep} '^/nix/store/.*-libcxx-')
+          cxx=$(echo "$libs" | ${grep} '^/nix/store/.*/libc++\.')
+          cxxabi=$(echo "$libs" | ${grep} '^/nix/store/.*/libc++abi\.')
           # rewrite /nix/... library paths to point to /usr/lib
           chmod 777 $out/bin/echidna
           ${install_name_tool} -change "$cxx" /usr/lib/libc++.1.dylib $out/bin/echidna
+          ${install_name_tool} -change "$cxxabi" /usr/lib/libc++abi.dylib $out/bin/echidna
           # fix TERMINFO path in ncurses
           ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/usr/share/terminfo" . "\x0" x (length($1) - 19)#e' $out/bin/echidna
           # check that no nix deps remain
@@ -145,7 +161,11 @@
         devShell = with pkgs;
           haskellPackages.shellFor {
             packages = _: [ (echidna pkgs) ];
-            shellHook = "hpack";
+            shellHook = ''
+              hpack
+            '' + (if pkgs.stdenv.isDarwin then ''
+              cabal configure --ghc-options=-pgml=${cc-workaround-nix-23138}/bin/cc-workaround-nix-23138
+            '' else "");
             buildInputs = [
               solc
               slither-analyzer

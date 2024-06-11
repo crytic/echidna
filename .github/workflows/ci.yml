@@ -10,7 +10,7 @@ on:
 
 env:
   # Tag for cache invalidation
-  CACHE_VERSION: v6
+  CACHE_VERSION: v7
 
 jobs:
   build:
@@ -22,7 +22,7 @@ jobs:
         include:
           - os: ubuntu-20.04
             shell: bash
-            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.4.7\", \"options\": \"--user 1001\"}"
+            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.6.5\", \"options\": \"--user 1001\"}"
           - os: macos-13 # x86_64 macOS
             shell: bash
           - os: windows-latest
@@ -65,7 +65,7 @@ jobs:
         id: stack
         if: matrix.container == ''
         with:
-          ghc-version: '9.4'
+          ghc-version: '9.6'
           enable-stack: true
           stack-version: 'latest'
 
