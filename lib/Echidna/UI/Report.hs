@@ -29,13 +29,19 @@ import EVM.Format (showTraceTree, contractNamePart)
 import EVM.Solidity (SolcContract(..))
 import EVM.Types (W256, VM, VMType(Concrete), Addr, Expr (LitAddr))
 
-ppLogLine :: (LocalTime, CampaignEvent) -> String
-ppLogLine (time, event@(WorkerEvent workerId FuzzWorker _)) =
-  timePrefix time <> "[Worker " <> show workerId <> "] " <> ppCampaignEvent event
-ppLogLine (time, event@(WorkerEvent workerId SymbolicWorker _)) =
-  timePrefix time <> "[Worker " <> show workerId <> ", symbolic] " <> ppCampaignEvent event
-ppLogLine (time, event) =
-  timePrefix time <> " " <> ppCampaignEvent event
+ppLogLine :: MonadReader Env m => VM Concrete RealWorld -> (LocalTime, CampaignEvent) -> m String
+ppLogLine vm (time, event@(WorkerEvent workerId FuzzWorker _)) =
+  ((timePrefix time <> "[Worker " <> show workerId <> "] ") <>) <$> ppCampaignEventLog vm event
+ppLogLine vm (time, event@(WorkerEvent workerId SymbolicWorker _)) =
+  ((timePrefix time <> "[Worker " <> show workerId <> ", symbolic] ") <>) <$> ppCampaignEventLog vm event
+ppLogLine vm (time, event) =
+  ((timePrefix time <> " ") <>) <$> ppCampaignEventLog vm event
+
+ppCampaignEventLog :: MonadReader Env m => VM Concrete RealWorld -> CampaignEvent -> m String
+ppCampaignEventLog vm ev = (ppCampaignEvent ev <>) <$> ppTxIfHas where
+  ppTxIfHas = case ev of
+    (WorkerEvent _ _ (TestFalsified test)) -> ("\n  Call sequence:\n" <>) . unlines <$> mapM (ppTx vm $ length (nub $ (.src) <$> test.reproducer) /= 1) test.reproducer
+    _ -> pure ""
 
 ppCampaign :: (MonadIO m, MonadReader Env m) => VM Concrete RealWorld -> [WorkerState] -> m String
 ppCampaign vm workerStates = do

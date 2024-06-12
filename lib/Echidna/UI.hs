@@ -173,7 +173,7 @@ ui vm world dict initialCorpus cliSelectedContract cs = do
               void $ tryPutMVar serverStopVar ()
         in installHandler sig handler Nothing
 #endif
-      let forwardEvent = putStrLn . ppLogLine
+      let forwardEvent ev = putStrLn =<< runReaderT (ppLogLine vm ev) env
       uiEventsForwarderStopVar <- spawnListener forwardEvent
 
       let printStatus = do
