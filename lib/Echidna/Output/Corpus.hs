@@ -23,6 +23,7 @@ saveTxs dir = mapM_ saveTxSeq where
   saveTxSeq txSeq = do
     createDirectoryIfMissing True dir
     let file = dir </> (show . abs . hash . show) txSeq <.> "txt"
+    putStrLn ("Saving reproducer to " ++ file)
     unlessM (doesFileExist file) $ encodeFile file (toJSON txSeq)
 
 loadTxs :: FilePath -> IO [(FilePath, [Tx])]
