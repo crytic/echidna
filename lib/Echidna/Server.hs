@@ -30,6 +30,10 @@ instance ToJSON SSE where
     object [ "timestamp" .= time
            , "data" .= reason
            ]
+  toJSON (SSE (time, ReproducerSaved filename)) =
+    object [ "timestamp" .= time
+           , "filename" .= filename
+           ]
 
 runSSEServer :: MVar () -> Env -> Word16 -> Int -> IO ()
 runSSEServer serverStopVar env port nworkers = do
@@ -53,6 +57,7 @@ runSSEServer serverStopVar env port nworkers = do
                     TxSequenceReplayFailed {} -> "tx_sequence_replay_failed"
                     WorkerStopped _ -> "worker_stopped"
                 Failure _err -> "failure"
+                ReproducerSaved _ -> "saved_reproducer"
           case campaignEvent of
             WorkerEvent _ _ (WorkerStopped _) -> do
               aliveAfter <- atomicModifyIORef' aliveRef (\n -> (n-1, n-1))

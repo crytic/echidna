@@ -81,7 +81,7 @@ main = withUtf8 $ withCP65001 $ do
     Nothing -> pure ()
     Just dir -> do
       measureIO cfg.solConf.quiet "Saving test reproducers" $
-        saveTxs (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> tests)
+        saveTxs env (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> tests)
 
       saveTracesEnabled <- lookupEnv "ECHIDNA_SAVE_TRACES"
       when (isJust saveTracesEnabled) $ do
@@ -98,7 +98,7 @@ main = withUtf8 $ withCP65001 $ do
 
       measureIO cfg.solConf.quiet "Saving corpus" $ do
         corpus <- readIORef env.corpusRef
-        saveTxs (dir </> "coverage") (snd <$> Set.toList corpus)
+        saveTxs env (dir </> "coverage") (snd <$> Set.toList corpus)
 
       -- TODO: We use the corpus dir to save coverage reports which is confusing.
       -- Add config option to pass dir for saving coverage report and decouple it
