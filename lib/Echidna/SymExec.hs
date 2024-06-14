@@ -229,7 +229,7 @@ substExpr (sw, sa, val) = mapExpr go where
   go TxValue = Lit val
   go e = e
 
--- | Fetcher used during concolic exeuction.
+-- | Fetcher used during concolic execution.
 -- This is the most important function for concolic execution;
 -- it determines what branch `interpret` should take.
 -- We ensure that this fetcher is always used by setting askSMTIter to 0.
