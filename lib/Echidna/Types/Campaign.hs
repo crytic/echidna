@@ -72,6 +72,7 @@ type WorkerId = Int
 data CampaignEvent
   = WorkerEvent WorkerId WorkerType WorkerEvent
   | Failure String
+  | ReproducerSaved String -- filename
 
 data WorkerEvent
   = TestFalsified !EchidnaTest
@@ -111,6 +112,7 @@ ppCampaignEvent :: CampaignEvent -> String
 ppCampaignEvent = \case
   WorkerEvent _ _ e -> ppWorkerEvent e
   Failure err -> err
+  ReproducerSaved f -> "Saved reproducer to " <> f
 
 ppWorkerEvent :: WorkerEvent -> String
 ppWorkerEvent = \case

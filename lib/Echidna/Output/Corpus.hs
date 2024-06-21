@@ -18,13 +18,13 @@ import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx (Tx)
 import Echidna.Utility (listDirectory, withCurrentDirectory)
 
-saveTxs :: FilePath -> [[Tx]] -> IO ()
-saveTxs dir = mapM_ saveTxSeq where
+saveTxs :: Env -> FilePath -> [[Tx]] -> IO ()
+saveTxs env dir = mapM_ saveTxSeq where
   saveTxSeq txSeq = do
     createDirectoryIfMissing True dir
     let file = dir </> (show . abs . hash . show) txSeq <.> "txt"
-    putStrLn ("Saving reproducer to " ++ file)
     unlessM (doesFileExist file) $ encodeFile file (toJSON txSeq)
+    pushCampaignEvent env (ReproducerSaved file)
 
 loadTxs :: FilePath -> IO [(FilePath, [Tx])]
 loadTxs dir = do
@@ -59,7 +59,7 @@ saveCorpusEvent env (_time, campaignEvent) = do
 
     saveFile dir (subdir, txs) =
       unless (null txs) $
-        handle exceptionHandler $ saveTxs (dir </> subdir) [txs]
+        handle exceptionHandler $ saveTxs env (dir </> subdir) [txs]
 
     exceptionHandler (e :: IOException) =
       pushCampaignEvent env (Failure $ "Problem while writing to file: " ++ show e)
