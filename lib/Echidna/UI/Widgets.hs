@@ -31,7 +31,7 @@ import Echidna.ABI
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Test
-import Echidna.Types.Tx (Tx(..), TxResult(..))
+import Echidna.Types.Tx (Tx(..))
 import Echidna.UI.Report
 import Echidna.Utility (timePrefix)
 
@@ -304,13 +304,13 @@ tsWidget
   => TestState
   -> EchidnaTest
   -> m (Widget Name, Widget Name)
-tsWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
-tsWidget Solved     t = failWidget Nothing t.reproducer (fromJust t.vm) t.value t.result
-tsWidget Passed     _ = pure (success $ str "PASSED!", emptyWidget)
-tsWidget Open       _ = pure (success $ str "passing", emptyWidget)
-tsWidget (Large n)  t = do
+tsWidget (Failed e) _    = pure (str "could not evaluate", str $ show e)
+tsWidget Solved     test = failWidget Nothing test
+tsWidget Passed     _    = pure (success $ str "PASSED!", emptyWidget)
+tsWidget Open       _    = pure (success $ str "passing", emptyWidget)
+tsWidget (Large n)  test = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
-  failWidget (if n < m then Just (n,m) else Nothing) t.reproducer (fromJust t.vm) t.value t.result
+  failWidget (if n < m then Just (n,m) else Nothing) test
 
 titleWidget :: Widget n
 titleWidget = str "Call sequence" <+> str ":"
@@ -329,25 +329,21 @@ tracesWidget vm = do
 failWidget
   :: MonadReader Env m
   => Maybe (Int, Int)
-  -> [Tx]
-  -> VM Concrete RealWorld
-  -> TestValue
-  -> TxResult
+  -> EchidnaTest
   -> m (Widget Name, Widget Name)
-failWidget _ [] _  _  _= pure (failureBadge, str "*no transactions made*")
-failWidget b xs vm _ r = do
-  s <- seqWidget vm xs
+failWidget _ test | null test.reproducer =
+  pure (failureBadge, str "*no transactions made*")
+failWidget b test = do
+  -- TODO: we know this is set for failed tests, ideally we should improve this
+  -- with better types in EchidnaTest
+  let vm = fromJust test.vm
+  s <- seqWidget vm test.reproducer
   traces <- tracesWidget vm
   pure
-    ( failureBadge <+> str (" with " ++ show r)
-    , status <=> titleWidget <=> s <=> str " " <=> traces
+    ( failureBadge <+> str (" with " ++ show test.result)
+    , shrinkWidget b test <=> titleWidget <=> s <=> str " " <=> traces
     )
   where
-  status = case b of
-    Nothing -> emptyWidget
-    Just (n,m) ->
-      str "Current action: " <+>
-        withAttr (attrName "working") (str ("shrinking " ++ progress n m))
 
 optWidget
   :: MonadReader Env m
@@ -360,31 +356,36 @@ optWidget Passed     t = pure (str $ "max value found: " ++ show t.value, emptyW
 optWidget Open       t =
   pure (withAttr (attrName "working") $ str $
     "optimizing, max value: " ++ show t.value, emptyWidget)
-optWidget (Large n)  t = do
+optWidget (Large n)  test = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
-  maxWidget (if n < m then Just (n,m) else Nothing) t.reproducer (fromJust t.vm) t.value
+  maxWidget (if n < m then Just (n,m) else Nothing) test
 
 maxWidget
   :: MonadReader Env m
   => Maybe (Int, Int)
-  -> [Tx]
-  -> VM Concrete RealWorld
-  -> TestValue
+  -> EchidnaTest
   -> m (Widget Name, Widget Name)
-maxWidget _ [] _  _ = pure (failureBadge, str "*no transactions made*")
-maxWidget b xs vm v = do
-  s <- seqWidget vm xs
+maxWidget _ test | null test.reproducer =
+  pure (failureBadge, str "*no transactions made*")
+maxWidget b test = do
+  let vm = fromJust test.vm
+  s <- seqWidget vm test.reproducer
   traces <- tracesWidget vm
   pure
-    ( maximumBadge <+> str (" max value: " ++ show v)
-    , status <=> titleWidget <=> s <=> str " " <=> traces
+    ( maximumBadge <+> str (" max value: " ++ show test.value)
+    , shrinkWidget b test <=> titleWidget <=> s <=> str " " <=> traces
     )
-  where
-  status = case b of
+
+shrinkWidget :: Maybe (Int, Int) -> EchidnaTest -> Widget Name
+shrinkWidget b test =
+  case b of
     Nothing -> emptyWidget
     Just (n,m) ->
       str "Current action: " <+>
-        withAttr (attrName "working") (str ("shrinking " ++ progress n m))
+      withAttr (attrName "working")
+               (str ("shrinking " ++ progress n m ++ showWorker))
+  where
+  showWorker = maybe "" (\i -> " (worker " <> show i <> ")") test.workerId
 
 seqWidget :: MonadReader Env m => VM Concrete RealWorld -> [Tx] -> m (Widget Name)
 seqWidget vm xs = do

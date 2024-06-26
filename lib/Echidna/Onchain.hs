@@ -10,7 +10,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as UTF8
 import Data.Functor ((<&>))
-import Data.IORef (writeIORef, readIORef)
+import Data.IORef (readIORef)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (isJust, fromJust, fromMaybe)
@@ -100,10 +100,14 @@ toFetchedContractData contract =
 
 -- | Try to load the persisted RPC cache.
 -- TODO: we use the corpus dir for now, think where to place it
-loadRpcCache :: Env -> IO ()
-loadRpcCache Env { cfg, fetchContractCache, fetchSlotCache } =
+loadRpcCache
+  :: EConfig
+  -> IO ( Map Addr (Maybe Contract)
+        , Map Addr (Map W256 (Maybe W256))
+        )
+loadRpcCache cfg =
   case cfg.campaignConf.corpusDir of
-    Nothing -> pure ()
+    Nothing -> pure (mempty, mempty)
     Just dir -> do
       let cache_dir = dir </> "cache"
       createDirectoryIfMissing True cache_dir
@@ -115,10 +119,12 @@ loadRpcCache Env { cfg, fetchContractCache, fetchSlotCache } =
           parsedSlots :: Maybe (Map Addr (Map W256 (Maybe W256))) <-
             readFileIfExists (cache_dir </> "block_" <> show block <> "_fetch_cache_slots.json")
             <&> (>>= JSON.decodeStrict)
-          writeIORef fetchContractCache (maybe mempty (Map.map (Just . fromFetchedContractData)) parsedContracts)
-          writeIORef fetchSlotCache (fromMaybe mempty parsedSlots)
+          pure
+            ( maybe mempty (Map.map (Just . fromFetchedContractData)) parsedContracts
+            , fromMaybe mempty parsedSlots
+            )
         Nothing ->
-          pure ()
+          pure (mempty, mempty)
 
 readFileIfExists :: FilePath -> IO (Maybe BS.ByteString)
 readFileIfExists path = do

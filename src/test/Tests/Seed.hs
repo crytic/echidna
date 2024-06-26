@@ -40,5 +40,5 @@ seedTests =
       & overrideQuiet
     gen s = do
       (env, _) <- runContract "basic/flags.sol" Nothing (cfg s) FuzzWorker
-      readIORef env.testsRef
+      traverse readIORef env.testRefs
     same s t = (\x y -> ((.reproducer) <$> x) == ((.reproducer) <$> y)) <$> gen s <*> gen t
