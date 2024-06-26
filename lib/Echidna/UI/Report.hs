@@ -59,7 +59,7 @@ ppCampaign vm workerStates = do
     , seedPrinted
     ]
 
--- | Given rules for pretty-printing associated address, and whether to print
+-- | Given rules for pretty-printing associated addresses, and whether to print
 -- them, pretty-print a 'Transaction'.
 ppTx :: MonadReader Env m => VM Concrete RealWorld -> Bool -> Tx -> m String
 ppTx _ _ Tx { call = NoCall, delay } =
