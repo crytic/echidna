@@ -137,6 +137,7 @@ runSymWorker callback vm dict workerId initialCorpus name cs = do
                 , newCoverage = False
                 , ncallseqs = 0
                 , ncalls = 0
+                , totalGas = 0
                 , runningThreads = []
                 }
 
@@ -213,6 +214,7 @@ runFuzzWorker callback vm world dict workerId initialCorpus testLimit = do
                   , newCoverage = False
                   , ncallseqs = 0
                   , ncalls = 0
+                  , totalGas = 0
                   , runningThreads = []
                   }
 
@@ -453,6 +455,7 @@ evalSeq vm0 execFunc = go vm0 [] where
       [] -> pure ([], vm)
       (tx:remainingTxs) -> do
         (result, vm') <- execFunc vm tx
+        modify' $ \workerState -> workerState { totalGas = workerState.totalGas + fromIntegral (vm'.burned - vm.burned) }
         -- NOTE: we don't use the intermediate VMs, just the last one. If any of
         -- the intermediate VMs are needed, they can be put next to the result
         -- of each transaction - `m ([(Tx, result, VM)])`

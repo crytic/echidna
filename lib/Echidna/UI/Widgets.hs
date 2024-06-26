@@ -173,6 +173,8 @@ summaryWidget env uiState =
       <=>
       perfWidget uiState
       <=>
+      gasPerfWidget uiState
+      <=>
       str ("Total calls: " <> progress (sum $ (.ncalls) <$> uiState.campaigns)
                                      env.cfg.campaignConf.testLimit)
   middle =
@@ -230,6 +232,18 @@ perfWidget uiState =
        else "-"
   where
   totalCalls = sum $ (.ncalls) <$> uiState.campaigns
+  totalTime = round $
+    diffLocalTime (fromMaybe uiState.now uiState.timeStopped)
+                  uiState.timeStarted
+
+gasPerfWidget :: UIState -> Widget n
+gasPerfWidget uiState =
+  str $ "Gas/s: " <>
+    if totalTime > 0
+       then show $ totalGas `div` totalTime
+       else "-"
+  where
+  totalGas = sum $ (.totalGas) <$> uiState.campaigns
   totalTime = round $
     diffLocalTime (fromMaybe uiState.now uiState.timeStopped)
                   uiState.timeStarted
