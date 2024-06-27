@@ -99,7 +99,7 @@ toFetchedContractData contract =
     }
 
 -- | Try to load the persisted RPC cache.
--- TODO: we use the corpus dir for now, think where to place it
+-- TODO: we use the corpus dir for now, think about where to place it
 loadRpcCache :: Env -> IO ()
 loadRpcCache Env { cfg, fetchContractCache, fetchSlotCache } =
   case cfg.campaignConf.corpusDir of

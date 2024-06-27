@@ -15,7 +15,7 @@ listMutators = fromList
 -- | Mutate a list-like data structure using a list of mutators
 mutateLL
   :: (LL.ListLike f i, MonadRandom m)
-  -- | Required size for the mutated list-like value (or Nothing if there are no constrains)
+  -- | Required size for the mutated list-like value (or Nothing if there are no constraints)
   => Maybe Int
   -- | Randomly generated list-like value to complement the mutated list, if it is
   -- shorter than the requested size

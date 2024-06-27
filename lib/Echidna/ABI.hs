@@ -211,7 +211,7 @@ addChars c b = foldM withR b . enumFromTo 0 =<< rand where
 addNulls :: MonadRandom m => ByteString -> m ByteString
 addNulls = addChars $ pure 0
 
--- | Given a \"list-y\" structure with analogues of 'take', 'drop', and 'length',
+-- | Given a \"list-y\" structure with analogs of 'take', 'drop', and 'length',
 -- remove some elements at random.
 shrinkWith
   :: MonadRandom m
