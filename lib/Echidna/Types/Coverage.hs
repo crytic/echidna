@@ -18,7 +18,7 @@ import Echidna.Types.Tx (TxResult)
 type CoverageMap = Map W256 (IOVector CoverageInfo)
 
 -- | Basic coverage information
-type CoverageInfo = (OpIx, StackDepths, TxResults)
+type CoverageInfo = (OpIx, StackDepths, TxResults, ExecQty)
 
 -- | Index per operation in the source code, obtained from the source mapping
 type OpIx = Int
@@ -29,6 +29,9 @@ type StackDepths = Word64
 -- | Packed TxResults used for coverage, corresponding bits are set
 type TxResults = Word64
 
+-- | Hit count
+type ExecQty = Word64
+
 -- | Given good point coverage, count the number of unique points but
 -- only considering the different instruction PCs (discarding the TxResult).
 -- This is useful to report a coverage measure to the user
@@ -37,7 +40,7 @@ scoveragePoints cm = do
   sum <$> mapM (V.foldl' countCovered 0) (Map.elems cm)
 
 countCovered :: Int -> CoverageInfo -> Int
-countCovered acc (opIx,_,_) = if opIx == -1 then acc else acc + 1
+countCovered acc (opIx,_,_,_) = if opIx == -1 then acc else acc + 1
 
 unpackTxResults :: TxResults -> [TxResult]
 unpackTxResults txResults =
