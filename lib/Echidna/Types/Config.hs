@@ -19,6 +19,7 @@ import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Solidity (SolConf)
 import Echidna.Types.Test (TestConf, EchidnaTest)
 import Echidna.Types.Tx (TxConf)
+import Echidna.Types.World (World)
 
 data OperationMode = Interactive | NonInteractive OutputFormat deriving (Show, Eq)
 data OutputFormat = Text | JSON | None deriving (Show, Eq)
@@ -68,7 +69,7 @@ data Env = Env
   -- minimal.
   , eventQueue :: Chan (LocalTime, CampaignEvent)
 
-  , testsRef :: IORef [EchidnaTest]
+  , testRefs :: [IORef EchidnaTest]
   , coverageRef :: IORef CoverageMap
   , corpusRef :: IORef Corpus
 
@@ -76,4 +77,5 @@ data Env = Env
   , fetchContractCache :: IORef (Map Addr (Maybe Contract))
   , fetchSlotCache :: IORef (Map Addr (Map W256 (Maybe W256)))
   , chainId :: Maybe W256
+  , world :: World
   }

@@ -29,7 +29,7 @@ import System.IO (hPutStrLn, stderr)
 import System.IO.CodePage (withCP65001)
 
 import EVM.Dapp (DappInfo(..))
-import EVM.Solidity (BuildOutput(..), Contracts(..))
+import EVM.Solidity (BuildOutput(..))
 import EVM.Types (Addr)
 
 import Echidna
@@ -59,20 +59,16 @@ main = withUtf8 $ withCP65001 $ do
     forM_ ks $ hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString
 
   buildOutput <- compileContracts cfg.solConf cliFilePath
-  env <- mkEnv cfg buildOutput
-
-  Onchain.loadRpcCache env
 
   -- take the seed from config, otherwise generate a new one
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
-  (vm, world, dict) <- prepareContract env cliFilePath cliSelectedContract seed
+  (vm, env, dict) <- prepareContract cfg cliFilePath buildOutput cliSelectedContract seed
 
-  initialCorpus <- loadInitialCorpus env world
-  let (Contracts contractMap) = buildOutput.contracts
+  initialCorpus <- loadInitialCorpus env
   -- start ui and run tests
-  _campaign <- runReaderT (ui vm world dict initialCorpus cliSelectedContract (Map.elems contractMap)) env
+  _campaign <- runReaderT (ui vm dict initialCorpus cliSelectedContract) env
 
-  tests <- readIORef env.testsRef
+  tests <- traverse readIORef env.testRefs
 
   Onchain.saveRpcCache env
 

@@ -3,13 +3,12 @@ module Tests.Compile (compilationTests) where
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool)
 
-import Common (testConfig)
+import Common (testConfig, loadSolTests)
 import Control.Monad (void)
 import Control.Monad.Catch (catch)
 import Data.Text (Text)
 
-import Echidna (mkEnv)
-import Echidna.Solidity (compileContracts, loadSolTests)
+import Echidna.Solidity (compileContracts)
 import Echidna.Types.Solidity (SolException(..))
 import Echidna.Types.Config (EConfig(..))
 
@@ -42,5 +41,4 @@ loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
   tryLoad = do
     let cfg = testConfig
     buildOutput <- compileContracts cfg.solConf (pure fp)
-    env <- mkEnv cfg buildOutput
-    void $ loadSolTests env c
+    void $ loadSolTests cfg buildOutput c

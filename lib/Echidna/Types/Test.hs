@@ -102,6 +102,8 @@ data EchidnaTest = EchidnaTest
   , reproducer :: [Tx]
   , result     :: TxResult
   , vm         :: Maybe (VM Concrete RealWorld)
+  -- | Worker which falsified the test will also shrink it.
+  , workerId   :: Maybe Int
   } deriving (Show)
 
 instance ToJSON EchidnaTest where

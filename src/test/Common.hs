@@ -18,6 +18,7 @@ module Common
   , gasInRange
   , countCorpus
   , overrideQuiet
+  , loadSolTests
   ) where
 
 import Test.Tasty (TestTree)
@@ -26,6 +27,7 @@ import Test.Tasty.HUnit (testCase, assertBool)
 import Control.Monad (forM_)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
+import Control.Monad.ST (RealWorld)
 import Data.DoubleWord (Int256)
 import Data.Function ((&))
 import Data.IORef
@@ -40,7 +42,7 @@ import System.Process (readProcess)
 import Echidna (mkEnv, prepareContract)
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Campaign (runWorker)
-import Echidna.Solidity (loadSolTests, compileContracts)
+import Echidna.Solidity (selectMainContract, mkTests, loadSpecified, compileContracts)
 import Echidna.Test (checkETest)
 import Echidna.Types (Gas)
 import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
@@ -49,8 +51,10 @@ import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
+import Echidna.Types.World (World(..))
 
-import EVM.Solidity (Contracts(..), BuildOutput(..))
+import EVM.Solidity (Contracts(..), BuildOutput(..), SolcContract(..))
+import EVM.Types hiding (Env, Gas)
 
 testConfig :: EConfig
 testConfig = defaultConfig & overrideQuiet
@@ -89,14 +93,11 @@ runContract :: FilePath -> Maybe ContractName -> EConfig -> WorkerType -> IO (En
 runContract f selectedContract cfg workerType = do
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
   buildOutput <- compileContracts cfg.solConf (f :| [])
-  env <- mkEnv cfg buildOutput
 
-  (vm, world, dict) <- prepareContract env (f :| []) selectedContract seed
-
-  let (Contracts contractMap) = buildOutput.contracts
+  (vm, env, dict) <- prepareContract cfg (f :| []) buildOutput selectedContract seed
 
   (_stopReason, finalState) <- flip runReaderT env $
-    runWorker workerType (pure ()) vm world dict 0 [] cfg.campaignConf.testLimit selectedContract (Map.elems contractMap)
+    runWorker workerType (pure ()) vm dict 0 [] cfg.campaignConf.testLimit selectedContract
 
   -- TODO: consider snapshotting the state so checking function don't need to
   -- be IO
@@ -138,12 +139,33 @@ testContract' fp n v configPath s workerType expectations = testCase fp $ withSo
   forM_ expectations $ \(message, assertion) -> do
     assertion result >>= assertBool message
 
+-- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
+-- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
+-- the first contract in the file. Take said contract and return an initial VM state with it loaded,
+-- its ABI (as 'SolSignature's), and the names of its Echidna tests. NOTE: unlike 'loadSpecified',
+-- contract names passed here don't need the file they occur in specified.
+loadSolTests
+  :: EConfig
+  -> BuildOutput
+  -> Maybe Text
+  -> IO (VM Concrete RealWorld, Env, [EchidnaTest])
+loadSolTests cfg buildOutput name = do
+  let solConf = cfg.solConf
+      (Contracts contractMap) = buildOutput.contracts
+      contracts = Map.elems contractMap
+      eventMap = Map.unions $ map (.eventMap) contracts
+      world = World solConf.sender mempty Nothing [] eventMap
+  mainContract <- selectMainContract solConf name contracts
+  echidnaTests <- mkTests solConf mainContract
+  env <- mkEnv cfg buildOutput echidnaTests world
+  vm <- loadSpecified env mainContract contracts
+  pure (vm, env, echidnaTests)
+
 checkConstructorConditions :: FilePath -> String -> TestTree
 checkConstructorConditions fp as = testCase fp $ do
   let cfg = testConfig
   buildOutput <- compileContracts cfg.solConf (pure fp)
-  env <- mkEnv cfg buildOutput
-  (v, _, t) <- loadSolTests env Nothing
+  (v, env, t) <- loadSolTests cfg buildOutput Nothing
   r <- flip runReaderT env $ mapM (`checkETest` v) t
   mapM_ (\(x,_) -> assertBool as (forceBool x)) r
   where forceBool (BoolValue b) = b
@@ -165,7 +187,7 @@ getResult n tests =
 
 optnFor :: Text -> (Env, WorkerState) -> IO (Maybe TestValue)
 optnFor n (env, _) = do
-  tests <- readIORef env.testsRef
+  tests <- traverse readIORef env.testRefs
   pure $ case getResult n tests of
     Just t -> Just t.value
     _      -> Nothing
@@ -180,7 +202,7 @@ optimized n v final = do
 
 solnFor :: Text -> (Env, WorkerState) -> IO (Maybe [Tx])
 solnFor n (env, _) = do
-  tests <- readIORef env.testsRef
+  tests <- traverse readIORef env.testRefs
   pure $ case getResult n tests of
     Just t -> if null t.reproducer then Nothing else Just t.reproducer
     _      -> Nothing
@@ -190,7 +212,7 @@ solved t f = isJust <$> solnFor t f
 
 passed :: Text -> (Env, WorkerState) -> IO Bool
 passed n (env, _) = do
-  tests <- readIORef env.testsRef
+  tests <- traverse readIORef env.testRefs
   pure $ case getResult n tests of
     Just t | isPassed t -> True
     Just t | isOpen t   -> True
