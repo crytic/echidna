@@ -51,7 +51,7 @@ data CampaignConf = CampaignConf
     -- Only relevant if symExec is True
   , symExecTargets     :: Maybe [Text]
   , symExecTimeout     :: Int
-    -- ^ Timeout for symbolic execution SMT solver.
+    -- ^ Timeout for symbolic execution SMT solver queries.
     -- Only relevant if symExec is True
   , symExecNSolvers    :: Int
     -- ^ Number of SMT solvers used in symbolic execution.

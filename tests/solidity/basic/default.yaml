@@ -101,7 +101,7 @@ symExecConcolic: true
 # number of SMT solvers used in symbolic execution
 # only relevant if symExec is true
 symExecNSolvers: 1
-# timeout for symbolic execution SMT solver
+# timeout for symbolic execution SMT solver queries
 # only relevant if symExec is true
 symExecTimeout: 30
 # Number of times we may revisit a particular branching point
