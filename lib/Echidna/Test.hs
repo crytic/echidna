@@ -24,7 +24,6 @@ import Echidna.Symbolic (forceBuf)
 import Echidna.Types.Config
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Test
-import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (Tx, TxConf(..), basicTx, TxResult(..), getResult)
 
 --- | Possible responses to a call to an Echidna test: @true@, @false@, @REVERT@, and ???.
@@ -47,7 +46,7 @@ getResultFromVM vm =
     Nothing -> error "getResultFromVM failed"
 
 createTest :: TestType -> EchidnaTest
-createTest m = EchidnaTest Open m v [] Stop Nothing
+createTest m = EchidnaTest Open m v [] Stop Nothing Nothing
   where v = case m of
               PropertyTest _ _     -> BoolValue True
               OptimizationTest _ _ -> IntValue minBound
@@ -111,6 +110,7 @@ createTests m td ts r ss = case m of
   sdt = createTest (CallTest "Target contract is not self-destructed" $ checkSelfDestructedTarget r)
   sdat = createTest (CallTest "No contract can be self-destructed" checkAnySelfDestructed)
 
+  {-
 updateOpenTest
   :: EchidnaTest
   -> [Tx]
@@ -133,6 +133,7 @@ updateOpenTest test txs (IntValue v', vm, r) =
           IntValue x -> x
           _          -> error "Invalid type of value for optimization"
 updateOpenTest _ _ _ = error "Invalid type of test"
+-}
 
 -- | Given a 'SolTest', evaluate it and see if it currently passes.
 checkETest
