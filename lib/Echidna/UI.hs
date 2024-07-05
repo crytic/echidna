@@ -99,7 +99,7 @@ ui vm world dict initialCorpus cliSelectedContract cs = do
     Interactive -> do
       -- Channel to push events to update UI
       uiChannel <- liftIO $ newBChan 1000
-      let forwardEvent = writeBChan uiChannel . EventReceived
+      let forwardEvent = void . writeBChanNonBlocking uiChannel . EventReceived
       uiEventsForwarderStopVar <- spawnListener forwardEvent
 
       ticker <- liftIO . forkIO . forever $ do
