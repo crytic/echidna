@@ -1,4 +1,8 @@
+{-#LANGUAGE TemplateHaskell #-}
+
 module Echidna.Server where
+
+import Echidna.CatchMVar
 
 import Control.Concurrent
 import Control.Monad (when, void)
@@ -45,7 +49,7 @@ runSSEServer serverStopVar env port nworkers = do
         if aliveNow == 0 then
           pure CloseEvent
         else do
-          event@(_, campaignEvent) <- readChan sseChan
+          event@(_, campaignEvent) <- $readChan_ sseChan
           let eventName = \case
                 WorkerEvent _ _ workerEvent ->
                   case workerEvent of
@@ -61,7 +65,7 @@ runSSEServer serverStopVar env port nworkers = do
           case campaignEvent of
             WorkerEvent _ _ (WorkerStopped _) -> do
               aliveAfter <- atomicModifyIORef' aliveRef (\n -> (n-1, n-1))
-              when (aliveAfter == 0) $ putMVar serverStopVar ()
+              when (aliveAfter == 0) $ $putMVar_ serverStopVar ()
             _ -> pure ()
           pure $ ServerEvent
             { eventName = Just (eventName campaignEvent)

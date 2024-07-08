@@ -1,6 +1,9 @@
 {-# OPTIONS_GHC -Wno-gadt-mono-local-binds #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Echidna.SymExec (createSymTx) where
+
+import Echidna.CatchMVar
 
 import Control.Applicative ((<|>))
 import Control.Concurrent.Async (mapConcurrently)
@@ -99,12 +102,12 @@ exploreContract conf contract tx vm = do
         exprInter <- interpret fetcher maxIters askSmtIters Naive vm' runExpr
         models <- liftIO $ mapConcurrently (checkSat solvers) $ manipulateExprInter isConc exprInter
         pure $ mapMaybe (modelToTx dst method conf.solConf.sender defaultSender) models
-      liftIO $ putMVar resultChan $ concat res
-      liftIO $ putMVar doneChan ()
-    liftIO $ putMVar threadIdChan threadId
-    liftIO $ takeMVar doneChan
+      liftIO $ $putMVar_ resultChan $ concat res
+      liftIO $ $putMVar_ doneChan ()
+    liftIO $ $putMVar_ threadIdChan threadId
+    liftIO $ $takeMVar_ doneChan
 
-  threadId <- takeMVar threadIdChan
+  threadId <- $takeMVar_ threadIdChan
   pure (threadId, resultChan)
 
 -- | Turn the expression returned by `interpret` into into SMT2 values to feed into the solver

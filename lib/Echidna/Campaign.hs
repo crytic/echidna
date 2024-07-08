@@ -1,7 +1,10 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Echidna.Campaign where
+
+import Echidna.CatchMVar
 
 import Control.Concurrent
 import Control.DeepSeq (force)
@@ -178,7 +181,7 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
 
-    symTxs <- liftIO $ takeMVar symTxsChan
+    symTxs <- liftIO $ $takeMVar_ symTxsChan
 
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
@@ -558,7 +561,7 @@ pushWorkerEvent event = do
 pushCampaignEvent :: Env -> CampaignEvent -> IO ()
 pushCampaignEvent env event = do
   time <- liftIO getTimestamp
-  writeChan env.eventQueue (time, event)
+  $writeChan_ env.eventQueue (time, event)
 
 -- | Listener reads events and runs the given 'handler' function. It exits after
 -- receiving all 'WorkerStopped' events and sets the returned 'MVar' so the
@@ -579,7 +582,7 @@ spawnListener handler = do
   eventQueue <- asks (.eventQueue)
   chan <- liftIO $ dupChan eventQueue
   stopVar <- liftIO newEmptyMVar
-  liftIO $ void $ forkFinally (listenerLoop handler chan nworkers) (const $ putMVar stopVar ())
+  liftIO $ void $ forkFinally (listenerLoop handler chan nworkers) (const $ $putMVar_ stopVar ())
   pure stopVar
 
 -- | Repeatedly run 'handler' on events from 'chan'.
@@ -595,7 +598,7 @@ listenerLoop
   -> m ()
 listenerLoop handler chan !workersAlive =
   when (workersAlive > 0) $ do
-    event <- liftIO $ readChan chan
+    event <- liftIO $ $readChan_ chan
     handler event
     case event of
       (_, WorkerEvent _ _ (WorkerStopped _)) -> listenerLoop handler chan (workersAlive - 1)

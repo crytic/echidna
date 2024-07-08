@@ -44,6 +44,7 @@ dependencies:
   - rosezipper
   - semver
   - split
+  - template-haskell
   - text
   - transformers
   - time
