@@ -199,8 +199,8 @@ srcMapCov sc covMap statMap contracts = do
                   updateLine (Just (r, q)) = Just ((<> unpackTxResults txResults) r, max q execQty)
                   updateLine Nothing = Just (unpackTxResults txResults, execQty)
                   fileStats = Map.lookup c.runtimeCodehash statMap
-                  idxStats | isJust fileStats = (fromJust fileStats) U.! opIx :: StatsInfo
-                           | otherwise = (fromInteger 0, fromInteger 0) :: StatsInfo
+                  idxStats | isJust fileStats = (fromJust fileStats) U.! opIx
+                           | otherwise        = (fromInteger 0, fromInteger 0)
                   execQty = fst idxStats
                 Nothing -> acc
             Nothing -> acc
