@@ -18,6 +18,7 @@ import Data.IORef (readIORef, atomicWriteIORef, newIORef, writeIORef, modifyIORe
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
+import Data.TLS.GHC (getTLS)
 import Data.Vector qualified as V
 import Data.Vector.Unboxed.Mutable qualified as VMut
 import System.Process (readProcessWithExitCode)
@@ -296,6 +297,16 @@ execTxWithCov tx = do
             forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0, 0)
             pure $ Just vec
 
+        statsRef <- getTLS env.statsRef
+        maybeStatsVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp statsRef $ do
+          let size = BS.length . forceBuf . fromJust . view bytecode $ contract
+          if size == 0 then pure Nothing else do
+            -- IO for making a new vec
+            vec <- VMut.new size
+            -- We use -1 for opIx to indicate that the location was not covered
+            forM_ [0..size-1] $ \i -> VMut.write vec i (0, 0)
+            pure $ Just vec
+        
         case maybeCovVec of
           Nothing -> pure ()
           Just vec -> do
@@ -308,6 +319,7 @@ execTxWithCov tx = do
               VMut.read vec pc >>= \case
                 (_, depths, results, execQty) | depth < 64 && not (depths `testBit` depth) -> do
                   VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop, execQty + 1)
+                  VMut.modify (fromJust maybeStatsVec) (\(execQty, revertQty) -> (execQty + 1, revertQty)) pc
                   writeIORef covContextRef (True, Just (vec, pc))
                 (opIx', depths, results, execQty) -> do
                   VMut.write vec pc (opIx', depths, results, execQty + 1)

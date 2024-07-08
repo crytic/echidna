@@ -6,9 +6,9 @@ import Prelude hiding (writeFile)
 
 import Data.ByteString qualified as BS
 import Data.Foldable
-import Data.IORef (readIORef)
+import Data.IORef (readIORef, IORef)
 import Data.List (nub, sort)
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe, isJust, fromJust)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Sequence qualified as Seq
@@ -17,7 +17,9 @@ import Data.Text (Text, pack)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
+import Data.TLS.GHC (allTLS, TLS)
 import Data.Vector qualified as V
+import qualified Data.Vector.Unboxed as U
 import Data.Vector.Unboxed.Mutable qualified as VU
 import HTMLEntities.Text qualified as HTML
 import System.Directory (createDirectoryIfMissing)
@@ -29,8 +31,26 @@ import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
 
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
-import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..), ExecQty)
+import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..), ExecQty, StatsMap, StatsMapV, StatsInfo)
 import Echidna.Types.Tx (TxResult(..))
+import EVM.Types (W256)
+
+zipSumStats :: IO [StatsInfo] -> IO [StatsInfo] -> IO [StatsInfo]
+zipSumStats v1 v2 = do
+  vec1 <- v1
+  vec2 <- v2
+  return $ zipWith (\a b -> (fst a + fst b, snd a + snd b)) vec1 vec2
+
+mvToList :: (VU.Unbox a) => VU.IOVector a -> IO [a]
+mvToList = fmap U.toList . U.freeze
+
+combineStats :: TLS (IORef StatsMap) -> IO StatsMapV
+combineStats statsRef = do
+  threadStats' <- allTLS statsRef
+  threadStats <-  sequence $ map readIORef threadStats' :: IO [StatsMap]
+  statsLists <- pure $ map (\(m :: StatsMap) -> Map.map (\(x :: VU.IOVector StatsInfo) -> mvToList x) m) threadStats :: IO [Map EVM.Types.W256 (IO [StatsInfo])]
+  stats <- traverse (\x -> x >>= U.thaw . U.fromList >>= U.freeze) $ ((Map.unionsWith) (\(x :: IO [StatsInfo]) (y :: IO [StatsInfo]) -> zipSumStats x y) statsLists)
+  return stats
 
 saveCoverages
   :: Env
@@ -42,7 +62,8 @@ saveCoverages
 saveCoverages env seed d sc cs = do
   let fileTypes = env.cfg.campaignConf.coverageFormats
   coverage <- readIORef env.coverageRef
-  mapM_ (\ty -> saveCoverage ty seed d sc cs coverage) fileTypes
+  stats <- combineStats env.statsRef
+  mapM_ (\ty -> saveCoverage ty seed d sc cs coverage stats) fileTypes
 
 saveCoverage
   :: CoverageFileType
@@ -51,11 +72,12 @@ saveCoverage
   -> SourceCache
   -> [SolcContract]
   -> CoverageMap
+  -> StatsMapV
   -> IO ()
-saveCoverage fileType seed d sc cs covMap = do
+saveCoverage fileType seed d sc cs covMap statMap = do
   let extension = coverageFileExtension fileType
       fn = d </> "covered." <> show seed <> extension
-  cc <- ppCoveredCode fileType sc cs covMap
+  cc <- ppCoveredCode fileType sc cs covMap statMap
   createDirectoryIfMissing True d
   writeFile fn cc
 
@@ -65,11 +87,11 @@ coverageFileExtension Html = ".html"
 coverageFileExtension Txt = ".txt"
 
 -- | Pretty-print the covered code
-ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> CoverageMap -> IO Text
-ppCoveredCode fileType sc cs s | null s = pure "Coverage map is empty"
+ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> CoverageMap -> StatsMapV -> IO Text
+ppCoveredCode fileType sc cs s sm | null s = pure "Coverage map is empty"
   | otherwise = do
   -- List of covered lines during the fuzzing campaign
-  covLines <- srcMapCov sc s cs
+  covLines <- srcMapCov sc s sm cs
   let
     -- Collect all the possible lines from all the files
     allFiles = (\(path, src) -> (path, V.fromList (decodeUtf8 <$> BS.split 0xa src))) <$> Map.elems sc.files
@@ -151,8 +173,8 @@ getMarker ErrorOutOfGas = 'o'
 getMarker _             = 'e'
 
 -- | Given a source cache, a coverage map, a contract returns a list of covered lines
-srcMapCov :: SourceCache -> CoverageMap -> [SolcContract] -> IO (Map FilePath (Map Int ([TxResult], ExecQty)))
-srcMapCov sc covMap contracts = do
+srcMapCov :: SourceCache -> CoverageMap -> StatsMapV -> [SolcContract] -> IO (Map FilePath (Map Int ([TxResult], ExecQty)))
+srcMapCov sc covMap statMap contracts = do
   Map.unionsWith Map.union <$> mapM linesCovered contracts
   where
   linesCovered :: SolcContract -> IO (Map FilePath (Map Int ([TxResult], ExecQty)))
@@ -160,7 +182,7 @@ srcMapCov sc covMap contracts = do
     case Map.lookup c.runtimeCodehash covMap of
       Just vec -> VU.foldl' (\acc covInfo -> case covInfo of
         (-1, _, _, _) -> acc -- not covered
-        (opIx, _stackDepths, txResults, execQty) ->
+        (opIx, _stackDepths, txResults, _) ->
           case srcMapForOpLocation c opIx of
             Just srcMap ->
               case srcMapCodePos sc srcMap of
@@ -176,6 +198,10 @@ srcMapCov sc covMap contracts = do
                       line
                   updateLine (Just (r, q)) = Just ((<> unpackTxResults txResults) r, max q execQty)
                   updateLine Nothing = Just (unpackTxResults txResults, execQty)
+                  fileStats = Map.lookup c.runtimeCodehash statMap
+                  idxStats | isJust fileStats = (fromJust fileStats) U.! opIx :: StatsInfo
+                           | otherwise = (fromInteger 0, fromInteger 0) :: StatsInfo
+                  execQty = fst idxStats
                 Nothing -> acc
             Nothing -> acc
         ) mempty vec
