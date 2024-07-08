@@ -97,124 +97,153 @@ execTxWith executeTx tx = do
         gasLeftBeforeTx <- gets (.state.gas)
         vmResult <- runFully
         gasLeftAfterTx <- gets (.state.gas)
-        handleErrorsAndConstruction vmResult vmBeforeTx
+        handleErrors vmResult vmBeforeTx
+        when isCreate $ handleConstruction vmResult tx.dst
         pure (vmResult, gasLeftBeforeTx - gasLeftAfterTx)
   where
+  isCreate = case tx.call of
+    (SolCreate _) -> True
+    _ -> False
+
   runFully = do
-    config <- asks (.cfg)
-    -- TODO: Is the latest block a good default? It makes fuzzing hard to reproduce. Rethink this.
-    let rpcBlock = maybe EVM.Fetch.Latest (EVM.Fetch.BlockNumber . fromIntegral) config.rpcBlock
-
     vmResult <- executeTx
-    -- For queries, we halt execution because the VM needs some additional
-    -- information from the outside. We provide this information and resume
-    -- the execution by recursively calling `runFully`.
-    case getQuery vmResult of
-      -- A previously unknown contract is required
-      Just q@(PleaseFetchContract addr _ continuation) -> do
-        cacheRef <- asks (.fetchContractCache)
-        cache <- liftIO $ readIORef cacheRef
-        case Map.lookup addr cache of
-          Just (Just contract) -> fromEVM (continuation contract)
-          Just Nothing -> do
-            v <- get
-            v' <- liftIO $ stToIO $ execStateT (continuation emptyAccount) v
-            put v'
-          Nothing -> do
-            logMsg $ "INFO: Performing RPC: " <> show q
-            case config.rpcUrl of
-              Just rpcUrl -> do
-                ret <- liftIO $ safeFetchContractFrom rpcBlock rpcUrl addr
-                case ret of
-                  -- TODO: fix hevm to not return an empty contract in case of an error
-                  Just contract | contract.code /= RuntimeCode (ConcreteRuntimeCode "") -> do
-                    fromEVM (continuation contract)
-                    liftIO $ atomicWriteIORef cacheRef $ Map.insert addr (Just contract) cache
-                  _ -> do
-                    -- TODO: better error reporting in HEVM, when intermmittent
-                    -- network error then retry
-                    liftIO $ atomicWriteIORef cacheRef $ Map.insert addr Nothing cache
-                    logMsg $ "ERROR: Failed to fetch contract: " <> show q
-                    -- TODO: How should we fail here? It could be a network error,
-                    -- RPC server returning junk etc.
-                    fromEVM (continuation emptyAccount)
-              Nothing -> do
-                liftIO $ atomicWriteIORef cacheRef $ Map.insert addr Nothing cache
-                logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
-                -- TODO: How should we fail here? RPC is not configured but VM
-                -- wants to fetch
-                fromEVM (continuation emptyAccount)
-        runFully -- resume execution
+    maybe (pure vmResult) (\q -> handleQuery q >> runFully) (getQuery vmResult)
 
-      -- A previously unknown slot is required
-      Just q@(PleaseFetchSlot addr slot continuation) -> do
-        cacheRef <- asks (.fetchSlotCache)
-        cache <- liftIO $ readIORef cacheRef
-        case Map.lookup addr cache >>= Map.lookup slot of
-          Just (Just value) -> fromEVM (continuation value)
-          Just Nothing -> fromEVM (continuation 0)
-          Nothing -> do
-            logMsg $ "INFO: Performing RPC: " <> show q
-            case config.rpcUrl of
-              Just rpcUrl -> do
-                ret <- liftIO $ safeFetchSlotFrom rpcBlock rpcUrl addr slot
-                case ret of
-                  Just value -> do
-                    fromEVM (continuation value)
-                    liftIO $ atomicWriteIORef cacheRef $
-                      Map.insertWith Map.union addr (Map.singleton slot (Just value)) cache
-                  Nothing -> do
-                    -- TODO: How should we fail here? It could be a network error,
-                    -- RPC server returning junk etc.
-                    logMsg $ "ERROR: Failed to fetch slot: " <> show q
-                    liftIO $ atomicWriteIORef cacheRef $
-                      Map.insertWith Map.union addr (Map.singleton slot Nothing) cache
-                    fromEVM (continuation 0)
-              Nothing -> do
-                logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
-                -- Use the zero slot
-                fromEVM (continuation 0)
-        runFully -- resume execution
+getRpcInfo
+  :: (MonadReader Env m)
+  => m (Maybe T.Text, EVM.Fetch.BlockNumber)
+getRpcInfo = do
+  config <- asks (.cfg)
+  -- TODO: Is the latest block a good default? It makes fuzzing hard to reproduce. Rethink this.
+  let rpcBlock = maybe EVM.Fetch.Latest (EVM.Fetch.BlockNumber . fromIntegral) config.rpcBlock
+  return (config.rpcUrl, rpcBlock)
 
-      -- Execute a FFI call
-      Just (PleaseDoFFI (cmd : args) continuation) -> do
-        (_, stdout, _) <- liftIO $ readProcessWithExitCode cmd args ""
-        let encodedResponse = encodeAbiValue $
-              AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.pack $ stdout])
-        fromEVM (continuation encodedResponse)
-        runFully
+handleQuery
+  :: (MonadIO m, MonadState (VM Concrete RealWorld) m, MonadReader Env m, MonadThrow m)
+  => Query Concrete RealWorld
+  -> m ()
 
-      -- No queries to answer, the tx is fully executed and the result is final
-      _ -> pure vmResult
+-- For queries, we halt execution because the VM needs some additional
+-- information from the outside. We provide this information and resume
+-- the execution by recursively calling `runFully`.
+handleQuery q@(PleaseFetchContract addr _ continuation) = do
+  -- A previously unknown contract is required
+  cacheRef <- asks (.fetchContractCache)
+  cache <- liftIO $ readIORef cacheRef
+  case Map.lookup addr cache of
+    Just (Just contract) -> fromEVM (continuation contract)
+    Just Nothing -> do
+      v <- get
+      v' <- liftIO $ stToIO $ execStateT (continuation emptyAccount) v
+      put v'
+    Nothing -> do
+      logMsg $ "INFO: Performing RPC: " <> show q
+      (maybeRpcUrl, rpcBlock) <- getRpcInfo
+      case maybeRpcUrl of
+        Just rpcUrl -> do
+          ret <- liftIO $ safeFetchContractFrom rpcBlock rpcUrl addr
+          case ret of
+            -- TODO: fix hevm to not return an empty contract in case of an error
+            Just contract | contract.code /= RuntimeCode (ConcreteRuntimeCode "") -> do
+              fromEVM (continuation contract)
+              liftIO $ atomicWriteIORef cacheRef $ Map.insert addr (Just contract) cache
+            _ -> do
+              -- TODO: better error reporting in HEVM, when intermmittent
+              -- network error then retry
+              liftIO $ atomicWriteIORef cacheRef $ Map.insert addr Nothing cache
+              logMsg $ "ERROR: Failed to fetch contract: " <> show q
+              -- TODO: How should we fail here? It could be a network error,
+              -- RPC server returning junk etc.
+              fromEVM (continuation emptyAccount)
+        Nothing -> do
+          liftIO $ atomicWriteIORef cacheRef $ Map.insert addr Nothing cache
+          logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
+          -- TODO: How should we fail here? RPC is not configured but VM
+          -- wants to fetch
+          fromEVM (continuation emptyAccount)
 
-  -- | Handles reverts, failures and contract creations that might be the result
-  -- (`vmResult`) of executing transaction `tx`.
-  handleErrorsAndConstruction vmResult vmBeforeTx = case (vmResult, tx.call) of
-    (Reversion, _) -> do
-      tracesBeforeVMReset <- gets (.traces)
-      codeContractBeforeVMReset <- gets (.state.codeContract)
-      calldataBeforeVMReset <- gets (.state.calldata)
-      callvalueBeforeVMReset <- gets (.state.callvalue)
-      -- If a transaction reverts reset VM to state before the transaction.
-      put vmBeforeTx
-      -- Undo reset of some of the VM state.
-      -- Otherwise we'd loose all information about the reverted transaction like
-      -- contract address, calldata, result and traces.
-      #result ?= vmResult
-      #state % #calldata .= calldataBeforeVMReset
-      #state % #callvalue .= callvalueBeforeVMReset
-      #traces .= tracesBeforeVMReset
-      #state % #codeContract .= codeContractBeforeVMReset
-    (VMFailure x, _) -> do
-      dapp <- asks (.dapp)
-      vm <- get
-      vmExcept (Just (dapp, vm)) x
-    (VMSuccess (ConcreteBuf bytecode'), SolCreate _) -> do
-      -- Handle contract creation.
-      #env % #contracts % at (LitAddr tx.dst) % _Just % #code .= InitCode mempty mempty
-      fromEVM $ replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bytecode'))
-      modify' $ execState $ loadContract (LitAddr tx.dst)
-    _ -> pure ()
+-- A previously unknown slot is required
+handleQuery q@(PleaseFetchSlot addr slot continuation) = do
+  cacheRef <- asks (.fetchSlotCache)
+  cache <- liftIO $ readIORef cacheRef
+  case Map.lookup addr cache >>= Map.lookup slot of
+    Just (Just value) -> fromEVM (continuation value)
+    Just Nothing -> fromEVM (continuation 0)
+    Nothing -> do
+      logMsg $ "INFO: Performing RPC: " <> show q
+      (maybeRpcUrl, rpcBlock) <- getRpcInfo
+      case maybeRpcUrl of
+        Just rpcUrl -> do
+          ret <- liftIO $ safeFetchSlotFrom rpcBlock rpcUrl addr slot
+          case ret of
+            Just value -> do
+              fromEVM (continuation value)
+              liftIO $ atomicWriteIORef cacheRef $
+                Map.insertWith Map.union addr (Map.singleton slot (Just value)) cache
+            Nothing -> do
+              -- TODO: How should we fail here? It could be a network error,
+              -- RPC server returning junk etc.
+              logMsg $ "ERROR: Failed to fetch slot: " <> show q
+              liftIO $ atomicWriteIORef cacheRef $
+                Map.insertWith Map.union addr (Map.singleton slot Nothing) cache
+              fromEVM (continuation 0)
+        Nothing -> do
+          logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
+          -- Use the zero slot
+          fromEVM (continuation 0)
+
+-- Execute a FFI call
+handleQuery (PleaseDoFFI (cmd : args) continuation) = do
+  (_, stdout, _) <- liftIO $ readProcessWithExitCode cmd args ""
+  let encodedResponse = encodeAbiValue $
+        AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.pack $ stdout])
+  fromEVM (continuation encodedResponse)
+
+handleQuery (PleaseDoFFI [] _) = error "Malformed FFI call"
+
+handleErrors
+  :: (MonadIO m, MonadState (VM Concrete RealWorld) m, MonadReader Env m, MonadThrow m)
+  => VMResult Concrete RealWorld
+  -> VM Concrete RealWorld
+  -> m ()
+
+-- | Handles reverts, failures and contract creations that might be the result
+-- (`vmResult`) of executing transaction `tx`.
+handleErrors vmResult@Reversion vmBeforeTx = do
+  tracesBeforeVMReset <- gets (.traces)
+  codeContractBeforeVMReset <- gets (.state.codeContract)
+  calldataBeforeVMReset <- gets (.state.calldata)
+  callvalueBeforeVMReset <- gets (.state.callvalue)
+  -- If a transaction reverts reset VM to state before the transaction.
+  put vmBeforeTx
+  -- Undo reset of some of the VM state.
+  -- Otherwise we'd loose all information about the reverted transaction like
+  -- contract address, calldata, result and traces.
+  #result ?= vmResult
+  #state % #calldata .= calldataBeforeVMReset
+  #state % #callvalue .= callvalueBeforeVMReset
+  #traces .= tracesBeforeVMReset
+  #state % #codeContract .= codeContractBeforeVMReset
+handleErrors (VMFailure x) _ = do
+  dapp <- asks (.dapp)
+  vm <- get
+  vmExcept (Just (dapp, vm)) x
+handleErrors _ _ = pure ()
+
+handleConstruction
+  :: (MonadIO m, MonadState (VM Concrete RealWorld) m, MonadReader Env m, MonadThrow m)
+  => VMResult Concrete s
+  -> Addr
+  -> m ()
+
+-- | Handles reverts, failures and contract creations that might be the result
+-- (`vmResult`) of executing transaction `tx`.
+handleConstruction (VMSuccess (ConcreteBuf bytecode')) dst = do
+  -- Handle contract creation.
+  #env % #contracts % at (LitAddr dst) % _Just % #code .= InitCode mempty mempty
+  fromEVM $ replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bytecode'))
+  modify' $ execState $ loadContract (LitAddr dst)
+handleConstruction _ _ = pure ()
 
 logMsg :: (MonadIO m, MonadReader Env m) => String -> m ()
 logMsg msg = do
