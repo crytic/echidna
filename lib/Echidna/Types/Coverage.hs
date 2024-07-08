@@ -27,7 +27,7 @@ type StatsMap = Map W256 (IOVector StatsInfo)
 type StatsMapV = Map W256 (Vector StatsInfo)
 
 -- | Basic coverage information
-type CoverageInfo = (OpIx, StackDepths, TxResults, ExecQty)
+type CoverageInfo = (OpIx, StackDepths, TxResults)
 
 -- | Basic stats information
 type StatsInfo = (ExecQty, RevertQty)
@@ -55,7 +55,7 @@ scoveragePoints cm = do
   sum <$> mapM (V.foldl' countCovered 0) (Map.elems cm)
 
 countCovered :: Int -> CoverageInfo -> Int
-countCovered acc (opIx,_,_,_) = if opIx == -1 then acc else acc + 1
+countCovered acc (opIx,_,_) = if opIx == -1 then acc else acc + 1
 
 unpackTxResults :: TxResults -> [TxResult]
 unpackTxResults txResults =

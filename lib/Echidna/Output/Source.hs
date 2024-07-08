@@ -181,8 +181,8 @@ srcMapCov sc covMap statMap contracts = do
   linesCovered c =
     case Map.lookup c.runtimeCodehash covMap of
       Just vec -> VU.foldl' (\acc covInfo -> case covInfo of
-        (-1, _, _, _) -> acc -- not covered
-        (opIx, _stackDepths, txResults, _) ->
+        (-1, _, _) -> acc -- not covered
+        (opIx, _stackDepths, txResults) ->
           case srcMapForOpLocation c opIx of
             Just srcMap ->
               case srcMapCodePos sc srcMap of
