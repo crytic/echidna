@@ -320,8 +320,7 @@ execTxWithCov tx = do
                 (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
                   VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
                   writeIORef covContextRef (True, Just (vec, pc))
-                _ -> do
-                  modifyIORef' covContextRef $ \(new, _) -> (new, Just (vec, pc))
+                _ -> modifyIORef' covContextRef $ \(new, _) -> (new, Just (vec, pc))
 
       -- | Get the VM's current execution location
       currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames)

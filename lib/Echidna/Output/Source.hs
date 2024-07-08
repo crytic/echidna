@@ -1,4 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ParallelListComp #-}
 
 module Echidna.Output.Source where
 
@@ -39,7 +40,7 @@ zipSumStats :: IO [StatsInfo] -> IO [StatsInfo] -> IO [StatsInfo]
 zipSumStats v1 v2 = do
   vec1 <- v1
   vec2 <- v2
-  return $ zipWith (\a b -> (fst a + fst b, snd a + snd b)) vec1 vec2
+  return [(exec1 + exec2, revert1 + revert2) | (exec1, revert1) <- vec1 | (exec2, revert2) <- vec2]
 
 mvToList :: (VU.Unbox a) => VU.IOVector a -> IO [a]
 mvToList = fmap U.toList . U.freeze
@@ -47,10 +48,9 @@ mvToList = fmap U.toList . U.freeze
 combineStats :: TLS (IORef StatsMap) -> IO StatsMapV
 combineStats statsRef = do
   threadStats' <- allTLS statsRef
-  threadStats <-  sequence $ map readIORef threadStats' :: IO [StatsMap]
+  threadStats <-  mapM readIORef threadStats' :: IO [StatsMap]
   statsLists <- pure $ map (\(m :: StatsMap) -> Map.map (\(x :: VU.IOVector StatsInfo) -> mvToList x) m) threadStats :: IO [Map EVM.Types.W256 (IO [StatsInfo])]
-  stats <- traverse (\x -> x >>= U.thaw . U.fromList >>= U.freeze) $ ((Map.unionsWith) (\(x :: IO [StatsInfo]) (y :: IO [StatsInfo]) -> zipSumStats x y) statsLists)
-  return stats
+  traverse (\x -> x >>= U.thaw . U.fromList >>= U.freeze) $ Map.unionsWith zipSumStats statsLists
 
 saveCoverages
   :: Env
@@ -199,8 +199,8 @@ srcMapCov sc covMap statMap contracts = do
                   updateLine (Just (r, q)) = Just ((<> unpackTxResults txResults) r, max q execQty)
                   updateLine Nothing = Just (unpackTxResults txResults, execQty)
                   fileStats = Map.lookup c.runtimeCodehash statMap
-                  idxStats | isJust fileStats = (fromJust fileStats) U.! opIx
-                           | otherwise        = (fromInteger 0, fromInteger 0)
+                  idxStats | isJust fileStats = fromJust fileStats U.! opIx
+                           | otherwise        = (0, 0)
                   execQty = fst idxStats
                 Nothing -> acc
             Nothing -> acc
