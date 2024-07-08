@@ -178,7 +178,7 @@ execEthenoTxs et = do
       (_        , AccountCreated _)  -> pure ()
       (Reversion,   _)               -> void $ put vm
       (HandleEffect (Query q), _)    -> crashWithQueryError q et
-      (VMFailure x, _)               -> vmExcept x >> M.fail "impossible"
+      (VMFailure x, _)               -> vmExcept Nothing x >> M.fail "impossible"
       (VMSuccess (ConcreteBuf bc),
        ContractCreated _ ca _ _ _ _) -> do
         #env % #contracts % at (LitAddr ca) % _Just % #code .= InitCode mempty mempty
