@@ -50,7 +50,7 @@ combineStats statsRef = do
   threadStats' <- allTLS statsRef
   threadStats <-  mapM readIORef threadStats' :: IO [StatsMap]
   statsLists <- pure $ map (\(m :: StatsMap) -> Map.map (\(x :: VU.IOVector StatsInfo) -> mvToList x) m) threadStats :: IO [Map EVM.Types.W256 (IO [StatsInfo])]
-  traverse (\x -> x >>= U.thaw . U.fromList >>= U.freeze) $ Map.unionsWith zipSumStats statsLists
+  traverse (U.fromList <$>) $ Map.unionsWith zipSumStats statsLists
 
 saveCoverages
   :: Env
