@@ -22,7 +22,7 @@ import Data.Vector qualified as V
 import Data.Vector.Unboxed.Mutable qualified as VMut
 import System.Process (readProcessWithExitCode)
 
-import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, vmOpIx)
+import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, vmOpIx, clearTStorages)
 import EVM.ABI
 import EVM.Dapp (DappInfo)
 import EVM.Exec (exec, vmForEthrunCreation)
@@ -98,6 +98,7 @@ execTxWith executeTx tx = do
         vmResult <- runFully
         gasLeftAfterTx <- gets (.state.gas)
         handleErrorsAndConstruction vmResult vmBeforeTx
+        fromEVM clearTStorages
         pure (vmResult, gasLeftBeforeTx - gasLeftAfterTx)
   where
   runFully = do

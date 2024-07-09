@@ -5,7 +5,7 @@ packages:
 
 extra-deps:
 - git: https://github.com/trail-of-forks/hevm.git
-  commit: 2aa7b3e5fea0e0657fe44549ccefbb18f61eb024
+  commit: d671fd4775070d8772bf48d18faec3186dfae2c6
 
 - restless-git-0.7@sha256:346a5775a586f07ecb291036a8d3016c3484ccdc188b574bcdec0a82c12db293,968
 - s-cargot-0.1.4.0@sha256:61ea1833fbb4c80d93577144870e449d2007d311c34d74252850bb48aa8c31fb,3525
