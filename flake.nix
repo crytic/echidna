@@ -51,8 +51,8 @@
           pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "trail-of-forks";
             repo = "hevm";
-            rev = "ea3589e04ecb06a99ca725ff1a9f40aecc30b5e7";
-            sha256 = "sha256-/CUwi/oNSqAldHoUMjAoBwVB79oxLynAP0pRScNdhlQ=";
+            rev = "7d4344c5e71d14466e86331af064bab61d06bdad";
+            sha256 = "sha256-kts6mdwx5KUrVdNztzewWgNM9xGViAhFIZPnWOUllOU=";
         }) { secp256k1 = pkgs.secp256k1; });
 
         # FIXME: figure out solc situation, it conflicts with the one from
@@ -147,9 +147,6 @@
             packages = _: [ (echidna pkgs) ];
             shellHook = "hpack";
             buildInputs = [
-              pkgs.secp256k1
-              pkgs.libff
-              pkgs.gmp
               solc
               slither-analyzer
               haskellPackages.hlint
