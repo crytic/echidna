@@ -51,8 +51,8 @@
           pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "trail-of-forks";
             repo = "hevm";
-            rev = "d671fd4775070d8772bf48d18faec3186dfae2c6";
-            sha256 = "sha256-DMDn9QGwPt/f6HlGZTJHTBSZdgoiwu4T2QDEcf7mUXE=";
+            rev = "ea3589e04ecb06a99ca725ff1a9f40aecc30b5e7";
+            sha256 = "sha256-/CUwi/oNSqAldHoUMjAoBwVB79oxLynAP0pRScNdhlQ=";
         }) { secp256k1 = pkgs.secp256k1; });
 
         # FIXME: figure out solc situation, it conflicts with the one from
