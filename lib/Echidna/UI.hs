@@ -1,7 +1,10 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Echidna.UI where
+
+import Echidna.CatchMVar
 
 #ifdef INTERACTIVE_UI
 import Brick
@@ -97,7 +100,7 @@ ui vm dict initialCorpus cliSelectedContract = do
     Interactive -> do
       -- Channel to push events to update UI
       uiChannel <- liftIO $ newBChan 1000
-      let forwardEvent = void . writeBChanNonBlocking uiChannel . EventReceived
+      let forwardEvent = void . $writeBChanNonBlocking_ uiChannel . EventReceived
       uiEventsForwarderStopVar <- spawnListener forwardEvent
 
       ticker <- liftIO . forkIO . forever $ do
@@ -106,12 +109,12 @@ ui vm dict initialCorpus cliSelectedContract = do
         now <- getTimestamp
         tests <- traverse readIORef env.testRefs
         states <- workerStates workers
-        writeBChan uiChannel (CampaignUpdated now tests states)
+        $writeBChan_ uiChannel (CampaignUpdated now tests states)
 
         -- TODO: remove and use events for this
         c <- readIORef env.fetchContractCache
         s <- readIORef env.fetchSlotCache
-        writeBChan uiChannel (FetchCacheUpdated c s)
+        $writeBChan_ uiChannel (FetchCacheUpdated c s)
 
       -- UI initialization
       let buildVty = do
@@ -149,7 +152,7 @@ ui vm dict initialCorpus cliSelectedContract = do
       stopWorkers workers
 
       -- wait for all events to be processed
-      forM_ [uiEventsForwarderStopVar, corpusSaverStopVar] takeMVar
+      liftIO $ forM_ [uiEventsForwarderStopVar, corpusSaverStopVar] $takeMVar_
 
       liftIO $ killThread ticker
 
@@ -168,7 +171,7 @@ ui vm dict initialCorpus cliSelectedContract = do
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
         let handler = Catch $ do
               stopWorkers workers
-              void $ tryPutMVar serverStopVar ()
+              void $ $tryPutMVar_ serverStopVar ()
         in installHandler sig handler Nothing
 #endif
       let forwardEvent ev = putStrLn =<< runReaderT (ppLogLine vm ev) env
@@ -190,7 +193,7 @@ ui vm dict initialCorpus cliSelectedContract = do
         printStatus
 
       -- wait for all events to be processed
-      forM_ [uiEventsForwarderStopVar, corpusSaverStopVar] takeMVar
+      liftIO $ forM_ [uiEventsForwarderStopVar, corpusSaverStopVar] $takeMVar_
 
       liftIO $ killThread ticker
 
@@ -200,7 +203,7 @@ ui vm dict initialCorpus cliSelectedContract = do
       when (isJust conf.campaignConf.serverPort) $ do
         -- wait until we send all SSE events
         liftIO $ putStrLn "Waiting until all SSE are received..."
-        readMVar serverStopVar
+        liftIO $ $readMVar_ serverStopVar
 
       states <- liftIO $ workerStates workers
 
@@ -237,7 +240,7 @@ ui vm dict initialCorpus cliSelectedContract = do
         ]
 
       time <- liftIO getTimestamp
-      writeChan env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
+      liftIO $ $writeChan_ env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
 
     pure (threadId, stateRef)
 

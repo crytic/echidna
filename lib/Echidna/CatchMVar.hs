@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Echidna.CatchMVar (catchMVar, putMVar_, takeMVar_, writeChan_, readChan_) where
+module Echidna.CatchMVar where
 
 import Control.Exception
 import Language.Haskell.TH
@@ -28,11 +28,23 @@ catchMVarTempl = [| catchMVar $printLocation |]
 putMVar_ :: Q Exp
 putMVar_ = [| ($catchMVarTempl .) . putMVar |]
 
+tryPutMVar_ :: Q Exp
+tryPutMVar_ = [| ($catchMVarTempl .) . tryPutMVar |]
+
 takeMVar_ :: Q Exp
 takeMVar_ = [| $catchMVarTempl . takeMVar |]
+
+readMVar_ :: Q Exp
+readMVar_ = [| $catchMVarTempl . readMVar |]
 
 writeChan_ :: Q Exp
 writeChan_ = [| ($catchMVarTempl .) . writeChan |]
 
 readChan_ :: Q Exp
 readChan_ = [| $catchMVarTempl . readChan |]
+
+writeBChan_ :: Q Exp
+writeBChan_ = [| ($catchMVarTempl .) . writeBChan |]
+
+writeBChanNonBlocking_ :: Q Exp
+writeBChanNonBlocking_ = [| ($catchMVarTempl .) . writeBChanNonBlocking |]
