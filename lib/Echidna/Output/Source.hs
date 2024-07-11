@@ -9,7 +9,7 @@ import Data.ByteString qualified as BS
 import Data.Foldable
 import Data.IORef (readIORef, IORef)
 import Data.List (nub, sort)
-import Data.Maybe (fromMaybe, mapMaybe, isJust, fromJust)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Sequence qualified as Seq
@@ -42,15 +42,15 @@ zipSumStats v1 v2 = do
   vec2 <- v2
   return [(exec1 + exec2, revert1 + revert2) | (exec1, revert1) <- vec1 | (exec2, revert2) <- vec2]
 
-mvToList :: (VU.Unbox a) => VU.IOVector a -> IO [a]
-mvToList = fmap U.toList . U.freeze
-
 combineStats :: TLS (IORef StatsMap) -> IO StatsMapV
 combineStats statsRef = do
   threadStats' <- allTLS statsRef
   threadStats <-  mapM readIORef threadStats' :: IO [StatsMap]
-  statsLists <- pure $ map (\(m :: StatsMap) -> Map.map (\(x :: VU.IOVector StatsInfo) -> mvToList x) m) threadStats :: IO [Map EVM.Types.W256 (IO [StatsInfo])]
+  let statsLists = map (Map.map mvToList) threadStats :: [Map EVM.Types.W256 (IO [StatsInfo])]
   traverse (U.fromList <$>) $ Map.unionsWith zipSumStats statsLists
+  where
+    mvToList :: (VU.Unbox a) => VU.IOVector a -> IO [a]
+    mvToList = fmap U.toList . U.freeze
 
 saveCoverages
   :: Env
@@ -199,8 +199,7 @@ srcMapCov sc covMap statMap contracts = do
                   updateLine (Just (r, q)) = Just ((<> unpackTxResults txResults) r, max q execQty)
                   updateLine Nothing = Just (unpackTxResults txResults, execQty)
                   fileStats = Map.lookup c.runtimeCodehash statMap
-                  idxStats | isJust fileStats = fromJust fileStats U.! opIx
-                           | otherwise        = (0, 0)
+                  idxStats = maybe (0, 0) (U.! opIx) fileStats
                   execQty = fst idxStats
                 Nothing -> acc
             Nothing -> acc

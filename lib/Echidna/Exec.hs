@@ -7,7 +7,7 @@ module Echidna.Exec where
 import Optics.Core
 import Optics.State.Operators
 
-import Control.Monad (when, forM_)
+import Control.Monad (when)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO), gets, modify', execStateT)
 import Control.Monad.Reader (MonadReader, ask, asks)
@@ -287,23 +287,20 @@ execTxWithCov tx = do
       addCoverage !vm = do
         let (pc, opIx, depth) = currentCovLoc vm
             contract = currentContract vm
+            contractSize = BS.length . forceBuf . fromJust . view bytecode $ contract
 
         maybeCovVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp env.coverageRef $ do
-          let size = BS.length . forceBuf . fromJust . view bytecode $ contract
-          if size == 0 then pure Nothing else do
+          if contractSize == 0 then pure Nothing else do
             -- IO for making a new vec
-            vec <- VMut.new size
             -- We use -1 for opIx to indicate that the location was not covered
-            forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0)
+            vec <- VMut.replicate contractSize (-1, 0, 0)
             pure $ Just vec
 
         statsRef <- getTLS env.statsRef
         maybeStatsVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp statsRef $ do
-          let size = BS.length . forceBuf . fromJust . view bytecode $ contract
-          if size == 0 then pure Nothing else do
+          if contractSize == 0 then pure Nothing else do
             -- IO for making a new vec
-            vec <- VMut.new size
-            forM_ [0..size-1] $ \i -> VMut.write vec i (0, 0)
+            vec <- VMut.replicate contractSize (0, 0)
             pure $ Just vec
 
         case maybeCovVec of
@@ -320,7 +317,8 @@ execTxWithCov tx = do
                 (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
                   VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
                   writeIORef covContextRef (True, Just (vec, pc))
-                _ -> modifyIORef' covContextRef $ \(new, _) -> (new, Just (vec, pc))
+                _ ->
+                  modifyIORef' covContextRef $ \(new, _) -> (new, Just (vec, pc))
 
       -- | Get the VM's current execution location
       currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames)
