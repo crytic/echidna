@@ -32,7 +32,7 @@ import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
 
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
-import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..), ExecQty, StatsMap, StatsMapV, StatsInfo)
+import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..), StatsMap, StatsMapV, StatsInfo)
 import Echidna.Types.Tx (TxResult(..))
 import EVM.Types (W256)
 
@@ -119,13 +119,13 @@ ppCoveredCode fileType sc cs s sm | null s = pure "Coverage map is empty"
     -- ^ Alter file name, in the case of html turning it into bold text
     changeFileLines ls = case fileType of
       Lcov -> ls ++ ["end_of_record"]
-      Html -> "<code>" : ls ++ ["", "</code>","<br />"]
+      Html -> "<br /><b>Legend:</b> Line # | Execs # | Reverts # | Code<br /><code>" : ls ++ ["", "</code>","<br />"]
       Txt  -> ls
     -- ^ Alter file contents, in the case of html encasing it in <code> and adding a line break
   pure $ topHeader <> T.unlines (map ppFile allFiles)
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
-markLines :: CoverageFileType -> V.Vector Text -> S.Set Int -> Map Int ([TxResult], ExecQty) -> V.Vector Text
+markLines :: CoverageFileType -> V.Vector Text -> S.Set Int -> Map Int ([TxResult], StatsInfo) -> V.Vector Text
 markLines fileType codeLines runtimeLines resultMap =
   V.map markLine . V.filter shouldUseLine $ V.indexed codeLines
   where
@@ -134,7 +134,7 @@ markLines fileType codeLines runtimeLines resultMap =
     _ -> True
   markLine (i, codeLine) =
     let n = i + 1
-        (results, execs) = fromMaybe ([], 0) (Map.lookup n resultMap)
+        (results, (execs, reverts)) = fromMaybe ([], (0, 0)) (Map.lookup n resultMap)
         markers = sort $ nub $ getMarker <$> results
         wrapLine :: Text -> Text
         wrapLine line = case fileType of
@@ -146,13 +146,13 @@ markLines fileType codeLines runtimeLines resultMap =
           cssClass = if n `elem` runtimeLines then getCSSClass markers else "neutral"
         result = case fileType of
           Lcov -> pack $ printf "DA:%d,%d" n execs
-          Html -> pack $ printf "%*d | %4s | %-4s| %s" lineNrSpan n (prettyExecs execs) markers (wrapLine codeLine)
+          Html -> pack $ printf "%*d | %4s | %4s | %-4s| %s" lineNrSpan n (prettyCount execs) (prettyCount reverts) markers (wrapLine codeLine)
           _    -> pack $ printf "%*d | %-4s| %s" lineNrSpan n markers (wrapLine codeLine)
 
     in result
   lineNrSpan = length . show $ V.length codeLines + 1
-  prettyExecs x = prettyExecs' x 0
-  prettyExecs' x n | x >= 1000          = prettyExecs' (x `div` 1000) (n + 1)
+  prettyCount x = prettyCount' x 0
+  prettyCount' x n | x >= 1000          = prettyCount' (x `div` 1000) (n + 1)
                    | x < 1000 && n == 0 = show x
                    | otherwise          = show x <> [" kMGTPEZY" !! n]
 
@@ -173,11 +173,11 @@ getMarker ErrorOutOfGas = 'o'
 getMarker _             = 'e'
 
 -- | Given a source cache, a coverage map, a contract returns a list of covered lines
-srcMapCov :: SourceCache -> CoverageMap -> StatsMapV -> [SolcContract] -> IO (Map FilePath (Map Int ([TxResult], ExecQty)))
+srcMapCov :: SourceCache -> CoverageMap -> StatsMapV -> [SolcContract] -> IO (Map FilePath (Map Int ([TxResult], StatsInfo)))
 srcMapCov sc covMap statMap contracts = do
   Map.unionsWith Map.union <$> mapM linesCovered contracts
   where
-  linesCovered :: SolcContract -> IO (Map FilePath (Map Int ([TxResult], ExecQty)))
+  linesCovered :: SolcContract -> IO (Map FilePath (Map Int ([TxResult], StatsInfo)))
   linesCovered c =
     case Map.lookup c.runtimeCodehash covMap of
       Just vec -> VU.foldl' (\acc covInfo -> case covInfo of
@@ -196,11 +196,11 @@ srcMapCov sc covMap statMap contracts = do
                     Map.alter
                       updateLine
                       line
-                  updateLine (Just (r, q)) = Just ((<> unpackTxResults txResults) r, max q execQty)
-                  updateLine Nothing = Just (unpackTxResults txResults, execQty)
+                  updateLine (Just (r, s)) = Just ((<> unpackTxResults txResults) r, maxStats s idxStats)
+                  updateLine Nothing = Just (unpackTxResults txResults, idxStats)
                   fileStats = Map.lookup c.runtimeCodehash statMap
                   idxStats = maybe (0, 0) (U.! opIx) fileStats
-                  execQty = fst idxStats
+                  maxStats (a1, b1) (a2, b2) = (max a1 a2, max b1 b2)
                 Nothing -> acc
             Nothing -> acc
         ) mempty vec
