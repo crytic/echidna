@@ -89,8 +89,8 @@ rpcUrl: null
 rpcBlock: null
 # Etherscan API key
 etherscanApiKey: null
-# number of workers
-workers: 1
+# number of workers. By default (unset) its value is the clamp of the number cores between 1 and 4
+workers: null
 # events server port
 server: null
 # whether to add an additional symbolic execution worker
