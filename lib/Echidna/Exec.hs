@@ -132,7 +132,7 @@ execTxWith executeTx tx = do
                     fromEVM (continuation contract)
                     liftIO $ atomicWriteIORef cacheRef $ Map.insert addr (Just contract) cache
                   _ -> do
-                    -- TODO: better error reporting in HEVM, when intermmittent
+                    -- TODO: better error reporting in HEVM, when intermittent
                     -- network error then retry
                     liftIO $ atomicWriteIORef cacheRef $ Map.insert addr Nothing cache
                     logMsg $ "ERROR: Failed to fetch contract: " <> show q
