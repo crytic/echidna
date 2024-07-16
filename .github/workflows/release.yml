@@ -107,4 +107,4 @@ jobs:
           name: "Echidna ${{ needs.nixBuild.outputs.version }}"
           files: |
             ./echidna-*.tar.gz
-            ./echidna-*.tar.gz.sigstore
+            ./echidna-*.tar.gz.sigstore.json
