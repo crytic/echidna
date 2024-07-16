@@ -96,7 +96,7 @@ jobs:
           merge-multiple: true
 
       - name: Sign binaries
-        uses: sigstore/gh-action-sigstore-python@v2.1.1
+        uses: sigstore/gh-action-sigstore-python@v3.0.0
         with:
           inputs: ./echidna-*.tar.gz
 
