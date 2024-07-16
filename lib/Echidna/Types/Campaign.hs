@@ -3,10 +3,10 @@ module Echidna.Types.Campaign where
 import Control.Concurrent (ThreadId)
 import Data.Aeson
 import Data.Map (Map)
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word8, Word16)
+import GHC.Conc (numCapabilities)
 
 import Echidna.ABI (GenDict, emptyDict, encodeSig)
 import Echidna.Types
@@ -211,9 +211,14 @@ defaultSymExecAskSMTIters :: Integer
 defaultSymExecAskSMTIters = 1
 
 -- | Get number of fuzzing workers (doesn't include sym exec worker)
--- Defaults to 1 if set to Nothing
+-- Defaults to `N` if set to Nothing, where `N` is Haskell's -N value,
+-- usually the number of cores, clamped between 1 and 4.
 getNFuzzWorkers :: CampaignConf -> Int
-getNFuzzWorkers conf = fromIntegral (fromMaybe 1 (conf.workers))
+getNFuzzWorkers conf = maybe defaultN fromIntegral conf.workers
+  where
+    n = numCapabilities
+    maxN = max 1 n
+    defaultN = min 4 maxN -- capped at 4 by default
 
 -- | Number of workers, including SymExec worker if there is one
 getNWorkers :: CampaignConf -> Int
