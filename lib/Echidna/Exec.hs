@@ -22,11 +22,12 @@ import Data.Vector qualified as V
 import Data.Vector.Unboxed.Mutable qualified as VMut
 import System.Process (readProcessWithExitCode)
 
-import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, vmOpIx)
+import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, vmOpIx, clearTStorages)
 import EVM.ABI
+import EVM.Dapp (DappInfo)
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Fetch qualified
-import EVM.Format (hexText)
+import EVM.Format (hexText, showTraceTree)
 import EVM.Types hiding (Env, Gas)
 
 import Echidna.Events (emptyEvents)
@@ -70,9 +71,12 @@ pattern Illegal :: VMResult Concrete s
 pattern Illegal <- VMFailure (classifyError -> IllegalE)
 
 -- | Given an execution error, throw the appropriate exception.
-vmExcept :: MonadThrow m => EvmError -> m ()
-vmExcept e = throwM $
-  case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e}
+-- Also optionally takes a DappInfo and VM, which are used to show the stack trace.
+vmExcept :: MonadThrow m => Maybe (DappInfo, VM Concrete RealWorld) -> EvmError -> m ()
+vmExcept traceInfo e =
+  let trace = uncurry showTraceTree <$> traceInfo
+  in throwM $
+    case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e trace}
 
 execTxWith
   :: (MonadIO m, MonadState (VM Concrete RealWorld) m, MonadReader Env m, MonadThrow m)
@@ -94,6 +98,7 @@ execTxWith executeTx tx = do
         vmResult <- runFully
         gasLeftAfterTx <- gets (.state.gas)
         handleErrorsAndConstruction vmResult vmBeforeTx
+        fromEVM clearTStorages
         pure (vmResult, gasLeftBeforeTx - gasLeftAfterTx)
   where
   runFully = do
@@ -201,7 +206,10 @@ execTxWith executeTx tx = do
       #state % #callvalue .= callvalueBeforeVMReset
       #traces .= tracesBeforeVMReset
       #state % #codeContract .= codeContractBeforeVMReset
-    (VMFailure x, _) -> vmExcept x
+    (VMFailure x, _) -> do
+      dapp <- asks (.dapp)
+      vm <- get
+      vmExcept (Just (dapp, vm)) x
     (VMSuccess (ConcreteBuf bytecode'), SolCreate _) -> do
       -- Handle contract creation.
       #env % #contracts % at (LitAddr tx.dst) % _Just % #code .= InitCode mempty mempty

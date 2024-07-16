@@ -45,7 +45,7 @@ ppCampaignEventLog vm ev = (ppCampaignEvent ev <>) <$> ppTxIfHas where
 
 ppCampaign :: (MonadIO m, MonadReader Env m) => VM Concrete RealWorld -> [WorkerState] -> m String
 ppCampaign vm workerStates = do
-  tests <- liftIO . readIORef =<< asks (.testsRef)
+  tests <- liftIO . traverse readIORef =<< asks (.testRefs)
   testsPrinted <- ppTests tests
   gasInfoPrinted <- ppGasInfo vm workerStates
   coveragePrinted <- ppCoverage

@@ -100,7 +100,7 @@ instance ToJSON Transaction where
 
 encodeCampaign :: Env -> [WorkerState] -> IO L.ByteString
 encodeCampaign env workerStates = do
-  tests <- readIORef env.testsRef
+  tests <- traverse readIORef env.testRefs
   frozenCov <- mapM VU.freeze =<< readIORef env.coverageRef
   -- TODO: this is ugly, refactor seed to live in Env
   let worker0 = Prelude.head workerStates

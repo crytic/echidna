@@ -51,7 +51,7 @@ data CampaignConf = CampaignConf
     -- Only relevant if symExec is True
   , symExecTargets     :: Maybe [Text]
   , symExecTimeout     :: Int
-    -- ^ Timeout for symbolic execution SMT solver.
+    -- ^ Timeout for symbolic execution SMT solver queries.
     -- Only relevant if symExec is True
   , symExecNSolvers    :: Int
     -- ^ Number of SMT solvers used in symbolic execution.
@@ -168,6 +168,8 @@ data WorkerState = WorkerState
     -- ^ Number of times the callseq is called
   , ncalls      :: !Int
     -- ^ Number of calls executed while fuzzing
+  , totalGas    :: !Int
+    -- ^ Total gas consumed while fuzzing
   , runningThreads :: [ThreadId]
     -- ^ Extra threads currently being run,
     --   aside from the main worker thread
@@ -181,6 +183,7 @@ initialWorkerState =
               , newCoverage = False
               , ncallseqs = 0
               , ncalls = 0
+              , totalGas = 0
               , runningThreads = []
               }
 
