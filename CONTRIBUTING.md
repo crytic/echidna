@@ -5,7 +5,7 @@ appreciate all contributions, including bug reports, feature suggestions,
 tutorials/blog posts, and code improvements.
 
 If you're unsure where to start, we recommend to join our [chat room](https://slack.empirehacking.nyc/)
-(in the #ethereum channel) to discuss new ideas to improve this tool. You can also take a look to the [`help wanted`](https://github.com/crytic/echidna/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
+(in the #ethereum channel) to discuss new ideas to improve this tool. You can also take a look at the [`help wanted`](https://github.com/crytic/echidna/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
 issue labels.
 
 ## Bug reports and feature suggestions
