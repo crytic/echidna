@@ -1,3 +1,14 @@
+## 2.2.4
+
+* Initial TLOAD/TSTORE support (#1286)
+* Initial symbolic execution implementation (experimental, #1216, #1251, #1285)
+* New panel toggles in the UI (#1197)
+* New gas/s metric (#1279)
+* Improved logging (#1202, #1271, #1273, #1274, #1283, #1258, #1269)
+* Performance improvements with multiple workers (#1228)
+* Shrinking improvements (#1196, #1250, #1280)
+* Improved configuration options (#1200, #1227, #1251)
+
 ## 2.2.3
 
 * feat: add CLI commands for RPC URL and block number (#1194)
