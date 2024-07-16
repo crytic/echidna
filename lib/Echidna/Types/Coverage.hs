@@ -31,7 +31,7 @@ type TxResults = Word64
 
 -- | Given good point coverage, count the number of unique points but
 -- only considering the different instruction PCs (discarding the TxResult).
--- This is useful to report a coverage measure to the user
+-- This is useful for reporting a coverage measure to the user
 scoveragePoints :: CoverageMap -> IO Int
 scoveragePoints cm = do
   sum <$> mapM (V.foldl' countCovered 0) (Map.elems cm)

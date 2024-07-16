@@ -49,7 +49,7 @@ saveCorpusEvent env (_time, campaignEvent) = do
 
     getEventInfo = \case
       -- TODO: We save intermediate reproducers in separate directories.
-      -- This is to because there can be a lot of them and we want to skip
+      -- This is because there can be a lot of them and we want to skip
       -- loading those on startup. Ideally, we should override the same file
       -- with a better version of a reproducer, this is smaller or more optimized.
       TestFalsified test -> Just ("reproducers-unshrunk", test.reproducer)
