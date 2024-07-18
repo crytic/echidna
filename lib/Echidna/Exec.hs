@@ -54,7 +54,7 @@ classifyError = \case
   StackLimitExceeded   -> RevertE
   StackUnderrun        -> IllegalE
   BadJumpDestination   -> IllegalE
-  IllegalOverflow      -> IllegalE
+  IllegalOverflow      -> RevertE
   _                    -> UnknownE
 
 -- | Extracts the 'Query' if there is one.
