@@ -30,7 +30,6 @@ import System.Info (os)
 
 import EVM (initialContract, currentContract)
 import EVM.ABI
-import EVM.Dapp (DappInfo(..))
 import EVM.Solidity
 import EVM.Types hiding (Env)
 
@@ -42,7 +41,6 @@ import Echidna.Etheno (loadEthenoBatch)
 import Echidna.Events (extractEvents)
 import Echidna.Exec (execTx, initialVM)
 import Echidna.SourceAnalysis.Slither
-import Echidna.Symbolic (forceAddr)
 import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
@@ -167,44 +165,11 @@ abiOf pref solcContract =
 -- filename their code is in, plus a colon.
 loadSpecified
   :: Env
-  -> Maybe Text
+  -> SolcContract
   -> [SolcContract]
-  -> IO (VM Concrete RealWorld, [SolSignature], [Text], SignatureMap)
-loadSpecified env name cs = do
+  -> IO (VM Concrete RealWorld)
+loadSpecified env mainContract cs = do
   let solConf = env.cfg.solConf
-
-  -- Pick contract to load
-  mainContract <- chooseContract cs name
-  when (isNothing name && length cs > 1 && not solConf.quiet) $
-    putStrLn "Multiple contracts found, only analyzing the first"
-  unless solConf.quiet $
-    putStrLn $ "Analyzing contract: " <> T.unpack mainContract.contractName
-
-  let
-    -- generate the complete abi mapping
-    abi = Map.elems mainContract.abiMap <&> \method -> (method.name, snd <$> method.inputs)
-    (tests, funs) = partition (isPrefixOf solConf.prefix . fst) abi
-
-    -- Filter ABI according to the config options
-    fabiOfc = if isDapptestMode solConf.testMode
-                then NE.toList $ filterMethodsWithArgs (abiOf solConf.prefix mainContract)
-                else filterMethods mainContract.contractName solConf.methodFilter $
-                       abiOf solConf.prefix mainContract
-    -- Filter again for dapptest tests or assertions checking if enabled
-    neFuns = filterMethods mainContract.contractName solConf.methodFilter (fallback NE.:| funs)
-    -- Construct ABI mapping for World
-    abiMapping =
-      if solConf.allContracts then
-        Map.fromList $ mapMaybe (\contract ->
-            let filtered = filterMethods contract.contractName
-                                         solConf.methodFilter
-                                         (abiOf solConf.prefix contract)
-            in (contract.runtimeCodehash,) <$> NE.nonEmpty filtered)
-          cs
-      else
-        case NE.nonEmpty fabiOfc of
-          Just ne -> Map.singleton mainContract.runtimeCodehash ne
-          Nothing -> mempty
 
   -- Set up initial VM, either with chosen contract or Etheno initialization file
   -- need to use snd to add to ABI dict
@@ -221,20 +186,6 @@ loadSpecified env name cs = do
 
   -- Select libraries
   ls <- mapM (chooseContract cs . Just . T.pack) solConf.solcLibs
-
-  -- Make sure everything is ready to use, then ship it
-  when (null abi) $
-    throwM NoFuncs
-  when (null tests && isPropertyMode solConf.testMode) $
-    throwM NoTests
-  when (null abiMapping && isDapptestMode solConf.testMode) $
-    throwM NoTests
-  when (mainContract.creationCode == mempty) $
-    throwM (NoBytecode mainContract.contractName)
-
-  case find (not . null . snd) tests of
-    Just (t, _) -> throwM $ TestArgsFound t
-    Nothing -> pure ()
 
   flip runReaderT env $ do
     -- library deployment
@@ -259,23 +210,103 @@ loadSpecified env name cs = do
     when (isNothing $ currentContract vm3) $
       throwM $ DeploymentFailed solConf.contractAddr $ T.unlines $ extractEvents True env.dapp vm3
 
-    -- Run
-    let transaction = execTx vm3 $ uncurry basicTx
-                                             setUpFunction
-                                             solConf.deployer
-                                             solConf.contractAddr
-                                             unlimitedGasPerBlock
-                                             (0, 0)
+    -- Run setUp function
+    let
+      abi = Map.elems mainContract.abiMap <&> \method -> (method.name, snd <$> method.inputs)
+      transaction = execTx vm3 $ uncurry basicTx
+                                           setUpFunction
+                                           solConf.deployer
+                                           solConf.contractAddr
+                                           unlimitedGasPerBlock
+                                           (0, 0)
     vm4 <- if isDapptestMode solConf.testMode && setUpFunction `elem` abi
               then snd <$> transaction
               else pure vm3
 
     case vm4.result of
       Just (VMFailure _) -> throwM SetUpCallFailed
-      _ -> pure (vm4, neFuns, fst <$> tests, abiMapping)
+      _ -> pure vm4
 
   where
     setUpFunction = ("setUp", [])
+
+
+selectMainContract
+  :: SolConf
+  -> Maybe ContractName
+  -> [SolcContract]
+  -> IO SolcContract
+selectMainContract solConf name cs = do
+  -- Pick contract to load
+  mainContract <- chooseContract cs name
+  when (isNothing name && length cs > 1 && not solConf.quiet) $
+    putStrLn "Multiple contracts found, only analyzing the first"
+  unless solConf.quiet $
+    putStrLn $ "Analyzing contract: " <> T.unpack mainContract.contractName
+  when (mainContract.creationCode == mempty) $
+    throwM (NoBytecode mainContract.contractName)
+  pure mainContract
+
+mkSignatureMap
+  :: SolConf
+  -> SolcContract
+  -> [SolcContract]
+  -> IO SignatureMap
+mkSignatureMap solConf mainContract contracts = do
+  let
+    -- Filter ABI according to the config options
+    fabiOfc = if isDapptestMode solConf.testMode
+                then NE.toList $ filterMethodsWithArgs (abiOf solConf.prefix mainContract)
+                else filterMethods mainContract.contractName solConf.methodFilter $
+                       abiOf solConf.prefix mainContract
+    -- Construct ABI mapping for World
+    abiMapping =
+      if solConf.allContracts then
+        Map.fromList $ mapMaybe (\contract ->
+            let filtered = filterMethods contract.contractName
+                                         solConf.methodFilter
+                                         (abiOf solConf.prefix contract)
+            in (contract.runtimeCodehash,) <$> NE.nonEmpty filtered)
+          contracts
+      else
+        case NE.nonEmpty fabiOfc of
+          Just ne -> Map.singleton mainContract.runtimeCodehash ne
+          Nothing -> mempty
+  when (null abiMapping && isDapptestMode solConf.testMode) $
+    throwM NoTests
+  when (Map.null abiMapping) $
+    throwM $ InvalidMethodFilters solConf.methodFilter
+  pure abiMapping
+
+mkTests
+  :: SolConf
+  -> SolcContract
+  -> IO [EchidnaTest]
+mkTests solConf mainContract = do
+  let
+    -- generate the complete abi mapping
+    abi = Map.elems mainContract.abiMap <&> \method -> (method.name, snd <$> method.inputs)
+    (tests, funs) = partition (isPrefixOf solConf.prefix . fst) abi
+    -- Filter again for dapptest tests or assertions checking if enabled
+    neFuns = filterMethods mainContract.contractName
+                           solConf.methodFilter
+                           (fallback NE.:| funs)
+    testNames = fst <$> tests
+
+  when (null abi) $
+    throwM NoFuncs
+  when (null tests && isPropertyMode solConf.testMode) $
+    throwM NoTests
+
+  case find (not . null . snd) tests of
+    Just (t, _) -> throwM $ TestArgsFound t
+    Nothing -> pure ()
+
+  pure $ createTests solConf.testMode
+                     solConf.testDestruction
+                     testNames
+                     solConf.contractAddr
+                     neFuns
 
 -- | Given a list of contracts and a requested contract name, pick a contract.
 -- See 'loadSpecified' for more information.
@@ -365,25 +396,6 @@ prepareHashMaps cs as m =
   where
     filterHashMap f xs =
       Map.mapMaybe (NE.nonEmpty . NE.filter (\s -> f $ (hashSig . encodeSig $ s) `elem` xs))
-
--- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
--- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
--- the first contract in the file. Take said contract and return an initial VM state with it loaded,
--- its ABI (as 'SolSignature's), and the names of its Echidna tests. NOTE: unlike 'loadSpecified',
--- contract names passed here don't need the file they occur in specified.
-loadSolTests
-  :: Env
-  -> Maybe Text
-  -> IO (VM Concrete RealWorld, World, [EchidnaTest])
-loadSolTests env name = do
-  let solConf = env.cfg.solConf
-  let contracts = Map.elems env.dapp.solcByName
-  (vm, funs, testNames, _signatureMap) <- loadSpecified env name contracts
-  let
-    eventMap = Map.unions $ map (.eventMap) contracts
-    world = World solConf.sender mempty Nothing [] eventMap
-    echidnaTests = createTests solConf.testMode True testNames (forceAddr vm.state.contract) funs
-  pure (vm, world, echidnaTests)
 
 mkLargeAbiInt :: Int -> AbiValue
 mkLargeAbiInt i = AbiInt i $ 2 ^ (i - 1) - 1

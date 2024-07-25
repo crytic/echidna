@@ -29,17 +29,23 @@ import EVM.Format (showTraceTree, contractNamePart)
 import EVM.Solidity (SolcContract(..))
 import EVM.Types (W256, VM, VMType(Concrete), Addr, Expr (LitAddr))
 
-ppLogLine :: (LocalTime, CampaignEvent) -> String
-ppLogLine (time, event@(WorkerEvent workerId FuzzWorker _)) =
-  timePrefix time <> "[Worker " <> show workerId <> "] " <> ppCampaignEvent event
-ppLogLine (time, event@(WorkerEvent workerId SymbolicWorker _)) =
-  timePrefix time <> "[Worker " <> show workerId <> ", symbolic] " <> ppCampaignEvent event
-ppLogLine (time, event) =
-  timePrefix time <> " " <> ppCampaignEvent event
+ppLogLine :: MonadReader Env m => VM Concrete RealWorld -> (LocalTime, CampaignEvent) -> m String
+ppLogLine vm (time, event@(WorkerEvent workerId FuzzWorker _)) =
+  ((timePrefix time <> "[Worker " <> show workerId <> "] ") <>) <$> ppCampaignEventLog vm event
+ppLogLine vm (time, event@(WorkerEvent workerId SymbolicWorker _)) =
+  ((timePrefix time <> "[Worker " <> show workerId <> ", symbolic] ") <>) <$> ppCampaignEventLog vm event
+ppLogLine vm (time, event) =
+  ((timePrefix time <> " ") <>) <$> ppCampaignEventLog vm event
+
+ppCampaignEventLog :: MonadReader Env m => VM Concrete RealWorld -> CampaignEvent -> m String
+ppCampaignEventLog vm ev = (ppCampaignEvent ev <>) <$> ppTxIfHas where
+  ppTxIfHas = case ev of
+    (WorkerEvent _ _ (TestFalsified test)) -> ("\n  Call sequence:\n" <>) . unlines <$> mapM (ppTx vm $ length (nub $ (.src) <$> test.reproducer) /= 1) test.reproducer
+    _ -> pure ""
 
 ppCampaign :: (MonadIO m, MonadReader Env m) => VM Concrete RealWorld -> [WorkerState] -> m String
 ppCampaign vm workerStates = do
-  tests <- liftIO . readIORef =<< asks (.testsRef)
+  tests <- liftIO . traverse readIORef =<< asks (.testRefs)
   testsPrinted <- ppTests tests
   gasInfoPrinted <- ppGasInfo vm workerStates
   coveragePrinted <- ppCoverage
@@ -53,7 +59,7 @@ ppCampaign vm workerStates = do
     , seedPrinted
     ]
 
--- | Given rules for pretty-printing associated address, and whether to print
+-- | Given rules for pretty-printing associated addresses, and whether to print
 -- them, pretty-print a 'Transaction'.
 ppTx :: MonadReader Env m => VM Concrete RealWorld -> Bool -> Tx -> m String
 ppTx _ _ Tx { call = NoCall, delay } =

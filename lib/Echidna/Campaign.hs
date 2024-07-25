@@ -15,12 +15,12 @@ import Control.Monad.ST (RealWorld)
 import Control.Monad.Trans (lift)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
-import Data.IORef (readIORef, atomicModifyIORef')
+import Data.IORef (readIORef, atomicModifyIORef', writeIORef)
 import Data.Foldable (foldlM)
 import Data.List qualified as List
 import Data.Map qualified as Map
 import Data.Map (Map, (\\))
-import Data.Maybe (isJust, mapMaybe, fromMaybe)
+import Data.Maybe (isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -29,7 +29,7 @@ import System.Random (mkStdGen)
 
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
-import EVM.Solidity (SolcContract)
+import EVM.Dapp (DappInfo(..))
 import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
@@ -49,7 +49,6 @@ import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), call)
-import Echidna.Types.World (World)
 import Echidna.Utility (getTimestamp)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
@@ -87,17 +86,17 @@ runWorker
   -> StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
   -> VM Concrete RealWorld -- ^ Initial VM state
-  -> World   -- ^ Initial world state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
   -> [(FilePath, [Tx])]
   -- ^ Initial corpus of transactions
   -> Int     -- ^ Test limit for this worker
   -> Maybe Text -- ^ Specified contract name
-  -> [SolcContract] -- ^ List of contracts
   -> m (WorkerStopReason, WorkerState)
-runWorker SymbolicWorker callback vm _ dict workerId initialCorpus _ name cs = runSymWorker callback vm dict workerId initialCorpus name cs
-runWorker FuzzWorker callback vm world dict workerId initialCorpus testLimit _ _ = runFuzzWorker callback vm world dict workerId initialCorpus testLimit
+runWorker SymbolicWorker callback vm dict workerId initialCorpus _ name =
+  runSymWorker callback vm dict workerId initialCorpus name
+runWorker FuzzWorker callback vm dict workerId initialCorpus testLimit _ =
+  runFuzzWorker callback vm dict workerId initialCorpus testLimit
 
 runSymWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
@@ -109,9 +108,8 @@ runSymWorker
   -> [(FilePath, [Tx])]
   -- ^ Initial corpus of transactions
   -> Maybe Text -- ^ Specified contract name
-  -> [SolcContract] -- ^ List of contracts
   -> m (WorkerStopReason, WorkerState)
-runSymWorker callback vm dict workerId initialCorpus name cs = do
+runSymWorker callback vm dict workerId initialCorpus name = do
   cfg <- asks (.cfg)
   let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
   eventQueue <- asks (.eventQueue)
@@ -137,6 +135,7 @@ runSymWorker callback vm dict workerId initialCorpus name cs = do
                 , newCoverage = False
                 , ncallseqs = 0
                 , ncalls = 0
+                , totalGas = 0
                 , runningThreads = []
                 }
 
@@ -172,7 +171,9 @@ runSymWorker callback vm dict workerId initialCorpus name cs = do
 
   symexecTx (tx, vm', txsBase) = do
     cfg <- asks (.cfg)
-    (threadId, symTxsChan) <- liftIO $ createSymTx cfg name cs tx vm'
+    dapp <- asks (.dapp)
+    let compiledContracts = Map.elems dapp.solcByName
+    (threadId, symTxsChan) <- liftIO $ createSymTx cfg name compiledContracts tx vm'
 
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
@@ -185,7 +186,7 @@ runSymWorker callback vm dict workerId initialCorpus name cs = do
     -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
     newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) symTxs
 
-    unless newCoverage (pushWorkerEvent SymNoNewCoverage)
+    unless (newCoverage || null symTxs) (pushWorkerEvent SymNoNewCoverage)
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
@@ -195,14 +196,13 @@ runFuzzWorker
   => StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
   -> VM Concrete RealWorld -- ^ Initial VM state
-  -> World   -- ^ Initial world state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
   -> [(FilePath, [Tx])]
   -- ^ Initial corpus of transactions
   -> Int     -- ^ Test limit for this worker
   -> m (WorkerStopReason, WorkerState)
-runFuzzWorker callback vm world dict workerId initialCorpus testLimit = do
+runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
   let
     effectiveSeed = dict.defSeed + workerId
     effectiveGenDict = dict { defSeed = effectiveSeed }
@@ -213,6 +213,7 @@ runFuzzWorker callback vm world dict workerId initialCorpus testLimit = do
                   , newCoverage = False
                   , ncallseqs = 0
                   , ncalls = 0
+                  , totalGas = 0
                   , runningThreads = []
                   }
 
@@ -224,55 +225,80 @@ runFuzzWorker callback vm world dict workerId initialCorpus testLimit = do
 
   where
   run = do
-    testsRef <- asks (.testsRef)
-    tests <- liftIO $ readIORef testsRef
+    testRefs <- asks (.testRefs)
+    tests <- liftIO $ traverse readIORef testRefs
     CampaignConf{stopOnFail, shrinkLimit} <- asks (.cfg.campaignConf)
     ncalls <- gets (.ncalls)
 
     let
-      final test = case test.state of
-                     Solved   -> True
-                     Failed _ -> True
-                     _        -> False
+      shrinkable test =
+        case test.state of
+          -- we shrink only tests which were solved on this
+          -- worker, see 'updateOpenTest'
+          Large n | test.workerId == Just workerId ->
+            n < shrinkLimit
+          _       -> False
 
-      shrinkable test = case test.state of
-                          Large n -> n < shrinkLimit
-                          _       -> False
+      final test =
+        case test.state of
+          Solved   -> True
+          Failed _ -> True
+          _        -> False
 
-      closeOptimizationTest test = case test.testType of
-        OptimizationTest _ _ -> test { Test.state = Large 0 }
-        _                    -> test
+      closeOptimizationTest test =
+        case test.testType of
+          OptimizationTest _ _ ->
+            test { Test.state = Large 0
+                 , workerId = Just workerId
+                 }
+          _ -> test
 
     if | stopOnFail && any final tests ->
          lift callback >> pure FastFailed
 
-       | (null tests || any isOpen tests) && ncalls < testLimit ->
-         fuzz >> continue
-
-       | ncalls >= testLimit && any (\t -> isOpen t && isOptimizationTest t) tests -> do
-         liftIO $ atomicModifyIORef' testsRef $ \sharedTests ->
-            (closeOptimizationTest <$> sharedTests, ())
-         continue
-
+       -- we shrink first before going back to fuzzing
        | any shrinkable tests ->
-         continue
+         shrink >> lift callback >> run
 
+       -- no shrinking work, fuzz
+       | (null tests || any isOpen tests) && ncalls < testLimit ->
+         fuzz >> lift callback >> run
+
+       -- NOTE: this is a hack which forces shrinking of optimization tests
+       -- after test limit is reached
+       | ncalls >= testLimit && any (\t -> isOpen t && isOptimizationTest t) tests -> do
+         liftIO $ forM_ testRefs $ \testRef ->
+            atomicModifyIORef' testRef (\test -> (closeOptimizationTest test, ()))
+         lift callback >> run
+
+       -- no more work to do, means we reached the test limit, exit
        | otherwise ->
          lift callback >> pure TestLimitReached
 
-  fuzz = randseq vm.env.contracts world >>= fmap fst . callseq vm
+  fuzz = randseq vm.env.contracts >>= fmap fst . callseq vm
 
-  continue = runUpdate (shrinkTest vm) >> lift callback >> run
+  -- To avoid contention we only shrink tests that were falsified by this
+  -- worker. Tests are marked with a worker in 'updateOpenTest'.
+  --
+  -- TODO: This makes some workers run longer as they work less on their
+  -- test limit portion during shrinking. We should move to a test limit shared
+  -- between workers to avoid that. This way other workers will "drain"
+  -- the work queue.
+  shrink = updateTests $ \test -> do
+    if test.workerId == Just workerId then
+      shrinkTest vm test
+    else
+      pure Nothing
 
 -- | Generate a new sequences of transactions, either using the corpus or with
 -- randomly created transactions
 randseq
   :: (MonadRandom m, MonadReader Env m, MonadState WorkerState m, MonadIO m)
   => Map (Expr 'EAddr) Contract
-  -> World
   -> m [Tx]
-randseq deployedContracts world = do
+randseq deployedContracts = do
   env <- ask
+  let world = env.world
 
   let
     mutConsts = env.cfg.campaignConf.mutConsts
@@ -371,7 +397,7 @@ callseq vm txSeq = do
 
   where
   -- Given a list of transactions and a return typing rule, checks whether we
-  -- know the return type for each function called. If yes, tries to parse the
+  -- know the return type for each function called. If yes, try to parse the
   -- return value as a value of that type. Returns a 'GenDict' style Map.
   returnValues
     :: [(Tx, VMResult Concrete RealWorld)]
@@ -435,8 +461,7 @@ updateGasInfo ((tx@Tx{call = SolCall (f, _)}, (_, used')):txs) tseq gi =
 updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 
 -- | Given an initial 'VM' state and a way to run transactions, evaluate a list
--- of transactions, constantly checking if we've solved any tests or can shrink
--- known solves.
+-- of transactions, constantly checking if we've solved any tests.
 evalSeq
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM Concrete RealWorld -- ^ Initial VM
@@ -447,66 +472,78 @@ evalSeq vm0 execFunc = go vm0 [] where
   go vm executedSoFar toExecute = do
     -- NOTE: we do reverse here because we build up this list by prepending,
     -- see the last line of this function.
-    runUpdate (updateTest vm0 (vm, reverse executedSoFar))
+    updateTests (updateOpenTest vm (reverse executedSoFar))
     modify' $ \workerState -> workerState { ncalls = workerState.ncalls + 1 }
     case toExecute of
       [] -> pure ([], vm)
       (tx:remainingTxs) -> do
         (result, vm') <- execFunc vm tx
+        modify' $ \workerState -> workerState { totalGas = workerState.totalGas + fromIntegral (vm'.burned - vm.burned) }
         -- NOTE: we don't use the intermediate VMs, just the last one. If any of
         -- the intermediate VMs are needed, they can be put next to the result
         -- of each transaction - `m ([(Tx, result, VM)])`
         (remaining, _vm) <- go vm' (tx:executedSoFar) remainingTxs
         pure ((tx, result) : remaining, vm')
 
--- | Given a rule for updating a particular test's state, apply it to each test
--- in a 'Campaign'.
-runUpdate
+-- | Update tests based on the return value from the given function.
+-- Nothing skips the update.
+updateTests
   :: (MonadIO m, MonadReader Env m, MonadState WorkerState m)
   => (EchidnaTest -> m (Maybe EchidnaTest))
   -> m ()
-runUpdate f = do
-  testsRef <- asks (.testsRef)
-  tests <- liftIO $ readIORef testsRef
-  updates <- mapM f tests
-  when (any isJust updates) $
-    liftIO $ atomicModifyIORef' testsRef $ \sharedTests ->
-      (uncurry fromMaybe <$> zip sharedTests updates, ())
+updateTests f = do
+  testRefs <- asks (.testRefs)
+  forM_ testRefs $ \testRef -> do
+    test <- liftIO $ readIORef testRef
+    f test >>= \case
+      Just test' -> liftIO $ writeIORef testRef test'
+      Nothing -> pure ()
 
--- | Given an initial 'VM' state and a @('SolTest', 'TestState')@ pair, as well
--- as possibly a sequence of transactions and the state after evaluation, see if:
--- (0): The test is past its 'testLimit' or 'shrinkLimit' and should be presumed un[solve|shrink]able
--- (1): The test is 'Open', and this sequence of transactions solves it
--- (2): The test is 'Open', and evaluating it breaks our runtime
--- (3): The test is unshrunk, and we can shrink it
--- Then update accordingly, keeping track of how many times we've tried to solve or shrink.
-updateTest
+-- | Update an open test after checking if it is falsified by the 'reproducer'
+updateOpenTest
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
-  => VM Concrete RealWorld
-  -> (VM Concrete RealWorld, [Tx])
+  => VM Concrete RealWorld -- ^ VM after applying potential reproducer
+  -> [Tx] -- ^ potential reproducer
   -> EchidnaTest
   -> m (Maybe EchidnaTest)
-updateTest vmForShrink (vm, xs) test = do
+updateOpenTest vm reproducer test = do
   case test.state of
     Open -> do
       (testValue, vm') <- checkETest test vm
-      let
-        results = getResultFromVM vm'
-        test' = updateOpenTest test xs (testValue, vm', results)
-      case test'.state of
-        Large _ -> do
+      let result = getResultFromVM vm'
+      case testValue of
+        BoolValue False -> do
+          workerId <- Just <$> gets (.workerId)
+          let test' = test { Test.state = Large 0
+                           , reproducer
+                           , vm = Just vm
+                           , result
+                           , workerId
+                           }
           pushWorkerEvent (TestFalsified test')
-          pure (Just test')
-        _ | test'.value > test.value -> do
+          pure $ Just test'
+
+        IntValue value' | value' > value -> do
+          let test' = test { reproducer
+                           , value = IntValue value'
+                           , vm = Just vm
+                           , result
+                           }
           pushWorkerEvent (TestOptimized test')
-          pure (Just test')
-        _ -> pure Nothing
-    Large _ ->
-      -- TODO: We shrink already in `step`, but we shrink here too. It makes
-      -- shrink go faster when some tests are still fuzzed. It's not incorrect
-      -- but requires passing `vmForShrink` and feels a bit wrong.
-      shrinkTest vmForShrink test
-    _ -> pure Nothing
+          pure $ Just test'
+          where
+          value =
+            case test.value of
+              IntValue x -> x
+              -- TODO: fix this with proper types
+              _ -> error "Invalid type of value for optimization"
+
+        _ ->
+          -- no luck with fuzzing this time
+          pure Nothing
+    _ ->
+      -- not an open test, skip
+      pure Nothing
 
 pushWorkerEvent
   :: (MonadReader Env m, MonadState WorkerState m, MonadIO m)

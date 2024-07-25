@@ -59,13 +59,11 @@ data UIEvent =
 ui
   :: (MonadCatch m, MonadReader Env m, MonadUnliftIO m)
   => VM Concrete RealWorld -- ^ Initial VM state
-  -> World   -- ^ Initial world state
   -> GenDict
   -> [(FilePath, [Tx])]
   -> Maybe Text
-  -> [SolcContract]
   -> m [WorkerState]
-ui vm world dict initialCorpus cliSelectedContract cs = do
+ui vm dict initialCorpus cliSelectedContract = do
   env <- ask
   conf <- asks (.cfg)
   terminalPresent <- liftIO isTerminal
@@ -96,14 +94,14 @@ ui vm world dict initialCorpus cliSelectedContract cs = do
     Interactive -> do
       -- Channel to push events to update UI
       uiChannel <- liftIO $ newBChan 1000
-      let forwardEvent = writeBChan uiChannel . EventReceived
+      let forwardEvent = void . writeBChanNonBlocking uiChannel . EventReceived
       uiEventsForwarderStopVar <- spawnListener forwardEvent
 
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 200_000 -- 200 ms
 
         now <- getTimestamp
-        tests <- readIORef env.testsRef
+        tests <- traverse readIORef env.testRefs
         states <- workerStates workers
         writeBChan uiChannel (CampaignUpdated now tests states)
 
@@ -121,7 +119,7 @@ ui vm world dict initialCorpus cliSelectedContract cs = do
       app <- customMain initialVty buildVty (Just uiChannel) <$> monitor
 
       liftIO $ do
-        tests <- readIORef env.testsRef
+        tests <- traverse readIORef env.testRefs
         now <- getTimestamp
         void $ app UIState
           { campaigns = [initialWorkerState] -- ugly, fix me
@@ -167,7 +165,7 @@ ui vm world dict initialCorpus cliSelectedContract cs = do
               void $ tryPutMVar serverStopVar ()
         in installHandler sig handler
 
-      let forwardEvent = putStrLn . ppLogLine
+      let forwardEvent ev = putStrLn =<< runReaderT (ppLogLine vm ev) env
       uiEventsForwarderStopVar <- spawnListener forwardEvent
 
       let printStatus = do
@@ -223,7 +221,7 @@ ui vm world dict initialCorpus cliSelectedContract cs = do
             corpus = if workerType == SymbolicWorker then initialCorpus else corpusChunk
           maybeResult <- timeout timeoutUsecs $
             runWorker workerType (get >>= writeIORef stateRef)
-                      vm world dict workerId corpus testLimit cliSelectedContract cs
+                      vm dict workerId corpus testLimit cliSelectedContract
           pure $ case maybeResult of
             Just (stopReason, _finalState) -> stopReason
             Nothing -> TimeLimitReached
@@ -342,7 +340,7 @@ statusLine
   -> [WorkerState]
   -> IO String
 statusLine env states = do
-  tests <- readIORef env.testsRef
+  tests <- traverse readIORef env.testRefs
   points <- scoveragePoints =<< readIORef env.coverageRef
   corpus <- readIORef env.corpusRef
   let totalCalls = sum ((.ncalls) <$> states)

@@ -3,10 +3,10 @@ module Echidna.Types.Campaign where
 import Control.Concurrent (ThreadId)
 import Data.Aeson
 import Data.Map (Map)
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word8, Word16)
+import GHC.Conc (numCapabilities)
 
 import Echidna.ABI (GenDict, emptyDict, encodeSig)
 import Echidna.Types
@@ -49,8 +49,9 @@ data CampaignConf = CampaignConf
   , symExecConcolic    :: Bool
     -- ^ Whether symbolic execution will be concolic (vs full symbolic execution)
     -- Only relevant if symExec is True
+  , symExecTargets     :: Maybe [Text]
   , symExecTimeout     :: Int
-    -- ^ Timeout for symbolic execution SMT solver.
+    -- ^ Timeout for symbolic execution SMT solver queries.
     -- Only relevant if symExec is True
   , symExecNSolvers    :: Int
     -- ^ Number of SMT solvers used in symbolic execution.
@@ -71,6 +72,7 @@ type WorkerId = Int
 data CampaignEvent
   = WorkerEvent WorkerId WorkerType WorkerEvent
   | Failure String
+  | ReproducerSaved String -- filename
 
 data WorkerEvent
   = TestFalsified !EchidnaTest
@@ -110,6 +112,7 @@ ppCampaignEvent :: CampaignEvent -> String
 ppCampaignEvent = \case
   WorkerEvent _ _ e -> ppWorkerEvent e
   Failure err -> err
+  ReproducerSaved f -> "Saved reproducer to " <> f
 
 ppWorkerEvent :: WorkerEvent -> String
 ppWorkerEvent = \case
@@ -165,6 +168,8 @@ data WorkerState = WorkerState
     -- ^ Number of times the callseq is called
   , ncalls      :: !Int
     -- ^ Number of calls executed while fuzzing
+  , totalGas    :: !Int
+    -- ^ Total gas consumed while fuzzing
   , runningThreads :: [ThreadId]
     -- ^ Extra threads currently being run,
     --   aside from the main worker thread
@@ -178,6 +183,7 @@ initialWorkerState =
               , newCoverage = False
               , ncallseqs = 0
               , ncalls = 0
+              , totalGas = 0
               , runningThreads = []
               }
 
@@ -205,9 +211,14 @@ defaultSymExecAskSMTIters :: Integer
 defaultSymExecAskSMTIters = 1
 
 -- | Get number of fuzzing workers (doesn't include sym exec worker)
--- Defaults to 1 if set to Nothing
+-- Defaults to `N` if set to Nothing, where `N` is Haskell's -N value,
+-- usually the number of cores, clamped between 1 and 4.
 getNFuzzWorkers :: CampaignConf -> Int
-getNFuzzWorkers conf = fromIntegral (fromMaybe 1 (conf.workers))
+getNFuzzWorkers conf = maybe defaultN fromIntegral conf.workers
+  where
+    n = numCapabilities
+    maxN = max 1 n
+    defaultN = min 4 maxN -- capped at 4 by default
 
 -- | Number of workers, including SymExec worker if there is one
 getNWorkers :: CampaignConf -> Int

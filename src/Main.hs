@@ -29,7 +29,7 @@ import System.IO (hPutStrLn, stderr)
 import System.IO.CodePage (withCP65001)
 
 import EVM.Dapp (DappInfo(..))
-import EVM.Solidity (BuildOutput(..), Contracts(..))
+import EVM.Solidity (BuildOutput(..))
 import EVM.Types (Addr)
 
 import Echidna
@@ -59,20 +59,16 @@ main = withUtf8 $ withCP65001 $ do
     forM_ ks $ hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString
 
   buildOutput <- compileContracts cfg.solConf cliFilePath
-  env <- mkEnv cfg buildOutput
-
-  Onchain.loadRpcCache env
 
   -- take the seed from config, otherwise generate a new one
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
-  (vm, world, dict) <- prepareContract env cliFilePath cliSelectedContract seed
+  (vm, env, dict) <- prepareContract cfg cliFilePath buildOutput cliSelectedContract seed
 
-  initialCorpus <- loadInitialCorpus env world
-  let (Contracts contractMap) = buildOutput.contracts
+  initialCorpus <- loadInitialCorpus env
   -- start ui and run tests
-  _campaign <- runReaderT (ui vm world dict initialCorpus cliSelectedContract (Map.elems contractMap)) env
+  _campaign <- runReaderT (ui vm dict initialCorpus cliSelectedContract) env
 
-  tests <- readIORef env.testsRef
+  tests <- traverse readIORef env.testRefs
 
   Onchain.saveRpcCache env
 
@@ -81,7 +77,7 @@ main = withUtf8 $ withCP65001 $ do
     Nothing -> pure ()
     Just dir -> do
       measureIO cfg.solConf.quiet "Saving test reproducers" $
-        saveTxs (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> tests)
+        saveTxs env (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> tests)
 
       saveTracesEnabled <- lookupEnv "ECHIDNA_SAVE_TRACES"
       when (isJust saveTracesEnabled) $ do
@@ -98,7 +94,7 @@ main = withUtf8 $ withCP65001 $ do
 
       measureIO cfg.solConf.quiet "Saving corpus" $ do
         corpus <- readIORef env.corpusRef
-        saveTxs (dir </> "coverage") (snd <$> Set.toList corpus)
+        saveTxs env (dir </> "coverage") (snd <$> Set.toList corpus)
 
       -- TODO: We use the corpus dir to save coverage reports which is confusing.
       -- Add config option to pass dir for saving coverage report and decouple it
@@ -140,6 +136,7 @@ data Options = Options
   , cliCryticArgs       :: Maybe String
   , cliSolcArgs         :: Maybe String
   , cliSymExec          :: Maybe Bool
+  , cliSymExecTargets   :: Maybe Text
   , cliSymExecTimeout   :: Maybe Int
   , cliSymExecNSolvers  :: Maybe Int
   }
@@ -220,6 +217,9 @@ options = Options
   <*> optional (option bool $ long "sym-exec"
     <> metavar "BOOL"
     <> help "Whether to enable the experimental symbolic execution feature.")
+  <*> optional (option str $ long "sym-exec-target"
+    <> metavar "SELECTOR"
+    <> help "Target for the symbolic execution run (assuming sym-exec is enabled). Default is all functions")
   <*> optional (option auto $ long "sym-exec-timeout"
     <> metavar "INTEGER"
     <> help ("Timeout for each symbolic execution run, in seconds (assuming sym-exec is enabled). Default is " ++ show defaultSymExecTimeout))
@@ -268,6 +268,7 @@ overrideConfig config Options{..} = do
       , workers = cliWorkers <|> campaignConf.workers
       , serverPort = cliServerPort <|> campaignConf.serverPort
       , symExec = fromMaybe campaignConf.symExec cliSymExec
+      , symExecTargets = (\ t -> Just [t]) =<< cliSymExecTargets
       , symExecTimeout = fromMaybe campaignConf.symExecTimeout cliSymExecTimeout
       , symExecNSolvers = fromMaybe campaignConf.symExecNSolvers cliSymExecNSolvers
       }

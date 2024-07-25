@@ -172,7 +172,7 @@ Common causes for performance issues that we observed:
 - Lazy data constructors that accumulate thunks
 - Inefficient data structures used in hot paths
 
-Checking for these is a good place to start. If you suspect some comuptation is too lazy and
+Checking for these is a good place to start. If you suspect some computation is too lazy and
 leaks memory, you can use `force` from `Control.DeepSeq` to make sure it gets evaluated.
 
 ## Limitations and known issues
