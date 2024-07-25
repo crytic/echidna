@@ -9,56 +9,22 @@ ghc-options:
   - -O2
   - -Wall
   - -fno-warn-orphans
+  - -feager-blackholing
   # https://github.com/haskell/cabal/issues/4739
   - -optP-Wno-nonportable-include-path
   - -fspecialize-aggressively
   - -fexpose-all-unfoldings
+  - -Wunused-packages
 
 dependencies:
-  - base
   - aeson
-  - async
-  - base16-bytestring
-  - binary
-  - bytestring
-  - code-page
+  - base
   - containers
-  - data-bword
-  - data-dword
-  - deepseq
-  - extra
   - directory
-  - exceptions
-  - filepath
-  - hashable
   - hevm
-  - html-entities
-  - ListLike
   - MonadRandom
   - mtl
-  - optparse-applicative
-  - optics
-  - optics-core
-  - process
-  - random
-  - rosezipper
-  - semver
-  - split
   - text
-  - transformers
-  - time
-  - unliftio
-  - utf8-string
-  - vector
-  - with-utf8
-  - word-wrap
-  - yaml
-  - http-conduit
-  - html-conduit
-  - warp
-  - wai-extra
-  - xml-conduit
-  - strip-ansi-escape
 
 language: GHC2021
 
@@ -74,20 +40,57 @@ default-extensions:
 
 library:
   source-dirs: lib/
-
-when:
-  - condition: "!os(windows)"
-    cpp-options: -DINTERACTIVE_UI
-    dependencies:
-      - brick
-      - unix
-      - vty
+  dependencies:
+    - ansi-terminal
+    - async
+    - base16-bytestring
+    - binary
+    - brick
+    - bytestring
+    - data-bword
+    - data-dword
+    - deepseq
+    - exceptions
+    - extra
+    - filepath
+    - hashable
+    - html-conduit
+    - html-entities
+    - http-conduit
+    - ListLike
+    - optics
+    - optics-core
+    - process
+    - random
+    - rosezipper
+    - semver
+    - signal
+    - split
+    - strip-ansi-escape
+    - time
+    - unliftio
+    - utf8-string
+    - vector
+    - vty
+    - vty-crossplatform
+    - wai-extra
+    - warp
+    - word-wrap
+    - xml-conduit
+    - yaml
 
 executables:
   echidna:
     main: Main.hs
     source-dirs: src/
-    dependencies: echidna
+    dependencies:
+      - code-page
+      - echidna
+      - filepath
+      - hashable
+      - optparse-applicative
+      - time
+      - with-utf8
     ghc-options:
       - -threaded
       - '"-with-rtsopts=-A64m -N"'
@@ -100,23 +103,25 @@ executables:
           - -O2
           - -optl-pthread
       - condition: os(darwin)
-        extra-libraries: c++
         ld-options: -Wl,-keep_dwarf_unwind
         ghc-options: -fcompact-unwind
-      - condition: os(windows) && impl(ghc >= 9.4)
-        dependencies: system-cxx-std-lib
-      - condition: os(windows) && impl(ghc < 9.4)
-        extra-libraries: stdc++
 
 tests:
   echidna-testsuite:
     main: Spec.hs
     source-dirs: src/test
     dependencies:
+      - data-dword
       - echidna
+      - exceptions
+      - optics-core
+      - process
+      - semver
+      - split
       - tasty
       - tasty-hunit
       - tasty-quickcheck
+      - yaml
     when:
         - condition: (os(linux) || os(windows)) && flag(static)
           ghc-options:
@@ -126,13 +131,8 @@ tests:
             - -O2
             - -optl-pthread
         - condition: os(darwin)
-          extra-libraries: c++
           ld-options: -Wl,-keep_dwarf_unwind
           ghc-options: -fcompact-unwind
-        - condition: os(windows) && impl(ghc >= 9.4)
-          dependencies: system-cxx-std-lib
-        - condition: os(windows) && impl(ghc < 9.4)
-          extra-libraries: stdc++
 
 flags:
   static:
