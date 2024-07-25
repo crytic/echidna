@@ -1,19 +1,10 @@
 {-# LANGUAGE CPP #-}
-{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Echidna.UI where
 
-#ifdef INTERACTIVE_UI
 import Brick
 import Brick.BChan
 import Brick.Widgets.Dialog qualified as B
-import Data.Sequence ((|>))
-import Graphics.Vty (Config, Event(..), Key(..), Modifier(..), defaultConfig, inputMap, mkVty)
-import Graphics.Vty qualified as Vty
-import System.Posix
-import Echidna.UI.Widgets
-#endif
-
 import Control.Concurrent (killThread, threadDelay)
 import Control.Exception (AsyncException)
 import Control.Monad
@@ -24,14 +15,20 @@ import Control.Monad.ST (RealWorld)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (isJust)
+import Data.Sequence ((|>))
 import Data.Text (Text)
 import Data.Time
+import Graphics.Vty.Config (VtyUserConfig, defaultConfig, configInputMap)
+import Graphics.Vty.CrossPlatform (mkVty)
+import Graphics.Vty.Input.Events
+import Graphics.Vty qualified as Vty
+import System.Console.ANSI (hNowSupportsANSI)
+import System.Signal
 import UnliftIO
   ( MonadUnliftIO, IORef, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
-import EVM.Solidity (SolcContract)
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
@@ -43,11 +40,10 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage (scoveragePoints)
-import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
-import Echidna.Types.World (World)
 import Echidna.UI.Report
+import Echidna.UI.Widgets
 import Echidna.Utility (timePrefix, getTimestamp)
 
 data UIEvent =
@@ -93,7 +89,6 @@ ui vm dict initialCorpus cliSelectedContract = do
     uncurry (spawnWorker env perWorkerTestLimit)
 
   case effectiveMode of
-#ifdef INTERACTIVE_UI
     Interactive -> do
       -- Channel to push events to update UI
       uiChannel <- liftIO $ newBChan 1000
@@ -157,20 +152,17 @@ ui vm dict initialCorpus cliSelectedContract = do
       liftIO . putStrLn =<< ppCampaign vm states
 
       pure states
-#else
-    Interactive -> error "Interactive UI is not available"
-#endif
 
     NonInteractive outputFormat -> do
       serverStopVar <- newEmptyMVar
-#ifdef INTERACTIVE_UI
-      -- Handles ctrl-c, TODO: this doesn't work on Windows
+
+      -- Handles ctrl-c
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
-        let handler = Catch $ do
+        let handler _ = do
               stopWorkers workers
               void $ tryPutMVar serverStopVar ()
-        in installHandler sig handler Nothing
-#endif
+        in installHandler sig handler
+
       let forwardEvent ev = putStrLn =<< runReaderT (ppLogLine vm ev) env
       uiEventsForwarderStopVar <- spawnListener forwardEvent
 
@@ -245,7 +237,6 @@ ui vm dict initialCorpus cliSelectedContract = do
   workerStates workers =
     forM workers $ \(_, stateRef) -> readIORef stateRef
 
-#ifdef INTERACTIVE_UI
  -- | Order the workers to stop immediately
 stopWorkers :: MonadIO m => [(ThreadId, IORef WorkerState)] -> m ()
 stopWorkers workers =
@@ -253,12 +244,12 @@ stopWorkers workers =
     workerState <- readIORef workerStateRef
     liftIO $ mapM_ killThread (threadId : workerState.runningThreads)
 
-vtyConfig :: IO Config
+vtyConfig :: IO VtyUserConfig
 vtyConfig = do
-  config <- Vty.standardIOConfig
-  pure config { inputMap = (Nothing, "\ESC[6;2~", EvKey KPageDown [MShift]) :
-                           (Nothing, "\ESC[5;2~", EvKey KPageUp [MShift]) :
-                           inputMap defaultConfig }
+  pure defaultConfig { configInputMap = [
+    (Nothing, "\ESC[6;2~", EvKey KPageDown [MShift]),
+    (Nothing, "\ESC[5;2~", EvKey KPageUp [MShift])
+    ] }
 
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
 monitor :: MonadReader Env m => m (App UIState UIEvent Name)
@@ -336,16 +327,10 @@ monitor = do
              , appAttrMap = const attrs
              , appChooseCursor = neverShowCursor
              }
-#endif
 
 -- | Heuristic check that we're in a sensible terminal (not a pipe)
 isTerminal :: IO Bool
-isTerminal =
-#ifdef INTERACTIVE_UI
-  (&&) <$> queryTerminal (Fd 0) <*> queryTerminal (Fd 1)
-#else
-  pure False
-#endif
+isTerminal = hNowSupportsANSI stdout
 
 -- | Composes a compact text status line of the campaign
 statusLine
