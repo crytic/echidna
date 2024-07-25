@@ -47,6 +47,16 @@
 
         ncurses-static = pkgsStatic.ncurses.override { enableStatic = true; };
 
+        hsPkgs = ps :
+          ps.haskellPackages.override {
+            overrides = hfinal: hprev: {
+              with-utf8 =
+                if (with ps.stdenv; hostPlatform.isDarwin && hostPlatform.isx86)
+                then ps.haskell.lib.compose.overrideCabal (_ : { extraLibraries = [ps.libiconv]; }) hprev.with-utf8
+                else hprev.with-utf8;
+            };
+          };
+
         cc-workaround-nix-23138 =
           pkgs.writeScriptBin "cc-workaround-nix-23138" ''
           if [ "$1" = "--print-file-name" ] && [ "$2" = "c++" ]; then
@@ -56,7 +66,7 @@
           fi
           '';
 
-        hevm = pkgs: pkgs.lib.pipe (pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
+        hevm = pkgs: pkgs.lib.pipe ((hsPkgs pkgs).callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "trail-of-forks";
             repo = "hevm";
             rev = "3aba82f06a2d1e0a4a4c26458f747a46dad0e7e2";
@@ -69,7 +79,7 @@
         ]);
 
         echidna = pkgs: with pkgs; lib.pipe
-          (haskellPackages.callCabal2nix "echidna" ./. { hevm = hevm pkgs; })
+          ((hsPkgs pkgs).callCabal2nix "echidna" ./. { hevm = hevm pkgs; })
           ([
             # FIXME: figure out solc situation, it conflicts with the one from
             # solc-select that is installed with slither, disable tests in the meantime
@@ -84,16 +94,14 @@
           (echidna pkgsStatic)
           [
             (haskell.lib.compose.appendConfigureFlags
-              ([
+              [
                 "--extra-lib-dirs=${stripDylib (gmp.override { withStatic = true; })}/lib"
                 "--extra-lib-dirs=${stripDylib secp256k1-static}/lib"
                 "--extra-lib-dirs=${stripDylib (libff.override { enableStatic = true; })}/lib"
                 "--extra-lib-dirs=${zlib.override { static = true; shared = false; }}/lib"
                 "--extra-lib-dirs=${stripDylib (libffi.overrideAttrs (_: { dontDisableStatic = true; }))}/lib"
                 "--extra-lib-dirs=${stripDylib (ncurses-static)}/lib"
-              ] ++ (if stdenv.hostPlatform.isDarwin then [
-                "--extra-lib-dirs=${stripDylib (libiconv.override { enableStatic = true; })}/lib"
-              ] else [])))
+              ])
             (haskell.lib.compose.enableCabalFlag "static")
           ];
 
@@ -124,10 +132,12 @@
           # get the path for libcxx
           cxx=$(echo "$libs" | ${grep} '^/nix/store/.*/libc++\.')
           cxxabi=$(echo "$libs" | ${grep} '^/nix/store/.*/libc++abi\.')
+          iconv=$(echo "$libs" | ${grep} '^/nix/store/.*/libiconv\.')
           # rewrite /nix/... library paths to point to /usr/lib
           chmod 777 $out/bin/echidna
           ${install_name_tool} -change "$cxx" /usr/lib/libc++.1.dylib $out/bin/echidna
           ${install_name_tool} -change "$cxxabi" /usr/lib/libc++abi.dylib $out/bin/echidna
+          ${install_name_tool} -change "$iconv" /usr/lib/libiconv.dylib $out/bin/echidna
           # fix TERMINFO path in ncurses
           ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/usr/share/terminfo" . "\x0" x (length($1) - 19)#e' $out/bin/echidna
           # check that no nix deps remain
