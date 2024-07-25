@@ -4,8 +4,8 @@ packages:
 - '.'
 
 extra-deps:
-- git: https://github.com/elopez/hevm.git
-  commit: c263a35ca676c4d10df72d3f81536e5fb0297dc2
+- git: https://github.com/trail-of-forks/hevm.git
+  commit: 3aba82f06a2d1e0a4a4c26458f747a46dad0e7e2
 
 - smt2-parser-0.1.0.1@sha256:1e1a4565915ed851c13d1e6b8bb5185cf5d454da3b43170825d53e221f753d77,1421
 - spawn-0.3@sha256:b91e01d8f2b076841410ae284b32046f91471943dc799c1af77d666c72101f02,1162
