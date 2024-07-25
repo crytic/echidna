@@ -341,7 +341,6 @@ failWidget b test = do
     ( failureBadge <+> str (" with " ++ show test.result)
     , shrinkWidget b test <=> titleWidget <=> s <=> str " " <=> traces
     )
-  where
 
 optWidget
   :: MonadReader Env m

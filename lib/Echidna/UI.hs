@@ -29,7 +29,6 @@ import UnliftIO
   ( MonadUnliftIO, IORef, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
-import EVM.Solidity (SolcContract)
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
@@ -43,7 +42,6 @@ import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage (scoveragePoints)
 import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
-import Echidna.Types.World (World)
 import Echidna.UI.Report
 import Echidna.UI.Widgets
 import Echidna.Utility (timePrefix, getTimestamp)
