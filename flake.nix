@@ -177,6 +177,9 @@
               cabal configure --ghc-options=-pgml=${cc-workaround-nix-23138}/bin/cc-workaround-nix-23138
             '' else "");
             buildInputs = [
+              pkgs.secp256k1
+              pkgs.libff
+              pkgs.gmp
               solc
               slither-analyzer
               haskellPackages.hlint
