@@ -397,7 +397,7 @@ callseq vm txSeq = do
 
   where
   -- Given a list of transactions and a return typing rule, checks whether we
-  -- know the return type for each function called. If yes, tries to parse the
+  -- know the return type for each function called. If yes, try to parse the
   -- return value as a value of that type. Returns a 'GenDict' style Map.
   returnValues
     :: [(Tx, VMResult Concrete RealWorld)]

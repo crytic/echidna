@@ -23,7 +23,7 @@ import Data.Vector qualified as V
 import Data.Vector.Unboxed.Mutable qualified as VMut
 import System.Process (readProcessWithExitCode)
 
-import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, vmOpIx)
+import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, vmOpIx, clearTStorages)
 import EVM.ABI
 import EVM.Dapp (DappInfo)
 import EVM.Exec (exec, vmForEthrunCreation)
@@ -55,7 +55,7 @@ classifyError = \case
   StackLimitExceeded   -> RevertE
   StackUnderrun        -> IllegalE
   BadJumpDestination   -> IllegalE
-  IllegalOverflow      -> IllegalE
+  IllegalOverflow      -> RevertE
   _                    -> UnknownE
 
 -- | Extracts the 'Query' if there is one.
@@ -99,6 +99,7 @@ execTxWith executeTx tx = do
         vmResult <- runFully
         gasLeftAfterTx <- gets (.state.gas)
         handleErrorsAndConstruction vmResult vmBeforeTx
+        fromEVM clearTStorages
         pure (vmResult, gasLeftBeforeTx - gasLeftAfterTx)
   where
   runFully = do
@@ -132,7 +133,7 @@ execTxWith executeTx tx = do
                     fromEVM (continuation contract)
                     liftIO $ atomicWriteIORef cacheRef $ Map.insert addr (Just contract) cache
                   _ -> do
-                    -- TODO: better error reporting in HEVM, when intermmittent
+                    -- TODO: better error reporting in HEVM, when intermittent
                     -- network error then retry
                     liftIO $ atomicWriteIORef cacheRef $ Map.insert addr Nothing cache
                     logMsg $ "ERROR: Failed to fetch contract: " <> show q

@@ -218,7 +218,7 @@ catNoCalls (tx1:tx2:xs) =
       _                -> tx1 : catNoCalls (tx2:xs)
   where nc = tx1 { delay = (fst tx1.delay + fst tx2.delay, snd tx1.delay + snd tx2.delay) }  
 
--- | Transform a VMResult into a more hash friendly sum type
+-- | Transform a VMResult into a more hash-friendly sum type
 getResult :: VMResult Concrete s -> TxResult
 getResult = \case
   VMSuccess b | forceBuf b == encodeAbiValue (AbiBool True)  -> ReturnTrue
