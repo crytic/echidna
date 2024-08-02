@@ -6,6 +6,7 @@ import Data.List (foldl')
 import Data.Map qualified as Map
 import Data.Map.Strict (Map)
 import Data.Text (toLower)
+import Data.Vector.Unboxed (Vector)
 import Data.Vector.Unboxed.Mutable (IOVector)
 import Data.Vector.Unboxed.Mutable qualified as V
 import Data.Word (Word64)
@@ -17,8 +18,22 @@ import Echidna.Types.Tx (TxResult)
 -- Indexed by contracts' compile-time codehash; see `CodehashMap`.
 type CoverageMap = Map W256 (IOVector CoverageInfo)
 
+-- | Map with the statistic information needed for source code printing.
+-- Indexed by contracts' compile-time codehash; see `CodehashMap`.
+-- Used during runtime data collection
+type StatsMap = Map W256 (IOVector StatsInfo)
+
+-- | Map with the statistic information needed for source code printing.
+-- Indexed by contracts' compile-time codehash; see `CodehashMap`.
+-- Used during statistics summarization (combining multiple `StatsMap`)
+-- and coverage report generation.
+type StatsMapV = Map W256 (Vector StatsInfo)
+
 -- | Basic coverage information
 type CoverageInfo = (OpIx, StackDepths, TxResults)
+
+-- | Basic stats information
+type StatsInfo = (ExecQty, RevertQty)
 
 -- | Index per operation in the source code, obtained from the source mapping
 type OpIx = Int
@@ -28,6 +43,12 @@ type StackDepths = Word64
 
 -- | Packed TxResults used for coverage, corresponding bits are set
 type TxResults = Word64
+
+-- | Hit count
+type ExecQty = Word64
+
+-- | Revert count
+type RevertQty = Word64
 
 -- | Given good point coverage, count the number of unique points but
 -- only considering the different instruction PCs (discarding the TxResult).

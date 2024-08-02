@@ -8,6 +8,7 @@ import Data.Set (Set)
 import Data.Text (Text)
 import Data.Time (LocalTime)
 import Data.Word (Word64)
+import Data.TLS.GHC
 
 import EVM.Dapp (DappInfo)
 import EVM.Types (Addr, Contract, W256)
@@ -15,7 +16,7 @@ import EVM.Types (Addr, Contract, W256)
 import Echidna.SourceMapping (CodehashMap)
 import Echidna.Types.Campaign (CampaignConf, CampaignEvent)
 import Echidna.Types.Corpus (Corpus)
-import Echidna.Types.Coverage (CoverageMap)
+import Echidna.Types.Coverage (CoverageMap, StatsMap)
 import Echidna.Types.Solidity (SolConf)
 import Echidna.Types.Test (TestConf, EchidnaTest)
 import Echidna.Types.Tx (TxConf)
@@ -71,6 +72,7 @@ data Env = Env
 
   , testRefs :: [IORef EchidnaTest]
   , coverageRef :: IORef CoverageMap
+  , statsRef :: TLS (IORef StatsMap)
   , corpusRef :: IORef Corpus
 
   , codehashMap :: CodehashMap

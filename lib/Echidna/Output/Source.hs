@@ -1,4 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ParallelListComp #-}
 
 module Echidna.Output.Source where
 
@@ -6,7 +7,7 @@ import Prelude hiding (writeFile)
 
 import Data.ByteString qualified as BS
 import Data.Foldable
-import Data.IORef (readIORef)
+import Data.IORef (readIORef, IORef)
 import Data.List (nub, sort)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Map (Map)
@@ -17,7 +18,9 @@ import Data.Text (Text, pack)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
+import Data.TLS.GHC (allTLS, TLS)
 import Data.Vector qualified as V
+import qualified Data.Vector.Unboxed as U
 import Data.Vector.Unboxed.Mutable qualified as VU
 import HTMLEntities.Text qualified as HTML
 import System.Directory (createDirectoryIfMissing)
@@ -29,8 +32,25 @@ import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
 
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
-import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..))
+import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..), StatsMap, StatsMapV, StatsInfo)
 import Echidna.Types.Tx (TxResult(..))
+import EVM.Types (W256)
+
+zipSumStats :: IO [StatsInfo] -> IO [StatsInfo] -> IO [StatsInfo]
+zipSumStats v1 v2 = do
+  vec1 <- v1
+  vec2 <- v2
+  return [(exec1 + exec2, revert1 + revert2) | (exec1, revert1) <- vec1 | (exec2, revert2) <- vec2]
+
+combineStats :: TLS (IORef StatsMap) -> IO StatsMapV
+combineStats statsRef = do
+  threadStats' <- allTLS statsRef
+  threadStats <-  mapM readIORef threadStats' :: IO [StatsMap]
+  let statsLists = map (Map.map mvToList) threadStats :: [Map EVM.Types.W256 (IO [StatsInfo])]
+  traverse (U.fromList <$>) $ Map.unionsWith zipSumStats statsLists
+  where
+    mvToList :: (VU.Unbox a) => VU.IOVector a -> IO [a]
+    mvToList = fmap U.toList . U.freeze
 
 saveCoverages
   :: Env
@@ -42,7 +62,8 @@ saveCoverages
 saveCoverages env seed d sc cs = do
   let fileTypes = env.cfg.campaignConf.coverageFormats
   coverage <- readIORef env.coverageRef
-  mapM_ (\ty -> saveCoverage ty seed d sc cs coverage) fileTypes
+  stats <- combineStats env.statsRef
+  mapM_ (\ty -> saveCoverage ty seed d sc cs coverage stats) fileTypes
 
 saveCoverage
   :: CoverageFileType
@@ -51,11 +72,12 @@ saveCoverage
   -> SourceCache
   -> [SolcContract]
   -> CoverageMap
+  -> StatsMapV
   -> IO ()
-saveCoverage fileType seed d sc cs covMap = do
+saveCoverage fileType seed d sc cs covMap statMap = do
   let extension = coverageFileExtension fileType
       fn = d </> "covered." <> show seed <> extension
-  cc <- ppCoveredCode fileType sc cs covMap
+  cc <- ppCoveredCode fileType sc cs covMap statMap
   createDirectoryIfMissing True d
   writeFile fn cc
 
@@ -65,11 +87,11 @@ coverageFileExtension Html = ".html"
 coverageFileExtension Txt = ".txt"
 
 -- | Pretty-print the covered code
-ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> CoverageMap -> IO Text
-ppCoveredCode fileType sc cs s | null s = pure "Coverage map is empty"
+ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> CoverageMap -> StatsMapV -> IO Text
+ppCoveredCode fileType sc cs s sm | null s = pure "Coverage map is empty"
   | otherwise = do
   -- List of covered lines during the fuzzing campaign
-  covLines <- srcMapCov sc s cs
+  covLines <- srcMapCov sc s sm cs
   let
     -- Collect all the possible lines from all the files
     allFiles = (\(path, src) -> (path, V.fromList (decodeUtf8 <$> BS.split 0xa src))) <$> Map.elems sc.files
@@ -97,13 +119,13 @@ ppCoveredCode fileType sc cs s | null s = pure "Coverage map is empty"
     -- ^ Alter file name, in the case of html turning it into bold text
     changeFileLines ls = case fileType of
       Lcov -> ls ++ ["end_of_record"]
-      Html -> "<code>" : ls ++ ["", "</code>","<br />"]
+      Html -> "<br /><b>Legend:</b> Line # | Execs # | Reverts # | Code<br /><code>" : ls ++ ["", "</code>","<br />"]
       Txt  -> ls
     -- ^ Alter file contents, in the case of html encasing it in <code> and adding a line break
   pure $ topHeader <> T.unlines (map ppFile allFiles)
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
-markLines :: CoverageFileType -> V.Vector Text -> S.Set Int -> Map Int [TxResult] -> V.Vector Text
+markLines :: CoverageFileType -> V.Vector Text -> S.Set Int -> Map Int ([TxResult], StatsInfo) -> V.Vector Text
 markLines fileType codeLines runtimeLines resultMap =
   V.map markLine . V.filter shouldUseLine $ V.indexed codeLines
   where
@@ -112,7 +134,7 @@ markLines fileType codeLines runtimeLines resultMap =
     _ -> True
   markLine (i, codeLine) =
     let n = i + 1
-        results  = fromMaybe [] (Map.lookup n resultMap)
+        (results, (execs, reverts)) = fromMaybe ([], (0, 0)) (Map.lookup n resultMap)
         markers = sort $ nub $ getMarker <$> results
         wrapLine :: Text -> Text
         wrapLine line = case fileType of
@@ -123,11 +145,16 @@ markLines fileType codeLines runtimeLines resultMap =
           where
           cssClass = if n `elem` runtimeLines then getCSSClass markers else "neutral"
         result = case fileType of
-          Lcov -> pack $ printf "DA:%d,%d" n (length results)
-          _ -> pack $ printf " %*d | %-4s| %s" lineNrSpan n markers (wrapLine codeLine)
+          Lcov -> pack $ printf "DA:%d,%d" n execs
+          Html -> pack $ printf "%*d | %4s | %4s | %-4s| %s" lineNrSpan n (prettyCount execs) (prettyCount reverts) markers (wrapLine codeLine)
+          _    -> pack $ printf "%*d | %-4s| %s" lineNrSpan n markers (wrapLine codeLine)
 
     in result
   lineNrSpan = length . show $ V.length codeLines + 1
+  prettyCount x = prettyCount' x 0
+  prettyCount' x n | x >= 1000          = prettyCount' (x `div` 1000) (n + 1)
+                   | x < 1000 && n == 0 = show x
+                   | otherwise          = show x <> [" kMGTPEZY" !! n]
 
 getCSSClass :: String -> Text
 getCSSClass markers =
@@ -146,11 +173,11 @@ getMarker ErrorOutOfGas = 'o'
 getMarker _             = 'e'
 
 -- | Given a source cache, a coverage map, a contract returns a list of covered lines
-srcMapCov :: SourceCache -> CoverageMap -> [SolcContract] -> IO (Map FilePath (Map Int [TxResult]))
-srcMapCov sc covMap contracts = do
+srcMapCov :: SourceCache -> CoverageMap -> StatsMapV -> [SolcContract] -> IO (Map FilePath (Map Int ([TxResult], StatsInfo)))
+srcMapCov sc covMap statMap contracts = do
   Map.unionsWith Map.union <$> mapM linesCovered contracts
   where
-  linesCovered :: SolcContract -> IO (Map FilePath (Map Int [TxResult]))
+  linesCovered :: SolcContract -> IO (Map FilePath (Map Int ([TxResult], StatsInfo)))
   linesCovered c =
     case Map.lookup c.runtimeCodehash covMap of
       Just vec -> VU.foldl' (\acc covInfo -> case covInfo of
@@ -167,8 +194,13 @@ srcMapCov sc covMap contracts = do
                   where
                   innerUpdate =
                     Map.alter
-                      (Just . (<> unpackTxResults txResults) . fromMaybe mempty)
+                      updateLine
                       line
+                  updateLine (Just (r, s)) = Just ((<> unpackTxResults txResults) r, maxStats s idxStats)
+                  updateLine Nothing = Just (unpackTxResults txResults, idxStats)
+                  fileStats = Map.lookup c.runtimeCodehash statMap
+                  idxStats = maybe (0, 0) (U.! opIx) fileStats
+                  maxStats (a1, b1) (a2, b2) = (max a1 a2, max b1 b2)
                 Nothing -> acc
             Nothing -> acc
         ) mempty vec

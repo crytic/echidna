@@ -9,6 +9,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
+import Data.TLS.GHC (mkTLS)
 import System.FilePath ((</>))
 
 import EVM (cheatCode)
@@ -119,6 +120,7 @@ mkEnv cfg buildOutput tests world = do
   chainId <- maybe (pure Nothing) EVM.Fetch.fetchChainIdFrom cfg.rpcUrl
   eventQueue <- newChan
   coverageRef <- newIORef mempty
+  statsRef <- mkTLS $ newIORef mempty
   corpusRef <- newIORef mempty
   testRefs <- traverse newIORef tests
   (contractCache, slotCache) <- Onchain.loadRpcCache cfg
@@ -127,5 +129,5 @@ mkEnv cfg buildOutput tests world = do
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
   pure $ Env { cfg, dapp, codehashMap, fetchContractCache, fetchSlotCache
-             , chainId, eventQueue, coverageRef, corpusRef, testRefs, world
+             , chainId, eventQueue, coverageRef, statsRef, corpusRef, testRefs, world
              }
