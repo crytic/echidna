@@ -342,7 +342,7 @@ mkWorld SolConf{sender, testMode} sigMap maybeContract slitherInfo contracts =
   let
     eventMap = Map.unions $ map (.eventMap) contracts
     payableSigs = filterResults maybeContract slitherInfo.payableFunctions
-    as = if isAssertionMode testMode then filterResults maybeContract slitherInfo.asserts else []
+    as = if isAssertionMode testMode then filterResults maybeContract (getAssertFns <$> slitherInfo.asserts) else []
     cs = if isDapptestMode testMode then [] else filterResults maybeContract slitherInfo.constantFunctions \\ as
     (highSignatureMap, lowSignatureMap) = prepareHashMaps cs as $
       filterFallbacks slitherInfo.fallbackDefined slitherInfo.receiveDefined contracts sigMap
@@ -352,6 +352,9 @@ mkWorld SolConf{sender, testMode} sigMap maybeContract slitherInfo contracts =
            , payableSigs
            , eventMap
            }
+  where
+    getAssertFns :: Map FunctionName [AssertLocation] -> [FunctionName]
+    getAssertFns fnToAsserts = map fst $ filter (not . null . snd) $ Map.toList fnToAsserts
 
 -- | This function is used to filter the lists of function names according to the supplied
 -- contract name (if any) and returns a list of hashes

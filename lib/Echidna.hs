@@ -51,7 +51,7 @@ prepareContract
   -> BuildOutput
   -> Maybe ContractName
   -> Seed
-  -> IO (VM Concrete RealWorld, Env, GenDict)
+  -> IO (VM Concrete RealWorld, Env, GenDict, AssertMappingByContract)
 prepareContract cfg solFiles buildOutput selectedContract seed = do
   let solConf = cfg.solConf
       (Contracts contractMap) = buildOutput.contracts
@@ -90,7 +90,7 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
                      seed
                      (returnTypes contracts)
 
-  pure (vm, env, dict)
+  pure (vm, env, dict, slitherInfo.asserts)
 
 loadInitialCorpus :: Env -> IO [(FilePath, [Tx])]
 loadInitialCorpus env = do

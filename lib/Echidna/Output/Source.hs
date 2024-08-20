@@ -4,6 +4,7 @@ module Echidna.Output.Source where
 
 import Prelude hiding (writeFile)
 
+import Control.Monad (unless)
 import Data.ByteString qualified as BS
 import Data.Foldable
 import Data.IORef (readIORef)
@@ -31,6 +32,7 @@ import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..))
 import Echidna.Types.Tx (TxResult(..))
+import Echidna.SourceAnalysis.Slither (AssertMappingByContract, AssertLocation(..))
 
 saveCoverages
   :: Env
@@ -188,3 +190,26 @@ buildRuntimeLinesMap sc contracts =
   where
   srcMaps = concatMap
     (\c -> toList $ c.runtimeSrcmap <> c.creationSrcmap) contracts
+
+checkAssertionsCoverage
+  :: SourceCache
+  -> [SolcContract]
+  -> CoverageMap
+  -> AssertMappingByContract 
+  -> IO ()
+checkAssertionsCoverage sc cs covMap assertMap = do
+  covLines <- srcMapCov sc covMap cs
+  let asserts = concat $ concatMap Map.elems $ Map.elems assertMap
+  mapM_ (checkAssertionReached covLines) asserts
+
+checkAssertionReached :: Map String (Map Int [TxResult]) -> AssertLocation -> IO ()
+checkAssertionReached covLines assert =
+  maybe
+    warnAssertNotReached checkCoverage
+    (Map.lookup assert.filenameAbsolute covLines)
+  where 
+   checkCoverage coverage = let lineNumbers = Map.keys coverage in
+     unless ((head assert.assertLines) `elem` lineNumbers) warnAssertNotReached
+   warnAssertNotReached =
+    putStrLn $ "WARNING: assertion at file: " ++ assert.filenameRelative 
+       ++ " starting at line: " ++ show (head assert.assertLines) ++ " was never reached" 

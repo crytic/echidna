@@ -94,7 +94,7 @@ runContract f selectedContract cfg workerType = do
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
   buildOutput <- compileContracts cfg.solConf (f :| [])
 
-  (vm, env, dict) <- prepareContract cfg (f :| []) buildOutput selectedContract seed
+  (vm, env, dict, _) <- prepareContract cfg (f :| []) buildOutput selectedContract seed
 
   (_stopReason, finalState) <- flip runReaderT env $
     runWorker workerType (pure ()) vm dict 0 [] cfg.campaignConf.testLimit selectedContract

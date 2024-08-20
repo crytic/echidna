@@ -62,13 +62,17 @@ main = withUtf8 $ withCP65001 $ do
 
   -- take the seed from config, otherwise generate a new one
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
-  (vm, env, dict) <- prepareContract cfg cliFilePath buildOutput cliSelectedContract seed
+  (vm, env, dict, asserts) <- prepareContract cfg cliFilePath buildOutput cliSelectedContract seed
 
   initialCorpus <- loadInitialCorpus env
   -- start ui and run tests
   _campaign <- runReaderT (ui vm dict initialCorpus cliSelectedContract) env
 
   tests <- traverse readIORef env.testRefs
+
+  let contracts = Map.elems env.dapp.solcByName
+  coverage <- readIORef env.coverageRef
+  checkAssertionsCoverage buildOutput.sources contracts coverage asserts
 
   Onchain.saveRpcCache env
 
@@ -108,7 +112,6 @@ main = withUtf8 $ withCP65001 $ do
         Onchain.saveCoverageReport env runId
 
         -- save source coverage reports
-        let contracts = Map.elems env.dapp.solcByName
         saveCoverages env runId dir buildOutput.sources contracts
 
   if isSuccessful tests then exitSuccess else exitWith (ExitFailure 1)

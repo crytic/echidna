@@ -40,11 +40,32 @@ enhanceConstants si =
     enh (AbiString s) = makeArrayAbiValues s
     enh v = [v]
 
+data AssertLocation = AssertLocation 
+  { start :: Int
+  , filenameRelative :: String
+  , filenameAbsolute :: String
+  , assertLines :: [Int]
+  , startColumn :: Int
+  , endingColumn :: Int
+  } deriving (Show)
+
+type AssertMappingByContract = Map ContractName (Map FunctionName [AssertLocation])
+
+instance FromJSON AssertLocation where
+  parseJSON = withObject "" $ \o -> do
+    start <- o.: "start"
+    filenameRelative <- o.: "filename_relative"
+    filenameAbsolute <- o.: "filename_absolute"
+    assertLines <- o.: "lines"
+    startColumn <- o.: "starting_column"
+    endingColumn <- o.: "ending_column" 
+    pure AssertLocation {..}
+
 -- we loose info on what constants are in which functions
 data SlitherInfo = SlitherInfo
   { payableFunctions :: Map ContractName [FunctionName]
   , constantFunctions :: Map ContractName [FunctionName]
-  , asserts :: Map ContractName [FunctionName]
+  , asserts :: AssertMappingByContract
   , constantValues  :: Map ContractName (Map FunctionName [AbiValue])
   , generationGraph :: Map ContractName (Map FunctionName [FunctionName])
   , solcVersions :: [Version]
