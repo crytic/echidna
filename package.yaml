@@ -67,6 +67,7 @@ library:
     - signal
     - split
     - strip-ansi-escape
+    - thread-local-storage
     - time
     - unliftio
     - utf8-string

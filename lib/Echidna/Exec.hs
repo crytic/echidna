@@ -7,7 +7,7 @@ module Echidna.Exec where
 import Optics.Core
 import Optics.State.Operators
 
-import Control.Monad (when, forM_)
+import Control.Monad (when)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO), gets, modify', execStateT)
 import Control.Monad.Reader (MonadReader, ask, asks)
@@ -18,6 +18,7 @@ import Data.IORef (readIORef, atomicWriteIORef, newIORef, writeIORef, modifyIORe
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
+import Data.TLS.GHC (getTLS)
 import Data.Vector qualified as V
 import Data.Vector.Unboxed.Mutable qualified as VMut
 import System.Process (readProcessWithExitCode)
@@ -287,14 +288,20 @@ execTxWithCov tx = do
       addCoverage !vm = do
         let (pc, opIx, depth) = currentCovLoc vm
             contract = currentContract vm
+            contractSize = BS.length . forceBuf . fromJust . view bytecode $ contract
 
         maybeCovVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp env.coverageRef $ do
-          let size = BS.length . forceBuf . fromJust . view bytecode $ contract
-          if size == 0 then pure Nothing else do
+          if contractSize == 0 then pure Nothing else do
             -- IO for making a new vec
-            vec <- VMut.new size
             -- We use -1 for opIx to indicate that the location was not covered
-            forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0)
+            vec <- VMut.replicate contractSize (-1, 0, 0)
+            pure $ Just vec
+
+        statsRef <- getTLS env.statsRef
+        maybeStatsVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp statsRef $ do
+          if contractSize == 0 then pure Nothing else do
+            -- IO for making a new vec
+            vec <- VMut.replicate contractSize (0, 0)
             pure $ Just vec
 
         case maybeCovVec of
@@ -305,7 +312,8 @@ execTxWithCov tx = do
             -- bug in another place, investigate.
             -- ... this should be fixed now, since we use `codeContract` instead
             -- of `contract` for everything; it may be safe to remove this check.
-            when (pc < VMut.length vec) $
+            when (pc < VMut.length vec) $ do
+              VMut.modify (fromJust maybeStatsVec) (\(execQty, revertQty) -> (execQty + 1, revertQty)) opIx
               VMut.read vec pc >>= \case
                 (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
                   VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
