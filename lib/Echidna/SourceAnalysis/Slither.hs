@@ -2,6 +2,7 @@
 
 module Echidna.SourceAnalysis.Slither where
 
+import Control.Applicative ((<|>))
 import Data.Aeson ((.:), (.:?), (.!=), eitherDecode, parseJSON, withEmbeddedJSON, withObject)
 import Data.Aeson.Types (FromJSON, Parser, Value(String))
 import Data.ByteString.Base16 qualified as BS16 (decode)
@@ -49,7 +50,20 @@ data AssertLocation = AssertLocation
   , endingColumn :: Int
   } deriving (Show)
 
-type AssertMappingByContract = Map ContractName (Map FunctionName [AssertLocation])
+data ContractAssertMapping
+  = AssertFunctionList [FunctionName]
+  | AssertLocationList (Map FunctionName [AssertLocation])
+  deriving (Show)
+
+type AssertMappingByContract = Map ContractName ContractAssertMapping
+
+assertFunctionList :: ContractAssertMapping -> [FunctionName]
+assertFunctionList (AssertFunctionList l) = l
+assertFunctionList (AssertLocationList m) = map fst $ filter (not . null . snd) $ Map.toList m
+
+assertLocationList :: ContractAssertMapping -> [AssertLocation]
+assertLocationList (AssertFunctionList _) = []
+assertLocationList (AssertLocationList m) = concat $ Map.elems m
 
 instance FromJSON AssertLocation where
   parseJSON = withObject "" $ \o -> do
@@ -60,6 +74,9 @@ instance FromJSON AssertLocation where
     startColumn <- o.: "starting_column"
     endingColumn <- o.: "ending_column" 
     pure AssertLocation {..}
+
+instance FromJSON ContractAssertMapping where
+  parseJSON x = (AssertFunctionList <$> parseJSON x) <|> (AssertLocationList <$> parseJSON x)
 
 -- we loose info on what constants are in which functions
 data SlitherInfo = SlitherInfo

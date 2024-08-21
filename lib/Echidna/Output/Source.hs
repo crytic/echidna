@@ -32,7 +32,7 @@ import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..))
 import Echidna.Types.Tx (TxResult(..))
-import Echidna.SourceAnalysis.Slither (AssertMappingByContract, AssertLocation(..))
+import Echidna.SourceAnalysis.Slither (AssertMappingByContract, AssertLocation(..), assertLocationList)
 
 saveCoverages
   :: Env
@@ -199,7 +199,7 @@ checkAssertionsCoverage
   -> IO ()
 checkAssertionsCoverage sc cs covMap assertMap = do
   covLines <- srcMapCov sc covMap cs
-  let asserts = concat $ concatMap Map.elems $ Map.elems assertMap
+  let asserts = concatMap assertLocationList $ Map.elems assertMap
   mapM_ (checkAssertionReached covLines) asserts
 
 checkAssertionReached :: Map String (Map Int [TxResult]) -> AssertLocation -> IO ()
