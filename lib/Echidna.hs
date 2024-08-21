@@ -51,7 +51,7 @@ prepareContract
   -> BuildOutput
   -> Maybe ContractName
   -> Seed
-  -> IO (VM Concrete RealWorld, Env, GenDict, AssertMappingByContract)
+  -> IO (VM Concrete RealWorld, Env, GenDict, AssertListingByContract)
 prepareContract cfg solFiles buildOutput selectedContract seed = do
   let solConf = cfg.solConf
       (Contracts contractMap) = buildOutput.contracts

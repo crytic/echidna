@@ -32,7 +32,7 @@ import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..))
 import Echidna.Types.Tx (TxResult(..))
-import Echidna.SourceAnalysis.Slither (AssertMappingByContract, AssertLocation(..), assertLocationList)
+import Echidna.SourceAnalysis.Slither (AssertListingByContract, AssertLocation(..), assertLocationList)
 
 saveCoverages
   :: Env
@@ -191,25 +191,28 @@ buildRuntimeLinesMap sc contracts =
   srcMaps = concatMap
     (\c -> toList $ c.runtimeSrcmap <> c.creationSrcmap) contracts
 
+-- | Check that all assertions were hit, and log a warning if they weren't
 checkAssertionsCoverage
   :: SourceCache
   -> [SolcContract]
   -> CoverageMap
-  -> AssertMappingByContract 
+  -> AssertListingByContract
   -> IO ()
 checkAssertionsCoverage sc cs covMap assertMap = do
   covLines <- srcMapCov sc covMap cs
   let asserts = concatMap assertLocationList $ Map.elems assertMap
   mapM_ (checkAssertionReached covLines) asserts
 
+-- | Helper function for `checkAssertionsCoverage` which checks a single assertion
+-- and logs a warning if it wasn't hit
 checkAssertionReached :: Map String (Map Int [TxResult]) -> AssertLocation -> IO ()
 checkAssertionReached covLines assert =
   maybe
     warnAssertNotReached checkCoverage
     (Map.lookup assert.filenameAbsolute covLines)
-  where 
+  where
    checkCoverage coverage = let lineNumbers = Map.keys coverage in
      unless ((head assert.assertLines) `elem` lineNumbers) warnAssertNotReached
    warnAssertNotReached =
-    putStrLn $ "WARNING: assertion at file: " ++ assert.filenameRelative 
-       ++ " starting at line: " ++ show (head assert.assertLines) ++ " was never reached" 
+    putStrLn $ "WARNING: assertion at file: " ++ assert.filenameRelative
+       ++ " starting at line: " ++ show (head assert.assertLines) ++ " was never reached"

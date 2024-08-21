@@ -50,18 +50,23 @@ data AssertLocation = AssertLocation
   , endingColumn :: Int
   } deriving (Show)
 
-data ContractAssertMapping
+-- | Assertion listing for a contract.
+-- There are two possibilities because different solc's give different formats.
+-- We either have a list of functions that have assertions, or a full listing of individual assertions.
+data ContractAssertListing
   = AssertFunctionList [FunctionName]
   | AssertLocationList (Map FunctionName [AssertLocation])
   deriving (Show)
 
-type AssertMappingByContract = Map ContractName ContractAssertMapping
+type AssertListingByContract = Map ContractName ContractAssertListing
 
-assertFunctionList :: ContractAssertMapping -> [FunctionName]
+-- | Get a list of functions that have assertions
+assertFunctionList :: ContractAssertListing -> [FunctionName]
 assertFunctionList (AssertFunctionList l) = l
 assertFunctionList (AssertLocationList m) = map fst $ filter (not . null . snd) $ Map.toList m
 
-assertLocationList :: ContractAssertMapping -> [AssertLocation]
+-- | Get a list of assertions, or an empty list if we don't have enough info
+assertLocationList :: ContractAssertListing -> [AssertLocation]
 assertLocationList (AssertFunctionList _) = []
 assertLocationList (AssertLocationList m) = concat $ Map.elems m
 
@@ -75,14 +80,14 @@ instance FromJSON AssertLocation where
     endingColumn <- o.: "ending_column" 
     pure AssertLocation {..}
 
-instance FromJSON ContractAssertMapping where
+instance FromJSON ContractAssertListing where
   parseJSON x = (AssertFunctionList <$> parseJSON x) <|> (AssertLocationList <$> parseJSON x)
 
 -- we loose info on what constants are in which functions
 data SlitherInfo = SlitherInfo
   { payableFunctions :: Map ContractName [FunctionName]
   , constantFunctions :: Map ContractName [FunctionName]
-  , asserts :: AssertMappingByContract
+  , asserts :: AssertListingByContract
   , constantValues  :: Map ContractName (Map FunctionName [AbiValue])
   , generationGraph :: Map ContractName (Map FunctionName [FunctionName])
   , solcVersions :: [Version]
