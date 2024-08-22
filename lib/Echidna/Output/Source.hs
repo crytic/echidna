@@ -4,6 +4,7 @@ module Echidna.Output.Source where
 
 import Prelude hiding (writeFile)
 
+import Control.Monad (unless)
 import Data.ByteString qualified as BS
 import Data.Foldable
 import Data.IORef (readIORef)
@@ -24,13 +25,14 @@ import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import Text.Printf (printf)
 
-import EVM.Dapp (srcMapCodePos)
+import EVM.Dapp (srcMapCodePos, DappInfo(..))
 import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
 
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..))
 import Echidna.Types.Tx (TxResult(..))
+import Echidna.SourceAnalysis.Slither (AssertLocation(..), assertLocationList, SlitherInfo(..))
 
 saveCoverages
   :: Env
@@ -188,3 +190,30 @@ buildRuntimeLinesMap sc contracts =
   where
   srcMaps = concatMap
     (\c -> toList $ c.runtimeSrcmap <> c.creationSrcmap) contracts
+
+-- | Check that all assertions were hit, and log a warning if they weren't
+checkAssertionsCoverage
+  :: SourceCache
+  -> Env
+  -> IO ()
+checkAssertionsCoverage sc env = do
+  let
+    cs = Map.elems env.dapp.solcByName
+    asserts = maybe [] (concatMap assertLocationList . Map.elems . (.asserts)) env.slitherInfo
+  covMap <- readIORef env.coverageRef
+  covLines <- srcMapCov sc covMap cs
+  mapM_ (checkAssertionReached covLines) asserts
+
+-- | Helper function for `checkAssertionsCoverage` which checks a single assertion
+-- and logs a warning if it wasn't hit
+checkAssertionReached :: Map String (Map Int [TxResult]) -> AssertLocation -> IO ()
+checkAssertionReached covLines assert =
+  maybe
+    warnAssertNotReached checkCoverage
+    (Map.lookup assert.filenameAbsolute covLines)
+  where
+   checkCoverage coverage = let lineNumbers = Map.keys coverage in
+     unless ((head assert.assertLines) `elem` lineNumbers) warnAssertNotReached
+   warnAssertNotReached =
+    putStrLn $ "WARNING: assertion at file: " ++ assert.filenameRelative
+       ++ " starting at line: " ++ show (head assert.assertLines) ++ " was never reached"
