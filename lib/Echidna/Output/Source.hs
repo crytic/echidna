@@ -25,14 +25,14 @@ import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import Text.Printf (printf)
 
-import EVM.Dapp (srcMapCodePos)
+import EVM.Dapp (srcMapCodePos, DappInfo(..))
 import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
 
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..))
 import Echidna.Types.Tx (TxResult(..))
-import Echidna.SourceAnalysis.Slither (AssertListingByContract, AssertLocation(..), assertLocationList)
+import Echidna.SourceAnalysis.Slither (AssertLocation(..), assertLocationList, SlitherInfo(..))
 
 saveCoverages
   :: Env
@@ -194,13 +194,14 @@ buildRuntimeLinesMap sc contracts =
 -- | Check that all assertions were hit, and log a warning if they weren't
 checkAssertionsCoverage
   :: SourceCache
-  -> [SolcContract]
-  -> CoverageMap
-  -> AssertListingByContract
+  -> Env
   -> IO ()
-checkAssertionsCoverage sc cs covMap assertMap = do
+checkAssertionsCoverage sc env = do
+  let
+    cs = Map.elems env.dapp.solcByName
+    asserts = maybe [] (concatMap assertLocationList . Map.elems . (.asserts)) env.slitherInfo
+  covMap <- readIORef env.coverageRef
   covLines <- srcMapCov sc covMap cs
-  let asserts = concatMap assertLocationList $ Map.elems assertMap
   mapM_ (checkAssertionReached covLines) asserts
 
 -- | Helper function for `checkAssertionsCoverage` which checks a single assertion
