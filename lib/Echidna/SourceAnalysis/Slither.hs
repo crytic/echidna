@@ -2,6 +2,7 @@
 
 module Echidna.SourceAnalysis.Slither where
 
+import Control.Applicative ((<|>))
 import Data.Aeson ((.:), (.:?), (.!=), eitherDecode, parseJSON, withEmbeddedJSON, withObject)
 import Data.Aeson.Types (FromJSON, Parser, Value(String))
 import Data.ByteString.Base16 qualified as BS16 (decode)
@@ -40,11 +41,53 @@ enhanceConstants si =
     enh (AbiString s) = makeArrayAbiValues s
     enh v = [v]
 
+data AssertLocation = AssertLocation 
+  { start :: Int
+  , filenameRelative :: String
+  , filenameAbsolute :: String
+  , assertLines :: [Int]
+  , startColumn :: Int
+  , endingColumn :: Int
+  } deriving (Show)
+
+-- | Assertion listing for a contract.
+-- There are two possibilities because different solc's give different formats.
+-- We either have a list of functions that have assertions, or a full listing of individual assertions.
+data ContractAssertListing
+  = AssertFunctionList [FunctionName]
+  | AssertLocationList (Map FunctionName [AssertLocation])
+  deriving (Show)
+
+type AssertListingByContract = Map ContractName ContractAssertListing
+
+-- | Get a list of functions that have assertions
+assertFunctionList :: ContractAssertListing -> [FunctionName]
+assertFunctionList (AssertFunctionList l) = l
+assertFunctionList (AssertLocationList m) = map fst $ filter (not . null . snd) $ Map.toList m
+
+-- | Get a list of assertions, or an empty list if we don't have enough info
+assertLocationList :: ContractAssertListing -> [AssertLocation]
+assertLocationList (AssertFunctionList _) = []
+assertLocationList (AssertLocationList m) = concat $ Map.elems m
+
+instance FromJSON AssertLocation where
+  parseJSON = withObject "" $ \o -> do
+    start <- o.: "start"
+    filenameRelative <- o.: "filename_relative"
+    filenameAbsolute <- o.: "filename_absolute"
+    assertLines <- o.: "lines"
+    startColumn <- o.: "starting_column"
+    endingColumn <- o.: "ending_column" 
+    pure AssertLocation {..}
+
+instance FromJSON ContractAssertListing where
+  parseJSON x = (AssertFunctionList <$> parseJSON x) <|> (AssertLocationList <$> parseJSON x)
+
 -- we loose info on what constants are in which functions
 data SlitherInfo = SlitherInfo
   { payableFunctions :: Map ContractName [FunctionName]
   , constantFunctions :: Map ContractName [FunctionName]
-  , asserts :: Map ContractName [FunctionName]
+  , asserts :: AssertListingByContract
   , constantValues  :: Map ContractName (Map FunctionName [AbiValue])
   , generationGraph :: Map ContractName (Map FunctionName [FunctionName])
   , solcVersions :: [Version]
