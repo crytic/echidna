@@ -118,6 +118,10 @@ jobs:
             D:\a\_temp\msys64\home\runneradmin\.local
           key: ${{ runner.os }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
 
+      - name: Configure static build flags
+        run: |
+          printf "\nflags:\n  hevm:\n    static-secp256k1: true\n  echidna:\n    static: true\n" >> stack.yaml
+
       - name: Cache Stack & Cabal
         uses: actions/cache@v4
         with:
@@ -140,12 +144,12 @@ jobs:
       - name: Build Dependencies
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack build --ghc-options="-Werror" --only-dependencies --flag hevm:static-secp256k1
+          stack build --ghc-options="-Werror" --only-dependencies
 
       - name: Build and install echidna
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack install --flag echidna:static --ghc-options="-Werror" --flag hevm:static-secp256k1
+          stack install --ghc-options="-Werror"
 
       - name: Amend and compress binaries (macOS)
         if: runner.os == 'macOS'
@@ -169,7 +173,7 @@ jobs:
         if: runner.os != 'macOS'
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror"
+          stack build --test --no-run-tests --ghc-options="-Werror"
           cp "$(find "$PWD" -name 'echidna-testsuite*' -type f)" .
 
       - name: Upload testsuite
