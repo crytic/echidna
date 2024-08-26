@@ -65,7 +65,7 @@ jobs:
         id: stack
         if: matrix.container == ''
         with:
-          ghc-version: '9.6'
+          ghc-version: '9.6.5'
           enable-stack: true
           stack-version: 'latest'
 
@@ -86,6 +86,9 @@ jobs:
             "$REPLACE_LINKER_WIN" && echo ' -pgml=C:/msys64/clang64/bin/clang.exe -pgml-supports-no-pie' || echo;
             echo;
             "$SKIP_MSYS" && echo "skip-msys: true" || true
+            echo "system-ghc: true";
+            echo "install-ghc: false";
+            echo "skip-ghc-check: true";
           } >> "$STACK_ROOT/config.yaml"
           cat "$STACK_ROOT/config.yaml"
         env:
