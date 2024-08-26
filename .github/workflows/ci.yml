@@ -81,8 +81,8 @@ jobs:
             echo "$EXTRA_LIB_WIN";
             echo;
             echo "ghc-options:";
-            echo -n '  "$locals": -Werror'
-            "$REPLACE_LINKER_WIN" && echo ' -pgml=D:/a/_temp/msys64/clang64/bin/clang.exe -pgml-supports-no-pie' || echo;
+            echo '  "$locals": -Werror'
+            "$REPLACE_LINKER_WIN" && echo '  "$everything": -pgml=D:/a/_temp/msys64/clang64/bin/clang.exe -pgml-supports-no-pie';
             echo;
             "$SKIP_MSYS" && echo "skip-msys: true" || true
             echo "system-ghc: true";
