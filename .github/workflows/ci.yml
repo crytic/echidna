@@ -138,12 +138,12 @@ jobs:
       - name: Build Dependencies
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack build --ghc-options="-Werror" --only-dependencies
+          stack build --ghc-options="-Werror" --only-dependencies --flag hevm:static-secp256k1
 
       - name: Build and install echidna
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack install --flag echidna:static --ghc-options="-Werror"
+          stack install --flag echidna:static --ghc-options="-Werror" --flag hevm:static-secp256k1
 
       - name: Amend and compress binaries (macOS)
         if: runner.os == 'macOS'
