@@ -42,7 +42,6 @@ jobs:
         if: runner.os == 'Windows'
         with:
           msystem: CLANG64
-          release: false
           path-type: minimal
           update: true
           install: >-
@@ -83,7 +82,7 @@ jobs:
             echo;
             echo "ghc-options:";
             echo -n '  "$locals": -Werror'
-            "$REPLACE_LINKER_WIN" && echo ' -pgml=C:/msys64/clang64/bin/clang.exe -pgml-supports-no-pie' || echo;
+            "$REPLACE_LINKER_WIN" && echo ' -pgml=D:/a/_temp/msys64/clang64/bin/clang.exe -pgml-supports-no-pie' || echo;
             echo;
             "$SKIP_MSYS" && echo "skip-msys: true" || true
             echo "system-ghc: true";
@@ -93,8 +92,8 @@ jobs:
           cat "$STACK_ROOT/config.yaml"
         env:
           STACK_ROOT: ${{ steps.stack.outputs.stack-root || '/etc/stack' }}
-          EXTRA_INCLUDE_WIN: ${{ (runner.os == 'Windows' && '- C:/msys64/clang64/include') || '' }}
-          EXTRA_LIB_WIN: ${{ (runner.os == 'Windows' && '- C:/msys64/clang64/lib') || '' }}
+          EXTRA_INCLUDE_WIN: ${{ (runner.os == 'Windows' && '- D:/a/_temp/msys64/clang64/include') || '' }}
+          EXTRA_LIB_WIN: ${{ (runner.os == 'Windows' && '- D:/a/_temp/msys64/clang64/lib') || '' }}
           REPLACE_LINKER_WIN: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
           SKIP_MSYS: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
 
@@ -116,7 +115,7 @@ jobs:
         with:
           path: |
             ~/.local
-            C:\msys64\home\runneradmin\.local
+            D:\a\_temp\msys64\home\runneradmin\.local
           key: ${{ runner.os }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
 
       - name: Cache Stack & Cabal
