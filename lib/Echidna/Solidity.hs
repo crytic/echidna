@@ -4,6 +4,7 @@ import Optics.Core hiding (filtered)
 
 import Control.Monad (when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
+import Control.Monad.State (runStateT)
 import Control.Monad.Extra (whenM)
 import Control.Monad.Reader (ReaderT(runReaderT))
 import Control.Monad.ST (stToIO, RealWorld)
@@ -39,7 +40,7 @@ import Echidna.ABI
 import Echidna.Deploy (deployContracts, deployBytecodes)
 import Echidna.Etheno (loadEthenoBatch)
 import Echidna.Events (extractEvents)
-import Echidna.Exec (execTx, initialVM)
+import Echidna.Exec (execTx, initialVM, execTxWithCov)
 import Echidna.SourceAnalysis.Slither
 import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
 import Echidna.Types.Config (EConfig(..), Env(..))
@@ -199,13 +200,13 @@ loadSpecified env mainContract cs = do
     vm2 <- deployBytecodes solConf.deployBytecodes solConf.deployer vm1
 
     -- main contract deployment
-    let deployment = execTx vm2 $ createTxWithValue
+    let deployment = runStateT (execTxWithCov (createTxWithValue
                                     mainContract.creationCode
                                     solConf.deployer
                                     solConf.contractAddr
                                     unlimitedGasPerBlock
                                     (fromIntegral solConf.balanceContract)
-                                    (0, 0)
+                                    (0, 0))) vm2
     (_, vm3) <- deployment
     when (isNothing $ currentContract vm3) $
       throwM $ DeploymentFailed solConf.contractAddr $ T.unlines $ extractEvents True env.dapp vm3

@@ -3,7 +3,7 @@ module Echidna.Deploy where
 import Control.Monad (foldM)
 import Control.Monad.Catch (MonadThrow(..), throwM)
 import Control.Monad.Reader (MonadReader, asks)
-import Control.Monad.State.Strict (MonadIO)
+import Control.Monad.State.Strict (MonadIO, runStateT)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as BS16 (decode)
@@ -14,7 +14,7 @@ import Data.Text.Encoding (encodeUtf8)
 import EVM.Solidity
 import EVM.Types hiding (Env)
 
-import Echidna.Exec (execTx)
+import Echidna.Exec (execTxWithCov)
 import Echidna.Events (extractEvents)
 import Echidna.Types.Config (Env(..))
 import Echidna.Types.Solidity (SolException(..))
@@ -51,7 +51,7 @@ deployBytecodes' cs src initialVM = foldM deployOne initialVM cs
   where
   deployOne vm (dst, bytecode) = do
     (_, vm') <-
-      execTx vm $ createTx (bytecode <> zeros) src dst unlimitedGasPerBlock (0, 0)
+      runStateT (execTxWithCov $ createTx (bytecode <> zeros) src dst unlimitedGasPerBlock (0, 0)) vm
     case vm'.result of
       Just (VMSuccess _) -> pure vm'
       _ -> do

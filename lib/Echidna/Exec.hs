@@ -13,27 +13,27 @@ import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, M
 import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.ST (ST, stToIO, RealWorld)
 import Data.Bits
-import Data.ByteString qualified as BS
 import Data.IORef (readIORef, atomicWriteIORef, newIORef, writeIORef, modifyIORef')
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, fromJust)
+import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Data.Vector.Unboxed.Mutable qualified as VMut
 import System.Process (readProcessWithExitCode)
 
-import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, vmOpIx, clearTStorages)
+import EVM (replaceCodeOfSelf, loadContract, exec1, vmOpIx, clearTStorages)
 import EVM.ABI
-import EVM.Dapp (DappInfo)
+import EVM.Dapp (DappInfo(..))
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Fetch qualified
 import EVM.Format (hexText, showTraceTree)
+import EVM.Solidity (SolcContract(..))
 import EVM.Types hiding (Env, Gas)
 
 import Echidna.Events (emptyEvents)
 import Echidna.Onchain (safeFetchContractFrom, safeFetchSlotFrom)
-import Echidna.SourceMapping (lookupUsingCodehashOrInsert)
-import Echidna.Symbolic (forceBuf)
+import Echidna.SourceMapping (lookupUsingCodehashOrInsert, lookupCodehash)
+import Echidna.Symbolic (forceWord)
 import Echidna.Transaction
 import Echidna.Types (ExecException(..), Gas, fromEVM, emptyAccount)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
@@ -285,11 +285,17 @@ execTxWithCov tx = do
       -- | Add current location to the CoverageMap
       addCoverage :: VM Concrete RealWorld -> IO ()
       addCoverage !vm = do
-        let (pc, opIx, depth) = currentCovLoc vm
-            contract = currentContract vm
+        let
+          contract = currentContract vm
+          getCodehash = lookupCodehash env.codehashMap (forceWord contract.codehash) contract env.dapp
+          getContractLengths = contractLengthsFromEnv <$> getCodehash
+          (pc, opIx_, depth) = currentCovLoc vm
+
+        opIx <- if isDeploy vm then (opIx_ +) . fst <$> getContractLengths else pure opIx_
 
         maybeCovVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp env.coverageRef $ do
-          let size = BS.length . forceBuf . fromJust . view bytecode $ contract
+          (sizeA, sizeB) <- getContractLengths
+          let size = sizeA + sizeB
           if size == 0 then pure Nothing else do
             -- IO for making a new vec
             vec <- VMut.new size
@@ -315,6 +321,13 @@ execTxWithCov tx = do
 
       -- | Get the VM's current execution location
       currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames)
+
+      isDeploy vm = case (.code) (currentContract vm) of
+        InitCode _ _ -> True
+        _ -> False
+
+      contractLengthsFromEnv codehash = maybe (0,0) (contractLengths . snd) $ Map.lookup codehash env.dapp.solcByHash
+      contractLengths contract = (length contract.runtimeSrcmap, length contract.creationSrcmap)
 
       -- | Get the current contract being executed
       currentContract vm = fromMaybe (error "no contract information on coverage") $
