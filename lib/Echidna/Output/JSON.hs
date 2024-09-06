@@ -20,7 +20,7 @@ import Echidna.Events (Events, extractEvents)
 import Echidna.Types (Gas)
 import Echidna.Types.Campaign (WorkerState(..))
 import Echidna.Types.Config (Env(..))
-import Echidna.Types.Coverage (CoverageInfo)
+import Echidna.Types.Coverage (CoverageInfo, mergeCoverageMaps)
 import Echidna.Types.Test qualified as T
 import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
@@ -101,7 +101,7 @@ instance ToJSON Transaction where
 encodeCampaign :: Env -> [WorkerState] -> IO L.ByteString
 encodeCampaign env workerStates = do
   tests <- traverse readIORef env.testRefs
-  frozenCov <- mapM VU.freeze =<< readIORef env.coverageRef
+  frozenCov <- mergeCoverageMaps env.dapp env.coverageRefInit env.coverageRefRuntime
   -- TODO: this is ugly, refactor seed to live in Env
   let worker0 = Prelude.head workerStates
   pure $ encode Campaign

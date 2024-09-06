@@ -3,20 +3,22 @@ module Echidna.Deploy where
 import Control.Monad (foldM)
 import Control.Monad.Catch (MonadThrow(..), throwM)
 import Control.Monad.Reader (MonadReader, asks)
-import Control.Monad.State.Strict (MonadIO)
+import Control.Monad.State.Strict (MonadIO, runStateT)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as BS16 (decode)
 import Data.Either (fromRight)
+import Data.Maybe (isJust)
 import Data.Text (Text, unlines)
 import Data.Text.Encoding (encodeUtf8)
 
 import EVM.Solidity
 import EVM.Types hiding (Env)
 
-import Echidna.Exec (execTx)
+import Echidna.Exec (execTx, execTxWithCov)
 import Echidna.Events (extractEvents)
-import Echidna.Types.Config (Env(..))
+import Echidna.Types.Campaign (CampaignConf(..))
+import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Solidity (SolException(..))
 import Echidna.Types.Tx (createTx, unlimitedGasPerBlock)
 import Control.Monad.ST (RealWorld)
@@ -50,8 +52,9 @@ deployBytecodes'
 deployBytecodes' cs src initialVM = foldM deployOne initialVM cs
   where
   deployOne vm (dst, bytecode) = do
-    (_, vm') <-
-      execTx vm $ createTx (bytecode <> zeros) src dst unlimitedGasPerBlock (0, 0)
+    coverageEnabled <- asks (isJust . (.cfg.campaignConf.knownCoverage))
+    let deployTx = createTx (bytecode <> zeros) src dst unlimitedGasPerBlock (0, 0)
+    vm' <- if coverageEnabled then snd <$> runStateT (execTxWithCov deployTx) vm else snd <$> execTx vm deployTx
     case vm'.result of
       Just (VMSuccess _) -> pure vm'
       _ -> do

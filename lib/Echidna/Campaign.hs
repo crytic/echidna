@@ -43,7 +43,7 @@ import Echidna.Transaction
 import Echidna.Types (Gas)
 import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
-import Echidna.Types.Coverage (scoveragePoints)
+import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Config
 import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
@@ -353,10 +353,9 @@ callseq vm txSeq = do
       let !corp' = force $ addToCorpus (ncallseqs + 1) results corp
       in (corp', corpusSize corp')
 
-    cov <- liftIO . readIORef =<< asks (.coverageRef)
-    points <- liftIO $ scoveragePoints cov
+    (points, numCodehashes) <- liftIO $ coverageStats env.coverageRefInit env.coverageRefRuntime
     pushWorkerEvent NewCoverage { points
-                                , numCodehashes = length cov
+                                , numCodehashes
                                 , corpusSize = newSize
                                 , transactions = fst <$> results
                                 }

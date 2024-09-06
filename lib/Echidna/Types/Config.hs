@@ -71,7 +71,8 @@ data Env = Env
   , eventQueue :: Chan (LocalTime, CampaignEvent)
 
   , testRefs :: [IORef EchidnaTest]
-  , coverageRef :: IORef CoverageMap
+  , coverageRefInit :: IORef CoverageMap
+  , coverageRefRuntime :: IORef CoverageMap
   , corpusRef :: IORef Corpus
 
   , slitherInfo :: Maybe SlitherInfo
