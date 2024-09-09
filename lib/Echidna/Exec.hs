@@ -301,7 +301,7 @@ execTxWithCov tx = do
         maybeStatsVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp statsRef $ do
           if contractSize == 0 then pure Nothing else do
             -- IO for making a new vec
-            vec <- VMut.replicate contractSize (0, 0)
+            vec <- VMut.replicate contractSize 0
             pure $ Just vec
 
         case maybeCovVec of
@@ -313,7 +313,7 @@ execTxWithCov tx = do
             -- ... this should be fixed now, since we use `codeContract` instead
             -- of `contract` for everything; it may be safe to remove this check.
             when (pc < VMut.length vec) $ do
-              VMut.modify (fromJust maybeStatsVec) (\(execQty, revertQty) -> (execQty + 1, revertQty)) opIx
+              VMut.modify (fromJust maybeStatsVec) (\execQty -> execQty + 1) opIx
               VMut.read vec pc >>= \case
                 (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
                   VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)

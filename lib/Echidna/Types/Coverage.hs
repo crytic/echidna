@@ -33,7 +33,7 @@ type StatsMapV = Map W256 (Vector StatsInfo)
 type CoverageInfo = (OpIx, StackDepths, TxResults)
 
 -- | Basic stats information
-type StatsInfo = (ExecQty, RevertQty)
+type StatsInfo = ExecQty
 
 -- | Index per operation in the source code, obtained from the source mapping
 type OpIx = Int

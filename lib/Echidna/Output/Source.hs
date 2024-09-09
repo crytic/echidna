@@ -40,7 +40,7 @@ zipSumStats :: IO [StatsInfo] -> IO [StatsInfo] -> IO [StatsInfo]
 zipSumStats v1 v2 = do
   vec1 <- v1
   vec2 <- v2
-  return [(exec1 + exec2, revert1 + revert2) | (exec1, revert1) <- vec1 | (exec2, revert2) <- vec2]
+  return [exec1 + exec2 | exec1 <- vec1 | exec2 <- vec2]
 
 combineStats :: TLS (IORef StatsMap) -> IO StatsMapV
 combineStats statsRef = do
@@ -134,7 +134,8 @@ markLines fileType codeLines runtimeLines resultMap =
     _ -> True
   markLine (i, codeLine) =
     let n = i + 1
-        (results, (execs, reverts)) = fromMaybe ([], (0, 0)) (Map.lookup n resultMap)
+        (results, execs) = fromMaybe ([], 0) (Map.lookup n resultMap)
+        reverts = 0
         markers = sort $ nub $ getMarker <$> results
         wrapLine :: Text -> Text
         wrapLine line = case fileType of
@@ -199,8 +200,8 @@ srcMapCov sc covMap statMap contracts = do
                   updateLine (Just (r, s)) = Just ((<> unpackTxResults txResults) r, maxStats s idxStats)
                   updateLine Nothing = Just (unpackTxResults txResults, idxStats)
                   fileStats = Map.lookup c.runtimeCodehash statMap
-                  idxStats = maybe (0, 0) (U.! opIx) fileStats
-                  maxStats (a1, b1) (a2, b2) = (max a1 a2, max b1 b2)
+                  idxStats = maybe 0 (U.! opIx) fileStats
+                  maxStats = max
                 Nothing -> acc
             Nothing -> acc
         ) mempty vec
