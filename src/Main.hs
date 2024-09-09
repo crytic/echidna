@@ -70,6 +70,8 @@ main = withUtf8 $ withCP65001 $ do
 
   tests <- traverse readIORef env.testRefs
 
+  checkAssertionsCoverage buildOutput.sources env mempty
+
   Onchain.saveRpcCache env
 
   -- save corpus

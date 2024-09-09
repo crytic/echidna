@@ -13,6 +13,7 @@ import Data.TLS.GHC
 import EVM.Dapp (DappInfo)
 import EVM.Types (Addr, Contract, W256)
 
+import Echidna.SourceAnalysis.Slither (SlitherInfo)
 import Echidna.SourceMapping (CodehashMap)
 import Echidna.Types.Campaign (CampaignConf, CampaignEvent)
 import Echidna.Types.Corpus (Corpus)
@@ -75,6 +76,7 @@ data Env = Env
   , statsRef :: TLS (IORef StatsMap)
   , corpusRef :: IORef Corpus
 
+  , slitherInfo :: Maybe SlitherInfo
   , codehashMap :: CodehashMap
   , fetchContractCache :: IORef (Map Addr (Maybe Contract))
   , fetchSlotCache :: IORef (Map Addr (Map W256 (Maybe W256)))

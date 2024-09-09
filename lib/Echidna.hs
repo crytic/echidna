@@ -71,7 +71,7 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
 
   let world = mkWorld cfg.solConf signatureMap selectedContract slitherInfo contracts
 
-  env <- mkEnv cfg buildOutput tests world
+  env <- mkEnv cfg buildOutput tests world (Just slitherInfo)
 
   -- deploy contracts
   vm <- loadSpecified env mainContract contracts
@@ -114,8 +114,8 @@ loadInitialCorpus env = do
 
   pure $ persistedCorpus ++ ethenoCorpus
 
-mkEnv :: EConfig -> BuildOutput -> [EchidnaTest] -> World -> IO Env
-mkEnv cfg buildOutput tests world = do
+mkEnv :: EConfig -> BuildOutput -> [EchidnaTest] -> World -> Maybe SlitherInfo -> IO Env
+mkEnv cfg buildOutput tests world slitherInfo = do
   codehashMap <- newIORef mempty
   chainId <- maybe (pure Nothing) EVM.Fetch.fetchChainIdFrom cfg.rpcUrl
   eventQueue <- newChan
@@ -130,4 +130,5 @@ mkEnv cfg buildOutput tests world = do
   let dapp = dappInfo "/" buildOutput
   pure $ Env { cfg, dapp, codehashMap, fetchContractCache, fetchSlotCache
              , chainId, eventQueue, coverageRef, statsRef, corpusRef, testRefs, world
+             , slitherInfo
              }
