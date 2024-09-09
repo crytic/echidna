@@ -137,7 +137,7 @@ markLines fileType codeLines runtimeLines resultMap =
   markLine (i, codeLine) =
     let n = i + 1
         (results, execs) = fromMaybe ([], 0) (Map.lookup n resultMap)
-        reverts = 0
+        reverts = 0 :: Int
         markers = sort $ nub $ getMarker <$> results
         wrapLine :: Text -> Text
         wrapLine line = case fileType of
