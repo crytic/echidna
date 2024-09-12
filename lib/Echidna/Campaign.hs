@@ -275,7 +275,7 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
        | otherwise ->
          lift callback >> pure TestLimitReached
 
-  fuzz = randseq vm.env.contracts >>= fmap fst . callseq vm
+  fuzz = randseq vm >>= fmap fst . callseq vm
 
   -- To avoid contention we only shrink tests that were falsified by this
   -- worker. Tests are marked with a worker in 'updateOpenTest'.
@@ -293,10 +293,10 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
 -- | Generate a new sequences of transactions, either using the corpus or with
 -- randomly created transactions
 randseq
-  :: (MonadRandom m, MonadReader Env m, MonadState WorkerState m, MonadIO m)
-  => Map (Expr 'EAddr) Contract
+  :: (MonadRandom m, MonadReader Env m, MonadState WorkerState m, MonadIO m, MonadThrow m)
+  => VM Concrete RealWorld
   -> m [Tx]
-randseq deployedContracts = do
+randseq vm = do
   env <- ask
   let world = env.world
 
@@ -308,12 +308,12 @@ randseq deployedContracts = do
   --let rs = filter (not . null) $ map (.testReproducer) $ ca._tests
 
   -- Generate new random transactions
-  randTxs <- replicateM seqLen (genTx world deployedContracts)
+  randTxs <- replicateM seqLen (genTx world vm.env.contracts)
   -- Generate a random mutator
   cmut <- if seqLen == 1 then seqMutatorsStateless (fromConsts mutConsts)
                          else seqMutatorsStateful (fromConsts mutConsts)
   -- Fetch the mutator
-  let mut = getCorpusMutation cmut
+  let mut = getCorpusMutation vm cmut
   corpus <- liftIO $ readIORef env.corpusRef
   if null corpus
     then pure randTxs -- Use the generated random transactions
