@@ -14,6 +14,7 @@ import Control.Monad.State.Strict
 import Control.Monad.ST (RealWorld)
 import Control.Monad.Trans (lift)
 import Data.Binary.Get (runGetOrFail)
+import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as LBS
 import Data.IORef (readIORef, atomicModifyIORef', writeIORef)
 import Data.Foldable (foldlM)
@@ -345,12 +346,13 @@ callseq vm txSeq = do
   -- If there is new coverage, add the transaction list to the corpus
   newCoverage <- gets (.newCoverage)
   when newCoverage $ do
+    isDappTest <- getIsDappTest
     ncallseqs <- gets (.ncallseqs)
     -- Even if this takes a bit of time, this is okay as finding new coverage
     -- is expected to be infrequent in the long term
     newSize <- liftIO $ atomicModifyIORef' env.corpusRef $ \corp ->
       -- Corpus is a bit too lazy, force the evaluation to reduce the memory usage
-      let !corp' = force $ addToCorpus (ncallseqs + 1) results corp
+      let !corp' = force $ addToCorpus isDappTest (ncallseqs + 1) results corp
       in (corp', corpusSize corp')
 
     cov <- liftIO . readIORef =<< asks (.coverageRef)
@@ -418,11 +420,28 @@ callseq vm txSeq = do
             _ -> Nothing
         _ -> Nothing
 
+  -- | Check whether any current tests are dapp tests
+  getIsDappTest
+    :: (MonadIO m, MonadReader Env m)
+    => m Bool
+  getIsDappTest =
+    let
+      isDappTest (AssertionTest dt _ _) = dt
+      isDappTest _ = False
+    in any (isDappTest . (.testType)) <$> (mapM (liftIO . readIORef) =<< asks (.testRefs))
+
   -- | Add transactions to the corpus discarding reverted ones
-  addToCorpus :: Int -> [(Tx, (VMResult Concrete RealWorld, Gas))] -> Corpus -> Corpus
-  addToCorpus n res corpus =
+  addToCorpus :: Bool -> Int -> [(Tx, (VMResult Concrete RealWorld, Gas))] -> Corpus -> Corpus
+  addToCorpus isDappTest n res corpus =
     if null rtxs then corpus else Set.insert (n, rtxs) corpus
-    where rtxs = fst <$> res
+    where
+      rtxs = fst <$> filter (not . isRevert . fst . snd) res
+      -- We want to filter out reverts, but not real assertion failures.
+      -- Reverts can be assertion failures if isDappTest is True.
+      -- The assumeMagicReturnCode logic is copied from checkDapptestAssertion (TODO refactor?)
+      isRevert (VMFailure (Revert (ConcreteBuf bs))) | isDappTest = BS.isSuffixOf assumeMagicReturnCode bs
+      isRevert (VMFailure (Revert _)) = True
+      isRevert _ = False
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction
 -- executed, saving the transaction if it finds new coverage.
