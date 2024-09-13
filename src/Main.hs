@@ -85,7 +85,7 @@ main = withUtf8 $ withCP65001 $ do
         saveTxs env (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> tests)
 
       measureIO cfg.solConf.quiet "Saving corpus" $ do
-        corpus <- readIORef env.corpusRef
+        (corpus, _) <- readIORef env.corpusRef
         saveTxs env (dir </> "coverage") (snd <$> Set.toList corpus)
 
       let isLargeOrSolved Solved = True
