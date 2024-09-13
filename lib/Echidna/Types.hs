@@ -31,7 +31,7 @@ instance Exception ExecException
 
 type Gas = Word64
 
-type MutationConsts a = (a, a, a, a)
+type MutationConsts a = (a, a, a, a, a)
 
 -- | Transform an EVM action from HEVM to our MonadState VM
 fromEVM :: (MonadIO m, MonadState (VM Concrete RealWorld) m) => EVM Concrete RealWorld r -> m r
