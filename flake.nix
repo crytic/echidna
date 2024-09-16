@@ -43,6 +43,8 @@
                 if (with ps.stdenv; hostPlatform.isDarwin && hostPlatform.isx86)
                 then ps.haskell.lib.compose.overrideCabal (_ : { extraLibraries = [ps.libiconv]; }) hprev.with-utf8
                 else hprev.with-utf8;
+              # TODO: temporary fix for static build which is still on 9.4
+              witch = ps.haskell.lib.doJailbreak hprev.witch;
             };
           };
 
