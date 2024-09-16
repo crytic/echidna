@@ -234,7 +234,7 @@ getResult = \case
   VMFailure BadJumpDestination            -> ErrorBadJumpDestination
   VMFailure (Revert _)                    -> ErrorRevert
   VMFailure (OutOfGas _ _)                -> ErrorOutOfGas
-  VMFailure (BadCheatCode _)              -> ErrorBadCheatCode
+  VMFailure (BadCheatCode _ _)            -> ErrorBadCheatCode
   VMFailure StackLimitExceeded            -> ErrorStackLimitExceeded
   VMFailure IllegalOverflow               -> ErrorIllegalOverflow
   VMFailure StateChangeWhileStatic        -> ErrorStateChangeWhileStatic
