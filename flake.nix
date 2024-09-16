@@ -10,36 +10,25 @@
       url = "github:3noch/nix-bundle-exe";
       flake = false;
     };
+    solc-pkgs = {
+      url = "github:hellwolf/solc.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, nix-bundle-exe, ... }:
+  outputs = { self, nixpkgs, flake-utils, nix-bundle-exe, solc-pkgs, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [solc-pkgs.overlay];
+        };
+
         # prefer musl on Linux, static glibc + threading does not work properly
         # TODO: maybe only override it for echidna-redistributable?
         pkgsStatic = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsStatic else pkgs;
         # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
-        # would be great to integrate solc-select to be more flexible, improve this in future
-        solc = pkgs.stdenv.mkDerivation {
-          name = "solc";
-          src = if pkgs.stdenv.isDarwin then
-            pkgs.fetchurl {
-              url = "https://binaries.soliditylang.org/macosx-amd64/solc-macosx-amd64-v0.5.7+commit.6da8b019";
-              sha256 = "095mlw5x9lpdcdl9jzlvkvw46ag03xr4nj4vly4hgn92rgivimm7";
-            }
-          else
-            pkgs.fetchurl {
-              url = "https://binaries.soliditylang.org/linux-amd64/solc-linux-amd64-v0.5.7+commit.6da8b019";
-              sha256 = "0dsvzck5jh8rvdxs7zyn2ga9hif024msx8gr8ifgj4cmyb7m4341";
-            };
-          phases = ["installPhase" "patchPhase"];
-          installPhase = ''
-            mkdir -p $out/bin
-            cp $src $out/bin/solc
-            chmod +x $out/bin/solc
-          '';
-        };
+        solc = solc-pkgs.mkDefault pkgs pkgs.solc_0_5_7;
 
         secp256k1-static = pkgsStatic.secp256k1.overrideAttrs (attrs: {
           configureFlags = attrs.configureFlags ++ [ "--enable-static" ];
@@ -54,28 +43,19 @@
                 if (with ps.stdenv; hostPlatform.isDarwin && hostPlatform.isx86)
                 then ps.haskell.lib.compose.overrideCabal (_ : { extraLibraries = [ps.libiconv]; }) hprev.with-utf8
                 else hprev.with-utf8;
+              # TODO: temporary fix for static build which is still on 9.4
+              witch = ps.haskell.lib.doJailbreak hprev.witch;
             };
           };
 
-        cc-workaround-nix-23138 =
-          pkgs.writeScriptBin "cc-workaround-nix-23138" ''
-          if [ "$1" = "--print-file-name" ] && [ "$2" = "c++" ]; then
-              echo c++
-          else
-              exec cc "$@"
-          fi
-          '';
-
         hevm = pkgs: pkgs.lib.pipe ((hsPkgs pkgs).callCabal2nix "hevm" (pkgs.fetchFromGitHub {
-            owner = "trail-of-forks";
-            repo = "hevm";
-            rev = "3aba82f06a2d1e0a4a4c26458f747a46dad0e7e2";
-            sha256 = "sha256-NXXhEqHTQEL2N9RhXa1eczIsQtIM3mvPfyWXlBXpxK4=";
+          owner = "ethereum";
+          repo = "hevm";
+          rev = "c779777d18c8ff60867f009d434b44ce08188e01";
+          sha256 = "sha256-JnJUZ9AxhxTP+TBMThksh0D4R6KFdzjgu1+fBeBERws=";
         }) { secp256k1 = pkgs.secp256k1; })
         ([
           pkgs.haskell.lib.compose.dontCheck
-        ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
-          (pkgs.haskell.lib.compose.appendConfigureFlag "--ghc-options=-pgml=${cc-workaround-nix-23138}/bin/cc-workaround-nix-23138")
         ]);
 
         echidna = pkgs: with pkgs; lib.pipe
@@ -86,8 +66,6 @@
             haskell.lib.compose.dontCheck
             (haskell.lib.compose.addTestToolDepends [ haskellPackages.hpack slither-analyzer solc ])
             (haskell.lib.compose.disableCabalFlag "static")
-          ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
-            (pkgs.haskell.lib.compose.appendConfigureFlag "--ghc-options=-pgml=${cc-workaround-nix-23138}/bin/cc-workaround-nix-23138")
           ]);
 
         echidna-static = with pkgsStatic; lib.pipe
@@ -173,9 +151,7 @@
             packages = _: [ (echidna pkgs) ];
             shellHook = ''
               hpack
-            '' + (if pkgs.stdenv.isDarwin then ''
-              cabal configure --ghc-options=-pgml=${cc-workaround-nix-23138}/bin/cc-workaround-nix-23138
-            '' else "");
+            '';
             buildInputs = [
               solc
               slither-analyzer

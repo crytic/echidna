@@ -30,6 +30,7 @@ import System.Info (os)
 
 import EVM (initialContract, currentContract)
 import EVM.ABI
+import EVM.Effects (runApp)
 import EVM.Solidity
 import EVM.Types hiding (Env)
 
@@ -59,7 +60,7 @@ readSolcBatch d = do
   mapM parseOne fs
   where
   parseOne f =
-    readSolc CombinedJSON "" (d </> f) >>= \case
+    runApp $ readSolc CombinedJSON "" (d </> f) >>= \case
       Right buildOutput -> pure buildOutput
       Left e ->
         error $ "Failed to parse combined JSON file " <> (d </> f) <> "\n" <> e
