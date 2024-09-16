@@ -92,7 +92,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       ]
   , testContract "basic/gaslimit.sol"  Nothing
       [ ("echidna_gaslimit passed",                passed      "echidna_gaslimit") ]
-  ,  testContractV "basic/killed.sol"      (Just (< solcV (0,8,0))) Nothing
+  ,  testContractV "basic/killed.sol"      (Just (< solcV (0,8,0))) (Just "basic/killed.yaml")
       [ ("echidna_still_alive failed",             solved      "echidna_still_alive") ]
   ,  checkConstructorConditions "basic/codesize.sol"
       "invalid codesize"

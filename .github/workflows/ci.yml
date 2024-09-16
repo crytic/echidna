@@ -42,7 +42,6 @@ jobs:
         if: runner.os == 'Windows'
         with:
           msystem: CLANG64
-          release: false
           path-type: minimal
           update: true
           install: >-
@@ -65,7 +64,7 @@ jobs:
         id: stack
         if: matrix.container == ''
         with:
-          ghc-version: '9.6'
+          ghc-version: '9.6.5'
           enable-stack: true
           stack-version: 'latest'
 
@@ -82,16 +81,19 @@ jobs:
             echo "$EXTRA_LIB_WIN";
             echo;
             echo "ghc-options:";
-            echo -n '  "$locals": -Werror'
-            "$REPLACE_LINKER_WIN" && echo ' -pgml=C:/msys64/clang64/bin/clang.exe -pgml-supports-no-pie' || echo;
+            echo '  "$locals": -Werror'
+            "$REPLACE_LINKER_WIN" && echo '  "$everything": -pgml=D:/a/_temp/msys64/clang64/bin/clang.exe -pgml-supports-no-pie';
             echo;
             "$SKIP_MSYS" && echo "skip-msys: true" || true
+            echo "system-ghc: true";
+            echo "install-ghc: false";
+            echo "skip-ghc-check: true";
           } >> "$STACK_ROOT/config.yaml"
           cat "$STACK_ROOT/config.yaml"
         env:
           STACK_ROOT: ${{ steps.stack.outputs.stack-root || '/etc/stack' }}
-          EXTRA_INCLUDE_WIN: ${{ (runner.os == 'Windows' && '- C:/msys64/clang64/include') || '' }}
-          EXTRA_LIB_WIN: ${{ (runner.os == 'Windows' && '- C:/msys64/clang64/lib') || '' }}
+          EXTRA_INCLUDE_WIN: ${{ (runner.os == 'Windows' && '- D:/a/_temp/msys64/clang64/include') || '' }}
+          EXTRA_LIB_WIN: ${{ (runner.os == 'Windows' && '- D:/a/_temp/msys64/clang64/lib') || '' }}
           REPLACE_LINKER_WIN: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
           SKIP_MSYS: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
 
@@ -113,8 +115,12 @@ jobs:
         with:
           path: |
             ~/.local
-            C:\msys64\home\runneradmin\.local
+            D:\a\_temp\msys64\home\runneradmin\.local
           key: ${{ runner.os }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
+
+      - name: Configure static build flags
+        run: |
+          printf "\nflags:\n  hevm:\n    static-secp256k1: true\n  echidna:\n    static: true\n" >> stack.yaml
 
       - name: Cache Stack & Cabal
         uses: actions/cache@v4
@@ -143,7 +149,7 @@ jobs:
       - name: Build and install echidna
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack install --flag echidna:static --ghc-options="-Werror"
+          stack install --ghc-options="-Werror"
 
       - name: Amend and compress binaries (macOS)
         if: runner.os == 'macOS'
@@ -167,7 +173,7 @@ jobs:
         if: runner.os != 'macOS'
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror"
+          stack build --test --no-run-tests --ghc-options="-Werror"
           cp "$(find "$PWD" -name 'echidna-testsuite*' -type f)" .
 
       - name: Upload testsuite
