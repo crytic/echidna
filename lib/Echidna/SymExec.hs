@@ -77,7 +77,7 @@ exploreContract conf contract tx vm = do
   doneChan <- newEmptyMVar
   resultChan <- newEmptyMVar
 
-  flip runReaderT defaultEnv $ withSolvers Z3 (fromIntegral conf.campaignConf.symExecNSolvers) timeout $ \solvers -> do
+  flip runReaderT defaultEnv $ withSolvers Z3 (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeout $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT defaultEnv $ do
       res <- forM methods $ \method -> do
         let
@@ -108,7 +108,7 @@ exploreContract conf contract tx vm = do
   pure (threadId, resultChan)
 
 -- | Turn the expression returned by `interpret` into into SMT2 values to feed into the solver
-manipulateExprInter :: Bool -> Expr End -> [SMT2]
+manipulateExprInter :: Bool -> Expr End -> [Either String SMT2]
 manipulateExprInter isConc = map (assertProps defaultConfig) . middleStep . map (extractProps . simplify) . flattenExpr . simplify where
   middleStep = if isConc then middleStepConc else id
   middleStepConc = map singleton . concatMap (go (PBool True))
@@ -155,6 +155,8 @@ frameStateMakeSymbolic fs
   , gas          = ()
   , returndata   = fs.returndata
   , static       = fs.static
+  , overrideCaller = fs.overrideCaller
+  , resetCaller  = fs.resetCaller
   }
 
 frameMakeSymbolic :: Frame Concrete s -> Frame Symbolic s
