@@ -1,4 +1,5 @@
 contract C {
+  constructor() public payable {}
 
   uint private state = 0;
   function f(uint x) public {
@@ -11,7 +12,7 @@ contract C {
   }
 
   function echidna_still_alive() public returns (bool) {
-    return true;
+    return address(this).balance > 0;
   }
 
   function echidna_revert_still_alive() public returns (bool) {
