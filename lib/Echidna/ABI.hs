@@ -79,7 +79,7 @@ ppAbiValue labels = \case
   AbiTuple v          -> "(" <> commaSeparated v <> ")"
   AbiFunction v       -> show v
   where
-    commaSeparated v = intercalate ", " (ppAbiValue <$> pure labels <*> toList v)
+    commaSeparated v = intercalate ", " $ ppAbiValue labels <$> toList v
 
 ppAddr :: Map Addr Text -> Addr -> String
 ppAddr labels addr = "0x" <> showHex addr "" <> label

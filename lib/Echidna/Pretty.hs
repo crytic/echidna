@@ -16,7 +16,7 @@ import Echidna.Types.Tx (TxCall(..))
 ppSolCall :: Map Addr Text -> SolCall -> String
 ppSolCall labels (t, vs) =
   (if t == "" then unpack "*fallback*" else unpack t)
-  ++ "(" ++ intercalate "," (ppAbiValue <$> pure labels <*> vs) ++ ")"
+  ++ "(" ++ intercalate "," (ppAbiValue labels <$> vs) ++ ")"
 
 -- | Pretty-print some 'TxCall'
 ppTxCall :: Map Addr Text -> TxCall -> String

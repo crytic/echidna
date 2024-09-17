@@ -78,7 +78,7 @@ ppTx vm printName tx = do
     <> (if tx.value == 0 then "" else " Value: " <> show tx.value)
     <> ppDelay tx.delay
   where
-    prettyName names t addr = case (names t addr) of
+    prettyName names t addr = case names t addr of
       "" -> ""
       s -> s <> label addr
     label addr = case Map.lookup addr vm.labels of
