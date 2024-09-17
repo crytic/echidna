@@ -27,7 +27,7 @@ import Echidna.Utility (timePrefix)
 
 import EVM.Format (showTraceTree, contractNamePart)
 import EVM.Solidity (SolcContract(..))
-import EVM.Types (W256, VM, VMType(Concrete), Addr, Expr (LitAddr))
+import EVM.Types (W256, VM(labels), VMType(Concrete), Addr, Expr (LitAddr))
 
 ppLogLine :: MonadReader Env m => VM Concrete RealWorld -> (LocalTime, CampaignEvent) -> m String
 ppLogLine vm (time, event@(WorkerEvent workerId FuzzWorker _)) =
@@ -71,12 +71,19 @@ ppTx vm printName tx = do
   names <- asks (.cfg.namesConf)
   tGas  <- asks (.cfg.txConf.txGas)
   pure $
-    unpack (maybe "" (<> ".") contractName) <> ppTxCall tx.call
-    <> (if not printName then "" else names Sender tx.src <> names Receiver tx.dst)
+    unpack (maybe "" (<> ".") contractName) <> ppTxCall vm.labels tx.call
+    <> (if not printName then "" else prettyName names Sender tx.src <> prettyName names Receiver tx.dst)
     <> (if tx.gas == tGas then "" else " Gas: " <> show tx.gas)
     <> (if tx.gasprice == 0 then "" else " Gas price: " <> show tx.gasprice)
     <> (if tx.value == 0 then "" else " Value: " <> show tx.value)
     <> ppDelay tx.delay
+  where
+    prettyName names t addr = case (names t addr) of
+      "" -> ""
+      s -> s <> label addr
+    label addr = case Map.lookup addr vm.labels of
+      Nothing -> ""
+      Just l -> " «" <> T.unpack l <> "»"
 
 contractNameForAddr :: MonadReader Env m => VM Concrete RealWorld -> Addr -> m Text
 contractNameForAddr vm addr = do
