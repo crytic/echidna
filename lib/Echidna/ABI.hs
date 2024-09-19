@@ -65,11 +65,11 @@ makeArrayAbiValues b =
      fmap (\n -> AbiBytes n . BS.append b $ BS.replicate (n - size) 0) [size..32]
 
 -- | Pretty-print some 'AbiValue'.
-ppAbiValue :: AbiValue -> String
-ppAbiValue = \case
+ppAbiValue :: Map Addr Text -> AbiValue -> String
+ppAbiValue labels = \case
   AbiUInt _ n         -> show n
   AbiInt  _ n         -> show n
-  AbiAddress n        -> "0x" <> showHex n ""
+  AbiAddress n        -> ppAddr labels n
   AbiBool b           -> if b then "true" else "false"
   AbiBytes _ b        -> show b
   AbiBytesDynamic b   -> show b
@@ -78,7 +78,15 @@ ppAbiValue = \case
   AbiArray _ _ v      -> "[" <> commaSeparated v <> "]"
   AbiTuple v          -> "(" <> commaSeparated v <> ")"
   AbiFunction v       -> show v
-  where commaSeparated v = intercalate ", " (ppAbiValue <$> toList v)
+  where
+    commaSeparated v = intercalate ", " $ ppAbiValue labels <$> toList v
+
+ppAddr :: Map Addr Text -> Addr -> String
+ppAddr labels addr = "0x" <> showHex addr "" <> label
+  where
+    label = case Map.lookup addr labels of
+      Nothing -> ""
+      Just l -> " «" <> T.unpack l <> "»"
 
 -- | Get the signature from a Solidity function.
 signatureCall :: SolCall -> SolSignature

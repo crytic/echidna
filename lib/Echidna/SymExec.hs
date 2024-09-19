@@ -174,6 +174,7 @@ modelToTx dst method senders fallbackSender result =
               AbiBytesType _ -> grabNormalArg t
               AbiAddressType -> grabAddressArg
               AbiArrayType n mt -> grabArrayArg n mt
+              AbiTupleType mt -> grabTupleArg mt
               _ -> error "Unexpected ABI type in `modelToTx`"
 
         grabNormalArg argType name
@@ -185,7 +186,9 @@ modelToTx dst method senders fallbackSender result =
 
         grabAddressArg name = AbiAddress $ fromMaybe 0 $ Map.lookup (SymAddr name) cex.addrs
 
-        grabArrayArg nElem memberType name = AbiArray nElem memberType $ fromList [grabArg memberType $ name <> T.pack (show n) | n <- [0..nElem] :: [Int]]
+        grabArrayArg nElem memberType name = AbiArray nElem memberType $ fromList [grabArg memberType $ name <> "-a-" <> T.pack (show n) | n <- [0..nElem] :: [Int]]
+
+        grabTupleArg memberTypes name = AbiTuple $ fromList [grabArg t $ name <> "-t-" <> T.pack (show n) | (n, t) <- zip ([0..] :: [Int]) (toList memberTypes)]
 
         src_ = fromMaybe 0 $ Map.lookup (SymAddr "sender") cex.addrs
         src = if Set.member src_ senders then src_ else fallbackSender
@@ -217,7 +220,8 @@ genSubsts (Tx { call = SolCall (_, abiVals), src, value }) = addOnFinalValues $ 
   genVal (AbiBool b) name = ([(name, if b then 1 else 0)], [])
   genVal (AbiAddress addr) name = ([], [(name, addr)])
   genVal (AbiBytes n b) name | n > 0 && n <= 32 = ([(name, word b)], [])
-  genVal (AbiArray _ _ vals) name = fold $ zipWith genVal (toList vals) [name <> T.pack (show n) | n <- [0..] :: [Int]]
+  genVal (AbiArray _ _ vals) name = fold $ zipWith genVal (toList vals) [name <> "-a-" <> T.pack (show n) | n <- [0..] :: [Int]]
+  genVal (AbiTuple vals) name = fold $ zipWith genVal (toList vals) [name <> "-t-" <> T.pack (show n) | n <- [0..] :: [Int]]
   genVal _ _ = error "`genSubsts` is not implemented for all API types, mirroring hevm's `symAbiArg` function"
 genSubsts _ = error "`genSubsts` should only be called with a `SolCall` transaction argument"
 
