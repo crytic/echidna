@@ -7,7 +7,6 @@ import Prelude hiding (writeFile)
 import Control.Monad (unless)
 import Data.ByteString qualified as BS
 import Data.Foldable
-import Data.IORef (readIORef)
 import Data.List (nub, sort)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Map (Map)
@@ -19,7 +18,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
 import Data.Vector qualified as V
-import Data.Vector.Unboxed.Mutable qualified as VU
+import Data.Vector.Unboxed qualified as VU
 import HTMLEntities.Text qualified as HTML
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
@@ -30,7 +29,7 @@ import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
 
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
-import Echidna.Types.Coverage (OpIx, unpackTxResults, CoverageMap, CoverageFileType (..))
+import Echidna.Types.Coverage (OpIx, unpackTxResults, FrozenCoverageMap, CoverageFileType (..), mergeCoverageMaps)
 import Echidna.Types.Tx (TxResult(..))
 import Echidna.SourceAnalysis.Slither (AssertLocation(..), assertLocationList, SlitherInfo(..))
 
@@ -43,7 +42,7 @@ saveCoverages
   -> IO ()
 saveCoverages env seed d sc cs = do
   let fileTypes = env.cfg.campaignConf.coverageFormats
-  coverage <- readIORef env.coverageRef
+  coverage <- mergeCoverageMaps env.dapp env.coverageRefInit env.coverageRefRuntime
   mapM_ (\ty -> saveCoverage ty seed d sc cs coverage) fileTypes
 
 saveCoverage
@@ -52,12 +51,12 @@ saveCoverage
   -> FilePath
   -> SourceCache
   -> [SolcContract]
-  -> CoverageMap
+  -> FrozenCoverageMap
   -> IO ()
 saveCoverage fileType seed d sc cs covMap = do
   let extension = coverageFileExtension fileType
       fn = d </> "covered." <> show seed <> extension
-  cc <- ppCoveredCode fileType sc cs covMap
+      cc = ppCoveredCode fileType sc cs covMap
   createDirectoryIfMissing True d
   writeFile fn cc
 
@@ -67,12 +66,12 @@ coverageFileExtension Html = ".html"
 coverageFileExtension Txt = ".txt"
 
 -- | Pretty-print the covered code
-ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> CoverageMap -> IO Text
-ppCoveredCode fileType sc cs s | null s = pure "Coverage map is empty"
-  | otherwise = do
-  -- List of covered lines during the fuzzing campaign
-  covLines <- srcMapCov sc s cs
+ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> FrozenCoverageMap -> Text
+ppCoveredCode fileType sc cs s | null s = "Coverage map is empty"
+  | otherwise =
   let
+    -- List of covered lines during the fuzzing campaign
+    covLines = srcMapCov sc s cs
     -- Collect all the possible lines from all the files
     allFiles = (\(path, src) -> (path, V.fromList (decodeUtf8 <$> BS.split 0xa src))) <$> Map.elems sc.files
     -- Excludes lines such as comments or blanks
@@ -102,7 +101,7 @@ ppCoveredCode fileType sc cs s | null s = pure "Coverage map is empty"
       Html -> "<code>" : ls ++ ["", "</code>","<br />"]
       Txt  -> ls
     -- ^ Alter file contents, in the case of html encasing it in <code> and adding a line break
-  pure $ topHeader <> T.unlines (map ppFile allFiles)
+  in topHeader <> T.unlines (map ppFile allFiles)
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
 markLines :: CoverageFileType -> V.Vector Text -> S.Set Int -> Map Int [TxResult] -> V.Vector Text
@@ -148,11 +147,11 @@ getMarker ErrorOutOfGas = 'o'
 getMarker _             = 'e'
 
 -- | Given a source cache, a coverage map, a contract returns a list of covered lines
-srcMapCov :: SourceCache -> CoverageMap -> [SolcContract] -> IO (Map FilePath (Map Int [TxResult]))
-srcMapCov sc covMap contracts = do
-  Map.unionsWith Map.union <$> mapM linesCovered contracts
+srcMapCov :: SourceCache -> FrozenCoverageMap -> [SolcContract] -> Map FilePath (Map Int [TxResult])
+srcMapCov sc covMap contracts =
+  Map.unionsWith Map.union $ linesCovered <$> contracts
   where
-  linesCovered :: SolcContract -> IO (Map FilePath (Map Int [TxResult]))
+  linesCovered :: SolcContract -> Map FilePath (Map Int [TxResult])
   linesCovered c =
     case Map.lookup c.runtimeCodehash covMap of
       Just vec -> VU.foldl' (\acc covInfo -> case covInfo of
@@ -197,11 +196,11 @@ checkAssertionsCoverage
   -> Env
   -> IO ()
 checkAssertionsCoverage sc env = do
+  covMap <- mergeCoverageMaps env.dapp env.coverageRefInit env.coverageRefRuntime
   let
     cs = Map.elems env.dapp.solcByName
     asserts = maybe [] (concatMap assertLocationList . Map.elems . (.asserts)) env.slitherInfo
-  covMap <- readIORef env.coverageRef
-  covLines <- srcMapCov sc covMap cs
+    covLines = srcMapCov sc covMap cs
   mapM_ (checkAssertionReached covLines) asserts
 
 -- | Helper function for `checkAssertionsCoverage` which checks a single assertion

@@ -39,7 +39,7 @@ import Echidna.Server (runSSEServer)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
-import Echidna.Types.Coverage (scoveragePoints)
+import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.UI.Report
@@ -339,7 +339,7 @@ statusLine
   -> IO String
 statusLine env states = do
   tests <- traverse readIORef env.testRefs
-  points <- scoveragePoints =<< readIORef env.coverageRef
+  (points, _) <- coverageStats env.coverageRefInit env.coverageRefRuntime
   corpus <- readIORef env.corpusRef
   let totalCalls = sum ((.ncalls) <$> states)
   pure $ "tests: " <> show (length $ filter didFail tests) <> "/" <> show (length tests)

@@ -1,7 +1,7 @@
 module Echidna.UI.Report where
 
 import Control.Monad (forM)
-import Control.Monad.Reader (MonadReader, MonadIO (liftIO), asks)
+import Control.Monad.Reader (MonadReader, MonadIO (liftIO), asks, ask)
 import Control.Monad.ST (RealWorld)
 import Data.IORef (readIORef)
 import Data.List (intercalate, nub, sortOn)
@@ -20,7 +20,7 @@ import Echidna.Types (Gas)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (corpusSize)
-import Echidna.Types.Coverage (scoveragePoints)
+import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
 import Echidna.Utility (timePrefix)
@@ -104,10 +104,10 @@ ppDelay (time, block) =
 -- | Pretty-print the coverage a 'Campaign' has obtained.
 ppCoverage :: (MonadIO m, MonadReader Env m) => m String
 ppCoverage = do
-  coverage <- liftIO . readIORef =<< asks (.coverageRef)
-  points <- liftIO $ scoveragePoints coverage
+  env <- ask
+  (points, uniqueCodehashes) <- liftIO $ coverageStats env.coverageRefInit env.coverageRefRuntime
   pure $ "Unique instructions: " <> show points <> "\n" <>
-         "Unique codehashes: " <> show (length coverage)
+         "Unique codehashes: " <> show uniqueCodehashes
 
 -- | Pretty-print the corpus a 'Campaign' has obtained.
 ppCorpus :: (MonadIO m, MonadReader Env m) => m String
