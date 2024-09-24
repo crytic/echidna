@@ -287,9 +287,15 @@ execTxWithCov tx = do
       addCoverage !vm = do
         let (pc, opIx, depth) = currentCovLoc vm
             contract = currentContract vm
+            covRef = case contract.code of
+              InitCode _ _ -> env.coverageRefInit
+              _ -> env.coverageRefRuntime
 
-        maybeCovVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp env.coverageRef $ do
-          let size = BS.length . forceBuf . fromJust . view bytecode $ contract
+        maybeCovVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp covRef $ do
+          let
+            size = case contract.code of
+              InitCode b _ -> BS.length b
+              _ -> BS.length . forceBuf . fromJust . view bytecode $ contract
           if size == 0 then pure Nothing else do
             -- IO for making a new vec
             vec <- VMut.new size
