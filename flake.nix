@@ -28,7 +28,8 @@
         # TODO: maybe only override it for echidna-redistributable?
         pkgsStatic = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsStatic else pkgs;
         # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
-        solc = solc-pkgs.mkDefault pkgs pkgs.solc_0_5_7;
+        # 0.5.7 is not available on aarch64 darwin so alternatively pick 0.8.5
+        solc = solc-pkgs.mkDefault pkgs (pkgs.solc_0_5_7 or pkgs.solc_0_8_5);
 
         secp256k1-static = pkgsStatic.secp256k1.overrideAttrs (attrs: {
           configureFlags = attrs.configureFlags ++ [ "--enable-static" ];
