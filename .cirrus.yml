@@ -1,0 +1,33 @@
+macos_instance:
+  image: ghcr.io/cirruslabs/macos-monterey-xcode:latest
+
+task:
+  name: Build (macOS M1)
+  timeout_in: 60m
+
+  local_cache:
+    folder: $HOME/.local
+    fingerprint_script: echo $CIRRUS_OS && shasum .github/scripts/*
+
+  stack_cache:
+    folder: $HOME/.stack
+    fingerprint_script: echo $CIRRUS_OS
+
+  install_dependencies_script: brew install automake libtool haskell-stack hpack gmp
+  install_secp256k1_script: .github/scripts/install-libsecp256k1.sh
+  install_libff_script: .github/scripts/install-libff.sh
+  install_ghc_script: stack --resolver=lts-20.05 --with-hpack hpack setup
+
+  build_dependencies_script: >
+    stack build --with-hpack hpack --ghc-options="-Werror" \
+      --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include \
+      --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib \
+      --only-dependencies
+  build_echidna_script: >
+    stack install --with-hpack hpack --ghc-options="-Werror" \
+      --extra-include-dirs=$HOME/.local/include --extra-include-dirs=/opt/homebrew/include \
+      --extra-lib-dirs=$HOME/.local/lib --extra-lib-dirs=/opt/homebrew/lib
+
+  build_release_script: .github/scripts/build-macos-release.sh
+  build_output_artifacts:
+    path: echidna-test.tar.gz
