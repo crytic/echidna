@@ -271,12 +271,12 @@ checkAssertionEvent = any (T.isPrefixOf "AssertionFailed(")
 
 checkSelfDestructedTarget :: Addr -> DappInfo -> VM Concrete RealWorld -> TestValue
 checkSelfDestructedTarget addr _ vm =
-  let selfdestructs' = vm.tx.substate.selfdestructs
+  let selfdestructs' = vm.tx.subState.selfdestructs
   in BoolValue $ LitAddr addr `notElem` selfdestructs'
 
 checkAnySelfDestructed :: DappInfo -> VM Concrete RealWorld -> TestValue
 checkAnySelfDestructed _ vm =
-  BoolValue $ null vm.tx.substate.selfdestructs
+  BoolValue $ null vm.tx.subState.selfdestructs
 
 checkPanicEvent :: T.Text -> Events -> Bool
 checkPanicEvent n = any (T.isPrefixOf ("Panic(" <> n <> ")"))

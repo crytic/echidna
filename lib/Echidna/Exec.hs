@@ -20,7 +20,8 @@ import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Data.Vector.Unboxed.Mutable qualified as VMut
-import System.Process (readProcessWithExitCode)
+import System.Environment (lookupEnv, getEnvironment)
+import System.Process qualified as P
 
 import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, vmOpIx, clearTStorages)
 import EVM.ABI
@@ -178,12 +179,20 @@ execTxWith executeTx tx = do
         runFully -- resume execution
 
       -- Execute a FFI call
-      Just (PleaseDoFFI (cmd : args) continuation) -> do
-        (_, stdout, _) <- liftIO $ readProcessWithExitCode cmd args ""
+      Just (PleaseDoFFI (cmd : args) envs continuation) -> do
+        existingEnv <- liftIO getEnvironment
+        let mergedEnv = Map.toList $ Map.union envs $ Map.fromList existingEnv
+        let process = (P.proc cmd args) { P.env = Just mergedEnv }
+        (_, stdout, _) <- liftIO $ P.readCreateProcessWithExitCode process ""
         let encodedResponse = encodeAbiValue $
               AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.pack $ stdout])
         fromEVM (continuation encodedResponse)
         runFully
+
+      Just (PleaseReadEnv var continuation) -> do
+        value <- liftIO $ lookupEnv var
+        fromEVM (continuation $ fromMaybe "" value)
+        runFully -- resume execution
 
       -- No queries to answer, the tx is fully executed and the result is final
       _ -> pure vmResult

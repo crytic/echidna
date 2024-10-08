@@ -36,7 +36,7 @@ import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign
 
 hasSelfdestructed :: VM Concrete s -> Addr -> Bool
-hasSelfdestructed vm addr = LitAddr addr `elem` vm.tx.substate.selfdestructs
+hasSelfdestructed vm addr = LitAddr addr `elem` vm.tx.subState.selfdestructs
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating
 -- delays, since block number only goes up with timestamp
