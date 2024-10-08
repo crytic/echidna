@@ -153,6 +153,9 @@
               hpack
             '';
             buildInputs = [
+              pkgs.secp256k1
+              pkgs.libff
+              pkgs.gmp
               solc
               slither-analyzer
               haskellPackages.hlint
