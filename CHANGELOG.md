@@ -1,3 +1,12 @@
+## 2.2.5
+
+* Support Ethereum Cancun upgrade (#1317, #1309, #1300)
+* Print a warning if an assert isn't hit in assert mode (#1110)
+* Add support for vm.label cheatcode when printing call sequences (#1314)
+* Coverage during contract deployment (#1304)
+* Fix overflow behavior: revert transaction instead of throwing VM error (#1293)
+* Documentation (#1298)
+
 ## 2.2.4
 
 * Initial TLOAD/TSTORE support (#1286)
