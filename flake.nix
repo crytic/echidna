@@ -28,7 +28,8 @@
         # TODO: maybe only override it for echidna-redistributable?
         pkgsStatic = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsStatic else pkgs;
         # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
-        solc = solc-pkgs.mkDefault pkgs pkgs.solc_0_5_7;
+        # 0.5.7 is not available on aarch64 darwin so alternatively pick 0.8.5
+        solc = solc-pkgs.mkDefault pkgs (pkgs.solc_0_5_7 or pkgs.solc_0_8_5);
 
         secp256k1-static = pkgsStatic.secp256k1.overrideAttrs (attrs: {
           configureFlags = attrs.configureFlags ++ [ "--enable-static" ];
@@ -51,8 +52,8 @@
         hevm = pkgs: pkgs.lib.pipe ((hsPkgs pkgs).callCabal2nix "hevm" (pkgs.fetchFromGitHub {
           owner = "ethereum";
           repo = "hevm";
-          rev = "c779777d18c8ff60867f009d434b44ce08188e01";
-          sha256 = "sha256-JnJUZ9AxhxTP+TBMThksh0D4R6KFdzjgu1+fBeBERws=";
+          rev = "f1f45d3c0d9767a38df04f398d1eab8b66dbe7fc";
+          sha256 = "sha256-3zEUwcZm4uZZLecvFTgVTV5CAm4qMfKPbLdwO88LnrY=";
         }) { secp256k1 = pkgs.secp256k1; })
         ([
           pkgs.haskell.lib.compose.dontCheck
