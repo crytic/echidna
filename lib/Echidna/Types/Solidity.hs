@@ -66,6 +66,7 @@ data SolConf = SolConf
   , balanceContract :: Integer          -- ^ Initial balance of contract to test
   , codeSize        :: Integer          -- ^ Max code size for deployed contratcs (default 0xffffffff)
   , prefix          :: Text             -- ^ Function name prefix used to denote tests
+  , disableSlither  :: Bool             -- ^ Whether or not to skip running Slither
   , cryticArgs      :: [String]         -- ^ Args to pass to crytic
   , solcArgs        :: String           -- ^ Args to pass to @solc@
   , solcLibs        :: [String]         -- ^ List of libraries to load, in order.
