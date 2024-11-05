@@ -185,4 +185,5 @@ emptySlitherInfo = SlitherInfo mempty mempty mempty mempty mempty [] [] []
 
 isEmptySlitherInfo :: Maybe SlitherInfo -> Bool
 isEmptySlitherInfo (Just (SlitherInfo _ _ _ _ _ [] [] [])) = True
+isEmptySlitherInfo Nothing = True
 isEmptySlitherInfo _ = False

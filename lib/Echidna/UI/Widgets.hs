@@ -228,8 +228,8 @@ slitherWidget
   :: Bool
   -> Widget Name
 slitherWidget slitherSucceeded = if slitherSucceeded
-  then alert (str "No Slither in use")
-  else success (str "Slither succeeded")
+  then success (str "Slither succeeded")
+  else alert (str "No Slither in use!")
 
 outOf :: Int -> Int -> Widget n
 outOf n m =
