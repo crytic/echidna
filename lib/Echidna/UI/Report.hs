@@ -43,6 +43,11 @@ ppCampaignEventLog vm ev = (ppCampaignEvent ev <>) <$> ppTxIfHas where
     (WorkerEvent _ _ (TestFalsified test)) -> ("\n  Call sequence:\n" <>) . unlines <$> mapM (ppTx vm $ length (nub $ (.src) <$> test.reproducer) /= 1) test.reproducer
     _ -> pure ""
 
+ppTotalCalls :: [WorkerState] -> String
+ppTotalCalls workerStates = "Total calls: " <> show calls
+  where
+    calls = sum $ (.ncalls) <$> workerStates
+
 ppCampaign :: (MonadIO m, MonadReader Env m) => VM Concrete RealWorld -> [WorkerState] -> m String
 ppCampaign vm workerStates = do
   tests <- liftIO . traverse readIORef =<< asks (.testRefs)
@@ -51,12 +56,14 @@ ppCampaign vm workerStates = do
   coveragePrinted <- ppCoverage
   let seedPrinted = "Seed: " <> show (head workerStates).genDict.defSeed
   corpusPrinted <- ppCorpus
+  let callsPrinted = ppTotalCalls workerStates
   pure $ unlines
     [ testsPrinted
     , gasInfoPrinted
     , coveragePrinted
     , corpusPrinted
     , seedPrinted
+    , callsPrinted
     ]
 
 -- | Given rules for pretty-printing associated addresses, and whether to print
