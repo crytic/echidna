@@ -148,7 +148,7 @@ runSlither :: FilePath -> SolConf -> IO SlitherInfo
 runSlither fp solConf = if solConf.disableSlither
   then do
     hPutStrLn stderr $
-        "WARNING: slither was expliticly disabled. Echidna uses Slither (https://github.com/crytic/slither)"
+        "WARNING: Slither was explicitly disabled. Echidna uses Slither (https://github.com/crytic/slither)"
         <> " to perform source analysis, which makes fuzzing more effective. You should enable it."
     pure emptySlitherInfo
   else findExecutable "slither" >>= \case
