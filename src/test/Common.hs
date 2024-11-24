@@ -17,47 +17,57 @@ module Common
   , getGas
   , gasInRange
   , countCorpus
-  , coverageEmpty
+  , overrideQuiet
+  , loadSolTests
   ) where
-
-import Prelude hiding (lookup)
 
 import Test.Tasty (TestTree)
 import Test.Tasty.HUnit (testCase, assertBool)
 
-import Control.Lens (view, set, (.~), (^.))
+import Control.Monad (forM_)
 import Control.Monad.Reader (runReaderT)
-import Control.Monad.Random (getRandom)
-import Control.Monad.State.Strict (evalStateT)
+import Control.Monad.Random (getRandomR)
+import Control.Monad.ST (RealWorld)
 import Data.DoubleWord (Int256)
 import Data.Function ((&))
+import Data.IORef
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
-import Data.Map (fromList, lookup, empty)
+import Data.Map qualified as Map
 import Data.Maybe (isJust)
-import Data.Text (Text, pack)
 import Data.SemVer (Version, version, fromText)
+import Data.Text (Text, pack)
 import System.Process (readProcess)
 
-import Echidna (prepareContract)
+import Echidna (mkEnv, prepareContract)
 import Echidna.Config (parseConfig, defaultConfig)
-import Echidna.Campaign (campaign)
-import Echidna.Solidity (loadSolTests)
+import Echidna.Campaign (runWorker)
+import Echidna.Solidity (selectMainContract, mkTests, loadSpecified, compileContracts)
 import Echidna.Test (checkETest)
-import Echidna.Types.Config (Env(..), EConfig, _econfig, sConf, cConf)
-import Echidna.Types.Solidity (quiet)
-import Echidna.Types.Campaign (Campaign, testLimit, shrinkLimit, tests, gasInfo, corpus, coverage)
+import Echidna.Types (Gas)
+import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
+import Echidna.Types.Campaign
 import Echidna.Types.Signature (ContractName)
+import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..), call)
+import Echidna.Types.World (World(..))
 
-import EVM.Dapp (dappInfo, emptyDapp)
-import EVM.Solidity (contractName)
+import EVM.Solidity (Contracts(..), BuildOutput(..), SolcContract(..))
+import EVM.Types hiding (Env, Gas)
 
 testConfig :: EConfig
-testConfig = defaultConfig & sConf . quiet .~ True
-                           & cConf . testLimit .~ 10000
-                           & cConf . shrinkLimit .~ 4000
+testConfig = defaultConfig & overrideQuiet
+                           & overrideLimits
+
+overrideQuiet :: EConfig -> EConfig
+overrideQuiet conf =
+  conf { solConf = conf.solConf { quiet = True }}
+
+overrideLimits :: EConfig -> EConfig
+overrideLimits conf =
+  conf { campaignConf = conf.campaignConf { testLimit = 10000
+                                          , shrinkLimit = 4000 }}
 
 type SolcVersion = Version
 type SolcVersionComp = Version -> Bool
@@ -69,114 +79,174 @@ withSolcVersion :: Maybe SolcVersionComp -> IO () -> IO ()
 withSolcVersion Nothing t = t
 withSolcVersion (Just f) t = do
   sv <- readProcess "solc" ["--version"] ""
-  let (_:sv':_) = splitOn "Version: " sv
-  let (sv'':_) = splitOn "+" sv'
+  let sv' = case splitOn "Version: " sv of
+              _:x:_ -> x
+              _ -> error "unexpected output"
+  let sv'' = case splitOn "+" sv' of
+               x:_ -> x
+               _ -> error "unexpected output"
   case fromText $ pack sv'' of
     Right v' -> if f v' then t else assertBool "skip" True
     Left e   -> error $ show e
 
-runContract :: FilePath -> Maybe ContractName -> EConfig -> IO Campaign
-runContract f mc cfg = 
-  flip runReaderT cfg $ do
-    g <- getRandom
-    (v, sc, cs, w, ts, d, txs) <- prepareContract cfg (f :| []) mc g
-    let solcByName = fromList [(c ^. contractName, c) | c <- cs]
-    let dappInfo' = dappInfo "/" solcByName sc
-    let env = Env { _cfg = cfg, _dapp = dappInfo' }
-    flip runReaderT env $
-      -- start ui and run tests
-      campaign (pure ()) v w ts d txs
+runContract :: FilePath -> Maybe ContractName -> EConfig -> WorkerType -> IO (Env, WorkerState)
+runContract f selectedContract cfg workerType = do
+  seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
+  buildOutput <- compileContracts cfg.solConf (f :| [])
 
-testContract :: FilePath -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
-testContract fp cfg = testContract' fp Nothing Nothing cfg True
+  (vm, env, dict) <- prepareContract cfg (f :| []) buildOutput selectedContract seed
 
-testContractV :: FilePath -> Maybe SolcVersionComp -> Maybe FilePath -> [(String, Campaign -> Bool)] -> TestTree
-testContractV fp v cfg = testContract' fp Nothing v cfg True
+  (_stopReason, finalState) <- flip runReaderT env $
+    runWorker workerType (pure ()) vm dict 0 [] cfg.campaignConf.testLimit selectedContract
 
-testContract' :: FilePath -> Maybe ContractName -> Maybe SolcVersionComp -> Maybe FilePath -> Bool -> [(String, Campaign -> Bool)] -> TestTree
-testContract' fp n v cfg s as = testCase fp $ withSolcVersion v $ do
-  c <- set (sConf . quiet) True <$> maybe (pure testConfig) (fmap _econfig . parseConfig) cfg
-  let c' = c & sConf . quiet .~ True
-             & (if s then cConf . testLimit .~ 10000 else id)
-             & (if s then cConf . shrinkLimit .~ 4000 else id)
-  res <- runContract fp n c'
-  mapM_ (\(t,f) -> assertBool t $ f res) as
+  -- TODO: consider snapshotting the state so checking function don't need to
+  -- be IO
+  pure (env, finalState)
+
+testContract
+  :: FilePath
+  -> Maybe FilePath
+  -> [(String, (Env, WorkerState) -> IO Bool)]
+  -> TestTree
+testContract fp cfg = testContract' fp Nothing Nothing cfg True FuzzWorker
+
+testContractV
+  :: FilePath
+  -> Maybe SolcVersionComp
+  -> Maybe FilePath
+  -> [(String, (Env, WorkerState) -> IO Bool)]
+  -> TestTree
+testContractV fp v cfg = testContract' fp Nothing v cfg True FuzzWorker
+
+testContract'
+  :: FilePath
+  -> Maybe ContractName
+  -> Maybe SolcVersionComp
+  -> Maybe FilePath
+  -> Bool
+  -> WorkerType
+  -> [(String, (Env, WorkerState) -> IO Bool)]
+  -> TestTree
+testContract' fp n v configPath s workerType expectations = testCase fp $ withSolcVersion v $ do
+  c <- case configPath of
+    Just path -> do
+      parsed <- parseConfig path
+      pure parsed.econfig
+    Nothing -> pure testConfig
+  let c' = c & overrideQuiet
+             & (if s then overrideLimits else id)
+  result <- runContract fp n c' workerType
+  forM_ expectations $ \(message, assertion) -> do
+    assertion result >>= assertBool message
+
+-- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
+-- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
+-- the first contract in the file. Take said contract and return an initial VM state with it loaded,
+-- its ABI (as 'SolSignature's), and the names of its Echidna tests. NOTE: unlike 'loadSpecified',
+-- contract names passed here don't need the file they occur in specified.
+loadSolTests
+  :: EConfig
+  -> BuildOutput
+  -> Maybe Text
+  -> IO (VM Concrete RealWorld, Env, [EchidnaTest])
+loadSolTests cfg buildOutput name = do
+  let solConf = cfg.solConf
+      (Contracts contractMap) = buildOutput.contracts
+      contracts = Map.elems contractMap
+      eventMap = Map.unions $ map (.eventMap) contracts
+      world = World solConf.sender mempty Nothing [] eventMap
+  mainContract <- selectMainContract solConf name contracts
+  echidnaTests <- mkTests solConf mainContract
+  env <- mkEnv cfg buildOutput echidnaTests world Nothing
+  vm <- loadSpecified env mainContract contracts
+  pure (vm, env, echidnaTests)
 
 checkConstructorConditions :: FilePath -> String -> TestTree
 checkConstructorConditions fp as = testCase fp $ do
-  r <- flip runReaderT testConfig $ do
-    (v, _, t) <- loadSolTests (fp :| []) Nothing
-    let env = Env { _cfg = testConfig, _dapp = emptyDapp }
-    flip runReaderT env $
-      mapM (\u -> evalStateT (checkETest u) v) t
-  mapM_ (\(BoolValue b,_,_) -> assertBool as b) r
+  let cfg = testConfig
+  buildOutput <- compileContracts cfg.solConf (pure fp)
+  (v, env, t) <- loadSolTests cfg buildOutput Nothing
+  r <- flip runReaderT env $ mapM (`checkETest` v) t
+  mapM_ (\(x,_) -> assertBool as (forceBool x)) r
+  where forceBool (BoolValue b) = b
+        forceBool _ = error "BoolValue expected"
 
-
-getResult :: Text -> Campaign -> Maybe EchidnaTest
-getResult n c = 
-  case filter findTest $ view tests c of
+getResult :: Text -> [EchidnaTest] -> Maybe EchidnaTest
+getResult n tests =
+  case filter findTest tests of
     []  -> Nothing
     [x] -> Just x
     _   -> error "found more than one tests"
 
-  where findTest test = case view testType test of
+  where findTest test = case test.testType  of
                           PropertyTest t _        -> t == n
                           AssertionTest _ (t,_) _ -> t == n
                           CallTest t _            -> t == n
                           OptimizationTest t _    -> t == n
-                          _                       -> False 
+                          _                       -> False
 
-optnFor :: Text -> Campaign -> Maybe TestValue
-optnFor n c = case getResult n c of
-  Just t -> Just $ t ^. testValue
-  _      -> Nothing
+optnFor :: Text -> (Env, WorkerState) -> IO (Maybe TestValue)
+optnFor n (env, _) = do
+  tests <- traverse readIORef env.testRefs
+  pure $ case getResult n tests of
+    Just t -> Just t.value
+    _      -> Nothing
 
-optimized :: Text -> Int256 -> Campaign -> Bool
-optimized n v c = case optnFor n c of
-                   Just (IntValue o1) -> o1 >= v
-                   Nothing            -> error "nothing"
-                   _                  -> error "incompatible values"
+optimized :: Text -> Int256 -> (Env, WorkerState) -> IO Bool
+optimized n v final = do
+  x <- optnFor n final
+  pure $ case x of
+    Just (IntValue o1) -> o1 >= v
+    Nothing            -> error "nothing"
+    _                  -> error "incompatible values"
 
-solnFor :: Text -> Campaign -> Maybe [Tx]
-solnFor n c = case getResult n c of
-  Just t -> if null $ t ^. testReproducer then Nothing else Just $ t ^. testReproducer 
-  _      -> Nothing
+solnFor :: Text -> (Env, WorkerState) -> IO (Maybe [Tx])
+solnFor n (env, _) = do
+  tests <- traverse readIORef env.testRefs
+  pure $ case getResult n tests of
+    Just t -> if null t.reproducer then Nothing else Just t.reproducer
+    _      -> Nothing
 
-solved :: Text -> Campaign -> Bool
-solved t = isJust . solnFor t
+solved :: Text -> (Env, WorkerState) -> IO Bool
+solved t f = isJust <$> solnFor t f
 
-passed :: Text -> Campaign -> Bool
-passed n c = case getResult n c of
-  Just t | isPassed t -> True
-  Just t | isOpen t   -> True
-  Nothing             -> error ("no test was found with name: " ++ show n)
-  _                   -> False
+passed :: Text -> (Env, WorkerState) -> IO Bool
+passed n (env, _) = do
+  tests <- traverse readIORef env.testRefs
+  pure $ case getResult n tests of
+    Just t | isPassed t -> True
+    Just t | isOpen t   -> True
+    Nothing             -> error ("no test was found with name: " ++ show n)
+    _                   -> False
 
-solvedLen :: Int -> Text -> Campaign -> Bool
-solvedLen i t = (== Just i) . fmap length . solnFor t
+solvedLen :: Int -> Text -> (Env, WorkerState) -> IO Bool
+solvedLen i t final = (== Just i) . fmap length <$> solnFor t final
 
-solvedUsing :: Text -> Text -> Campaign -> Bool
-solvedUsing f t = maybe False (any $ matchCall . view call) . solnFor t
-                 where matchCall (SolCall (f',_)) = f' == f
-                       matchCall _                = False
+solvedUsing :: Text -> Text -> (Env, WorkerState) -> IO Bool
+solvedUsing f t final =
+  maybe False (any $ matchCall . (.call)) <$> solnFor t final
+  where matchCall (SolCall (f',_)) = f' == f
+        matchCall _                = False
 
 -- NOTE: this just verifies a call was found in the solution. Doesn't care about ordering/seq length
-solvedWith :: TxCall -> Text -> Campaign -> Bool
-solvedWith tx t = maybe False (any $ (== tx) . view call) . solnFor t
+solvedWith :: TxCall -> Text -> (Env, WorkerState) -> IO Bool
+solvedWith tx t final =
+  maybe False (any $ (== tx) . (.call)) <$> solnFor t final
 
-solvedWithout :: TxCall -> Text -> Campaign -> Bool
-solvedWithout tx t = maybe False (all $ (/= tx) . view call) . solnFor t
+solvedWithout :: TxCall -> Text -> (Env, WorkerState) -> IO Bool
+solvedWithout tx t final =
+  maybe False (all $ (/= tx) . (.call)) <$> solnFor t final
 
-getGas :: Text -> Campaign -> Maybe (Int, [Tx])
-getGas t = lookup t . view gasInfo
+getGas :: Text -> WorkerState -> Maybe (Gas, [Tx])
+getGas t camp = Map.lookup t camp.gasInfo
 
-gasInRange :: Text -> Int -> Int -> Campaign -> Bool
-gasInRange t l h c = case getGas t c of
-  Just (g, _) -> g >= l && g <= h
-  _           -> False
+gasInRange :: Text -> Gas -> Gas -> (Env, WorkerState) -> IO Bool
+gasInRange t l h (_, workerState) = do
+  pure $ case getGas t workerState of
+    Just (g, _) -> g >= l && g <= h
+    _           -> False
 
-countCorpus :: Int -> Campaign -> Bool
-countCorpus n c = length (view corpus c) == n
-
-coverageEmpty :: Campaign -> Bool
-coverageEmpty c = view coverage c == empty
+countCorpus :: Int -> (Env, WorkerState) -> IO Bool
+countCorpus n (env, _) = do
+  corpus <- readIORef env.corpusRef
+  pure $ length corpus == n

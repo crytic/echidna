@@ -3,106 +3,139 @@ name: echidna
 author: Trail of Bits <echidna-dev@trailofbits.com>
 maintainer: Trail of Bits <echidna-dev@trailofbits.com>
 
-version: 2.0.3
+version: 2.2.5
 
-ghc-options: -Wall -fno-warn-orphans -O2 -threaded +RTS -N -RTS
+ghc-options:
+  - -O2
+  - -Wall
+  - -fno-warn-orphans
+  - -feager-blackholing
+  # https://github.com/haskell/cabal/issues/4739
+  - -optP-Wno-nonportable-include-path
+  - -fspecialize-aggressively
+  - -fexpose-all-unfoldings
+  - -Wunused-packages
 
 dependencies:
-  - base
   - aeson
-  - ansi-terminal
-  - base16-bytestring
-  - binary
-  - brick
-  - base16-bytestring
-  - bytestring
+  - base
   - containers
-  - data-dword
-  - data-has
-  - deepseq
-  - extra
   - directory
-  - exceptions
-  - filepath
-  - hashable
   - hevm
-  - html-entities
-  - lens
-  - lens-aeson
-  - ListLike
-  - megaparsec
   - MonadRandom
   - mtl
-  - optparse-applicative
-  - process
-  - random
-  - rosezipper
-  - semver
-  - sbv
-  - stm
-  - split
-  - temporary
   - text
-  - transformers
-  - time
-  - unix
-  - unliftio
-  - unliftio-core
-  - utf8-string
-  - unordered-containers
-  - vector
-  - vector-instances
-  - vty
-  - wl-pprint-annotated
-  - word8
-  - yaml
+
+language: GHC2021
 
 default-extensions:
+  - DataKinds
+  - DuplicateRecordFields
+  - LambdaCase
+  - MultiWayIf
+  - NoFieldSelectors
+  - OverloadedLabels
+  - OverloadedRecordDot
   - OverloadedStrings
 
 library:
   source-dirs: lib/
+  dependencies:
+    - ansi-terminal
+    - async
+    - base16-bytestring
+    - binary
+    - brick
+    - bytestring
+    - data-bword
+    - data-dword
+    - deepseq
+    - exceptions
+    - extra
+    - filepath
+    - hashable
+    - html-conduit
+    - html-entities
+    - http-conduit
+    - ListLike
+    - optics
+    - optics-core
+    - process
+    - random
+    - rosezipper
+    - semver
+    - signal
+    - split
+    - strip-ansi-escape
+    - time
+    - unliftio
+    - utf8-string
+    - vector
+    - vty
+    - vty-crossplatform
+    - wai-extra
+    - warp
+    - word-wrap
+    - xml-conduit
+    - yaml
 
 executables:
-  echidna-test:
+  echidna:
     main: Main.hs
     source-dirs: src/
-    dependencies: echidna
+    dependencies:
+      - code-page
+      - echidna
+      - filepath
+      - hashable
+      - optparse-applicative
+      - time
+      - with-utf8
+    ghc-options:
+      - -threaded
+      - '"-with-rtsopts=-A64m -N"'
     when:
-        - condition: os(linux) && flag(static)
-          ghc-options:
-            - -static
-            - -O2
-          cc-options: -static
-          ld-options: -static -pthread
-        - condition: os(linux)
-          ghc-options:
-            - -O2
-          ld-options: -pthread
+      - condition: (os(linux) || os(windows)) && flag(static)
+        ghc-options:
+          - -optl-static
+      - condition: os(linux) || os(windows)
+        ghc-options:
+          - -O2
+          - -optl-pthread
+      - condition: os(darwin)
+        ld-options: -Wl,-keep_dwarf_unwind
+        ghc-options: -fcompact-unwind
 
 tests:
   echidna-testsuite:
     main: Spec.hs
     source-dirs: src/test
     dependencies:
+      - data-dword
       - echidna
+      - exceptions
+      - optics-core
+      - process
+      - semver
+      - split
       - tasty
       - tasty-hunit
       - tasty-quickcheck
+      - yaml
     when:
-        - condition: os(linux) && flag(static)
+        - condition: (os(linux) || os(windows)) && flag(static)
           ghc-options:
-            - -static
-            - -O2
-          cc-options: -static
-          ld-options: -static -pthread
-        - condition: os(linux)
+            - -optl-static
+        - condition: os(linux) || os(windows)
           ghc-options:
             - -O2
-          ld-options: -pthread
+            - -optl-pthread
+        - condition: os(darwin)
+          ld-options: -Wl,-keep_dwarf_unwind
+          ghc-options: -fcompact-unwind
 
 flags:
   static:
     description: Pass -static to ghc when linking the stack binary.
     manual: true
-    default: true
+    default: false

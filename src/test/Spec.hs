@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 import Test.Tasty (defaultMain, testGroup)
 import System.Directory (withCurrentDirectory)
 import Tests.ABIv2 (abiv2Tests)
@@ -15,6 +13,8 @@ import Tests.Research (researchTests)
 import Tests.Values (valuesTests)
 import Tests.Seed (seedTests)
 import Tests.Dapptest (dapptestTests)
+import Tests.Cheat (cheatTests)
+import Tests.Symbolic (symbolicTests)
 
 main :: IO ()
 main = withCurrentDirectory "./tests/solidity" . defaultMain $
@@ -32,4 +32,6 @@ main = withCurrentDirectory "./tests/solidity" . defaultMain $
            , researchTests
            , dapptestTests
            , encodingJSONTests
+           , cheatTests
+           , symbolicTests
            ]

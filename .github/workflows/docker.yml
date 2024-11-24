@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - master
-      - github-docker
-      - docker-slim
     tags:
       - '*'
 
@@ -17,17 +15,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
         id: buildx
         with:
           install: true
 
       - name: Set Docker metadata (Ubuntu & NVM variant)
         id: meta-ubuntu
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: |
             ghcr.io/${{ github.repository }}/echidna
@@ -39,7 +37,7 @@ jobs:
 
       - name: Set Docker metadata (Distroless variant)
         id: meta-distroless
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         if: ${{ env.WORKFLOW_BUILD_DISTROLESS == true }}
         with:
           images: ghcr.io/${{ github.repository }}/distroless
@@ -49,21 +47,21 @@ jobs:
             type=edge
 
       - name: GitHub Container Registry Login
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Docker Hub Login
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         if: github.repository == 'crytic/echidna'
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
 
       - name: Docker Build and Push (Ubuntu & NVM variant)
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v6
         with:
           platforms: linux/amd64
           target: final-ubuntu
@@ -76,7 +74,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Docker Build and Push (Distroless variant)
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v6
         if: ${{ env.WORKFLOW_BUILD_DISTROLESS == true }}
         with:
           platforms: linux/amd64

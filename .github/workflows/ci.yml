@@ -8,59 +8,131 @@ on:
     branches:
     - master
 
+env:
+  # Tag for cache invalidation
+  CACHE_VERSION: v7
+
 jobs:
   build:
-    name: Build Echidna
+    name: Build Echidna on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    container: ${{ fromJSON(matrix.container || '{"image":null}') }}
     strategy:
       matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
         include:
-          - os: ubuntu-latest
-            apt-get: autoconf automake libtool
-          - os: macos-latest
-            brew: automake
-         
-    steps:
-      - name: Workaround for actions/cache#403
-        if: runner.os == 'macOS'
-        run: |
-          brew install gnu-tar
-          echo PATH="/usr/local/opt/gnu-tar/libexec/gnubin:$PATH" >> $GITHUB_ENV
+          - os: ubuntu-20.04
+            shell: bash
+            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.6.5\", \"options\": \"--user 1001\"}"
+          - os: macos-13 # x86_64 macOS
+            shell: bash
+          - os: windows-latest
+            shell: msys2 {0}
 
-      - name: Get Packages
-        uses: mstksg/get-package@v1
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+
+    steps:
+      - name: Get Packages (macOS)
+        if: runner.os == 'macOS'
+        run: brew install automake
+
+      - name: Get Packages (Windows)
+        uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
         with:
-          brew: ${{ matrix.brew }}
-          apt-get: ${{ matrix.apt-get }}
+          msystem: CLANG64
+          path-type: minimal
+          update: true
+          install: >-
+            base-devel
+            gmp-devel
+            openssl-devel
+            git
+            unzip
+          pacboy: >-
+            cmake:p
+            ninja:p
+            clang:p
+            lld:p
+            autotools:p
+            gmp:p
+            openssl:p
+
+      - name: Install Stack
+        uses: haskell-actions/setup@v2
+        id: stack
+        if: matrix.container == ''
+        with:
+          ghc-version: '9.6.5'
+          enable-stack: true
+          stack-version: 'latest'
+
+      - name: Configure Stack environment
+        run: |
+          HOME="${{ (runner.os == 'Windows' && '$(cygpath -m ~)') || '$HOME' }}"
+          mkdir -p "$STACK_ROOT"
+          { echo "extra-include-dirs:";
+            echo "- $HOME/.local/include";
+            echo "$EXTRA_INCLUDE_WIN";
+            echo;
+            echo "extra-lib-dirs:";
+            echo "- $HOME/.local/lib";
+            echo "$EXTRA_LIB_WIN";
+            echo;
+            echo "ghc-options:";
+            echo '  "$locals": -Werror'
+            "$REPLACE_LINKER_WIN" && echo '  "$everything": -pgml=D:/a/_temp/msys64/clang64/bin/clang.exe -pgml-supports-no-pie';
+            echo;
+            "$SKIP_MSYS" && echo "skip-msys: true" || true
+            echo "system-ghc: true";
+            echo "install-ghc: false";
+            echo "skip-ghc-check: true";
+          } >> "$STACK_ROOT/config.yaml"
+          cat "$STACK_ROOT/config.yaml"
+        env:
+          STACK_ROOT: ${{ steps.stack.outputs.stack-root || '/etc/stack' }}
+          EXTRA_INCLUDE_WIN: ${{ (runner.os == 'Windows' && '- D:/a/_temp/msys64/clang64/include') || '' }}
+          EXTRA_LIB_WIN: ${{ (runner.os == 'Windows' && '- D:/a/_temp/msys64/clang64/lib') || '' }}
+          REPLACE_LINKER_WIN: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
+          SKIP_MSYS: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
+
+      - name: Configure Haskell paths (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          HASKELL_PATHS="$(cygpath -u "$GHC_PATH"):$(cygpath -u "$CABAL_PATH"):$(cygpath -u "$STACK_PATH")"
+          echo "HASKELL_PATHS=$HASKELL_PATHS" >> "$GITHUB_ENV"
+        env:
+          GHC_PATH: ${{ steps.stack.outputs.ghc-path }}
+          CABAL_PATH: ${{ steps.stack.outputs.cabal-path }}
+          STACK_PATH: ${{ steps.stack.outputs.stack-path }}
 
       - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Setup Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.6'
+        uses: actions/checkout@v4
 
       - name: Cache Local
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
-          path: ~/.local/
-          key: ${{ runner.os }}-local-v3
+          path: |
+            ~/.local
+            D:\a\_temp\msys64\home\runneradmin\.local
+          key: ${{ runner.os }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
 
-      - name: Cache Stack
-        uses: actions/cache@v2
-        with:
-          path: ~/.stack
-          key: ${{ runner.os }}-stack-v3
+      - name: Configure static build flags
+        run: |
+          printf "\nflags:\n  hevm:\n    static-secp256k1: true\n  echidna:\n    static: true\n" >> stack.yaml
 
-      - name: Cache Cabal
-        uses: actions/cache@v2
+      - name: Cache Stack & Cabal
+        uses: actions/cache@v4
         with:
-          path: ~/.cabal
-          key: ${{ runner.os }}-cabal-v3
+          path: |
+            .stack-work
+            ${{ steps.stack.outputs.cabal-store || '~/.cabal' }}/*
+            ${{ steps.stack.outputs.stack-root || '~/.stack' }}/*
+            !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar
+            !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar.gz
+            !${{ steps.stack.outputs.stack-root || '~/.stack' }}/config.yaml
+          key: ${{ runner.os }}-stack-${{ env.CACHE_VERSION }}-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Build Libraries
         run: |
@@ -71,11 +143,13 @@ jobs:
 
       - name: Build Dependencies
         run: |
-          stack build --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib --only-dependencies
+          export PATH="$HASKELL_PATHS:$PATH"
+          stack build --ghc-options="-Werror" --only-dependencies
 
       - name: Build and install echidna
         run: |
-          stack install --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
+          export PATH="$HASKELL_PATHS:$PATH"
+          stack install --ghc-options="-Werror"
 
       - name: Amend and compress binaries (macOS)
         if: runner.os == 'macOS'
@@ -83,71 +157,83 @@ jobs:
 
       - name: Compress binary (Linux)
         if: runner.os == 'Linux'
-        run: GZIP=-9 tar -czf echidna-test.tar.gz -C $HOME/.local/bin/ echidna-test
+        run: GZIP=-9 tar -czf echidna.tar.gz -C $HOME/.local/bin/ echidna
+
+      - name: Compress binary (Windows)
+        if: runner.os == 'Windows'
+        run: GZIP=-9 tar -czf echidna.tar.gz -C $APPDATA/local/bin/ echidna.exe
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: echidna-test-${{ runner.os }}
-          path: echidna-test.tar.gz
+          name: echidna-${{ runner.os }}
+          path: echidna.tar.gz
 
       - name: Build and copy test suite
-        if: runner.os == 'Linux'
+        if: runner.os != 'macOS'
         run: |
-          stack build --test --no-run-tests --ghc-options="-Werror" --extra-include-dirs=$HOME/.local/include --extra-lib-dirs=$HOME/.local/lib
-          cp "$(find "$PWD" -name echidna-testsuite -type f)" .
+          export PATH="$HASKELL_PATHS:$PATH"
+          stack build --test --no-run-tests --ghc-options="-Werror"
+          cp "$(find "$PWD" -name 'echidna-testsuite*' -type f)" .
 
       - name: Upload testsuite
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v2
+        if: runner.os != 'macOS'
+        uses: actions/upload-artifact@v4
         with:
-          name: echidna-testsuite
-          path: echidna-testsuite
+          name: echidna-testsuite-${{ runner.os }}
+          path: echidna-testsuite*
 
 
   test:
-    name: Test Echidna with solc ${{ matrix.solc }}
-    runs-on: ubuntu-latest
+    name: Test with solc ${{ matrix.solc }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     needs: build
-    continue-on-error: ${{ matrix.experimental }}
+    continue-on-error: ${{ matrix.experimental || false }}
     strategy:
       fail-fast: false
       matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
         solc:
           - "0.4.25"
           - "0.5.7"
-        experimental: [false]
+          - "0.6.12"
+          - "0.7.5"
         include:
           - solc: "0.6.12"
             experimental: true
           - solc: "0.7.5"
             experimental: true
+          - os: windows-latest
+            experimental: true
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.6'
+          python-version: '3.8'
 
       - name: Install dependencies
+        shell: bash
         run: |
           .github/scripts/install-solc.sh
           .github/scripts/install-crytic-compile.sh
+          .github/scripts/install-z3.sh
         env:
           HOST_OS: ${{ runner.os }}
           SOLC_VER: ${{ matrix.solc }}
 
       - name: Download testsuite
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
-         name: echidna-testsuite
+         name: echidna-testsuite-${{ runner.os }}
 
       - name: Test
         run: |
-          export PATH="${PATH}:$HOME/.local/bin"
-          cp "$HOME/.local/bin/solc-${{ matrix.solc }}" "$HOME/.local/bin/solc"
-          chmod +x echidna-testsuite
-          ./echidna-testsuite
+          solc-select use ${{ matrix.solc }}
+          chmod +x echidna-testsuite*
+          ./echidna-testsuite*

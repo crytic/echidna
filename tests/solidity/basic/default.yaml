@@ -38,8 +38,8 @@ sender: ["0x10000", "0x20000", "0x30000"]
 balanceAddr: 0xffffffff
 #balanceContract overrides balanceAddr for the contract address
 balanceContract: 0
-#codeSize max code size for deployed contratcs (default 24576, per EIP-170)
-codeSize: 0x6000
+#codeSize max code size for deployed contratcs (default 0xffffffff)
+codeSize: 0xffffffff
 #solcArgs allows special args to solc
 solcArgs: ""
 #solcLibs is solc libraries
@@ -54,8 +54,8 @@ initialize: null
 deployContracts: []
 #initialize the blockchain with some bytecode in some addresses
 deployBytecodes: []
-#whether ot not to use the multi-abi mode of testing
-multi-abi: false
+#whether ot not to fuzz all contracts
+allContracts: false
 #timeout controls test timeout settings
 timeout: null
 #seed not defined by default, is the random seed
@@ -73,9 +73,43 @@ maxBlockDelay: 60480
 filterFunctions: []
 # by default, blacklist methods in filterFunctions
 filterBlacklist: true
+# enable or disable ffi HEVM cheatcode
+allowFFI: false
 #directory to save the corpus; by default is disabled
 corpusDir: null
+# list of file formats to save coverage reports in; default is all possible formats
+coverageFormats: ["txt","html","lcov"]
 # constants for corpus mutations (for experimentation only)
 mutConsts: [1, 1, 1, 1]
 # maximum value to send to payable functions
 maxValue: 100000000000000000000 # 100 eth
+# URL to fetch contracts over RPC
+rpcUrl: null
+# block number to use when fetching over RPC
+rpcBlock: null
+# Etherscan API key
+etherscanApiKey: null
+# number of workers. By default (unset) its value is the clamp of the number cores between 1 and 4
+workers: null
+# events server port
+server: null
+# whether to add an additional symbolic execution worker
+symExec: false
+# whether symbolic execution will be concolic (vs full symbolic execution)
+# only relevant if symExec is true
+symExecConcolic: true
+# number of SMT solvers used in symbolic execution
+# only relevant if symExec is true
+symExecNSolvers: 1
+# timeout for symbolic execution SMT solver queries
+# only relevant if symExec is true
+symExecTimeout: 30
+# Number of times we may revisit a particular branching point
+# only relevant if symExec is true and symExecConcolic is false
+symExecMaxIters: 10
+# Number of times we may revisit a particular branching point before we consult the smt solver to check reachability
+# only relevant if symExec is true and symExecConcolic is false
+symExecAskSMTIters: 1
+# List of whitelisted functions for using symbolic/concolic exploration
+# only relevant if symExec is true
+symExecTargets: null

@@ -16,7 +16,7 @@ RUN curl -sSL https://get.haskellstack.org/ | sh
 COPY . /echidna/
 WORKDIR /echidna
 RUN .github/scripts/install-libff.sh
-RUN stack upgrade && stack setup && stack install --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
+RUN stack upgrade && stack setup && stack install --flag echidna:static --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
 
 
 FROM ubuntu:focal AS builder-python3
@@ -32,11 +32,11 @@ RUN /venv/bin/pip3 install --no-cache slither-analyzer solc-select
 
 
 FROM gcr.io/distroless/python3-debian11:nonroot AS final-distroless
-COPY --from=builder-echidna /root/.local/bin/echidna-test /usr/local/bin/echidna-test
+COPY --from=builder-echidna /root/.local/bin/echidna /usr/local/bin/echidna
 COPY --from=builder-python3 /venv /venv
 COPY docker/solc-install.py /usr/local/bin/solc-install
 ENV PATH="$PATH:/venv/bin"
-ENTRYPOINT [ "/usr/local/bin/solc-install", "/usr/local/bin/echidna-test" ]
+ENTRYPOINT [ "/usr/local/bin/solc-install", "/usr/local/bin/echidna" ]
 
 
 FROM ubuntu:focal AS final-ubuntu
@@ -49,7 +49,8 @@ RUN apt-get update && \
         && \
     rm -rf /var/lib/apt/lists/*
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
-COPY --from=builder-echidna /root/.local/bin/echidna-test /usr/local/bin/echidna-test
+COPY --from=builder-echidna /root/.local/bin/echidna /usr/local/bin/echidna
+RUN ln -s /usr/local/bin/echidna /usr/local/bin/echidna-test
 COPY --from=builder-python3 /venv /venv
 ENV LANG="C.UTF-8"
 ENV PATH="$PATH:/venv/bin"

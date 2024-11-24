@@ -1,35 +1,38 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 module Echidna where
 
-import Control.Lens (view, (^.), to)
-import Data.Has (Has(..))
-import Control.Monad.Catch (MonadCatch(..), MonadThrow(..))
-import Control.Monad.Reader (MonadReader, MonadIO, liftIO)
-import Control.Monad.Random (MonadRandom)
-import Data.Map.Strict (keys)
-import Data.HashMap.Strict (toList)
-import Data.List (nub, find)
+import Control.Concurrent (newChan)
+import Control.Monad.Catch (MonadThrow(..))
+import Control.Monad.ST (RealWorld)
+import Data.IORef (newIORef)
+import Data.List (find)
+import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty qualified as NE
+import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
+import System.FilePath ((</>))
 
-import EVM (env, contracts, VM)
+import EVM (cheatCode)
 import EVM.ABI (AbiValue(AbiAddress))
-import EVM.Solidity (SourceCache, SolcContract)
+import EVM.Dapp (dappInfo)
+import EVM.Fetch qualified
+import EVM.Solidity (BuildOutput(..), Contracts(Contracts))
+import EVM.Types hiding (Env)
 
 import Echidna.ABI
-import Echidna.Types.Config hiding (cfg)
-import Echidna.Types.Solidity
+import Echidna.Etheno (loadEtheno, extractFromEtheno)
+import Echidna.Onchain as Onchain
+import Echidna.Output.Corpus
+import Echidna.SourceAnalysis.Slither
+import Echidna.Solidity
+import Echidna.Symbolic (forceAddr)
 import Echidna.Types.Campaign
+import Echidna.Types.Config
 import Echidna.Types.Random
-import Echidna.Types.Signature
-import Echidna.Types.Test
+import Echidna.Types.Solidity
 import Echidna.Types.Tx
 import Echidna.Types.World
-import Echidna.Solidity
-import Echidna.Processor
-import Echidna.Output.Corpus
-import Echidna.RPC (loadEtheno, extractFromEtheno)
-
-import qualified Data.List.NonEmpty as NE
+import Echidna.Types.Test (EchidnaTest)
+import Echidna.Types.Signature (ContractName)
 
 -- | This function is used to prepare, process, compile and initialize smart contracts for testing.
 -- It takes:
@@ -39,45 +42,92 @@ import qualified Data.List.NonEmpty as NE
 -- * A seed used during the random generation
 -- and returns:
 -- * A VM with the contract deployed and ready for testing
--- * A World with all the required data for generating random transctions
+-- * A World with all the required data for generating random transactions
 -- * A list of Echidna tests to check
--- * A prepopulated dictionary (if any)
--- * A list of transaction sequences to initialize the corpus
-prepareContract :: (MonadCatch m, MonadRandom m, MonadReader x m, MonadIO m, MonadFail m,
-                    Has TestConf x, Has TxConf x, Has SolConf x)
-                => EConfig -> NE.NonEmpty FilePath -> Maybe ContractName -> Seed
-                -> m (VM, SourceCache, [SolcContract], World, [EchidnaTest], Maybe GenDict, [[Tx]])
-prepareContract cfg fs c g = do
-  ctxs <- liftIO $ loadTxs cd
+-- * A prepopulated dictionary
+prepareContract
+  :: EConfig
+  -> NonEmpty FilePath
+  -> BuildOutput
+  -> Maybe ContractName
+  -> Seed
+  -> IO (VM Concrete RealWorld, Env, GenDict)
+prepareContract cfg solFiles buildOutput selectedContract seed = do
+  let solConf = cfg.solConf
+      (Contracts contractMap) = buildOutput.contracts
+      contracts = Map.elems contractMap
 
-  -- compile and load contracts
-  (cs, scs) <- Echidna.Solidity.contracts fs
-  p <- loadSpecified c cs
+  mainContract <- selectMainContract solConf selectedContract contracts
+  tests <- mkTests solConf mainContract
+  signatureMap <- mkSignatureMap solConf mainContract contracts
 
   -- run processors
-  ca <- view (hasLens . cryticArgs)
-  si <- runSlither (NE.head fs) ca
-  case find (< minSupportedSolcVersion) $ solcVersions si of
-    Just outdatedVersion -> throwM $ OutdatedSolcVersion outdatedVersion
-    Nothing -> return ()
+  slitherInfo <- runSlither (NE.head solFiles) solConf
+  case find (< minSupportedSolcVersion) slitherInfo.solcVersions of
+    Just version | detectVyperVersion version -> pure ()
+    Just version                              -> throwM $ OutdatedSolcVersion version
+    Nothing -> pure ()
 
-  -- load tests
-  (v, w, ts) <- prepareForTest p c si
+  let world = mkWorld cfg.solConf signatureMap selectedContract slitherInfo contracts
 
-  -- get signatures
-  let sigs = nub $ concatMap (NE.toList . snd) (toList $ w ^. highSignatureMap)
+  env <- mkEnv cfg buildOutput tests world (Just slitherInfo)
 
-  ads <- addresses
-  let ads' = AbiAddress <$> v ^. env . EVM.contracts . to keys
-  let constants' = enhanceConstants si ++ timeConstants ++ extremeConstants ++ NE.toList ads ++ ads'
+  -- deploy contracts
+  vm <- loadSpecified env mainContract contracts
 
+  let
+    deployedAddresses = Set.fromList $ AbiAddress . forceAddr <$> Map.keys vm.env.contracts
+    constants = enhanceConstants slitherInfo
+                <> timeConstants
+                <> extremeConstants
+                <> staticAddresses solConf
+                <> deployedAddresses
+
+    dict = mkGenDict env.cfg.campaignConf.dictFreq
+                     -- make sure we don't use cheat codes to form fuzzing call sequences
+                     (Set.delete (AbiAddress $ forceAddr cheatCode) constants)
+                     Set.empty
+                     seed
+                     (returnTypes contracts)
+
+  pure (vm, env, dict)
+
+loadInitialCorpus :: Env -> IO [(FilePath, [Tx])]
+loadInitialCorpus env = do
   -- load transactions from init sequence (if any)
-  es' <- liftIO $ maybe (return []) loadEtheno it
-  let txs = ctxs ++ maybe [] (const [extractFromEtheno es' sigs]) it
+  let sigs = Set.fromList $ concatMap NE.toList (Map.elems env.world.highSignatureMap)
+  ethenoCorpus <-
+    case env.cfg.solConf.initialize of
+      Nothing -> pure []
+      Just dir -> do
+        ethenos <- loadEtheno dir
+        pure [(dir, extractFromEtheno ethenos sigs)]
 
-  -- start ui and run tests
-  let sc = selectSourceCache c scs
-  return (v, sc, cs, w, ts, Just $ mkGenDict df constants' [] g (returnTypes cs), txs)
-  where cd = cfg ^. cConf . corpusDir
-        df = cfg ^. cConf . dictFreq
-        it = cfg ^. sConf . initialize
+  persistedCorpus <-
+    case env.cfg.campaignConf.corpusDir of
+      Nothing -> pure []
+      Just dir -> do
+        ctxs1 <- loadTxs (dir </> "reproducers")
+        ctxs2 <- loadTxs (dir </> "coverage")
+        pure (ctxs1 ++ ctxs2)
+
+  pure $ persistedCorpus ++ ethenoCorpus
+
+mkEnv :: EConfig -> BuildOutput -> [EchidnaTest] -> World -> Maybe SlitherInfo -> IO Env
+mkEnv cfg buildOutput tests world slitherInfo = do
+  codehashMap <- newIORef mempty
+  chainId <- maybe (pure Nothing) EVM.Fetch.fetchChainIdFrom cfg.rpcUrl
+  eventQueue <- newChan
+  coverageRefInit <- newIORef mempty
+  coverageRefRuntime <- newIORef mempty
+  corpusRef <- newIORef mempty
+  testRefs <- traverse newIORef tests
+  (contractCache, slotCache) <- Onchain.loadRpcCache cfg
+  fetchContractCache <- newIORef contractCache
+  fetchSlotCache <- newIORef slotCache
+  -- TODO put in real path
+  let dapp = dappInfo "/" buildOutput
+  pure $ Env { cfg, dapp, codehashMap, fetchContractCache, fetchSlotCache
+             , chainId, eventQueue, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
+             , slitherInfo
+             }

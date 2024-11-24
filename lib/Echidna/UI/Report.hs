@@ -1,123 +1,231 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Echidna.UI.Report where
 
-import Control.Lens
-import Control.Monad.Reader (MonadReader)
-import Data.Has (Has(..))
+import Control.Monad (forM)
+import Control.Monad.Reader (MonadReader, MonadIO (liftIO), asks, ask)
+import Control.Monad.ST (RealWorld)
+import Data.IORef (readIORef)
 import Data.List (intercalate, nub, sortOn)
 import Data.Map (toList)
-import Data.Maybe (catMaybes)
+import Data.Map qualified as Map
+import Data.Maybe (catMaybes, fromJust, fromMaybe)
 import Data.Text (Text, unpack)
-import EVM.Types (Addr)
+import Data.Text qualified as T
+import Data.Time (LocalTime)
+import Optics
 
-import qualified Data.Text as T
-
-import Echidna.ABI (defSeed, encodeSig)
-import Echidna.Types.Coverage (CoverageMap, scoveragePoints)
-import Echidna.Events (Events)
+import Echidna.ABI (GenDict(..), encodeSig)
 import Echidna.Pretty (ppTxCall)
+import Echidna.SourceMapping (findSrcByMetadata)
+import Echidna.Types (Gas)
 import Echidna.Types.Campaign
-import Echidna.Types.Corpus (Corpus, corpusSize)
-import Echidna.Types.Test (testEvents, testState, TestState(..), testType, TestType(..), testReproducer, testValue)
-import Echidna.Types.Tx (Tx(Tx), TxCall(..), TxConf, txGas, src)
+import Echidna.Types.Config
+import Echidna.Types.Corpus (corpusSize)
+import Echidna.Types.Coverage (coverageStats)
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
+import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
+import Echidna.Utility (timePrefix)
 
--- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.
-data Role = Sender | Receiver | Ambiguous
+import EVM.Format (showTraceTree, contractNamePart)
+import EVM.Solidity (SolcContract(..))
+import EVM.Types (W256, VM(labels), VMType(Concrete), Addr, Expr (LitAddr))
 
--- | Rules for pretty-printing addresses based on their role in a transaction.
-type Names = Role -> Addr -> String
+ppLogLine :: MonadReader Env m => VM Concrete RealWorld -> (LocalTime, CampaignEvent) -> m String
+ppLogLine vm (time, event@(WorkerEvent workerId FuzzWorker _)) =
+  ((timePrefix time <> "[Worker " <> show workerId <> "] ") <>) <$> ppCampaignEventLog vm event
+ppLogLine vm (time, event@(WorkerEvent workerId SymbolicWorker _)) =
+  ((timePrefix time <> "[Worker " <> show workerId <> ", symbolic] ") <>) <$> ppCampaignEventLog vm event
+ppLogLine vm (time, event) =
+  ((timePrefix time <> " ") <>) <$> ppCampaignEventLog vm event
 
--- | Given a number of boxes checked and a number of total boxes, pretty-print progress in box-checking.
-progress :: Int -> Int -> String
-progress n m = "(" ++ show n ++ "/" ++ show m ++ ")"
+ppCampaignEventLog :: MonadReader Env m => VM Concrete RealWorld -> CampaignEvent -> m String
+ppCampaignEventLog vm ev = (ppCampaignEvent ev <>) <$> ppTxIfHas where
+  ppTxIfHas = case ev of
+    (WorkerEvent _ _ (TestFalsified test)) -> ("\n  Call sequence:\n" <>) . unlines <$> mapM (ppTx vm $ length (nub $ (.src) <$> test.reproducer) /= 1) test.reproducer
+    _ -> pure ""
 
--- | Given rules for pretty-printing associated address, and whether to print them, pretty-print a 'Transaction'.
-ppTx :: (MonadReader x m, Has Names x, Has TxConf x) => Bool -> Tx -> m String
-ppTx _ (Tx NoCall _ _ _ _ _ (t, b)) =
-  return $ "*wait*" ++ (if t == 0    then "" else " Time delay: "  ++ show (toInteger t) ++ " seconds")
-                    ++ (if b == 0    then "" else " Block delay: " ++ show (toInteger b))
+ppCampaign :: (MonadIO m, MonadReader Env m) => VM Concrete RealWorld -> [WorkerState] -> m String
+ppCampaign vm workerStates = do
+  tests <- liftIO . traverse readIORef =<< asks (.testRefs)
+  testsPrinted <- ppTests tests
+  gasInfoPrinted <- ppGasInfo vm workerStates
+  coveragePrinted <- ppCoverage
+  let seedPrinted = "Seed: " <> show (head workerStates).genDict.defSeed
+  corpusPrinted <- ppCorpus
+  pure $ unlines
+    [ testsPrinted
+    , gasInfoPrinted
+    , coveragePrinted
+    , corpusPrinted
+    , seedPrinted
+    ]
 
-ppTx pn (Tx c s r g gp v (t, b)) = let sOf = ppTxCall in do
-  names <- view hasLens
-  tGas  <- view $ hasLens . txGas
-  return $ sOf c ++ (if not pn    then "" else names Sender s ++ names Receiver r)
-                 ++ (if g == tGas then "" else " Gas: "         ++ show g)
-                 ++ (if gp == 0   then "" else " Gas price: "   ++ show gp)
-                 ++ (if v == 0    then "" else " Value: "       ++ show v)
-                 ++ (if t == 0    then "" else " Time delay: "  ++ show (toInteger t) ++ " seconds")
-                 ++ (if b == 0    then "" else " Block delay: " ++ show (toInteger b))
+-- | Given rules for pretty-printing associated addresses, and whether to print
+-- them, pretty-print a 'Transaction'.
+ppTx :: MonadReader Env m => VM Concrete RealWorld -> Bool -> Tx -> m String
+ppTx _ _ Tx { call = NoCall, delay } =
+  pure $ "*wait*" <> ppDelay delay
+ppTx vm printName tx = do
+  contractName <- case tx.call of
+    SolCall _ -> Just <$> contractNameForAddr vm tx.dst
+    _ -> pure Nothing
+  names <- asks (.cfg.namesConf)
+  tGas  <- asks (.cfg.txConf.txGas)
+  pure $
+    unpack (maybe "" (<> ".") contractName) <> ppTxCall vm.labels tx.call
+    <> (if not printName then "" else prettyName names Sender tx.src <> prettyName names Receiver tx.dst)
+    <> (if tx.gas == tGas then "" else " Gas: " <> show tx.gas)
+    <> (if tx.gasprice == 0 then "" else " Gas price: " <> show tx.gasprice)
+    <> (if tx.value == 0 then "" else " Value: " <> show tx.value)
+    <> ppDelay tx.delay
+  where
+    prettyName names t addr = case names t addr of
+      "" -> ""
+      s -> s <> label addr
+    label addr = case Map.lookup addr vm.labels of
+      Nothing -> ""
+      Just l -> " «" <> T.unpack l <> "»"
+
+contractNameForAddr :: MonadReader Env m => VM Concrete RealWorld -> Addr -> m Text
+contractNameForAddr vm addr = do
+  dapp <- asks (.dapp)
+  maybeName <- case Map.lookup (LitAddr addr) (vm ^. #env % #contracts) of
+    Just contract ->
+      case findSrcByMetadata contract dapp of
+        Just solcContract -> pure $ Just $ contractNamePart solcContract.contractName
+        Nothing -> pure Nothing
+    Nothing -> pure Nothing
+  pure $ fromMaybe (T.pack $ show addr) maybeName
+
+ppDelay :: (W256, W256) -> [Char]
+ppDelay (time, block) =
+  (if time == 0 then "" else " Time delay: " <> show (toInteger time) <> " seconds")
+  <> (if block == 0 then "" else " Block delay: " <> show (toInteger block))
 
 -- | Pretty-print the coverage a 'Campaign' has obtained.
-ppCoverage :: CoverageMap -> Maybe String
-ppCoverage s | s == mempty = Nothing
-             | otherwise   = Just $ "Unique instructions: " ++ show (scoveragePoints s)
-                                 ++ "\nUnique codehashes: " ++ show (length s)
+ppCoverage :: (MonadIO m, MonadReader Env m) => m String
+ppCoverage = do
+  env <- ask
+  (points, uniqueCodehashes) <- liftIO $ coverageStats env.coverageRefInit env.coverageRefRuntime
+  pure $ "Unique instructions: " <> show points <> "\n" <>
+         "Unique codehashes: " <> show uniqueCodehashes
 
 -- | Pretty-print the corpus a 'Campaign' has obtained.
-ppCorpus :: Corpus -> Maybe String
-ppCorpus c | c == mempty = Nothing
-           | otherwise   = Just $ "Corpus size: " ++ show (corpusSize c)
-
--- | Pretty-print the gas usage for a function.
-ppGasOne :: (MonadReader x m, Has Names x, Has TxConf x) => (Text, (Int, [Tx])) -> m String
-ppGasOne ("", _)      = pure ""
-ppGasOne (f, (g, xs)) = let pxs = mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs in
- (("\n" ++ unpack f ++ " used a maximum of " ++ show g ++ " gas\n  Call sequence:\n") ++) . unlines . fmap ("    " ++) <$> pxs
+ppCorpus :: (MonadIO m, MonadReader Env m) => m String
+ppCorpus = do
+  corpus <- liftIO . readIORef =<< asks (.corpusRef)
+  pure $ "Corpus size: " <> show (corpusSize corpus)
 
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
-ppGasInfo :: (MonadReader x m, Has Names x, Has TxConf x) => Campaign -> m String
-ppGasInfo Campaign { _gasInfo = gi } | gi == mempty = pure ""
-ppGasInfo Campaign { _gasInfo = gi } = (fmap $ intercalate "") (mapM ppGasOne $ sortOn (\(_, (n, _)) -> n) $ toList gi)
+ppGasInfo :: MonadReader Env m => VM Concrete RealWorld -> [WorkerState] -> m String
+ppGasInfo vm workerStates = do
+  let gasInfo = Map.unionsWith max ((.gasInfo) <$> workerStates)
+  items <- mapM (ppGasOne vm) $ sortOn (\(_, (n, _)) -> n) $ toList gasInfo
+  pure $ intercalate "" items
+
+-- | Pretty-print the gas usage for a function.
+ppGasOne :: MonadReader Env m => VM Concrete RealWorld -> (Text, (Gas, [Tx])) -> m String
+ppGasOne _  ("", _)      = pure ""
+ppGasOne vm (func, (gas, txs)) = do
+  let header = "\n" <> unpack func <> " used a maximum of " <> show gas <> " gas\n"
+               <> "  Call sequence:\n"
+  prettyTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> txs) /= 1) txs
+  pure $ header <> unlines (("    " <>) <$> prettyTxs)
 
 -- | Pretty-print the status of a solved test.
-ppFail :: (MonadReader x m, Has Names x, Has TxConf x) => Maybe (Int, Int) -> Events -> [Tx] -> m String
-ppFail _ _ []  = pure "failed with no transactions made ⁉️  "
-ppFail b es xs = let status = case b of
-                                Nothing    -> ""
-                                Just (n,m) -> ", shrinking " ++ progress n m
-                     pxs = mapM (ppTx $ length (nub $ view src <$> xs) /= 1) xs in
- do s <- (("failed!💥  \n  Call sequence" ++ status ++ ":\n") ++) . unlines . fmap ("    " ++) <$> pxs
-    return (s ++ "\n" ++ ppEvents es)
+ppFail :: MonadReader Env m => Maybe (Int, Int) -> VM Concrete RealWorld -> [Tx] -> m String
+ppFail _ _ []  = pure "failed with no transactions made ⁉️ "
+ppFail b vm xs = do
+  let status = case b of
+        Nothing    -> ""
+        Just (n,m) -> ", shrinking " <> progress n m
+  prettyTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> xs) /= 1) xs
+  dappInfo <- asks (.dapp)
+  pure $ "failed!💥  \n  Call sequence" <> status <> ":\n"
+         <> unlines (("    " <>) <$> prettyTxs) <> "\n"
+         <> "Traces: \n" <> T.unpack (showTraceTree dappInfo vm)
 
-ppEvents :: Events -> String
-ppEvents es = if null es then "" else "Event sequence: " ++ T.unpack (T.intercalate ", " es)
+-- | Pretty-print the status of a solved test.
+ppFailWithTraces :: MonadReader Env m => Maybe (Int, Int) -> VM Concrete RealWorld -> [(Tx, VM Concrete RealWorld)] -> m String
+ppFailWithTraces  _ _ []  = pure "failed with no transactions made ⁉️ "
+ppFailWithTraces b finalVM results = do
+  dappInfo <- asks (.dapp)
+  let xs = fst <$> results
+  let status = case b of
+        Nothing    -> ""
+        Just (n,m) -> ", shrinking " <> progress n m
+  let printName = length (nub $ (.src) <$> xs) /= 1
+  prettyTxs <- forM results $ \(tx, vm) -> do
+    txPrinted <- ppTx vm printName tx
+    pure $ txPrinted <> "\nTraces:\n" <> T.unpack (showTraceTree dappInfo vm)
+  pure $ "failed!💥  \n  Call sequence" <> status <> ":\n"
+         <> unlines (("    " <>) <$> prettyTxs) <> "\n"
+         <> "Test traces: \n" <> T.unpack (showTraceTree dappInfo finalVM)
 
 -- | Pretty-print the status of a test.
 
-ppTS :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => TestState -> Events -> [Tx] -> m String
-ppTS (Failed e) _ _  = pure $ "could not evaluate ☣\n  " ++ show e
-ppTS Solved     es l = ppFail Nothing es l
+ppTS :: MonadReader Env m => TestState -> VM Concrete RealWorld -> [Tx] -> m String
+ppTS (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
+ppTS Solved     vm l = ppFail Nothing vm l
 ppTS Passed     _ _  = pure " passed! 🎉"
-ppTS (Open i)   es [] = do
-  t <- view (hasLens .  testLimit)
-  if i >= t then ppTS Passed es [] else pure $ " fuzzing " ++ progress i t
-ppTS (Open _)   es r = ppFail Nothing es r -- Only reachable with optimization
-ppTS (Large n) es l  = do
-  m <- view (hasLens . shrinkLimit)
-  ppFail (if n < m then Just (n, m) else Nothing) es l
+ppTS Open      _ []  = pure "passing"
+ppTS Open      vm r  = ppFail Nothing vm r
+ppTS (Large n) vm l  = do
+  m <- asks (.cfg.campaignConf.shrinkLimit)
+  ppFail (if n < m then Just (n, m) else Nothing) vm l
+
+ppOPT :: MonadReader Env m => TestState -> VM Concrete RealWorld -> [Tx] -> m String
+ppOPT (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
+ppOPT Solved     vm l = ppOptimized Nothing vm l
+ppOPT Passed     _ _  = pure " passed! 🎉"
+ppOPT Open      vm r  = ppOptimized Nothing vm r
+ppOPT (Large n) vm l  = do
+  m <- asks (.cfg.campaignConf.shrinkLimit)
+  ppOptimized (if n < m then Just (n, m) else Nothing) vm l
+
+-- | Pretty-print the status of a optimized test.
+ppOptimized :: MonadReader Env m => Maybe (Int, Int) -> VM Concrete RealWorld -> [Tx] -> m String
+ppOptimized _ _ []  = pure "Call sequence:\n(no transactions)"
+ppOptimized b vm xs = do
+  let status = case b of
+        Nothing    -> ""
+        Just (n,m) -> ", shrinking " <> progress n m
+  prettyTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> xs) /= 1) xs
+  dappInfo <- asks (.dapp)
+  pure $ "\n  Call sequence" <> status <> ":\n"
+         <> unlines (("    " <>) <$> prettyTxs) <> "\n"
+         <> "Traces: \n" <> T.unpack (showTraceTree dappInfo vm)
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
-ppTests :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppTests Campaign { _tests = ts } = unlines . catMaybes <$> mapM pp ts where
-  pp t = case t ^. testType of
-         PropertyTest n _      ->  Just . ((T.unpack n ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
-         CallTest n _          ->  Just . ((T.unpack n ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
-         AssertionTest _ s _   ->  Just . ((T.unpack (encodeSig s) ++ ": ") ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
-         OptimizationTest n _  ->  Just . ((T.unpack n ++ ": max value: " ++ show (t ^. testValue)) ++) <$> ppTS (t ^. testState) (t ^. testEvents) (t ^. testReproducer)
-         Exploration           ->  return Nothing 
+ppTests :: MonadReader Env m => [EchidnaTest] -> m String
+ppTests tests = do
+  unlines . catMaybes <$> mapM pp tests
+  where
+  pp t =
+    case t.testType of
+      PropertyTest n _ -> do
+        status <- ppTS t.state (fromJust t.vm) t.reproducer
+        pure $ Just (T.unpack n <> ": " <> status)
+      CallTest n _ -> do
+        status <- ppTS t.state (fromJust t.vm) t.reproducer
+        pure $ Just (T.unpack n <> ": " <> status)
+      AssertionTest _ s _ -> do
+        status <- ppTS t.state (fromJust t.vm) t.reproducer
+        pure $ Just (T.unpack (encodeSig s) <> ": " <> status)
+      OptimizationTest n _ -> do
+        status <- ppOPT t.state (fromJust t.vm) t.reproducer
+        pure $ Just (T.unpack n <> ": max value: " <> show t.value <> "\n" <> status)
+      Exploration -> pure Nothing
 
-ppCampaign :: (MonadReader x m, Has CampaignConf x, Has Names x, Has TxConf x) => Campaign -> m String
-ppCampaign c = do
-  testsPrinted <- ppTests c
-  gasInfoPrinted <- ppGasInfo c
-  let coveragePrinted = maybe "" ("\n" ++) . ppCoverage $ c ^. coverage
-      corpusPrinted = maybe "" ("\n" ++) . ppCorpus $ c ^. corpus
-      seedPrinted = "\nSeed: " ++ show (c ^. genDict . defSeed)
-  pure $
-    testsPrinted
-    ++ gasInfoPrinted
-    ++ coveragePrinted
-    ++ corpusPrinted
-    ++ seedPrinted
+ppTestName :: EchidnaTest -> String
+ppTestName t =
+  case t.testType of
+    PropertyTest n _ -> T.unpack n
+    CallTest n _ -> T.unpack n
+    AssertionTest _ s _ -> T.unpack (encodeSig s)
+    OptimizationTest n _ -> T.unpack n <> ": max value: " <> show t.value
+    Exploration -> "<exploration>"
+
+-- | Given a number of boxes checked and a number of total boxes, pretty-print
+-- progress in box-checking.
+progress :: Int -> Int -> String
+progress n m = show n <> "/" <> show m

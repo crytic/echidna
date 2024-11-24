@@ -11,10 +11,9 @@ import Control.Monad.Fail (fail)
 import Data.Aeson (ToJSON(..), FromJSON(..), withText)
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.ByteString (ByteString)
-import Data.DoubleWord (Word256, Int256, Word160)
+import Data.DoubleWord (Word256, Int256)
 import Data.Text (Text, unpack)
 import EVM.ABI (AbiValue, AbiType)
-import EVM.Types (Addr, Word)
 import Text.Read (readMaybe)
 
 readT :: Read a => Text -> Maybe a
@@ -32,23 +31,11 @@ instance ToJSON Int256 where
 instance FromJSON Int256 where
   parseJSON = withText "Int256" $ maybe (fail "could not parse Int256") pure . readT
 
-instance ToJSON Word160 where
-  toJSON = toJSON . show
-
-instance FromJSON Word160 where
-  parseJSON = withText "Int160" $ maybe (fail "could not parse Word160") pure . readT
-
 instance ToJSON ByteString where
   toJSON = toJSON . show
 
 instance FromJSON ByteString where
   parseJSON = withText "ByteString" $ maybe (fail "could not parse ByteString") pure . readT
-
-instance ToJSON Addr where
-  toJSON = toJSON . show
-
-instance FromJSON Word where
-  parseJSON = withText "Word" $ maybe (fail "could not parse Word") pure . readT
 
 $(deriveJSON defaultOptions ''AbiType)
 $(deriveJSON defaultOptions ''AbiValue)
