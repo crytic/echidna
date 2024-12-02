@@ -10,7 +10,7 @@ on:
 
 env:
   # Tag for cache invalidation
-  CACHE_VERSION: v7
+  CACHE_VERSION: v8
 
 jobs:
   build:
@@ -71,18 +71,27 @@ jobs:
       - name: Configure Stack environment
         run: |
           HOME="${{ (runner.os == 'Windows' && '$(cygpath -m ~)') || '$HOME' }}"
+          GHC_MINGW_PATH="${{ (runner.os == 'Windows' && '$(cygpath -m "$GHC_BIN_PATH/../mingw")') || '' }}"
           mkdir -p "$STACK_ROOT"
           { echo "extra-include-dirs:";
+            if [ ! "$GHC_MINGW_PATH" = "" ]; then
+              echo "- $GHC_MINGW_PATH/x86_64-w64-mingw32/include";
+              echo "- $GHC_MINGW_PATH/include";
+              echo "- D:/a/_temp/msys64/clang64/include";
+            fi;
             echo "- $HOME/.local/include";
-            echo "$EXTRA_INCLUDE_WIN";
             echo;
             echo "extra-lib-dirs:";
+            if [ ! "$GHC_MINGW_PATH" = "" ]; then
+              echo "- $GHC_MINGW_PATH/x86_64-w64-mingw32/lib";
+              echo "- $GHC_MINGW_PATH/lib";
+              echo "- D:/a/_temp/msys64/clang64/lib";
+            fi;
             echo "- $HOME/.local/lib";
-            echo "$EXTRA_LIB_WIN";
             echo;
             echo "ghc-options:";
             echo '  "$locals": -Werror'
-            "$REPLACE_LINKER_WIN" && echo '  "$everything": -pgml=D:/a/_temp/msys64/clang64/bin/clang.exe -pgml-supports-no-pie';
+            "$REPLACE_LINKER_WIN" && echo '  "$everything": -pgml='$(cygpath -m "$GHC_MINGW_PATH/bin/clang.exe");
             echo;
             "$SKIP_MSYS" && echo "skip-msys: true" || true
             echo "system-ghc: true";
@@ -92,10 +101,9 @@ jobs:
           cat "$STACK_ROOT/config.yaml"
         env:
           STACK_ROOT: ${{ steps.stack.outputs.stack-root || '/etc/stack' }}
-          EXTRA_INCLUDE_WIN: ${{ (runner.os == 'Windows' && '- D:/a/_temp/msys64/clang64/include') || '' }}
-          EXTRA_LIB_WIN: ${{ (runner.os == 'Windows' && '- D:/a/_temp/msys64/clang64/lib') || '' }}
           REPLACE_LINKER_WIN: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
           SKIP_MSYS: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
+          GHC_BIN_PATH: ${{ steps.stack.outputs.ghc-path }}
 
       - name: Configure Haskell paths (Windows)
         if: runner.os == 'Windows'
@@ -136,10 +144,14 @@ jobs:
 
       - name: Build Libraries
         run: |
+          if [ "$HOST_OS" = "Windows" ]; then
+            export PATH="$(cygpath -u "$GHC_BIN_PATH/../mingw/bin"):$PATH"
+          fi
           .github/scripts/install-libsecp256k1.sh
           .github/scripts/install-libff.sh
         env:
           HOST_OS: ${{ runner.os }}
+          GHC_BIN_PATH: ${{ steps.stack.outputs.ghc-path }}
 
       - name: Build Dependencies
         run: |
