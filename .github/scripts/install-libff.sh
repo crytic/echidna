@@ -37,6 +37,9 @@ fi
 if [ "$HOST_OS" = "Windows" ]; then
   ARGS+=("-G" "Ninja")
   sed -i 's/find_library(GMP_LIBRARY gmp)/find_library(GMP_LIBRARY NAMES libgmp.a)/' CMakeLists.txt
+
+  # Apply windows-specific libff patch carried by hevm
+  curl -fsSL https://raw.githubusercontent.com/ethereum/hevm/1abe4c79eeada928acc279b631c48eeb2a1376c2/.github/scripts/libff.patch | patch -p1
 fi
 
 mkdir -p build
