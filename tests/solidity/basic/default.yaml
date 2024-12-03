@@ -40,6 +40,8 @@ balanceAddr: 0xffffffff
 balanceContract: 0
 #codeSize max code size for deployed contratcs (default 0xffffffff)
 codeSize: 0xffffffff
+#whether or not to disable running slither (default false, uses slither)
+disableSlither: false
 #solcArgs allows special args to solc
 solcArgs: ""
 #solcLibs is solc libraries
