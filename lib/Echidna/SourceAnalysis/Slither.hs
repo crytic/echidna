@@ -145,8 +145,13 @@ instance FromJSON SlitherInfo where
 
 -- Slither processing
 runSlither :: FilePath -> SolConf -> IO SlitherInfo
-runSlither fp solConf = do
-  findExecutable "slither" >>= \case
+runSlither fp solConf = if solConf.disableSlither
+  then do
+    hPutStrLn stderr $
+        "WARNING: Slither was explicitly disabled. Echidna uses Slither (https://github.com/crytic/slither)"
+        <> " to perform source analysis, which makes fuzzing more effective. You should enable it."
+    pure emptySlitherInfo
+  else findExecutable "slither" >>= \case
     Nothing -> do
       hPutStrLn stderr $
         "WARNING: slither not found. Echidna uses Slither (https://github.com/crytic/slither)"
@@ -177,3 +182,8 @@ runSlither fp solConf = do
 
 emptySlitherInfo :: SlitherInfo
 emptySlitherInfo = SlitherInfo mempty mempty mempty mempty mempty [] [] []
+
+isEmptySlitherInfo :: Maybe SlitherInfo -> Bool
+isEmptySlitherInfo (Just (SlitherInfo _ _ _ _ _ [] [] [])) = True
+isEmptySlitherInfo Nothing = True
+isEmptySlitherInfo _ = False

@@ -135,6 +135,7 @@ data Options = Options
   , cliDeployer         :: Maybe Addr
   , cliSender           :: [Addr]
   , cliSeed             :: Maybe Int
+  , cliDisableSlither   :: Bool
   , cliCryticArgs       :: Maybe String
   , cliSolcArgs         :: Maybe String
   , cliSymExec          :: Maybe Bool
@@ -210,6 +211,8 @@ options = Options
   <*> optional (option auto $ long "seed"
     <> metavar "SEED"
     <> help "Run with a specific seed.")
+  <*> switch (long "disable-slither"
+    <> help "Disable running Slither.")
   <*> optional (option str $ long "crytic-args"
     <> metavar "ARGS"
     <> help "Additional arguments to use in crytic-compile for the compilation of the contract to test.")
@@ -276,7 +279,8 @@ overrideConfig config Options{..} = do
       }
 
     overrideSolConf solConf = solConf
-      { solcArgs = fromMaybe solConf.solcArgs cliSolcArgs
+      { disableSlither = cliDisableSlither || solConf.disableSlither
+      , solcArgs = fromMaybe solConf.solcArgs cliSolcArgs
       , cryticArgs = maybe solConf.cryticArgs words cliCryticArgs
       , sender = if null cliSender then solConf.sender else Set.fromList cliSender
       , deployer = fromMaybe solConf.deployer cliDeployer

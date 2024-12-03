@@ -114,6 +114,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "balanceContract" ..!= 0
         <*> v ..:? "codeSize"        ..!= 0xffffffff
         <*> v ..:? "prefix"          ..!= "echidna_"
+        <*> v ..:? "disableSlither"  ..!= False
         <*> v ..:? "cryticArgs"      ..!= []
         <*> v ..:? "solcArgs"        ..!= ""
         <*> v ..:? "solcLibs"        ..!= []

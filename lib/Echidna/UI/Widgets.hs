@@ -42,6 +42,7 @@ data UIState = UIState
   , timeStarted :: LocalTime
   , timeStopped :: Maybe LocalTime
   , now :: LocalTime
+  , slitherSucceeded :: Bool
   , fetchedContracts :: Map Addr (Maybe Contract)
   , fetchedSlots :: Map Addr (Map W256 (Maybe W256))
   , fetchedDialog :: B.Dialog () Name
@@ -65,7 +66,8 @@ data UIStateStatus = Uninitialized | Running
 
 attrs :: A.AttrMap
 attrs = A.attrMap (V.white `on` V.black)
-  [ (attrName "failure", fg V.brightRed)
+  [ (attrName "alert", fg V.brightRed `V.withStyle` V.blink `V.withStyle` V.bold)
+  , (attrName "failure", fg V.brightRed)
   , (attrName "maximum", fg V.brightBlue)
   , (attrName "bold", fg V.white `V.withStyle` V.bold)
   , (attrName "tx", fg V.brightWhite)
@@ -78,6 +80,9 @@ attrs = A.attrMap (V.white `on` V.black)
 
 bold :: Widget n -> Widget n
 bold = withAttr (attrName "bold")
+
+alert :: Widget n -> Widget n
+alert = withAttr (attrName "alert")
 
 failure :: Widget n -> Widget n
 failure = withAttr (attrName "failure")
@@ -184,6 +189,8 @@ summaryWidget env uiState =
       str ("Corpus size: " <> show uiState.corpusSize <> " seqs")
       <=>
       str ("New coverage: " <> timeElapsed uiState uiState.lastNewCov <> " ago") <+> fill ' '
+      <=>
+      slitherWidget uiState.slitherSucceeded
   rightSide =
     padLeft (Pad 1)
       (rpcInfoWidget uiState.fetchedContracts uiState.fetchedSlots env.chainId)
@@ -216,6 +223,13 @@ rpcInfoWidget contracts slots chainId =
   countWidget fetches =
     let successful = filter isJust fetches
     in outOf (length successful) (length fetches)
+
+slitherWidget
+  :: Bool
+  -> Widget Name
+slitherWidget slitherSucceeded = if slitherSucceeded
+  then success (str "Slither succeeded")
+  else alert (str "No Slither in use!")
 
 outOf :: Int -> Int -> Widget n
 outOf n m =

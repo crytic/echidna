@@ -36,6 +36,7 @@ import Echidna.Campaign (runWorker, spawnListener)
 import Echidna.Output.Corpus (saveCorpusEvent)
 import Echidna.Output.JSON qualified
 import Echidna.Server (runSSEServer)
+import Echidna.SourceAnalysis.Slither (isEmptySlitherInfo)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
@@ -126,6 +127,7 @@ ui vm dict initialCorpus cliSelectedContract = do
           , timeStarted = now
           , timeStopped = Nothing
           , now = now
+          , slitherSucceeded = not $ isEmptySlitherInfo env.slitherInfo
           , fetchedContracts = mempty
           , fetchedSlots = mempty
           , fetchedDialog = B.dialog (Just $ str " Fetched contracts/slots ") Nothing 80
