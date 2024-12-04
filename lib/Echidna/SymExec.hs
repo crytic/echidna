@@ -94,7 +94,7 @@ exploreContract conf contract tx vm = do
                           & #state % #caller .~ SymAddr "caller"
                           & #state % #calldata .~ cd
                           & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
-        -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
+        -- TODO we might want to switch vm's state.baseState value to AbstractBase eventually.
         -- Doing so might mess up concolic execution.
         exprInter <- interpret fetcher maxIters askSmtIters Naive vm' runExpr
         models <- liftIO $ mapConcurrently (checkSat solvers) $ manipulateExprInter isConc exprInter
@@ -107,7 +107,7 @@ exploreContract conf contract tx vm = do
   threadId <- takeMVar threadIdChan
   pure (threadId, resultChan)
 
--- | Turn the expression returned by `interpret` into into SMT2 values to feed into the solver
+-- | Turn the expression returned by `interpret` into SMT2 values to feed into the solver
 manipulateExprInter :: Bool -> Expr End -> [SMT2]
 manipulateExprInter isConc = map (assertProps defaultConfig) . middleStep . map (extractProps . simplify) . flattenExpr . simplify where
   middleStep = if isConc then middleStepConc else id
