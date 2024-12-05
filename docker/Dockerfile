@@ -1,22 +1,42 @@
-FROM ubuntu:focal AS builder-echidna
+FROM alpine:3.18 AS builder-echidna
 ENV LD_LIBRARY_PATH=/usr/local/lib PREFIX=/usr/local HOST_OS=Linux
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-suggests --no-install-recommends \
+RUN echo "@testing https://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
+    apk add --no-cache \
+        autoconf \
+        automake \
+        bash \
+        build-base \
+        bzip2-dev \
+        cabal \
         cmake \
         curl \
+        ghc \
         git \
-        libbz2-dev \
-        libgmp-dev \
-        libreadline-dev \
-        libsecp256k1-dev \
-        libssl-dev \
-        software-properties-common \
-        sudo
-RUN curl -sSL https://get.haskellstack.org/ | sh
-COPY . /echidna/
+        gmp-dev \
+        libtool \
+        ncurses-static \
+        openssl-dev \
+        readline-dev \
+        stack@testing \
+        sudo \
+        zlib-dev \
+        zlib-static
+
 WORKDIR /echidna
-RUN .github/scripts/install-libff.sh
-RUN stack upgrade && stack setup && stack install --flag echidna:static --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
+
+COPY .github/scripts /echidna/.github/scripts/
+RUN .github/scripts/install-libsecp256k1.sh && \
+    .github/scripts/install-libff.sh
+
+COPY . /echidna/
+RUN mkdir -p /etc/stack &&\
+    { cat /root/.stack/config.yaml ;\
+      echo "system-ghc: true" ;\
+      echo "install-ghc: false" ;\
+      echo "skip-ghc-check: true" ;\
+    } >> /etc/stack/config.yaml &&\
+    chmod 664 /etc/stack/config.yaml
+RUN stack install --flag echidna:static --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
 
 
 FROM ubuntu:focal AS builder-python3
