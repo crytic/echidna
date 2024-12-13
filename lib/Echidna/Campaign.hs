@@ -48,7 +48,7 @@ import Echidna.Types.Config
 import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
-import Echidna.Types.Tx (TxCall(..), Tx(..), call)
+import Echidna.Types.Tx (TxCall(..), Tx(..))
 import Echidna.Utility (getTimestamp)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
