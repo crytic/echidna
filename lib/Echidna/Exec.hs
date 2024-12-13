@@ -40,7 +40,7 @@ import Echidna.Types (ExecException(..), Gas, fromEVM, emptyAccount)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Solidity (SolConf(..))
-import Echidna.Types.Tx (TxCall(..), Tx, TxResult(..), call, dst, initialTimestamp, initialBlockNumber, getResult)
+import Echidna.Types.Tx (TxCall(..), Tx(call, dst), TxResult(..), initialTimestamp, initialBlockNumber, getResult)
 import Echidna.Utility (getTimestamp, timePrefix)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
