@@ -1,3 +1,10 @@
+## 2.2.6
+
+* feat: allow disabling Slither integration (#1327)
+* Print total call count on exit (#1328)
+* Fix precompile evaluation on Windows (#1333)
+* Upgrade `hevm` to fix `prank`ing cheatcodes (#1331)
+
 ## 2.2.5
 
 * Support Ethereum Cancun upgrade (#1317, #1309, #1300)

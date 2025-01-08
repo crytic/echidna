@@ -3,7 +3,7 @@ name: echidna
 author: Trail of Bits <echidna-dev@trailofbits.com>
 maintainer: Trail of Bits <echidna-dev@trailofbits.com>
 
-version: 2.2.5
+version: 2.2.6
 
 ghc-options:
   - -O2
