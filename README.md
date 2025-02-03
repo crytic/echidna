@@ -180,13 +180,13 @@ leaks memory, you can use `force` from `Control.DeepSeq` to make sure it gets ev
 EVM emulation and testing are hard. Echidna has some limitations in the latest release. Some of
 these are inherited from [hevm](https://github.com/ethereum/hevm) while some are results from
 design/performance decisions or simply bugs in our code. We list them here including their
-corresponding issue and the status ("wont fix", "on hold", "in review", "fixed"). Issues that are
+corresponding issue and the status ("won't fix", "on hold", "in review", "fixed"). Issues that are
 "fixed" are expected to be included in the next Echidna release.
 
 | Description | Issue | Status |
 | :---        | :---: | :---:  |
-| Vyper support is limited | [#652](https://github.com/crytic/echidna/issues/652) | *wont fix* |
-| Limited library support for testing | [#651](https://github.com/crytic/echidna/issues/651) | *wont fix* |
+| Vyper support is limited | [#652](https://github.com/crytic/echidna/issues/652) | *won't fix* |
+| Limited library support for testing | [#651](https://github.com/crytic/echidna/issues/651) | *won't fix* |
 
 ## Installation
 
