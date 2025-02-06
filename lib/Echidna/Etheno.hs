@@ -25,6 +25,7 @@ import Text.Read (readMaybe)
 
 import EVM
 import EVM.ABI (AbiType(..), AbiValue(..), decodeAbiValue, selector)
+import EVM.Effects (defaultConfig)
 import EVM.Exec (exec)
 import EVM.Types
 
@@ -173,7 +174,7 @@ execEthenoTxs et = do
   runFully vm
   where
   runFully vm = do
-    res <- fromEVM exec
+    res <- fromEVM $ exec defaultConfig
     case (res, et) of
       (_        , AccountCreated _)  -> pure ()
       (Reversion,   _)               -> void $ put vm
