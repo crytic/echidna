@@ -29,13 +29,13 @@ import Echidna.Types.Solidity (SolConf(..))
 import EVM.ABI (AbiValue(..), AbiType(..), Sig(..), decodeAbiValue)
 import EVM.Expr (simplify)
 import EVM.Fetch qualified as Fetch
-import EVM.SMT (SMTCex(..), SMT2, assertProps)
+import EVM.SMT (SMT2, assertProps)
 import EVM (loadContract, resetState)
 import EVM.Effects (defaultEnv, defaultConfig)
 import EVM.Solidity (SolcContract(..), Method(..))
-import EVM.Solvers (withSolvers, Solver(Z3), CheckSatResult(Sat), SolverGroup, checkSat)
+import EVM.Solvers (withSolvers, Solver(Z3), SolverGroup, checkSat)
 import EVM.SymExec (interpret, runExpr, abstractVM, mkCalldata, LoopHeuristic (Naive), flattenExpr, extractProps)
-import EVM.Types (Addr, VM(..), Frame(..), FrameState(..), VMType(..), Env(..), Expr(..), EType(..), Query(..), Prop(..), BranchCondition(..), W256, word256Bytes, word)
+import EVM.Types (Addr, VM(..), Frame(..), FrameState(..), VMType(..), Env(..), Expr(..), EType(..), Query(..), Prop(..), SMTCex(..), SMTResult, ProofResult(..), BranchCondition(..), W256, word256Bytes, word)
 import EVM.Traversals (mapExpr)
 import Control.Monad.ST (stToIO, RealWorld)
 import Control.Monad.State.Strict (execState, runStateT)
@@ -137,6 +137,7 @@ vmMakeSymbolic vm
   , labels         = vm.labels
   , osEnv          = vm.osEnv
   , freshVar       = vm.freshVar
+  , exploreDepth   = vm.exploreDepth
   }
 
 frameStateMakeSymbolic :: FrameState Concrete s -> FrameState Symbolic s
@@ -162,10 +163,10 @@ frameStateMakeSymbolic fs
 frameMakeSymbolic :: Frame Concrete s -> Frame Symbolic s
 frameMakeSymbolic fr = Frame { context = fr.context, state = frameStateMakeSymbolic fr.state }
 
-modelToTx :: Addr -> Method -> Set Addr -> Addr -> CheckSatResult -> Maybe Tx
+modelToTx :: Addr -> Method -> Set Addr -> Addr -> SMTResult -> Maybe Tx
 modelToTx dst method senders fallbackSender result =
   case result of
-    Sat cex ->
+    Cex cex ->
       let
         args = zipWith grabArg (snd <$> method.inputs) ["arg" <> T.pack (show n) | n <- [1..] :: [Int]]
 

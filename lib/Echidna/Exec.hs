@@ -340,6 +340,6 @@ initialVM :: Bool -> ST s (VM Concrete s)
 initialVM ffi = do
   vm <- vmForEthrunCreation mempty
   pure $ vm & #block % #timestamp .~ Lit initialTimestamp
-            & #block % #number .~ initialBlockNumber
+            & #block % #number .~ Lit initialBlockNumber
             & #env % #contracts .~ mempty -- fixes weird nonce issues
             & #config % #allowFFI .~ ffi
