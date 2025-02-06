@@ -11,8 +11,9 @@ import Data.Maybe (mapMaybe)
 import Data.Vector qualified as V
 import Echidna.Symbolic (forceWord)
 import EVM.Dapp (DappInfo(..), findSrc)
+import EVM.Expr (maybeLitByteSimp)
 import EVM.Solidity (SolcContract(..))
-import EVM.Types (Contract(..), ContractCode(..), RuntimeCode(..), W256, maybeLitByte)
+import EVM.Types (Contract(..), ContractCode(..), RuntimeCode(..), W256)
 
 -- | Map from contracts' codehashes to their compile-time codehash.
 -- This is relevant when the immutables solidity feature is used;
@@ -80,7 +81,7 @@ findSrcByMetadata contr dapp = find compareMetadata (snd <$> Map.elems dapp.solc
     (UnknownCode _) -> Nothing
     (InitCode c _) -> Just c
     (RuntimeCode (ConcreteRuntimeCode c)) -> Just c
-    (RuntimeCode (SymbolicRuntimeCode c)) -> Just $ BS.pack $ mapMaybe maybeLitByte $ V.toList c
+    (RuntimeCode (SymbolicRuntimeCode c)) -> Just $ BS.pack $ mapMaybe maybeLitByteSimp $ V.toList c
 
 getBytecodeMetadata :: ByteString -> ByteString
 getBytecodeMetadata bs =
