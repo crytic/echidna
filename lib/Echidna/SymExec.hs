@@ -83,9 +83,8 @@ exploreContract conf contract tx vm = do
         let
           fetcher = concOrSymFetcher tx solvers rpcInfo
           dst = conf.solConf.contractAddr
-          calldata@(cd, constraints) = mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
-          vmSym = abstractVM calldata contract.runtimeCode Nothing False
-        vmSym' <- liftIO $ stToIO vmSym
+        calldata@(cd, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
+        vmSym <- liftIO $ stToIO $ abstractVM calldata contract.runtimeCode Nothing False
         vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
         let vm' = vmReset & execState (loadContract (LitAddr dst))
                           & vmMakeSymbolic
@@ -93,7 +92,7 @@ exploreContract conf contract tx vm = do
                           & #state % #callvalue .~ TxValue
                           & #state % #caller .~ SymAddr "caller"
                           & #state % #calldata .~ cd
-                          & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
+                          & #env % #contracts .~ Map.union vmSym.env.contracts vm.env.contracts
         -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
         -- Doing so might mess up concolic execution.
         exprInter <- interpret fetcher maxIters askSmtIters Naive vm' runExpr
