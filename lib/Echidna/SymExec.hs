@@ -34,7 +34,7 @@ import EVM (loadContract, resetState)
 import EVM.Effects (defaultEnv, defaultConfig)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers, Solver(Z3), SolverGroup, checkSat)
-import EVM.SymExec (interpret, runExpr, abstractVM, mkCalldata, LoopHeuristic (Naive), flattenExpr, extractProps)
+import EVM.SymExec (interpret, runExpr, abstractVM, mkCalldata, IterConfig(..), LoopHeuristic (Naive), flattenExpr, extractProps)
 import EVM.Types (Addr, VM(..), Frame(..), FrameState(..), VMType(..), Env(..), Expr(..), EType(..), Query(..), Prop(..), SMTCex(..), SMTResult, ProofResult(..), BranchCondition(..), W256, word256Bytes, word)
 import EVM.Traversals (mapExpr)
 import Control.Monad.ST (stToIO, RealWorld)
@@ -70,6 +70,7 @@ exploreContract conf contract tx vm = do
     timeout = Just (fromIntegral conf.campaignConf.symExecTimeout)
     maxIters = if isConc then Nothing else Just conf.campaignConf.symExecMaxIters
     askSmtIters = if isConc then 0 else conf.campaignConf.symExecAskSMTIters
+    iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive }
     rpcInfo = Nothing
     defaultSender = fromJust $ fmap (.dst) tx <|> Set.lookupMin conf.solConf.sender <|> Just 0
 
@@ -95,7 +96,7 @@ exploreContract conf contract tx vm = do
                           & #env % #contracts .~ Map.union vmSym.env.contracts vm.env.contracts
         -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
         -- Doing so might mess up concolic execution.
-        exprInter <- interpret fetcher maxIters askSmtIters Naive vm' runExpr
+        exprInter <- interpret fetcher iterConfig vm' runExpr
         models <- liftIO $ mapConcurrently (checkSat solvers) $ manipulateExprInter isConc exprInter
         pure $ mapMaybe (modelToTx dst method conf.solConf.sender defaultSender) models
       liftIO $ putMVar resultChan $ concat res
