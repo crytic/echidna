@@ -44,11 +44,6 @@ jobs:
           name: trailofbits
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
-      - name: Configure Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v9
-        with:
-          upstream-cache: https://trailofbits.cachix.org
-
       - name: Obtain version number
         id: version
         run: |
