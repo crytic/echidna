@@ -186,12 +186,12 @@ getRandomUint n =
 
 -- | Generate a random signed integer with the following distribution:
 -- * 10% uniformly from the range -1023 to 1023.
--- * 90% uniformly from the range -1 * 2 ^ n to 2 ^ (n - 1). 
+-- * 90% uniformly from the range -1 * 2 ^ (n - 1) to 2 ^ (n - 1) - 1.
 getRandomInt :: MonadRandom m => Int -> m Integer
 getRandomInt n =
   getRandomR =<< Random.weighted
     [ ((-1023, 1023), 1)
-    , ((-1 * 2 ^ n, 2 ^ (n - 1)), 9)
+    , ((-1 * 2 ^ (n - 1), 2 ^ (n - 1) - 1), 9)
     ]
 
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Doesn't use a dictionary.
