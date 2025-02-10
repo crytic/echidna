@@ -137,6 +137,7 @@ vmMakeSymbolic vm
   , currentFork    = vm.currentFork
   , labels         = vm.labels
   , osEnv          = vm.osEnv
+  , freshVar       = vm.freshVar
   }
 
 frameStateMakeSymbolic :: FrameState Concrete s -> FrameState Symbolic s
