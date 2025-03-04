@@ -74,11 +74,6 @@ jobs:
           GHC_MINGW_PATH="${{ (runner.os == 'Windows' && '$(cygpath -m "$GHC_BIN_PATH/../mingw")') || '' }}"
           mkdir -p "$STACK_ROOT"
           { echo "extra-include-dirs:";
-            if [ ! "$GHC_MINGW_PATH" = "" ]; then
-              echo "- $GHC_MINGW_PATH/x86_64-w64-mingw32/include";
-              echo "- $GHC_MINGW_PATH/include";
-              echo "- D:/a/_temp/msys64/clang64/include";
-            fi;
             echo "- $HOME/.local/include";
             echo;
             echo "extra-lib-dirs:";
@@ -91,7 +86,7 @@ jobs:
             echo;
             echo "ghc-options:";
             echo '  "$locals": -Werror'
-            "$REPLACE_LINKER_WIN" && echo '  "$everything": -pgml='$(cygpath -m "$GHC_MINGW_PATH/bin/clang.exe");
+            "$REPLACE_LINKER_WIN" && echo '  "$everything": -pgml='$(cygpath -m "$GHC_MINGW_PATH/bin/clang.exe") -optc-idirafter -optc'D:/a/_temp/msys64/clang64/include' -optcxx-idirafter -optcxx'D:/a/_temp/msys64/clang64/include';
             echo;
             "$SKIP_MSYS" && echo "skip-msys: true" || true
             echo "system-ghc: true";
