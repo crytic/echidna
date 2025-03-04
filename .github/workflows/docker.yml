@@ -11,7 +11,8 @@ env:
   WORKFLOW_BUILD_DISTROLESS: false
 
 jobs:
-  docker:
+  build:
+    name: build ${{ matrix.platform }} container
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -133,9 +134,10 @@ jobs:
           retention-days: 1
 
   merge:
+    name: merge containers
     runs-on: ubuntu-latest
     needs:
-      - docker
+      - build
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
