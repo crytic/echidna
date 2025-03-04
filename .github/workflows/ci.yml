@@ -20,7 +20,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-20.04
+          - os: ubuntu-latest
             shell: bash
             container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.6.5\", \"options\": \"--user 1001\"}"
           - os: macos-13 # x86_64 macOS
