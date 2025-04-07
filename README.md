@@ -112,7 +112,7 @@ parameters. An example of a complete and annotated config file with the default
 options can be found at
 [tests/solidity/basic/default.yaml](tests/solidity/basic/default.yaml).
 More detailed documentation on the configuration options is available in our
-[wiki](https://github.com/trailofbits/echidna/wiki/Config).
+[wiki](https://github.com/crytic/echidna/wiki/Config).
 
 Echidna supports three different output drivers. There is the default `text`
 driver, a `json` driver, and a `none` driver, which should suppress all
