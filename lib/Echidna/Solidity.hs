@@ -39,7 +39,6 @@ import Echidna.ABI
   ( encodeSig, encodeSigWithName, hashSig, fallback
   , commonTypeSizes, mkValidAbiInt, mkValidAbiUInt )
 import Echidna.Deploy (deployContracts, deployBytecodes)
-import Echidna.Etheno (loadEthenoBatch)
 import Echidna.Events (extractEvents)
 import Echidna.Exec (execTx, execTxWithCov, initialVM)
 import Echidna.SourceAnalysis.Slither
@@ -180,9 +179,8 @@ loadSpecified env mainContract cs = do
   let vm = initVM & #block % #gaslimit .~ unlimitedGasPerBlock
                   & #block % #maxCodeSize .~ fromIntegral solConf.codeSize
 
-  blank' <- maybe (pure vm) (loadEthenoBatch solConf.allowFFI) solConf.initialize
   let blank = populateAddresses (Set.insert solConf.deployer solConf.sender)
-                                solConf.balanceAddr blank'
+                                solConf.balanceAddr vm
 
   unless (null mainContract.constructorInputs || isJust solConf.initialize) $
     throwM $ ConstructorArgs (show mainContract.constructorInputs)
