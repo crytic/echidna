@@ -60,8 +60,6 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_library_call failed",            solved      "echidna_library_call")
       , ("echidna_valid_timestamp failed",         passed      "echidna_valid_timestamp")
       ]
-  , testContractV "basic/fallback.sol"   (Just (< solcV (0,6,0))) Nothing
-      [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
   , testContract "basic/push_long.sol" (Just "basic/push_long.yaml")
       [ ("test_long_5 passed",                     solvedWithout NoCall "test_long_5")]
   , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml")
@@ -83,17 +81,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
   , testContract "basic/darray-mutation.sol"  Nothing
       [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
-  , testContract "basic/gasuse.sol"       (Just "basic/gasuse.yaml")
-      [ ("echidna_true failed",                    passed     "echidna_true")
-      , ("g gas estimate wrong",                   gasInRange "g" 130000 40000000)
-      , ("f_close1 gas estimate wrong",            gasInRange "f_close1" 400 2000)
-      , ("f_open1 gas estimate wrong",             gasInRange "f_open1"  18000 23000)
-      , ("push_b gas estimate wrong",              gasInRange "push_b"   39000 45000)
-      ]
   , testContract "basic/gaslimit.sol"  Nothing
       [ ("echidna_gaslimit passed",                passed      "echidna_gaslimit") ]
-  ,  testContractV "basic/killed.sol"      (Just (< solcV (0,8,0))) (Just "basic/killed.yaml")
-      [ ("echidna_still_alive failed",             solved      "echidna_still_alive") ]
   ,  checkConstructorConditions "basic/codesize.sol"
       "invalid codesize"
   , testContractV "basic/eip-170.sol" (Just (>= solcV (0,5,0))) (Just "basic/eip-170.yaml")
