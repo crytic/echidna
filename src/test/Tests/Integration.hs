@@ -2,7 +2,7 @@ module Tests.Integration (integrationTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout, gasInRange)
+import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout)
 import Data.Functor ((<&>))
 import Data.Text (unpack)
 import Echidna.Types.Campaign (WorkerType(..))
