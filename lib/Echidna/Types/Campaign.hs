@@ -46,10 +46,9 @@ data CampaignConf = CampaignConf
     -- ^ Server-Sent Events HTTP port number, if missing server is not ran
   , symExec            :: Bool
     -- ^ Whether to add an additional symbolic execution worker
-  , symExecConcolic    :: Bool
-    -- ^ Whether symbolic execution will be concolic (vs full symbolic execution)
-    -- Only relevant if symExec is True
   , symExecTargets     :: Maybe [Text]
+    -- ^ List of target functions for symbolic execution.
+    -- If this is 'Nothing', all functions are considered targets.
   , symExecTimeout     :: Int
     -- ^ Timeout for symbolic execution SMT solver queries.
     -- Only relevant if symExec is True
@@ -58,11 +57,14 @@ data CampaignConf = CampaignConf
     -- Only relevant if symExec is True
   , symExecMaxIters    :: Integer
     -- ^ Number of times we may revisit a particular branching point.
-    -- Only relevant if symExec is True and symExecConcolic is False
+    -- Only relevant if symExec is True
   , symExecAskSMTIters :: Integer
     -- ^ Number of times we may revisit a particular branching point
     -- before we consult the SMT solver to check reachability.
-    -- Only relevant if symExec is True and symExecConcolic is False
+    -- Only relevant if symExec is True
+  , symExecMaxExplore :: Integer
+    -- ^ Maximum number of states to explore before we stop exploring it.
+    -- Only relevant if symExec is True
   }
 
 data WorkerType = FuzzWorker | SymbolicWorker deriving (Eq)
@@ -202,8 +204,11 @@ defaultSymExecTimeout = 30
 defaultSymExecNWorkers :: Int
 defaultSymExecNWorkers = 1
 
+defaultSymExecMaxExplore :: Integer
+defaultSymExecMaxExplore = 10
+
 defaultSymExecMaxIters :: Integer
-defaultSymExecMaxIters = 10
+defaultSymExecMaxIters = 5
 
 -- | Same default as in hevm, "everything else is unsound"
 -- (https://github.com/ethereum/hevm/pull/252)

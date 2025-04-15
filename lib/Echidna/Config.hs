@@ -99,12 +99,12 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "workers"
         <*> v ..:? "server"
         <*> v ..:? "symExec"            ..!= False
-        <*> v ..:? "symExecConcolic"    ..!= True
         <*> v ..:? "symExecTargets"     ..!= Nothing
         <*> v ..:? "symExecTimeout"     ..!= defaultSymExecTimeout
         <*> v ..:? "symExecNSolvers"    ..!= defaultSymExecNWorkers
         <*> v ..:? "symExecMaxIters"    ..!= defaultSymExecMaxIters
         <*> v ..:? "symExecAskSMTIters" ..!= defaultSymExecAskSMTIters
+        <*> v ..:? "symExecMaxExplore"  ..!= defaultSymExecMaxExplore
 
       solConfParser = SolConf
         <$> v ..:? "contractAddr"    ..!= defaultContractAddr

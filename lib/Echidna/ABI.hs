@@ -352,6 +352,11 @@ mutateAbiCall = traverse f
                   mv <- mutateAbiValue $ xs !! k
                   return $ replaceAt mv xs k
 
+mutateAllAbiCall :: MonadRandom m => SolCall -> m SolCall
+mutateAllAbiCall = traverse f
+  where f [] = pure []
+        f xs = mapM mutateAbiValue xs
+
 -- Generation, with dictionary
 
 -- | Given a generator taking an @a@ and returning a @b@ and a way to get @b@s associated with some

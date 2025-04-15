@@ -42,7 +42,6 @@ library:
   source-dirs: lib/
   dependencies:
     - ansi-terminal
-    - async
     - base16-bytestring
     - binary
     - brick
@@ -58,6 +57,7 @@ library:
     - html-entities
     - http-conduit
     - ListLike
+    - list-shuffle
     - optics
     - optics-core
     - process
