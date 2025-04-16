@@ -177,8 +177,10 @@ runSymWorker callback vm dict workerId initialCorpus name = do
   symexecTx (tx, vm', txsBase) = do
     cfg <- asks (.cfg)
     dapp <- asks (.dapp)
+    contractCacheRef <- asks (.fetchContractCache)
+    slotCacheRef <- asks (.fetchSlotCache)
     let compiledContracts = Map.elems dapp.solcByName
-    (threadId, _, symTxsChan) <- liftIO $ createSymTx cfg name compiledContracts tx vm'
+    (threadId, _, symTxsChan) <- liftIO $ createSymTx cfg contractCacheRef slotCacheRef name compiledContracts tx vm'
 
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback

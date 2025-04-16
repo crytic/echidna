@@ -17,12 +17,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector (toList, fromList)
+import GHC.IORef (IORef, readIORef)
 import Optics.Core ((.~), (%), (%~))
-import Echidna.Solidity (chooseContract)
-import Echidna.Types (fromEVM)
-import Echidna.Types.Campaign (CampaignConf(..))
-import Echidna.Types.Config (EConfig(..))
-import Echidna.Types.Solidity (SolConf(..))
 import EVM.ABI (AbiValue(..), AbiType(..), Sig(..), decodeAbiValue)
 import EVM.Expr (simplify)
 import EVM.Fetch qualified as Fetch
@@ -30,16 +26,24 @@ import EVM (loadContract, resetState, forceLit)
 import EVM.ABI (abiKind, AbiKind(Dynamic))
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), config)
 import EVM.Solidity (SolcContract(..), Method(..))
-import EVM.Solvers (withSolvers, Solver(..))
+import EVM.Solvers (withSolvers, Solver(..), SolverGroup)
 import EVM.SymExec (interpret, runExpr, abstractVM, mkCalldata, LoopHeuristic (StackBased), produceModels, getPartials, printPartialIssues, flattenExpr)
-import EVM.Types (Addr, Frame(..), FrameState(..), VMType(..), EType(..), Env(..), Expr(..), word256Bytes, Block(..))
-import EVM.Types (SMTCex(..), SMTResult, ProofResult(..), Prop(..))
+import EVM.Types (Addr, Frame(..), FrameState(..), VMType(..), EType(..), Env(..), Expr(..), word256Bytes, Block(..), W256)
+import EVM.Types (SMTCex(..), SMTResult, ProofResult(..), Prop(..), Query(..))
 import qualified EVM.Types (VM(..))
 import Control.Monad.ST (stToIO, RealWorld)
 import Control.Monad.State.Strict (execState, runStateT)
 import List.Shuffle (shuffleIO)
 
+import Echidna.Solidity (chooseContract)
+import Echidna.Types (fromEVM)
+import Echidna.Types.Campaign (CampaignConf(..))
+import Echidna.Types.Config (EConfig(..))
+import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock)
+import Echidna.Types.Cache (ContractCache, SlotCache)
+
+--import Echidna.Exec (fetchPreviouslyUnknownContract)
 
 -- | Uses symbolic execution to find transactions which would increase coverage.
 -- Spawns a new thread; returns its thread ID as the first return value.
@@ -49,10 +53,10 @@ import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock)
 --   to follow during concolic execution. If none is provided, we do full
 --   symbolic execution.
 --   The Tx argument, if present, must have a .call value of type SolCall.
-createSymTx :: EConfig -> Maybe Text -> [SolcContract] -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> IO (ThreadId, Bool, MVar [Tx])
-createSymTx cfg name cs tx vm = do
+createSymTx :: EConfig -> IORef ContractCache -> IORef SlotCache -> Maybe Text -> [SolcContract] -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> IO (ThreadId, Bool, MVar [Tx])
+createSymTx cfg contractCacheRef slotCacheRef name cs tx vm = do
   mainContract <- chooseContract cs name
-  exploreContract cfg mainContract tx vm
+  exploreContract cfg contractCacheRef slotCacheRef mainContract tx vm
 
 suitableForSymExec :: Method -> Bool
 suitableForSymExec m = (not $ null m.inputs) && (null $ filter (\(_, t) -> abiKind t == Dynamic) m.inputs) -- && (null $ filter (\(_, t) -> t == AbiAddressType) m.inputs)
@@ -62,10 +66,9 @@ checkResults rs = map (\s -> if length s > 1024 then "<snipped>" else s) $ catMa
   checkErrorResult (Error s) = Just s
   checkErrorResult _         = Nothing
 
-exploreContract :: EConfig -> SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> IO (ThreadId, Bool, MVar[Tx])
-exploreContract conf contract tx vm = do
+exploreContract :: EConfig -> IORef ContractCache -> IORef SlotCache -> SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> IO (ThreadId, Bool, MVar[Tx])
+exploreContract conf contractCacheRef slotCacheRef contract tx vm = do
   let
-    --isConc = isJust tx
     allMethods = Map.elems contract.abiMap
     filteredMethods = filter filterTarget allMethods
     filterTarget method =
@@ -86,7 +89,7 @@ exploreContract conf contract tx vm = do
     maxIters = Just conf.campaignConf.symExecMaxIters
     maxExplore = Just (fromIntegral conf.campaignConf.symExecMaxExplore)
     askSmtIters = conf.campaignConf.symExecAskSMTIters
-    rpcInfo = Nothing
+    rpcInfo = rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock)
     defaultSender = fromJust $ fmap (.dst) tx <|> Set.lookupMin conf.solConf.sender <|> Just 0
 
   threadIdChan <- newEmptyMVar
@@ -100,10 +103,10 @@ exploreContract conf contract tx vm = do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
       shuffleMethods <- shuffleIO methods
       res <- forM (take 1 shuffleMethods) $ \method -> do
-        --liftIO $ putStrLn ("Exploring: " ++ T.unpack method.name)
+        liftIO $ putStrLn ("Exploring: " ++ T.unpack method.name)
         calldataSym@(cd, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
         let
-          fetcher = Fetch.oracle solvers rpcInfo
+          fetcher = cachedOracle contractCacheRef slotCacheRef solvers rpcInfo
           dst = conf.solConf.contractAddr
           vmSym = abstractVM calldataSym contract.runtimeCode Nothing False
         vmSym' <- liftIO $ stToIO vmSym
@@ -180,11 +183,11 @@ blockMakeSymbolic b
 addBlockConstrains :: Block -> [Prop] -> [Prop]
 addBlockConstrains block cs = cs ++ [
                                       PGT (Var "symbolic_block_timestamp") (block.timestamp), PLT (Sub (Var "symbolic_block_timestamp") (block.timestamp)) $ Lit (24 * 3600),
-                                      PGT (Var "symbolic_block_number") (block.number), PLT (Sub (Var "symbolic_block_number") (block.number)) $ Lit (1000)
+                                      PGT (Var "symbolic_block_number") (block.number), PLT (Sub (Var "symbolic_block_number") (block.number)) $ Lit 1000
                                     ]
 
 senderContraints :: Set Addr -> [Prop]
-senderContraints as = [foldr (\a b -> POr b ((PEq (SymAddr "caller") (LitAddr a)))) (PBool False) $ Set.toList as]
+senderContraints as = [foldr (\a b -> POr b (PEq (SymAddr "caller") (LitAddr a))) (PBool False) $ Set.toList as]
 
 frameStateMakeSymbolic :: FrameState Concrete s -> FrameState Symbolic s
 frameStateMakeSymbolic fs
@@ -244,10 +247,10 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
         src = if Set.member src_ senders then src_ else fallbackSender
         value = fromMaybe 0 $ Map.lookup TxValue cex.txContext
         newTimestamp = fromMaybe 0 $ Map.lookup (Var "symbolic_block_timestamp") cex.vars
-        diffTimestamp = if newTimestamp == 0 then 0 else newTimestamp - (forceLit oldTimestamp)
+        diffTimestamp = if newTimestamp == 0 then 0 else newTimestamp - forceLit oldTimestamp
 
         newNumber = fromMaybe 0 $ Map.lookup (Var "symbolic_block_number") cex.vars
-        diffNumber = if newNumber == 0 then 0 else newNumber - (forceLit oldNumber)
+        diffNumber = if newNumber == 0 then 0 else newNumber - forceLit oldNumber
 
       in Just Tx
         { call = SolCall (method.name, args)
@@ -260,3 +263,27 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
         }
 
     _ -> Nothing
+
+
+cachedOracle :: IORef ContractCache -> IORef SlotCache -> SolverGroup -> Fetch.RpcInfo -> Fetch.Fetcher t m s
+cachedOracle contractCacheRef slotCacheRef solvers info q = do
+  case q of
+    PleaseFetchContract addr _ continue -> do
+      cache <- liftIO $ readIORef contractCacheRef
+      case Map.lookup addr cache of
+          Just (Just contract) -> pure $ continue contract
+          _                    -> oracle q
+    PleaseFetchSlot addr slot continue -> do
+      cache <- liftIO $ readIORef slotCacheRef
+      case Map.lookup addr cache >>= Map.lookup slot of
+        Just (Just value) -> pure $ continue value
+        _                 -> oracle q
+    _ -> oracle q
+
+  where oracle = Fetch.oracle solvers info
+
+rpcFetcher :: Functor f =>
+  f a -> Maybe W256 -> f (Fetch.BlockNumber, a)
+
+rpcFetcher rpc block = (,) block' <$> rpc
+  where block' = maybe Fetch.Latest Fetch.BlockNumber block
