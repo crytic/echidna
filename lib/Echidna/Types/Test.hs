@@ -34,7 +34,7 @@ data TestConf = TestConf
 -- call sequence was found.
 data TestState
   = Open
-  | Large !Int -- ^ Solved, maybe shrinable, tracking shrinks tried
+  | Large !Int -- ^ Solved, maybe shrinkable, tracking shrinks tried
   | Passed     -- ^ Presumed unsolvable
   | Solved     -- ^ Solved with no need for shrinking
   | Failed ExecException -- ^ Broke the execution environment
