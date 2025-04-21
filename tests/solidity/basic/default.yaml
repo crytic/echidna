@@ -38,7 +38,7 @@ sender: ["0x10000", "0x20000", "0x30000"]
 balanceAddr: 0xffffffff
 #balanceContract overrides balanceAddr for the contract address
 balanceContract: 0
-#codeSize max code size for deployed contratcs (default 0xffffffff)
+#codeSize max code size for deployed contracts (default 0xffffffff)
 codeSize: 0xffffffff
 #whether or not to disable running slither (default false, uses slither)
 disableSlither: false

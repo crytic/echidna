@@ -32,7 +32,7 @@ instance FromJSON EConfigWithUsage where
   -- this runs the parser in a StateT monad which keeps track of the keys
   -- utilized by the config parser
   -- we can then compare the set difference between the keys found in the config
-  -- file and the keys used by the parser to comopute which keys were set in the
+  -- file and the keys used by the parser to compute which keys were set in the
   -- config and not used and which keys were unset in the config and defaulted
   parseJSON o = do
     let v' = case o of
