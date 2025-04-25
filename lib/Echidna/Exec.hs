@@ -343,4 +343,3 @@ initialVM ffi = do
             & #block % #number .~ Lit initialBlockNumber
             & #env % #contracts .~ mempty -- fixes weird nonce issues
             & #config % #allowFFI .~ ffi
-            & #config % #minMemoryChunk .~ 65536 -- larger chunk for improved performance
