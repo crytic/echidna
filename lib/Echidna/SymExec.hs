@@ -40,7 +40,7 @@ import Echidna.Types (fromEVM)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (SolConf(..))
-import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock)
+import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock, maxBlockDelay, maxTimeDelay)
 import Echidna.Types.Cache (ContractCache, SlotCache)
 
 --import Echidna.Exec (fetchPreviouslyUnknownContract)
@@ -59,7 +59,7 @@ createSymTx cfg contractCacheRef slotCacheRef name cs tx vm = do
   exploreContract cfg contractCacheRef slotCacheRef mainContract tx vm
 
 suitableForSymExec :: Method -> Bool
-suitableForSymExec m = (not $ null m.inputs) && (null $ filter (\(_, t) -> abiKind t == Dynamic) m.inputs) -- && (null $ filter (\(_, t) -> t == AbiAddressType) m.inputs)
+suitableForSymExec m = (not $ null m.inputs) && (null $ filter (\(_, t) -> abiKind t == Dynamic) m.inputs)
 
 checkResults :: [SMTResult] -> [String]
 checkResults rs = map (\s -> if length s > 1024 then "<snipped>" else s) $ catMaybes $ map checkErrorResult rs where
@@ -112,7 +112,7 @@ exploreContract conf contractCacheRef slotCacheRef contract tx vm = do
         vmSym' <- liftIO $ stToIO vmSym
         vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
         let vm' = vmReset & execState (loadContract (LitAddr dst))
-                          & vmMakeSymbolic
+                          & vmMakeSymbolic conf.txConf.maxTimeDelay conf.txConf.maxBlockDelay
                           & #constraints %~ (++ constraints ++ (senderContraints conf.solConf.sender))
                           & #state % #callvalue .~ TxValue
                           & #state % #caller .~ SymAddr "caller"
@@ -149,8 +149,8 @@ exploreContract conf contractCacheRef slotCacheRef contract tx vm = do
   pure (threadId, prioritized, resultChan)
 
 -- | Sets result to Nothing, and sets gas to ()
-vmMakeSymbolic :: EVM.Types.VM Concrete s -> EVM.Types.VM Symbolic s
-vmMakeSymbolic vm
+vmMakeSymbolic :: W256 -> W256 -> EVM.Types.VM Concrete s -> EVM.Types.VM Symbolic s
+vmMakeSymbolic maxTimestampDiff maxNumberDiff vm
   = EVM.Types.VM
   { result         = Nothing
   , state          = frameStateMakeSymbolic vm.state
@@ -163,7 +163,7 @@ vmMakeSymbolic vm
   , cache          = vm.cache
   , burned         = ()
   , iterations     = vm.iterations
-  , constraints    = addBlockConstrains vm.block vm.constraints
+  , constraints    = addBlockConstrains maxTimestampDiff maxNumberDiff vm.block vm.constraints
   , config         = vm.config
   , forks          = vm.forks
   , currentFork    = vm.currentFork
@@ -180,11 +180,12 @@ blockMakeSymbolic b
     , number = Var "symbolic_block_number"
   }
 
-addBlockConstrains :: Block -> [Prop] -> [Prop]
-addBlockConstrains block cs = cs ++ [
-                                      PGT (Var "symbolic_block_timestamp") (block.timestamp), PLT (Sub (Var "symbolic_block_timestamp") (block.timestamp)) $ Lit (24 * 3600),
-                                      PGT (Var "symbolic_block_number") (block.number), PLT (Sub (Var "symbolic_block_number") (block.number)) $ Lit 1000
-                                    ]
+addBlockConstrains :: W256 -> W256 -> Block -> [Prop] -> [Prop]
+addBlockConstrains maxTimestampDiff maxNumberDiff block cs =
+  cs ++ [
+    PGT (Var "symbolic_block_timestamp") (block.timestamp), PLT (Sub (Var "symbolic_block_timestamp") (block.timestamp)) $ Lit maxTimestampDiff,
+    PGT (Var "symbolic_block_number") (block.number), PLT (Sub (Var "symbolic_block_number") (block.number)) $ Lit maxNumberDiff
+  ]
 
 senderContraints :: Set Addr -> [Prop]
 senderContraints as = [foldr (\a b -> POr b (PEq (SymAddr "caller") (LitAddr a))) (PBool False) $ Set.toList as]
@@ -246,6 +247,7 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
         src_ = fromMaybe 0 $ Map.lookup (SymAddr "caller") cex.addrs
         src = if Set.member src_ senders then src_ else fallbackSender
         value = fromMaybe 0 $ Map.lookup TxValue cex.txContext
+
         newTimestamp = fromMaybe 0 $ Map.lookup (Var "symbolic_block_timestamp") cex.vars
         diffTimestamp = if newTimestamp == 0 then 0 else newTimestamp - forceLit oldTimestamp
 
