@@ -50,10 +50,10 @@
           };
 
         hevm = pkgs: pkgs.lib.pipe ((hsPkgs pkgs).callCabal2nix "hevm" (pkgs.fetchFromGitHub {
-          owner = "ethereum";
+          owner = "elopez";
           repo = "hevm";
-          rev = "release/0.54.2";
-          sha256 = "sha256-h0e6QeMBIUkyANYdrGjrqZ2M4fnODOB0gNPQtsrAiL8=";
+          rev = "3178bb5d6ab26f22664d938e195c786170cb995e";
+          sha256 = "sha256-NjBLQUh/ZzbeZB+RDMIvGizrQ/pCV7GqYauWJ6/j0H8=";
         }) { secp256k1 = pkgs.secp256k1; })
         ([
           pkgs.haskell.lib.compose.dontCheck

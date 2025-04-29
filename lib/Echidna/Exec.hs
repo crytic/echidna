@@ -26,6 +26,7 @@ import System.Process qualified as P
 import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, vmOpIx, clearTStorages)
 import EVM.ABI
 import EVM.Dapp (DappInfo)
+import EVM.Effects (defaultConfig)
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Fetch qualified
 import EVM.Format (hexText, showTraceTree)
@@ -240,7 +241,7 @@ execTx
   => VM Concrete RealWorld
   -> Tx
   -> m ((VMResult Concrete RealWorld, Gas), VM Concrete RealWorld)
-execTx vm tx = runStateT (execTxWith (fromEVM exec) tx) vm
+execTx vm tx = runStateT (execTxWith (fromEVM (exec defaultConfig)) tx) vm
 
 -- | A type alias for the context we carry while executing instructions
 type CoverageContext = (Bool, Maybe (VMut.IOVector CoverageInfo, Int))
@@ -289,7 +290,7 @@ execTxWithCov tx = do
 
       -- | Execute one instruction on the EVM
       stepVM :: VM Concrete RealWorld -> IO (VM Concrete RealWorld)
-      stepVM = stToIO . execStateT exec1
+      stepVM = stToIO . execStateT (exec1 defaultConfig)
 
       -- | Add current location to the CoverageMap
       addCoverage :: VM Concrete RealWorld -> IO ()
@@ -339,6 +340,6 @@ initialVM :: Bool -> ST s (VM Concrete s)
 initialVM ffi = do
   vm <- vmForEthrunCreation mempty
   pure $ vm & #block % #timestamp .~ Lit initialTimestamp
-            & #block % #number .~ initialBlockNumber
+            & #block % #number .~ Lit initialBlockNumber
             & #env % #contracts .~ mempty -- fixes weird nonce issues
             & #config % #allowFFI .~ ffi
