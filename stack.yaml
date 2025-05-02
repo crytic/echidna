@@ -5,7 +5,7 @@ packages:
 
 extra-deps:
 - git: https://github.com/ethereum/hevm.git
-  commit: bdaaa13fde8f6b96f2032aef2931f9c7bc87e159
+  commit: 5cfc0d5509aebc63e42a35bf20f70ef128c9cbd6
 
 - smt2-parser-0.1.0.1@sha256:1e1a4565915ed851c13d1e6b8bb5185cf5d454da3b43170825d53e221f753d77,1421
 - spawn-0.3@sha256:b91e01d8f2b076841410ae284b32046f91471943dc799c1af77d666c72101f02,1162
