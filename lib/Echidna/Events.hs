@@ -17,6 +17,7 @@ import Data.Vector (fromList)
 import EVM (traceForest)
 import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, AbiType(..), AbiValue(..))
 import EVM.Dapp (DappContext(..), DappInfo(..))
+import EVM.Expr (maybeLitWordSimp)
 import EVM.Format (showValues, showError, contractNamePart)
 import EVM.Solidity (SolcContract(..))
 import EVM.Types
@@ -37,7 +38,7 @@ extractEvents decodeErrors dappInfo vm =
   where
   showTrace trace =
     let ?context = DappContext { info = dappInfo, contracts = vm.env.contracts, labels = vm.labels } in
-    let codehash' = fromJust $ maybeLitWord trace.contract.codehash
+    let codehash' = fromJust $ maybeLitWordSimp trace.contract.codehash
         maybeContractName = maybeContractNameFromCodeHash dappInfo codehash'
     in case trace.tracedata of
       EventTrace addr bytes (topic:_) ->
