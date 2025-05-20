@@ -35,8 +35,13 @@ if [ "$HOST_OS" = "Linux" ] && [ "$(uname -m)" = "aarch64" ]; then
 fi
 
 if [ "$HOST_OS" = "Windows" ]; then
-  ARGS+=("-G" "Ninja")
+  ARGS+=("-G" "Ninja" "-DCMAKE_TOOLCHAIN_FILE=$PWD/../.github/scripts/windows-ghc-toolchain.cmake")
   sed -i 's/find_library(GMP_LIBRARY gmp)/find_library(GMP_LIBRARY NAMES libgmp.a)/' CMakeLists.txt
+
+  # This ends up causing the system headers to be included with -I and
+  # thus they override the GHC mingw compiler ones. So this removes it
+  # and re-adds the include with idirafter via the toolchain file
+  sed -i '/INCLUDE_DIRECTORIES.*OPENSSL_INCLUDE_DIR/d' CMakeLists.txt
 
   # Apply windows-specific libff patch carried by hevm
   curl -fsSL https://raw.githubusercontent.com/ethereum/hevm/1abe4c79eeada928acc279b631c48eeb2a1376c2/.github/scripts/libff.patch | patch -p1

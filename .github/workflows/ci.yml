@@ -40,6 +40,7 @@ jobs:
       - name: Get Packages (Windows)
         uses: msys2/setup-msys2@v2
         if: runner.os == 'Windows'
+        id: msys2
         with:
           msystem: CLANG64
           path-type: minimal
@@ -104,11 +105,16 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           HASKELL_PATHS="$(cygpath -u "$GHC_PATH"):$(cygpath -u "$CABAL_PATH"):$(cygpath -u "$STACK_PATH")"
+          HASKELL_MINGW_PATH="$(cygpath -u "$GHC_PATH/../mingw")"
+          SYSTEM_MINGW_PATH="$(cygpath -m "$MSYS2_LOCATION/$MSYSTEM")"
           echo "HASKELL_PATHS=$HASKELL_PATHS" >> "$GITHUB_ENV"
+          echo "HASKELL_MINGW_PATH=$HASKELL_MINGW_PATH" >> "$GITHUB_ENV"
+          echo "SYSTEM_MINGW_PATH=$SYSTEM_MINGW_PATH" >> "$GITHUB_ENV"
         env:
           GHC_PATH: ${{ steps.stack.outputs.ghc-path }}
           CABAL_PATH: ${{ steps.stack.outputs.cabal-path }}
           STACK_PATH: ${{ steps.stack.outputs.stack-path }}
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -140,7 +146,7 @@ jobs:
       - name: Build Libraries
         run: |
           if [ "$HOST_OS" = "Windows" ]; then
-            export PATH="$(cygpath -u "$GHC_BIN_PATH/../mingw/bin"):$PATH"
+            export PATH="$(cygpath -u "$HASKELL_MINGW_PATH/bin"):$PATH"
           fi
           .github/scripts/install-libsecp256k1.sh
           .github/scripts/install-libff.sh
