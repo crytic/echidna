@@ -198,4 +198,4 @@ setupTx tx@Tx{call} = fromEVM $ do
 advanceBlock :: Block -> (W256, W256) -> Block
 advanceBlock blk (t,b) =
   blk { timestamp = Lit (forceWord blk.timestamp + t)
-      , number = blk.number + b }
+      , number = Lit (forceWord blk.number + b) }

@@ -115,7 +115,7 @@ instance FromJSON SlitherInfo where
           :: Map ContractName (Map FunctionName [[Maybe AbiValue]])
           <- o .: "constants_used" >>= (traverse . traverse . traverse . traverse) parseConstant
         -- flatten [[AbiValue]], the array probably shouldn't be nested, fix it in Slither
-        let constantValues = (fmap . fmap) (catMaybes . concat) constantValues'
+        let constantValues = (fmap . fmap) (concatMap catMaybes) constantValues'
         functionsRelations <- o .: "functions_relations"
         generationGraph <-
           (traverse . traverse) (withObject "relations" (.: "impacts")) functionsRelations
