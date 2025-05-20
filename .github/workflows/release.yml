@@ -96,7 +96,7 @@ jobs:
           inputs: ./echidna-*.tar.gz
 
       - name: Create GitHub release and upload binaries
-        uses: softprops/action-gh-release@v2.2.1
+        uses: softprops/action-gh-release@v2.2.2
         with:
           draft: true
           name: "Echidna ${{ needs.nixBuild.outputs.version }}"
