@@ -191,7 +191,7 @@ getRandomInt :: MonadRandom m => Int -> m Integer
 getRandomInt n =
   getRandomR =<< Random.weighted
     [ ((-1023, 1023), 1)
-    , ((-1 * 2 ^ (n - 1), 2 ^ (n - 1) - 1), 9)
+    , ((-(2 ^ (n - 1)), 2 ^ (n - 1) - 1), 9)
     ]
 
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Doesn't use a dictionary.

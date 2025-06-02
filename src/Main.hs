@@ -156,8 +156,8 @@ bool = maybeReader (f . map toLower) where
   f _ = Nothing
 
 options :: Parser Options
-options = Options
-  <$> (NE.fromList <$> some (argument str (metavar "FILES"
+options = 
+  (Options . NE.fromList <$> some (argument str (metavar "FILES"
     <> help "Solidity files to analyze")))
   <*> optional (option auto $ long "workers"
     <> metavar "N"
