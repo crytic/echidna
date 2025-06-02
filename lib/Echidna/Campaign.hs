@@ -53,6 +53,7 @@ import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Tx (TxCall(..), Tx(..))
+import Echidna.Types.World (World(..))
 import Echidna.Utility (getTimestamp)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
@@ -159,28 +160,24 @@ runSymWorker callback vm dict workerId initialCorpus name = do
 
   txsToTxAndVmsSym [] = pure []
   txsToTxAndVmsSym txs = do
-
     -- Discard the last tx, which should be the one increasing coverage
     let (itxs, ltx) = (init txs, last txs)
     ivm <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm itxs
     -- Split the sequence randomly and select any next transaction
-    i <- rElem $ NEList.fromList [1 .. length txs - 1]
+    i <- if (length txs == 1) then pure 0 else (rElem $ NEList.fromList [1 .. length txs - 1])
     let rtxs = take i txs
     rvm <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm rtxs
-    pure [(Just ltx, ivm, txs), (Nothing, rvm, rtxs)]
-
-  --txsToTxAndVmsSym [] = pure []
-  --txsToTxAndVmsSym txs = do
-  --  vm' <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm txs
-  --  pure [(Nothing,vm',txs)]
+    cfg <- asks (.cfg)
+    let targets = cfg.campaignConf.symExecTargets
+    if (isJust targets) then
+      pure [(Nothing, rvm, rtxs)]
+    else 
+      pure [(Just ltx, ivm, txs), (Nothing, rvm, rtxs)]
 
   symexecTx (tx, vm', txsBase) = do
-    cfg <- asks (.cfg)
     dapp <- asks (.dapp)
-    contractCacheRef <- asks (.fetchContractCache)
-    slotCacheRef <- asks (.fetchSlotCache)
     let compiledContracts = Map.elems dapp.solcByName
-    (threadId, _, symTxsChan) <- liftIO $ createSymTx cfg contractCacheRef slotCacheRef name compiledContracts tx vm'
+    (threadId, _, symTxsChan) <- createSymTx name compiledContracts tx vm'
 
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback

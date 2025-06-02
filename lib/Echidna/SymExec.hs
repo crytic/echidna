@@ -6,31 +6,35 @@ import Control.Applicative ((<|>))
 import Control.Concurrent (ThreadId, forkIO)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (forM)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Catch (MonadThrow(..))
+import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (runReaderT)
+import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
 import Data.ByteString.Lazy qualified as BS
+import Data.DoubleWord (Word256)
 import Data.Function ((&))
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, mapMaybe, fromJust, catMaybes)
+import Data.Maybe (fromMaybe, mapMaybe, fromJust)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding (encodeUtf8)
 import Data.Vector (toList, fromList)
 import GHC.IORef (IORef, readIORef)
 import Optics.Core ((.~), (%), (%~))
 import EVM.ABI (AbiValue(..), AbiType(..), Sig(..), decodeAbiValue)
-import EVM.Expr (simplify)
 import EVM.Fetch qualified as Fetch
 import EVM (loadContract, resetState, forceLit)
 import EVM.ABI (abiKind, AbiKind(Dynamic))
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), config)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers, Solver(..), SolverGroup)
-import EVM.SymExec (interpret, runExpr, abstractVM, mkCalldata, LoopHeuristic (StackBased), produceModels, getPartials, printPartialIssues, flattenExpr)
-import EVM.Types (Addr, Frame(..), FrameState(..), VMType(..), EType(..), Env(..), Expr(..), word256Bytes, Block(..), W256)
-import EVM.Types (SMTCex(..), SMTResult, ProofResult(..), Prop(..), Query(..))
-import qualified EVM.Types (VM(..))
+import EVM.SymExec (IterConfig(..), abstractVM, mkCalldata, LoopHeuristic (..))
+import EVM.SymExec (verifyInputs, VeriOpts(..), checkAssertions)--, checkAssertionsOrStop)
+import EVM.Types (abiKeccak, FunctionSelector, Addr, Frame(..), FrameState(..), VMType(..), EType(..), Expr(..), word256Bytes, Block(..), W256)
+import EVM.Types (SMTCex(..), ProofResult(..), Prop(..), Query(..))
+import qualified EVM.Types (VM(..), Env(..))
 import Control.Monad.ST (stToIO, RealWorld)
 import Control.Monad.State.Strict (execState, runStateT)
 import List.Shuffle (shuffleIO)
@@ -38,7 +42,8 @@ import List.Shuffle (shuffleIO)
 import Echidna.Solidity (chooseContract)
 import Echidna.Types (fromEVM)
 import Echidna.Types.Campaign (CampaignConf(..))
-import Echidna.Types.Config (EConfig(..))
+import Echidna.Types.Config (Env(..), EConfig(..))
+import Echidna.Types.World (World(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock, maxBlockDelay, maxTimeDelay)
 import Echidna.Types.Cache (ContractCache, SlotCache)
@@ -53,37 +58,31 @@ import Echidna.Types.Cache (ContractCache, SlotCache)
 --   to follow during concolic execution. If none is provided, we do full
 --   symbolic execution.
 --   The Tx argument, if present, must have a .call value of type SolCall.
-createSymTx :: EConfig -> IORef ContractCache -> IORef SlotCache -> Maybe Text -> [SolcContract] -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> IO (ThreadId, Bool, MVar [Tx])
-createSymTx cfg contractCacheRef slotCacheRef name cs tx vm = do
+createSymTx :: (MonadIO m, MonadThrow m, MonadReader Env m) => Maybe Text -> [SolcContract] -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, Bool, MVar [Tx])
+createSymTx name cs tx vm = do
   mainContract <- chooseContract cs name
-  exploreContract cfg contractCacheRef slotCacheRef mainContract tx vm
+  exploreContract mainContract tx vm
 
 suitableForSymExec :: Method -> Bool
-suitableForSymExec m = (not $ null m.inputs) && (null $ filter (\(_, t) -> abiKind t == Dynamic) m.inputs)
+suitableForSymExec m = (not $ null m.inputs) && (null $ filter (\(_, t) -> abiKind t == Dynamic) m.inputs) && (not $ T.isInfixOf "_no_symexec" m.name)
 
-checkResults :: [SMTResult] -> [String]
-checkResults rs = map (\s -> if length s > 1024 then "<snipped>" else s) $ catMaybes $ map checkErrorResult rs where
-  checkErrorResult (Error s) = Just s
-  checkErrorResult _         = Nothing
+filterTarget :: Maybe [Text] -> [FunctionSelector] -> Maybe Tx -> Method -> Bool
+filterTarget symExecTargets assertSigs tx method =
+  case (symExecTargets, tx) of
+    (Just ms, _)                                       -> method.name `elem` ms
+    (_,  Just (Tx { call = SolCall (methodName, _) })) -> methodSig `elem` assertSigs && method.name == methodName && suitableForSymExec method
+    _                                                  -> {- methodSig `elem` assertSigs &&-} suitableForSymExec method
+ where methodSig = abiKeccak $ encodeUtf8 method.methodSignature
 
-exploreContract :: EConfig -> IORef ContractCache -> IORef SlotCache -> SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> IO (ThreadId, Bool, MVar[Tx])
-exploreContract conf contractCacheRef slotCacheRef contract tx vm = do
+exploreContract :: (MonadIO m, MonadThrow m, MonadReader Env m) => SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, Bool, MVar[Tx])
+exploreContract contract tx vm = do
+  conf <- asks (.cfg)
+  env <- ask
+  contractCacheRef <- asks (.fetchContractCache)
+  slotCacheRef <- asks (.fetchSlotCache)  
   let
     allMethods = Map.elems contract.abiMap
-    filteredMethods = filter filterTarget allMethods
-    filterTarget method =
-      case (conf.campaignConf.symExecTargets, tx) of
-        (Just ms, _)                                       -> method.name `elem` ms
-        (_,  Just (Tx { call = SolCall (methodName, _) })) -> method.name == methodName && suitableForSymExec method
-        _                                                  -> suitableForSymExec method
-    --filterMethod name method = method.name == name &&
-    --  case conf.campaignConf.symExecTargets of
-    --    Just ms -> name `elem` ms
-    --    _       -> True
-
-    --concMethods (Tx { call = SolCall (methodName, _) }) = filter (filterMethod methodName) allMethods
-    --concMethods _ = error "`exploreContract` should only be called with Nothing or Just Tx{call=SolCall _} for its tx argument"
-    --methods = maybe allMethods concMethods tx
+    filteredMethods = filter (filterTarget conf.campaignConf.symExecTargets env.world.assertSigs tx) allMethods
     methods = filteredMethods
     timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
     maxIters = Just conf.campaignConf.symExecMaxIters
@@ -92,14 +91,15 @@ exploreContract conf contractCacheRef slotCacheRef contract tx vm = do
     rpcInfo = rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock)
     defaultSender = fromJust $ fmap (.dst) tx <|> Set.lookupMin conf.solConf.sender <|> Just 0
 
-  threadIdChan <- newEmptyMVar
-  doneChan <- newEmptyMVar
-  resultChan <- newEmptyMVar
-  boolChan <- newEmptyMVar
+  threadIdChan <- liftIO $ newEmptyMVar
+  doneChan <- liftIO $ newEmptyMVar
+  resultChan <- liftIO $ newEmptyMVar
+  boolChan <- liftIO $ newEmptyMVar
+  let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
+  let veriOpts = VeriOpts {iterConf = iterConfig, simp = True, rpcInfo = undefined}
+  let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = True, debug = True, dumpQueries = False, numCexFuzz = 100 } }
 
-  let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = True, debug = True, dumpQueries = False, numCexFuzz = 1000 } }
-
-  flip runReaderT runtimeEnv $ withSolvers Bitwuzla (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
+  liftIO $ flip runReaderT runtimeEnv $ withSolvers Bitwuzla (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
       shuffleMethods <- shuffleIO methods
       res <- forM (take 1 shuffleMethods) $ \method -> do
@@ -120,23 +120,13 @@ exploreContract conf contractCacheRef slotCacheRef contract tx vm = do
                           & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
         -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
         -- Doing so might mess up concolic execution.
-        --liftIO $ print $ "start exprInter"
-        exprInter <- interpret fetcher maxIters askSmtIters StackBased vm' runExpr
-        --liftIO $ print $ "end exprInter"
-
-        --liftIO $ print $ "start simplify"
-        sExpr <- pure $ simplify exprInter
-        let fExpr = flattenExpr sExpr
-        --liftIO $ print $ "end simplify"
-        liftIO $ printPartialIssues fExpr ("the call to " <> T.unpack method.name)
-        models <- produceModels solvers sExpr
-        --liftIO $ print models
-        let results = map snd models
-        --liftIO $ mapM_ print results
+        (_, models) <- verifyInputs solvers veriOpts fetcher vm' (Just $ checkAssertions [0x1])
+        let results = map fst models
+        liftIO $ mapM_ print results
         --liftIO $ mapM_ print $ checkResults results
         let txs = mapMaybe (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results
         --liftIO $ print $ map (runReaderT mempty $ ppTx vm True) txs
-        pure $ (txs, (not $ null (checkResults results)) || (not $ null (getPartials fExpr)))
+        pure $ (txs, False)--(not $ null (checkResults results))) -- || (not $ null (getPartials fExpr)))
       liftIO $ putMVar resultChan $ concat $ map fst res
       liftIO $ putMVar boolChan $ or $ map snd res
       --liftIO $ print "done"
@@ -144,8 +134,8 @@ exploreContract conf contractCacheRef slotCacheRef contract tx vm = do
     liftIO $ putMVar threadIdChan threadId
     liftIO $ takeMVar doneChan
 
-  prioritized <- takeMVar boolChan
-  threadId <- takeMVar threadIdChan
+  prioritized <- liftIO $ takeMVar boolChan
+  threadId <- liftIO $ takeMVar threadIdChan
   pure (threadId, prioritized, resultChan)
 
 -- | Sets result to Nothing, and sets gas to ()
