@@ -8,8 +8,7 @@ import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (forM)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Reader (runReaderT)
-import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
+import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
 import Data.ByteString.Lazy qualified as BS
 import Data.Function ((&))
 import Data.Map qualified as Map
@@ -22,17 +21,14 @@ import Data.Text.Encoding (encodeUtf8)
 import Data.Vector (toList, fromList)
 import GHC.IORef (IORef, readIORef)
 import Optics.Core ((.~), (%), (%~))
-import EVM.ABI (AbiValue(..), AbiType(..), Sig(..), decodeAbiValue)
+import EVM.ABI (abiKind, AbiKind(Dynamic), AbiValue(..), AbiType(..), Sig(..), decodeAbiValue)
 import EVM.Fetch qualified as Fetch
 import EVM (loadContract, resetState, forceLit)
-import EVM.ABI (abiKind, AbiKind(Dynamic))
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), config)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers, Solver(..), SolverGroup)
-import EVM.SymExec (IterConfig(..), abstractVM, mkCalldata, LoopHeuristic (..))
-import EVM.SymExec (verifyInputs, VeriOpts(..), checkAssertions)--, checkAssertionsOrStop)
-import EVM.Types (abiKeccak, FunctionSelector, Addr, Frame(..), FrameState(..), VMType(..), EType(..), Expr(..), word256Bytes, Block(..), W256)
-import EVM.Types (SMTCex(..), ProofResult(..), Prop(..), Query(..))
+import EVM.SymExec (IterConfig(..), abstractVM, mkCalldata, LoopHeuristic (..), verifyInputs, VeriOpts(..), checkAssertions)
+import EVM.Types (abiKeccak, FunctionSelector, Addr, Frame(..), FrameState(..), VMType(..), EType(..), Expr(..), word256Bytes, Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query(..))
 import qualified EVM.Types (VM(..), Env(..))
 import Control.Monad.ST (stToIO, RealWorld)
 import Control.Monad.State.Strict (execState, runStateT)
@@ -46,8 +42,6 @@ import Echidna.Types.World (World(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock, maxBlockDelay, maxTimeDelay)
 import Echidna.Types.Cache (ContractCache, SlotCache)
-
---import Echidna.Exec (fetchPreviouslyUnknownContract)
 
 -- | Uses symbolic execution to find transactions which would increase coverage.
 -- Spawns a new thread; returns its thread ID as the first return value.
@@ -63,7 +57,9 @@ createSymTx name cs tx vm = do
   exploreContract mainContract tx vm
 
 suitableForSymExec :: Method -> Bool
-suitableForSymExec m = (not $ null m.inputs) && (null $ filter (\(_, t) -> abiKind t == Dynamic) m.inputs) && (not $ T.isInfixOf "_no_symexec" m.name)
+suitableForSymExec m = not $ null m.inputs 
+  && null (filter (\(_, t) -> abiKind t == Dynamic) m.inputs) 
+  && not (T.isInfixOf "_no_symexec" m.name)
 
 filterTarget :: Maybe [Text] -> [FunctionSelector] -> Maybe Tx -> Method -> Bool
 filterTarget symExecTargets assertSigs tx method =
@@ -90,9 +86,9 @@ exploreContract contract tx vm = do
     rpcInfo = rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock)
     defaultSender = fromJust $ fmap (.dst) tx <|> Set.lookupMin conf.solConf.sender <|> Just 0
 
-  threadIdChan <- liftIO $ newEmptyMVar
-  doneChan <- liftIO $ newEmptyMVar
-  resultChan <- liftIO $ newEmptyMVar
+  threadIdChan <- liftIO newEmptyMVar
+  doneChan <- liftIO newEmptyMVar
+  resultChan <- liftIO newEmptyMVar
   let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
   let veriOpts = VeriOpts {iterConf = iterConfig, simp = True, rpcInfo = undefined}
   let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = True, debug = True, dumpQueries = False, numCexFuzz = 100 } }
@@ -124,7 +120,7 @@ exploreContract contract tx vm = do
         --liftIO $ mapM_ print $ checkResults results
         let txs = mapMaybe (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results
         --liftIO $ print $ map (runReaderT mempty $ ppTx vm True) txs
-        pure $ txs
+        pure txs
       liftIO $ putMVar resultChan $ concat res
       --liftIO $ print "done"
       liftIO $ putMVar doneChan ()

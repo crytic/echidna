@@ -151,12 +151,10 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     symexecTxs transactions
   listenerFunc _ = pure ()
 
-  symexecTxs txs = mapM_ symexecTx =<< txsToTxAndVms txs
+  symexecTxs txs = mapM_ symexecTx =<< txsToTxAndVmsSym txs
 
   -- | Turn a list of transactions into inputs for symexecTx:
-  -- (maybe txn to concolic execute on, vm to symexec on, list of txns we're on top of)
-  txsToTxAndVms txs = txsToTxAndVmsSym txs
-
+  -- (list of txns we're on top of)
   txsToTxAndVmsSym [] = pure []
   txsToTxAndVmsSym txs = do
     -- Discard the last tx, which should be the one increasing coverage
