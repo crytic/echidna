@@ -53,7 +53,6 @@ import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Tx (TxCall(..), Tx(..))
-import Echidna.Types.World (World(..))
 import Echidna.Utility (getTimestamp)
 
 instance MonadThrow m => MonadThrow (RandT g m) where
@@ -177,7 +176,7 @@ runSymWorker callback vm dict workerId initialCorpus name = do
   symexecTx (tx, vm', txsBase) = do
     dapp <- asks (.dapp)
     let compiledContracts = Map.elems dapp.solcByName
-    (threadId, _, symTxsChan) <- createSymTx name compiledContracts tx vm'
+    (threadId, symTxsChan) <- createSymTx name compiledContracts tx vm'
 
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback

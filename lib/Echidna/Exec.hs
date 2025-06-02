@@ -227,41 +227,6 @@ execTxWith executeTx tx = do
       modify' $ execState $ loadContract (LitAddr tx.dst)
     _ -> pure ()
 
-{-fetchPreviouslyUnknownContract q rpcUrl rpcBlock addr continuation = do
-        cacheRef <- asks (.fetchContractCache)
-        cache <- liftIO $ readIORef cacheRef
-        case Map.lookup addr cache of
-          Just (Just contract) -> fromEVM (continuation contract)
-          Just Nothing -> do
-            v <- get
-            v' <- liftIO $ stToIO $ execStateT (continuation emptyAccount) v
-            put v'
-          Nothing -> do
-            logMsg $ "INFO: Performing RPC: " <> show q
-            case rpcUrl of
-              Just url -> do
-                ret <- liftIO $ safeFetchContractFrom rpcBlock url addr
-                case ret of
-                  -- TODO: fix hevm to not return an empty contract in case of an error
-                  Just contract | contract.code /= RuntimeCode (ConcreteRuntimeCode "") -> do
-                    fromEVM (continuation contract)
-                    liftIO $ atomicWriteIORef cacheRef $ Map.insert addr (Just contract) cache
-                  _ -> do
-                    -- TODO: better error reporting in HEVM, when intermittent
-                    -- network error then retry
-                    liftIO $ atomicWriteIORef cacheRef $ Map.insert addr Nothing cache
-                    logMsg $ "ERROR: Failed to fetch contract: " <> show q
-                    -- TODO: How should we fail here? It could be a network error,
-                    -- RPC server returning junk etc.
-                    fromEVM (continuation emptyAccount)
-              Nothing -> do
-                liftIO $ atomicWriteIORef cacheRef $ Map.insert addr Nothing cache
-                logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
-                -- TODO: How should we fail here? RPC is not configured but VM
-                -- wants to fetch
-                fromEVM (continuation emptyAccount)
--}
-
 logMsg :: (MonadIO m, MonadReader Env m) => String -> m ()
 logMsg msg = do
   cfg <- asks (.cfg)

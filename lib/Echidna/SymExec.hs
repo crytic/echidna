@@ -11,7 +11,6 @@ import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
 import Data.ByteString.Lazy qualified as BS
-import Data.DoubleWord (Word256)
 import Data.Function ((&))
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe, fromJust)
@@ -58,7 +57,7 @@ import Echidna.Types.Cache (ContractCache, SlotCache)
 --   to follow during concolic execution. If none is provided, we do full
 --   symbolic execution.
 --   The Tx argument, if present, must have a .call value of type SolCall.
-createSymTx :: (MonadIO m, MonadThrow m, MonadReader Env m) => Maybe Text -> [SolcContract] -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, Bool, MVar [Tx])
+createSymTx :: (MonadIO m, MonadThrow m, MonadReader Env m) => Maybe Text -> [SolcContract] -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar [Tx])
 createSymTx name cs tx vm = do
   mainContract <- chooseContract cs name
   exploreContract mainContract tx vm
@@ -74,7 +73,7 @@ filterTarget symExecTargets assertSigs tx method =
     _                                                  -> {- methodSig `elem` assertSigs &&-} suitableForSymExec method
  where methodSig = abiKeccak $ encodeUtf8 method.methodSignature
 
-exploreContract :: (MonadIO m, MonadThrow m, MonadReader Env m) => SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, Bool, MVar[Tx])
+exploreContract :: (MonadIO m, MonadThrow m, MonadReader Env m) => SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar[Tx])
 exploreContract contract tx vm = do
   conf <- asks (.cfg)
   env <- ask
@@ -134,9 +133,8 @@ exploreContract contract tx vm = do
     liftIO $ putMVar threadIdChan threadId
     liftIO $ takeMVar doneChan
 
-  prioritized <- liftIO $ takeMVar boolChan
   threadId <- liftIO $ takeMVar threadIdChan
-  pure (threadId, prioritized, resultChan)
+  pure (threadId, resultChan)
 
 -- | Sets result to Nothing, and sets gas to ()
 vmMakeSymbolic :: W256 -> W256 -> EVM.Types.VM Concrete s -> EVM.Types.VM Symbolic s
