@@ -54,7 +54,7 @@ import Echidna.Types.Cache (ContractCache, SlotCache)
 -- The second return value is an MVar which is populated with transactions
 --   once the symbolic execution is finished.
 -- Also takes an optional Tx argument; this is used as the transaction
---   to follow during concolic execution. If none is provided, we do full
+--   to symbolize. If none is provided, we do full
 --   symbolic execution.
 --   The Tx argument, if present, must have a .call value of type SolCall.
 createSymTx :: (MonadIO m, MonadThrow m, MonadReader Env m) => Maybe Text -> [SolcContract] -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar [Tx])
@@ -93,7 +93,6 @@ exploreContract contract tx vm = do
   threadIdChan <- liftIO $ newEmptyMVar
   doneChan <- liftIO $ newEmptyMVar
   resultChan <- liftIO $ newEmptyMVar
-  boolChan <- liftIO $ newEmptyMVar
   let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
   let veriOpts = VeriOpts {iterConf = iterConfig, simp = True, rpcInfo = undefined}
   let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = True, debug = True, dumpQueries = False, numCexFuzz = 100 } }
@@ -125,9 +124,8 @@ exploreContract contract tx vm = do
         --liftIO $ mapM_ print $ checkResults results
         let txs = mapMaybe (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results
         --liftIO $ print $ map (runReaderT mempty $ ppTx vm True) txs
-        pure $ (txs, False)--(not $ null (checkResults results))) -- || (not $ null (getPartials fExpr)))
-      liftIO $ putMVar resultChan $ concat $ map fst res
-      liftIO $ putMVar boolChan $ or $ map snd res
+        pure $ txs
+      liftIO $ putMVar resultChan $ concat res
       --liftIO $ print "done"
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId

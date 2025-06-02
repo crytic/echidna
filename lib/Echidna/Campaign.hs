@@ -124,7 +124,7 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
       lift callback
       void $ replayCorpus vm initialCorpus
-      mapM_ (symexecTxs . (\(_, txs) -> txs)) shuffleCorpus
+      mapM_ (symexecTxs . snd) shuffleCorpus
       listenerLoop listenerFunc chan nworkers
       pure SymbolicDone
 
@@ -163,12 +163,12 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     let (itxs, ltx) = (init txs, last txs)
     ivm <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm itxs
     -- Split the sequence randomly and select any next transaction
-    i <- if (length txs == 1) then pure 0 else (rElem $ NEList.fromList [1 .. length txs - 1])
+    i <- if length txs == 1 then pure 0 else rElem $ NEList.fromList [1 .. length txs - 1]
     let rtxs = take i txs
     rvm <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm rtxs
     cfg <- asks (.cfg)
     let targets = cfg.campaignConf.symExecTargets
-    if (isJust targets) then
+    if isJust targets then
       pure [(Nothing, rvm, rtxs)]
     else 
       pure [(Just ltx, ivm, txs), (Nothing, rvm, rtxs)]
