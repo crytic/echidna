@@ -124,7 +124,10 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
       lift callback
       void $ replayCorpus vm initialCorpus
-      mapM_ (symexecTxs . snd) shuffleCorpus
+      if null shuffleCorpus then 
+        symexecTxs []
+      else 
+        mapM_ (symexecTxs . snd) shuffleCorpus
       listenerLoop listenerFunc chan nworkers
       pure SymbolicDone
 
@@ -155,7 +158,7 @@ runSymWorker callback vm dict workerId initialCorpus name = do
 
   -- | Turn a list of transactions into inputs for symexecTx:
   -- (list of txns we're on top of)
-  txsToTxAndVmsSym [] = pure []
+  txsToTxAndVmsSym [] = pure [(Nothing, vm, [])]
   txsToTxAndVmsSym txs = do
     -- Discard the last tx, which should be the one increasing coverage
     let (itxs, ltx) = (init txs, last txs)
