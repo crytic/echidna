@@ -61,11 +61,11 @@ jobs:
 
       - name: Build dynamic echidna
         run: |
-          nix build .#echidna
+          nix build --impure .#echidna
 
       - name: Build redistributable echidna
         run: |
-          nix build .#echidna-redistributable --out-link redistributable
+          nix build --impure .#echidna-redistributable --out-link redistributable
           tar -czf "echidna-${{ steps.version.outputs.version }}-${{ matrix.tuple }}.tar.gz" -C ./redistributable/bin/ echidna
 
       - name: Upload artifact
