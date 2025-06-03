@@ -26,8 +26,8 @@ import System.Process qualified as P
 import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, vmOpIx, clearTStorages)
 import EVM.ABI
 import EVM.Dapp (DappInfo)
-import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Effects (defaultConfig)
+import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Fetch qualified
 import EVM.Format (hexText, showTraceTree)
 import EVM.Types hiding (Env, Gas)

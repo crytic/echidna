@@ -344,7 +344,7 @@ mutateAbiValue = \case
   AbiFunction v -> pure $ AbiFunction v
 
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
--- Note that this funcion will mutate a *single* argument (if any)
+-- Note that this function will mutate a *single* argument (if any)
 mutateAbiCall :: MonadRandom m => SolCall -> m SolCall
 mutateAbiCall = traverse f
   where f [] = pure []

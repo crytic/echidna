@@ -27,7 +27,7 @@ response if you ask in our [chat room](https://slack.empirehacking.nyc/)
 
 Echidna uses the pull request contribution model. Please make an account on
 Github, fork this repo, and submit code contributions via pull request. For
-more documentation, look [here](https://guides.github.com/activities/forking/).
+more documentation, look [here](https://docs.github.com/en/get-started/exploring-projects-on-github/contributing-to-a-project).
 
 Some pull request guidelines:
 
@@ -42,5 +42,3 @@ Some pull request guidelines:
 - Title your pull request with a brief description of what it's changing.
   "Fixes #123" is a good comment to add to the description, but makes for an
   unclear title on its own.
-- We use a "CodeClimate" verification check in every PR to make sure the code merged 
-  is tidy and easy to understand.
