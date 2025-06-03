@@ -52,8 +52,8 @@
         hevm = pkgs: pkgs.lib.pipe ((hsPkgs pkgs).callCabal2nix "hevm" (pkgs.fetchFromGitHub {
           owner = "ethereum";
           repo = "hevm";
-          rev = "9924e80dd0226c1f3e1eda651bbeb3558f419843";
-          sha256 = "sha256-HGvWD7AjqKinE/oYu9L4b2HetcKrO3B+hNCzJ761XAk=";
+          rev = "74c9f369d7408510ddd20b6ce20b97266a4f26a9";
+          sha256 = "sha256-lgHArI6x+owacyTCk3vCDx7qGV7G36A2QJb2dSbRCBk=";
         }) { secp256k1 = pkgs.secp256k1; })
         ([
           pkgs.haskell.lib.compose.dontCheck
@@ -154,11 +154,14 @@
               hpack
             '';
             buildInputs = [
+              libff
+              secp256k1
               solc
               slither-analyzer
               haskellPackages.hlint
               haskellPackages.cabal-install
               haskellPackages.haskell-language-server
+              haskellPackages.ghcprofview
             ];
             withHoogle = true;
           };
