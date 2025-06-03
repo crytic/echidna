@@ -9,6 +9,9 @@ on:
     branches:
       - master
 
+env:
+  NIXPKGS_ALLOW_BROKEN: 1
+
 jobs:
   nixBuild:
     name: Build ${{ matrix.name }} binary
