@@ -5,7 +5,7 @@ module Echidna.Campaign where
 
 import Control.Concurrent
 import Control.DeepSeq (force)
-import Control.Monad (replicateM, when, unless, void, forM_)
+import Control.Monad (replicateM, replicateM_, when, unless, void, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
@@ -123,12 +123,12 @@ runSymWorker callback vm dict workerId initialCorpus name = do
   flip runStateT initialState $
     flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
       lift callback
+      listenerLoop listenerFunc chan nworkers
       void $ replayCorpus vm initialCorpus
       if null shuffleCorpus then 
-        symexecTxs []
+        replicateM_ 10 $ symexecTxs [] -- TODO: determine how many times to symexec here
       else 
         mapM_ (symexecTxs . snd) shuffleCorpus
-      listenerLoop listenerFunc chan nworkers
       pure SymbolicDone
 
   where
