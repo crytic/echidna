@@ -90,7 +90,7 @@ exploreContract contract tx vm = do
   doneChan <- liftIO newEmptyMVar
   resultChan <- liftIO newEmptyMVar
   let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
-  let veriOpts = VeriOpts {iterConf = iterConfig, simp = True, rpcInfo = undefined}
+  let veriOpts = VeriOpts {iterConf = iterConfig, simp = True, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = True, debug = True, dumpQueries = False, numCexFuzz = 100 } }
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers Bitwuzla (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
