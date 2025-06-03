@@ -107,7 +107,7 @@ exploreContract contract tx vm = do
         vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
         let vm' = vmReset & execState (loadContract (LitAddr dst))
                           & vmMakeSymbolic conf.txConf.maxTimeDelay conf.txConf.maxBlockDelay
-                          & #constraints %~ (++ constraints ++ (senderContraints conf.solConf.sender))
+                          & #constraints %~ (++ constraints ++ (senderConstraints conf.solConf.sender))
                           & #state % #callvalue .~ TxValue
                           & #state % #caller .~ SymAddr "caller"
                           & #state % #calldata .~ cd
@@ -145,7 +145,7 @@ vmMakeSymbolic maxTimestampDiff maxNumberDiff vm
   , cache          = vm.cache
   , burned         = ()
   , iterations     = vm.iterations
-  , constraints    = addBlockConstrains maxTimestampDiff maxNumberDiff vm.block vm.constraints
+  , constraints    = addBlockConstraints maxTimestampDiff maxNumberDiff vm.block vm.constraints
   , config         = vm.config
   , forks          = vm.forks
   , currentFork    = vm.currentFork
@@ -162,15 +162,15 @@ blockMakeSymbolic b
     , number = Var "symbolic_block_number"
   }
 
-addBlockConstrains :: W256 -> W256 -> Block -> [Prop] -> [Prop]
-addBlockConstrains maxTimestampDiff maxNumberDiff block cs =
+addBlockConstraints :: W256 -> W256 -> Block -> [Prop] -> [Prop]
+addBlockConstraints maxTimestampDiff maxNumberDiff block cs =
   cs ++ [
     PGT (Var "symbolic_block_timestamp") (block.timestamp), PLT (Sub (Var "symbolic_block_timestamp") (block.timestamp)) $ Lit maxTimestampDiff,
     PGT (Var "symbolic_block_number") (block.number), PLT (Sub (Var "symbolic_block_number") (block.number)) $ Lit maxNumberDiff
   ]
 
-senderContraints :: Set Addr -> [Prop]
-senderContraints as = [foldr (\a b -> POr b (PEq (SymAddr "caller") (LitAddr a))) (PBool False) $ Set.toList as]
+senderConstraints :: Set Addr -> [Prop]
+senderConstraints as = [foldr (\a b -> POr b (PEq (SymAddr "caller") (LitAddr a))) (PBool False) $ Set.toList as]
 
 frameStateMakeSymbolic :: FrameState Concrete s -> FrameState Symbolic s
 frameStateMakeSymbolic fs
