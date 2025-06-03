@@ -96,6 +96,9 @@ exploreContract contract tx vm = do
   liftIO $ flip runReaderT runtimeEnv $ withSolvers Bitwuzla (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
       shuffleMethods <- shuffleIO methods
+      -- For now, we will be exploring a single method at a time.
+      -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.
+      -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
       res <- forM (take 1 shuffleMethods) $ \method -> do
         liftIO $ putStrLn ("Exploring: " ++ T.unpack method.name)
         calldataSym@(cd, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
