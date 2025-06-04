@@ -8,6 +8,8 @@ import Data.Text qualified as T
 import Data.Word (Word8, Word16)
 import GHC.Conc (numCapabilities)
 
+import EVM.Solvers (Solver(..))
+
 import Echidna.ABI (GenDict, emptyDict, encodeSig)
 import Echidna.Types
 import Echidna.Types.Coverage (CoverageFileType, CoverageMap)
@@ -46,6 +48,9 @@ data CampaignConf = CampaignConf
     -- ^ Server-Sent Events HTTP port number, if missing server is not ran
   , symExec            :: Bool
     -- ^ Whether to add an additional symbolic execution worker
+  , symExecSMTSolver   :: Solver
+    -- ^ SMT solver to use for symbolic execution.
+    -- Supported solvers: "cvc5", "z3", "yices", "boolector"
   , symExecTargets     :: Maybe [Text]
     -- ^ List of target functions for symbolic execution.
     -- If this is 'Nothing', all functions are considered targets.

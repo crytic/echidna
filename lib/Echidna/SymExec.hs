@@ -26,7 +26,7 @@ import EVM.Fetch qualified as Fetch
 import EVM (loadContract, resetState, forceLit)
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), config)
 import EVM.Solidity (SolcContract(..), Method(..))
-import EVM.Solvers (withSolvers, Solver(..), SolverGroup)
+import EVM.Solvers (withSolvers, SolverGroup)
 import EVM.SymExec (IterConfig(..), abstractVM, mkCalldata, LoopHeuristic (..), verifyInputs, VeriOpts(..), checkAssertions)
 import EVM.Types (abiKeccak, FunctionSelector, Addr, Frame(..), FrameState(..), VMType(..), EType(..), Expr(..), word256Bytes, Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query(..))
 import qualified EVM.Types (VM(..), Env(..))
@@ -93,7 +93,7 @@ exploreContract contract tx vm = do
   let veriOpts = VeriOpts {iterConf = iterConfig, simp = True, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = True, debug = True, dumpQueries = False, numCexFuzz = 100 } }
 
-  liftIO $ flip runReaderT runtimeEnv $ withSolvers Bitwuzla (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
+  liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
       shuffleMethods <- shuffleIO methods
       -- For now, we will be exploring a single method at a time.
