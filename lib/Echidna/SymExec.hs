@@ -61,12 +61,16 @@ suitableForSymExec m = not $ null m.inputs
   && null (filter (\(_, t) -> abiKind t == Dynamic) m.inputs) 
   && not (T.isInfixOf "_no_symexec" m.name)
 
+-- | Filters methods based on the campaign configuration.
+-- If symExecTargets is Just, it filters methods by their name.
+-- If symExecTargets is Nothing, it filters methods by their signature and checks if they are suitable for symbolic execution.
+-- If the list of assertSigs is empty, it does not filter by signature (to workaround a potential bug in Slither).
 filterTarget :: Maybe [Text] -> [FunctionSelector] -> Maybe Tx -> Method -> Bool
 filterTarget symExecTargets assertSigs tx method =
   case (symExecTargets, tx) of
     (Just ms, _)                                       -> method.name `elem` ms
-    (_,  Just (Tx { call = SolCall (methodName, _) })) -> methodSig `elem` assertSigs && method.name == methodName && suitableForSymExec method
-    _                                                  -> {- methodSig `elem` assertSigs &&-} suitableForSymExec method
+    (_,  Just (Tx { call = SolCall (methodName, _) })) -> (assertSigs == [] || methodSig `elem` assertSigs) && method.name == methodName && suitableForSymExec method
+    _                                                  -> (assertSigs == [] || methodSig `elem` assertSigs) && suitableForSymExec method
  where methodSig = abiKeccak $ encodeUtf8 method.methodSignature
 
 exploreContract :: (MonadIO m, MonadThrow m, MonadReader Env m) => SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar[Tx])
