@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-gadt-mono-local-binds #-}
 
-module Echidna.SymExec (createSymTx) where
+module Echidna.SymExec where
 
 import Control.Applicative ((<|>))
 import Control.Concurrent (ThreadId, forkIO)
@@ -24,12 +24,13 @@ import Optics.Core ((.~), (%), (%~))
 import EVM.ABI (abiKind, AbiKind(Dynamic), AbiValue(..), AbiType(..), Sig(..), decodeAbiValue)
 import EVM.Fetch qualified as Fetch
 import EVM (loadContract, resetState, forceLit)
-import EVM.Effects (defaultEnv, defaultConfig, Config(..), config)
+import EVM.Effects (defaultEnv, defaultConfig, Config(..), config, TTY)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers, SolverGroup)
 import EVM.SymExec (IterConfig(..), abstractVM, mkCalldata, LoopHeuristic (..), verifyInputs, VeriOpts(..), checkAssertions)
 import EVM.Types (abiKeccak, FunctionSelector, Addr, Frame(..), FrameState(..), VMType(..), EType(..), Expr(..), word256Bytes, Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query(..))
 import qualified EVM.Types (VM(..), Env(..))
+import qualified EVM.Effects (Env(..))
 import Control.Monad.ST (stToIO, RealWorld)
 import Control.Monad.State.Strict (execState, runStateT)
 import List.Shuffle (shuffleIO)
@@ -55,6 +56,48 @@ createSymTx :: (MonadIO m, MonadThrow m, MonadReader Env m) => Maybe Text -> [So
 createSymTx name cs tx vm = do
   mainContract <- chooseContract cs name
   exploreContract mainContract tx vm
+
+verifyContract :: (MonadIO m, MonadThrow m, MonadReader Env m) => Maybe Text -> [SolcContract] -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar [Tx])
+verifyContract name cs vm = do
+  mainContract <- chooseContract cs name
+  exploreAllMethods mainContract vm
+
+exploreAllMethods :: (MonadIO m, MonadThrow m, MonadReader Env m) => SolcContract -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar [Tx])
+exploreAllMethods contract vm = do
+  conf <- asks (.cfg)
+  env <- ask
+  contractCacheRef <- asks (.fetchContractCache)
+  slotCacheRef <- asks (.fetchSlotCache)  
+  let
+    allMethods = Map.elems contract.abiMap
+    filteredMethods = filter (filterTarget conf.campaignConf.symExecTargets env.world.assertSigs Nothing) allMethods
+    methods = filteredMethods
+    timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
+    maxIters = Just conf.campaignConf.symExecMaxIters
+    maxExplore = Just (fromIntegral conf.campaignConf.symExecMaxExplore)
+    askSmtIters = conf.campaignConf.symExecAskSMTIters
+    rpcInfo = rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock)
+    defaultSender = fromJust $ Set.lookupMin conf.solConf.sender <|> Just 0
+
+  threadIdChan <- liftIO newEmptyMVar
+  doneChan <- liftIO newEmptyMVar
+  resultChan <- liftIO newEmptyMVar
+  let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
+  let veriOpts = VeriOpts {iterConf = iterConfig, simp = True, rpcInfo = rpcInfo}
+  let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = True, debug = True, dumpQueries = False, numCexFuzz = 100 } }
+
+  liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
+    threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
+      shuffleMethods <- shuffleIO methods
+      res <- forM shuffleMethods $ \method -> exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
+      liftIO $ putMVar resultChan $ concat res
+      liftIO $ putMVar doneChan ()
+    liftIO $ putMVar threadIdChan threadId
+    liftIO $ takeMVar doneChan
+
+  threadId <- liftIO $ takeMVar threadIdChan
+  pure (threadId, resultChan)
+
 
 suitableForSymExec :: Method -> Bool
 suitableForSymExec m = not $ null m.inputs 
@@ -103,31 +146,7 @@ exploreContract contract tx vm = do
       -- For now, we will be exploring a single method at a time.
       -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.
       -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
-      res <- forM (take 1 shuffleMethods) $ \method -> do
-        liftIO $ putStrLn ("Exploring: " ++ T.unpack method.name)
-        calldataSym@(cd, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
-        let
-          fetcher = cachedOracle contractCacheRef slotCacheRef solvers rpcInfo
-          dst = conf.solConf.contractAddr
-          vmSym = abstractVM calldataSym contract.runtimeCode Nothing False
-        vmSym' <- liftIO $ stToIO vmSym
-        vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
-        let vm' = vmReset & execState (loadContract (LitAddr dst))
-                          & vmMakeSymbolic conf.txConf.maxTimeDelay conf.txConf.maxBlockDelay
-                          & #constraints %~ (++ constraints ++ (senderConstraints conf.solConf.sender))
-                          & #state % #callvalue .~ TxValue
-                          & #state % #caller .~ SymAddr "caller"
-                          & #state % #calldata .~ cd
-                          & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
-        -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
-        -- Doing so might mess up concolic execution.
-        (_, models) <- verifyInputs solvers veriOpts fetcher vm' (Just $ checkAssertions [0x1])
-        let results = map fst models
-        liftIO $ mapM_ print results
-        --liftIO $ mapM_ print $ checkResults results
-        let txs = mapMaybe (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results
-        --liftIO $ print $ map (runReaderT mempty $ ppTx vm True) txs
-        pure txs
+      res <- forM (take 1 shuffleMethods) $ \method -> exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
       liftIO $ putMVar resultChan $ concat res
       --liftIO $ print "done"
       liftIO $ putMVar doneChan ()
@@ -136,6 +155,33 @@ exploreContract contract tx vm = do
 
   threadId <- liftIO $ takeMVar threadIdChan
   pure (threadId, resultChan)
+
+--exploreMethod :: (MonadIO m, ReadConfig m, TTY m) =>
+--  Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m [Tx]
+
+exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef = do
+  liftIO $ putStrLn ("Exploring: " ++ T.unpack method.name)
+  calldataSym@(cd, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
+  let
+    fetcher = cachedOracle contractCacheRef slotCacheRef solvers rpcInfo
+    dst = conf.solConf.contractAddr
+    vmSym = abstractVM calldataSym contract.runtimeCode Nothing False
+  vmSym' <- liftIO $ stToIO vmSym
+  vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
+  let vm' = vmReset & execState (loadContract (LitAddr dst))
+                    & vmMakeSymbolic conf.txConf.maxTimeDelay conf.txConf.maxBlockDelay
+                    & #constraints %~ (++ constraints ++ (senderConstraints conf.solConf.sender))
+                    & #state % #callvalue .~ TxValue
+                    & #state % #caller .~ SymAddr "caller"
+                    & #state % #calldata .~ cd
+                    & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
+  -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
+  -- Doing so might mess up concolic execution.
+  (_, models) <- verifyInputs solvers veriOpts fetcher vm' (Just $ checkAssertions [0x1])
+  let results = map fst models
+  liftIO $ mapM_ print results
+  let txs = mapMaybe (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results
+  return txs
 
 -- | Sets result to Nothing, and sets gas to ()
 vmMakeSymbolic :: W256 -> W256 -> EVM.Types.VM Concrete s -> EVM.Types.VM Symbolic s

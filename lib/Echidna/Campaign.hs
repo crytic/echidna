@@ -40,7 +40,7 @@ import Echidna.Exec
 import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
 import Echidna.Symbolic (forceAddr)
-import Echidna.SymExec (createSymTx)
+import Echidna.SymExec (createSymTx, verifyContract)
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types (Gas)
@@ -119,17 +119,24 @@ runSymWorker callback vm dict workerId initialCorpus name = do
   let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
   eventQueue <- asks (.eventQueue)
   chan <- liftIO $ dupChan eventQueue
+  dapp <- asks (.dapp)
 
-  flip runStateT initialState $
-    flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
-      lift callback
-      listenerLoop listenerFunc chan nworkers
-      void $ replayCorpus vm initialCorpus
-      if null shuffleCorpus then 
-        replicateM_ 10 $ symexecTxs [] -- TODO: determine how many times to symexec here
-      else 
-        mapM_ (symexecTxs . snd) shuffleCorpus
-      pure SymbolicDone
+  if (cfg.campaignConf.workers == Just 0) && (cfg.campaignConf.seqLen == 1) then do 
+    flip runStateT initialState $
+      flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
+        verifyContract name (Map.elems dapp.solcByName) vm
+        pure SymbolicDone
+  else
+    flip runStateT initialState $
+      flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
+        lift callback
+        listenerLoop listenerFunc chan nworkers
+        void $ replayCorpus vm initialCorpus
+        if null shuffleCorpus then 
+          replicateM_ 10 $ symexecTxs [] -- TODO: determine how many times to symexec here
+        else 
+          mapM_ (symexecTxs . snd) shuffleCorpus
+        pure SymbolicDone
 
   where
 
