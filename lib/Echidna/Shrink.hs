@@ -72,6 +72,7 @@ removeUselessNoCalls = mapMaybe f
 -- If a transaction reverts, replace it by a "NoCall" with the same parameters as the original call
 -- (e.g. same block increment timestamp and number)
 removeReverts :: (MonadIO m, MonadReader Env m, MonadThrow m) => VM Concrete RealWorld -> [Tx] -> m [Tx]
+removeReverts _ [] = return []
 removeReverts vm txs = do
   let (itxs, le) = (init txs, last txs)
   ftxs <- removeReverts' vm itxs []
