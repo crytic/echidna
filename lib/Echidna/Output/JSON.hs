@@ -71,10 +71,11 @@ instance ToJSON TestType where
   toJSON Property = "property"
   toJSON Assertion = "assertion"
 
-data TestStatus = Fuzzing | Shrinking | Solved | Passed | Error
+data TestStatus = Fuzzing | Shrinking | Solved | Verified | Passed | Error
 
 instance ToJSON TestStatus where
   toJSON Fuzzing = "fuzzing"
+  toJSON Verified = "verified"
   toJSON Shrinking = "shrinking"
   toJSON Solved = "solved"
   toJSON Passed = "passed"
@@ -129,6 +130,7 @@ mapTest dappInfo test =
   mapTestState T.Open _ = (Fuzzing, Nothing, Nothing)
   mapTestState T.Passed _ = (Passed, Nothing, Nothing)
   mapTestState T.Solved txs = (Solved, Just $ mapTx <$> txs, Nothing)
+  mapTestState T.Unsolvable _ = (Verified, Nothing, Nothing)
   mapTestState (T.Large _) txs = (Shrinking, Just $ mapTx <$> txs, Nothing)
   mapTestState (T.Failed e) _ = (Error, Nothing, Just $ show e) -- TODO add (show e)
 

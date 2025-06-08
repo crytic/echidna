@@ -101,6 +101,7 @@ instance ToJSON WorkerEvent where
     NewCoverage { points, numCodehashes, corpusSize } ->
       object [ "coverage" .= points, "contracts" .= numCodehashes, "corpus_size" .= corpusSize]
     SymNoNewCoverage -> object []
+    SymVerified name -> object [ "name" .= name ]
     TxSequenceReplayed file current total ->
       object [ "file" .= file, "current" .= current, "total" .= total ]
     TxSequenceReplayFailed file tx ->
