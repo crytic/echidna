@@ -161,7 +161,7 @@ runSlither fp solConf = if solConf.disableSlither
     Just path -> do
       let args = ["--ignore-compile", "--print", "echidna", "--json", "-"]
                  ++ solConf.cryticArgs ++ [fp]
-      (exitCode, out, err) <- measureIO solConf.quiet ("Running slither on " <> fp) $
+      (exitCode, out, err) <- measureIO solConf.quiet ("Running slither on `" <> fp <> "`") $
         readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
       case exitCode of
         ExitSuccess ->
