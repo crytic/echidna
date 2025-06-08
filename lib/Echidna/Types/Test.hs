@@ -122,7 +122,7 @@ isOptimizationTest EchidnaTest{testType = OptimizationTest _ _} = True
 isOptimizationTest _ = False
 
 isAssertionTest :: EchidnaTest -> Bool
-isAssertionTest EchidnaTest{testType = AssertionTest _ _ _} = True
+isAssertionTest EchidnaTest{testType = AssertionTest {}} = True
 isAssertionTest _ = False
 
 isOpen :: EchidnaTest -> Bool

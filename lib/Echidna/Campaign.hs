@@ -41,8 +41,9 @@ import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
 import Echidna.Solidity (chooseContract)
 import EVM.Solidity (SolcContract(..))
-import Echidna.Symbolic (forceAddr)
-import Echidna.SymExec (createSymTx, verifyMethod)
+import Echidna.SymExec.Symbolic (forceAddr)
+import Echidna.SymExec.Exploration (exploreContract)
+import Echidna.SymExec.Verification (verifyMethod)
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types (Gas)
@@ -125,10 +126,8 @@ runSymWorker callback vm dict workerId initialCorpus name = do
   if (cfg.campaignConf.workers == Just 0) && (cfg.campaignConf.seqLen == 1) then do 
     liftIO $ putStrLn "Single-transaction symbolic verification mode started:"
     flip runStateT initialState $
-      flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
-        
-        
-        verifyMethods name vm
+      flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq     
+        verifyMethods -- No arguments, everything is in this environment
         pure SymbolicVerificationDone
   else
     flip runStateT initialState $
@@ -187,8 +186,9 @@ runSymWorker callback vm dict workerId initialCorpus name = do
 
   symexecTx (tx, vm', txsBase) = do
     dapp <- asks (.dapp)
-    let compiledContracts = Map.elems dapp.solcByName
-    (threadId, symTxsChan) <- createSymTx name compiledContracts tx vm'
+    let cs = Map.elems dapp.solcByName
+    contract <- chooseContract cs name
+    (threadId, symTxsChan) <- exploreContract contract tx vm'
 
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
@@ -203,16 +203,15 @@ runSymWorker callback vm dict workerId initialCorpus name = do
 
     unless (newCoverage || null symTxs) (pushWorkerEvent SymNoNewCoverage)
 
-
-  verifyMethods name vm' = do
+  verifyMethods = do
     dapp <- asks (.dapp)
     let cs = Map.elems dapp.solcByName
     contract <- chooseContract cs name
     let allMethods = contract.abiMap
-    mapM_ (symExecMethod vm' contract) allMethods
+    mapM_ (symExecMethod contract) allMethods
 
-  symExecMethod vm' contract method = do
-    (threadId, symTxsChan) <- verifyMethod method contract vm'
+  symExecMethod contract method = do
+    (threadId, symTxsChan) <- verifyMethod method contract vm
 
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
@@ -223,7 +222,7 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     lift callback
 
     -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
-    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm' [symTx]) symTxs
+    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm [symTx]) symTxs
 
     unless newCoverage ( do
       updateTests $ \test -> do

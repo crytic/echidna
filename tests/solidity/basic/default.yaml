@@ -115,3 +115,4 @@ symExecTargets: null
 # List the max number of states to explore when using symbolc execution
 # only relevant if symExec is true
 symExecMaxExplore: 10
+symExecSMTSolver: bitwuzla
