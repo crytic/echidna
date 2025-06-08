@@ -86,6 +86,7 @@ data WorkerEvent
   | TestOptimized !EchidnaTest
   | NewCoverage { points :: !Int, numCodehashes :: !Int, corpusSize :: !Int, transactions :: [Tx] }
   | SymNoNewCoverage
+  | SymVerified !String
   | TxSequenceReplayed FilePath !Int !Int
   | TxSequenceReplayFailed FilePath Tx
   | WorkerStopped WorkerStopReason
@@ -108,7 +109,8 @@ instance ToJSON WorkerEvent where
 
 data WorkerStopReason
   = TestLimitReached
-  | SymbolicDone
+  | SymbolicExplorationDone
+  | SymbolicVerificationDone
   | TimeLimitReached
   | FastFailed
   | Killed !String
@@ -134,6 +136,8 @@ ppWorkerEvent = \case
       <> show corpusSize <> " seqs in corpus"
   SymNoNewCoverage ->
     "Symbolic execution finished with no new coverage."
+  SymVerified name ->
+    "Symbolic execution finished verifying contract " <> name <> " using a single symbolic transaction."
   TxSequenceReplayed file current total ->
     "Sequence replayed from corpus file " <> file <> " (" <> show current <> "/" <> show total <> ")"
   TxSequenceReplayFailed file tx ->
@@ -142,8 +146,10 @@ ppWorkerEvent = \case
     "Remove the file or the transaction to fix the issue."
   WorkerStopped TestLimitReached ->
     "Test limit reached. Stopping."
-  WorkerStopped SymbolicDone ->
-    "Symbolic worker ran out of transactions to work on. Stopping."
+  WorkerStopped SymbolicExplorationDone ->
+    "Symbolic worker ran out of transactions to explore. Stopping."
+  WorkerStopped SymbolicVerificationDone ->
+    "Symbolic worker finished with the list of methods to verify. Stopping."
   WorkerStopped TimeLimitReached ->
     "Time limit reached. Stopping."
   WorkerStopped FastFailed ->

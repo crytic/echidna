@@ -36,6 +36,7 @@ data TestState
   = Open
   | Large !Int -- ^ Solved, maybe shrinkable, tracking shrinks tried
   | Passed     -- ^ Presumed unsolvable
+  | Unsolvable -- ^ Formally verified as unsolvable
   | Solved     -- ^ Solved with no need for shrinking
   | Failed ExecException -- ^ Broke the execution environment
   deriving Show
@@ -88,11 +89,12 @@ instance ToJSON TestType where
       object [ "type" .= ("exploration_test" :: String) ]
 
 instance Eq TestState where
-  Open    == Open    = True
-  Large i == Large j = i == j
-  Passed  == Passed  = True
-  Solved  == Solved  = True
-  _       == _       = False
+  Open       == Open       = True
+  Large i    == Large j    = i == j
+  Passed     == Passed     = True
+  Solved     == Solved     = True
+  Unsolvable == Unsolvable = True
+  _          == _          = False
 
 -- | An Echidna test is represented with the following data record
 data EchidnaTest = EchidnaTest
@@ -119,6 +121,10 @@ isOptimizationTest :: EchidnaTest -> Bool
 isOptimizationTest EchidnaTest{testType = OptimizationTest _ _} = True
 isOptimizationTest _ = False
 
+isAssertionTest :: EchidnaTest -> Bool
+isAssertionTest EchidnaTest{testType = AssertionTest _ _ _} = True
+isAssertionTest _ = False
+
 isOpen :: EchidnaTest -> Bool
 isOpen t = case t.state of
   Open -> True
@@ -142,6 +148,7 @@ instance ToJSON TestState where
     (passed, desc) = case s of
       Open     -> (True, Nothing)
       Passed   -> (True, Nothing)
+      Unsolvable -> (True, Nothing)
       Large _  -> (False, Nothing)
       Solved   -> (False, Nothing)
       Failed e -> (False, Just ("exception", toJSON $ show e))

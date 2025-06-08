@@ -8,6 +8,7 @@ import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (forM)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
 import Data.ByteString.Lazy qualified as BS
 import Data.Function ((&))
@@ -24,7 +25,7 @@ import Optics.Core ((.~), (%), (%~))
 import EVM.ABI (abiKind, AbiKind(Dynamic), AbiValue(..), AbiType(..), Sig(..), decodeAbiValue)
 import EVM.Fetch qualified as Fetch
 import EVM (loadContract, resetState, forceLit)
-import EVM.Effects (defaultEnv, defaultConfig, Config(..), config, TTY)
+import EVM.Effects (defaultEnv, defaultConfig, Config(..), config, TTY, ReadConfig)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers, SolverGroup)
 import EVM.SymExec (IterConfig(..), abstractVM, mkCalldata, LoopHeuristic (..), verifyInputs, VeriOpts(..), checkAssertions)
@@ -57,21 +58,12 @@ createSymTx name cs tx vm = do
   mainContract <- chooseContract cs name
   exploreContract mainContract tx vm
 
-verifyContract :: (MonadIO m, MonadThrow m, MonadReader Env m) => Maybe Text -> [SolcContract] -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar [Tx])
-verifyContract name cs vm = do
-  mainContract <- chooseContract cs name
-  exploreAllMethods mainContract vm
-
-exploreAllMethods :: (MonadIO m, MonadThrow m, MonadReader Env m) => SolcContract -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar [Tx])
-exploreAllMethods contract vm = do
+verifyMethod :: (MonadIO m, MonadThrow m, MonadReader Env m) => Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar [Tx])
+verifyMethod method contract vm = do
   conf <- asks (.cfg)
-  env <- ask
   contractCacheRef <- asks (.fetchContractCache)
   slotCacheRef <- asks (.fetchSlotCache)  
   let
-    allMethods = Map.elems contract.abiMap
-    filteredMethods = filter (filterTarget conf.campaignConf.symExecTargets env.world.assertSigs Nothing) allMethods
-    methods = filteredMethods
     timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
     maxIters = Just conf.campaignConf.symExecMaxIters
     maxExplore = Just (fromIntegral conf.campaignConf.symExecMaxExplore)
@@ -84,13 +76,12 @@ exploreAllMethods contract vm = do
   resultChan <- liftIO newEmptyMVar
   let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
   let veriOpts = VeriOpts {iterConf = iterConfig, simp = True, rpcInfo = rpcInfo}
-  let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = True, debug = True, dumpQueries = False, numCexFuzz = 100 } }
+  let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = False, debug = False, dumpQueries = False, numCexFuzz = 100 } }
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      shuffleMethods <- shuffleIO methods
-      res <- forM shuffleMethods $ \method -> exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
-      liftIO $ putMVar resultChan $ concat res
+      res <- exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
+      liftIO $ putMVar resultChan $ res
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
     liftIO $ takeMVar doneChan
@@ -156,8 +147,8 @@ exploreContract contract tx vm = do
   threadId <- liftIO $ takeMVar threadIdChan
   pure (threadId, resultChan)
 
---exploreMethod :: (MonadIO m, ReadConfig m, TTY m) =>
---  Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m [Tx]
+exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
+  Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m [Tx]
 
 exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef = do
   liftIO $ putStrLn ("Exploring: " ++ T.unpack method.name)
@@ -179,7 +170,7 @@ exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo con
   -- Doing so might mess up concolic execution.
   (_, models) <- verifyInputs solvers veriOpts fetcher vm' (Just $ checkAssertions [0x1])
   let results = map fst models
-  liftIO $ mapM_ print results
+  --liftIO $ mapM_ print results
   let txs = mapMaybe (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results
   return txs
 

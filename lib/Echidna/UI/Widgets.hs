@@ -320,6 +320,7 @@ tsWidget (Failed e) _    = pure (str "could not evaluate", str $ show e)
 tsWidget Solved     test = failWidget Nothing test
 tsWidget Passed     _    = pure (success $ str "PASSED!", emptyWidget)
 tsWidget Open       _    = pure (success $ str "passing", emptyWidget)
+tsWidget Unsolvable _    = pure (success $ str "VERIFIED!", emptyWidget)
 tsWidget (Large n)  test = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
   failWidget (if n < m then Just (n,m) else Nothing) test
@@ -363,6 +364,7 @@ optWidget
   -> m (Widget Name, Widget Name)
 optWidget (Failed e) _ = pure (str "could not evaluate", str $ show e)
 optWidget Solved     _ = error "optimization tests cannot be solved"
+optWidget Unsolvable _ = error "optimization tests cannot be unsolvable"
 optWidget Passed     t = pure (str $ "max value found: " ++ show t.value, emptyWidget)
 optWidget Open       t =
   pure (withAttr (attrName "working") $ str $

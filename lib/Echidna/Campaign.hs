@@ -20,10 +20,10 @@ import Data.Foldable (foldlM)
 import Data.List qualified as List
 import Data.Map qualified as Map
 import Data.Map (Map, (\\))
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (isJust, mapMaybe, fromJust)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text (Text)
+import Data.Text (Text, unpack)
 import Data.Time (LocalTime)
 import System.Random (mkStdGen)
 import List.Shuffle (shuffleIO)
@@ -39,8 +39,10 @@ import Echidna.ABI
 import Echidna.Exec
 import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
+import Echidna.Solidity (chooseContract)
+import EVM.Solidity (SolcContract(..))
 import Echidna.Symbolic (forceAddr)
-import Echidna.SymExec (createSymTx, verifyContract)
+import Echidna.SymExec (createSymTx, verifyMethod)
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types (Gas)
@@ -119,13 +121,15 @@ runSymWorker callback vm dict workerId initialCorpus name = do
   let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
   eventQueue <- asks (.eventQueue)
   chan <- liftIO $ dupChan eventQueue
-  dapp <- asks (.dapp)
 
   if (cfg.campaignConf.workers == Just 0) && (cfg.campaignConf.seqLen == 1) then do 
+    liftIO $ putStrLn "Single-transaction symbolic verification mode started:"
     flip runStateT initialState $
       flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
-        verifyContract name (Map.elems dapp.solcByName) vm
-        pure SymbolicDone
+        
+        
+        verifyMethods name vm
+        pure SymbolicVerificationDone
   else
     flip runStateT initialState $
       flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
@@ -136,7 +140,7 @@ runSymWorker callback vm dict workerId initialCorpus name = do
           replicateM_ 10 $ symexecTxs [] -- TODO: determine how many times to symexec here
         else 
           mapM_ (symexecTxs . snd) shuffleCorpus
-        pure SymbolicDone
+        pure SymbolicExplorationDone
 
   where
 
@@ -199,6 +203,36 @@ runSymWorker callback vm dict workerId initialCorpus name = do
 
     unless (newCoverage || null symTxs) (pushWorkerEvent SymNoNewCoverage)
 
+
+  verifyMethods name vm' = do
+    dapp <- asks (.dapp)
+    let cs = Map.elems dapp.solcByName
+    contract <- chooseContract cs name
+    let allMethods = contract.abiMap
+    mapM_ (symExecMethod vm' contract) allMethods
+
+  symExecMethod vm' contract method = do
+    (threadId, symTxsChan) <- verifyMethod method contract vm'
+
+    modify' (\ws -> ws { runningThreads = [threadId] })
+    lift callback
+
+    symTxs <- liftIO $ takeMVar symTxsChan
+
+    modify' (\ws -> ws { runningThreads = [] })
+    lift callback
+
+    -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
+    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm' [symTx]) symTxs
+
+    unless newCoverage ( do
+      updateTests $ \test -> do
+        if isOpen test && isAssertionTest test then
+            pure $ Just $ test { Test.state = Unsolvable }
+        else
+          pure Nothing
+      pushWorkerEvent $ SymVerified $ unpack $ fromJust name)
+    
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
 -- we can't solve or shrink anything.
