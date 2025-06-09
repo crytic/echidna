@@ -46,6 +46,7 @@ data EConfig = EConfig
   , rpcUrl :: Maybe Text
   , rpcBlock :: Maybe Word64
   , etherscanApiKey :: Maybe Text
+  , projectName :: Maybe Text
   }
 
 instance Read OutputFormat where

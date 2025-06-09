@@ -113,7 +113,7 @@ campaignStatus uiState = do
   mainbox inner underneath = do
     env <- ask
     pure $ hCenter . hLimit 160 $
-      joinBorders $ borderWithLabel echidnaTitle $
+      joinBorders $ borderWithLabel (echidnaTitle env.cfg.projectName) $
       summaryWidget env uiState
       <=>
       (if uiState.displayTestsPane then
@@ -131,11 +131,14 @@ campaignStatus uiState = do
       else emptyWidget)
       <=>
       underneath
-  echidnaTitle =
-    str "[ " <+>
-    withAttr (attrName "title")
-      (str $ "Echidna " <> showVersion Paths_echidna.version) <+>
-    str " ]"
+  echidnaTitle projectName =
+    let projectTitle = case projectName of
+          Just name -> " (" <> T.unpack name <> ")"
+          Nothing -> ""
+    in str "[ " <+>
+       withAttr (attrName "title")
+         (str $ "Echidna " <> showVersion Paths_echidna.version <> projectTitle) <+>
+       str " ]"
   finalStatus s = hBorder <=> hCenter (bold $ str s)
 
 logPane :: UIState -> Widget Name

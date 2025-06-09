@@ -57,6 +57,7 @@ instance FromJSON EConfigWithUsage where
               <*> v ..:? "rpcUrl"
               <*> v ..:? "rpcBlock"
               <*> v ..:? "etherscanApiKey"
+              <*> v ..:? "projectName"
       where
       useKey k = modify' $ Set.insert k
       x ..:? k = useKey k >> lift (x .:? k)
