@@ -1,5 +1,6 @@
 module Echidna.SymExec.Common where
 
+import Control.Monad (unless)
 import Control.Monad.IO.Unlift (MonadUnliftIO, liftIO)
 import Data.ByteString.Lazy qualified as BS
 import Data.Function ((&))
@@ -29,6 +30,19 @@ import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock, maxBlockDelay, maxTimeDelay)
 import Echidna.Types.Cache (ContractCache, SlotCache)
+
+data TxOrError = TxFromResult Tx | SMTErrorFromResult String
+  deriving (Show)
+
+extractTxs :: [TxOrError] -> [Tx]
+extractTxs = mapMaybe (\case
+  TxFromResult tx -> Just tx
+  _ -> Nothing)
+
+extractErrors :: [TxOrError] -> [String]
+extractErrors = mapMaybe (\case
+  SMTErrorFromResult err -> Just err
+  _ -> Nothing)
 
 suitableForSymExec :: Method -> Bool
 suitableForSymExec m = not $ null m.inputs 
@@ -100,7 +114,7 @@ frameStateMakeSymbolic fs
 frameMakeSymbolic :: Frame Concrete s -> Frame Symbolic s
 frameMakeSymbolic fr = Frame { context = fr.context, state = frameStateMakeSymbolic fr.state }
 
-modelToTx :: Addr -> Expr EWord -> Expr EWord -> Method -> Set Addr -> Addr -> ProofResult SMTCex String -> Maybe Tx
+modelToTx :: Addr -> Expr EWord -> Expr EWord -> Method -> Set Addr -> Addr -> ProofResult SMTCex String -> TxOrError
 modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
   case result of
     Cex cex ->
@@ -141,7 +155,7 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
         newNumber = fromMaybe 0 $ Map.lookup (Var "symbolic_block_number") cex.vars
         diffNumber = if newNumber == 0 then 0 else newNumber - forceLit oldNumber
 
-      in Just Tx
+      in TxFromResult $ Tx
         { call = SolCall (method.name, args)
         , src = src
         , dst = dst
@@ -151,7 +165,8 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
         , delay = (diffTimestamp, diffNumber)
         }
 
-    _ -> Nothing
+    Error err -> SMTErrorFromResult err
+    r -> error ("Unexpected value in `modelToTx`: " ++ show r)
 
 
 cachedOracle :: IORef ContractCache -> IORef SlotCache -> SolverGroup -> Fetch.RpcInfo -> Fetch.Fetcher t m s
@@ -179,10 +194,10 @@ rpcFetcher rpc block = (,) block' <$> rpc
 
 
 exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
-  Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m [Tx]
+  Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m [TxOrError]
   
 exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef = do
-  liftIO $ putStrLn ("Exploring: " ++ T.unpack method.name)
+  liftIO $ putStrLn ("Exploring: " ++ T.unpack method.methodSignature)
   calldataSym@(cd, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   let
     fetcher = cachedOracle contractCacheRef slotCacheRef solvers rpcInfo
@@ -201,6 +216,4 @@ exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo con
   -- Doing so might mess up concolic execution.
   (_, models) <- verifyInputs solvers veriOpts fetcher vm' (Just $ checkAssertions [0x1])
   let results = map fst models
-  --liftIO $ mapM_ print results
-  let txs = mapMaybe (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results
-  return txs
+  return $ map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results

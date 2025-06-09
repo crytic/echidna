@@ -34,13 +34,14 @@ import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Dapp (DappInfo(..))
 import EVM.Types hiding (Env, Frame(state), Gas)
+import EVM.Solidity (SolcContract(..), methodSignature)
 
 import Echidna.ABI
 import Echidna.Exec
 import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
 import Echidna.Solidity (chooseContract)
-import EVM.Solidity (SolcContract(..))
+import Echidna.SymExec.Common (extractTxs, extractErrors)
 import Echidna.SymExec.Symbolic (forceAddr)
 import Echidna.SymExec.Exploration (exploreContract)
 import Echidna.SymExec.Verification (verifyMethod)
@@ -198,10 +199,16 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
 
+    let txs = extractTxs symTxs
+    let errors = extractErrors symTxs
     -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
-    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) symTxs
+    newCoverage <- or <$> (mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) txs)
 
-    unless (newCoverage || null symTxs) (pushWorkerEvent SymNoNewCoverage)
+    when (not newCoverage && null errors && not (null txs)) ( do
+      liftIO $ mapM_ (putStrLn . show) txsBase
+      liftIO $ putStrLn $ "Last txs: " <> show txs
+      error "No errors but symbolic execution found valid txs breaking assertions. Something is wrong.")
+    unless (newCoverage) (pushWorkerEvent SymNoNewCoverage)
 
   verifyMethods = do
     dapp <- asks (.dapp)
@@ -217,20 +224,31 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     lift callback
 
     symTxs <- liftIO $ takeMVar symTxsChan
+    let txs = extractTxs symTxs
+    let errors = extractErrors symTxs
 
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
-
-    -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
-    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm [symTx]) symTxs
-
-    unless newCoverage ( do
+    let methodSignature = unpack method.methodSignature
+    if (not $ null errors) then do
+      mapM_ (pushWorkerEvent . SymExecError) $ map (\e -> "Error(s) during symbolic verification of method " <> methodSignature <> ": " <> show e) errors
       updateTests $ \test -> do
-        if isOpen test && isAssertionTest test then
-            pure $ Just $ test { Test.state = Unsolvable }
-        else
-          pure Nothing
-      pushWorkerEvent $ SymVerified $ unpack $ fromJust name)
+          if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
+              pure $ Just $ test { Test.state = Passed }
+          else
+            pure $ Just test
+    else do
+      -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
+      newCoverage <- or <$> (mapM (\symTx -> snd <$> callseq vm [symTx]) txs)
+
+      unless newCoverage ( do
+        unless (null txs) $ error "No new coverage but symbolic execution found valid txs. Something is wrong."
+        updateTests $ \test -> do
+          if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
+                pure $ Just $ test { Test.state = Unsolvable }
+          else
+            pure $ Just test
+        pushWorkerEvent $ SymVerified $ unpack $ fromJust name)
     
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once

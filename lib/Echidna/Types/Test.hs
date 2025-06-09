@@ -7,7 +7,7 @@ import Control.Monad.ST (RealWorld)
 import Data.Aeson
 import Data.DoubleWord (Int256)
 import Data.Maybe (maybeToList)
-import Data.Text (Text)
+import Data.Text (Text, unpack)
 import GHC.Generics (Generic)
 
 import EVM.Dapp (DappInfo)
@@ -16,6 +16,7 @@ import EVM.Types (Addr, VM, VMType(Concrete))
 import Echidna.Types (ExecException)
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Tx (Tx, TxResult)
+import Echidna.ABI (encodeSig)
 
 -- | Test mode is parsed from a string
 type TestMode = String
@@ -124,6 +125,10 @@ isOptimizationTest _ = False
 isAssertionTest :: EchidnaTest -> Bool
 isAssertionTest EchidnaTest{testType = AssertionTest {}} = True
 isAssertionTest _ = False
+
+getAssertionSignature :: EchidnaTest -> String
+getAssertionSignature EchidnaTest{testType = AssertionTest _ sig _} = unpack $ encodeSig sig
+getAssertionSignature _ = error "Not an assertion test"
 
 isOpen :: EchidnaTest -> Bool
 isOpen t = case t.state of

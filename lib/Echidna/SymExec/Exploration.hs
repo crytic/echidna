@@ -28,7 +28,7 @@ import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.World (World(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
-import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, rpcFetcher)
+import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, rpcFetcher, TxOrError(..))
 
 -- | Uses symbolic execution to find transactions which would increase coverage.
 -- Spawns a new thread; returns its thread ID as the first return value.
@@ -51,7 +51,7 @@ filterTarget symExecTargets assertSigs tx method =
     _                                                  -> (null assertSigs || methodSig `elem` assertSigs) && suitableForSymExec method
  where methodSig = abiKeccak $ encodeUtf8 method.methodSignature
 
-exploreContract :: (MonadIO m, MonadThrow m, MonadReader Env m) => SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar[Tx])
+exploreContract :: (MonadIO m, MonadThrow m, MonadReader Env m) => SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar [TxOrError])
 exploreContract contract tx vm = do
   conf <- asks (.cfg)
   env <- ask

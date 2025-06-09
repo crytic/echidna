@@ -17,12 +17,11 @@ import qualified EVM.Types (VM(..))
 import Control.Monad.ST (RealWorld)
 
 import Echidna.Types.Campaign (CampaignConf(..))
-import Echidna.Types.Config (Env(..), EConfig(..))
+import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), operationMode)
 import Echidna.Types.Solidity (SolConf(..))
-import Echidna.Types.Tx (Tx(..))
-import Echidna.SymExec.Common (rpcFetcher, exploreMethod)
+import Echidna.SymExec.Common (rpcFetcher, exploreMethod, TxOrError(..))
 
-verifyMethod :: (MonadIO m, MonadThrow m, MonadReader Env m) => Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar [Tx])
+verifyMethod :: (MonadIO m, MonadThrow m, MonadReader Env m) => Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar [TxOrError])
 verifyMethod method contract vm = do
   conf <- asks (.cfg)
   contractCacheRef <- asks (.fetchContractCache)

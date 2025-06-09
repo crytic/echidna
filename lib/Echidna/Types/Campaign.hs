@@ -87,6 +87,7 @@ data WorkerEvent
   | NewCoverage { points :: !Int, numCodehashes :: !Int, corpusSize :: !Int, transactions :: [Tx] }
   | SymNoNewCoverage
   | SymVerified !String
+  | SymExecError !String
   | TxSequenceReplayed FilePath !Int !Int
   | TxSequenceReplayFailed FilePath Tx
   | WorkerStopped WorkerStopReason
@@ -101,6 +102,7 @@ instance ToJSON WorkerEvent where
     NewCoverage { points, numCodehashes, corpusSize } ->
       object [ "coverage" .= points, "contracts" .= numCodehashes, "corpus_size" .= corpusSize]
     SymNoNewCoverage -> object []
+    SymExecError err -> object [ "error" .= err ]
     SymVerified name -> object [ "name" .= name ]
     TxSequenceReplayed file current total ->
       object [ "file" .= file, "current" .= current, "total" .= total ]
@@ -139,6 +141,8 @@ ppWorkerEvent = \case
     "Symbolic execution finished with no new coverage."
   SymVerified name ->
     "Symbolic execution finished verifying contract " <> name <> " using a single symbolic transaction."
+  SymExecError err ->
+    "Symbolic execution failed with error: " <> err
   TxSequenceReplayed file current total ->
     "Sequence replayed from corpus file " <> file <> " (" <> show current <> "/" <> show total <> ")"
   TxSequenceReplayFailed file tx ->
