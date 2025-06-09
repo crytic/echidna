@@ -22,7 +22,7 @@ jobs:
         include:
           - os: ubuntu-latest
             shell: bash
-            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.6.5\", \"options\": \"--user 1001\"}"
+            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.8.2\", \"options\": \"--user 1001\"}"
           - os: macos-13 # x86_64 macOS
             shell: bash
           - os: windows-latest
@@ -65,7 +65,7 @@ jobs:
         id: stack
         if: matrix.container == ''
         with:
-          ghc-version: '9.6.5'
+          ghc-version: '9.8.2'
           enable-stack: true
           stack-version: 'latest'
 
@@ -86,7 +86,7 @@ jobs:
             echo "- $HOME/.local/lib";
             echo;
             echo "ghc-options:";
-            echo '  "$locals": -Werror'
+            echo '  "$locals": -Werror -Wno-error=x-partial'
             "$REPLACE_LINKER_WIN" && echo '  "$everything": -pgml='$(cygpath -m "$GHC_MINGW_PATH/bin/clang.exe") -optc-idirafter -optc'D:/a/_temp/msys64/clang64/include' -optcxx-idirafter -optcxx'D:/a/_temp/msys64/clang64/include';
             echo;
             "$SKIP_MSYS" && echo "skip-msys: true" || true
@@ -157,12 +157,12 @@ jobs:
       - name: Build Dependencies
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack build --ghc-options="-Werror" --only-dependencies
+          stack build --ghc-options="-Werror -Wno-error=x-partial" --only-dependencies
 
       - name: Build and install echidna
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack install --ghc-options="-Werror"
+          stack install --ghc-options="-Werror -Wno-error=x-partial"
 
       - name: Amend and compress binaries (macOS)
         if: runner.os == 'macOS'
@@ -186,7 +186,7 @@ jobs:
         if: runner.os != 'macOS'
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack build --test --no-run-tests --ghc-options="-Werror"
+          stack build --test --no-run-tests --ghc-options="-Werror -Wno-error=x-partial"
           cp "$(find "$PWD" -name 'echidna-testsuite*' -type f)" .
 
       - name: Upload testsuite
