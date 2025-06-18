@@ -1,6 +1,5 @@
 module Echidna.SymExec.Common where
 
-import Control.Monad (unless)
 import Control.Monad.IO.Unlift (MonadUnliftIO, liftIO)
 import Data.ByteString.Lazy qualified as BS
 import Data.Function ((&))
@@ -9,9 +8,7 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified as T
-import Data.Text.IO qualified as TIO
 import Data.Vector (toList, fromList)
-import Data.DoubleWord (Int256)
 import GHC.IORef (IORef, readIORef)
 import Optics.Core ((.~), (%), (%~))
 import EVM.ABI (abiKind, AbiKind(Dynamic), AbiValue(..), AbiType(..), Sig(..), decodeAbiValue)
