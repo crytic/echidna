@@ -28,7 +28,7 @@ import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.World (World(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
-import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, rpcFetcher, TxOrError(..))
+import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, rpcFetcher, TxOrError(..), PartialsLogs)
 
 -- | Uses symbolic execution to find transactions which would increase coverage.
 -- Spawns a new thread; returns its thread ID as the first return value.
@@ -51,7 +51,7 @@ filterTarget symExecTargets assertSigs tx method =
     _                                                  -> (null assertSigs || methodSig `elem` assertSigs) && suitableForSymExec method
  where methodSig = abiKeccak $ encodeUtf8 method.methodSignature
 
-exploreContract :: (MonadIO m, MonadThrow m, MonadReader Env m) => SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar [TxOrError])
+exploreContract :: (MonadIO m, MonadThrow m, MonadReader Env m) => SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 exploreContract contract tx vm = do
   conf <- asks (.cfg)
   env <- ask
@@ -82,7 +82,7 @@ exploreContract contract tx vm = do
       -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.
       -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
       res <- forM (take 1 shuffleMethods) $ \method -> exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
-      liftIO $ putMVar resultChan $ concat res
+      liftIO $ putMVar resultChan $ (concat $ map fst res, concat $ map snd res)
       --liftIO $ print "done"
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId

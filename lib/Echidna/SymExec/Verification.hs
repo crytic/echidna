@@ -11,6 +11,7 @@ import Data.Set qualified as Set
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), config)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
+import EVM.Format (formatPartial)
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
 import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
@@ -19,9 +20,9 @@ import Control.Monad.ST (RealWorld)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), operationMode)
 import Echidna.Types.Solidity (SolConf(..))
-import Echidna.SymExec.Common (rpcFetcher, exploreMethod, TxOrError(..))
+import Echidna.SymExec.Common (rpcFetcher, exploreMethod, TxOrError(..), PartialsLogs)
 
-verifyMethod :: (MonadIO m, MonadThrow m, MonadReader Env m) => Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar [TxOrError])
+verifyMethod :: (MonadIO m, MonadThrow m, MonadReader Env m) => Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 verifyMethod method contract vm = do
   conf <- asks (.cfg)
   contractCacheRef <- asks (.fetchContractCache)
@@ -39,12 +40,13 @@ verifyMethod method contract vm = do
   resultChan <- liftIO newEmptyMVar
   let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
   let veriOpts = VeriOpts {iterConf = iterConfig, simp = True, rpcInfo = rpcInfo}
-  let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = False, debug = False, dumpQueries = False, numCexFuzz = 100 } }
+  let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
+  let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = False, debug = isNonInteractive, numCexFuzz = 100 } }
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      res <- exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
-      liftIO $ putMVar resultChan res
+      (res, partials) <- exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
+      liftIO $ putMVar resultChan (res, partials)
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
     liftIO $ takeMVar doneChan

@@ -9,7 +9,9 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified as T
+import Data.Text.IO qualified as TIO
 import Data.Vector (toList, fromList)
+import Data.DoubleWord (Int256)
 import GHC.IORef (IORef, readIORef)
 import Optics.Core ((.~), (%), (%~))
 import EVM.ABI (abiKind, AbiKind(Dynamic), AbiValue(..), AbiType(..), Sig(..), decodeAbiValue)
@@ -21,6 +23,7 @@ import EVM.Solvers (SolverGroup)
 import EVM.SymExec (abstractVM, mkCalldata, verifyInputs, VeriOpts(..), checkAssertions)
 import EVM.Types (Addr, Frame(..), FrameState(..), VMType(..), EType(..), Expr(..), word256Bytes, Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query(..))
 import qualified EVM.Types (VM(..), Env(..))
+import EVM.Format (formatPartial)
 import Control.Monad.ST (stToIO, RealWorld)
 import Control.Monad.State.Strict (execState, runStateT)
 
@@ -30,6 +33,8 @@ import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock, maxBlockDelay, maxTimeDelay)
 import Echidna.Types.Cache (ContractCache, SlotCache)
+
+type PartialsLogs = [T.Text]
 
 data TxOrError = TxFromResult Tx | SMTErrorFromResult String
   deriving (Show)
@@ -114,6 +119,12 @@ frameStateMakeSymbolic fs
 frameMakeSymbolic :: Frame Concrete s -> Frame Symbolic s
 frameMakeSymbolic fr = Frame { context = fr.context, state = frameStateMakeSymbolic fr.state }
 
+-- | Convert a n-bit unsigned integer to a n-bit signed integer.
+uintToInt :: Integral n => W256 -> n -> Int
+uintToInt w n = if w < 2 ^ (n - 1)
+  then fromIntegral w
+  else fromIntegral (w - 2 ^ n)
+
 modelToTx :: Addr -> Expr EWord -> Expr EWord -> Method -> Set Addr -> Addr -> ProofResult SMTCex String -> TxOrError
 modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
   case result of
@@ -124,7 +135,7 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
         grabArg t
           = case t of
               AbiUIntType _ -> grabNormalArg t
-              AbiIntType _ -> grabNormalArg t
+              AbiIntType _ -> grabNormalArgInt t
               AbiBoolType -> grabNormalArg t
               AbiBytesType _ -> grabNormalArg t
               AbiAddressType -> grabAddressArg
@@ -136,6 +147,15 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
           = case Map.lookup (Var name) cex.vars of
               Just w ->
                 decodeAbiValue argType (BS.fromStrict (word256Bytes w))
+              Nothing -> -- put a placeholder
+                decodeAbiValue argType (BS.repeat 0)
+
+        grabNormalArgInt argType name
+          = case Map.lookup (Var name) cex.vars of
+              Just w ->
+                case argType of
+                  AbiIntType n -> AbiInt n (fromIntegral (uintToInt w n)) 
+                  _ -> error "Expected AbiIntType"
               Nothing -> -- put a placeholder
                 decodeAbiValue argType (BS.repeat 0)
 
@@ -166,6 +186,7 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
         }
 
     Error err -> SMTErrorFromResult err
+    Unknown err -> SMTErrorFromResult err
     r -> error ("Unexpected value in `modelToTx`: " ++ show r)
 
 
@@ -192,9 +213,20 @@ rpcFetcher :: Functor f =>
 rpcFetcher rpc block = (,) block' <$> rpc
   where block' = maybe Fetch.Latest Fetch.BlockNumber block
 
+removeUnknownResults :: [ProofResult SMTCex String] -> ([ProofResult SMTCex String], [ProofResult SMTCex String])
+removeUnknownResults results =
+  let
+    known = filter (\case Unknown _ -> False ; _ -> True) results
+    unknown = filter (\case Unknown _ -> True; _ -> False) results
+  in (known, unknown)
+
+getUnknownLogs :: [ProofResult SMTCex String] -> [T.Text]
+getUnknownLogs = mapMaybe (\case
+  Error err -> Just $ T.pack err
+  _ -> Nothing)
 
 exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
-  Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m [TxOrError]
+  Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m ([TxOrError], PartialsLogs)
   
 exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef = do
   liftIO $ putStrLn ("Exploring: " ++ T.unpack method.methodSignature)
@@ -214,6 +246,7 @@ exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo con
                     & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
   -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
   -- Doing so might mess up concolic execution.
-  (_, models) <- verifyInputs solvers veriOpts fetcher vm' (Just $ checkAssertions [0x1])
+  (_, models, partials) <- verifyInputs solvers veriOpts fetcher vm' (Just $ checkAssertions [0x1])
   let results = map fst models
-  return $ map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results
+  --liftIO $ mapM_ TIO.putStrLn partials
+  return $ (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results, map formatPartial partials)

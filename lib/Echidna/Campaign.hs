@@ -137,9 +137,11 @@ runSymWorker callback vm dict workerId initialCorpus name = do
         listenerLoop listenerFunc chan nworkers
         void $ replayCorpus vm initialCorpus
         if null shuffleCorpus then 
-          replicateM_ 10 $ symexecTxs [] -- TODO: determine how many times to symexec here
+          replicateM_ 10 $ symexecTxs True [] -- TODO: determine how many times to symexec here
         else 
-          mapM_ (symexecTxs . snd) shuffleCorpus
+          mapM_ ((symexecTxs False) . snd) shuffleCorpus
+        liftIO $ putStrLn "Symbolic exploration started purely random!"
+        replicateM_ 100 $ mapM_ ((symexecTxs True) . snd) shuffleCorpus
         pure SymbolicExplorationDone
 
   where
@@ -162,15 +164,15 @@ runSymWorker callback vm dict workerId initialCorpus name = do
   -- chains where each transaction results in new coverage.
   listenerFunc (_, WorkerEvent _ _ (NewCoverage {transactions})) = do
     void $ callseq vm transactions
-    symexecTxs transactions
+    symexecTxs False transactions
   listenerFunc _ = pure ()
 
-  symexecTxs txs = mapM_ symexecTx =<< txsToTxAndVmsSym txs
+  symexecTxs onlyRandom txs = mapM_ symexecTx =<< txsToTxAndVmsSym onlyRandom txs
 
   -- | Turn a list of transactions into inputs for symexecTx:
   -- (list of txns we're on top of)
-  txsToTxAndVmsSym [] = pure [(Nothing, vm, [])]
-  txsToTxAndVmsSym txs = do
+  txsToTxAndVmsSym _ [] = pure [(Nothing, vm, [])]
+  txsToTxAndVmsSym False txs = do
     -- Discard the last tx, which should be the one increasing coverage
     let (itxs, ltx) = (init txs, last txs)
     ivm <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm itxs
@@ -185,6 +187,14 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     else 
       pure [(Just ltx, ivm, txs), (Nothing, rvm, rtxs)]
 
+  txsToTxAndVmsSym True txs = do
+    -- Split the sequence randomly and select any next transaction
+    i <- if length txs == 1 then pure 0 else rElem $ NEList.fromList [1 .. length txs - 1]
+    let rtxs = take i txs
+    rvm <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm rtxs
+    pure [(Nothing, rvm, rtxs)]
+
+
   symexecTx (tx, vm', txsBase) = do
     dapp <- asks (.dapp)
     let cs = Map.elems dapp.solcByName
@@ -194,16 +204,21 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
 
-    symTxs <- liftIO $ takeMVar symTxsChan
+    (symTxs, partials) <- liftIO $ takeMVar symTxsChan
 
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
 
     let txs = extractTxs symTxs
     let errors = extractErrors symTxs
+
+    when (not $ null errors) $ mapM_ (pushWorkerEvent . SymExecError) $ map (\e -> "Error(s) during symbolic exploration: " <> show e) errors
+    when (not $ null partials) $ mapM_ (pushWorkerEvent . SymExecError) $ map (\e -> "Partial explored path(s) during symbolic exploration: " <> unpack e) partials
+
     -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
     newCoverage <- or <$> (mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) txs)
 
+    liftIO $ print $ "New coverage: " <> show newCoverage
     when (not newCoverage && null errors && not (null txs)) ( do
       liftIO $ mapM_ (putStrLn . show) txsBase
       liftIO $ putStrLn $ "Last txs: " <> show txs
@@ -215,6 +230,7 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     let cs = Map.elems dapp.solcByName
     contract <- chooseContract cs name
     let allMethods = contract.abiMap
+    liftIO $ print allMethods
     mapM_ (symExecMethod contract) allMethods
 
   symExecMethod contract method = do
@@ -223,15 +239,16 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
 
-    symTxs <- liftIO $ takeMVar symTxsChan
+    (symTxs, partials) <- liftIO $ takeMVar symTxsChan
     let txs = extractTxs symTxs
     let errors = extractErrors symTxs
 
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
     let methodSignature = unpack method.methodSignature
-    if (not $ null errors) then do
-      mapM_ (pushWorkerEvent . SymExecError) $ map (\e -> "Error(s) during symbolic verification of method " <> methodSignature <> ": " <> show e) errors
+    if ((not $ null partials) || (not $ null errors)) then do
+      when (not $ null errors) $ mapM_ (pushWorkerEvent . SymExecError) $ map (\e -> "Error(s) solving constraints produced by method " <> methodSignature <> ": " <> show e) errors
+      when (not $ null partials) $ mapM_ (pushWorkerEvent . SymExecError) $ map (\e -> "Partial explored path(s) during symbolic verification of method " <> methodSignature <> ": " <> unpack e) partials
       updateTests $ \test -> do
           if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
               pure $ Just $ test { Test.state = Passed }

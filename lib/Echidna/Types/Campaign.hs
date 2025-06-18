@@ -142,7 +142,7 @@ ppWorkerEvent = \case
   SymVerified name ->
     "Symbolic execution finished verifying contract " <> name <> " using a single symbolic transaction."
   SymExecError err ->
-    "Symbolic execution failed with error: " <> err
+    "Symbolic execution failed because " <> err
   TxSequenceReplayed file current total ->
     "Sequence replayed from corpus file " <> file <> " (" <> show current <> "/" <> show total <> ")"
   TxSequenceReplayFailed file tx ->
