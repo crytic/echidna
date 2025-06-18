@@ -139,9 +139,9 @@ runSymWorker callback vm dict workerId initialCorpus name = do
         if null shuffleCorpus then 
           replicateM_ 10 $ symexecTxs True [] -- TODO: determine how many times to symexec here
         else 
-          mapM_ ((symexecTxs False) . snd) shuffleCorpus
+          mapM_ (symexecTxs False . snd) shuffleCorpus
         liftIO $ putStrLn "Symbolic exploration started purely random!"
-        replicateM_ 100 $ mapM_ ((symexecTxs True) . snd) shuffleCorpus
+        replicateM_ 100 $ mapM_ (symexecTxs True . snd) shuffleCorpus
         pure SymbolicExplorationDone
 
   where
@@ -212,18 +212,18 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     let txs = extractTxs symTxs
     let errors = extractErrors symTxs
 
-    when (not $ null errors) $ mapM_ (pushWorkerEvent . SymExecError) $ map (\e -> "Error(s) during symbolic exploration: " <> show e) errors
-    when (not $ null partials) $ mapM_ (pushWorkerEvent . SymExecError) $ map (\e -> "Partial explored path(s) during symbolic exploration: " <> unpack e) partials
+    unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) during symbolic exploration: " <> show e)) errors
+    unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic exploration: " <> unpack e)) partials
 
     -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
-    newCoverage <- or <$> (mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) txs)
+    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) txs
 
     liftIO $ print $ "New coverage: " <> show newCoverage
     when (not newCoverage && null errors && not (null txs)) ( do
-      liftIO $ mapM_ (putStrLn . show) txsBase
+      liftIO $ mapM_ print txsBase
       liftIO $ putStrLn $ "Last txs: " <> show txs
       error "No errors but symbolic execution found valid txs breaking assertions. Something is wrong.")
-    unless (newCoverage) (pushWorkerEvent SymNoNewCoverage)
+    unless newCoverage (pushWorkerEvent SymNoNewCoverage)
 
   verifyMethods = do
     dapp <- asks (.dapp)
@@ -246,9 +246,9 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
     let methodSignature = unpack method.methodSignature
-    if ((not $ null partials) || (not $ null errors)) then do
-      when (not $ null errors) $ mapM_ (pushWorkerEvent . SymExecError) $ map (\e -> "Error(s) solving constraints produced by method " <> methodSignature <> ": " <> show e) errors
-      when (not $ null partials) $ mapM_ (pushWorkerEvent . SymExecError) $ map (\e -> "Partial explored path(s) during symbolic verification of method " <> methodSignature <> ": " <> unpack e) partials
+    if not (null partials) || not (null errors) then do
+      unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) solving constraints produced by method " <> methodSignature <> ": " <> show e)) errors
+      unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic verification of method " <> methodSignature <> ": " <> unpack e)) partials
       updateTests $ \test -> do
           if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
               pure $ Just $ test { Test.state = Passed }
@@ -256,7 +256,7 @@ runSymWorker callback vm dict workerId initialCorpus name = do
             pure $ Just test
     else do
       -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
-      newCoverage <- or <$> (mapM (\symTx -> snd <$> callseq vm [symTx]) txs)
+      newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm [symTx]) txs
 
       unless newCoverage ( do
         unless (null txs) $ error "No new coverage but symbolic execution found valid txs. Something is wrong."

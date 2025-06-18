@@ -82,7 +82,7 @@ exploreContract contract tx vm = do
       -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.
       -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
       res <- forM (take 1 shuffleMethods) $ \method -> exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
-      liftIO $ putMVar resultChan $ (concat $ map fst res, concat $ map snd res)
+      liftIO $ putMVar resultChan (concatMap fst res, concatMap snd res)
       --liftIO $ print "done"
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
