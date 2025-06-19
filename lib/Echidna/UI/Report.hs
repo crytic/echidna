@@ -189,7 +189,7 @@ ppOPT (Large n) vm l  = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
   ppOptimized (if n < m then Just (n, m) else Nothing) vm l
 
--- | Pretty-print the status of a optimized test.
+-- | Pretty-print the status of an optimized test.
 ppOptimized :: MonadReader Env m => Maybe (Int, Int) -> VM Concrete RealWorld -> [Tx] -> m String
 ppOptimized _ _ []  = pure "Call sequence:\n(no transactions)"
 ppOptimized b vm xs = do

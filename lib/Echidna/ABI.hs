@@ -165,9 +165,9 @@ mkDictValues =
 getRandomPow :: (MonadRandom m) => Int -> m Integer
 getRandomPow n = if n <= 0 then return 0 else
   do
-   -- generate uniformly a number from 20 to n
+   -- uniformly generate a number from 20 to n
    mexp <- getRandomR (20, n)
-   -- generate uniformly a number from the range 2 ^ (mexp / 2) to 2 ^ mexp  
+   -- uniformly generate a number from the range 2 ^ (mexp / 2) to 2 ^ mexp  
    getRandomR (2 ^ (mexp `div` 2), 2 ^ mexp)
 
 -- Generate a random unsigned integer with the following distribution:
