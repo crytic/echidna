@@ -1,3 +1,10 @@
+## Unreleased
+
+* feat: show which project is being fuzzed (#1381)
+* ARM64 Docker containers (#1352)
+* Fix worker crashes when shrinking empty reproducers (#1378)
+* Upgrade `hevm` to reduce memory usage on certain scenarios (#1346)
+
 ## 2.2.6
 
 * feat: allow disabling Slither integration (#1327)
@@ -153,7 +160,7 @@
 * Refactored unit test code and moved the related files to the `tests` directory
 * Added support to show events and custom errors when a property/assertion fails
 * Added support for catching assertion failure in Solidity 0.8.x
-* Added two new testing mode: optimization and overflow (only in Solidity 0.8.x)
+* Added two new testing modes: optimization and overflow (only in Solidity 0.8.x)
 * Added optional checks for contract destruction
 * Added `testMode` option and removed related flags
 * Simplified contract deployer and property sender addresses to be easier to read
