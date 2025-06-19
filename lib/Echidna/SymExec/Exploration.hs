@@ -17,7 +17,7 @@ import Data.Text.Encoding (encodeUtf8)
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), config)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
-import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
+import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..), defaultVeriOpts)
 import EVM.Types (abiKeccak, FunctionSelector, VMType(..))
 import qualified EVM.Types (VM(..))
 import Control.Monad.ST (RealWorld)
@@ -72,7 +72,7 @@ exploreContract contract tx vm = do
   doneChan <- liftIO newEmptyMVar
   resultChan <- liftIO newEmptyMVar
   let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
-  let veriOpts = VeriOpts {iterConf = iterConfig, simp = True, rpcInfo = rpcInfo}
+  let veriOpts = defaultVeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = True, debug = True, dumpQueries = False, numCexFuzz = 100 } }
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do

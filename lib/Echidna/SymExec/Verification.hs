@@ -11,7 +11,7 @@ import Data.Set qualified as Set
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), config)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
-import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
+import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..), defaultVeriOpts)
 import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 import Control.Monad.ST (RealWorld)
@@ -38,7 +38,7 @@ verifyMethod method contract vm = do
   doneChan <- liftIO newEmptyMVar
   resultChan <- liftIO newEmptyMVar
   let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
-  let veriOpts = VeriOpts {iterConf = iterConfig, simp = True, rpcInfo = rpcInfo}
+  let veriOpts = defaultVeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
   let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = False, debug = isNonInteractive, numCexFuzz = 100 } }
 

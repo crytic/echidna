@@ -218,7 +218,6 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
     newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) txs
 
-    liftIO $ print $ "New coverage: " <> show newCoverage
     when (not newCoverage && null errors && not (null txs)) ( do
       liftIO $ mapM_ print txsBase
       liftIO $ putStrLn $ "Last txs: " <> show txs
@@ -230,7 +229,6 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     let cs = Map.elems dapp.solcByName
     contract <- chooseContract cs name
     let allMethods = contract.abiMap
-    liftIO $ print allMethods
     mapM_ (symExecMethod contract) allMethods
 
   symExecMethod contract method = do
