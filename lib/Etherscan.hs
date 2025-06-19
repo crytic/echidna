@@ -74,7 +74,7 @@ fetchContractSourceMap addr = do
         &// content
   -- see which <pre> content parses to a source map
   parsedCandidates <- mapM safeMakeSrcMaps candidates
-  -- combine with raw srcmap to return so it's easier to cache
+  -- combine with raw srcmap to return so it is easier to cache
   case catMaybes $ zipWith (\x -> fmap (x,)) candidates parsedCandidates of
     [] -> pure Nothing
     srcmap:_ -> pure (Just srcmap)
