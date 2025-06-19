@@ -1,3 +1,10 @@
+## Unreleased
+
+* feat: show which project is being fuzzed (#1381)
+* ARM64 Docker containers (#1352)
+* Fix worker crashes when shrinking empty reproducers (#1378)
+* Upgrade `hevm` to reduce memory usage on certain scenarios (#1346)
+
 ## 2.2.6
 
 * feat: allow disabling Slither integration (#1327)
