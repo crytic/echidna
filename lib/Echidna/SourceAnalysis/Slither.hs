@@ -41,7 +41,7 @@ enhanceConstants si =
     enh (AbiString s) = makeArrayAbiValues s
     enh v = [v]
 
-data AssertLocation = AssertLocation 
+data AssertLocation = AssertLocation
   { start :: Int
   , filenameRelative :: String
   , filenameAbsolute :: String
@@ -77,7 +77,7 @@ instance FromJSON AssertLocation where
     filenameAbsolute <- o.: "filename_absolute"
     assertLines <- o.: "lines"
     startColumn <- o.: "starting_column"
-    endingColumn <- o.: "ending_column" 
+    endingColumn <- o.: "ending_column"
     pure AssertLocation {..}
 
 instance FromJSON ContractAssertListing where
