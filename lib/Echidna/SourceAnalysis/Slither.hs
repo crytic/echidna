@@ -83,7 +83,7 @@ instance FromJSON AssertLocation where
 instance FromJSON ContractAssertListing where
   parseJSON x = (AssertFunctionList <$> parseJSON x) <|> (AssertLocationList <$> parseJSON x)
 
--- we loose info on what constants are in which functions
+-- we lose info on what constants are in which functions
 data SlitherInfo = SlitherInfo
   { payableFunctions :: Map ContractName [FunctionName]
   , constantFunctions :: Map ContractName [FunctionName]
