@@ -84,7 +84,7 @@ corpusDir: null
 # list of file formats to save coverage reports in; default is all possible formats
 coverageFormats: ["txt","html","lcov"]
 # constants for corpus mutations (for experimentation only)
-mutConsts: [1, 1, 1, 1]
+mutConsts: [1, 1, 1, 1, 1]
 # maximum value to send to payable functions
 maxValue: 100000000000000000000 # 100 eth
 # URL to fetch contracts over RPC
