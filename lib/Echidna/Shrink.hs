@@ -1,8 +1,7 @@
 module Echidna.Shrink (shrinkTest) where
 
-import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadThrow)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
+import Control.Monad.Random.Strict (MonadRandom, uniform, weighted)
 import Control.Monad.Reader.Class (MonadReader (ask), asks)
 import Control.Monad.State.Strict (MonadIO)
 import Control.Monad.ST (RealWorld)
@@ -96,8 +95,8 @@ shrinkSeq
   -> [Tx]
   -> m (Maybe ([Tx], TestValue, VM Concrete RealWorld))
 shrinkSeq vm f v txs = do
-  -- apply one of the two possible simplification strategies (shrunk or shorten) with equal probability
-  txs' <- uniform =<< sequence [shorten, shrunk]
+  -- apply the simplification strategy
+  txs' <- shrunk
   -- remove certain type of "no calls"
   let txs'' = removeUselessNoCalls txs'
   -- check if the sequence still triggers a failed transaction
@@ -113,11 +112,25 @@ shrinkSeq vm f v txs = do
     check (x:xs') vm' = do
       (_, vm'') <- execTx vm' x
       check xs' vm''
-    -- | Simplify a sequence of transactions reducing the complexity of its arguments (using shrinkTx)
-    -- and then reducing its sender (using shrinkSender)
-    shrunk = mapM (shrinkSender <=< shrinkTx) txs
-    -- | Simplifiy a sequence of transactions randomly dropping one transaction (with uniform selection)
-    shorten = (\i -> take i txs ++ drop (i + 1) txs) <$> getRandomR (0, length txs)
+    -- maybe shrink a NoCall (delay) with a simplified strategy
+    maybeShrink tx@Tx{call = NoCall} = do
+      tool <- weighted [
+          (shrinkDelay,         6), -- 60% try to reduce or remove delay
+          (pure,                4)  -- 40% do nothing
+        ]
+      tool tx
+    -- maybe shrink other types of transactions
+    maybeShrink tx = do
+      tool <- weighted [
+          (shrinkSender,              10), --  5% shrink sender
+          (shrinkTx,                  70), -- 35% shrink args, value, gas price, delay or (rarely) remove
+          (pure . removeCallTx,       60), -- 30% remove
+          (pure,                      60)  -- 30% do nothing
+        ]
+      tool tx
+    -- | Simplify a sequence of transactions sometimes reducing the complexity
+    -- of its arguments (using shrinkTx) and the sender (using shrinkSender)
+    shrunk = mapM maybeShrink txs
 
 -- | Given a transaction, replace the sender of the transaction by another one
 -- which is simpler (e.g. it is closer to zero). Usually this means that
