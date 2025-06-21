@@ -67,7 +67,7 @@ overrideQuiet conf =
 overrideLimits :: EConfig -> EConfig
 overrideLimits conf =
   conf { campaignConf = conf.campaignConf { testLimit = 10000
-                                          , shrinkLimit = 4000 }}
+                                          , shrinkLimit = 10000 }}
 
 type SolcVersion = Version
 type SolcVersionComp = Version -> Bool
