@@ -122,8 +122,8 @@ ui vm dict initialCorpus cliSelectedContract = do
       liftIO $ do
         tests <- traverse readIORef env.testRefs
         now <- getTimestamp
-        void $ app UIState
-          { campaigns = [initialWorkerState] -- ugly, fix me
+        let uiState = UIState {
+            campaigns = [initialWorkerState] -- ugly, fix me
           , workersAlive = nworkers
           , status = Uninitialized
           , timeStarted = now
@@ -143,7 +143,10 @@ ui vm dict initialCorpus cliSelectedContract = do
           , numCodehashes = 0
           , lastNewCov = now
           , tests
+          , campaignWidget = emptyWidget -- temporary, will be overwritten below
           }
+        initialCampaignWidget <- runReaderT (campaignStatus uiState) env
+        void $ app uiState { campaignWidget = initialCampaignWidget }
 
       -- Exited from the UI, stop the workers, not needed anymore
       stopWorkers workers
@@ -260,12 +263,12 @@ vtyConfig = do
 monitor :: MonadReader Env m => m (App UIState UIEvent Name)
 monitor = do
   let
-    drawUI :: Env -> UIState -> [Widget Name]
-    drawUI conf uiState =
+    drawUI :: UIState -> [Widget Name]
+    drawUI uiState =
       [ if uiState.displayFetchedDialog
            then fetchedDialogWidget uiState
            else emptyWidget
-      , runReader (campaignStatus uiState) conf ]
+      , uiState.campaignWidget ]
 
     toggleFocus :: UIState -> UIState
     toggleFocus state =
@@ -280,9 +283,13 @@ monitor = do
       (state.focusedPane == LogPane && not state.displayLogPane)
       then toggleFocus state else state
 
-    onEvent = \case
-      AppEvent (CampaignUpdated now tests c') ->
-        modify' $ \state -> state { campaigns = c', status = Running, now, tests }
+    onEvent env = \case
+      AppEvent (CampaignUpdated now tests c') -> do
+        state <- get
+        let updatedState = state { campaigns = c', status = Running, now, tests }
+        newWidget <- liftIO $ runReaderT (campaignStatus updatedState) env
+        -- purposedly using lazy modify here, so unnecesary widget states don't get computed
+        modify $ const updatedState { campaignWidget = newWidget }
       AppEvent (FetchCacheUpdated contracts slots) ->
         modify' $ \state ->
           state { fetchedContracts = contracts
@@ -350,9 +357,9 @@ monitor = do
       _ -> pure ()
 
   env <- ask
-  pure $ App { appDraw = drawUI env
+  pure $ App { appDraw = drawUI
              , appStartEvent = pure ()
-             , appHandleEvent = onEvent
+             , appHandleEvent = onEvent env
              , appAttrMap = const attrs
              , appChooseCursor = neverShowCursor
              }

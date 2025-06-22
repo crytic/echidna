@@ -80,6 +80,7 @@ data Env = Env
   , codehashMap :: CodehashMap
   , fetchContractCache :: IORef (Map Addr (Maybe Contract))
   , fetchSlotCache :: IORef (Map Addr (Map W256 (Maybe W256)))
+  , contractNameCache :: IORef (Map W256 Text)
   , chainId :: Maybe W256
   , world :: World
   }

@@ -8,6 +8,7 @@ import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Brick.Widgets.Dialog qualified as B
 import Control.Monad.Reader (MonadReader, asks, ask)
+import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.ST (RealWorld)
 import Data.List (nub, intersperse, sortBy)
 import Data.Map (Map)
@@ -60,6 +61,9 @@ data UIState = UIState
   , lastNewCov :: LocalTime
   -- ^ last timestamp of 'NewCoverage' event
 
+  , campaignWidget :: Widget Name
+  -- ^ Pre-computed widget to avoid IO in drawing
+
   , tests :: [EchidnaTest]
   }
 
@@ -101,7 +105,7 @@ data Name
   deriving (Ord, Show, Eq)
 
 -- | Render 'Campaign' progress as a 'Widget'.
-campaignStatus :: MonadReader Env m => UIState -> m (Widget Name)
+campaignStatus :: (MonadReader Env m, MonadIO m) => UIState -> m (Widget Name)
 campaignStatus uiState = do
   tests <- testsWidget uiState.tests
 
@@ -299,7 +303,7 @@ failedFirst :: EchidnaTest -> EchidnaTest -> Ordering
 failedFirst t1 _ | didFail t1 = LT
                  | otherwise  = GT
 
-testsWidget :: MonadReader Env m => [EchidnaTest] -> m (Widget Name)
+testsWidget :: (MonadReader Env m, MonadIO m) => [EchidnaTest] -> m (Widget Name)
 testsWidget tests' =
   withClickableVScrollBars SBClick .
   withVScrollBars OnRight .
@@ -308,7 +312,7 @@ testsWidget tests' =
   foldl (<=>) emptyWidget . intersperse hBorder <$>
     traverse testWidget (sortBy failedFirst tests')
 
-testWidget :: MonadReader Env m => EchidnaTest -> m (Widget Name)
+testWidget :: (MonadReader Env m, MonadIO m) => EchidnaTest -> m (Widget Name)
 testWidget test =
   case test.testType of
     Exploration          -> widget tsWidget "exploration" ""
@@ -325,7 +329,7 @@ testWidget test =
   name n = bold $ str (T.unpack n)
 
 tsWidget
-  :: MonadReader Env m
+  :: (MonadReader Env m, MonadIO m)
   => TestState
   -> EchidnaTest
   -> m (Widget Name, Widget Name)
@@ -352,7 +356,7 @@ tracesWidget vm = do
     else str "Traces" <+> str ":" <=> txtBreak traces
 
 failWidget
-  :: MonadReader Env m
+  :: (MonadReader Env m, MonadIO m)
   => Maybe (Int, Int)
   -> EchidnaTest
   -> m (Widget Name, Widget Name)
@@ -370,7 +374,7 @@ failWidget b test = do
     )
 
 optWidget
-  :: MonadReader Env m
+  :: (MonadReader Env m, MonadIO m)
   => TestState
   -> EchidnaTest
   -> m (Widget Name, Widget Name)
@@ -385,7 +389,7 @@ optWidget (Large n)  test = do
   maxWidget (if n < m then Just (n,m) else Nothing) test
 
 maxWidget
-  :: MonadReader Env m
+  :: (MonadReader Env m, MonadIO m)
   => Maybe (Int, Int)
   -> EchidnaTest
   -> m (Widget Name, Widget Name)
@@ -411,7 +415,7 @@ shrinkWidget b test =
   where
   showWorker = maybe "" (\i -> " (worker " <> show i <> ")") test.workerId
 
-seqWidget :: MonadReader Env m => VM Concrete RealWorld -> [Tx] -> m (Widget Name)
+seqWidget :: (MonadReader Env m, MonadIO m) => VM Concrete RealWorld -> [Tx] -> m (Widget Name)
 seqWidget vm xs = do
   ppTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> xs) /= 1) xs
   let ordinals = str . printf "%d. " <$> [1 :: Int ..]
