@@ -125,9 +125,10 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   (contractCache, slotCache) <- Onchain.loadRpcCache cfg
   fetchContractCache <- newIORef contractCache
   fetchSlotCache <- newIORef slotCache
+  contractNameCache <- newIORef mempty
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
-  pure $ Env { cfg, dapp, codehashMap, fetchContractCache, fetchSlotCache
+  pure $ Env { cfg, dapp, codehashMap, fetchContractCache, fetchSlotCache, contractNameCache
              , chainId, eventQueue, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
              , slitherInfo
              }
