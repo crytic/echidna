@@ -112,7 +112,9 @@ ui vm dict initialCorpus cliSelectedContract = do
       -- UI initialization
       let buildVty = do
             v <- mkVty =<< vtyConfig
-            Vty.setMode (Vty.outputIface v) Vty.Mouse True
+            let output = Vty.outputIface v
+            when (Vty.supportsMode output Vty.Mouse) $
+              Vty.setMode output Vty.Mouse True
             pure v
       initialVty <- liftIO buildVty
       app <- customMain initialVty buildVty (Just uiChannel) <$> monitor
@@ -134,6 +136,7 @@ ui vm dict initialCorpus cliSelectedContract = do
           , displayFetchedDialog = False
           , displayLogPane = True
           , displayTestsPane = True
+          , focusedPane = TestsPane
           , events = mempty
           , corpusSize = 0
           , coverage = 0
@@ -264,6 +267,19 @@ monitor = do
            else emptyWidget
       , runReader (campaignStatus uiState) conf ]
 
+    toggleFocus :: UIState -> UIState
+    toggleFocus state =
+      case state.focusedPane of
+        TestsPane | state.displayLogPane   -> state { focusedPane = LogPane }
+        LogPane   | state.displayTestsPane -> state { focusedPane = TestsPane }
+        _ -> state
+
+    refocusIfNeeded :: UIState -> UIState
+    refocusIfNeeded state = if
+      (state.focusedPane == TestsPane && not state.displayTestsPane) ||
+      (state.focusedPane == LogPane && not state.displayLogPane)
+      then toggleFocus state else state
+
     onEvent = \case
       AppEvent (CampaignUpdated now tests c') ->
         modify' $ \state -> state { campaigns = c', status = Running, now, tests }
@@ -295,15 +311,25 @@ monitor = do
           state { displayFetchedDialog = not state.displayFetchedDialog }
       VtyEvent (EvKey (KChar 'l') _) ->
         modify' $ \state ->
-          state { displayLogPane = not state.displayLogPane }
+          refocusIfNeeded $ state { displayLogPane = not state.displayLogPane }
       VtyEvent (EvKey (KChar 't') _) ->
         modify' $ \state ->
-          state { displayTestsPane = not state.displayTestsPane }
+          refocusIfNeeded $ state { displayTestsPane = not state.displayTestsPane }
+      VtyEvent (EvKey direction _) | direction == KPageUp || direction == KPageDown -> do
+        state <- get
+        let vp = case state.focusedPane of
+              TestsPane -> viewportScroll TestsViewPort
+              LogPane   -> viewportScroll LogViewPort
+        vScrollBy vp (if direction == KPageDown then 10 else -10)
+      VtyEvent (EvKey k []) | k == KChar '\t' || k ==  KBackTab ->
+        -- just two panes, so both keybindings just toggle the active one
+        modify' toggleFocus
       VtyEvent (EvKey KEsc _)                         -> halt
       VtyEvent (EvKey (KChar 'c') l) | MCtrl `elem` l -> halt
       MouseDown (SBClick el n) _ _ _ ->
         case n of
           TestsViewPort -> do
+            modify' $ \state -> state { focusedPane = TestsPane }
             let vp = viewportScroll TestsViewPort
             case el of
               SBHandleBefore -> vScrollBy vp (-1)
@@ -312,6 +338,7 @@ monitor = do
               SBTroughAfter  -> vScrollBy vp 10
               SBBar          -> pure ()
           LogViewPort -> do
+            modify' $ \state -> state { focusedPane = LogPane }
             let vp = viewportScroll LogViewPort
             case el of
               SBHandleBefore -> vScrollBy vp (-1)

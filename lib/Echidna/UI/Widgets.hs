@@ -49,6 +49,7 @@ data UIState = UIState
   , displayFetchedDialog :: Bool
   , displayLogPane :: Bool
   , displayTestsPane :: Bool
+  , focusedPane :: FocusedPane
 
   , events :: Seq (LocalTime, CampaignEvent)
   , workersAlive :: Int
@@ -63,6 +64,9 @@ data UIState = UIState
   }
 
 data UIStateStatus = Uninitialized | Running
+
+data FocusedPane = TestsPane | LogPane
+  deriving (Eq)
 
 attrs :: A.AttrMap
 attrs = A.attrMap (V.white `on` V.black)
@@ -117,15 +121,13 @@ campaignStatus uiState = do
       summaryWidget env uiState
       <=>
       (if uiState.displayTestsPane then
-        hBorderWithLabel (withAttr (attrName "subtitle") $ str $
-          (" Tests (" <> show (length uiState.tests)) <> ") ")
+        hBorderWithLabel testsTitle
         <=>
         inner
       else emptyWidget)
       <=>
       (if uiState.displayLogPane then
-        hBorderWithLabel (withAttr (attrName "subtitle") $ str $
-          " Log (" <> show (length uiState.events) <> ") ")
+        hBorderWithLabel logTitle
         <=>
         logPane uiState
       else emptyWidget)
@@ -140,6 +142,14 @@ campaignStatus uiState = do
          (str $ "Echidna " <> showVersion Paths_echidna.version <> projectTitle) <+>
        str " ]"
   finalStatus s = hBorder <=> hCenter (bold $ str s)
+  testsTitle =
+    withAttr (attrName "subtitle") $ str $
+    " Tests (" <> show (length uiState.tests) <> ") " <>
+    if uiState.focusedPane == TestsPane then "[*]" else ""
+  logTitle =
+    withAttr (attrName "subtitle") $ str $
+    " Log (" <> show (length uiState.events) <> ") " <>
+    if uiState.focusedPane == LogPane then "[*]" else ""
 
 logPane :: UIState -> Widget Name
 logPane uiState =
