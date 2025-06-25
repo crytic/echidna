@@ -122,8 +122,8 @@ ui vm dict initialCorpus cliSelectedContract = do
       liftIO $ do
         tests <- traverse readIORef env.testRefs
         now <- getTimestamp
-        void $ app UIState
-          { campaigns = [initialWorkerState] -- ugly, fix me
+        let uiState = UIState {
+            campaigns = [initialWorkerState] -- ugly, fix me
           , workersAlive = nworkers
           , status = Uninitialized
           , timeStarted = now
@@ -143,7 +143,10 @@ ui vm dict initialCorpus cliSelectedContract = do
           , numCodehashes = 0
           , lastNewCov = now
           , tests
+          , campaignWidget = emptyWidget -- temporary, will be overwritten below
           }
+        initialCampaignWidget <- runReaderT (campaignStatus uiState) env
+        void $ app uiState { campaignWidget = initialCampaignWidget }
 
       -- Exited from the UI, stop the workers, not needed anymore
       stopWorkers workers
@@ -260,12 +263,12 @@ vtyConfig = do
 monitor :: MonadReader Env m => m (App UIState UIEvent Name)
 monitor = do
   let
-    drawUI :: Env -> UIState -> [Widget Name]
-    drawUI conf uiState =
+    drawUI :: UIState -> [Widget Name]
+    drawUI uiState =
       [ if uiState.displayFetchedDialog
            then fetchedDialogWidget uiState
            else emptyWidget
-      , runReader (campaignStatus uiState) conf ]
+      , uiState.campaignWidget ]
 
     toggleFocus :: UIState -> UIState
     toggleFocus state =
@@ -280,9 +283,18 @@ monitor = do
       (state.focusedPane == LogPane && not state.displayLogPane)
       then toggleFocus state else state
 
-    onEvent = \case
-      AppEvent (CampaignUpdated now tests c') ->
-        modify' $ \state -> state { campaigns = c', status = Running, now, tests }
+    focusedViewportScroll :: UIState -> ViewportScroll Name
+    focusedViewportScroll state = case state.focusedPane of
+      TestsPane -> viewportScroll TestsViewPort
+      LogPane   -> viewportScroll LogViewPort
+
+    onEvent env = \case
+      AppEvent (CampaignUpdated now tests c') -> do
+        state <- get
+        let updatedState = state { campaigns = c', status = Running, now, tests }
+        newWidget <- liftIO $ runReaderT (campaignStatus updatedState) env
+        -- purposedly using lazy modify here, so unnecesary widget states don't get computed
+        modify $ const updatedState { campaignWidget = newWidget }
       AppEvent (FetchCacheUpdated contracts slots) ->
         modify' $ \state ->
           state { fetchedContracts = contracts
@@ -317,10 +329,12 @@ monitor = do
           refocusIfNeeded $ state { displayTestsPane = not state.displayTestsPane }
       VtyEvent (EvKey direction _) | direction == KPageUp || direction == KPageDown -> do
         state <- get
-        let vp = case state.focusedPane of
-              TestsPane -> viewportScroll TestsViewPort
-              LogPane   -> viewportScroll LogViewPort
-        vScrollBy vp (if direction == KPageDown then 10 else -10)
+        let vp = focusedViewportScroll state
+        vScrollPage vp (if direction == KPageDown then Down else Up)
+      VtyEvent (EvKey direction _) | direction == KUp || direction == KDown -> do
+        state <- get
+        let vp = focusedViewportScroll state
+        vScrollBy vp (if direction == KDown then 1 else -1)
       VtyEvent (EvKey k []) | k == KChar '\t' || k ==  KBackTab ->
         -- just two panes, so both keybindings just toggle the active one
         modify' toggleFocus
@@ -350,9 +364,9 @@ monitor = do
       _ -> pure ()
 
   env <- ask
-  pure $ App { appDraw = drawUI env
+  pure $ App { appDraw = drawUI
              , appStartEvent = pure ()
-             , appHandleEvent = onEvent
+             , appHandleEvent = onEvent env
              , appAttrMap = const attrs
              , appChooseCursor = neverShowCursor
              }
