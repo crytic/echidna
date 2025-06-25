@@ -283,6 +283,11 @@ monitor = do
       (state.focusedPane == LogPane && not state.displayLogPane)
       then toggleFocus state else state
 
+    focusedViewportScroll :: UIState -> ViewportScroll Name
+    focusedViewportScroll state = case state.focusedPane of
+      TestsPane -> viewportScroll TestsViewPort
+      LogPane   -> viewportScroll LogViewPort
+
     onEvent env = \case
       AppEvent (CampaignUpdated now tests c') -> do
         state <- get
@@ -324,10 +329,12 @@ monitor = do
           refocusIfNeeded $ state { displayTestsPane = not state.displayTestsPane }
       VtyEvent (EvKey direction _) | direction == KPageUp || direction == KPageDown -> do
         state <- get
-        let vp = case state.focusedPane of
-              TestsPane -> viewportScroll TestsViewPort
-              LogPane   -> viewportScroll LogViewPort
-        vScrollBy vp (if direction == KPageDown then 10 else -10)
+        let vp = focusedViewportScroll state
+        vScrollPage vp (if direction == KPageDown then Down else Up)
+      VtyEvent (EvKey direction _) | direction == KUp || direction == KDown -> do
+        state <- get
+        let vp = focusedViewportScroll state
+        vScrollBy vp (if direction == KDown then 1 else -1)
       VtyEvent (EvKey k []) | k == KChar '\t' || k ==  KBackTab ->
         -- just two panes, so both keybindings just toggle the active one
         modify' toggleFocus
