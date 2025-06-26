@@ -15,6 +15,8 @@ import Data.Sequence qualified as Seq
 import Data.Set qualified as S
 import Data.Text (Text, pack)
 import Data.Text qualified as T
+import Data.Text.Lazy (toStrict)
+import Data.Text.Lazy.Builder (fromString, fromText, singleton, toLazyText)
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
 import Data.Vector qualified as V
@@ -80,7 +82,7 @@ ppCoveredCode fileType sc cs s | null s = "Coverage map is empty"
     ppFile (srcPath, srcLines) =
       let runtimeLines = fromMaybe mempty $ Map.lookup srcPath runtimeLinesMap
           marked = markLines fileType srcLines runtimeLines (fromMaybe Map.empty (Map.lookup srcPath covLines))
-      in T.unlines (changeFileName srcPath : changeFileLines (V.toList marked))
+      in changeFileName srcPath <> lazyunlines fromText (changeFileLines (V.toList marked))
     topHeader = case fileType of
       Lcov -> "TN:\n"
       Html -> "<style> code { white-space: pre-wrap; display: block; background-color: #eee; }" <>
@@ -92,16 +94,17 @@ ppCoveredCode fileType sc cs s | null s = "Coverage map is empty"
       Txt  -> ""
     -- ^ Text to add to top of the file
     changeFileName (T.pack -> fn) = case fileType of
-      Lcov -> "SF:" <> fn
-      Html -> "<b>" <> HTML.text fn <> "</b>"
-      Txt  -> fn
+      Lcov -> fromString "SF:" <> fromText fn
+      Html -> fromString "<b>" <> fromText (HTML.text fn) <> fromString "</b>"
+      Txt  -> fromText fn
     -- ^ Alter file name, in the case of html turning it into bold text
     changeFileLines ls = case fileType of
       Lcov -> ls ++ ["end_of_record"]
       Html -> "<code>" : ls ++ ["", "</code>","<br />"]
       Txt  -> ls
     -- ^ Alter file contents, in the case of html encasing it in <code> and adding a line break
-  in topHeader <> T.unlines (map ppFile allFiles)
+    lazyunlines conv l = foldr (\x r -> conv x <> singleton '\n' <> r) mempty l <> singleton '\n'
+  in toStrict $ toLazyText $ fromString topHeader <> lazyunlines id (map ppFile allFiles)
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
 markLines :: CoverageFileType -> V.Vector Text -> S.Set Int -> Map Int [TxResult] -> V.Vector Text
