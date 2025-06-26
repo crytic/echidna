@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "crytic-compile": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1750965445,
+        "narHash": "sha256-Sf1gaDBnWSPUIk4u1tN5EOKw045MdT6uz7q3QlFq7k0=",
+        "owner": "crytic",
+        "repo": "crytic-compile",
+        "rev": "a4727a2331d8b9b31259bb57ea3dfad6f4738412",
+        "type": "github"
+      },
+      "original": {
+        "owner": "crytic",
+        "ref": "dev-autolink",
+        "repo": "crytic-compile",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -86,6 +103,7 @@
     },
     "root": {
       "inputs": {
+        "crytic-compile": "crytic-compile",
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
         "nix-bundle-exe": "nix-bundle-exe",
