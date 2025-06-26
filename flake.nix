@@ -11,9 +11,13 @@
       url = "github:hellwolf/solc.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    crytic-compile = {
+      url = "github:crytic/crytic-compile/dev-autolink";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, solc-pkgs, foundry, ... }:
+  outputs = { self, nixpkgs, flake-utils, solc-pkgs, foundry, crytic-compile, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -57,6 +61,16 @@
           ([
             pkgs.haskell.lib.compose.dontCheck
           ]);
+
+        slither-analyzer = let
+          python3 = pkgs.python3.override {
+            packageOverrides = final: prev: {
+              crytic-compile = prev.crytic-compile.overrideAttrs {
+                src = crytic-compile;
+              };
+            };
+          };
+        in python3.pkgs.slither-analyzer;
 
         echidna = pkgs: with pkgs; lib.pipe
           (haskellPackages.callCabal2nix "echidna" ./. { hevm = hevm pkgs; })
