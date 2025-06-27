@@ -8,6 +8,7 @@ import Control.Monad (unless)
 import Data.ByteString qualified as BS
 import Data.Foldable
 import Data.List (nub, sort)
+import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -212,7 +213,7 @@ checkAssertionReached covLines assert =
     (Map.lookup assert.filenameAbsolute covLines)
   where
    checkCoverage coverage = let lineNumbers = Map.keys coverage in
-     unless ((head assert.assertLines) `elem` lineNumbers) warnAssertNotReached
+     unless (NE.head assert.assertLines `elem` lineNumbers) warnAssertNotReached
    warnAssertNotReached =
     putStrLn $ "WARNING: assertion at file: " ++ assert.filenameRelative
-       ++ " starting at line: " ++ show (head assert.assertLines) ++ " was never reached"
+       ++ " starting at line: " ++ show (NE.head assert.assertLines) ++ " was never reached"
