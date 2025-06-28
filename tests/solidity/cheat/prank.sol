@@ -4,6 +4,8 @@ interface IHevm {
     function stopPrank() external;
 }
 
+contract C {}
+
 contract ExpectedCreator {
   event Sender(address);
   event AssertionFailed(string);
@@ -52,6 +54,7 @@ contract SenderVerifierParent {
 
 contract TestPrank {
   IHevm constant vm = IHevm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
+  event AssertionFailed(string);
 
   SenderVerifierParent p;
   constructor() public {
@@ -90,5 +93,31 @@ contract TestPrank {
   function withNothing() public {
     p.verifyMsgSender(address(this));
     new ExpectedCreator(address(this));
+  }
+
+  function doubleDeployExist() public {
+    address caller = address(new C());
+    vm.startPrank(caller);
+    new C();
+    new C();
+  }
+
+  function doubleDeployNotExist() public {
+    address caller = address(0xdead);
+    vm.startPrank(caller);
+    new C();
+    new C();
+  }
+
+  function withDoubleDeploy() public {
+    try this.doubleDeployExist() {
+    } catch {
+      emit AssertionFailed("fail double deploy exist");
+    }
+
+    try this.doubleDeployNotExist() {
+    } catch {
+      emit AssertionFailed("fail double deploy not exist");
+    }
   }
 }

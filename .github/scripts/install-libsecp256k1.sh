@@ -9,7 +9,7 @@ if [ -f $HOME/.local/lib/libsecp256k1.a ]; then
   exit 0
 fi
 
-INSTALL_VERSION=0.5.0
+INSTALL_VERSION=0.6.0
 curl -LO "https://github.com/bitcoin-core/secp256k1/archive/v$INSTALL_VERSION.zip"
 
 unzip "v$INSTALL_VERSION.zip" && rm "v$INSTALL_VERSION.zip"

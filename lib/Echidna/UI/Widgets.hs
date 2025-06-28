@@ -277,9 +277,6 @@ gasPerfWidget uiState =
     diffLocalTime (fromMaybe uiState.now uiState.timeStopped)
                   uiState.timeStarted
 
-ppSeed :: [WorkerState] -> String
-ppSeed campaigns = show (head campaigns).genDict.defSeed
-
 fetchedDialogWidget :: UIState -> Widget Name
 fetchedDialogWidget uiState =
   B.renderDialog uiState.fetchedDialog $ padLeftRight 1 $

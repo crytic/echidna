@@ -49,13 +49,17 @@ ppTotalCalls workerStates = "Total calls: " <> show calls
   where
     calls = sum $ (.ncalls) <$> workerStates
 
+ppSeed :: [WorkerState] -> String
+ppSeed [] = "unknown" -- should not happen
+ppSeed (campaign:_) = show campaign.genDict.defSeed
+
 ppCampaign :: (MonadIO m, MonadReader Env m) => VM Concrete RealWorld -> [WorkerState] -> m String
 ppCampaign vm workerStates = do
   tests <- liftIO . traverse readIORef =<< asks (.testRefs)
   testsPrinted <- ppTests tests
   gasInfoPrinted <- ppGasInfo vm workerStates
   coveragePrinted <- ppCoverage
-  let seedPrinted = "Seed: " <> show (head workerStates).genDict.defSeed
+  let seedPrinted = "Seed: " <> ppSeed workerStates
   corpusPrinted <- ppCorpus
   let callsPrinted = ppTotalCalls workerStates
   pure $ unlines

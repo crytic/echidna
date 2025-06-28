@@ -2,6 +2,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    foundry.url = "github:shazow/foundry.nix/47f8ae49275eeff9bf0526d45e3c1f76723bb5d3";
     flake-compat = {
       url = "github:edolstra/flake-compat";
       flake = false;
@@ -16,7 +17,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, nix-bundle-exe, solc-pkgs, ... }:
+  outputs = { self, nixpkgs, flake-utils, nix-bundle-exe, solc-pkgs, foundry, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -52,8 +53,8 @@
         hevm = pkgs: pkgs.lib.pipe ((hsPkgs pkgs).callCabal2nix "hevm" (pkgs.fetchFromGitHub {
           owner = "ethereum";
           repo = "hevm";
-          rev = "9924e80dd0226c1f3e1eda651bbeb3558f419843";
-          sha256 = "sha256-HGvWD7AjqKinE/oYu9L4b2HetcKrO3B+hNCzJ761XAk=";
+          rev = "7fa6a959bea935f476100037aa84531523cd9d8a";
+          sha256 = "sha256-4dTXB/3F3180L5tBhDVky2A6irbGDN4rZHdnDdc+j64=";
         }) { secp256k1 = pkgs.secp256k1; })
         ([
           pkgs.haskell.lib.compose.dontCheck
@@ -147,13 +148,15 @@
 
         packages.echidna-redistributable = echidnaRedistributable;
 
-        devShell = with pkgs;
-          haskellPackages.shellFor {
+        devShells = with pkgs; {
+          default = haskellPackages.shellFor {
             packages = _: [ (echidna pkgs) ];
             shellHook = ''
               hpack
             '';
             buildInputs = [
+              libff
+              secp256k1
               solc
               slither-analyzer
               haskellPackages.hlint
@@ -162,6 +165,16 @@
             ];
             withHoogle = true;
           };
+
+          fuzz = mkShell {
+            packages = [
+              (echidna pkgs)
+              slither-analyzer
+              foundry.defaultPackage.${system}
+              z3
+            ];
+          };
+        };
       }
     );
 }
