@@ -148,8 +148,8 @@
 
         packages.echidna-redistributable = echidnaRedistributable;
 
-        devShell = with pkgs;
-          haskellPackages.shellFor {
+        devShells = with pkgs; {
+          default = haskellPackages.shellFor {
             packages = _: [ (echidna pkgs) ];
             shellHook = ''
               hpack
@@ -162,10 +162,19 @@
               haskellPackages.hlint
               haskellPackages.cabal-install
               haskellPackages.haskell-language-server
-              foundry.defaultPackage.${system}
             ];
             withHoogle = true;
           };
+
+          fuzz = mkShell {
+            packages = [
+              (echidna pkgs)
+              slither-analyzer
+              foundry.defaultPackage.${system}
+              z3
+            ];
+          };
+        };
       }
     );
 }
