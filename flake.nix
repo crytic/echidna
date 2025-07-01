@@ -33,17 +33,13 @@
         # 0.5.7 is not available on aarch64 darwin so alternatively pick 0.8.5
         solc = solc-pkgs.mkDefault pkgs (pkgs.solc_0_5_7 or pkgs.solc_0_8_5);
 
-        secp256k1-static = pkgsDeps.secp256k1.overrideAttrs (attrs: {
-          configureFlags = attrs.configureFlags ++ [ "--enable-static" ];
-        });
-
-        ncurses-static = pkgsDeps.ncurses.override { enableStatic = true; };
-
         dependencies-static = with pkgsDeps; [
           (gmp.override { withStatic = true; })
-          secp256k1-static
+          (pkgsDeps.secp256k1.overrideAttrs (attrs: {
+            configureFlags = attrs.configureFlags ++ [ "--enable-static" ];
+          }))
           (libff.override { enableStatic = true; })
-          ncurses-static
+          (ncurses.override { enableStatic = true; })
         ] ++ lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
           # darwin provides these
           (zlib.override { static = true; shared = false; })
@@ -86,19 +82,12 @@
         # be provided in a well known location by macos itself.
         echidnaRedistributable = let
           grep = "${pkgs.gnugrep}/bin/grep";
-          perl = "${pkgs.perl}/bin/perl";
           otool = "${pkgs.darwin.binutils.bintools}/bin/otool";
           install_name_tool = "${pkgs.darwin.binutils.bintools}/bin/install_name_tool";
           codesign_allocate = "${pkgs.darwin.binutils.bintools}/bin/codesign_allocate";
           codesign = "${pkgs.darwin.sigtool}/bin/codesign";
-        in if pkgs.stdenv.isLinux
+        in if pkgs.stdenv.isDarwin
         then pkgs.runCommand "echidna-stripNixRefs" {} ''
-          mkdir -p $out/bin
-          cp ${pkgs.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
-          # fix TERMINFO path in ncurses
-          ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo" . "\x0" x (length($1) - 65)#e' $out/bin/echidna
-          chmod 555 $out/bin/echidna
-        '' else pkgs.runCommand "echidna-stripNixRefs" {} ''
           mkdir -p $out/bin
           cp ${pkgs.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
           # rewrite /nix/... library paths to point to /usr/lib
@@ -113,8 +102,6 @@
               *libz.dylib)        ${install_name_tool} -change "$lib" /usr/lib/libz.dylib       "$exe" ;;
             esac
           done
-          # fix TERMINFO path in ncurses
-          ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/usr/share/terminfo" . "\x0" x (length($1) - 19)#e' $out/bin/echidna
           # check that no nix deps remain
           nixdeps=$(${otool} -L "$exe" | tail -n +2 | { ${grep} /nix/store -c || test $? = 1; })
           if [ ! "$nixdeps" = "0" ]; then
@@ -124,7 +111,7 @@
           # re-sign binary
           CODESIGN_ALLOCATE=${codesign_allocate} ${codesign} -f -s - "$exe"
           chmod 555 "$exe"
-        '';
+        '' else echidna-static;
 
         # if we pass a library folder to ghc via --extra-lib-dirs that contains
         # only .a files, then ghc will link that library statically instead of
