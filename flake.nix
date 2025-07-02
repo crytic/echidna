@@ -40,6 +40,11 @@
           }))
           (libff.override { enableStatic = true; })
           (ncurses.override { enableStatic = true; })
+        ] ++ lib.optionals (pkgs.stdenv.hostPlatform.isLinux && pkgs.stdenv.hostPlatform.isx86_64) [
+          # FIXME: work around wrong libdw / libelf linking on musl builds on x86_64
+          (lib.getLib xz)
+          (lib.getLib bzip2)
+          (lib.getLib zstd)
         ] ++ lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
           # darwin provides these
           (zlib.override { static = true; shared = false; })
@@ -69,11 +74,23 @@
 
         echidna-static = with pkgsGHC; lib.pipe
           (echidna pkgsGHC)
-          [
+          ([
             (haskell.lib.compose.appendConfigureFlags
               (map (drv: "--extra-lib-dirs=${stripDylib drv}/lib") dependencies-static))
             (haskell.lib.compose.enableCabalFlag "static")
-          ];
+          ] ++ lib.optionals (pkgs.stdenv.hostPlatform.isLinux && pkgs.stdenv.hostPlatform.isx86_64) [
+            # FIXME: work around wrong libdw / libelf linking on musl builds on x86_64
+            (haskell.lib.compose.appendConfigureFlags [
+              "--ghc-option=-optl-Wl,--start-group"
+              "--ghc-option=-optl-lelf"
+              "--ghc-option=-optl-ldw"
+              "--ghc-option=-optl-lzstd"
+              "--ghc-option=-optl-lz" 
+              "--ghc-option=-optl-lbz2"
+              "--ghc-option=-optl-llzma"
+              "--ghc-option=-optl-Wl,--end-group"
+            ])
+          ]);
 
         # "static" binary for distribution
         # on linux this is actually a real fully static binary
