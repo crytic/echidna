@@ -87,7 +87,7 @@ compileContracts solConf fp = do
       stderr <- if solConf.quiet
                    then UseHandle <$> openFile nullFilePath WriteMode
                    else pure Inherit
-      (ec, out, err) <- measureIO solConf.quiet ("Compiling " <> x) $ do
+      (ec, out, err) <- measureIO solConf.quiet ("Compiling `" <> x <> "`") $ do
         readCreateProcessWithExitCode
           (proc path $ (solConf.cryticArgs ++ solargs) |> x) {std_err = stderr} ""
       case ec of

@@ -3,7 +3,7 @@ module Echidna.UI.Report where
 import Control.Monad (forM)
 import Control.Monad.Reader (MonadReader, MonadIO (liftIO), asks, ask)
 import Control.Monad.ST (RealWorld)
-import Data.IORef (readIORef)
+import Data.IORef (readIORef, atomicModifyIORef')
 import Data.List (intercalate, nub, sortOn)
 import Data.Map (toList)
 import Data.Map qualified as Map
@@ -15,7 +15,8 @@ import Optics
 
 import Echidna.ABI (GenDict(..), encodeSig)
 import Echidna.Pretty (ppTxCall)
-import Echidna.SourceMapping (findSrcByMetadata)
+import Echidna.SourceMapping (findSrcByMetadata, lookupCodehash)
+import Echidna.SymExec.Symbolic (forceWord)
 import Echidna.Types (Gas)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
@@ -27,9 +28,9 @@ import Echidna.Utility (timePrefix)
 
 import EVM.Format (showTraceTree, contractNamePart)
 import EVM.Solidity (SolcContract(..))
-import EVM.Types (W256, VM(labels), VMType(Concrete), Addr, Expr (LitAddr))
+import EVM.Types (W256, VM(labels), VMType(Concrete), Addr, Expr (LitAddr), Contract(..))
 
-ppLogLine :: MonadReader Env m => VM Concrete RealWorld -> (LocalTime, CampaignEvent) -> m String
+ppLogLine :: (MonadReader Env m, MonadIO m) => VM Concrete RealWorld -> (LocalTime, CampaignEvent) -> m String
 ppLogLine vm (time, event@(WorkerEvent workerId FuzzWorker _)) =
   ((timePrefix time <> "[Worker " <> show workerId <> "] ") <>) <$> ppCampaignEventLog vm event
 ppLogLine vm (time, event@(WorkerEvent workerId SymbolicWorker _)) =
@@ -37,7 +38,7 @@ ppLogLine vm (time, event@(WorkerEvent workerId SymbolicWorker _)) =
 ppLogLine vm (time, event) =
   ((timePrefix time <> " ") <>) <$> ppCampaignEventLog vm event
 
-ppCampaignEventLog :: MonadReader Env m => VM Concrete RealWorld -> CampaignEvent -> m String
+ppCampaignEventLog :: (MonadReader Env m, MonadIO m) => VM Concrete RealWorld -> CampaignEvent -> m String
 ppCampaignEventLog vm ev = (ppCampaignEvent ev <>) <$> ppTxIfHas where
   ppTxIfHas = case ev of
     (WorkerEvent _ _ (TestFalsified test)) -> ("\n  Call sequence:\n" <>) . unlines <$> mapM (ppTx vm $ length (nub $ (.src) <$> test.reproducer) /= 1) test.reproducer
@@ -68,7 +69,7 @@ ppCampaign vm workerStates = do
 
 -- | Given rules for pretty-printing associated addresses, and whether to print
 -- them, pretty-print a 'Transaction'.
-ppTx :: MonadReader Env m => VM Concrete RealWorld -> Bool -> Tx -> m String
+ppTx :: (MonadReader Env m, MonadIO m) => VM Concrete RealWorld -> Bool -> Tx -> m String
 ppTx _ _ Tx { call = NoCall, delay } =
   pure $ "*wait*" <> ppDelay delay
 ppTx vm printName tx = do
@@ -92,16 +93,30 @@ ppTx vm printName tx = do
       Nothing -> ""
       Just l -> " «" <> T.unpack l <> "»"
 
-contractNameForAddr :: MonadReader Env m => VM Concrete RealWorld -> Addr -> m Text
+contractNameForAddr :: (MonadReader Env m, MonadIO m) => VM Concrete RealWorld -> Addr -> m Text
 contractNameForAddr vm addr = do
-  dapp <- asks (.dapp)
-  maybeName <- case Map.lookup (LitAddr addr) (vm ^. #env % #contracts) of
-    Just contract ->
-      case findSrcByMetadata contract dapp of
-        Just solcContract -> pure $ Just $ contractNamePart solcContract.contractName
-        Nothing -> pure Nothing
-    Nothing -> pure Nothing
-  pure $ fromMaybe (T.pack $ show addr) maybeName
+  case Map.lookup (LitAddr addr) (vm ^. #env % #contracts) of
+    Just contract -> do
+      -- Figure out contract compile-time codehash
+      codehashMap <- asks (.codehashMap)
+      dapp <- asks (.dapp)
+      let codehash = forceWord contract.codehash
+      compileTimeCodehash <- liftIO $ lookupCodehash codehashMap codehash contract dapp
+      -- See if we know the name
+      cache <- asks (.contractNameCache)
+      nameMap <- liftIO $ readIORef cache
+      case Map.lookup compileTimeCodehash nameMap of
+        Just name -> pure name
+        Nothing -> do
+          -- Cache miss, compute and store the name
+          let maybeName = case findSrcByMetadata contract dapp of
+                Just solcContract -> Just $ contractNamePart solcContract.contractName
+                Nothing -> Nothing
+              finalName = fromMaybe (T.pack $ show addr) maybeName
+          -- Store in cache using compile-time codehash as key
+          liftIO $ atomicModifyIORef' cache $ \m -> (Map.insert compileTimeCodehash finalName m, ())
+          pure finalName
+    Nothing -> pure $ T.pack $ show addr
 
 ppDelay :: (W256, W256) -> [Char]
 ppDelay (time, block) =
@@ -123,14 +138,14 @@ ppCorpus = do
   pure $ "Corpus size: " <> show (corpusSize corpus)
 
 -- | Pretty-print the gas usage information a 'Campaign' has obtained.
-ppGasInfo :: MonadReader Env m => VM Concrete RealWorld -> [WorkerState] -> m String
+ppGasInfo :: (MonadReader Env m, MonadIO m) => VM Concrete RealWorld -> [WorkerState] -> m String
 ppGasInfo vm workerStates = do
   let gasInfo = Map.unionsWith max ((.gasInfo) <$> workerStates)
   items <- mapM (ppGasOne vm) $ sortOn (\(_, (n, _)) -> n) $ toList gasInfo
   pure $ intercalate "" items
 
 -- | Pretty-print the gas usage for a function.
-ppGasOne :: MonadReader Env m => VM Concrete RealWorld -> (Text, (Gas, [Tx])) -> m String
+ppGasOne :: (MonadReader Env m, MonadIO m) => VM Concrete RealWorld -> (Text, (Gas, [Tx])) -> m String
 ppGasOne _  ("", _)      = pure ""
 ppGasOne vm (func, (gas, txs)) = do
   let header = "\n" <> unpack func <> " used a maximum of " <> show gas <> " gas\n"
@@ -139,7 +154,7 @@ ppGasOne vm (func, (gas, txs)) = do
   pure $ header <> unlines (("    " <>) <$> prettyTxs)
 
 -- | Pretty-print the status of a solved test.
-ppFail :: MonadReader Env m => Maybe (Int, Int) -> VM Concrete RealWorld -> [Tx] -> m String
+ppFail :: (MonadReader Env m, MonadIO m) => Maybe (Int, Int) -> VM Concrete RealWorld -> [Tx] -> m String
 ppFail _ _ []  = pure "failed with no transactions made ⁉️ "
 ppFail b vm xs = do
   let status = case b of
@@ -152,7 +167,7 @@ ppFail b vm xs = do
          <> "Traces: \n" <> T.unpack (showTraceTree dappInfo vm)
 
 -- | Pretty-print the status of a solved test.
-ppFailWithTraces :: MonadReader Env m => Maybe (Int, Int) -> VM Concrete RealWorld -> [(Tx, VM Concrete RealWorld)] -> m String
+ppFailWithTraces :: (MonadReader Env m, MonadIO m) => Maybe (Int, Int) -> VM Concrete RealWorld -> [(Tx, VM Concrete RealWorld)] -> m String
 ppFailWithTraces  _ _ []  = pure "failed with no transactions made ⁉️ "
 ppFailWithTraces b finalVM results = do
   dappInfo <- asks (.dapp)
@@ -170,7 +185,7 @@ ppFailWithTraces b finalVM results = do
 
 -- | Pretty-print the status of a test.
 
-ppTS :: MonadReader Env m => TestState -> VM Concrete RealWorld -> [Tx] -> m String
+ppTS :: (MonadReader Env m, MonadIO m) => TestState -> VM Concrete RealWorld -> [Tx] -> m String
 ppTS (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
 ppTS Solved     vm l = ppFail Nothing vm l
 ppTS Passed     _ _  = pure " passed! 🎉"
@@ -181,7 +196,7 @@ ppTS (Large n) vm l  = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
   ppFail (if n < m then Just (n, m) else Nothing) vm l
 
-ppOPT :: MonadReader Env m => TestState -> VM Concrete RealWorld -> [Tx] -> m String
+ppOPT :: (MonadReader Env m, MonadIO m) => TestState -> VM Concrete RealWorld -> [Tx] -> m String
 ppOPT (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
 ppOPT Solved     vm l = ppOptimized Nothing vm l
 ppOPT Passed     _ _  = pure " passed! 🎉"
@@ -191,8 +206,8 @@ ppOPT (Large n) vm l  = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
   ppOptimized (if n < m then Just (n, m) else Nothing) vm l
 
--- | Pretty-print the status of a optimized test.
-ppOptimized :: MonadReader Env m => Maybe (Int, Int) -> VM Concrete RealWorld -> [Tx] -> m String
+-- | Pretty-print the status of an optimized test.
+ppOptimized :: (MonadReader Env m, MonadIO m) => Maybe (Int, Int) -> VM Concrete RealWorld -> [Tx] -> m String
 ppOptimized _ _ []  = pure "Call sequence:\n(no transactions)"
 ppOptimized b vm xs = do
   let status = case b of
@@ -205,7 +220,7 @@ ppOptimized b vm xs = do
          <> "Traces: \n" <> T.unpack (showTraceTree dappInfo vm)
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
-ppTests :: MonadReader Env m => [EchidnaTest] -> m String
+ppTests :: (MonadReader Env m, MonadIO m) => [EchidnaTest] -> m String
 ppTests tests = do
   unlines . catMaybes <$> mapM pp tests
   where

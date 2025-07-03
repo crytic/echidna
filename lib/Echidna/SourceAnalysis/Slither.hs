@@ -41,7 +41,7 @@ enhanceConstants si =
     enh (AbiString s) = makeArrayAbiValues s
     enh v = [v]
 
-data AssertLocation = AssertLocation 
+data AssertLocation = AssertLocation
   { start :: Int
   , filenameRelative :: String
   , filenameAbsolute :: String
@@ -77,13 +77,13 @@ instance FromJSON AssertLocation where
     filenameAbsolute <- o.: "filename_absolute"
     assertLines <- o.: "lines"
     startColumn <- o.: "starting_column"
-    endingColumn <- o.: "ending_column" 
+    endingColumn <- o.: "ending_column"
     pure AssertLocation {..}
 
 instance FromJSON ContractAssertListing where
   parseJSON x = (AssertFunctionList <$> parseJSON x) <|> (AssertLocationList <$> parseJSON x)
 
--- we loose info on what constants are in which functions
+-- we lose info on what constants are in which functions
 data SlitherInfo = SlitherInfo
   { payableFunctions :: Map ContractName [FunctionName]
   , constantFunctions :: Map ContractName [FunctionName]
@@ -161,7 +161,7 @@ runSlither fp solConf = if solConf.disableSlither
     Just path -> do
       let args = ["--ignore-compile", "--print", "echidna", "--json", "-"]
                  ++ solConf.cryticArgs ++ [fp]
-      (exitCode, out, err) <- measureIO solConf.quiet ("Running slither on " <> fp) $
+      (exitCode, out, err) <- measureIO solConf.quiet ("Running slither on `" <> fp <> "`") $
         readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
       case exitCode of
         ExitSuccess ->

@@ -140,7 +140,7 @@ testContract' fp n v configPath s workerType expectations = testCase fp $ withSo
     assertion result >>= assertBool message
 
 -- | Given a file and an optional contract name, compile the file as solidity, then, if a name is
--- given, try to fine the specified contract (assuming it is in the file provided), otherwise, find
+-- given, try to find the specified contract (assuming it is in the file provided), otherwise, find
 -- the first contract in the file. Take said contract and return an initial VM state with it loaded,
 -- its ABI (as 'SolSignature's), and the names of its Echidna tests. NOTE: unlike 'loadSpecified',
 -- contract names passed here don't need the file they occur in specified.

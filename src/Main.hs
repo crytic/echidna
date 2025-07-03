@@ -15,6 +15,7 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Version (showVersion)
 import Data.Word (Word8, Word16, Word64)
@@ -54,6 +55,8 @@ main = withUtf8 $ withCP65001 $ do
   EConfigWithUsage loadedCfg ks _ <-
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
   cfg <- overrideConfig loadedCfg opts
+
+  printProjectName cfg.projectName
 
   unless cfg.solConf.quiet $
     forM_ ks $ hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString
@@ -288,3 +291,8 @@ overrideConfig config Options{..} = do
       , testMode = maybe solConf.testMode validateTestMode cliTestMode
       , allContracts = cliAllContracts || solConf.allContracts
       }
+
+printProjectName :: Maybe Text -> IO ()
+printProjectName (Just name) = putStrLn $
+    "This is Echidna " <> showVersion version <> " running on project `" <> T.unpack name <> "`"
+printProjectName Nothing = pure ()

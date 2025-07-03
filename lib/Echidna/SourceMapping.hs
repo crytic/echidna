@@ -22,7 +22,7 @@ import EVM.Types (Contract(..), ContractCode(..), RuntimeCode(..), W256)
 type CodehashMap = IORef (Map W256 W256)
 
 -- | Lookup a codehash in the `CodehashMap`.
--- In the case that it's not found, find the compile-time codehash and add it to the map.
+-- In the case that it is not found, find the compile-time codehash and add it to the map.
 -- This is done using hevm's `findSrc` function.
 lookupCodehash :: CodehashMap -> W256 -> Contract -> DappInfo -> IO W256
 lookupCodehash chmap codehash contr dapp = do

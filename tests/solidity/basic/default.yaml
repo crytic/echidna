@@ -1,4 +1,6 @@
 # TODO
+#a friendly name to identify what is being fuzzed. Shown next to the echidna version in the UI
+projectName: null
 #select the mode to test, which can be property, assertion, overflow, exploration, optimization
 testMode: "property"
 #check if some contract was destructed or not

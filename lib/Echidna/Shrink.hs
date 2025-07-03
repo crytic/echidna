@@ -37,11 +37,11 @@ shrinkTest vm test = do
       -- Start removing the reverts, if any
       do  repro <- removeReverts vm test.reproducer
           let rr = removeUselessNoCalls $ catNoCalls repro
-          -- Check if the sequence can be reduced, in practice this is almost never fails 
-          -- since the canShrinkTx function is hard to enforce for all transaction in the sequence 
+          -- Check if the sequence can be reduced, in practice this almost never fails
+          -- since the canShrinkTx function is hard to enforce for all transactions in the sequence
           if length rr > 1 || any canShrinkTx rr then do
             maybeShrunk <- shrinkSeq vm (checkETest test) test.value rr
-            -- check if the shrinked sequence passes the test or not
+            -- check if the shrunk sequence passes the test or not
             pure $ case maybeShrunk of
               -- the test still fails, let's create another test with the reduced sequence
               Just (txs, val, vm') -> do
@@ -62,16 +62,17 @@ shrinkTest vm test = do
 replaceByNoCall :: Tx -> Tx
 replaceByNoCall tx = tx { call = NoCall }
 
--- | Given a sequence of transactions, remove useless NoCalls. These 
--- are when the NoCall have both zero increment in timestamp and block number.
+-- | Given a sequence of transactions, remove useless NoCalls. These are NoCalls
+-- that have both zero increment in timestamp and block number.
 removeUselessNoCalls :: [Tx] -> [Tx]
 removeUselessNoCalls = mapMaybe f
-  where f tx = if isUselessNoCall tx then Nothing else Just tx 
+  where f tx = if isUselessNoCall tx then Nothing else Just tx
 
 -- | Given a VM and a sequence of transactions, execute each transaction except the last one.
 -- If a transaction reverts, replace it by a "NoCall" with the same parameters as the original call
 -- (e.g. same block increment timestamp and number)
 removeReverts :: (MonadIO m, MonadReader Env m, MonadThrow m) => VM Concrete RealWorld -> [Tx] -> m [Tx]
+removeReverts _ [] = return []
 removeReverts vm txs = do
   let (itxs, le) = (init txs, last txs)
   ftxs <- removeReverts' vm itxs []
@@ -82,8 +83,8 @@ removeReverts' _ [] ftxs = return $ reverse ftxs
 removeReverts' vm (t:txs) ftxs = do
   (_, vm') <- execTx vm t
   if hasReverted vm'
-  then removeReverts' vm' txs (replaceByNoCall t: ftxs) 
-  else removeReverts' vm' txs (t:ftxs) 
+  then removeReverts' vm' txs (replaceByNoCall t: ftxs)
+  else removeReverts' vm' txs (t:ftxs)
 
 -- | Given a call sequence that solves some Echidna test, try to randomly
 -- generate a smaller one that still solves that test.
@@ -98,7 +99,7 @@ shrinkSeq vm f v txs = do
   -- apply one of the two possible simplification strategies (shrunk or shorten) with equal probability
   txs' <- uniform =<< sequence [shorten, shrunk]
   -- remove certain type of "no calls"
-  let txs'' = removeUselessNoCalls txs' 
+  let txs'' = removeUselessNoCalls txs'
   -- check if the sequence still triggers a failed transaction
   (value, vm') <- check txs'' vm
   -- if the test passed it means we didn't shrink successfully (returns Nothing)

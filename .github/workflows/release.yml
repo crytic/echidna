@@ -94,12 +94,12 @@ jobs:
           merge-multiple: true
 
       - name: Sign binaries
-        uses: sigstore/gh-action-sigstore-python@v3.0.0
+        uses: sigstore/gh-action-sigstore-python@v3.0.1
         with:
           inputs: ./echidna-*.tar.gz
 
       - name: Create GitHub release and upload binaries
-        uses: softprops/action-gh-release@v2.2.1
+        uses: softprops/action-gh-release@v2.3.2
         with:
           draft: true
           name: "Echidna ${{ needs.nixBuild.outputs.version }}"

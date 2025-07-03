@@ -209,7 +209,7 @@ execTxWith executeTx tx = do
       -- If a transaction reverts reset VM to state before the transaction.
       put vmBeforeTx
       -- Undo reset of some of the VM state.
-      -- Otherwise we'd loose all information about the reverted transaction like
+      -- Otherwise we'd lose all information about the reverted transaction like
       -- contract address, calldata, result and traces.
       #result ?= vmResult
       #state % #calldata .= calldataBeforeVMReset
