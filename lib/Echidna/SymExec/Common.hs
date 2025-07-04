@@ -117,10 +117,8 @@ frameMakeSymbolic :: Frame Concrete s -> Frame Symbolic s
 frameMakeSymbolic fr = Frame { context = fr.context, state = frameStateMakeSymbolic fr.state }
 
 -- | Convert a n-bit unsigned integer to a n-bit signed integer.
-uintToInt :: Integral n => W256 -> n -> Int
-uintToInt w n = if w < 2 ^ (n - 1)
-  then fromIntegral w
-  else fromIntegral (w - 2 ^ n)
+uintToInt :: W256 -> Int -> Integer
+uintToInt w n = fromIntegral (w - 2 ^ 256)
 
 modelToTx :: Addr -> Expr EWord -> Expr EWord -> Method -> Set Addr -> Addr -> ProofResult SMTCex String -> TxOrError
 modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
