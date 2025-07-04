@@ -24,7 +24,7 @@ import Control.Monad.ST (RealWorld)
 import List.Shuffle (shuffleIO)
 
 import Echidna.Types.Campaign (CampaignConf(..))
-import Echidna.Types.Config (Env(..), EConfig(..))
+import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), operationMode)
 import Echidna.Types.World (World(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
@@ -73,7 +73,8 @@ exploreContract contract tx vm = do
   resultChan <- liftIO newEmptyMVar
   let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
   let veriOpts = defaultVeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
-  let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = True, debug = True, dumpQueries = False, numCexFuzz = 100 } }
+  let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
+  let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = True, debug = isNonInteractive, dumpQueries = False, numCexFuzz = 100 } }
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
