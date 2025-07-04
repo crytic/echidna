@@ -86,8 +86,8 @@ blockMakeSymbolic b
 addBlockConstraints :: W256 -> W256 -> Block -> [Prop] -> [Prop]
 addBlockConstraints maxTimestampDiff maxNumberDiff block cs =
   cs ++ [
-    PGT (Var "symbolic_block_timestamp") (block.timestamp), PLT (Sub (Var "symbolic_block_timestamp") (block.timestamp)) $ Lit maxTimestampDiff,
-    PGT (Var "symbolic_block_number") (block.number), PLT (Sub (Var "symbolic_block_number") (block.number)) $ Lit maxNumberDiff
+    PGEq (Var "symbolic_block_timestamp") (block.timestamp), PLEq (Sub (Var "symbolic_block_timestamp") (block.timestamp)) $ Lit maxTimestampDiff,
+    PGEq (Var "symbolic_block_number") (block.number), PLEq (Sub (Var "symbolic_block_number") (block.number)) $ Lit maxNumberDiff
   ]
 
 senderConstraints :: Set Addr -> [Prop]
@@ -166,6 +166,7 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
         src = if Set.member src_ senders then src_ else fallbackSender
         value = fromMaybe 0 $ Map.lookup TxValue cex.txContext
 
+        -- If symbolic values for delay (timestamp, number) are unconstrained, no delay is applied
         newTimestamp = fromMaybe 0 $ Map.lookup (Var "symbolic_block_timestamp") cex.vars
         diffTimestamp = if newTimestamp == 0 then 0 else newTimestamp - forceLit oldTimestamp
 

@@ -173,7 +173,7 @@ runSymWorker callback vm dict workerId initialCorpus name = do
   -- (list of txns we're on top of)
   txsToTxAndVmsSym _ [] = pure [(Nothing, vm, [])]
   txsToTxAndVmsSym False txs = do
-    -- Discard the last tx, which should be the one increasing coverage
+    -- Separate the last tx, which should be the one increasing coverage
     let (itxs, ltx) = (init txs, last txs)
     ivm <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm itxs
     -- Split the sequence randomly and select any next transaction
