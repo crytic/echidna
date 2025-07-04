@@ -158,7 +158,7 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
 
         grabAddressArg name = AbiAddress $ fromMaybe 0 $ Map.lookup (SymAddr name) cex.addrs
 
-        grabArrayArg nElem memberType name = AbiArray nElem memberType $ fromList [grabArg memberType $ name <> "-a-" <> T.pack (show n) | n <- [0..nElem] :: [Int]]
+        grabArrayArg nElem memberType name = AbiArray nElem memberType $ fromList [grabArg memberType $ name <> "-a-" <> T.pack (show n) | n <- [0..nElem - 1] :: [Int]]
 
         grabTupleArg memberTypes name = AbiTuple $ fromList [grabArg t $ name <> "-t-" <> T.pack (show n) | (n, t) <- zip ([0..] :: [Int]) (toList memberTypes)]
 
