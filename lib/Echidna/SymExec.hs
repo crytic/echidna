@@ -29,11 +29,10 @@ import Echidna.Types.Solidity (SolConf(..))
 import EVM.ABI (AbiValue(..), AbiType(..), Sig(..), decodeAbiValue)
 import EVM.Expr (simplify)
 import EVM.Fetch qualified as Fetch
-import EVM.SMT (SMT2, assertProps)
 import EVM (loadContract, resetState)
-import EVM.Effects (defaultEnv, defaultConfig)
+import EVM.Effects (defaultEnv)
 import EVM.Solidity (SolcContract(..), Method(..))
-import EVM.Solvers (withSolvers, Solver(Z3), SolverGroup, checkSat)
+import EVM.Solvers (withSolvers, Solver(Z3), SolverGroup, checkSatWithProps)
 import EVM.SymExec (interpret, runExpr, abstractVM, mkCalldata, IterConfig(..), LoopHeuristic (Naive), flattenExpr, extractProps)
 import EVM.Types (Addr, VM(..), Frame(..), FrameState(..), VMType(..), Env(..), Expr(..), EType(..), Query(..), Prop(..), SMTCex(..), SMTResult, ProofResult(..), BranchCondition(..), W256, word256Bytes, word)
 import EVM.Traversals (mapExpr)
@@ -97,8 +96,8 @@ exploreContract conf contract tx vm = do
         -- TODO we might want to switch vm's state.baseState value to AbstractBase eventually.
         -- Doing so might mess up concolic execution.
         exprInter <- interpret fetcher iterConfig vm' runExpr
-        models <- liftIO $ mapConcurrently (checkSat solvers) $ manipulateExprInter isConc exprInter
-        pure $ mapMaybe (modelToTx dst method conf.solConf.sender defaultSender) models
+        models <- liftIO $ mapConcurrently (\props -> runReaderT (checkSatWithProps solvers props) defaultEnv) $ manipulateExprInter isConc exprInter
+        pure $ mapMaybe (modelToTx dst method conf.solConf.sender defaultSender . fst) models
       liftIO $ putMVar resultChan $ concat res
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
@@ -107,9 +106,9 @@ exploreContract conf contract tx vm = do
   threadId <- takeMVar threadIdChan
   pure (threadId, resultChan)
 
--- | Turn the expression returned by `interpret` into SMT2 values to feed into the solver
-manipulateExprInter :: Bool -> Expr End -> [Either String SMT2]
-manipulateExprInter isConc = map (assertProps defaultConfig) . middleStep . map (extractProps . simplify) . flattenExpr . simplify where
+-- | Turn the expression returned by `interpret` into Prop values to feed into the solver
+manipulateExprInter :: Bool -> Expr End -> [[Prop]]
+manipulateExprInter isConc = middleStep . map (extractProps . simplify) . flattenExpr . simplify where
   middleStep = if isConc then middleStepConc else id
   middleStepConc = map singleton . concatMap (go (PBool True))
   go :: Prop -> [Prop] -> [Prop]
