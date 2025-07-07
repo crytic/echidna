@@ -18,6 +18,7 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.IORef (readIORef, atomicModifyIORef', writeIORef)
 import Data.Foldable (foldlM)
 import Data.List qualified as List
+import Data.List.NonEmpty qualified as NEList
 import Data.Map qualified as Map
 import Data.Map (Map, (\\))
 import Data.Maybe (isJust, mapMaybe, fromJust)
@@ -25,9 +26,8 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text, unpack)
 import Data.Time (LocalTime)
-import System.Random (mkStdGen)
 import List.Shuffle (shuffleIO)
-import Data.List.NonEmpty qualified as NEList
+import System.Random (mkStdGen)
 
 
 import EVM (cheatCode)
@@ -52,10 +52,10 @@ import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Config
+import Echidna.Types.Random (rElem)
 import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
-import Echidna.Types.Random (rElem)
 import Echidna.Types.Tx (TxCall(..), Tx(..))
 import Echidna.Utility (getTimestamp)
 
