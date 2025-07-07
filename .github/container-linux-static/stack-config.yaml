@@ -1,5 +1,0 @@
-extra-include-dirs:
-- /usr/include
-extra-lib-dirs:
-- /lib
-- /usr/lib

@@ -103,12 +103,14 @@ encodeCampaign env workerStates = do
   tests <- traverse readIORef env.testRefs
   frozenCov <- mergeCoverageMaps env.dapp env.coverageRefInit env.coverageRefRuntime
   -- TODO: this is ugly, refactor seed to live in Env
-  let worker0 = Prelude.head workerStates
+  let workerSeed [] = 0
+      workerSeed (state:_) = state.genDict.defSeed
+  let seed = workerSeed workerStates
   pure $ encode Campaign
     { _success = True
     , _error = Nothing
     , _tests = mapTest env.dapp <$> tests
-    , seed = worker0.genDict.defSeed
+    , seed = seed
     , coverage = Map.mapKeys (("0x" ++) . (`showHex` "")) $ VU.toList <$> frozenCov
     , gasInfo = Map.toList $ Map.unionsWith max ((.gasInfo) <$> workerStates)
     }

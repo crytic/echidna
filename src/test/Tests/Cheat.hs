@@ -15,10 +15,11 @@ cheatTests =
         [ ("echidna_ffi passed", solved "echidna_ffi") ]
     , testContract' "cheat/gas.sol" (Just "TestCheatGas") (Just (> solcV (0,5,0))) (Just "cheat/ffi.yaml") False FuzzWorker
         [ ("echidna_gas_zero passed", solved "echidna_gas_zero") ]
-    , testContract' "cheat/prank.sol" (Just "TestPrank") (Just (> solcV (0,5,0))) (Just "cheat/prank.yaml") False FuzzWorker
+    , testContract' "cheat/prank.sol" (Just "TestPrank") (Just (> solcV (0,6,0))) (Just "cheat/prank.yaml") False FuzzWorker
         [ ("withPrank failed",               passed "withPrank")
         , ("withStartPrank failed",          passed "withStartPrank")
         , ("withStartPrankStopPrank failed", passed "withStartPrankStopPrank")
         , ("withNothing failed",             passed "withNothing")
+        , ("withDoubleDeploy failed",        passed "withDoubleDeploy")
         ]
     ]
