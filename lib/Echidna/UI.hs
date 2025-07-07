@@ -163,6 +163,7 @@ ui vm dict initialCorpus cliSelectedContract = do
 
     NonInteractive outputFormat -> do
       serverStopVar <- newEmptyMVar
+      startTime <- liftIO getTimestamp
 
       -- Handles ctrl-c
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
@@ -177,7 +178,7 @@ ui vm dict initialCorpus cliSelectedContract = do
       let printStatus = do
             states <- liftIO $ workerStates workers
             time <- timePrefix <$> getTimestamp
-            line <- statusLine env states
+            line <- statusLine env states startTime
             putStrLn $ time <> "[status] " <> line
             hFlush stdout
 
@@ -379,15 +380,21 @@ isTerminal = hNowSupportsANSI stdout
 statusLine
   :: Env
   -> [WorkerState]
+  -> LocalTime  -- ^ Campaign start time
   -> IO String
-statusLine env states = do
+statusLine env states startTime = do
   tests <- traverse readIORef env.testRefs
   (points, _) <- coverageStats env.coverageRefInit env.coverageRefRuntime
   corpus <- readIORef env.corpusRef
+  now <- getTimestamp
   let totalCalls = sum ((.ncalls) <$> states)
+  let totalGas = sum ((.totalGas) <$> states)
+  let elapsedTime = round $ diffLocalTime now startTime
+  let gasPerSecond = if elapsedTime > 0 then totalGas `div` elapsedTime else 0
   pure $ "tests: " <> show (length $ filter didFail tests) <> "/" <> show (length tests)
     <> ", fuzzing: " <> show totalCalls <> "/" <> show env.cfg.campaignConf.testLimit
     <> ", values: " <> show ((.value) <$> filter isOptimizationTest tests)
     <> ", cov: " <> show points
     <> ", corpus: " <> show (Corpus.corpusSize corpus)
+    <> ", gas/s: " <> show gasPerSecond
 
