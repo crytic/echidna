@@ -117,8 +117,8 @@ frameMakeSymbolic :: Frame Concrete s -> Frame Symbolic s
 frameMakeSymbolic fr = Frame { context = fr.context, state = frameStateMakeSymbolic fr.state }
 
 -- | Convert a n-bit unsigned integer to a n-bit signed integer.
-uintToInt :: W256 -> Int -> Integer
-uintToInt w n = fromIntegral (w - 2 ^ 256)
+uintToInt :: W256 -> Integer
+uintToInt w = fromIntegral (w - 2 ^ (256 :: Int))
 
 modelToTx :: Addr -> Expr EWord -> Expr EWord -> Method -> Set Addr -> Addr -> ProofResult SMTCex String -> TxOrError
 modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
@@ -149,7 +149,7 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
           = case Map.lookup (Var name) cex.vars of
               Just w ->
                 case argType of
-                  AbiIntType n -> AbiInt n (fromIntegral (uintToInt w n)) 
+                  AbiIntType n -> AbiInt n (fromIntegral (uintToInt w))
                   _ -> error "Expected AbiIntType"
               Nothing -> -- put a placeholder
                 decodeAbiValue argType (BS.repeat 0)
