@@ -146,6 +146,11 @@ isPassed t = case t.state of
   Passed -> True
   _      -> False
 
+isVerified :: EchidnaTest -> Bool
+isVerified t = case t.state of
+  Unsolvable -> True
+  _          -> False
+
 instance ToJSON TestState where
   toJSON s =
     object $ ("passed", toJSON passed) : maybeToList desc
