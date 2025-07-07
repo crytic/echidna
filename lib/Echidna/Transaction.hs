@@ -157,8 +157,7 @@ mutateTx tx = pure tx
 
 regenTx :: MonadRandom m => Tx -> m Tx
 regenTx tx@Tx{call = SolCall c} = do
-  mutate c
-  where mutate z = mutateAllAbiCall z >>= \c' -> pure tx { call = SolCall c' }
+  mutateAllAbiCall c >>= \c' -> pure tx { call = SolCall c' }
 
 regenTx tx = pure tx
 
