@@ -91,8 +91,6 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("test passed",                    solved     "test") ]
   , testContract' "basic/deploy.sol" (Just "Test") Nothing (Just "basic/deployBytecode.yaml") True FuzzWorker
       [ ("test passed",                    solved     "test") ]
-  , testContract "basic/flags.sol" (Just "basic/etheno-query-error.yaml")
-      [] -- Just check if the etheno config does not crash Echidna
   , testContractV "tstore/tstore.sol" (Just (>= solcV (0,8,25))) Nothing
       [ ("echidna_foo passed", solved "echidna_foo") ]
   ]

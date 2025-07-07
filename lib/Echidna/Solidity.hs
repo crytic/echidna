@@ -182,7 +182,7 @@ loadSpecified env mainContract cs = do
   let blank = populateAddresses (Set.insert solConf.deployer solConf.sender)
                                 solConf.balanceAddr vm
 
-  unless (null mainContract.constructorInputs || isJust solConf.initialize) $
+  unless (null mainContract.constructorInputs) $
     throwM $ ConstructorArgs (show mainContract.constructorInputs)
 
   -- Select libraries

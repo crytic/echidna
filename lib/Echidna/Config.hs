@@ -129,7 +129,6 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "solcArgs"        ..!= ""
         <*> v ..:? "solcLibs"        ..!= []
         <*> v ..:? "quiet"           ..!= False
-        <*> v ..:? "initialize"      ..!= Nothing
         <*> v ..:? "deployContracts" ..!= []
         <*> v ..:? "deployBytecodes" ..!= []
         <*> ((<|>) <$> v ..:? "allContracts"
