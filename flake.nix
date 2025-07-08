@@ -2,6 +2,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    foundry.url = "github:shazow/foundry.nix/47f8ae49275eeff9bf0526d45e3c1f76723bb5d3";
     flake-compat = {
       url = "github:edolstra/flake-compat";
       flake = false;
@@ -16,7 +17,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, nix-bundle-exe, solc-pkgs, ... }:
+  outputs = { self, nixpkgs, flake-utils, nix-bundle-exe, solc-pkgs, foundry, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -26,41 +27,43 @@
 
         # prefer musl on Linux, static glibc + threading does not work properly
         # TODO: maybe only override it for echidna-redistributable?
-        pkgsStatic = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsStatic else pkgs;
+        pkgsGHC = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsMusl else pkgs;
+        pkgsDeps = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsStatic else pkgs;
         # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
         # 0.5.7 is not available on aarch64 darwin so alternatively pick 0.8.5
         solc = solc-pkgs.mkDefault pkgs (pkgs.solc_0_5_7 or pkgs.solc_0_8_5);
 
-        secp256k1-static = pkgsStatic.secp256k1.overrideAttrs (attrs: {
-          configureFlags = attrs.configureFlags ++ [ "--enable-static" ];
-        });
+        dependencies-static = with pkgsDeps; [
+          (gmp.override { withStatic = true; })
+          (pkgsDeps.secp256k1.overrideAttrs (attrs: {
+            configureFlags = attrs.configureFlags ++ [ "--enable-static" ];
+          }))
+          (libff.override { enableStatic = true; })
+          (ncurses.override { enableStatic = true; })
+        ] ++ lib.optionals (pkgs.stdenv.hostPlatform.isLinux && pkgs.stdenv.hostPlatform.isx86_64) [
+          # FIXME: work around wrong libdw / libelf linking on musl builds on x86_64
+          (lib.getLib xz)
+          (lib.getLib bzip2)
+          (lib.getLib zstd)
+        ] ++ lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
+          # darwin provides these
+          (zlib.override { static = true; shared = false; })
+          (libffi.overrideAttrs (_: { dontDisableStatic = true; }))
+        ];
 
-        ncurses-static = pkgsStatic.ncurses.override { enableStatic = true; };
-
-        hsPkgs = ps :
-          ps.haskellPackages.override {
-            overrides = hfinal: hprev: {
-              with-utf8 =
-                if (with ps.stdenv; hostPlatform.isDarwin && hostPlatform.isx86)
-                then ps.haskell.lib.compose.overrideCabal (_ : { extraLibraries = [ps.libiconv]; }) hprev.with-utf8
-                else hprev.with-utf8;
-              # TODO: temporary fix for static build which is still on 9.4
-              witch = ps.haskell.lib.doJailbreak hprev.witch;
-            };
-          };
-
-        hevm = pkgs: pkgs.lib.pipe ((hsPkgs pkgs).callCabal2nix "hevm" (pkgs.fetchFromGitHub {
-          owner = "ethereum";
-          repo = "hevm";
-          rev = "7fa6a959bea935f476100037aa84531523cd9d8a";
-          sha256 = "sha256-4dTXB/3F3180L5tBhDVky2A6irbGDN4rZHdnDdc+j64=";
-        }) { secp256k1 = pkgs.secp256k1; })
-        ([
-          pkgs.haskell.lib.compose.dontCheck
-        ]);
+        hevm = pkgs: pkgs.lib.pipe 
+          (pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
+            owner = "ethereum";
+            repo = "hevm";
+            rev = "d282dff6e0d9ea9f7cf02e17e8ac0b268ef634da";
+            sha256 = "sha256-PQ0vm1K4DWiX6hiITdCqniMSAtxpQHezzIGdWGwmjrc=";
+          }) { secp256k1 = pkgs.secp256k1; })
+          ([
+            pkgs.haskell.lib.compose.dontCheck
+          ]);
 
         echidna = pkgs: with pkgs; lib.pipe
-          ((hsPkgs pkgs).callCabal2nix "echidna" ./. { hevm = hevm pkgs; })
+          (haskellPackages.callCabal2nix "echidna" ./. { hevm = hevm pkgs; })
           ([
             # FIXME: figure out solc situation, it conflicts with the one from
             # solc-select that is installed with slither, disable tests in the meantime
@@ -69,20 +72,25 @@
             (haskell.lib.compose.disableCabalFlag "static")
           ]);
 
-        echidna-static = with pkgsStatic; lib.pipe
-          (echidna pkgsStatic)
-          [
+        echidna-static = with pkgsGHC; lib.pipe
+          (echidna pkgsGHC)
+          ([
             (haskell.lib.compose.appendConfigureFlags
-              [
-                "--extra-lib-dirs=${stripDylib (gmp.override { withStatic = true; })}/lib"
-                "--extra-lib-dirs=${stripDylib secp256k1-static}/lib"
-                "--extra-lib-dirs=${stripDylib (libff.override { enableStatic = true; })}/lib"
-                "--extra-lib-dirs=${zlib.override { static = true; shared = false; }}/lib"
-                "--extra-lib-dirs=${stripDylib (libffi.overrideAttrs (_: { dontDisableStatic = true; }))}/lib"
-                "--extra-lib-dirs=${stripDylib (ncurses-static)}/lib"
-              ])
+              (map (drv: "--extra-lib-dirs=${stripDylib drv}/lib") dependencies-static))
             (haskell.lib.compose.enableCabalFlag "static")
-          ];
+          ] ++ lib.optionals (pkgs.stdenv.hostPlatform.isLinux && pkgs.stdenv.hostPlatform.isx86_64) [
+            # FIXME: work around wrong libdw / libelf linking on musl builds on x86_64
+            (haskell.lib.compose.appendConfigureFlags [
+              "--ghc-option=-optl-Wl,--start-group"
+              "--ghc-option=-optl-lelf"
+              "--ghc-option=-optl-ldw"
+              "--ghc-option=-optl-lzstd"
+              "--ghc-option=-optl-lz" 
+              "--ghc-option=-optl-lbz2"
+              "--ghc-option=-optl-llzma"
+              "--ghc-option=-optl-Wl,--end-group"
+            ])
+          ]);
 
         # "static" binary for distribution
         # on linux this is actually a real fully static binary
@@ -91,44 +99,36 @@
         # be provided in a well known location by macos itself.
         echidnaRedistributable = let
           grep = "${pkgs.gnugrep}/bin/grep";
-          perl = "${pkgs.perl}/bin/perl";
           otool = "${pkgs.darwin.binutils.bintools}/bin/otool";
           install_name_tool = "${pkgs.darwin.binutils.bintools}/bin/install_name_tool";
           codesign_allocate = "${pkgs.darwin.binutils.bintools}/bin/codesign_allocate";
           codesign = "${pkgs.darwin.sigtool}/bin/codesign";
-        in if pkgs.stdenv.isLinux
+        in if pkgs.stdenv.isDarwin
         then pkgs.runCommand "echidna-stripNixRefs" {} ''
           mkdir -p $out/bin
-          cp ${pkgsStatic.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
-          # fix TERMINFO path in ncurses
-          ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo" . "\x0" x (length($1) - 65)#e' $out/bin/echidna
-          chmod 555 $out/bin/echidna
-        '' else pkgs.runCommand "echidna-stripNixRefs" {} ''
-          mkdir -p $out/bin
-          cp ${pkgsStatic.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
-          # get the list of dynamic libs from otool and tidy the output
-          libs=$(${otool} -L $out/bin/echidna | tail -n +2 | sed 's/^[[:space:]]*//' | cut -d' ' -f1)
-          # get the path for libcxx
-          cxx=$(echo "$libs" | ${grep} '^/nix/store/.*/libc++\.')
-          cxxabi=$(echo "$libs" | ${grep} '^/nix/store/.*/libc++abi\.')
-          iconv=$(echo "$libs" | ${grep} '^/nix/store/.*/libiconv\.')
+          cp ${pkgs.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
           # rewrite /nix/... library paths to point to /usr/lib
-          chmod 777 $out/bin/echidna
-          ${install_name_tool} -change "$cxx" /usr/lib/libc++.1.dylib $out/bin/echidna
-          ${install_name_tool} -change "$cxxabi" /usr/lib/libc++abi.dylib $out/bin/echidna
-          ${install_name_tool} -change "$iconv" /usr/lib/libiconv.dylib $out/bin/echidna
-          # fix TERMINFO path in ncurses
-          ${perl} -i -pe 's#(${ncurses-static}/share/terminfo)#"/usr/share/terminfo" . "\x0" x (length($1) - 19)#e' $out/bin/echidna
+          exe="$out/bin/echidna"
+          chmod 777 "$exe"
+          for lib in $(${otool} -L "$exe" | awk '/nix\/store/{ print $1 }'); do
+            case "$lib" in
+              *libc++.*.dylib)    ${install_name_tool} -change "$lib" /usr/lib/libc++.dylib     "$exe" ;;
+              *libc++abi.*.dylib) ${install_name_tool} -change "$lib" /usr/lib/libc++abi.dylib  "$exe" ;;
+              *libffi.*.dylib)    ${install_name_tool} -change "$lib" /usr/lib/libffi.dylib     "$exe" ;;
+              *libiconv.2.dylib)  ${install_name_tool} -change "$lib" /usr/lib/libiconv.2.dylib "$exe" ;;
+              *libz.dylib)        ${install_name_tool} -change "$lib" /usr/lib/libz.dylib       "$exe" ;;
+            esac
+          done
           # check that no nix deps remain
-          nixdeps=$(${otool} -L $out/bin/echidna | tail -n +2 | { ${grep} /nix/store -c || test $? = 1; })
+          nixdeps=$(${otool} -L "$exe" | tail -n +2 | { ${grep} /nix/store -c || test $? = 1; })
           if [ ! "$nixdeps" = "0" ]; then
             echo "Nix deps remain in redistributable binary!"
             exit 255
           fi
           # re-sign binary
-          CODESIGN_ALLOCATE=${codesign_allocate} ${codesign} -f -s - $out/bin/echidna
-          chmod 555 $out/bin/echidna
-        '';
+          CODESIGN_ALLOCATE=${codesign_allocate} ${codesign} -f -s - "$exe"
+          chmod 555 "$exe"
+        '' else echidna-static;
 
         # if we pass a library folder to ghc via --extra-lib-dirs that contains
         # only .a files, then ghc will link that library statically instead of
@@ -147,13 +147,15 @@
 
         packages.echidna-redistributable = echidnaRedistributable;
 
-        devShell = with pkgs;
-          haskellPackages.shellFor {
+        devShells = with pkgs; {
+          default = haskellPackages.shellFor {
             packages = _: [ (echidna pkgs) ];
             shellHook = ''
               hpack
             '';
             buildInputs = [
+              libff
+              secp256k1
               solc
               slither-analyzer
               haskellPackages.hlint
@@ -162,6 +164,16 @@
             ];
             withHoogle = true;
           };
+
+          fuzz = mkShell {
+            packages = [
+              (echidna pkgs)
+              slither-analyzer
+              foundry.defaultPackage.${system}
+              z3
+            ];
+          };
+        };
       }
     );
 }

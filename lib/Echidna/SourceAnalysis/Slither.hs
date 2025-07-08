@@ -45,7 +45,7 @@ data AssertLocation = AssertLocation
   { start :: Int
   , filenameRelative :: String
   , filenameAbsolute :: String
-  , assertLines :: [Int]
+  , assertLines :: NE.NonEmpty Int
   , startColumn :: Int
   , endingColumn :: Int
   } deriving (Show)

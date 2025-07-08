@@ -8,7 +8,7 @@ import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, asks, runReaderT, liftIO)
 import Data.Maybe (fromJust)
 import Data.Set qualified as Set
-import EVM.Effects (defaultEnv, defaultConfig, Config(..), config)
+import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..), defaultVeriOpts)
@@ -17,11 +17,11 @@ import qualified EVM.Types (VM(..))
 import Control.Monad.ST (RealWorld)
 
 import Echidna.Types.Campaign (CampaignConf(..))
-import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), operationMode)
+import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.SymExec.Common (rpcFetcher, exploreMethod, TxOrError(..), PartialsLogs)
 
-verifyMethod :: (MonadIO m, MonadThrow m, MonadReader Env m) => Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+verifyMethod :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m) => Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 verifyMethod method contract vm = do
   conf <- asks (.cfg)
   contractCacheRef <- asks (.fetchContractCache)

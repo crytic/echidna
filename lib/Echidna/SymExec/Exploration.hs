@@ -14,7 +14,7 @@ import Data.Maybe (fromJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text.Encoding (encodeUtf8)
-import EVM.Effects (defaultEnv, defaultConfig, Config(..), config)
+import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..), defaultVeriOpts)
@@ -23,7 +23,7 @@ import qualified EVM.Types (VM(..))
 import Control.Monad.ST (RealWorld)
 
 import Echidna.Types.Campaign (CampaignConf(..))
-import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), operationMode)
+import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Random (shuffleIO)
 import Echidna.Types.World (World(..))
 import Echidna.Types.Solidity (SolConf(..))
@@ -51,7 +51,7 @@ filterTarget symExecTargets assertSigs tx method =
     _                                                  -> (null assertSigs || methodSig `elem` assertSigs) && suitableForSymExec method
  where methodSig = abiKeccak $ encodeUtf8 method.methodSignature
 
-exploreContract :: (MonadIO m, MonadThrow m, MonadReader Env m) => SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 exploreContract contract tx vm = do
   conf <- asks (.cfg)
   env <- ask

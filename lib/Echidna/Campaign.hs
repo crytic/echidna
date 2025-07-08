@@ -33,7 +33,7 @@ import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Dapp (DappInfo(..))
 import EVM.Types hiding (Env, Frame(state), Gas)
-import EVM.Solidity (SolcContract(..), methodSignature)
+import EVM.Solidity (SolcContract(..), Method(..))
 
 import Echidna.ABI
 import Echidna.Exec

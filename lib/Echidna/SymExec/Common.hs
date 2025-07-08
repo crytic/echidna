@@ -28,7 +28,7 @@ import Control.Monad.State.Strict (execState, runStateT)
 import Echidna.Types (fromEVM)
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (SolConf(..))
-import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock, maxBlockDelay, maxTimeDelay)
+import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..), maxGasPerBlock)
 import Echidna.Types.Cache (ContractCache, SlotCache)
 
 type PartialsLogs = [T.Text]
