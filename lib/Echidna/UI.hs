@@ -163,7 +163,6 @@ ui vm dict initialCorpus cliSelectedContract = do
 
     NonInteractive outputFormat -> do
       serverStopVar <- newEmptyMVar
-      startTime <- liftIO getTimestamp
 
       -- Handles ctrl-c
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
@@ -175,10 +174,14 @@ ui vm dict initialCorpus cliSelectedContract = do
       let forwardEvent ev = putStrLn =<< runReaderT (ppLogLine vm ev) env
       uiEventsForwarderStopVar <- spawnListener forwardEvent
 
+      -- Track last update time and gas for delta calculation
+      startTime <- liftIO getTimestamp
+      lastUpdateRef <- liftIO $ newIORef (startTime, 0 :: Int)
+
       let printStatus = do
             states <- liftIO $ workerStates workers
             time <- timePrefix <$> getTimestamp
-            line <- statusLine env states startTime
+            line <- statusLine env states lastUpdateRef
             putStrLn $ time <> "[status] " <> line
             hFlush stdout
 
@@ -380,17 +383,23 @@ isTerminal = hNowSupportsANSI stdout
 statusLine
   :: Env
   -> [WorkerState]
-  -> LocalTime  -- ^ Campaign start time
+  -> IORef (LocalTime, Int)  -- ^ Last update time and total gas
   -> IO String
-statusLine env states startTime = do
+statusLine env states lastUpdateRef = do
   tests <- traverse readIORef env.testRefs
   (points, _) <- coverageStats env.coverageRefInit env.coverageRefRuntime
   corpus <- readIORef env.corpusRef
   now <- getTimestamp
   let totalCalls = sum ((.ncalls) <$> states)
   let totalGas = sum ((.totalGas) <$> states)
-  let elapsedTime = round $ diffLocalTime now startTime
-  let gasPerSecond = if elapsedTime > 0 then totalGas `div` elapsedTime else 0
+
+  -- Calculate delta-based gas/s
+  (lastTime, lastGas) <- readIORef lastUpdateRef
+  let deltaTime = round $ diffLocalTime now lastTime
+  let deltaGas = totalGas - lastGas
+  let gasPerSecond = if deltaTime > 0 then deltaGas `div` deltaTime else 0
+  writeIORef lastUpdateRef (now, totalGas)
+
   pure $ "tests: " <> show (length $ filter didFail tests) <> "/" <> show (length tests)
     <> ", fuzzing: " <> show totalCalls <> "/" <> show env.cfg.campaignConf.testLimit
     <> ", values: " <> show ((.value) <$> filter isOptimizationTest tests)
