@@ -267,7 +267,9 @@ canShrinkAbiValue = \case
   _                   -> True
 
 shrinkInt :: (Integral a, MonadRandom m) => a -> m a
-shrinkInt x = fromIntegral <$> getRandomR (0, toInteger x)
+shrinkInt x = fromIntegral <$> getRandomR range
+  where range | x >= 0 = (0, toInteger x)
+              | otherwise = (toInteger x, 0)
 
 -- | Given an 'AbiValue', generate a random \"smaller\" (simpler) value of the same 'AbiType'.
 shrinkAbiValue :: MonadRandom m => AbiValue -> m AbiValue
