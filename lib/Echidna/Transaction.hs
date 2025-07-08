@@ -155,11 +155,6 @@ mutateTx tx@Tx{call = SolCall c} = do
         skip _ = pure tx
 mutateTx tx = pure tx
 
-regenTx :: MonadRandom m => Tx -> m Tx
-regenTx tx@Tx{call = SolCall c} = do
-  mutateAllAbiCall c >>= \c' -> pure tx { call = SolCall c' }
-regenTx tx = pure tx
-
 -- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
 -- 'Transaction's \"on-chain\".
 setupTx :: (MonadIO m, MonadState (VM Concrete RealWorld) m) => Tx -> m ()

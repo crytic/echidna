@@ -191,7 +191,7 @@ getRandomInt :: MonadRandom m => Int -> m Integer
 getRandomInt n =
   getRandomR =<< Random.weighted
     [ ((-1023, 1023), 1)
-    , ((-(2 ^ (n - 1)), 2 ^ (n - 1) - 1), 9)
+    , (((-1) * 2 ^ (n - 1), 2 ^ (n - 1) - 1), 9)
     ]
 
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Doesn't use a dictionary.
@@ -351,11 +351,6 @@ mutateAbiCall = traverse f
         f xs = do k <- getRandomR (0, length xs - 1)
                   mv <- mutateAbiValue $ xs !! k
                   return $ replaceAt mv xs k
-
-mutateAllAbiCall :: MonadRandom m => SolCall -> m SolCall
-mutateAllAbiCall = traverse f
-  where f [] = pure []
-        f xs = mapM mutateAbiValue xs
 
 -- Generation, with dictionary
 
