@@ -26,7 +26,6 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text, unpack)
 import Data.Time (LocalTime)
-import List.Shuffle (shuffleIO)
 import System.Random (mkStdGen)
 
 
@@ -52,7 +51,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Config
-import Echidna.Types.Random (rElem)
+import Echidna.Types.Random (rElem, shuffleIO)
 import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
@@ -118,16 +117,16 @@ runSymWorker
   -> Maybe Text -- ^ Specified contract name
   -> m (WorkerStopReason, WorkerState)
 runSymWorker callback vm dict workerId initialCorpus name = do
-  shuffleCorpus <- shuffleIO initialCorpus
+  shuffleCorpus <- liftIO $ shuffleIO initialCorpus
   cfg <- asks (.cfg)
   let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
   eventQueue <- asks (.eventQueue)
   chan <- liftIO $ dupChan eventQueue
 
-  if (cfg.campaignConf.workers == Just 0) && (cfg.campaignConf.seqLen == 1) then do 
+  if (cfg.campaignConf.workers == Just 0) && (cfg.campaignConf.seqLen == 1) then do
     liftIO $ putStrLn "Single-transaction symbolic verification mode started:"
     flip runStateT initialState $
-      flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq     
+      flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
         verifyMethods -- No arguments, everything is in this environment
         pure SymbolicVerificationDone
   else
@@ -136,9 +135,9 @@ runSymWorker callback vm dict workerId initialCorpus name = do
         lift callback
         listenerLoop listenerFunc chan nworkers
         void $ replayCorpus vm initialCorpus
-        if null shuffleCorpus then 
+        if null shuffleCorpus then
           replicateM_ 10 $ symexecTxs True [] -- TODO: determine how many times to symexec here
-        else 
+        else
           mapM_ (symexecTxs False . snd) shuffleCorpus
         liftIO $ putStrLn "Symbolic exploration started purely random!"
         replicateM_ 100 $ mapM_ (symexecTxs True . snd) shuffleCorpus
@@ -184,7 +183,7 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     let targets = cfg.campaignConf.symExecTargets
     if isJust targets then
       pure [(Nothing, rvm, rtxs)]
-    else 
+    else
       pure [(Just ltx, ivm, txs), (Nothing, rvm, rtxs)]
 
   txsToTxAndVmsSym True txs = do
@@ -264,7 +263,7 @@ runSymWorker callback vm dict workerId initialCorpus name = do
           else
             pure $ Just test
         pushWorkerEvent $ SymVerified $ unpack $ fromJust name)
-    
+
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
 -- we can't solve or shrink anything.

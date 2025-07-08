@@ -21,10 +21,10 @@ import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..), defaultVer
 import EVM.Types (abiKeccak, FunctionSelector, VMType(..))
 import qualified EVM.Types (VM(..))
 import Control.Monad.ST (RealWorld)
-import List.Shuffle (shuffleIO)
 
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), operationMode)
+import Echidna.Types.Random (shuffleIO)
 import Echidna.Types.World (World(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
@@ -56,7 +56,7 @@ exploreContract contract tx vm = do
   conf <- asks (.cfg)
   env <- ask
   contractCacheRef <- asks (.fetchContractCache)
-  slotCacheRef <- asks (.fetchSlotCache)  
+  slotCacheRef <- asks (.fetchSlotCache)
   let
     allMethods = Map.elems contract.abiMap
     filteredMethods = filter (filterTarget conf.campaignConf.symExecTargets env.world.assertSigs tx) allMethods
@@ -78,7 +78,7 @@ exploreContract contract tx vm = do
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      shuffleMethods <- shuffleIO methods
+      shuffleMethods <- liftIO $ shuffleIO methods
       -- For now, we will be exploring a single method at a time.
       -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.
       -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
