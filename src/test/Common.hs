@@ -99,7 +99,7 @@ runContract f selectedContract cfg workerType = do
   (_stopReason, finalState) <- flip runReaderT env $
     runWorker workerType (pure ()) vm dict 0 [] cfg.campaignConf.testLimit selectedContract
 
-  -- TODO: consider snapshotting the state so checking function don't need to
+  -- TODO: consider snapshotting the state so checking functions don't need to
   -- be IO
   pure (env, finalState)
 

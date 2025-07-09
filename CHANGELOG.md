@@ -1,9 +1,14 @@
 ## Unreleased
 
 * feat: show which project is being fuzzed (#1381)
+* feat: keyboard navigation for the UI (Tab, PgUp, PgDown, arrows) (#1386)
 * ARM64 Docker containers (#1352)
+* ARM64 Linux builds (#1377)
 * Fix worker crashes when shrinking empty reproducers (#1378)
-* Upgrade `hevm` to reduce memory usage on certain scenarios (#1346)
+* Improved UI responsiveness (#1387)
+* Update `hevm` to reduce memory usage on certain scenarios (#1346)
+* Update `hevm` to fix multiple deployments under `prank`ing cheatcodes (#1377)
+* Echidna is now built with GHC 9.8.4 (#1377)
 
 ## 2.2.6
 
