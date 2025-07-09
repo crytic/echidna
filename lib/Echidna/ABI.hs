@@ -218,7 +218,7 @@ fixAbiInt n x =
      else AbiInt n (x `mod` (2 ^ (n - 1) - 1))
 
 -- | Given a way to generate random 'Word8's and a 'ByteString' b of length l,
--- generate between 0 and 2l 'Word8's and add insert them into b at random indices.
+-- generate between 0 and 2l 'Word8's and insert them into b at random indices.
 addChars :: MonadRandom m => m Word8 -> ByteString -> m ByteString
 addChars c b = foldM withR b . enumFromTo 0 =<< rand where
   rand       = getRandomR (0, BS.length b - 1)
