@@ -116,7 +116,7 @@ shrinkSeq vm f v txs = do
     -- | Simplify a sequence of transactions reducing the complexity of its arguments (using shrinkTx)
     -- and then reducing its sender (using shrinkSender)
     shrunk = mapM (shrinkSender <=< shrinkTx) txs
-    -- | Simplifiy a sequence of transactions randomly dropping one transaction (with uniform selection)
+    -- | Simplify a sequence of transactions randomly dropping one transaction (with uniform selection)
     shorten = (\i -> take i txs ++ drop (i + 1) txs) <$> getRandomR (0, length txs)
 
 -- | Given a transaction, replace the sender of the transaction by another one

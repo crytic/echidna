@@ -293,7 +293,7 @@ monitor = do
         state <- get
         let updatedState = state { campaigns = c', status = Running, now, tests }
         newWidget <- liftIO $ runReaderT (campaignStatus updatedState) env
-        -- purposedly using lazy modify here, so unnecesary widget states don't get computed
+        -- purposely using lazy modify here, so unnecessary widget states don't get computed
         modify $ const updatedState { campaignWidget = newWidget }
       AppEvent (FetchCacheUpdated contracts slots) ->
         modify' $ \state ->
