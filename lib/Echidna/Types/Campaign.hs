@@ -37,7 +37,7 @@ data CampaignConf = CampaignConf
   , corpusDir          :: Maybe FilePath
     -- ^ Directory to load and save lists of transactions
   , mutConsts          :: MutationConsts Integer
-    -- ^ Directory to load and save lists of transactions
+    -- ^ Mutation constants for fuzzing
   , coverageFormats    :: [CoverageFileType]
     -- ^ List of file formats to save coverage reports
   , workers            :: Maybe Word8
