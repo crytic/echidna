@@ -30,7 +30,7 @@ shrinkTest
 shrinkTest vm test = do
   env <- ask
   case test.state of
-    -- If we run out of tries to shrink, return the sequence as we have them
+    -- If we run out of tries to shrink, return the sequence as we have it
     Large i | i >= env.cfg.campaignConf.shrinkLimit && not (isOptimizationTest test) ->
       pure $ Just test { state = Solved }
     Large i ->
@@ -116,7 +116,7 @@ shrinkSeq vm f v txs = do
     -- | Simplify a sequence of transactions reducing the complexity of its arguments (using shrinkTx)
     -- and then reducing its sender (using shrinkSender)
     shrunk = mapM (shrinkSender <=< shrinkTx) txs
-    -- | Simplifiy a sequence of transactions randomly dropping one transaction (with uniform selection)
+    -- | Simplify a sequence of transactions randomly dropping one transaction (with uniform selection)
     shorten = (\i -> take i txs ++ drop (i + 1) txs) <$> getRandomR (0, length txs)
 
 -- | Given a transaction, replace the sender of the transaction by another one
