@@ -5,6 +5,7 @@
 * ARM64 Docker containers (#1352)
 * ARM64 Linux builds (#1377)
 * Fix worker crashes when shrinking empty reproducers (#1378)
+* Fix shrinking sometimes not progressing (#1399)
 * Improved UI responsiveness (#1387)
 * Update `hevm` to reduce memory usage on certain scenarios (#1346)
 * Update `hevm` to fix multiple deployments under `prank`ing cheatcodes (#1377)

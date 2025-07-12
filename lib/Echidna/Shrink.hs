@@ -128,6 +128,6 @@ shrinkSender x = do
   let orderedSenders = List.sort $ Set.toList senderSet
   case List.elemIndex x.src orderedSenders of
     Just i | i > 0 -> do
-      sender <- uniform (take i orderedSenders)
+      sender <- uniform (take (i+1) orderedSenders)
       pure x{src = sender}
     _ -> pure x
