@@ -315,7 +315,7 @@ randseq deployedContracts = do
   -- Fetch the mutator
   let mut = getCorpusMutation cmut
   corpus <- liftIO $ readIORef env.corpusRef
-  if null corpus
+  if null (fst corpus)
     then pure randTxs -- Use the generated random transactions
     else mut seqLen corpus randTxs -- Apply the mutator
 
@@ -419,9 +419,14 @@ callseq vm txSeq = do
 
   -- | Add transactions to the corpus, discarding reverted ones
   addToCorpus :: Int -> [(Tx, (VMResult Concrete RealWorld, Gas))] -> Corpus -> Corpus
-  addToCorpus n res corpus =
-    if null rtxs then corpus else Set.insert (n, rtxs) corpus
-    where rtxs = fst <$> res
+  addToCorpus n res corpus@(corpusTxs, revertingTxSet) =
+    forceBoth $ if null rtxs then corpus else (Set.insert (n, rtxs) corpusTxs, Set.union revertingTxSet $ Set.fromList revertingTxsHere)
+    where
+      rtxs = fst <$> res
+      revertingTxsHere = fst <$> filter (not . isSuccess . fst . snd) res
+      isSuccess (VMSuccess _) = True
+      isSuccess _ = False
+      forceBoth both@(a,b) = a `seq` b `seq` both -- TODO not sure whether I need to do this; comment above mentions that this needs to be strict
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction
 -- executed, saving the transaction if it finds new coverage.

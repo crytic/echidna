@@ -98,7 +98,7 @@ main = withUtf8 $ withCP65001 $ do
                 liftIO $ writeFile file (ppTestName test <> ": " <> txsPrinted)
 
       measureIO cfg.solConf.quiet "Saving corpus" $ do
-        corpus <- readIORef env.corpusRef
+        (corpus, _) <- readIORef env.corpusRef
         saveTxs env (dir </> "coverage") (snd <$> Set.toList corpus)
 
       -- TODO: We use the corpus dir to save coverage reports which is confusing.
