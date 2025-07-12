@@ -14,6 +14,7 @@ import Data.Text (isPrefixOf)
 import Data.Yaml qualified as Y
 
 import EVM.Types (VM(..), W256)
+import EVM.Solvers (Solver(..))
 
 import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Test
@@ -100,12 +101,20 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "workers"
         <*> v ..:? "server"
         <*> v ..:? "symExec"            ..!= False
-        <*> v ..:? "symExecConcolic"    ..!= True
+        <*> smtSolver
         <*> v ..:? "symExecTargets"     ..!= Nothing
         <*> v ..:? "symExecTimeout"     ..!= defaultSymExecTimeout
         <*> v ..:? "symExecNSolvers"    ..!= defaultSymExecNWorkers
         <*> v ..:? "symExecMaxIters"    ..!= defaultSymExecMaxIters
         <*> v ..:? "symExecAskSMTIters" ..!= defaultSymExecAskSMTIters
+        <*> v ..:? "symExecMaxExplore"  ..!= defaultSymExecMaxExplore
+        where
+        smtSolver = v ..:? "symExecSMTSolver" >>= \case
+          Just ("z3" :: String)  -> pure Z3
+          Just "cvc5"            -> pure CVC5
+          Just "bitwuzla"        -> pure Bitwuzla
+          Just s                 -> fail $ "Unrecognized SMT solver: " <> s
+          Nothing                -> pure Bitwuzla
 
       solConfParser = SolConf
         <$> v ..:? "contractAddr"    ..!= defaultContractAddr
@@ -120,7 +129,6 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "solcArgs"        ..!= ""
         <*> v ..:? "solcLibs"        ..!= []
         <*> v ..:? "quiet"           ..!= False
-        <*> v ..:? "initialize"      ..!= Nothing
         <*> v ..:? "deployContracts" ..!= []
         <*> v ..:? "deployBytecodes" ..!= []
         <*> ((<|>) <$> v ..:? "allContracts"

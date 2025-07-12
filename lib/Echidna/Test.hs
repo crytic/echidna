@@ -20,7 +20,7 @@ import EVM.Types hiding (Env)
 import Echidna.ABI
 import Echidna.Events (Events, extractEvents)
 import Echidna.Exec
-import Echidna.Symbolic (forceBuf)
+import Echidna.SymExec.Symbolic (forceBuf)
 import Echidna.Types.Config
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Test

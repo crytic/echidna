@@ -71,7 +71,6 @@ data SolConf = SolConf
   , solcArgs        :: String           -- ^ Args to pass to @solc@
   , solcLibs        :: [String]         -- ^ List of libraries to load, in order.
   , quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
-  , initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
   , deployContracts :: [(Addr, String)] -- ^ List of contracts to deploy in specific addresses
   , deployBytecodes :: [(Addr, Text)]   -- ^ List of contracts to deploy in specific addresses
   , allContracts    :: Bool             -- ^ Whether or not to fuzz all contracts

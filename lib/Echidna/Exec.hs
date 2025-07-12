@@ -35,7 +35,7 @@ import EVM.Types hiding (Env, Gas)
 import Echidna.Events (emptyEvents)
 import Echidna.Onchain (safeFetchContractFrom, safeFetchSlotFrom)
 import Echidna.SourceMapping (lookupUsingCodehashOrInsert)
-import Echidna.Symbolic (forceBuf)
+import Echidna.SymExec.Symbolic (forceBuf)
 import Echidna.Transaction
 import Echidna.Types (ExecException(..), Gas, fromEVM, emptyAccount)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
@@ -241,7 +241,7 @@ execTx
   => VM Concrete RealWorld
   -> Tx
   -> m ((VMResult Concrete RealWorld, Gas), VM Concrete RealWorld)
-execTx vm tx = runStateT (execTxWith (fromEVM (exec defaultConfig)) tx) vm
+execTx vm tx = runStateT (execTxWith (fromEVM $ exec defaultConfig) tx) vm
 
 -- | A type alias for the context we carry while executing instructions
 type CoverageContext = (Bool, Maybe (VMut.IOVector CoverageInfo, Int))

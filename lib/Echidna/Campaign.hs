@@ -5,7 +5,7 @@ module Echidna.Campaign where
 
 import Control.Concurrent
 import Control.DeepSeq (force)
-import Control.Monad (replicateM, when, unless, void, forM_)
+import Control.Monad (replicateM, replicateM_, when, unless, void, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
@@ -18,26 +18,32 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.IORef (readIORef, atomicModifyIORef', writeIORef)
 import Data.Foldable (foldlM)
 import Data.List qualified as List
+import Data.List.NonEmpty qualified as NEList
 import Data.Map qualified as Map
 import Data.Map (Map, (\\))
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (isJust, mapMaybe, fromJust)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text (Text)
+import Data.Text (Text, unpack)
 import Data.Time (LocalTime)
 import System.Random (mkStdGen)
+
 
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Dapp (DappInfo(..))
 import EVM.Types hiding (Env, Frame(state), Gas)
+import EVM.Solidity (SolcContract(..), Method(..))
 
 import Echidna.ABI
 import Echidna.Exec
 import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
-import Echidna.Symbolic (forceAddr)
-import Echidna.SymExec (createSymTx)
+import Echidna.Solidity (chooseContract)
+import Echidna.SymExec.Common (extractTxs, extractErrors)
+import Echidna.SymExec.Symbolic (forceAddr)
+import Echidna.SymExec.Exploration (exploreContract)
+import Echidna.SymExec.Verification (verifyMethod)
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types (Gas)
@@ -45,6 +51,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Config
+import Echidna.Types.Random (rElem, shuffleIO)
 import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
@@ -110,19 +117,31 @@ runSymWorker
   -> Maybe Text -- ^ Specified contract name
   -> m (WorkerStopReason, WorkerState)
 runSymWorker callback vm dict workerId initialCorpus name = do
+  shuffleCorpus <- liftIO $ shuffleIO initialCorpus
   cfg <- asks (.cfg)
   let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
   eventQueue <- asks (.eventQueue)
   chan <- liftIO $ dupChan eventQueue
 
-  flip runStateT initialState $
-    flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
-      lift callback
-      void $ replayCorpus vm initialCorpus
-      symexecTxs []
-      mapM_ (symexecTxs . snd) initialCorpus
-      listenerLoop listenerFunc chan nworkers
-      pure SymbolicDone
+  if (cfg.campaignConf.workers == Just 0) && (cfg.campaignConf.seqLen == 1) then do
+    liftIO $ putStrLn "Single-transaction symbolic verification mode started:"
+    flip runStateT initialState $
+      flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
+        verifyMethods -- No arguments, everything is in this environment
+        pure SymbolicVerificationDone
+  else
+    flip runStateT initialState $
+      flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
+        lift callback
+        listenerLoop listenerFunc chan nworkers
+        void $ replayCorpus vm initialCorpus
+        if null shuffleCorpus then
+          replicateM_ 10 $ symexecTxs True [] -- TODO: determine how many times to symexec here
+        else
+          mapM_ (symexecTxs False . snd) shuffleCorpus
+        liftIO $ putStrLn "Symbolic exploration started purely random!"
+        replicateM_ 100 $ mapM_ (symexecTxs True . snd) shuffleCorpus
+        pure SymbolicExplorationDone
 
   where
 
@@ -144,49 +163,106 @@ runSymWorker callback vm dict workerId initialCorpus name = do
   -- chains where each transaction results in new coverage.
   listenerFunc (_, WorkerEvent _ _ (NewCoverage {transactions})) = do
     void $ callseq vm transactions
-    symexecTxs transactions
+    symexecTxs False transactions
   listenerFunc _ = pure ()
 
-  symexecTxs txs = mapM_ symexecTx =<< txsToTxAndVms txs
+  symexecTxs onlyRandom txs = mapM_ symexecTx =<< txsToTxAndVmsSym onlyRandom txs
 
   -- | Turn a list of transactions into inputs for symexecTx:
-  -- (maybe txn to concolic execute on, vm to symexec on, list of txns we're on top of)
-  txsToTxAndVms txs = do
-    isConc <- asks (.cfg.campaignConf.symExecConcolic)
-    if isConc
-      then txsToTxAndVmsConc txs vm []
-      else txsToTxAndVmsSym txs
+  -- (list of txns we're on top of)
+  txsToTxAndVmsSym _ [] = pure [(Nothing, vm, [])]
+  txsToTxAndVmsSym False txs = do
+    -- Separate the last tx, which should be the one increasing coverage
+    let (itxs, ltx) = (init txs, last txs)
+    ivm <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm itxs
+    -- Split the sequence randomly and select any next transaction
+    i <- if length txs == 1 then pure 0 else rElem $ NEList.fromList [1 .. length txs - 1]
+    let rtxs = take i txs
+    rvm <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm rtxs
+    cfg <- asks (.cfg)
+    let targets = cfg.campaignConf.symExecTargets
+    if isJust targets then
+      pure [(Nothing, rvm, rtxs)]
+    else
+      pure [(Just ltx, ivm, txs), (Nothing, rvm, rtxs)]
 
-  txsToTxAndVmsConc [] _ _ = pure []
-  txsToTxAndVmsConc (h:t) vm' txsBase = do
-    (_, vm'') <- execTx vm' h
-    rest <- txsToTxAndVmsConc t vm'' (txsBase <> [h])
-    pure $ case h of
-             (Tx { call = SolCall _ }) -> (Just h,vm',txsBase):rest
-             _ -> rest
+  txsToTxAndVmsSym True txs = do
+    -- Split the sequence randomly and select any next transaction
+    i <- if length txs == 1 then pure 0 else rElem $ NEList.fromList [1 .. length txs - 1]
+    let rtxs = take i txs
+    rvm <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm rtxs
+    pure [(Nothing, rvm, rtxs)]
 
-  txsToTxAndVmsSym txs = do
-    vm' <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm txs
-    pure [(Nothing,vm',txs)]
 
   symexecTx (tx, vm', txsBase) = do
-    cfg <- asks (.cfg)
     dapp <- asks (.dapp)
-    let compiledContracts = Map.elems dapp.solcByName
-    (threadId, symTxsChan) <- liftIO $ createSymTx cfg name compiledContracts tx vm'
+    let cs = Map.elems dapp.solcByName
+    contract <- chooseContract cs name
+    (threadId, symTxsChan) <- exploreContract contract tx vm'
 
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
 
-    symTxs <- liftIO $ takeMVar symTxsChan
+    (symTxs, partials) <- liftIO $ takeMVar symTxsChan
 
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
 
-    -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
-    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) symTxs
+    let txs = extractTxs symTxs
+    let errors = extractErrors symTxs
 
-    unless (newCoverage || null symTxs) (pushWorkerEvent SymNoNewCoverage)
+    unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) during symbolic exploration: " <> show e)) errors
+    unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic exploration: " <> unpack e)) partials
+
+    -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
+    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) txs
+
+    when (not newCoverage && null errors && not (null txs)) ( do
+      liftIO $ mapM_ print txsBase
+      liftIO $ putStrLn $ "Last txs: " <> show txs
+      error "No errors but symbolic execution found valid txs breaking assertions. Something is wrong.")
+    unless newCoverage (pushWorkerEvent SymNoNewCoverage)
+
+  verifyMethods = do
+    dapp <- asks (.dapp)
+    let cs = Map.elems dapp.solcByName
+    contract <- chooseContract cs name
+    let allMethods = contract.abiMap
+    mapM_ (symExecMethod contract) allMethods
+
+  symExecMethod contract method = do
+    (threadId, symTxsChan) <- verifyMethod method contract vm
+
+    modify' (\ws -> ws { runningThreads = [threadId] })
+    lift callback
+
+    (symTxs, partials) <- liftIO $ takeMVar symTxsChan
+    let txs = extractTxs symTxs
+    let errors = extractErrors symTxs
+
+    modify' (\ws -> ws { runningThreads = [] })
+    lift callback
+    let methodSignature = unpack method.methodSignature
+    if not (null partials) || not (null errors) then do
+      unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) solving constraints produced by method " <> methodSignature <> ": " <> show e)) errors
+      unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic verification of method " <> methodSignature <> ": " <> unpack e)) partials
+      updateTests $ \test -> do
+          if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
+              pure $ Just $ test { Test.state = Passed }
+          else
+            pure $ Just test
+    else do
+      -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
+      newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm [symTx]) txs
+
+      unless newCoverage ( do
+        unless (null txs) $ error "No new coverage but symbolic execution found valid txs. Something is wrong."
+        updateTests $ \test -> do
+          if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
+                pure $ Just $ test { Test.state = Unsolvable }
+          else
+            pure $ Just test
+        pushWorkerEvent $ SymVerified $ unpack $ fromJust name)
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once

@@ -1,7 +1,6 @@
 module Echidna.Mutator.Corpus where
 
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, weighted)
-import Data.Set (Set)
 import Data.Set qualified as Set
 
 import Echidna.Mutator.Array
@@ -63,7 +62,7 @@ selectAndCombine f ql corpus gtxs = do
 
 selectFromCorpus
   :: MonadRandom m
-  => Set (Int, [Tx])
+  => Corpus
   -> m [Tx]
 selectFromCorpus =
   weighted . map (\(i, txs) -> (txs, fromIntegral i)) . Set.toDescList

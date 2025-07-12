@@ -1,15 +1,17 @@
 module Tests.Symbolic (symbolicTests) where
 
 import Test.Tasty (TestTree, testGroup)
-import Common (testContract', solved, passed)
+import Common (testContract', solved, verified)
 import Echidna.Types.Campaign (WorkerType(..))
 
 symbolicTests :: TestTree
 symbolicTests = testGroup "Symbolic tests"
-  [ testContract' "symbolic/sym.sol" Nothing Nothing (Just "symbolic/sym.yaml") True SymbolicWorker
-      [ ("echidna_sym passed", passed "echidna_sym") ]
-
-  , testContract' "symbolic/sym-assert.sol" Nothing Nothing (Just "symbolic/sym-assert.yaml") True SymbolicWorker
-      [ ("func_one passed", solved "func_one")
-      , ("func_two passed", solved "func_two") ]
+  [ testContract' "symbolic/verify.sol" Nothing Nothing (Just "symbolic/verify.yaml") True SymbolicWorker
+      [ ("simple passed", solved "simple")
+      , ("array passed", solved "array")
+      , ("negative passed", solved "negative")
+      , ("close passed", solved "close")
+      , ("far not verified", verified "far")
+      , ("correct not verified", verified "correct") 
+    ]
   ]

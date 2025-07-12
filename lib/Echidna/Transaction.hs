@@ -25,7 +25,7 @@ import EVM.Types hiding (Env, VMOpts(timestamp, gasprice))
 import Echidna.ABI
 import Echidna.Orphans.JSON ()
 import Echidna.SourceMapping (lookupUsingCodehash)
-import Echidna.Symbolic (forceWord, forceAddr)
+import Echidna.SymExec.Symbolic (forceWord, forceAddr)
 import Echidna.Types (fromEVM)
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Random
@@ -198,4 +198,4 @@ setupTx tx@Tx{call} = fromEVM $ do
 advanceBlock :: Block -> (W256, W256) -> Block
 advanceBlock blk (t,b) =
   blk { timestamp = Lit (forceWord blk.timestamp + t)
-      , number = Lit (forceWord blk.number + b) }
+      , number = Lit $ forceWord blk.number + b }

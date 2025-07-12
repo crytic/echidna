@@ -9,7 +9,7 @@ import Data.Map.Strict qualified as Map
 import Data.Map.Strict (Map)
 import Data.Maybe (mapMaybe)
 import Data.Vector qualified as V
-import Echidna.Symbolic (forceWord)
+import Echidna.SymExec.Symbolic (forceWord)
 import EVM.Dapp (DappInfo(..), findSrc)
 import EVM.Expr (maybeLitByteSimp)
 import EVM.Solidity (SolcContract(..))
