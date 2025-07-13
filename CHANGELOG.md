@@ -7,6 +7,7 @@
 * ARM64 Linux builds (#1377)
 * Fix worker crashes when shrinking empty reproducers (#1378)
 * Fix shrinking sometimes not progressing (#1399)
+* Fix gas accounting; it was not considering the intrinsic cost of transactions (#1392)
 * Improved UI responsiveness (#1387)
 * Update `hevm` to reduce memory usage on certain scenarios (#1346)
 * Update `hevm` to fix multiple deployments under `prank`ing cheatcodes (#1377)
