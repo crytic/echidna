@@ -2,6 +2,7 @@
 
 * feat: show which project is being fuzzed (#1381)
 * feat: keyboard navigation for the UI (Tab, PgUp, PgDown, arrows) (#1386)
+* feat: gas/s reporting on text mode (#1392)
 * ARM64 Docker containers (#1352)
 * ARM64 Linux builds (#1377)
 * Fix worker crashes when shrinking empty reproducers (#1378)
