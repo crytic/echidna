@@ -417,7 +417,7 @@ callseq vm txSeq = do
             _ -> Nothing
         _ -> Nothing
 
-  -- | Add transactions to the corpus discarding reverted ones
+  -- | Add transactions to the corpus, discarding reverted ones
   addToCorpus :: Int -> [(Tx, (VMResult Concrete RealWorld, Gas))] -> Corpus -> Corpus
   addToCorpus n res corpus =
     if null rtxs then corpus else Set.insert (n, rtxs) corpus
@@ -441,7 +441,7 @@ execTxOptC vm tx = do
   pure (res, vm')
 
 -- | Given current `gasInfo` and a sequence of executed transactions, updates
--- information on highest gas usage for each call
+-- information on the highest gas usage for each call
 updateGasInfo
   :: [(Tx, (VMResult Concrete RealWorld, Gas))]
   -> [Tx]

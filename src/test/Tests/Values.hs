@@ -29,7 +29,7 @@ valuesTests = testGroup "Value extraction tests"
         ("testMinInt128 passed",                 solved      "testMinInt128")
       ]
     , testContract' "values/utf8.sol"   Nothing Nothing (Just "values/extreme.yaml") False FuzzWorker
-      [ ("testNonUtf8 passed",                   solved      "testNonUTF8")]
+      [ ("testNonUTF8 passed",                   solved      "testNonUTF8")]
     , testContract' "values/create.sol" (Just "C") Nothing Nothing True FuzzWorker
       [ ("echidna_state failed",                   solved      "echidna_state") ]
     , testContract "values/time.sol"         (Just "values/time.yaml")
