@@ -53,6 +53,12 @@ data UIEvent =
                       (Map Addr (Map W256 (Maybe W256)))
   | EventReceived (LocalTime, CampaignEvent)
 
+-- | Gas tracking state for calculating gas consumption rate
+data GasTracker = GasTracker
+  { lastUpdateTime :: LocalTime
+  , totalGasConsumed :: Int
+  }
+
 -- | Set up and run an Echidna 'Campaign' and display interactive UI or
 -- print non-interactive output in desired format at the end
 ui
@@ -176,7 +182,7 @@ ui vm dict initialCorpus cliSelectedContract = do
 
       -- Track last update time and gas for delta calculation
       startTime <- liftIO getTimestamp
-      lastUpdateRef <- liftIO $ newIORef (startTime, 0 :: Int)
+      lastUpdateRef <- liftIO $ newIORef $ GasTracker startTime 0
 
       let printStatus = do
             states <- liftIO $ workerStates workers
@@ -383,7 +389,7 @@ isTerminal = hNowSupportsANSI stdout
 statusLine
   :: Env
   -> [WorkerState]
-  -> IORef (LocalTime, Int)  -- ^ Last update time and total gas
+  -> IORef GasTracker  -- Gas consumption tracking state
   -> IO String
 statusLine env states lastUpdateRef = do
   tests <- traverse readIORef env.testRefs
@@ -394,11 +400,11 @@ statusLine env states lastUpdateRef = do
   let totalGas = sum ((.totalGas) <$> states)
 
   -- Calculate delta-based gas/s
-  (lastTime, lastGas) <- readIORef lastUpdateRef
-  let deltaTime = round $ diffLocalTime now lastTime
-  let deltaGas = totalGas - lastGas
+  gasTracker <- readIORef lastUpdateRef
+  let deltaTime = round $ diffLocalTime now gasTracker.lastUpdateTime
+  let deltaGas = totalGas - gasTracker.totalGasConsumed
   let gasPerSecond = if deltaTime > 0 then deltaGas `div` deltaTime else 0
-  writeIORef lastUpdateRef (now, totalGas)
+  writeIORef lastUpdateRef $ GasTracker now totalGas
 
   pure $ "tests: " <> show (length $ filter didFail tests) <> "/" <> show (length tests)
     <> ", fuzzing: " <> show totalCalls <> "/" <> show env.cfg.campaignConf.testLimit
