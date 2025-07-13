@@ -198,7 +198,7 @@ ui vm dict initialCorpus cliSelectedContract = do
 
       liftIO $ killThread ticker
 
-      -- print final status regardless the last scheduled update
+      -- print final status regardless of the last scheduled update
       liftIO printStatus
 
       when (isJust conf.campaignConf.serverPort) $ do
@@ -297,7 +297,7 @@ monitor = do
         state <- get
         let updatedState = state { campaigns = c', status = Running, now, tests }
         newWidget <- liftIO $ runReaderT (campaignStatus updatedState) env
-        -- purposedly using lazy modify here, so unnecesary widget states don't get computed
+        -- intentionally using lazy modify here, so unnecessary widget states don't get computed
         modify $ const updatedState { campaignWidget = newWidget }
       AppEvent (FetchCacheUpdated contracts slots) ->
         modify' $ \state ->
