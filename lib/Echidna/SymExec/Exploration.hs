@@ -48,7 +48,7 @@ getTargetMethodFromTx (Tx { call = SolCall (methodName, _) }) contract failedPro
         [] -> error $ "Method " ++ show methodName ++ " not found in contract ABI"
         (x:_) -> x
 
-  if (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method && (unpack $ method.methodSignature) `notElem` failedProperties 
+  if (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method && (unpack method.methodSignature) `notElem` failedProperties 
   then return $ Just method
   else return Nothing
 
@@ -62,10 +62,7 @@ getRandomTargetMethod contract failedProperties = do
   env <- ask
   let allMethods = Map.assocs contract.abiMap
       assertSigs = env.world.assertSigs
-      --(selector, method) = case filter (\(_, m) -> m.name == method.name) allMethods of
-      --  [] -> error $ "Method " ++ show methodName ++ " not found in contract ABI"
-      --  (x:_) -> x
-      filterFunc (selector, method) = (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method && (unpack $ method.methodSignature) `notElem` failedProperties
+      filterFunc (selector, method) = (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method && (unpack method.methodSignature) `notElem` failedProperties
       filteredMethods = filter filterFunc allMethods
   
   case filteredMethods of

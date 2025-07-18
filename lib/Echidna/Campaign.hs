@@ -163,7 +163,7 @@ runSymWorker callback vm dict workerId _ name = do
     testRefs <- asks (.testRefs)
     tests <- liftIO $ traverse readIORef testRefs
     CampaignConf{shrinkLimit} <- asks (.cfg.campaignConf)
-    if any shrinkable tests then shrinkLoop shrinkLimit else return ()
+    when (any shrinkable tests) $ shrinkLoop shrinkLimit
 
   shrinkAndRandomlyExplore txs n = do
     testRefs <- asks (.testRefs)
