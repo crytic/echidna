@@ -13,5 +13,10 @@ symbolicTests = testGroup "Symbolic tests"
       , ("close passed", solved "close")
       , ("far not verified", verified "far")
       , ("correct not verified", verified "correct") 
-    ]
+    ] 
+    -- This test is commented out because it requires a specific setup where both the FuzzWorker and SymbolicWorker are used.
+    -- If you run the symbolic worker alone, it will hang indefinitely.
+    --, testContract' "symbolic/explore.sol" Nothing Nothing (Just "symbolic/explore.yaml") True SymbolicWorker
+    --  [ ("f passed", solved "f")
+    --]
   ]

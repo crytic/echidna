@@ -240,7 +240,7 @@ runSymWorker callback vm dict workerId _ name = do
     case tx of 
       Nothing -> getRandomTargetMethod contract failedTestSignatures >>= \case
         Nothing -> do
-          error "No suitable method found for symbolic execution"
+          return ()
         Just method -> exploreAndVerify contract method vm' txsBase
       Just t -> getTargetMethodFromTx t contract failedTestSignatures >>= \case
         Nothing -> do
