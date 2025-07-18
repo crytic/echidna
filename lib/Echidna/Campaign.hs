@@ -5,7 +5,7 @@ module Echidna.Campaign where
 
 import Control.Concurrent
 import Control.DeepSeq (force)
-import Control.Monad (replicateM, replicateM_, when, unless, void, forM_)
+import Control.Monad (replicateM, when, unless, void, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
@@ -42,7 +42,7 @@ import Echidna.Shrink (shrinkTest)
 import Echidna.Solidity (chooseContract)
 import Echidna.SymExec.Common (extractTxs, extractErrors)
 import Echidna.SymExec.Symbolic (forceAddr)
-import Echidna.SymExec.Exploration (exploreContract)
+import Echidna.SymExec.Exploration (exploreContract, getTargetMethodFromTx, getRandomTargetMethod)
 import Echidna.SymExec.Verification (verifyMethod)
 import Echidna.Test
 import Echidna.Transaction
@@ -51,7 +51,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Config
-import Echidna.Types.Random (rElem, shuffleIO)
+import Echidna.Types.Random (rElem)
 import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
@@ -116,8 +116,7 @@ runSymWorker
   -- ^ Initial corpus of transactions
   -> Maybe Text -- ^ Specified contract name
   -> m (WorkerStopReason, WorkerState)
-runSymWorker callback vm dict workerId initialCorpus name = do
-  shuffleCorpus <- liftIO $ shuffleIO initialCorpus
+runSymWorker callback vm dict workerId _ name = do
   cfg <- asks (.cfg)
   let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
   eventQueue <- asks (.eventQueue)
@@ -134,13 +133,6 @@ runSymWorker callback vm dict workerId initialCorpus name = do
       flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
         lift callback
         listenerLoop listenerFunc chan nworkers
-        void $ replayCorpus vm initialCorpus
-        if null shuffleCorpus then
-          replicateM_ 10 $ symexecTxs True [] -- TODO: determine how many times to symexec here
-        else
-          mapM_ (symexecTxs False . snd) shuffleCorpus
-        liftIO $ putStrLn "Symbolic exploration started purely random!"
-        replicateM_ 100 $ mapM_ (symexecTxs True . snd) shuffleCorpus
         pure SymbolicExplorationDone
 
   where
@@ -164,7 +156,52 @@ runSymWorker callback vm dict workerId initialCorpus name = do
   listenerFunc (_, WorkerEvent _ _ (NewCoverage {transactions})) = do
     void $ callseq vm transactions
     symexecTxs False transactions
+    shrinkAndRandomlyExplore transactions (10 :: Int)
   listenerFunc _ = pure ()
+
+  shrinkAndRandomlyExplore _ 0 = do 
+    testRefs <- asks (.testRefs)
+    tests <- liftIO $ traverse readIORef testRefs
+    CampaignConf{shrinkLimit} <- asks (.cfg.campaignConf)
+    if any shrinkable tests then shrinkLoop shrinkLimit else return ()
+
+  shrinkAndRandomlyExplore txs n = do
+    testRefs <- asks (.testRefs)
+    tests <- liftIO $ traverse readIORef testRefs
+    CampaignConf{stopOnFail, shrinkLimit} <- asks (.cfg.campaignConf)
+    if stopOnFail && any final tests then 
+      lift callback -- >> pure FastFailed
+    else if any shrinkable tests then do
+      shrinkLoop shrinkLimit
+      shrinkAndRandomlyExplore txs n
+    else do
+      symexecTxs False txs
+      shrinkAndRandomlyExplore txs (n - 1)
+
+
+  shrinkable test =
+    case test.state of
+      -- we shrink only tests which were solved on this
+      -- worker, see 'updateOpenTest'
+      Large _ | test.workerId == Just workerId -> True
+      _       -> False
+
+  final test =
+    case test.state of
+      Solved   -> True
+      Failed _ -> True
+      _        -> False
+
+
+  shrinkLoop 0 = return ()
+  shrinkLoop n = do 
+    lift callback
+    updateTests $ \test -> do
+      if test.workerId == Just workerId then
+        shrinkTest vm test
+      else
+        pure Nothing
+    shrinkLoop (n - 1)
 
   symexecTxs onlyRandom txs = mapM_ symexecTx =<< txsToTxAndVmsSym onlyRandom txs
 
@@ -198,8 +235,21 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     dapp <- asks (.dapp)
     let cs = Map.elems dapp.solcByName
     contract <- chooseContract cs name
-    (threadId, symTxsChan) <- exploreContract contract tx vm'
-
+    failedTests <- findFailedTests
+    let failedTestSignatures = map getAssertionSignature failedTests
+    case tx of 
+      Nothing -> getRandomTargetMethod contract failedTestSignatures >>= \case
+        Nothing -> do
+          error "No suitable method found for symbolic execution"
+        Just method -> exploreAndVerify contract method vm' txsBase
+      Just t -> getTargetMethodFromTx t contract failedTestSignatures >>= \case
+        Nothing -> do
+          return ()
+        Just method -> do
+          exploreAndVerify contract method vm' txsBase
+    
+  exploreAndVerify contract method vm' txsBase = do
+    (threadId, symTxsChan) <- exploreContract contract method vm'
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
 
@@ -217,10 +267,8 @@ runSymWorker callback vm dict workerId initialCorpus name = do
     -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
     newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) txs
 
-    when (not newCoverage && null errors && not (null txs)) ( do
-      liftIO $ mapM_ print txsBase
-      liftIO $ putStrLn $ "Last txs: " <> show txs
-      error "No errors but symbolic execution found valid txs breaking assertions. Something is wrong.")
+    when (not newCoverage && null errors && not (null txs)) (
+      pushWorkerEvent $ SymExecError "No errors but symbolic execution found valid txs breaking assertions. Something is wrong.")
     unless newCoverage (pushWorkerEvent SymNoNewCoverage)
 
   verifyMethods = do
@@ -573,6 +621,14 @@ updateTests f = do
     f test >>= \case
       Just test' -> liftIO $ writeIORef testRef test'
       Nothing -> pure ()
+
+findFailedTests
+  :: (MonadIO m, MonadReader Env m, MonadState WorkerState m)
+  => m [EchidnaTest]
+findFailedTests = do
+  testRefs <- asks (.testRefs)
+  tests <- liftIO $ traverse readIORef testRefs
+  pure $ filter didFail tests
 
 -- | Update an open test after checking if it is falsified by the 'reproducer'
 updateOpenTest

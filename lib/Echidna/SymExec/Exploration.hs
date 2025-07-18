@@ -5,15 +5,15 @@ module Echidna.SymExec.Exploration where
 import Control.Applicative ((<|>))
 import Control.Concurrent (ThreadId, forkIO)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
-import Control.Monad (forM)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust)
 import Data.Set qualified as Set
-import Data.Text (Text)
+import Data.Text (unpack, Text)
 import Data.Text.Encoding (encodeUtf8)
+import Data.List.NonEmpty (fromList) 
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
@@ -24,10 +24,10 @@ import Control.Monad.ST (RealWorld)
 
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
-import Echidna.Types.Random (shuffleIO)
 import Echidna.Types.World (World(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
+import Echidna.Types.Random (rElem)
 import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, rpcFetcher, TxOrError(..), PartialsLogs)
 
 -- | Uses symbolic execution to find transactions which would increase coverage.
@@ -38,6 +38,40 @@ import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, rpcFetcher, Tx
 --   to symbolize. If none is provided, we do full
 --   symbolic execution.
 --   The Tx argument, if present, must have a .call value of type SolCall.
+
+getTargetMethodFromTx :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => Tx -> SolcContract -> [String] -> m (Maybe Method)
+getTargetMethodFromTx (Tx { call = SolCall (methodName, _) }) contract failedProperties = do
+  env <- ask  
+  let allMethods = Map.assocs contract.abiMap
+      assertSigs = env.world.assertSigs
+      (selector, method) = case filter (\(_, m) -> m.name == methodName) allMethods of
+        [] -> error $ "Method " ++ show methodName ++ " not found in contract ABI"
+        (x:_) -> x
+
+  if (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method && (unpack $ method.methodSignature) `notElem` failedProperties 
+  then return $ Just method
+  else return Nothing
+
+getTargetMethodFromTx _ _ _ = return Nothing
+
+-- This function selects a random method from the contract's ABI to explore.
+-- It uses the campaign configuration to determine which methods are suitable for symbolic execution.
+-- Additionally, it filter methods that are associated with failed properties, if any.
+getRandomTargetMethod :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> [String] -> m (Maybe Method)
+getRandomTargetMethod contract failedProperties = do
+  env <- ask
+  let allMethods = Map.assocs contract.abiMap
+      assertSigs = env.world.assertSigs
+      --(selector, method) = case filter (\(_, m) -> m.name == method.name) allMethods of
+      --  [] -> error $ "Method " ++ show methodName ++ " not found in contract ABI"
+      --  (x:_) -> x
+      filterFunc (selector, method) = (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method && (unpack $ method.methodSignature) `notElem` failedProperties
+      filteredMethods = filter filterFunc allMethods
+  
+  case filteredMethods of
+    [] -> return Nothing
+    _  -> liftIO $ rElem (fromList $ map (Just . snd) filteredMethods)
+
 
 -- | Filters methods based on the campaign configuration.
 -- If symExecTargets is Just, it filters methods by their name.
@@ -51,22 +85,18 @@ filterTarget symExecTargets assertSigs tx method =
     _                                                  -> (null assertSigs || methodSig `elem` assertSigs) && suitableForSymExec method
  where methodSig = abiKeccak $ encodeUtf8 method.methodSignature
 
-exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> Maybe Tx -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
-exploreContract contract tx vm = do
+exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> Method -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+exploreContract contract method vm = do
   conf <- asks (.cfg)
-  env <- ask
   contractCacheRef <- asks (.fetchContractCache)
   slotCacheRef <- asks (.fetchSlotCache)
   let
-    allMethods = Map.elems contract.abiMap
-    filteredMethods = filter (filterTarget conf.campaignConf.symExecTargets env.world.assertSigs tx) allMethods
-    methods = filteredMethods
     timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
     maxIters = Just conf.campaignConf.symExecMaxIters
     maxExplore = Just (fromIntegral conf.campaignConf.symExecMaxExplore)
     askSmtIters = conf.campaignConf.symExecAskSMTIters
     rpcInfo = rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock)
-    defaultSender = fromJust $ fmap (.dst) tx <|> Set.lookupMin conf.solConf.sender <|> Just 0
+    defaultSender = fromJust $ Set.lookupMin conf.solConf.sender <|> Just 0
 
   threadIdChan <- liftIO newEmptyMVar
   doneChan <- liftIO newEmptyMVar
@@ -78,12 +108,11 @@ exploreContract contract tx vm = do
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      shuffleMethods <- liftIO $ shuffleIO methods
       -- For now, we will be exploring a single method at a time.
       -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.
       -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
-      res <- forM (take 1 shuffleMethods) $ \method -> exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
-      liftIO $ putMVar resultChan (concatMap fst res, concatMap snd res)
+      res <- exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
+      liftIO $ putMVar resultChan res
       --liftIO $ print "done"
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId

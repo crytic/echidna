@@ -130,6 +130,10 @@ getAssertionSignature :: EchidnaTest -> String
 getAssertionSignature EchidnaTest{testType = AssertionTest _ sig _} = unpack $ encodeSig sig
 getAssertionSignature _ = error "Not an assertion test"
 
+getAssertionFunctionName :: EchidnaTest -> String
+getAssertionFunctionName EchidnaTest{testType = AssertionTest _ (name, _) _} = unpack $ name
+getAssertionFunctionName _ = error "Not an assertion test"
+
 isOpen :: EchidnaTest -> Bool
 isOpen t = case t.state of
   Open -> True
