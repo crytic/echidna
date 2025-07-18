@@ -31,8 +31,10 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..))
+import Echidna.Types.Worker 
 import Echidna.UI.Report
 import Echidna.Utility (timePrefix)
+import Echidna.Worker (ppCampaignEvent)
 
 import EVM.Format (showTraceTree)
 import EVM.Types (Addr, Contract, W256, VM(..), VMType(Concrete))

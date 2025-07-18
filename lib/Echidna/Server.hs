@@ -10,8 +10,11 @@ import Data.Word (Word16)
 import Network.Wai.EventSource (ServerEvent(..), eventSourceAppIO)
 import Network.Wai.Handler.Warp (run)
 
+import Echidna.Worker
+
 import Echidna.Types.Campaign
 import Echidna.Types.Config (Env(..))
+import Echidna.Types.Worker
 
 newtype SSE = SSE (LocalTime, CampaignEvent)
 
@@ -52,8 +55,7 @@ runSSEServer serverStopVar env port nworkers = do
                     TestFalsified _ -> "test_falsified"
                     TestOptimized _ -> "test_optimized"
                     NewCoverage {} -> "new_coverage"
-                    SymNoNewCoverage -> "sym_no_new_coverage"
-                    SymVerified _ -> "sym_tx_verified"
+                    SymExecLog _ -> "sym_tx_verified"
                     SymExecError _ -> "sym_exec_error"
                     TxSequenceReplayed {} -> "tx_sequence_replayed"
                     TxSequenceReplayFailed {} -> "tx_sequence_replay_failed"

@@ -22,11 +22,12 @@ import EVM.Types (Addr, Frame(..), FrameState(..), VMType(..), EType(..), Expr(.
 import qualified EVM.Types (VM(..), Env(..))
 import EVM.Format (formatPartial)
 import Control.Monad.ST (stToIO, RealWorld)
-import Control.Monad.State.Strict (execState, runStateT)
-
+import Control.Monad.State.Strict (MonadState(..), execState, runStateT)
+import Control.Monad.Reader (MonadReader)
 
 import Echidna.Types (fromEVM)
-import Echidna.Types.Config (EConfig(..))
+import Echidna.Types.Config (EConfig(..), Env(..))
+import Echidna.Types.Campaign (WorkerState)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..), maxGasPerBlock)
 import Echidna.Types.Cache (ContractCache, SlotCache)
@@ -225,7 +226,8 @@ exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
   Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m ([TxOrError], PartialsLogs)
   
 exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef = do
-  liftIO $ putStrLn ("Exploring: " ++ T.unpack method.methodSignature)
+  --liftIO $ putStrLn ("Exploring: " ++ T.unpack method.methodSignature)
+  --pushWorkerEvent undefined
   calldataSym@(cd, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   let
     fetcher = cachedOracle contractCacheRef slotCacheRef solvers rpcInfo

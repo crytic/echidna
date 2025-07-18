@@ -8,6 +8,7 @@ import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
+import Control.Monad.State.Strict (MonadState)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust)
 import Data.Set qualified as Set
@@ -22,13 +23,15 @@ import EVM.Types (abiKeccak, FunctionSelector, VMType(..))
 import qualified EVM.Types (VM(..))
 import Control.Monad.ST (RealWorld)
 
-import Echidna.Types.Campaign (CampaignConf(..))
+import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.World (World(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
+import Echidna.Types.Worker (WorkerEvent(..))
 import Echidna.Types.Random (rElem)
 import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, rpcFetcher, TxOrError(..), PartialsLogs)
+import Echidna.Worker (pushWorkerEvent)
 
 -- | Uses symbolic execution to find transactions which would increase coverage.
 -- Spawns a new thread; returns its thread ID as the first return value.
@@ -82,7 +85,7 @@ filterTarget symExecTargets assertSigs tx method =
     _                                                  -> (null assertSigs || methodSig `elem` assertSigs) && suitableForSymExec method
  where methodSig = abiKeccak $ encodeUtf8 method.methodSignature
 
-exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> Method -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SolcContract -> Method -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 exploreContract contract method vm = do
   conf <- asks (.cfg)
   contractCacheRef <- asks (.fetchContractCache)
@@ -102,7 +105,7 @@ exploreContract contract method vm = do
   let veriOpts = defaultVeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
   let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = True, debug = isNonInteractive, dumpQueries = False, numCexFuzz = 100 } }
-
+  pushWorkerEvent $ SymExecLog ("Exploring " <> (show method.name))
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
       -- For now, we will be exploring a single method at a time.
@@ -110,7 +113,6 @@ exploreContract contract method vm = do
       -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
       res <- exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
       liftIO $ putMVar resultChan res
-      --liftIO $ print "done"
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
     liftIO $ takeMVar doneChan

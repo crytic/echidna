@@ -17,6 +17,7 @@ import Echidna.ABI (GenDict(..), encodeSig)
 import Echidna.Pretty (ppTxCall)
 import Echidna.SourceMapping (findSrcByMetadata, lookupCodehash)
 import Echidna.SymExec.Symbolic (forceWord)
+import Echidna.Worker
 import Echidna.Types (Gas)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
@@ -24,6 +25,7 @@ import Echidna.Types.Corpus (corpusSize)
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
+import Echidna.Types.Worker
 import Echidna.Utility (timePrefix)
 
 import EVM.Format (showTraceTree, contractNamePart)

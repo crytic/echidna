@@ -56,7 +56,8 @@ import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..))
-import Echidna.Utility (getTimestamp)
+import Echidna.Types.Worker
+import Echidna.Worker 
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -123,7 +124,6 @@ runSymWorker callback vm dict workerId _ name = do
   chan <- liftIO $ dupChan eventQueue
 
   if (cfg.campaignConf.workers == Just 0) && (cfg.campaignConf.seqLen == 1) then do
-    liftIO $ putStrLn "Single-transaction symbolic verification mode started:"
     flip runStateT initialState $
       flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
         verifyMethods -- No arguments, everything is in this environment
@@ -269,7 +269,7 @@ runSymWorker callback vm dict workerId _ name = do
 
     when (not newCoverage && null errors && not (null txs)) (
       pushWorkerEvent $ SymExecError "No errors but symbolic execution found valid txs breaking assertions. Something is wrong.")
-    unless newCoverage (pushWorkerEvent SymNoNewCoverage)
+    unless newCoverage (pushWorkerEvent $ SymExecLog "Symbolic execution finished with no new coverage.")
 
   verifyMethods = do
     dapp <- asks (.dapp)
@@ -279,6 +279,7 @@ runSymWorker callback vm dict workerId _ name = do
     mapM_ (symExecMethod contract) allMethods
 
   symExecMethod contract method = do
+    lift callback
     (threadId, symTxsChan) <- verifyMethod method contract vm
 
     modify' (\ws -> ws { runningThreads = [threadId] })
@@ -310,7 +311,7 @@ runSymWorker callback vm dict workerId _ name = do
                 pure $ Just $ test { Test.state = Unsolvable }
           else
             pure $ Just test
-        pushWorkerEvent $ SymVerified $ unpack $ fromJust name)
+        pushWorkerEvent $ SymExecLog ("Symbolic execution finished verifying contract " <> unpack (fromJust name) <> " using a single symbolic transaction."))
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
@@ -675,21 +676,6 @@ updateOpenTest vm reproducer test = do
     _ ->
       -- not an open test, skip
       pure Nothing
-
-pushWorkerEvent
-  :: (MonadReader Env m, MonadState WorkerState m, MonadIO m)
-  => WorkerEvent
-  -> m ()
-pushWorkerEvent event = do
-  workerId <- gets (.workerId)
-  env <- ask
-  let workerType = workerIDToType env.cfg.campaignConf workerId
-  liftIO $ pushCampaignEvent env (WorkerEvent workerId workerType event)
-
-pushCampaignEvent :: Env -> CampaignEvent -> IO ()
-pushCampaignEvent env event = do
-  time <- liftIO getTimestamp
-  writeChan env.eventQueue (time, event)
 
 -- | Listener reads events and runs the given 'handler' function. It exits after
 -- receiving all 'WorkerStopped' events and sets the returned 'MVar' so the
