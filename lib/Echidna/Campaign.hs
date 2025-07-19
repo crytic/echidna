@@ -481,8 +481,8 @@ evalSeq vm0 execFunc = go vm0 [] where
         -- NOTE: we don't use the intermediate VMs, just the last one. If any of
         -- the intermediate VMs are needed, they can be put next to the result
         -- of each transaction - `m ([(Tx, result, VM)])`
-        (remaining, _vm) <- go vm' (tx:executedSoFar) remainingTxs
-        pure ((tx, result) : remaining, vm')
+        (remaining, vm'') <- go vm' (tx:executedSoFar) remainingTxs
+        pure ((tx, result) : remaining, vm'')
 
 -- | Update tests based on the return value from the given function.
 -- Nothing skips the update.
