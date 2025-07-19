@@ -40,6 +40,9 @@ import Data.SemVer (Version, version, fromText)
 import Data.Text (Text, pack)
 import System.Process (readProcess)
 
+import EVM.Solidity (Contracts(..), BuildOutput(..), SolcContract(..))
+import EVM.Types hiding (Env, Gas)
+
 import Echidna (mkEnv, prepareContract)
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Campaign (runWorker)
@@ -52,10 +55,8 @@ import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..))
+import Echidna.Types.Worker (WorkerType(..))
 import Echidna.Types.World (World(..))
-
-import EVM.Solidity (Contracts(..), BuildOutput(..), SolcContract(..))
-import EVM.Types hiding (Env, Gas)
 
 testConfig :: EConfig
 testConfig = defaultConfig & overrideQuiet

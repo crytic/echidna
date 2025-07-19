@@ -4,7 +4,7 @@ import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract', solcV, solved, passed)
 
-import Echidna.Types.Campaign (WorkerType(..))
+import Echidna.Types.Worker (WorkerType(..))
 
 dapptestTests :: TestTree
 dapptestTests = testGroup "Dapptest Integration Testing"

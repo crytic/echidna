@@ -5,7 +5,7 @@ import Test.Tasty (TestTree, testGroup)
 import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout)
 import Data.Functor ((<&>))
 import Data.Text (unpack)
-import Echidna.Types.Campaign (WorkerType(..))
+import Echidna.Types.Worker (WorkerType(..))
 import Echidna.Types.Tx (TxCall(..))
 import EVM.ABI (AbiValue(..))
 

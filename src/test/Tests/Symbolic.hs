@@ -2,7 +2,7 @@ module Tests.Symbolic (symbolicTests) where
 
 import Test.Tasty (TestTree, testGroup)
 import Common (testContract', solved, verified)
-import Echidna.Types.Campaign (WorkerType(..))
+import Echidna.Types.Worker (WorkerType(..))
 
 symbolicTests :: TestTree
 symbolicTests = testGroup "Symbolic tests"

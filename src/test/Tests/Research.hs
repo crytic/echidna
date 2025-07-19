@@ -4,7 +4,7 @@ import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract, testContract', solcV, solved)
 
-import Echidna.Types.Campaign (WorkerType(..))
+import Echidna.Types.Worker (WorkerType(..))
 
 researchTests :: TestTree
 researchTests = testGroup "Research-based Integration Testing"
