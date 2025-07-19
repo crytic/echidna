@@ -56,7 +56,7 @@
             owner = "ethereum";
             repo = "hevm";
             rev = "d282dff6e0d9ea9f7cf02e17e8ac0b268ef634da";
-            sha256 = "sha256-PQ0vm1K4DWiX6hiITdCqniMSAtxpQHezzIGdWGwmjrc=";
+            sha256 = "sha256-PX0vm1K4DWiX6hiITdCqniMSAtxpQHezzIGdWGwmjrc=";
           }) { secp256k1 = pkgs.secp256k1; })
           ([
             pkgs.haskell.lib.compose.dontCheck

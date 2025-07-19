@@ -1,19 +1,16 @@
 module Echidna.Types.Campaign where
 
 import Control.Concurrent (ThreadId)
-import Data.Aeson
 import Data.Map (Map)
 import Data.Text (Text)
-import Data.Text qualified as T
 import Data.Word (Word8, Word16)
 import GHC.Conc (numCapabilities)
 
 import EVM.Solvers (Solver(..))
 
-import Echidna.ABI (GenDict, emptyDict, encodeSig)
+import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
 import Echidna.Types.Coverage (CoverageFileType, CoverageMap)
-import Echidna.Types.Test (TestType (..), EchidnaTest(..))
 import Echidna.Types.Tx (Tx)
 
 -- | Configuration for running an Echidna 'Campaign'.
