@@ -224,10 +224,9 @@ jobs:
           - "0.5.7"
           - "0.6.12"
           - "0.7.5"
+          - "0.8.24"
         include:
-          - solc: "0.6.12"
-            experimental: true
-          - solc: "0.7.5"
+          - solc: "0.8.24"
             experimental: true
           - os: windows-latest
             experimental: true
