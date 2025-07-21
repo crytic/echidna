@@ -43,5 +43,8 @@ valuesTests = testGroup "Value extraction tests"
     , testContract "values/darray.sol"       Nothing
       [ ("echidna_darray passed",                  solved      "echidna_darray")
       , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
+    , testContract' "values/contract.sol" (Just "Test") Nothing (Just "values/contract.yaml") False FuzzWorker
+      [ ("verify_first passed",                    solved      "verify_first")
+      , ("verify_later passed",                    solved      "verify_later") ]
 
   ]
