@@ -232,13 +232,14 @@ runSymWorker callback vm dict workerId _ name = do
 
 
   symexecTx (tx, vm', txsBase) = do
+    conf <- asks (.cfg)
     dapp <- asks (.dapp)
     let cs = Map.elems dapp.solcByName
     contract <- chooseContract cs name
     failedTests <- findFailedTests
     let failedTestSignatures = map getAssertionSignature failedTests
     case tx of 
-      Nothing -> getRandomTargetMethod contract failedTestSignatures >>= \case
+      Nothing -> getRandomTargetMethod contract conf.campaignConf.symExecTargets failedTestSignatures >>= \case
         Nothing -> do
           return ()
         Just method -> exploreAndVerify contract method vm' txsBase

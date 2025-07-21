@@ -60,17 +60,18 @@ getTargetMethodFromTx _ _ _ = return Nothing
 -- This function selects a random method from the contract's ABI to explore.
 -- It uses the campaign configuration to determine which methods are suitable for symbolic execution.
 -- Additionally, it filter methods that are associated with failed properties, if any.
-getRandomTargetMethod :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> [String] -> m (Maybe Method)
-getRandomTargetMethod contract failedProperties = do
+getRandomTargetMethod :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> Maybe [Text] -> [String] -> m (Maybe Method)
+getRandomTargetMethod contract targets failedProperties = do
   env <- ask
   let allMethods = Map.assocs contract.abiMap
       assertSigs = env.world.assertSigs
       filterFunc (selector, method) = (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method && (unpack method.methodSignature) `notElem` failedProperties
       filteredMethods = filter filterFunc allMethods
   
-  case filteredMethods of
-    [] -> return Nothing
-    _  -> liftIO $ rElem (fromList $ map (Just . snd) filteredMethods)
+  case (targets, filteredMethods) of
+    (Just ms, _) -> liftIO $ rElem (fromList $ map (Just . snd) $ filter (\(_, m) -> m.name `elem` ms) allMethods)
+    (_,      []) -> return Nothing
+    _            -> liftIO $ rElem (fromList $ map (Just . snd) filteredMethods)
 
 
 -- | Filters methods based on the campaign configuration.
