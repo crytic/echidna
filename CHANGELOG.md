@@ -1,4 +1,4 @@
-## Unreleased
+## 2.2.7
 
 * feat: show which project is being fuzzed (#1381)
 * feat: keyboard navigation for the UI (Tab, PgUp, PgDown, arrows) (#1386)
