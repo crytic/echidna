@@ -2,10 +2,12 @@
 
 * feat: show which project is being fuzzed (#1381)
 * feat: keyboard navigation for the UI (Tab, PgUp, PgDown, arrows) (#1386)
+* feat: gas/s reporting on text mode (#1392)
 * ARM64 Docker containers (#1352)
 * ARM64 Linux builds (#1377)
 * Fix worker crashes when shrinking empty reproducers (#1378)
 * Fix shrinking sometimes not progressing (#1399)
+* Fix gas accounting; it was not considering the intrinsic cost of transactions (#1392)
 * Fix issue collecting deployed contract addresses into the dictionary (#1400)
 * Improved UI responsiveness (#1387)
 * Update `hevm` to reduce memory usage on certain scenarios (#1346)
