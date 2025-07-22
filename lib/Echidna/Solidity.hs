@@ -97,7 +97,7 @@ compileContracts solConf fp = do
     -- | OS-specific path to the "null" file, which accepts writes without storing them
     nullFilePath :: String
     nullFilePath = if os == "mingw32" then "\\\\.\\NUL" else "/dev/null"
-  -- clean up previous artifacts
+  -- clean up previous artifact files
   removeJsonFiles "crytic-export"
   mconcat . NE.toList <$> mapM compileOne fp
 

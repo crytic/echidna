@@ -55,7 +55,7 @@
           (pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "ethereum";
             repo = "hevm";
-            rev = "2931f09fcbbca68911421fbe2f2f21ebebdb5332";
+            rev = "release/0.55.0";
             sha256 = "sha256-DVwQisTwgSjZQkQSn5s7ZN3SS1z2EfISA6Lw0ruUg6Y=";
           }) { secp256k1 = pkgs.secp256k1; })
           ([

@@ -543,7 +543,7 @@ callseq vm txSeq = do
             _ -> Nothing
         _ -> Nothing
 
-  -- | Add transactions to the corpus discarding reverted ones
+  -- | Add transactions to the corpus, discarding reverted ones
   addToCorpus :: Int -> [(Tx, (VMResult Concrete RealWorld, Gas))] -> Corpus -> Corpus
   addToCorpus n res corpus =
     if null rtxs then corpus else Set.insert (n, rtxs) corpus
@@ -567,7 +567,7 @@ execTxOptC vm tx = do
   pure (res, vm')
 
 -- | Given current `gasInfo` and a sequence of executed transactions, updates
--- information on highest gas usage for each call
+-- information on the highest gas usage for each call
 updateGasInfo
   :: [(Tx, (VMResult Concrete RealWorld, Gas))]
   -> [Tx]
@@ -607,8 +607,8 @@ evalSeq vm0 execFunc = go vm0 [] where
         -- NOTE: we don't use the intermediate VMs, just the last one. If any of
         -- the intermediate VMs are needed, they can be put next to the result
         -- of each transaction - `m ([(Tx, result, VM)])`
-        (remaining, _vm) <- go vm' (tx:executedSoFar) remainingTxs
-        pure ((tx, result) : remaining, vm')
+        (remaining, vm'') <- go vm' (tx:executedSoFar) remainingTxs
+        pure ((tx, result) : remaining, vm'')
 
 -- | Update tests based on the return value from the given function.
 -- Nothing skips the update.

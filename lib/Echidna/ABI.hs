@@ -55,7 +55,7 @@ mkValidAbiUInt i x = if x < bit i then Just $ AbiUInt i x else Nothing
 
 makeNumAbiValues :: Integer -> [AbiValue]
 makeNumAbiValues i =
-  let l f = f <$> commonTypeSizes <*> fmap fromIntegral ([i-1..i+1] ++ [(-i)-1 .. (-i)+1])
+  let l f = f <$> commonTypeSizes <*> fmap fromIntegral ([i-3..i+3] ++ [(-i)-3 .. (-i)+3])
   in catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
 
 makeArrayAbiValues :: ByteString -> [AbiValue]
@@ -218,7 +218,7 @@ fixAbiInt n x =
      else AbiInt n (x `mod` (2 ^ (n - 1) - 1))
 
 -- | Given a way to generate random 'Word8's and a 'ByteString' b of length l,
--- generate between 0 and 2l 'Word8's and add insert them into b at random indices.
+-- generate between 0 and 2l 'Word8's and insert them into b at random indices.
 addChars :: MonadRandom m => m Word8 -> ByteString -> m ByteString
 addChars c b = foldM withR b . enumFromTo 0 =<< rand where
   rand       = getRandomR (0, BS.length b - 1)

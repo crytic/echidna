@@ -83,6 +83,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
   , testContract "basic/gaslimit.sol"  Nothing
       [ ("echidna_gaslimit passed",                passed      "echidna_gaslimit") ]
+  , testContract "basic/gasleft.sol"     (Just "basic/gasleft.yaml")
+      [ ("unexpected gas left",                    passed      "echidna_expected_gasleft") ]
   ,  checkConstructorConditions "basic/codesize.sol"
       "invalid codesize"
   , testContractV "basic/eip-170.sol" (Just (>= solcV (0,5,0))) (Just "basic/eip-170.yaml")

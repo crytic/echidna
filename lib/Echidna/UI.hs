@@ -55,6 +55,12 @@ data UIEvent =
                       (Map Addr (Map W256 (Maybe W256)))
   | EventReceived (LocalTime, CampaignEvent)
 
+-- | Gas tracking state for calculating gas consumption rate
+data GasTracker = GasTracker
+  { lastUpdateTime :: LocalTime
+  , totalGasConsumed :: Int
+  }
+
 -- | Set up and run an Echidna 'Campaign' and display interactive UI or
 -- print non-interactive output in desired format at the end
 ui
@@ -176,10 +182,14 @@ ui vm dict initialCorpus cliSelectedContract = do
       let forwardEvent ev = putStrLn =<< runReaderT (ppLogLine vm ev) env
       uiEventsForwarderStopVar <- spawnListener forwardEvent
 
+      -- Track last update time and gas for delta calculation
+      startTime <- liftIO getTimestamp
+      lastUpdateRef <- liftIO $ newIORef $ GasTracker startTime 0
+
       let printStatus = do
             states <- liftIO $ workerStates workers
             time <- timePrefix <$> getTimestamp
-            line <- statusLine env states
+            line <- statusLine env states lastUpdateRef
             putStrLn $ time <> "[status] " <> line
             hFlush stdout
 
@@ -196,7 +206,7 @@ ui vm dict initialCorpus cliSelectedContract = do
 
       liftIO $ killThread ticker
 
-      -- print final status regardless the last scheduled update
+      -- print final status regardless of the last scheduled update
       liftIO printStatus
 
       when (isJust conf.campaignConf.serverPort) $ do
@@ -295,7 +305,7 @@ monitor = do
         state <- get
         let updatedState = state { campaigns = c', status = Running, now, tests }
         newWidget <- liftIO $ runReaderT (campaignStatus updatedState) env
-        -- purposedly using lazy modify here, so unnecesary widget states don't get computed
+        -- intentionally using lazy modify here, so unnecessary widget states don't get computed
         modify $ const updatedState { campaignWidget = newWidget }
       AppEvent (FetchCacheUpdated contracts slots) ->
         modify' $ \state ->
@@ -381,15 +391,27 @@ isTerminal = hNowSupportsANSI stdout
 statusLine
   :: Env
   -> [WorkerState]
+  -> IORef GasTracker  -- Gas consumption tracking state
   -> IO String
-statusLine env states = do
+statusLine env states lastUpdateRef = do
   tests <- traverse readIORef env.testRefs
   (points, _) <- coverageStats env.coverageRefInit env.coverageRefRuntime
   corpus <- readIORef env.corpusRef
+  now <- getTimestamp
   let totalCalls = sum ((.ncalls) <$> states)
+  let totalGas = sum ((.totalGas) <$> states)
+
+  -- Calculate delta-based gas/s
+  gasTracker <- readIORef lastUpdateRef
+  let deltaTime = round $ diffLocalTime now gasTracker.lastUpdateTime
+  let deltaGas = totalGas - gasTracker.totalGasConsumed
+  let gasPerSecond = if deltaTime > 0 then deltaGas `div` deltaTime else 0
+  writeIORef lastUpdateRef $ GasTracker now totalGas
+
   pure $ "tests: " <> show (length $ filter didFail tests) <> "/" <> show (length tests)
     <> ", fuzzing: " <> show totalCalls <> "/" <> show env.cfg.campaignConf.testLimit
     <> ", values: " <> show ((.value) <$> filter isOptimizationTest tests)
     <> ", cov: " <> show points
     <> ", corpus: " <> show (Corpus.corpusSize corpus)
+    <> ", gas/s: " <> show gasPerSecond
 

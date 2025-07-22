@@ -13,7 +13,6 @@ dapptestTests = testGroup "Dapptest Integration Testing"
         ("testShrinking passed", solved "testShrinking"),
         ("testFuzzFixedArray passed", solved "testFuzzFixedArray"),
         ("testFuzzVariableArray passed", solved "testFuzzVariableArray"),
-        ("testFuzzVariableArray passed", solved "testFuzzVariableArray"),
         ("testFuzzBytes1 passed", solved "testFuzzBytes1"),
         ("testFuzzBytes14 passed", solved "testFuzzBytes14"),
         ("testFuzzBytes32 passed", solved "testFuzzBytes32"),
