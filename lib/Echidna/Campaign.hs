@@ -40,7 +40,6 @@ import Echidna.Symbolic (forceAddr)
 import Echidna.SymExec (createSymTx)
 import Echidna.Test
 import Echidna.Transaction
-import Echidna.Types (Gas)
 import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
@@ -366,7 +365,7 @@ callseq vm txSeq = do
       -- and construct a set to union to the constants table
       diffs = Map.fromList [(AbiAddressType, Set.fromList $ AbiAddress . forceAddr <$> newAddrs)]
       -- Now we try to parse the return values as solidity constants, and add them to 'GenDict'
-      resultMap = returnValues (map (\(t, (vr, _)) -> (t, vr)) results) workerState.genDict.rTypes
+      resultMap = returnValues results workerState.genDict.rTypes
       -- union the return results with the new addresses
       additions = Map.unionWith Set.union diffs resultMap
       -- append to the constants dictionary
@@ -411,7 +410,7 @@ callseq vm txSeq = do
         _ -> Nothing
 
   -- | Add transactions to the corpus, discarding reverted ones
-  addToCorpus :: Int -> [(Tx, (VMResult Concrete RealWorld, Gas))] -> Corpus -> Corpus
+  addToCorpus :: Int -> [(Tx, VMResult Concrete RealWorld)] -> Corpus -> Corpus
   addToCorpus n res corpus =
     if null rtxs then corpus else Set.insert (n, rtxs) corpus
     where rtxs = fst <$> res
@@ -421,7 +420,7 @@ callseq vm txSeq = do
 execTxOptC
   :: (MonadIO m, MonadReader Env m, MonadState WorkerState m, MonadThrow m)
   => VM Concrete RealWorld -> Tx
-  -> m ((VMResult Concrete RealWorld, Gas), VM Concrete RealWorld)
+  -> m (VMResult Concrete RealWorld, VM Concrete RealWorld)
 execTxOptC vm tx = do
   ((res, grew), vm') <- runStateT (execTxWithCov tx) vm
   when grew $ do
