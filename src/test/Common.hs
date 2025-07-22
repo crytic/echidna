@@ -14,8 +14,6 @@ module Common
   , solvedWith
   , solvedWithout
   , solvedUsing
-  , getGas
-  , gasInRange
   , countCorpus
   , overrideQuiet
   , loadSolTests
@@ -44,7 +42,6 @@ import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Campaign (runWorker)
 import Echidna.Solidity (selectMainContract, mkTests, loadSpecified, compileContracts)
 import Echidna.Test (checkETest)
-import Echidna.Types (Gas)
 import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
 import Echidna.Types.Campaign
 import Echidna.Types.Signature (ContractName)
@@ -236,15 +233,6 @@ solvedWith tx t final =
 solvedWithout :: TxCall -> Text -> (Env, WorkerState) -> IO Bool
 solvedWithout tx t final =
   maybe False (all $ (/= tx) . (.call)) <$> solnFor t final
-
-getGas :: Text -> WorkerState -> Maybe (Gas, [Tx])
-getGas t camp = Map.lookup t camp.gasInfo
-
-gasInRange :: Text -> Gas -> Gas -> (Env, WorkerState) -> IO Bool
-gasInRange t l h (_, workerState) = do
-  pure $ case getGas t workerState of
-    Just (g, _) -> g >= l && g <= h
-    _           -> False
 
 countCorpus :: Int -> (Env, WorkerState) -> IO Bool
 countCorpus n (env, _) = do

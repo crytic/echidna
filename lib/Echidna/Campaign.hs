@@ -130,7 +130,6 @@ runSymWorker callback vm dict workerId initialCorpus name = do
   effectiveGenDict = dict { defSeed = effectiveSeed }
   initialState =
     WorkerState { workerId
-                , gasInfo = mempty
                 , genDict = effectiveGenDict
                 , newCoverage = False
                 , ncallseqs = 0
@@ -208,7 +207,6 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
     effectiveGenDict = dict { defSeed = effectiveSeed }
     initialState =
       WorkerState { workerId
-                  , gasInfo = mempty
                   , genDict = effectiveGenDict
                   , newCoverage = False
                   , ncallseqs = 0
@@ -381,11 +379,6 @@ callseq vm txSeq = do
     -- Update the worker state
     in workerState
       { genDict = updatedDict
-        -- Update the gas estimation
-      , gasInfo =
-          if conf.estimateGas
-             then updateGasInfo results [] workerState.gasInfo
-             else workerState.gasInfo
         -- Reset the new coverage flag
       , newCoverage = False
         -- Keep track of the number of calls to `callseq`
@@ -439,25 +432,6 @@ execTxOptC vm tx = do
           _ -> workerState.genDict
       in workerState { newCoverage = True, genDict = dict' }
   pure (res, vm')
-
--- | Given current `gasInfo` and a sequence of executed transactions, updates
--- information on the highest gas usage for each call
-updateGasInfo
-  :: [(Tx, (VMResult Concrete RealWorld, Gas))]
-  -> [Tx]
-  -> Map Text (Gas, [Tx])
-  -> Map Text (Gas, [Tx])
-updateGasInfo [] _ gi = gi
-updateGasInfo ((tx@Tx{call = SolCall (f, _)}, (_, used')):txs) tseq gi =
-  case mused of
-    Nothing -> rec
-    Just (used, _) | used' > used -> rec
-    Just (used, otseq) | (used' == used) && (length otseq > length tseq') -> rec
-    _ -> updateGasInfo txs tseq' gi
-  where mused = Map.lookup f gi
-        tseq' = tx:tseq
-        rec   = updateGasInfo txs tseq' (Map.insert f (used', reverse tseq') gi)
-updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 
 -- | Given an initial 'VM' state and a way to run transactions, evaluate a list
 -- of transactions, constantly checking if we've solved any tests.
