@@ -123,8 +123,7 @@ Campaign = {
   "error"        : string?,
   "tests"        : [Test],
   "seed"         : number,
-  "coverage"     : Coverage,
-  "gas_info"     : [GasInfo]
+  "coverage"     : Coverage
 }
 Test = {
   "contract"     : string,
@@ -143,9 +142,7 @@ Transaction = {
 }
 ```
 
-`Coverage` is a dict describing certain coverage-increasing calls.
-Each `GasInfo` entry is a tuple that describes how maximal
-gas usage was achieved, and is also not too important. These interfaces are
+`Coverage` is a dict describing certain coverage-increasing calls. These interfaces are
 subject to change to be slightly more user-friendly at a later date. `testType`
 will either be `property` or `assertion`, and `status` always takes on either
 `fuzzing`, `shrinking`, `solved`, `passed`, or `error`.

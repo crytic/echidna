@@ -4,8 +4,7 @@ import Control.Monad (forM)
 import Control.Monad.Reader (MonadReader, MonadIO (liftIO), asks, ask)
 import Control.Monad.ST (RealWorld)
 import Data.IORef (readIORef, atomicModifyIORef')
-import Data.List (intercalate, nub, sortOn)
-import Data.Map (toList)
+import Data.List (nub)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromJust, fromMaybe)
 import Data.Text (Text, unpack)
@@ -17,7 +16,6 @@ import Echidna.ABI (GenDict(..), encodeSig)
 import Echidna.Pretty (ppTxCall)
 import Echidna.SourceMapping (findSrcByMetadata, lookupCodehash)
 import Echidna.Symbolic (forceWord)
-import Echidna.Types (Gas)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (corpusSize)
@@ -53,18 +51,16 @@ ppSeed :: [WorkerState] -> String
 ppSeed [] = "unknown" -- should not happen
 ppSeed (campaign:_) = show campaign.genDict.defSeed
 
-ppCampaign :: (MonadIO m, MonadReader Env m) => VM Concrete RealWorld -> [WorkerState] -> m String
-ppCampaign vm workerStates = do
+ppCampaign :: (MonadIO m, MonadReader Env m) => [WorkerState] -> m String
+ppCampaign workerStates = do
   tests <- liftIO . traverse readIORef =<< asks (.testRefs)
   testsPrinted <- ppTests tests
-  gasInfoPrinted <- ppGasInfo vm workerStates
   coveragePrinted <- ppCoverage
   let seedPrinted = "Seed: " <> ppSeed workerStates
   corpusPrinted <- ppCorpus
   let callsPrinted = ppTotalCalls workerStates
   pure $ unlines
     [ testsPrinted
-    , gasInfoPrinted
     , coveragePrinted
     , corpusPrinted
     , seedPrinted
@@ -140,22 +136,6 @@ ppCorpus :: (MonadIO m, MonadReader Env m) => m String
 ppCorpus = do
   corpus <- liftIO . readIORef =<< asks (.corpusRef)
   pure $ "Corpus size: " <> show (corpusSize corpus)
-
--- | Pretty-print the gas usage information a 'Campaign' has obtained.
-ppGasInfo :: (MonadReader Env m, MonadIO m) => VM Concrete RealWorld -> [WorkerState] -> m String
-ppGasInfo vm workerStates = do
-  let gasInfo = Map.unionsWith max ((.gasInfo) <$> workerStates)
-  items <- mapM (ppGasOne vm) $ sortOn (\(_, (n, _)) -> n) $ toList gasInfo
-  pure $ intercalate "" items
-
--- | Pretty-print the gas usage for a function.
-ppGasOne :: (MonadReader Env m, MonadIO m) => VM Concrete RealWorld -> (Text, (Gas, [Tx])) -> m String
-ppGasOne _  ("", _)      = pure ""
-ppGasOne vm (func, (gas, txs)) = do
-  let header = "\n" <> unpack func <> " used a maximum of " <> show gas <> " gas\n"
-               <> "  Call sequence:\n"
-  prettyTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> txs) /= 1) txs
-  pure $ header <> unlines (("    " <>) <$> prettyTxs)
 
 -- | Pretty-print the status of a solved test.
 ppFail :: (MonadReader Env m, MonadIO m) => Maybe (Int, Int) -> VM Concrete RealWorld -> [Tx] -> m String
