@@ -19,7 +19,6 @@ import EVM.Solidity (BuildOutput(..), Contracts(Contracts))
 import EVM.Types hiding (Env)
 
 import Echidna.ABI
-import Echidna.Etheno (loadEtheno, extractFromEtheno)
 import Echidna.Onchain as Onchain
 import Echidna.Output.Corpus
 import Echidna.SourceAnalysis.Slither
@@ -94,24 +93,12 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
 
 loadInitialCorpus :: Env -> IO [(FilePath, [Tx])]
 loadInitialCorpus env = do
-  -- load transactions from init sequence (if any)
-  let sigs = Set.fromList $ concatMap NE.toList (Map.elems env.world.highSignatureMap)
-  ethenoCorpus <-
-    case env.cfg.solConf.initialize of
-      Nothing -> pure []
-      Just dir -> do
-        ethenos <- loadEtheno dir
-        pure [(dir, extractFromEtheno ethenos sigs)]
-
-  persistedCorpus <-
-    case env.cfg.campaignConf.corpusDir of
-      Nothing -> pure []
-      Just dir -> do
-        ctxs1 <- loadTxs (dir </> "reproducers")
-        ctxs2 <- loadTxs (dir </> "coverage")
-        pure (ctxs1 ++ ctxs2)
-
-  pure $ persistedCorpus ++ ethenoCorpus
+  case env.cfg.campaignConf.corpusDir of
+    Nothing -> pure []
+    Just dir -> do
+      ctxs1 <- loadTxs (dir </> "reproducers")
+      ctxs2 <- loadTxs (dir </> "coverage")
+      pure (ctxs1 ++ ctxs2)
 
 mkEnv :: EConfig -> BuildOutput -> [EchidnaTest] -> World -> Maybe SlitherInfo -> IO Env
 mkEnv cfg buildOutput tests world slitherInfo = do

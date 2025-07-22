@@ -52,8 +52,6 @@ solcLibs: []
 cryticArgs: []
 #quiet produces (much) less verbose output
 quiet: false
-#initialize the blockchain with some data
-initialize: null
 #initialize the blockchain with some predeployed contracts in some addresses
 deployContracts: []
 #initialize the blockchain with some bytecode in some addresses
