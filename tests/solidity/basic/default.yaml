@@ -20,8 +20,6 @@ maxGasprice: 0
 testLimit: 50000
 #stopOnFail makes echidna terminate as soon as any property fails and has been shrunk
 stopOnFail: false
-#estimateGas makes echidna perform analysis of maximum gas costs for functions (experimental)
-estimateGas: false
 #seqLen defines how many transactions are in a test sequence
 seqLen: 100
 #shrinkLimit determines how much effort is spent shrinking failing sequences
