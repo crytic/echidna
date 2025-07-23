@@ -173,7 +173,7 @@ loadSpecified
 loadSpecified env mainContract cs = do
   let solConf = env.cfg.solConf
 
-  -- Set up initial VM, either with chosen contract or Etheno initialization file
+  -- Set up initial VM with chosen contract
   -- need to use snd to add to ABI dict
   initVM <- stToIO $ initialVM solConf.allowFFI
   let vm = initVM & #block % #gaslimit .~ unlimitedGasPerBlock

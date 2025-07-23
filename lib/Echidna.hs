@@ -93,13 +93,12 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
 
 loadInitialCorpus :: Env -> IO [(FilePath, [Tx])]
 loadInitialCorpus env = do
-  -- load transactions from init sequence (if any)
   case env.cfg.campaignConf.corpusDir of
-       Nothing -> pure []
-       Just dir
-         -> do ctxs1 <- loadTxs (dir </> "reproducers")
-               ctxs2 <- loadTxs (dir </> "coverage")
-               pure (ctxs1 ++ ctxs2)
+    Nothing -> pure []
+    Just dir -> do
+      ctxs1 <- loadTxs (dir </> "reproducers")
+      ctxs2 <- loadTxs (dir </> "coverage")
+      pure (ctxs1 ++ ctxs2)
 
 mkEnv :: EConfig -> BuildOutput -> [EchidnaTest] -> World -> Maybe SlitherInfo -> IO Env
 mkEnv cfg buildOutput tests world slitherInfo = do

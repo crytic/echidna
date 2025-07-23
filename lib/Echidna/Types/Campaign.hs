@@ -1,7 +1,6 @@
 module Echidna.Types.Campaign where
 
 import Control.Concurrent (ThreadId)
-import Data.Map (Map)
 import Data.Text (Text)
 import Data.Word (Word8, Word16)
 import GHC.Conc (numCapabilities)
@@ -19,8 +18,6 @@ data CampaignConf = CampaignConf
     -- ^ Maximum number of function calls to execute while fuzzing
   , stopOnFail         :: Bool
     -- ^ Whether to stop the campaign immediately if any property fails
-  , estimateGas        :: Bool
-    -- ^ Whether to collect gas usage statistics
   , seqLen             :: Int
     -- ^ Number of calls between state resets (e.g. \"every 10 calls,
     -- reset the state to avoid unrecoverable states/save memory\"
@@ -73,8 +70,6 @@ data CampaignConf = CampaignConf
 data WorkerState = WorkerState
   { workerId    :: !Int
     -- ^ Worker ID starting from 0
-  , gasInfo     :: !(Map Text (Gas, [Tx]))
-    -- ^ Worst case gas (NOTE: we don't always record this)
   , genDict     :: !GenDict
     -- ^ Generation dictionary
   , newCoverage :: !Bool
@@ -93,7 +88,6 @@ data WorkerState = WorkerState
 initialWorkerState :: WorkerState
 initialWorkerState =
   WorkerState { workerId = 0
-              , gasInfo = mempty
               , genDict = emptyDict
               , newCoverage = False
               , ncallseqs = 0

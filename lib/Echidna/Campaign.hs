@@ -46,7 +46,6 @@ import Echidna.SymExec.Exploration (exploreContract, getTargetMethodFromTx, getR
 import Echidna.SymExec.Verification (verifyMethod)
 import Echidna.Test
 import Echidna.Transaction
-import Echidna.Types (Gas)
 import Echidna.Types.Campaign
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
@@ -141,7 +140,6 @@ runSymWorker callback vm dict workerId _ name = do
   effectiveGenDict = dict { defSeed = effectiveSeed }
   initialState =
     WorkerState { workerId
-                , gasInfo = mempty
                 , genDict = effectiveGenDict
                 , newCoverage = False
                 , ncallseqs = 0
@@ -334,7 +332,6 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
     effectiveGenDict = dict { defSeed = effectiveSeed }
     initialState =
       WorkerState { workerId
-                  , gasInfo = mempty
                   , genDict = effectiveGenDict
                   , newCoverage = False
                   , ncallseqs = 0
@@ -494,7 +491,7 @@ callseq vm txSeq = do
       -- and construct a set to union to the constants table
       diffs = Map.fromList [(AbiAddressType, Set.fromList $ AbiAddress . forceAddr <$> newAddrs)]
       -- Now we try to parse the return values as solidity constants, and add them to 'GenDict'
-      resultMap = returnValues (map (\(t, (vr, _)) -> (t, vr)) results) workerState.genDict.rTypes
+      resultMap = returnValues results workerState.genDict.rTypes
       -- union the return results with the new addresses
       additions = Map.unionWith Set.union diffs resultMap
       -- append to the constants dictionary
@@ -507,11 +504,6 @@ callseq vm txSeq = do
     -- Update the worker state
     in workerState
       { genDict = updatedDict
-        -- Update the gas estimation
-      , gasInfo =
-          if conf.estimateGas
-             then updateGasInfo results [] workerState.gasInfo
-             else workerState.gasInfo
         -- Reset the new coverage flag
       , newCoverage = False
         -- Keep track of the number of calls to `callseq`
@@ -544,7 +536,7 @@ callseq vm txSeq = do
         _ -> Nothing
 
   -- | Add transactions to the corpus, discarding reverted ones
-  addToCorpus :: Int -> [(Tx, (VMResult Concrete RealWorld, Gas))] -> Corpus -> Corpus
+  addToCorpus :: Int -> [(Tx, VMResult Concrete RealWorld)] -> Corpus -> Corpus
   addToCorpus n res corpus =
     if null rtxs then corpus else Set.insert (n, rtxs) corpus
     where rtxs = fst <$> res
@@ -554,7 +546,7 @@ callseq vm txSeq = do
 execTxOptC
   :: (MonadIO m, MonadReader Env m, MonadState WorkerState m, MonadThrow m)
   => VM Concrete RealWorld -> Tx
-  -> m ((VMResult Concrete RealWorld, Gas), VM Concrete RealWorld)
+  -> m (VMResult Concrete RealWorld, VM Concrete RealWorld)
 execTxOptC vm tx = do
   ((res, grew), vm') <- runStateT (execTxWithCov tx) vm
   when grew $ do
@@ -565,25 +557,6 @@ execTxOptC vm tx = do
           _ -> workerState.genDict
       in workerState { newCoverage = True, genDict = dict' }
   pure (res, vm')
-
--- | Given current `gasInfo` and a sequence of executed transactions, updates
--- information on the highest gas usage for each call
-updateGasInfo
-  :: [(Tx, (VMResult Concrete RealWorld, Gas))]
-  -> [Tx]
-  -> Map Text (Gas, [Tx])
-  -> Map Text (Gas, [Tx])
-updateGasInfo [] _ gi = gi
-updateGasInfo ((tx@Tx{call = SolCall (f, _)}, (_, used')):txs) tseq gi =
-  case mused of
-    Nothing -> rec
-    Just (used, _) | used' > used -> rec
-    Just (used, otseq) | (used' == used) && (length otseq > length tseq') -> rec
-    _ -> updateGasInfo txs tseq' gi
-  where mused = Map.lookup f gi
-        tseq' = tx:tseq
-        rec   = updateGasInfo txs tseq' (Map.insert f (used', reverse tseq') gi)
-updateGasInfo ((t, _):ts) tseq gi = updateGasInfo ts (t:tseq) gi
 
 -- | Given an initial 'VM' state and a way to run transactions, evaluate a list
 -- of transactions, constantly checking if we've solved any tests.

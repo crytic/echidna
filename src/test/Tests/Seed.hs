@@ -25,7 +25,6 @@ seedTests =
       { campaignConf = defaultConfig.campaignConf
         { testLimit = 600
         , stopOnFail = False
-        , estimateGas = False
         , seqLen = 20
         , shrinkLimit = 0
         , knownCoverage = Nothing

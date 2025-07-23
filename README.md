@@ -15,8 +15,6 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 * Interactive terminal UI, text-only or JSON output
 * Automatic test case minimization for quick triage
 * Seamless integration into the development workflow
-* Maximum gas usage reporting of the fuzzing campaign
-* Support for a complex contract initialization with [Etheno](https://github.com/crytic/etheno) and Truffle
 
 .. and [a beautiful high-resolution handcrafted logo](https://raw.githubusercontent.com/crytic/echidna/master/echidna.png).
 
@@ -85,7 +83,7 @@ Our tool signals each execution trace in the corpus with the following "line mar
 
 Echidna can test contracts compiled with different smart contract build systems, including [Foundry](https://book.getfoundry.sh/), [Hardhat](https://hardhat.org/), and [Truffle](https://archive.trufflesuite.com/), using [crytic-compile](https://github.com/crytic/crytic-compile). To invoke Echidna with the current compilation framework, use `echidna .`.
 
-On top of that, Echidna supports two modes of testing complex contracts. Firstly, one can [describe an initialization procedure with Truffle and Etheno](https://github.com/crytic/building-secure-contracts/blob/master/program-analysis/echidna/advanced/end-to-end-testing.md) and use that as the base state for Echidna. Secondly, Echidna can call into any contract with a known ABI by passing in the corresponding Solidity source in the CLI. Use `allContracts: true` in your config to turn this on.
+On top of that, Echidna supports two modes of testing complex contracts. Firstly, one can [take advantage of existing network state](https://secure-contracts.com/program-analysis/echidna/advanced/state-network-forking.html) and use that as the base state for Echidna. Secondly, Echidna can call into any contract with a known ABI by passing in the corresponding Solidity source in the CLI. Use `allContracts: true` in your config to turn this on.
 
 ### Crash course on Echidna
 
@@ -124,8 +122,7 @@ Campaign = {
   "error"        : string?,
   "tests"        : [Test],
   "seed"         : number,
-  "coverage"     : Coverage,
-  "gas_info"     : [GasInfo]
+  "coverage"     : Coverage
 }
 Test = {
   "contract"     : string,
@@ -144,9 +141,7 @@ Transaction = {
 }
 ```
 
-`Coverage` is a dict describing certain coverage-increasing calls.
-Each `GasInfo` entry is a tuple that describes how maximal
-gas usage was achieved, and is also not too important. These interfaces are
+`Coverage` is a dict describing certain coverage-increasing calls. These interfaces are
 subject to change to be slightly more user-friendly at a later date. `testType`
 will either be `property` or `assertion`, and `status` always takes on either
 `fuzzing`, `shrinking`, `solved`, `passed`, or `error`.

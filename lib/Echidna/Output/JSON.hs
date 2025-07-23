@@ -17,7 +17,6 @@ import EVM.Dapp (DappInfo)
 
 import Echidna.ABI (ppAbiValue, GenDict(..))
 import Echidna.Events (Events, extractEvents)
-import Echidna.Types (Gas)
 import Echidna.Types.Campaign (WorkerState(..))
 import Echidna.Types.Config (Env(..))
 import Echidna.Types.Coverage (CoverageInfo, mergeCoverageMaps)
@@ -31,7 +30,6 @@ data Campaign = Campaign
   , _tests :: [Test]
   , seed :: Int
   , coverage :: Map String [CoverageInfo]
-  , gasInfo :: [(Text, (Gas, [Tx]))]
   }
 
 instance ToJSON Campaign where
@@ -41,7 +39,6 @@ instance ToJSON Campaign where
     , "tests" .= _tests
     , "seed" .= seed
     , "coverage" .= coverage
-    , "gas_info" .= gasInfo
     ]
 
 data Test = Test
@@ -113,7 +110,6 @@ encodeCampaign env workerStates = do
     , _tests = mapTest env.dapp <$> tests
     , seed = seed
     , coverage = Map.mapKeys (("0x" ++) . (`showHex` "")) $ VU.toList <$> frozenCov
-    , gasInfo = Map.toList $ Map.unionsWith max ((.gasInfo) <$> workerStates)
     }
 
 mapTest :: DappInfo -> EchidnaTest -> Test

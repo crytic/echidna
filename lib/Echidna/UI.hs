@@ -165,7 +165,7 @@ ui vm dict initialCorpus cliSelectedContract = do
       liftIO $ killThread ticker
 
       states <- workerStates workers
-      liftIO . putStrLn =<< ppCampaign vm states
+      liftIO . putStrLn =<< ppCampaign states
 
       pure states
 
@@ -220,7 +220,7 @@ ui vm dict initialCorpus cliSelectedContract = do
         JSON ->
           liftIO $ BS.putStr =<< Echidna.Output.JSON.encodeCampaign env states
         Text -> do
-          liftIO . putStrLn =<< ppCampaign vm states
+          liftIO . putStrLn =<< ppCampaign  states
         None ->
           pure ()
       pure states

@@ -1,3 +1,7 @@
+## Unreleased
+* Dropped Etheno support (#1402)
+* Dropped `estimateGas` support and auxiliary code (#1403)
+
 ## 2.2.7
 
 * feat: show which project is being fuzzed (#1381)
