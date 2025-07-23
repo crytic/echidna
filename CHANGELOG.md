@@ -1,5 +1,6 @@
 ## Unreleased
-* Dropped Etheno support
+* Dropped Etheno support (#1402)
+* Dropped `estimateGas` support and auxiliary code (#1403)
 
 ## 2.2.7
 
