@@ -1,3 +1,6 @@
+## Unreleased
+* Dropped Etheno support
+
 ## 2.2.7
 
 * feat: show which project is being fuzzed (#1381)
