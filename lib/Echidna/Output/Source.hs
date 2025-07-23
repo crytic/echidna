@@ -85,10 +85,10 @@ ppCoveredCode fileType sc cs s | null s = "Coverage map is empty"
     topHeader = case fileType of
       Lcov -> "TN:\n"
       Html -> "<style> code { white-space: pre-wrap; display: block; background-color: #eee; }" <>
-              ".executed { background-color: #afa; }" <>
-              ".reverted { background-color: #ffa; }" <>
-              ".unexecuted { background-color: #faa; }" <>
-              ".neutral { background-color: #eee; }" <>
+              ".e { background-color: #afa; }" <> -- executed
+              ".r { background-color: #ffa; }" <> -- reverted
+              ".u { background-color: #faa; }" <> -- unexecuted
+              ".n { background-color: #eee; }" <> -- neutral
               "</style>"
       Txt  -> ""
     -- ^ Text to add to top of the file
@@ -123,7 +123,7 @@ markLines fileType codeLines runtimeLines resultMap =
                      "</span>"
           _ -> line
           where
-          cssClass = if n `elem` runtimeLines then getCSSClass markers else "neutral"
+          cssClass = if n `elem` runtimeLines then getCSSClass markers else "n" -- fallback to 'neutral' class.
         result = case fileType of
           Lcov -> pack $ printf "DA:%d,%d" n (length results)
           _ -> pack $ printf " %*d | %-4s| %s" lineNrSpan n markers (wrapLine codeLine)
@@ -134,9 +134,9 @@ markLines fileType codeLines runtimeLines resultMap =
 getCSSClass :: String -> Text
 getCSSClass markers =
   case markers of
-   []                      -> "unexecuted"
-   _  | '*' `elem` markers -> "executed"
-   _                       -> "reverted"
+   []                      -> "u" -- unexecuted
+   _  | '*' `elem` markers -> "e" -- executed
+   _                       -> "r" -- reverted
 
 -- | Select the proper marker, according to the result of the transaction
 getMarker :: TxResult -> Char
