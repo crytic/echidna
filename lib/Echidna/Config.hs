@@ -88,7 +88,6 @@ instance FromJSON EConfigWithUsage where
       campaignConfParser = CampaignConf
         <$> v ..:? "testLimit" ..!= defaultTestLimit
         <*> v ..:? "stopOnFail" ..!= False
-        <*> v ..:? "estimateGas" ..!= False
         <*> v ..:? "seqLen" ..!= defaultSequenceLength
         <*> v ..:? "shrinkLimit" ..!= defaultShrinkLimit
         <*> (v ..:? "coverage" <&> \case Just False -> Nothing;  _ -> Just mempty)

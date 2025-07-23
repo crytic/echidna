@@ -2,7 +2,7 @@ module Tests.Integration (integrationTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout, gasInRange)
+import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout)
 import Data.Functor ((<&>))
 import Data.Text (unpack)
 import Echidna.Types.Campaign (WorkerType(..))
@@ -83,13 +83,6 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
   , testContract "basic/darray-mutation.sol"  Nothing
       [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
-  , testContract "basic/gasuse.sol"       (Just "basic/gasuse.yaml")
-      [ ("echidna_true failed",                    passed     "echidna_true")
-      , ("g gas estimate wrong",                   gasInRange "g" 130000 40000000)
-      , ("f_close1 gas estimate wrong",            gasInRange "f_close1" 400 2000)
-      , ("f_open1 gas estimate wrong",             gasInRange "f_open1"  18000 23000)
-      , ("push_b gas estimate wrong",              gasInRange "push_b"   39000 45000)
-      ]
   , testContract "basic/gaslimit.sol"  Nothing
       [ ("echidna_gaslimit passed",                passed      "echidna_gaslimit") ]
   , testContract "basic/gasleft.sol"     (Just "basic/gasleft.yaml")
