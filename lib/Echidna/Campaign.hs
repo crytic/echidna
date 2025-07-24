@@ -33,6 +33,7 @@ import EVM.Dapp (DappInfo(..))
 import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
+import Echidna.Events (extractEventValues)
 import Echidna.Exec
 import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
@@ -366,8 +367,14 @@ callseq vm txSeq = do
       diffs = Map.fromList [(AbiAddressType, Set.fromList $ AbiAddress . forceAddr <$> newAddrs)]
       -- Now we try to parse the return values as solidity constants, and add them to 'GenDict'
       resultMap = returnValues results workerState.genDict.rTypes
+      -- compute the new events to be stored
+      eventDiffs = extractEventValues vm.dappInfo results
       -- union the return results with the new addresses
-      additions = Map.unionWith Set.union diffs resultMap
+      additions = Map.unionWith Set.union
+        [ diffs
+        , resultMap
+        , eventDiffs
+        ]
       -- append to the constants dictionary
       updatedDict = workerState.genDict
         { constants = Map.unionWith Set.union additions workerState.genDict.constants

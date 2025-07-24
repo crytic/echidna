@@ -3,12 +3,14 @@
 
 module Echidna.Events where
 
+import Control.Monad.ST (RealWorld)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy (fromStrict)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust, catMaybes, maybeToList)
+import Data.Set
 import Data.Text (pack, Text)
 import Data.Tree (flatten)
 import Data.Tree.Zipper (fromForest, TreePos, Empty)
@@ -21,6 +23,7 @@ import EVM.Expr (maybeLitWordSimp)
 import EVM.Format (showValues, showError, contractNamePart)
 import EVM.Solidity (SolcContract(..))
 import EVM.Types
+import Echidna.Types.Tx
 
 import Echidna.Symbolic (forceWord, forceBuf)
 
@@ -71,6 +74,43 @@ extractEvents decodeErrors dappInfo vm =
       ("\x4e\x48\x7b\x71", d) ->
         Just $ humanPanic $ decodePanic d
       _ -> Nothing
+
+-- Extract all non-indexed `uint256` values from events emitted in the given VM results.
+-- Returns a map from `AbiType` to the set of unique `AbiValue`s found in those events.
+
+extractEventValues
+  :: DappInfo
+  -> [(Tx, VMResult Concrete RealWorld)]
+  -> Map AbiType (Set AbiValue)
+extractEventValues dappInfo txResults =
+  let
+    -- for each transaction result, get its logs
+    allLogs :: [Expr Log]
+    allLogs = concatMap (\case
+      (_, VMSuccess _ dataLogs _) -> dataLogs
+      _                           -> []
+      ) txResults
+
+    -- decode a single Expr Log into zero or more (ty, val) pairs
+    goLog = \case
+      LogEntry _addr dataBuf (sigHash : _) ->
+        case Map.lookup (forceWord sigHash) dappInfo.eventMap of
+          Just (Event _name _sig params) ->
+            -- decode every _non‑indexed_ param as Uint256
+            [ (UintType, UintValue v)
+            | (_, _, idxKind) <- params
+            , idxKind == NotIndexed
+            , Right (_, _, v) <- [ runGetOrFail (getAbi UintType)
+                                              (LBS.fromStrict dataBuf) ]
+            ]
+          _ -> []
+      _ -> []
+
+    pairs = concatMap goLog allLogs
+  in
+    foldl' (\m (ty,v) -> Map.insertWith Set.union ty (Set.singleton v) m)
+           Map.empty
+           pairs
 
 maybeContractNameFromCodeHash :: DappInfo -> W256 -> Maybe Text
 maybeContractNameFromCodeHash info codeHash = contractToName <$> maybeContract
