@@ -4,20 +4,23 @@
 module Echidna.Events where
 
 import Control.Monad.ST (RealWorld)
+import Data.Binary.Get
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy (fromStrict)
+import Data.List (foldl')
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust, catMaybes, maybeToList)
-import Data.Set
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (pack, Text)
 import Data.Tree (flatten)
 import Data.Tree.Zipper (fromForest, TreePos, Empty)
 import Data.Vector (fromList)
 
 import EVM (traceForest)
-import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, AbiType(..), AbiValue(..))
+import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, getAbi, AbiType(..), AbiValue(..))
 import EVM.Dapp (DappContext(..), DappInfo(..))
 import EVM.Expr (maybeLitWordSimp)
 import EVM.Format (showValues, showError, contractNamePart)
