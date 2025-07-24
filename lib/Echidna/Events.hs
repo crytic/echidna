@@ -78,42 +78,34 @@ extractEvents decodeErrors dappInfo vm =
         Just $ humanPanic $ decodePanic d
       _ -> Nothing
 
--- Extract all non-indexed `uint256` values from events emitted in the given VM results.
--- Returns a map from `AbiType` to the set of unique `AbiValue`s found in those events.
-
-extractEventValues
-  :: DappInfo
-  -> [(Tx, VMResult Concrete RealWorld)]
-  -> Map AbiType (Set AbiValue)
-extractEventValues dappInfo txResults =
+-- | Extract all non‑indexed event values emitted between two VM states.
+extractEventValues :: DappInfo -> VM Concrete s -> VM Concrete s -> Map AbiType (Set AbiValue)
+extractEventValues dappInfo vm vm' =
   let
-    -- for each transaction result, get its logs
-    allLogs :: [Expr Log]
-    allLogs = concatMap (\case
-      (_, VMSuccess _ dataLogs _) -> dataLogs
-      _                           -> []
-      ) txResults
+    oldLogs = vm.logs
+    newLogs = vm'.logs
 
-    -- decode a single Expr Log into zero or more (ty, val) pairs
+    -- only the newly emitted entries
+    delta   = filter (`notElem` oldLogs) newLogs
+
+    -- decode each Expr Log
     goLog = \case
-      LogEntry _addr dataBuf (sigHash : _) ->
+      LogEntry _addr (ConcreteBuf bs) (sigHash : _) ->
         case Map.lookup (forceWord sigHash) dappInfo.eventMap of
-          Just (Event _name _sig params) ->
-            -- decode every _non‑indexed_ param as Uint256
-            [ (UintType, UintValue v)
-            | (_, _, idxKind) <- params
-            , idxKind == NotIndexed
-            , Right (_, _, v) <- [ runGetOrFail (getAbi UintType)
-                                              (LBS.fromStrict dataBuf) ]
+          Just (Event _ _ params) ->
+            [ (ty, val)
+            | (_, ty, NotIndexed) <- params
+            , Right (_, _, val) <- [ runGetOrFail (getAbi ty) (fromStrict bs) ]
             ]
-          _ -> []
+          Nothing -> []
       _ -> []
 
-    pairs = concatMap goLog allLogs
+    pairs = concatMap goLog delta
   in
-    foldl' (\m (ty,v) -> Map.insertWith Set.union ty (Set.singleton v) m)
-           Map.empty
-           pairs
+    foldl'
+      (\m (ty,v) -> Map.insertWith Set.union ty (Set.singleton v) m)
+      Map.empty
+      pairs
 
 maybeContractNameFromCodeHash :: DappInfo -> W256 -> Maybe Text
 maybeContractNameFromCodeHash info codeHash = contractToName <$> maybeContract
