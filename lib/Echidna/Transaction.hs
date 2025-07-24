@@ -27,7 +27,7 @@ import EVM.Types hiding (Env, Gas, VMOpts(timestamp, gasprice))
 import Echidna.ABI
 import Echidna.Orphans.JSON ()
 import Echidna.SourceMapping (lookupUsingCodehash)
-import Echidna.Symbolic (forceWord, forceAddr)
+import Echidna.SymExec.Symbolic (forceWord, forceAddr)
 import Echidna.Types (fromEVM, Gas)
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Random

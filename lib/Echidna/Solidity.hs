@@ -347,6 +347,7 @@ mkWorld SolConf{sender, testMode} sigMap maybeContract slitherInfo contracts =
   let
     eventMap = Map.unions $ map (.eventMap) contracts
     payableSigs = filterResults maybeContract slitherInfo.payableFunctions
+    assertSigs = filterResults maybeContract (assertFunctionList <$> slitherInfo.asserts)
     as = if isAssertionMode testMode then filterResults maybeContract (assertFunctionList <$> slitherInfo.asserts) else []
     cs = if isDapptestMode testMode then [] else filterResults maybeContract slitherInfo.constantFunctions \\ as
     (highSignatureMap, lowSignatureMap) = prepareHashMaps cs as $
@@ -355,6 +356,7 @@ mkWorld SolConf{sender, testMode} sigMap maybeContract slitherInfo contracts =
            , highSignatureMap
            , lowSignatureMap
            , payableSigs
+           , assertSigs
            , eventMap
            }
 

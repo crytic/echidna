@@ -1,15 +1,22 @@
 module Tests.Symbolic (symbolicTests) where
 
 import Test.Tasty (TestTree, testGroup)
-import Common (testContract', solved, passed)
-import Echidna.Types.Campaign (WorkerType(..))
+import Common (testContract', solved, verified)
+import Echidna.Types.Worker (WorkerType(..))
 
 symbolicTests :: TestTree
 symbolicTests = testGroup "Symbolic tests"
-  [ testContract' "symbolic/sym.sol" Nothing Nothing (Just "symbolic/sym.yaml") True SymbolicWorker
-      [ ("echidna_sym passed", passed "echidna_sym") ]
-
-  , testContract' "symbolic/sym-assert.sol" Nothing Nothing (Just "symbolic/sym-assert.yaml") True SymbolicWorker
-      [ ("func_one passed", solved "func_one")
-      , ("func_two passed", solved "func_two") ]
+  [ testContract' "symbolic/verify.sol" Nothing Nothing (Just "symbolic/verify.yaml") True SymbolicWorker
+      [ ("simple passed", solved "simple")
+      , ("array passed", solved "array")
+      , ("negative passed", solved "negative")
+      , ("close passed", solved "close")
+      , ("far not verified", verified "far")
+      , ("correct not verified", verified "correct") 
+    ] 
+    -- This test is commented out because it requires a specific setup where both the FuzzWorker and SymbolicWorker are used.
+    -- If you run the symbolic worker alone, it will hang indefinitely.
+    --, testContract' "symbolic/explore.sol" Nothing Nothing (Just "symbolic/explore.yaml") True SymbolicWorker
+    --  [ ("f passed", solved "f")
+    --]
   ]

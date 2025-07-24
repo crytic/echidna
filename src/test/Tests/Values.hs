@@ -4,7 +4,7 @@ import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract, testContract', solved, solvedLen)
 
-import Echidna.Types.Campaign (WorkerType(..))
+import Echidna.Types.Worker (WorkerType(..))
 
 valuesTests :: TestTree
 valuesTests = testGroup "Value extraction tests"

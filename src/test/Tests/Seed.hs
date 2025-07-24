@@ -12,6 +12,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Coverage (CoverageFileType(..))
 import Echidna.Types.Test
+import Echidna.Types.Worker (WorkerType(..))
 
 seedTests :: TestTree
 seedTests =

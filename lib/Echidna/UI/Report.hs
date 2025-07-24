@@ -15,14 +15,16 @@ import Optics
 import Echidna.ABI (GenDict(..), encodeSig)
 import Echidna.Pretty (ppTxCall)
 import Echidna.SourceMapping (findSrcByMetadata, lookupCodehash)
-import Echidna.Symbolic (forceWord)
+import Echidna.SymExec.Symbolic (forceWord)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (corpusSize)
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
+import Echidna.Types.Worker
 import Echidna.Utility (timePrefix)
+import Echidna.Worker
 
 import EVM.Format (showTraceTree, contractNamePart)
 import EVM.Solidity (SolcContract(..))
@@ -174,6 +176,7 @@ ppTS (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
 ppTS Solved     vm l = ppFail Nothing vm l
 ppTS Passed     _ _  = pure " passed! 🎉"
 ppTS Open      _ []  = pure "passing"
+ppTS Unsolvable _ _ = pure "verified ✅"
 ppTS Open      vm r  = ppFail Nothing vm r
 ppTS (Large n) vm l  = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
@@ -183,6 +186,7 @@ ppOPT :: (MonadReader Env m, MonadIO m) => TestState -> VM Concrete RealWorld ->
 ppOPT (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
 ppOPT Solved     vm l = ppOptimized Nothing vm l
 ppOPT Passed     _ _  = pure " passed! 🎉"
+ppOPT Unsolvable _ _ = error "unreachable: optimization tests should not be unsolvable"
 ppOPT Open      vm r  = ppOptimized Nothing vm r
 ppOPT (Large n) vm l  = do
   m <- asks (.cfg.campaignConf.shrinkLimit)

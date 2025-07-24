@@ -4,7 +4,7 @@ import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract, testContract', testContractV, solcV, solved, solvedUsing, passed)
 
-import Echidna.Types.Campaign (WorkerType(..))
+import Echidna.Types.Worker (WorkerType(..))
 
 assertionTests :: TestTree
 assertionTests = testGroup "Assertion-based Integration Testing"

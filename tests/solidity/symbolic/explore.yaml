@@ -1,0 +1,5 @@
+testMode: assertion
+stopOnFail: true
+symExec: true
+testLimit: 50000
+workers: 1
