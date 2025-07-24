@@ -3,7 +3,6 @@
 
 module Echidna.Events where
 
-import Control.Monad.ST (RealWorld)
 import Data.Binary.Get
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -26,7 +25,6 @@ import EVM.Expr (maybeLitWordSimp)
 import EVM.Format (showValues, showError, contractNamePart)
 import EVM.Solidity (SolcContract(..))
 import EVM.Types
-import Echidna.Types.Tx
 
 import Echidna.Symbolic (forceWord, forceBuf)
 
