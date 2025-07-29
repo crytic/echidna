@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma experimental ABIEncoderV2;
 
 contract Marketplace {
     uint256 internal currentKey = 1375566;
