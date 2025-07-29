@@ -23,7 +23,7 @@ contract Marketplace {
 	return items[currentKey];
     }
 
-    function getItem(uint256 _keyId) public view returns (Item memory) {
+    function getItem(uint256 _keyId) public view {
         assert(items[_keyId].keyId == 0);
     }
 }
