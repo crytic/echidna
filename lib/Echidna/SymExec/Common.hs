@@ -73,6 +73,7 @@ vmMakeSymbolic maxTimestampDiff maxNumberDiff vm
   , osEnv          = vm.osEnv
   , freshVar       = vm.freshVar
   , exploreDepth   = 0
+  , keccakPreImgs  = vm.keccakPreImgs
   }
 
 blockMakeSymbolic :: Block -> Block
