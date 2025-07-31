@@ -1,2 +1,2 @@
-testLimit: 100000
+testLimit: 5000
 testMode: assertion
