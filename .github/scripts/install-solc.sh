@@ -18,6 +18,7 @@ fetch_all() {
   fetch_solc "0.5.7"
   fetch_solc "0.6.12"
   fetch_solc "0.7.5"
+  fetch_solc "0.8.24"
 }
 
 
