@@ -43,7 +43,7 @@ data CampaignConf = CampaignConf
     -- ^ Whether to add an additional symbolic execution worker
   , symExecSMTSolver   :: Solver
     -- ^ SMT solver to use for symbolic execution.
-    -- Supported solvers: "cvc5", "z3", "yices", "boolector"
+    -- Supported solvers: "cvc5", "z3", "yices" and "bitwuzla"
   , symExecTargets     :: Maybe [Text]
     -- ^ List of target functions for symbolic execution.
     -- If this is 'Nothing', all functions are considered targets.
