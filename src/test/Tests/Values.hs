@@ -46,5 +46,6 @@ valuesTests = testGroup "Value extraction tests"
     , testContract' "values/contract.sol" (Just "Test") Nothing (Just "values/contract.yaml") False FuzzWorker
       [ ("verify_first passed",                    solved      "verify_first")
       , ("verify_later passed",                    solved      "verify_later") ]
-
+    , testContract' "values/events.sol" Nothing Nothing (Just "values/events.yaml") False FuzzWorker
+      [ ("check passed",                           solved      "check") ]
   ]
