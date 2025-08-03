@@ -122,14 +122,12 @@ runSymWorker callback vm dict workerId _ name = do
   eventQueue <- asks (.eventQueue)
   chan <- liftIO $ dupChan eventQueue
 
-  if (cfg.campaignConf.workers == Just 0) && (cfg.campaignConf.seqLen == 1) then do
-    flip runStateT initialState $
-      flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
+  flip runStateT initialState $
+    flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
+      if (cfg.campaignConf.workers == Just 0) && (cfg.campaignConf.seqLen == 1) then do
         verifyMethods -- No arguments, everything is in this environment
         pure SymbolicVerificationDone
-  else
-    flip runStateT initialState $
-      flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
+      else do
         lift callback
         listenerLoop listenerFunc chan nworkers
         pure SymbolicExplorationDone
