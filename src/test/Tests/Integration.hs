@@ -60,6 +60,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_library_call failed",            solved      "echidna_library_call")
       , ("echidna_valid_timestamp failed",         passed      "echidna_valid_timestamp")
       ]
+  , testContractV "basic/fallback.sol"   (Just (< solcV (0,6,0))) Nothing
+      [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
   , testContract "basic/push_long.sol" (Just "basic/push_long.yaml")
       [ ("test_long_5 passed",                     solvedWithout NoCall "test_long_5")]
   , testContract "basic/propGasLimit.sol" (Just "basic/propGasLimit.yaml")
