@@ -11,11 +11,12 @@ import Data.Time (LocalTime)
 import System.Directory (createDirectoryIfMissing, makeRelativeToCurrentDirectory, doesFileExist)
 import System.FilePath ((</>), (<.>))
 
-import Echidna.Campaign (pushCampaignEvent)
 import Echidna.Types.Config
 import Echidna.Types.Campaign
 import Echidna.Types.Test (EchidnaTest(..))
+import Echidna.Types.Worker 
 import Echidna.Types.Tx (Tx)
+import Echidna.Worker (pushCampaignEvent)
 import Echidna.Utility (listDirectory, withCurrentDirectory)
 
 saveTxs :: Env -> FilePath -> [[Tx]] -> IO ()

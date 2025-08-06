@@ -23,7 +23,7 @@ import Echidna.Onchain as Onchain
 import Echidna.Output.Corpus
 import Echidna.SourceAnalysis.Slither
 import Echidna.Solidity
-import Echidna.Symbolic (forceAddr)
+import Echidna.SymExec.Symbolic (forceAddr)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Random

@@ -1,4 +1,5 @@
 testMode: assertion
 symExec: true
-symExecConcolic: false
+symExecSMTSolver: z3
 workers: 0
+seqLen: 1

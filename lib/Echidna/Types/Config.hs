@@ -3,23 +3,24 @@ module Echidna.Types.Config where
 import Control.Concurrent (Chan)
 import Data.Aeson.Key (Key)
 import Data.IORef (IORef)
-import Data.Map (Map)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Time (LocalTime)
 import Data.Word (Word64)
 
 import EVM.Dapp (DappInfo)
-import EVM.Types (Addr, Contract, W256)
+import EVM.Types (Addr, W256)
 
 import Echidna.SourceAnalysis.Slither (SlitherInfo)
 import Echidna.SourceMapping (CodehashMap)
-import Echidna.Types.Campaign (CampaignConf, CampaignEvent)
+import Echidna.Types.Campaign (CampaignConf)
+import Echidna.Types.Worker (CampaignEvent)
 import Echidna.Types.Corpus (Corpus)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Solidity (SolConf)
 import Echidna.Types.Test (TestConf, EchidnaTest)
 import Echidna.Types.Tx (TxConf)
+import Echidna.Types.Cache 
 import Echidna.Types.World (World)
 
 data OperationMode = Interactive | NonInteractive OutputFormat deriving (Show, Eq)
@@ -78,9 +79,9 @@ data Env = Env
 
   , slitherInfo :: Maybe SlitherInfo
   , codehashMap :: CodehashMap
-  , fetchContractCache :: IORef (Map Addr (Maybe Contract))
-  , fetchSlotCache :: IORef (Map Addr (Map W256 (Maybe W256)))
-  , contractNameCache :: IORef (Map W256 Text)
+  , fetchContractCache :: IORef ContractCache
+  , fetchSlotCache :: IORef SlotCache
+  , contractNameCache :: IORef ContractNameCache
   , chainId :: Maybe W256
   , world :: World
   }

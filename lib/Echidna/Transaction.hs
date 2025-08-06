@@ -27,7 +27,7 @@ import EVM.Types hiding (Env, Gas, VMOpts(timestamp, gasprice))
 import Echidna.ABI
 import Echidna.Orphans.JSON ()
 import Echidna.SourceMapping (lookupUsingCodehash)
-import Echidna.Symbolic (forceWord, forceAddr)
+import Echidna.SymExec.Symbolic (forceWord, forceAddr)
 import Echidna.Types (fromEVM, Gas)
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Random
@@ -177,7 +177,7 @@ setupTx tx@Tx{call} = fromEVM $ do
                  , callvalue = Lit tx.value
                  }
     , block = advanceBlock vm.block tx.delay
-    , tx = vm.tx { gasprice = tx.gasprice, origin = LitAddr tx.src }
+    , tx = vm.tx { gasprice = tx.gasprice, origin = LitAddr tx.src, subState = subState vm }
     }
   when isCreate $ do
     #env % #contracts % at (LitAddr tx.dst) .=
@@ -207,6 +207,12 @@ setupTx tx@Tx{call} = fromEVM $ do
       SolCreate bc -> bc
       SolCall cd -> encode cd
       SolCalldata cd -> cd
+    subState vm = let
+        initialAccessedAddrs = Set.fromList $
+            [LitAddr tx.src, LitAddr tx.dst, vm.block.coinbase]
+          ++ fmap LitAddr [1..10] -- precompile addresses
+        touched = if isCreate then [LitAddr tx.src] else [LitAddr tx.src, LitAddr tx.dst]
+      in SubState mempty touched initialAccessedAddrs mempty mempty mempty
 
 advanceBlock :: Block -> (W256, W256) -> Block
 advanceBlock blk (t,b) =

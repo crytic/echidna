@@ -1,17 +1,15 @@
 module Echidna.Types.Campaign where
 
 import Control.Concurrent (ThreadId)
-import Data.Aeson
 import Data.Text (Text)
-import Data.Text qualified as T
 import Data.Word (Word8, Word16)
 import GHC.Conc (numCapabilities)
 
-import Echidna.ABI (GenDict, emptyDict, encodeSig)
+import EVM.Solvers (Solver(..))
+
+import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
 import Echidna.Types.Coverage (CoverageFileType, CoverageMap)
-import Echidna.Types.Test (TestType (..), EchidnaTest(..))
-import Echidna.Types.Tx (Tx)
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf
@@ -43,10 +41,12 @@ data CampaignConf = CampaignConf
     -- ^ Server-Sent Events HTTP port number, if missing server is not ran
   , symExec            :: Bool
     -- ^ Whether to add an additional symbolic execution worker
-  , symExecConcolic    :: Bool
-    -- ^ Whether symbolic execution will be concolic (vs full symbolic execution)
-    -- Only relevant if symExec is True
+  , symExecSMTSolver   :: Solver
+    -- ^ SMT solver to use for symbolic execution.
+    -- Supported solvers: "cvc5", "z3" and "bitwuzla"
   , symExecTargets     :: Maybe [Text]
+    -- ^ List of target functions for symbolic execution.
+    -- If this is 'Nothing', all functions are considered targets.
   , symExecTimeout     :: Int
     -- ^ Timeout for symbolic execution SMT solver queries.
     -- Only relevant if symExec is True
@@ -55,101 +55,15 @@ data CampaignConf = CampaignConf
     -- Only relevant if symExec is True
   , symExecMaxIters    :: Integer
     -- ^ Number of times we may revisit a particular branching point.
-    -- Only relevant if symExec is True and symExecConcolic is False
+    -- Only relevant if symExec is True
   , symExecAskSMTIters :: Integer
     -- ^ Number of times we may revisit a particular branching point
     -- before we consult the SMT solver to check reachability.
-    -- Only relevant if symExec is True and symExecConcolic is False
+    -- Only relevant if symExec is True
+  , symExecMaxExplore :: Integer
+    -- ^ Maximum number of states to explore before we stop exploring it.
+    -- Only relevant if symExec is True
   }
-
-data WorkerType = FuzzWorker | SymbolicWorker deriving (Eq)
-
-type WorkerId = Int
-
-data CampaignEvent
-  = WorkerEvent WorkerId WorkerType WorkerEvent
-  | Failure String
-  | ReproducerSaved String -- filename
-
-data WorkerEvent
-  = TestFalsified !EchidnaTest
-  | TestOptimized !EchidnaTest
-  | NewCoverage { points :: !Int, numCodehashes :: !Int, corpusSize :: !Int, transactions :: [Tx] }
-  | SymNoNewCoverage
-  | TxSequenceReplayed FilePath !Int !Int
-  | TxSequenceReplayFailed FilePath Tx
-  | WorkerStopped WorkerStopReason
-  -- ^ This is a terminal event. Worker exits and won't push any events after
-  -- this one
-  deriving Show
-
-instance ToJSON WorkerEvent where
-  toJSON = \case
-    TestFalsified test -> toJSON test
-    TestOptimized test -> toJSON test
-    NewCoverage { points, numCodehashes, corpusSize } ->
-      object [ "coverage" .= points, "contracts" .= numCodehashes, "corpus_size" .= corpusSize]
-    SymNoNewCoverage -> object []
-    TxSequenceReplayed file current total ->
-      object [ "file" .= file, "current" .= current, "total" .= total ]
-    TxSequenceReplayFailed file tx ->
-      object [ "file" .= file, "tx" .= tx ]
-    WorkerStopped reason -> object [ "reason" .= show reason ]
-
-data WorkerStopReason
-  = TestLimitReached
-  | SymbolicDone
-  | TimeLimitReached
-  | FastFailed
-  | Killed !String
-  | Crashed !String
-  deriving Show
-
-ppCampaignEvent :: CampaignEvent -> String
-ppCampaignEvent = \case
-  WorkerEvent _ _ e -> ppWorkerEvent e
-  Failure err -> err
-  ReproducerSaved f -> "Saved reproducer to " <> f
-
-ppWorkerEvent :: WorkerEvent -> String
-ppWorkerEvent = \case
-  TestFalsified test ->
-    "Test " <> T.unpack (showTest test) <> " falsified!"
-  TestOptimized test ->
-    let name = case test.testType of OptimizationTest n _ -> n; _ -> error "fixme"
-    in "New maximum value of " <> T.unpack name <> ": " <> show test.value
-  NewCoverage { points, numCodehashes, corpusSize } ->
-    "New coverage: " <> show points <> " instr, "
-      <> show numCodehashes <> " contracts, "
-      <> show corpusSize <> " seqs in corpus"
-  SymNoNewCoverage ->
-    "Symbolic execution finished with no new coverage."
-  TxSequenceReplayed file current total ->
-    "Sequence replayed from corpus file " <> file <> " (" <> show current <> "/" <> show total <> ")"
-  TxSequenceReplayFailed file tx ->
-    "WARNING: Sequence replay from corpus file " <> file <> " failed. " <>
-    "The destination contract is not deployed for this transaction: " <> show tx <> ". " <>
-    "Remove the file or the transaction to fix the issue."
-  WorkerStopped TestLimitReached ->
-    "Test limit reached. Stopping."
-  WorkerStopped SymbolicDone ->
-    "Symbolic worker ran out of transactions to work on. Stopping."
-  WorkerStopped TimeLimitReached ->
-    "Time limit reached. Stopping."
-  WorkerStopped FastFailed ->
-    "A test was falsified. Stopping."
-  WorkerStopped (Killed e) ->
-    "Killed (" <> e <>"). Stopping."
-  WorkerStopped (Crashed e) ->
-    "Crashed:\n\n" <>
-    e <>
-    "\n\nPlease report it to https://github.com/crytic/echidna/issues"
-  where
-    showTest test = case test.testType of
-      PropertyTest n _ -> n
-      AssertionTest _ n _ -> encodeSig n
-      CallTest n _ -> n
-      _ -> error "impossible"
 
 -- | The state of a fuzzing campaign.
 data WorkerState = WorkerState
@@ -196,8 +110,11 @@ defaultSymExecTimeout = 30
 defaultSymExecNWorkers :: Int
 defaultSymExecNWorkers = 1
 
+defaultSymExecMaxExplore :: Integer
+defaultSymExecMaxExplore = 10
+
 defaultSymExecMaxIters :: Integer
-defaultSymExecMaxIters = 10
+defaultSymExecMaxIters = 5
 
 -- | Same default as in hevm, "everything else is unsound"
 -- (https://github.com/ethereum/hevm/pull/252)
@@ -213,10 +130,3 @@ getNFuzzWorkers conf = maybe defaultN fromIntegral conf.workers
     n = numCapabilities
     maxN = max 1 n
     defaultN = min 4 maxN -- capped at 4 by default
-
--- | Number of workers, including SymExec worker if there is one
-getNWorkers :: CampaignConf -> Int
-getNWorkers conf = getNFuzzWorkers conf + (if conf.symExec then 1 else 0)
-
-workerIDToType :: CampaignConf -> WorkerId -> WorkerType
-workerIDToType conf wid = if conf.symExec && wid == (getNWorkers conf - 1) then SymbolicWorker else FuzzWorker

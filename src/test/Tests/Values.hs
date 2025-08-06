@@ -4,7 +4,7 @@ import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract, testContract', solved, solvedLen)
 
-import Echidna.Types.Campaign (WorkerType(..))
+import Echidna.Types.Worker (WorkerType(..))
 
 valuesTests :: TestTree
 valuesTests = testGroup "Value extraction tests"
@@ -48,4 +48,6 @@ valuesTests = testGroup "Value extraction tests"
       , ("verify_later passed",                    solved      "verify_later") ]
     , testContract' "values/struct.sol"      Nothing Nothing (Just "values/contract.yaml") False FuzzWorker
       [ ("getItem passed",                   solved      "getItem") ]
+    , testContract' "values/events.sol" Nothing Nothing (Just "values/events.yaml") False FuzzWorker
+      [ ("check passed",                           solved      "check") ]
   ]

@@ -33,7 +33,7 @@ import EVM.Solidity (SourceCache(..), SolcContract (..))
 import EVM.Types hiding (Env)
 
 import Echidna.Orphans.JSON ()
-import Echidna.Symbolic (forceWord, forceBuf)
+import Echidna.SymExec.Symbolic (forceWord, forceBuf)
 import Echidna.Types (emptyAccount)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))

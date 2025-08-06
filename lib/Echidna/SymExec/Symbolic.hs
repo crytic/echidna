@@ -1,7 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 
-module Echidna.Symbolic where
+module Echidna.SymExec.Symbolic where
 
 import Data.ByteString (ByteString)
 import EVM.Types (Expr(..), EType(..), W256, Addr)
