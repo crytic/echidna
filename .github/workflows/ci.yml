@@ -220,15 +220,9 @@ jobs:
           - ubuntu-latest
           - windows-latest
         solc:
-          - "0.4.25"
-          - "0.5.7"
-          - "0.6.12"
-          - "0.7.5"
+          - "0.8.10"
+          - "0.8.25"
         include:
-          - solc: "0.6.12"
-            experimental: true
-          - solc: "0.7.5"
-            experimental: true
           - os: windows-latest
             experimental: true
 

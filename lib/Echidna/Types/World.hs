@@ -17,6 +17,7 @@ data World = World
   , highSignatureMap :: SignatureMap
   , lowSignatureMap  :: Maybe SignatureMap
   , payableSigs      :: [FunctionSelector]
+  , assertSigs       :: [FunctionSelector]
   , eventMap         :: EventMap
   }
   deriving Show

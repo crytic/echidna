@@ -26,7 +26,7 @@ import EVM.Format (showValues, showError, contractNamePart)
 import EVM.Solidity (SolcContract(..))
 import EVM.Types
 
-import Echidna.Symbolic (forceWord, forceBuf)
+import Echidna.SymExec.Symbolic (forceWord, forceBuf)
 
 type EventMap = Map W256 Event
 type Events = [Text]
