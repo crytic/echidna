@@ -28,7 +28,6 @@ import Data.Text (Text, unpack)
 import Data.Time (LocalTime)
 import System.Random (mkStdGen)
 
-
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
 import EVM.Dapp (DappInfo(..))
