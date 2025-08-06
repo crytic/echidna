@@ -21,7 +21,7 @@ import EVM.ABI (encodeAbiValue, AbiValue(..), AbiType)
 import EVM.Types
 
 import Echidna.Orphans.JSON ()
-import Echidna.Symbolic (forceBuf)
+import Echidna.SymExec.Symbolic (forceBuf)
 import Echidna.Types.Signature (SolCall)
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)

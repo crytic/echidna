@@ -7,7 +7,7 @@ import Control.Monad.ST (RealWorld)
 import Data.Aeson
 import Data.DoubleWord (Int256)
 import Data.Maybe (maybeToList)
-import Data.Text (Text)
+import Data.Text (Text, unpack)
 import GHC.Generics (Generic)
 
 import EVM.Dapp (DappInfo)
@@ -16,6 +16,7 @@ import EVM.Types (Addr, VM, VMType(Concrete))
 import Echidna.Types (ExecException)
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Tx (Tx, TxResult)
+import Echidna.ABI (encodeSig)
 
 -- | Test mode is parsed from a string
 type TestMode = String
@@ -36,6 +37,7 @@ data TestState
   = Open
   | Large !Int -- ^ Solved, maybe shrinkable, tracking shrinks tried
   | Passed     -- ^ Presumed unsolvable
+  | Unsolvable -- ^ Formally verified as unsolvable
   | Solved     -- ^ Solved with no need for shrinking
   | Failed ExecException -- ^ Broke the execution environment
   deriving Show
@@ -88,11 +90,12 @@ instance ToJSON TestType where
       object [ "type" .= ("exploration_test" :: String) ]
 
 instance Eq TestState where
-  Open    == Open    = True
-  Large i == Large j = i == j
-  Passed  == Passed  = True
-  Solved  == Solved  = True
-  _       == _       = False
+  Open       == Open       = True
+  Large i    == Large j    = i == j
+  Passed     == Passed     = True
+  Solved     == Solved     = True
+  Unsolvable == Unsolvable = True
+  _          == _          = False
 
 -- | An Echidna test is represented with the following data record
 data EchidnaTest = EchidnaTest
@@ -119,6 +122,18 @@ isOptimizationTest :: EchidnaTest -> Bool
 isOptimizationTest EchidnaTest{testType = OptimizationTest _ _} = True
 isOptimizationTest _ = False
 
+isAssertionTest :: EchidnaTest -> Bool
+isAssertionTest EchidnaTest{testType = AssertionTest {}} = True
+isAssertionTest _ = False
+
+getAssertionSignature :: EchidnaTest -> String
+getAssertionSignature EchidnaTest{testType = AssertionTest _ sig _} = unpack $ encodeSig sig
+getAssertionSignature _ = error "Not an assertion test"
+
+getAssertionFunctionName :: EchidnaTest -> String
+getAssertionFunctionName EchidnaTest{testType = AssertionTest _ (name, _) _} = unpack name
+getAssertionFunctionName _ = error "Not an assertion test"
+
 isOpen :: EchidnaTest -> Bool
 isOpen t = case t.state of
   Open -> True
@@ -135,6 +150,11 @@ isPassed t = case t.state of
   Passed -> True
   _      -> False
 
+isVerified :: EchidnaTest -> Bool
+isVerified t = case t.state of
+  Unsolvable -> True
+  _          -> False
+
 instance ToJSON TestState where
   toJSON s =
     object $ ("passed", toJSON passed) : maybeToList desc
@@ -142,6 +162,7 @@ instance ToJSON TestState where
     (passed, desc) = case s of
       Open     -> (True, Nothing)
       Passed   -> (True, Nothing)
+      Unsolvable -> (True, Nothing)
       Large _  -> (False, Nothing)
       Solved   -> (False, Nothing)
       Failed e -> (False, Just ("exception", toJSON $ show e))

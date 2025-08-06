@@ -42,7 +42,7 @@ library:
   source-dirs: lib/
   dependencies:
     - ansi-terminal
-    - async
+    - array
     - base16-bytestring
     - binary
     - brick
@@ -69,6 +69,7 @@ library:
     - strip-ansi-escape
     - time
     - unliftio
+    - unliftio-core
     - utf8-string
     - vector
     - vty

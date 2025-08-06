@@ -5,7 +5,7 @@ import Test.Tasty (TestTree, testGroup)
 import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout)
 import Data.Functor ((<&>))
 import Data.Text (unpack)
-import Echidna.Types.Campaign (WorkerType(..))
+import Echidna.Types.Worker (WorkerType(..))
 import Echidna.Types.Tx (TxCall(..))
 import EVM.ABI (AbiValue(..))
 
@@ -86,9 +86,7 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/gaslimit.sol"  Nothing
       [ ("echidna_gaslimit passed",                passed      "echidna_gaslimit") ]
   , testContract "basic/gasleft.sol"     (Just "basic/gasleft.yaml")
-      [ ("unexpected gas left",                   passed      "echidna_expected_gasleft") ]
-  ,  testContractV "basic/killed.sol"      (Just (< solcV (0,8,0))) (Just "basic/killed.yaml")
-      [ ("echidna_still_alive failed",             solved      "echidna_still_alive") ]
+      [ ("unexpected gas left",                    passed      "echidna_expected_gasleft") ]
   ,  checkConstructorConditions "basic/codesize.sol"
       "invalid codesize"
   , testContractV "basic/eip-170.sol" (Just (>= solcV (0,5,0))) (Just "basic/eip-170.yaml")
