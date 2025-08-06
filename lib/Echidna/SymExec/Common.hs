@@ -1,3 +1,5 @@
+{-# LANGUAGE GADTs #-}
+
 module Echidna.SymExec.Common where
 
 import Control.Monad.IO.Unlift (MonadUnliftIO, liftIO)
@@ -8,16 +10,18 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified as T
+import Data.Text.IO qualified as TIO
 import Data.Vector (toList, fromList)
 import GHC.IORef (IORef, readIORef)
 import Optics.Core ((.~), (%), (%~))
 import EVM.ABI (abiKind, AbiKind(Dynamic), AbiValue(..), AbiType(..), Sig(..), decodeAbiValue)
 import EVM.Fetch qualified as Fetch
 import EVM (loadContract, resetState, forceLit)
+--import EVM.Expr (Expr(..))
 import EVM.Effects (TTY, ReadConfig)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (SolverGroup)
-import EVM.SymExec (abstractVM, mkCalldata, verifyInputs, VeriOpts(..), checkAssertions)
+import EVM.SymExec (abstractVM, mkCalldata, verifyInputs, VeriOpts(..), Postcondition, showModel)
 import EVM.Types (Addr, Frame(..), FrameState(..), VMType(..), EType(..), Expr(..), word256Bytes, Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query(..))
 import qualified EVM.Types (VM(..), Env(..))
 import EVM.Format (formatPartial)
@@ -221,10 +225,14 @@ getUnknownLogs = mapMaybe (\case
   Error err -> Just $ T.pack err
   _ -> Nothing)
 
+nonReverts :: Postcondition s
+nonReverts _ = \case
+  Success _ _ _ _  -> PBool True -- We want to explore non-reverting transactions, so we make them true here
+  _                -> PBool False
+
 exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
-  Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m ([TxOrError], PartialsLogs)
-  
-exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef = do
+  Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> Postcondition RealWorld -> m ([TxOrError], PartialsLogs)
+exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef post = do
   --liftIO $ putStrLn ("Exploring: " ++ T.unpack method.methodSignature)
   --pushWorkerEvent undefined
   calldataSym@(cd, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
@@ -243,7 +251,43 @@ exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo con
                     & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
   -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
   -- Doing so might mess up concolic execution.
-  (_, models, partials) <- verifyInputs solvers veriOpts fetcher vm' (Just $ checkAssertions [0x1])
+  (_, models, partials) <- verifyInputs solvers veriOpts fetcher vm' (Just post)
+  --liftIO $ print $ map snd models
+  liftIO $ mapM_ (showModel mempty) $ map (\(x, y) -> (y, x)) models
+  liftIO $ mapM_ TIO.putStrLn $ ["Constraints inferred:"] ++ (map (showRange . snd) models)
   let results = map fst models
   --liftIO $ mapM_ TIO.putStrLn partials
   return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results, map formatPartial partials)
+
+showRange :: Expr a -> T.Text 
+showRange (Failure asserts _ _) = T.unlines $ filter (not . T.null) $ map computeRange asserts
+showRange _                     = ""
+
+computeRange :: Prop -> T.Text
+computeRange (PLEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
+                              (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " <= ", lit]
+                              (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " >= ", lit]
+                              _ -> ""
+computeRange (PLT e1 e2)  = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
+                              (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " >= ", lit]
+                              (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " <= ", lit]
+                              _ -> ""
+computeRange _ = ""
+
+exprLit :: Expr a -> Maybe T.Text
+exprLit (Lit l) = Just (T.pack $ show l) 
+exprLit _ = Nothing
+
+exprDependsOnArg :: Expr a -> Set T.Text
+exprDependsOnArg (Failure asserts _ _) = Set.unions $ map propDependsOnArg asserts --any dependsOnArg asserts 
+exprDependsOnArg (Var v) = if T.isPrefixOf "arg" v then Set.singleton v else Set.empty
+exprDependsOnArg (Lit _) = Set.empty
+exprDependsOnArg (Add e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
+exprDependsOnArg (Sub e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
+exprDependsOnArg _ = Set.empty
+
+propDependsOnArg :: Prop -> Set T.Text
+propDependsOnArg (PLEq e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
+propDependsOnArg (PGEq e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
+propDependsOnArg _ = Set.empty
+
