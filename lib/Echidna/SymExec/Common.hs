@@ -90,8 +90,8 @@ blockMakeSymbolic b
 addBlockConstraints :: W256 -> W256 -> Block -> [Prop] -> [Prop]
 addBlockConstraints maxTimestampDiff maxNumberDiff block cs =
   cs ++ [
-    PGEq (Var "symbolic_block_timestamp") (block.timestamp), PLEq (Sub (Var "symbolic_block_timestamp") (block.timestamp)) $ Lit maxTimestampDiff,
-    PGEq (Var "symbolic_block_number") (block.number), PLEq (Sub (Var "symbolic_block_number") (block.number)) $ Lit maxNumberDiff
+   -- PGEq (Var "symbolic_block_timestamp") (block.timestamp), PLEq (Sub (Var "symbolic_block_timestamp") (block.timestamp)) $ Lit maxTimestampDiff,
+   -- PGEq (Var "symbolic_block_number") (block.number), PLEq (Sub (Var "symbolic_block_number") (block.number)) $ Lit maxNumberDiff
   ]
 
 senderConstraints :: Set Addr -> [Prop]
@@ -244,9 +244,9 @@ exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo con
   vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
   let vm' = vmReset & execState (loadContract (LitAddr dst))
                     & vmMakeSymbolic conf.txConf.maxTimeDelay conf.txConf.maxBlockDelay
-                    & #constraints %~ (++ constraints ++ (senderConstraints conf.solConf.sender))
-                    & #state % #callvalue .~ TxValue
-                    & #state % #caller .~ SymAddr "caller"
+                    & #constraints %~ (++ constraints) -- ++ (senderConstraints conf.solConf.sender))
+                    & #state % #callvalue .~ Lit 0 --TxValue
+                    & #state % #caller .~ LitAddr 0x10000 --SymAddr "caller"
                     & #state % #calldata .~ cd
                     & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
   -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.

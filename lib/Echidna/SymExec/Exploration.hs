@@ -82,8 +82,8 @@ filterTarget :: Maybe [Text] -> [FunctionSelector] -> Maybe Tx -> Method -> Bool
 filterTarget symExecTargets assertSigs tx method =
   case (symExecTargets, tx) of
     (Just ms, _)                                       -> method.name `elem` ms
-    (_,  Just (Tx { call = SolCall (methodName, _) })) -> (null assertSigs || methodSig `elem` assertSigs) && method.name == methodName && suitableForSymExec method
-    _                                                  -> (null assertSigs || methodSig `elem` assertSigs) && suitableForSymExec method
+    (_,  Just (Tx { call = SolCall (methodName, _) })) -> (null assertSigs) && method.name == methodName && suitableForSymExec method
+    _                                                  -> (null assertSigs) && suitableForSymExec method
  where methodSig = abiKeccak $ encodeUtf8 method.methodSignature
 
 exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SolcContract -> Method -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
