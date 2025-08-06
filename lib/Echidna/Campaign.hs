@@ -535,7 +535,7 @@ callseq vm txSeq = do
               if isTuple type'
                 then Just $ Map.fromListWith Set.union
                       [ (abiValueType val, Set.singleton val)
-                      | val <- V.toList $ getTupleVector abiValue
+                      | val <- filter (/= AbiAddress (forceAddr cheatCode)) $ V.toList $ getTupleVector abiValue
                       ]
                 else if abiValue /= AbiAddress (forceAddr cheatCode)
                   then Just $ Map.singleton type' (Set.singleton abiValue)
