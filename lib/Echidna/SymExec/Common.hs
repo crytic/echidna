@@ -245,21 +245,44 @@ exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo con
   vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
   let vm' = vmReset & execState (loadContract (LitAddr dst))
                     & vmMakeSymbolic conf.txConf.maxTimeDelay conf.txConf.maxBlockDelay
-                    & #constraints %~ (++ constraints) -- ++ (senderConstraints conf.solConf.sender))
-                    & #state % #callvalue .~ Lit 0 --TxValue
-                    & #state % #caller .~ LitAddr 0x10000 --SymAddr "caller"
+                    & #constraints %~ (++ constraints ++ (senderConstraints conf.solConf.sender))
+                    & #state % #callvalue .~ TxValue
+                    & #state % #caller .~ SymAddr "caller"
                     & #state % #calldata .~ cd
                     & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
   -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
   -- Doing so might mess up concolic execution.
   (_, models, partials) <- verifyInputs solvers veriOpts fetcher vm' (Just post)
-  --liftIO $ print $ map snd models
-  liftIO $ mapM_ (showModel mempty) $ map (\(x, y) -> (y, x)) models
-  liftIO $ mapM_ TIO.putStrLn $ ["Constraints inferred:"] ++ (nub $ filter (not . (== "\n")) $ map (showRange . snd) models)
-  liftIO $ mapM_ TIO.putStrLn $ ["Constraints inferred:"] ++ (nub $ filter (not . (== "\n")) $ map (showRange . snd) partials)
   let results = map fst models
   --liftIO $ mapM_ TIO.putStrLn partials
   return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results, map (formatPartial . fst) partials)
+
+findApproximateBounds :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
+  Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m [T.Text]
+findApproximateBounds method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef = do
+  calldataSym@(cd, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
+  let
+    fetcher = cachedOracle contractCacheRef slotCacheRef solvers rpcInfo
+    dst = conf.solConf.contractAddr
+    vmSym = abstractVM calldataSym contract.runtimeCode Nothing False
+  vmSym' <- liftIO $ stToIO vmSym
+  vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
+  let vm' = vmReset & execState (loadContract (LitAddr dst))
+                    & vmMakeSymbolic conf.txConf.maxTimeDelay conf.txConf.maxBlockDelay
+                    & #constraints %~ (++ constraints)
+                    & #state % #callvalue .~ Lit 0
+                    & #state % #caller .~ LitAddr defaultSender --SymAddr "caller"
+                    & #state % #calldata .~ cd
+                    & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
+  -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
+  -- Doing so might mess up concolic execution.
+  (_, models, partials) <- verifyInputs solvers veriOpts fetcher vm' (Just nonReverts)
+  --liftIO $ print $ map snd models
+  --liftIO $ mapM_ (showModel mempty) $ map (\(x, y) -> (y, x)) models
+  let 
+    boundsTotal = ["Constraints inferred:"] ++ (nub $ filter (not . (== "\n")) $ map (showRange . snd) models)
+    boundsPartial = ["Constraints inferred:"] ++ (nub $ filter (not . (== "\n")) $ map (showRange . snd) partials)
+  return (boundsTotal ++ boundsPartial)
 
 showRange :: Expr a -> T.Text 
 showRange (Failure asserts _ _) = T.unlines $ filter (not . T.null) $ map computeRange asserts
@@ -288,10 +311,14 @@ computeRange (PEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, ex
                               (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " == ", lit]
                               (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " == ", lit]
                               _ -> ""
-computeRange p = ""--error $ show p
+--computeRange (PNeg e) = case computeRange e of
+--  "" -> ""
+--  x  -> T.concat ["!", x]
+
+computeRange p = "" --error $ show p
 
 exprLit :: Expr a -> Maybe T.Text
-exprLit (Lit l) = Just (T.pack $ show l) 
+exprLit (Lit l) = Just $  T.pack $ show l --if l > 0 then (error $ show l) else Just (T.pack $ show l) 
 exprLit _ = Nothing
 
 exprDependsOnArg :: Expr a -> Set T.Text
@@ -300,8 +327,10 @@ exprDependsOnArg (Partial asserts _ _) = Set.unions $ map propDependsOnArg asser
 exprDependsOnArg (Var v) = if T.isPrefixOf "arg" v then Set.singleton v else Set.empty
 exprDependsOnArg (Lit _) = Set.empty
 exprDependsOnArg (SEx _ e) = exprDependsOnArg e
-exprDependsOnArg (Sub (Lit 0) e) = exprDependsOnArg e
+exprDependsOnArg (SLT e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
+--exprDependsOnArg (Sub (Lit 0) e) = exprDependsOnArg e
 exprDependsOnArg (Add e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
+--exprDependsOnArg (IsZero e) = exprDependsOnArg e
 --exprDependsOnArg (PEq (Lit 0) e) = exprDependsOnArg e
 --exprDependsOnArg (Sub e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
 exprDependsOnArg _ = Set.empty
@@ -311,5 +340,6 @@ propDependsOnArg (PLEq e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnAr
 propDependsOnArg (PGEq e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
 propDependsOnArg (PLT e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
 propDependsOnArg (PGT e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
+--propDependsOnArg (PNeg e) = (propDependsOnArg e)
 propDependsOnArg _ = Set.empty
 
