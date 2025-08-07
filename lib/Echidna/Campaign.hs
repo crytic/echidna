@@ -26,10 +26,11 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text, unpack)
 import Data.Time (LocalTime)
+import Data.Vector qualified as V
 import System.Random (mkStdGen)
 
 import EVM (cheatCode)
-import EVM.ABI (getAbi, AbiType(AbiAddressType), AbiValue(AbiAddress))
+import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
 import EVM.Dapp (DappInfo(..))
 import EVM.Types hiding (Env, Frame(state), Gas)
 import EVM.Solidity (SolcContract(..), Method(..))
@@ -521,19 +522,31 @@ callseq vm txSeq = do
     -> (FunctionName -> Maybe AbiType)
     -> Map AbiType (Set AbiValue)
   returnValues txResults returnTypeOf =
-    Map.fromList . flip mapMaybe txResults $ \(tx, result) -> do
-      case result of
+    Map.unionsWith Set.union . mapMaybe extractValues $ txResults
+    where
+      extractValues (tx, result) = case result of
         VMSuccess (ConcreteBuf buf) -> do
           fname <- case tx.call of
             SolCall (fname, _) -> Just fname
             _ -> Nothing
           type' <- returnTypeOf fname
           case runGetOrFail (getAbi type') (LBS.fromStrict buf) of
-            -- make sure we don't use cheat codes to form fuzzing call sequences
-            Right (_, _, abiValue) | abiValue /= AbiAddress (forceAddr cheatCode) ->
-              Just (type', Set.singleton abiValue)
+            Right (_, _, abiValue) ->
+              if isTuple type'
+                then Just $ Map.fromListWith Set.union
+                      [ (abiValueType val, Set.singleton val)
+                      | val <- filter (/= AbiAddress (forceAddr cheatCode)) $ V.toList $ getTupleVector abiValue
+                      ]
+                else if abiValue /= AbiAddress (forceAddr cheatCode)
+                  then Just $ Map.singleton type' (Set.singleton abiValue)
+                  else Nothing
             _ -> Nothing
         _ -> Nothing
+
+      isTuple (AbiTupleType _) = True
+      isTuple _ = False
+      getTupleVector (AbiTuple ts) = ts
+      getTupleVector _ = error "Not a tuple!"
 
   -- | Add transactions to the corpus, discarding reverted ones
   addToCorpus :: Int -> [(Tx, VMResult Concrete RealWorld)] -> Corpus -> Corpus
