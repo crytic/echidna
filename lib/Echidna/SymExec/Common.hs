@@ -12,6 +12,7 @@ import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Data.Vector (toList, fromList)
+import Data.List (nub)
 import GHC.IORef (IORef, readIORef)
 import Optics.Core ((.~), (%), (%~))
 import EVM.ABI (abiKind, AbiKind(Dynamic), AbiValue(..), AbiType(..), Sig(..), decodeAbiValue)
@@ -254,16 +255,17 @@ exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo con
   (_, models, partials) <- verifyInputs solvers veriOpts fetcher vm' (Just post)
   --liftIO $ print $ map snd models
   liftIO $ mapM_ (showModel mempty) $ map (\(x, y) -> (y, x)) models
-  liftIO $ mapM_ TIO.putStrLn $ ["Constraints inferred:"] ++ (map (showRange . snd) models)
+  liftIO $ mapM_ TIO.putStrLn $ ["Constraints inferred:"] ++ (nub $ filter (not . (== "\n")) $ map (showRange . snd) models)
+  liftIO $ mapM_ TIO.putStrLn $ ["Constraints inferred:"] ++ (nub $ filter (not . (== "\n")) $ map (showRange . snd) partials)
   let results = map fst models
   --liftIO $ mapM_ TIO.putStrLn partials
-  return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results, map formatPartial partials)
+  return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results, map (formatPartial . fst) partials)
 
 showRange :: Expr a -> T.Text 
 showRange (Failure asserts _ _) = T.unlines $ filter (not . T.null) $ map computeRange asserts
 showRange (Success asserts _ _ _) = T.unlines $ filter (not . T.null) $ map computeRange asserts
 showRange (Partial asserts _ _) = T.unlines $ filter (not . T.null) $ map computeRange asserts
-showRange _ = ""--error $ "Unexpected expression in `showRange`: " ++ show e
+showRange e = error $ "Unexpected expression in `showRange`: " ++ show e
 
 computeRange :: Prop -> T.Text
 computeRange (PLEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
@@ -282,7 +284,10 @@ computeRange (PGT e1 e2)  = case (exprDependsOnArg e1, exprLit e2, exprLit e1, e
                               (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " >= ", lit]
                               (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " <= ", lit]
                               _ -> ""
-
+computeRange (PEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
+                              (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " == ", lit]
+                              (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " == ", lit]
+                              _ -> ""
 computeRange p = ""--error $ show p
 
 exprLit :: Expr a -> Maybe T.Text
@@ -297,6 +302,7 @@ exprDependsOnArg (Lit _) = Set.empty
 exprDependsOnArg (SEx _ e) = exprDependsOnArg e
 exprDependsOnArg (Sub (Lit 0) e) = exprDependsOnArg e
 exprDependsOnArg (Add e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
+--exprDependsOnArg (PEq (Lit 0) e) = exprDependsOnArg e
 --exprDependsOnArg (Sub e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
 exprDependsOnArg _ = Set.empty
 
