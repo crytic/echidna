@@ -29,6 +29,8 @@ import EVM.Format (formatPartial)
 import Control.Monad.ST (stToIO, RealWorld)
 import Control.Monad.State.Strict (execState, runStateT)
 
+import Echidna.SymExec.Bounds (findApproximateBounds)
+import Echidna.SymExec.Helpers
 import Echidna.Types (fromEVM)
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (SolConf(..))
@@ -55,71 +57,9 @@ suitableForSymExec m = not $ null m.inputs
   && null (filter (\(_, t) -> abiKind t == Dynamic) m.inputs) 
   && not (T.isInfixOf "_no_symexec" m.name)
 
--- | Sets result to Nothing, and sets gas to ()
-vmMakeSymbolic :: W256 -> W256 -> EVM.Types.VM Concrete s -> EVM.Types.VM Symbolic s
-vmMakeSymbolic maxTimestampDiff maxNumberDiff vm
-  = EVM.Types.VM
-  { result         = Nothing
-  , state          = frameStateMakeSymbolic vm.state
-  , frames         = map frameMakeSymbolic vm.frames
-  , env            = vm.env
-  , block          = blockMakeSymbolic vm.block
-  , tx             = vm.tx
-  , logs           = vm.logs
-  , traces         = vm.traces
-  , cache          = vm.cache
-  , burned         = ()
-  , iterations     = vm.iterations
-  , constraints    = addBlockConstraints maxTimestampDiff maxNumberDiff vm.block vm.constraints
-  , config         = vm.config
-  , forks          = vm.forks
-  , currentFork    = vm.currentFork
-  , labels         = vm.labels
-  , osEnv          = vm.osEnv
-  , freshVar       = vm.freshVar
-  , exploreDepth   = 0
-  , keccakPreImgs  = vm.keccakPreImgs
-  }
-
-blockMakeSymbolic :: Block -> Block
-blockMakeSymbolic b
-  = b {
-      timestamp = Var "symbolic_block_timestamp"
-    , number = Var "symbolic_block_number"
-  }
-
-addBlockConstraints :: W256 -> W256 -> Block -> [Prop] -> [Prop]
-addBlockConstraints maxTimestampDiff maxNumberDiff block cs =
-  cs ++ [
-   -- PGEq (Var "symbolic_block_timestamp") (block.timestamp), PLEq (Sub (Var "symbolic_block_timestamp") (block.timestamp)) $ Lit maxTimestampDiff,
-   -- PGEq (Var "symbolic_block_number") (block.number), PLEq (Sub (Var "symbolic_block_number") (block.number)) $ Lit maxNumberDiff
-  ]
-
 senderConstraints :: Set Addr -> [Prop]
 senderConstraints as = [foldr (\a b -> POr b (PEq (SymAddr "caller") (LitAddr a))) (PBool False) $ Set.toList as]
 
-frameStateMakeSymbolic :: FrameState Concrete s -> FrameState Symbolic s
-frameStateMakeSymbolic fs
-  = FrameState
-  { contract     = fs.contract
-  , codeContract = fs.codeContract
-  , code         = fs.code
-  , pc           = fs.pc
-  , stack        = fs.stack
-  , memory       = fs.memory
-  , memorySize   = fs.memorySize
-  , calldata     = fs.calldata
-  , callvalue    = fs.callvalue
-  , caller       = fs.caller
-  , gas          = ()
-  , returndata   = fs.returndata
-  , static       = fs.static
-  , overrideCaller = fs.overrideCaller
-  , resetCaller  = fs.resetCaller
-  }
-
-frameMakeSymbolic :: Frame Concrete s -> Frame Symbolic s
-frameMakeSymbolic fr = Frame { context = fr.context, state = frameStateMakeSymbolic fr.state }
 
 -- | Convert a n-bit unsigned integer to a n-bit signed integer.
 uintToInt :: W256 -> Integer
@@ -191,22 +131,6 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
     r -> error ("Unexpected value in `modelToTx`: " ++ show r)
 
 
-cachedOracle :: IORef ContractCache -> IORef SlotCache -> SolverGroup -> Fetch.RpcInfo -> Fetch.Fetcher t m s
-cachedOracle contractCacheRef slotCacheRef solvers info q = do
-  case q of
-    PleaseFetchContract addr _ continue -> do
-      cache <- liftIO $ readIORef contractCacheRef
-      case Map.lookup addr cache of
-          Just (Just contract) -> pure $ continue contract
-          _                    -> oracle q
-    PleaseFetchSlot addr slot continue -> do
-      cache <- liftIO $ readIORef slotCacheRef
-      case Map.lookup addr cache >>= Map.lookup slot of
-        Just (Just value) -> pure $ continue value
-        _                 -> oracle q
-    _ -> oracle q
-
-  where oracle = Fetch.oracle solvers info
 
 rpcFetcher :: Functor f =>
   f a -> Maybe W256 -> f (Fetch.BlockNumber, a)
@@ -226,10 +150,6 @@ getUnknownLogs = mapMaybe (\case
   Error err -> Just $ T.pack err
   _ -> Nothing)
 
-nonReverts :: Postcondition s
-nonReverts _ = \case
-  Success _ _ _ _  -> PBool False -- We want to explore non-reverting transactions, so we make them true here
-  _                -> PBool True
 
 exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
   Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> Postcondition RealWorld -> m ([TxOrError], PartialsLogs)
@@ -256,99 +176,3 @@ exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo con
   let results = map fst models
   --liftIO $ mapM_ TIO.putStrLn partials
   return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results, map (formatPartial . fst) partials)
-
-findApproximateBounds :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
-  Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m [T.Text]
-findApproximateBounds method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef = do
-  calldataSym@(cd, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
-  let
-    fetcher = cachedOracle contractCacheRef slotCacheRef solvers rpcInfo
-    dst = conf.solConf.contractAddr
-    vmSym = abstractVM calldataSym contract.runtimeCode Nothing False
-  vmSym' <- liftIO $ stToIO vmSym
-  vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
-  let vm' = vmReset & execState (loadContract (LitAddr dst))
-                    & vmMakeSymbolic conf.txConf.maxTimeDelay conf.txConf.maxBlockDelay
-                    & #constraints %~ (++ constraints)
-                    & #state % #callvalue .~ Lit 0
-                    & #state % #caller .~ LitAddr defaultSender --SymAddr "caller"
-                    & #state % #calldata .~ cd
-                    & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
-  -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
-  -- Doing so might mess up concolic execution.
-  (_, models, partials) <- verifyInputs solvers veriOpts fetcher vm' (Just nonReverts)
-  --liftIO $ print $ map snd models
-  --liftIO $ mapM_ (showModel mempty) $ map (\(x, y) -> (y, x)) models
-  let 
-    boundsTotal = ["Constraints inferred:"] ++ (nub $ mapMaybe (showRange . snd) models)
-    boundsPartial = ["Constraints inferred:"] ++ (nub $ mapMaybe (showRange . snd) partials)
-  return (boundsTotal ++ boundsPartial)
-
-data ValueRange = VRLEq (Set T.Text) W256
-                | VRGEq (Set T.Text) W256
-                | VREq (Set T.Text) W256
-                deriving (Eq, Ord)
-
-instance Show ValueRange where
-  show (VRLEq vars lit) = T.unpack $ T.concat [T.intercalate "," (Set.toList vars), " <= ", T.pack (show lit)]
-  show (VRGEq vars lit) = T.unpack $ T.concat [T.intercalate "," (Set.toList vars), " >= ", T.pack (show lit)]
-  show (VREq vars lit) = T.unpack $ T.concat [T.intercalate "," (Set.toList vars), " == ", T.pack (show lit)]
-
-showRange :: Expr a -> Maybe T.Text
-showRange (Failure asserts _ _) = let result = T.unlines $ map (T.pack . show) $ nub $ mapMaybe computeRange asserts in if T.null result then Nothing else Just result
-showRange (Success asserts _ _ _) = let result = T.unlines $ map (T.pack . show) $ nub $ mapMaybe computeRange asserts in if T.null result then Nothing else Just result
-showRange (Partial asserts _ _) = let result = T.unlines $ map (T.pack . show) $ nub $ mapMaybe computeRange asserts in if T.null result then Nothing else Just result
-showRange e = error $ "Unexpected expression in `showRange`: " ++ show e
-
-computeRange :: Prop -> Maybe ValueRange
-computeRange (PLEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VRLEq vars lit
-                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VRGEq vars lit
-                              _ -> Nothing
-computeRange (PGEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VRGEq vars lit
-                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VRLEq vars lit
-                              _ -> Nothing
-computeRange (PLT e1 e2)  = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VRLEq vars lit
-                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VRGEq vars lit
-                              _ -> Nothing
-computeRange (PGT e1 e2)  = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VRGEq vars lit
-                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VRLEq vars lit
-                              _ -> Nothing
-computeRange (PEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VREq vars lit
-                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VREq vars lit
-                              _ -> Nothing
---computeRange (PNeg e) = case computeRange e of
---  "" -> ""
---  x  -> T.concat ["!", x]
-
-computeRange p = Nothing
-
-exprLit :: Expr a -> Maybe W256
-exprLit (Lit l) = Just l
-exprLit _ = Nothing
-
-exprDependsOnArg :: Expr a -> Set T.Text
-exprDependsOnArg (Failure asserts _ _) = Set.unions $ map propDependsOnArg asserts --any dependsOnArg asserts
-exprDependsOnArg (Partial asserts _ _) = Set.unions $ map propDependsOnArg asserts 
-exprDependsOnArg (Var v) = if T.isPrefixOf "arg" v then Set.singleton v else Set.empty
-exprDependsOnArg (Lit _) = Set.empty
-exprDependsOnArg (SEx _ e) = exprDependsOnArg e
-exprDependsOnArg (SLT e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
---exprDependsOnArg (Sub (Lit 0) e) = exprDependsOnArg e
-exprDependsOnArg (Add e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
---exprDependsOnArg (IsZero e) = exprDependsOnArg e
---exprDependsOnArg (PEq (Lit 0) e) = exprDependsOnArg e
---exprDependsOnArg (Sub e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
-exprDependsOnArg _ = Set.empty
-
-propDependsOnArg :: Prop -> Set T.Text
-propDependsOnArg (PLEq e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
-propDependsOnArg (PGEq e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
-propDependsOnArg (PLT e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
-propDependsOnArg (PGT e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
---propDependsOnArg (PNeg e) = (propDependsOnArg e)
-propDependsOnArg _ = Set.empty
