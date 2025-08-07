@@ -16,9 +16,9 @@ import EVM (loadContract, resetState)
 import EVM.Effects (TTY, ReadConfig)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (SolverGroup)
-import EVM.SymExec (abstractVM, mkCalldata, verifyInputs, VeriOpts(..), Postcondition)
-import EVM.Types (Addr, VMType(..), EType(..), Expr(..), W256, ProofResult(..), Prop(..))
-import qualified EVM.Types (VM(..), Env(..))
+import EVM.SymExec (abstractVM, mkCalldata, verifyInputs, VeriOpts(..), showModel)
+import EVM.Types (Addr, VMType(..), Expr(..), W256, Prop(..))
+import qualified EVM.Types (VM(..))
 import Control.Monad.ST (stToIO, RealWorld)
 import Control.Monad.State.Strict (execState, runStateT)
 
@@ -30,10 +30,8 @@ import Echidna.Types (fromEVM)
 import Echidna.SymExec.Helpers
 
 import Data.Map.Strict qualified as Map
-import EVM.Types (Frame(..), FrameState(..), Block(..))
 import qualified EVM.Types as EVM
-import EVM.ABI (AbiValue(..), Sig(..))
-import Numeric.Natural (Natural)
+import EVM.ABI (Sig(..))
 
 data ValueRange = VRLEq (Set T.Text) W256
                 | VRGEq (Set T.Text) W256
@@ -45,7 +43,7 @@ instance Show ValueRange where
   show (VRGEq vars lit) = T.unpack $ T.concat [T.intercalate "," (Set.toList vars), " >= ", T.pack (show lit)]
   show (VREq vars lit) = T.unpack $ T.concat [T.intercalate "," (Set.toList vars), " == ", T.pack (show lit)]
 
-data ResolvedInterval = RInterval { lower :: Maybe W256, upper :: Maybe W256 }
+data ResolvedInterval = RInterval (Maybe W256) (Maybe W256)
   deriving (Eq, Ord)
 
 instance Show ResolvedInterval where
@@ -80,27 +78,29 @@ getProps (Partial asserts _ _) = asserts
 getProps _ = []
 
 computeRange :: Prop -> Maybe ValueRange
-computeRange (PLEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VRLEq vars lit
-                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VRGEq vars lit
-                              _ -> Nothing
-computeRange (PGEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VRGEq vars lit
-                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VRLEq vars lit
-                              _ -> Nothing
-computeRange (PLT e1 e2)  = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VRLEq vars lit
-                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VRGEq vars lit
-                              _ -> Nothing
-computeRange (PGT e1 e2)  = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VRGEq vars lit
-                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VRLEq vars lit
-                              _ -> Nothing
-computeRange (PEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VREq vars lit
-                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VREq vars lit
-                              _ -> Nothing
+computeRange (PLEq e1 e2) = resolve e1 e2 VRLEq VRGEq
+computeRange (PGEq e1 e2) = resolve e1 e2 VRGEq VRLEq
+computeRange (PLT e1 e2)  = resolve e1 e2 VRLEq VRGEq
+computeRange (PGT e1 e2)  = resolve e1 e2 VRGEq VRLEq
+computeRange (PEq e1 e2)  = resolve e1 e2 VREq VREq
 computeRange _ = Nothing
+
+-- Decompose an expression into a set of variables and a literal, if possible
+decompose :: Expr a -> Maybe (Set T.Text, W256)
+decompose (Add e (Lit k)) = decompose e & fmap (\(v, k') -> (v, k' + k))
+decompose (Add (Lit k) e) = decompose e & fmap (\(v, k') -> (v, k' + k))
+decompose (Sub e (Lit k)) = decompose e & fmap (\(v, k') -> (v, k' - k))
+decompose e = case (exprDependsOnArg e, exprLit e) of
+                (vars, _) | not (Set.null vars) -> Just (vars, 0)
+                (_, Just lit) -> Just (Set.empty, lit)
+                _ -> Nothing
+
+resolve :: Expr a -> Expr a -> (Set T.Text -> W256 -> ValueRange) -> (Set T.Text -> W256 -> ValueRange) -> Maybe ValueRange
+resolve e1 e2 op op' =
+  case (decompose e1, decompose e2) of
+    (Just (vars, k1), Just (vars', k2)) | Set.null vars' -> Just $ op vars (k2 - k1)
+    (Just (vars, k1), Just (vars', k2)) | Set.null vars  -> Just $ op' vars' (k1 - k2)
+    _ -> Nothing
 
 exprLit :: Expr a -> Maybe W256
 exprLit (Lit l) = Just l
@@ -114,6 +114,7 @@ exprDependsOnArg (Lit _) = Set.empty
 exprDependsOnArg (SEx _ e) = exprDependsOnArg e
 exprDependsOnArg (SLT e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
 exprDependsOnArg (Add e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
+exprDependsOnArg (Sub e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
 exprDependsOnArg _ = Set.empty
 
 propDependsOnArg :: Prop -> Set T.Text
@@ -141,6 +142,7 @@ findApproximateBounds method contract vm defaultSender conf veriOpts solvers rpc
                     & #state % #calldata .~ cd
                     & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
   (_, models, partials) <- verifyInputs solvers veriOpts fetcher vm' (Just nonReverts)
+  liftIO $ mapM_ (showModel mempty) $ map (\(x, y) -> (y, x)) models  
   let
     modelProps = concatMap (getProps . snd) models
     partialExprProps = concatMap (getProps . snd) partials

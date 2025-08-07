@@ -33,7 +33,6 @@ import Echidna.Types.Worker (WorkerEvent(..))
 import Echidna.Types.Random (rElem)
 import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, rpcFetcher, TxOrError(..), PartialsLogs)
 import Echidna.SymExec.Bounds (findApproximateBounds)
-import Echidna.SymExec.Helpers (nonReverts)
 import Echidna.Worker (pushWorkerEvent)
 
 -- | Uses symbolic execution to find transactions which would increase coverage.
