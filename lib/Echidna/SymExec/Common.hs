@@ -280,45 +280,55 @@ findApproximateBounds method contract vm defaultSender conf veriOpts solvers rpc
   --liftIO $ print $ map snd models
   --liftIO $ mapM_ (showModel mempty) $ map (\(x, y) -> (y, x)) models
   let 
-    boundsTotal = ["Constraints inferred:"] ++ (nub $ filter (not . (== "\n")) $ map (showRange . snd) models)
-    boundsPartial = ["Constraints inferred:"] ++ (nub $ filter (not . (== "\n")) $ map (showRange . snd) partials)
+    boundsTotal = ["Constraints inferred:"] ++ (nub $ mapMaybe (showRange . snd) models)
+    boundsPartial = ["Constraints inferred:"] ++ (nub $ mapMaybe (showRange . snd) partials)
   return (boundsTotal ++ boundsPartial)
 
-showRange :: Expr a -> T.Text 
-showRange (Failure asserts _ _) = T.unlines $ filter (not . T.null) $ map computeRange asserts
-showRange (Success asserts _ _ _) = T.unlines $ filter (not . T.null) $ map computeRange asserts
-showRange (Partial asserts _ _) = T.unlines $ filter (not . T.null) $ map computeRange asserts
+data ValueRange = VRLEq (Set T.Text) W256
+                | VRGEq (Set T.Text) W256
+                | VREq (Set T.Text) W256
+                deriving (Eq, Ord)
+
+instance Show ValueRange where
+  show (VRLEq vars lit) = T.unpack $ T.concat [T.intercalate "," (Set.toList vars), " <= ", T.pack (show lit)]
+  show (VRGEq vars lit) = T.unpack $ T.concat [T.intercalate "," (Set.toList vars), " >= ", T.pack (show lit)]
+  show (VREq vars lit) = T.unpack $ T.concat [T.intercalate "," (Set.toList vars), " == ", T.pack (show lit)]
+
+showRange :: Expr a -> Maybe T.Text
+showRange (Failure asserts _ _) = let result = T.unlines $ map (T.pack . show) $ nub $ mapMaybe computeRange asserts in if T.null result then Nothing else Just result
+showRange (Success asserts _ _ _) = let result = T.unlines $ map (T.pack . show) $ nub $ mapMaybe computeRange asserts in if T.null result then Nothing else Just result
+showRange (Partial asserts _ _) = let result = T.unlines $ map (T.pack . show) $ nub $ mapMaybe computeRange asserts in if T.null result then Nothing else Just result
 showRange e = error $ "Unexpected expression in `showRange`: " ++ show e
 
-computeRange :: Prop -> T.Text
+computeRange :: Prop -> Maybe ValueRange
 computeRange (PLEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " <= ", lit]
-                              (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " >= ", lit]
-                              _ -> "" --error $ show (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2)
+                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VRLEq vars lit
+                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VRGEq vars lit
+                              _ -> Nothing
 computeRange (PGEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " >= ", lit]
-                              (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " <= ", lit]
-                              _ -> ""
+                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VRGEq vars lit
+                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VRLEq vars lit
+                              _ -> Nothing
 computeRange (PLT e1 e2)  = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " <= ", lit]
-                              (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " >= ", lit]
-                              _ -> ""
+                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VRLEq vars lit
+                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VRGEq vars lit
+                              _ -> Nothing
 computeRange (PGT e1 e2)  = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " >= ", lit]
-                              (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " <= ", lit]
-                              _ -> ""
+                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VRGEq vars lit
+                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VRLEq vars lit
+                              _ -> Nothing
 computeRange (PEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
-                              (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " == ", lit]
-                              (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " == ", lit]
-                              _ -> ""
+                              (vars, Just lit, _, _) | not $ Set.null vars -> Just $ VREq vars lit
+                              (_, _, Just lit, vars) | not $ Set.null vars -> Just $ VREq vars lit
+                              _ -> Nothing
 --computeRange (PNeg e) = case computeRange e of
 --  "" -> ""
 --  x  -> T.concat ["!", x]
 
-computeRange p = "" --error $ show p
+computeRange p = Nothing
 
-exprLit :: Expr a -> Maybe T.Text
-exprLit (Lit l) = Just $  T.pack $ show l --if l > 0 then (error $ show l) else Just (T.pack $ show l) 
+exprLit :: Expr a -> Maybe W256
+exprLit (Lit l) = Just l
 exprLit _ = Nothing
 
 exprDependsOnArg :: Expr a -> Set T.Text
@@ -342,4 +352,3 @@ propDependsOnArg (PLT e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg
 propDependsOnArg (PGT e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
 --propDependsOnArg (PNeg e) = (propDependsOnArg e)
 propDependsOnArg _ = Set.empty
-
