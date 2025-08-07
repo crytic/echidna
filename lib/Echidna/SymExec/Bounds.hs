@@ -29,10 +29,11 @@ import Echidna.Types.Cache (ContractCache, SlotCache)
 import Echidna.Types (fromEVM)
 import Echidna.SymExec.Helpers
 
-import Data.Map qualified as Map
+import Data.Map.Strict qualified as Map
 import EVM.Types (Frame(..), FrameState(..), Block(..))
 import qualified EVM.Types as EVM
 import EVM.ABI (AbiValue(..), Sig(..))
+import Numeric.Natural (Natural)
 
 data ValueRange = VRLEq (Set T.Text) W256
                 | VRGEq (Set T.Text) W256
@@ -44,11 +45,39 @@ instance Show ValueRange where
   show (VRGEq vars lit) = T.unpack $ T.concat [T.intercalate "," (Set.toList vars), " >= ", T.pack (show lit)]
   show (VREq vars lit) = T.unpack $ T.concat [T.intercalate "," (Set.toList vars), " == ", T.pack (show lit)]
 
-showRange :: Expr a -> Maybe T.Text
-showRange (Failure asserts _ _) = let result = T.unlines $ map (T.pack . show) $ nub $ mapMaybe computeRange asserts in if T.null result then Nothing else Just result
-showRange (Success asserts _ _ _) = let result = T.unlines $ map (T.pack . show) $ nub $ mapMaybe computeRange asserts in if T.null result then Nothing else Just result
-showRange (Partial asserts _ _) = let result = T.unlines $ map (T.pack . show) $ nub $ mapMaybe computeRange asserts in if T.null result then Nothing else Just result
-showRange e = error $ "Unexpected expression in `showRange`: " ++ show e
+data ResolvedInterval = RInterval { lower :: Maybe W256, upper :: Maybe W256 }
+  deriving (Eq, Ord)
+
+instance Show ResolvedInterval where
+  show (RInterval (Just l) (Just u)) | l == u = " == " ++ show l
+  show (RInterval (Just l) (Just u)) = " in [" ++ show l ++ ", " ++ show u ++ "]"
+  show (RInterval (Just l) Nothing)  = " >= " ++ show l
+  show (RInterval Nothing (Just u))  = " <= " ++ show u
+  show (RInterval Nothing Nothing)   = ""
+
+resolveRanges :: [ValueRange] -> Map.Map (Set T.Text) ResolvedInterval
+resolveRanges ranges =
+  let
+    grouped = Map.fromListWith (++) $ map (\case
+      VRLEq vars lit -> (vars, [VRLEq vars lit])
+      VRGEq vars lit -> (vars, [VRGEq vars lit])
+      VREq vars lit  -> (vars, [VREq vars lit])) ranges
+
+    processGroup :: [ValueRange] -> ResolvedInterval
+    processGroup rs =
+      let
+        acc (RInterval l u) (VRLEq _ lit) = RInterval l (Just $ maybe lit (min lit) u)
+        acc (RInterval l u) (VRGEq _ lit) = RInterval (Just $ maybe lit (max lit) l) u
+        acc (RInterval _ _) (VREq _ lit)  = RInterval (Just lit) (Just lit)
+      in foldl acc (RInterval Nothing Nothing) rs
+
+  in Map.map processGroup grouped
+
+getProps :: Expr a -> [Prop]
+getProps (Failure asserts _ _) = asserts
+getProps (Success asserts _ _ _) = asserts
+getProps (Partial asserts _ _) = asserts
+getProps _ = []
 
 computeRange :: Prop -> Maybe ValueRange
 computeRange (PLEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
@@ -113,6 +142,15 @@ findApproximateBounds method contract vm defaultSender conf veriOpts solvers rpc
                     & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
   (_, models, partials) <- verifyInputs solvers veriOpts fetcher vm' (Just nonReverts)
   let
-    boundsTotal = ["Constraints inferred:"] ++ (nub $ mapMaybe (showRange . snd) models)
-    boundsPartial = ["Constraints inferred:"] ++ (nub $ mapMaybe (showRange . snd) partials)
-  return (boundsTotal ++ boundsPartial)
+    modelProps = concatMap (getProps . snd) models
+    partialExprProps = concatMap (getProps . snd) partials
+    --partialProps = map (fst . fst) partials
+    allProps = modelProps ++ partialExprProps -- ++ partialProps
+    allRanges = nub $ mapMaybe computeRange allProps
+    resolved = resolveRanges allRanges
+    allRangesText = map (T.pack . show) allRanges
+    showResolved (vars, interval) = T.concat [T.intercalate "," (Set.toList vars), T.pack (show interval)]
+    bounds = if Map.null resolved
+             then allRangesText
+             else map showResolved (Map.toList resolved)
+  return $ if null bounds then [] else (T.pack "Constraints inferred:" : allRangesText) ++ (T.pack "Constraints resolved:" : bounds)

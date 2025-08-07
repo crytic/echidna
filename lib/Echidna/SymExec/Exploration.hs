@@ -122,7 +122,7 @@ exploreContract contract method vm = do
     liftIO $ takeMVar doneChan
 
   threadId <- liftIO $ takeMVar threadIdChan
-  let boundsEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = Just 5, maxBufSize = 12, promiseNoReent = True, debug = False, dumpQueries = False, numCexFuzz = 10 } }
+  let boundsEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = Just 8, maxBufSize = 12, promiseNoReent = True, debug = False, dumpQueries = False, numCexFuzz = 10 } }
   liftIO $ flip runReaderT boundsEnv $ withSolvers conf.campaignConf.symExecSMTSolver 1 1 (Just 1) $ \solvers -> do
     liftIO $ flip runReaderT boundsEnv $ do
       bounds <- findApproximateBounds method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
