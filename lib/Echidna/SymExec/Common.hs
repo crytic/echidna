@@ -227,8 +227,8 @@ getUnknownLogs = mapMaybe (\case
 
 nonReverts :: Postcondition s
 nonReverts _ = \case
-  Success _ _ _ _  -> PBool True -- We want to explore non-reverting transactions, so we make them true here
-  _                -> PBool False
+  Success _ _ _ _  -> PBool False -- We want to explore non-reverting transactions, so we make them true here
+  _                -> PBool True
 
 exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
   Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> Postcondition RealWorld -> m ([TxOrError], PartialsLogs)
@@ -261,33 +261,49 @@ exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo con
 
 showRange :: Expr a -> T.Text 
 showRange (Failure asserts _ _) = T.unlines $ filter (not . T.null) $ map computeRange asserts
-showRange _                     = ""
+showRange (Success asserts _ _ _) = T.unlines $ filter (not . T.null) $ map computeRange asserts
+showRange (Partial asserts _ _) = T.unlines $ filter (not . T.null) $ map computeRange asserts
+showRange _ = ""--error $ "Unexpected expression in `showRange`: " ++ show e
 
 computeRange :: Prop -> T.Text
 computeRange (PLEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
                               (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " <= ", lit]
                               (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " >= ", lit]
-                              _ -> ""
-computeRange (PLT e1 e2)  = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
+                              _ -> "" --error $ show (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2)
+computeRange (PGEq e1 e2) = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
                               (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " >= ", lit]
                               (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " <= ", lit]
                               _ -> ""
-computeRange _ = ""
+computeRange (PLT e1 e2)  = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
+                              (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " <= ", lit]
+                              (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " >= ", lit]
+                              _ -> ""
+computeRange (PGT e1 e2)  = case (exprDependsOnArg e1, exprLit e2, exprLit e1, exprDependsOnArg e2) of
+                              (vars, Just lit, _, _) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " >= ", lit]
+                              (_, _, Just lit, vars) | not $ Set.null vars -> T.concat [T.intercalate "," (Set.toList vars), " <= ", lit]
+                              _ -> ""
+
+computeRange p = ""--error $ show p
 
 exprLit :: Expr a -> Maybe T.Text
 exprLit (Lit l) = Just (T.pack $ show l) 
 exprLit _ = Nothing
 
 exprDependsOnArg :: Expr a -> Set T.Text
-exprDependsOnArg (Failure asserts _ _) = Set.unions $ map propDependsOnArg asserts --any dependsOnArg asserts 
+exprDependsOnArg (Failure asserts _ _) = Set.unions $ map propDependsOnArg asserts --any dependsOnArg asserts
+exprDependsOnArg (Partial asserts _ _) = Set.unions $ map propDependsOnArg asserts 
 exprDependsOnArg (Var v) = if T.isPrefixOf "arg" v then Set.singleton v else Set.empty
 exprDependsOnArg (Lit _) = Set.empty
+exprDependsOnArg (SEx _ e) = exprDependsOnArg e
+exprDependsOnArg (Sub (Lit 0) e) = exprDependsOnArg e
 exprDependsOnArg (Add e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
-exprDependsOnArg (Sub e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
+--exprDependsOnArg (Sub e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
 exprDependsOnArg _ = Set.empty
 
 propDependsOnArg :: Prop -> Set T.Text
 propDependsOnArg (PLEq e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
 propDependsOnArg (PGEq e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
+propDependsOnArg (PLT e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
+propDependsOnArg (PGT e1 e2) = Set.union (exprDependsOnArg e1) (exprDependsOnArg e2)
 propDependsOnArg _ = Set.empty
 

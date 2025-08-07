@@ -258,8 +258,8 @@ runSymWorker callback vm dict workerId _ name = do
     let txs = extractTxs symTxs
     let errors = extractErrors symTxs
 
-    unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) during symbolic exploration: " <> show e)) errors
-    unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic exploration: " <> unpack e)) partials
+    --unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) during symbolic exploration: " <> show e)) errors
+    --unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic exploration: " <> unpack e)) partials
 
     -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
     newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) txs
