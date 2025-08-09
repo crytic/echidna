@@ -58,6 +58,7 @@ library:
     - html-entities
     - http-conduit
     - ListLike
+    - mustache
     - optics
     - optics-core
     - process
