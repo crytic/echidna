@@ -248,9 +248,7 @@ makeRelativePath :: FilePath -> FilePath -> FilePath
 makeRelativePath basePath filePath =
   let baseComponents = splitDirectories basePath
       fileComponents = splitDirectories filePath
-  in case stripPrefix baseComponents fileComponents of
-       Just relComponents -> joinPath relComponents
-       Nothing -> filePath -- fallback to absolute path if can't make relative
+  in maybe filePath joinPath (stripPrefix baseComponents fileComponents)
   where
     stripPrefix [] ys = Just ys
     stripPrefix _ [] = Nothing
@@ -299,7 +297,7 @@ buildFileContext runtimeLinesMap covLines commonPrefix (srcPath, srcLines) =
     runtimeLines = fromMaybe mempty $ Map.lookup srcPath runtimeLinesMap
     covered = fromMaybe Map.empty (Map.lookup srcPath covLines)
     activeLines = S.size runtimeLines
-    coveredLines = length $ filter (\lineNum -> lineNum `Map.member` covered) (S.toList runtimeLines)
+    coveredLines = length $ filter (`Map.member` covered) (S.toList runtimeLines)
     coveragePercentage = if activeLines == 0 then 0 else (coveredLines * 100) `div` activeLines
 
     -- Use relative path for display
@@ -326,13 +324,10 @@ buildLineContext runtimeLines covered lineIndex codeLine =
     results = fromMaybe [] (Map.lookup lineNum covered)
     isActive = lineNum `S.member` runtimeLines
     isCovered = not (null results)
-
-    -- Determine row class based on original Echidna logic
-    rowClass = if not isActive 
-               then Nothing  -- neutral (no special class)
-               else if isCovered 
-               then Just ("row-line-covered" :: Text)  -- executed
-               else Just ("row-line-uncovered" :: Text)  -- unexecuted
+    rowClass
+      | not isActive = Nothing
+      | isCovered = Just ("row-line-covered" :: Text)
+      | otherwise = Just ("row-line-uncovered" :: Text)
 
   in toMustache $ (Map.fromList :: [(Text, Value)] -> Map Text Value) $ catMaybes
     [ Just ("lineNumber", toMustache $ T.pack $ show lineNum)
@@ -349,7 +344,7 @@ calculateTotalStats allFiles runtimeLinesMap covLines =
           covered = fromMaybe Map.empty (Map.lookup srcPath covLines)
           fileTotalLines = V.length srcLines
           activeLines = S.size runtimeLines
-          coveredLines = length $ filter (\lineNum -> lineNum `Map.member` covered) (S.toList runtimeLines)
+          coveredLines = length $ filter (`Map.member` covered) (S.toList runtimeLines)
       in (fileTotalLines, coveredLines, activeLines)
 
     allStats = map fileStats allFiles
