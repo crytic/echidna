@@ -23,7 +23,7 @@ saveTxs :: Env -> FilePath -> [[Tx]] -> IO ()
 saveTxs env dir = mapM_ saveTxSeq where
   saveTxSeq txSeq = do
     createDirectoryIfMissing True dir
-    let file = dir </> (show . abs . hash . show) txSeq <.> "txt"
+    let file = dir </> (show . abs . hash) txSeq <.> "txt"
     unlessM (doesFileExist file) $ encodeFile file (toJSON txSeq)
     pushCampaignEvent env (ReproducerSaved file)
 
