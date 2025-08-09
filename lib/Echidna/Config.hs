@@ -97,6 +97,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "corpusDir" ..!= Nothing
         <*> v ..:? "mutConsts" ..!= defaultMutationConsts
         <*> v ..:? "coverageFormats" ..!= [Txt,Html,Lcov]
+        <*> v ..:? "coverageExcludes" ..!= []
         <*> v ..:? "workers"
         <*> v ..:? "server"
         <*> v ..:? "symExec"            ..!= False
