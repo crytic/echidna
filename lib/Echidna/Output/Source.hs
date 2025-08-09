@@ -28,6 +28,7 @@ import Data.Vector.Unboxed qualified as VU
 import HTMLEntities.Text qualified as HTML
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>), splitDirectories, joinPath, takeDirectory)
+import System.FilePath.Glob qualified as Glob
 import Text.Printf (printf)
 
 import EVM.Dapp (srcMapCodePos, DappInfo(..))
@@ -43,6 +44,15 @@ import Echidna.SourceAnalysis.Slither (AssertLocation(..), assertLocationList, S
 coverageTemplate :: Template
 coverageTemplate = $(embedTemplate ["lib/Echidna/Output/assets"] "coverage.mustache")
 
+-- | Filter files based on exclude patterns, using relative paths from common prefix
+filterExcludedFiles :: [Text] -> FilePath -> [(FilePath, V.Vector Text)] -> [(FilePath, V.Vector Text)]
+filterExcludedFiles excludePatterns commonPrefix allFiles =
+  let patterns = map (Glob.compile . T.unpack) excludePatterns
+      isExcluded filePath =
+        let relativePath = makeRelativePath commonPrefix filePath
+        in any (`Glob.match` relativePath) patterns
+  in filter (not . isExcluded . fst) allFiles
+
 saveCoverages
   :: Env
   -> Int
@@ -52,9 +62,10 @@ saveCoverages
   -> IO ()
 saveCoverages env seed d sc cs = do
   let fileTypes = env.cfg.campaignConf.coverageFormats
+      coverageExcludes = env.cfg.campaignConf.coverageExcludes
       projectName = env.cfg.projectName
   coverage <- mergeCoverageMaps env.dapp env.coverageRefInit env.coverageRefRuntime
-  mapM_ (\ty -> saveCoverage ty seed d sc cs coverage projectName) fileTypes
+  mapM_ (\ty -> saveCoverage ty seed d sc cs coverage projectName coverageExcludes) fileTypes
 
 saveCoverage
   :: CoverageFileType
@@ -64,13 +75,14 @@ saveCoverage
   -> [SolcContract]
   -> FrozenCoverageMap
   -> Maybe Text
+  -> [Text]
   -> IO ()
-saveCoverage fileType seed d sc cs covMap projectName = do
+saveCoverage fileType seed d sc cs covMap projectName excludePatterns = do
   let extension = coverageFileExtension fileType
       fn = d </> "covered." <> show seed <> extension
   currentTime <- getCurrentTime
   let timestamp = T.pack $ formatTime defaultTimeLocale "%B %d, %Y at %H:%M:%S UTC" currentTime
-      cc = ppCoveredCode fileType sc cs covMap projectName timestamp
+      cc = ppCoveredCode fileType sc cs covMap projectName timestamp excludePatterns
   createDirectoryIfMissing True d
   writeFile fn cc
 
@@ -80,10 +92,10 @@ coverageFileExtension Html = ".html"
 coverageFileExtension Txt = ".txt"
 
 -- | Pretty-print the covered code
-ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> FrozenCoverageMap -> Maybe Text -> Text -> Text
-ppCoveredCode fileType sc cs s projectName timestamp
+ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> FrozenCoverageMap -> Maybe Text -> Text -> [Text] -> Text
+ppCoveredCode fileType sc cs s projectName timestamp excludePatterns
   | null s = "Coverage map is empty"
-  | Html <- fileType = htmlTemplate allFiles runtimeLinesMap covLines projectName timestamp
+  | Html <- fileType = htmlTemplate filteredFiles runtimeLinesMap covLines projectName timestamp commonPrefix
   | otherwise = let
     -- Pretty print individual file coverage
     ppFile (srcPath, srcLines) =
@@ -102,12 +114,16 @@ ppCoveredCode fileType sc cs s projectName timestamp
     changeFileLines ls = case fileType of
       Lcov -> ls ++ ["end_of_record"]
       Txt  -> ls
-    in topHeader <> T.unlines (map ppFile allFiles)
+    in topHeader <> T.unlines (map ppFile filteredFiles)
   where
     -- List of covered lines during the fuzzing campaign
     covLines = srcMapCov sc s cs
     -- Collect all the possible lines from all the files
     allFiles = (\(path, src) -> (path, V.fromList (decodeUtf8 <$> BS.split 0xa src))) <$> Map.elems sc.files
+    -- Find common path prefix for filtering
+    commonPrefix = findCommonPathPrefix (map fst allFiles)
+    -- Filter out excluded files using relative paths
+    filteredFiles = filterExcludedFiles excludePatterns commonPrefix allFiles
     -- Excludes lines such as comments or blanks
     runtimeLinesMap = buildRuntimeLinesMap sc cs
 
@@ -254,20 +270,17 @@ makeRelativePath basePath filePath =
       | otherwise = Nothing
 
 -- | Generate modern HTML coverage report using mustache template
-htmlTemplate :: [(FilePath, V.Vector Text)] -> Map FilePath (S.Set Int) -> Map FilePath (Map Int [TxResult]) -> Maybe Text -> Text -> Text
-htmlTemplate allFiles runtimeLinesMap covLines projectName timestamp =
-  substituteValue coverageTemplate $ buildTemplateContext allFiles runtimeLinesMap covLines projectName timestamp
+htmlTemplate :: [(FilePath, V.Vector Text)] -> Map FilePath (S.Set Int) -> Map FilePath (Map Int [TxResult]) -> Maybe Text -> Text -> FilePath -> Text
+htmlTemplate allFiles runtimeLinesMap covLines projectName timestamp commonPrefix =
+  substituteValue coverageTemplate $ buildTemplateContext allFiles runtimeLinesMap covLines projectName timestamp commonPrefix
 
 -- | Build the context object for the mustache template
-buildTemplateContext :: [(FilePath, V.Vector Text)] -> Map FilePath (S.Set Int) -> Map FilePath (Map Int [TxResult]) -> Maybe Text -> Text -> Value
-buildTemplateContext allFiles runtimeLinesMap covLines projectName timestamp =
+buildTemplateContext :: [(FilePath, V.Vector Text)] -> Map FilePath (S.Set Int) -> Map FilePath (Map Int [TxResult]) -> Maybe Text -> Text -> FilePath -> Value
+buildTemplateContext allFiles runtimeLinesMap covLines projectName timestamp commonPrefix =
   let
     totalFiles = length allFiles
     (totalLines, totalCoveredLines, totalActiveLines) = calculateTotalStats allFiles runtimeLinesMap covLines
     coveragePercentage = if totalActiveLines == 0 then 0 else (totalCoveredLines * 100) `div` totalActiveLines
-
-    -- Find common path prefix for cleaner display
-    commonPrefix = findCommonPathPrefix (map fst allFiles)
 
     -- Build title with optional project name
     title = case projectName of
