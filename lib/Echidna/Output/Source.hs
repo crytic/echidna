@@ -327,25 +327,15 @@ buildLineContext runtimeLines covered lineIndex codeLine =
     isActive = lineNum `S.member` runtimeLines
     isCovered = not (null results)
 
-    successCount = length $ filter (\r -> r `elem` [ReturnTrue, ReturnFalse, Stop]) results
-    revertCount = length $ filter (== ErrorRevert) results
-
-    successColumn = if successCount > 0
-      then "<div title=\"The source line executed without reverting " <> T.pack (show successCount) <> " times.\" style=\"color: var(--success); padding: 0;\">✓ " <> formatNumber successCount <> "</div>"
-      else ""
-
-    revertColumn = if revertCount > 0
-      then "<div title=\"The source line executed, but was reverted " <> T.pack (show revertCount) <> " times.\" style=\"color: var(--warning); padding: 0;\">⟲ " <> formatNumber revertCount <> "</div>"
-      else ""
-
-    rowClass = if not isActive then Nothing
-               else if isCovered then Just ("row-line-covered" :: Text)
-               else Just ("row-line-uncovered" :: Text)
+    -- Determine row class based on original Echidna logic
+    rowClass = if not isActive 
+               then Nothing  -- neutral (no special class)
+               else if isCovered 
+               then Just ("row-line-covered" :: Text)  -- executed
+               else Just ("row-line-uncovered" :: Text)  -- unexecuted
 
   in toMustache $ (Map.fromList :: [(Text, Value)] -> Map Text Value) $ catMaybes
     [ Just ("lineNumber", toMustache $ T.pack $ show lineNum)
-    , Just ("successColumn", toMustache successColumn)
-    , Just ("revertColumn", toMustache revertColumn)
     , Just ("sourceCode", toMustache codeLine)
     , fmap (\v -> ("rowClass", toMustache v)) rowClass
     ]
