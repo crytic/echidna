@@ -1,4 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Echidna.Output.Source where
 
@@ -6,10 +7,13 @@ import Prelude hiding (writeFile)
 
 import Control.Monad (unless)
 import Data.ByteString qualified as BS
+import Text.Mustache (substituteValue, toMustache)
+import Text.Mustache.Compile (embedTemplate)
+import Text.Mustache.Types (Template, Value(..))
 import Data.Foldable
 import Data.List (nub, sort)
 import Data.List.NonEmpty qualified as NE
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe, catMaybes)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Sequence qualified as Seq
@@ -22,7 +26,7 @@ import Data.Vector qualified as V
 import Data.Vector.Unboxed qualified as VU
 import HTMLEntities.Text qualified as HTML
 import System.Directory (createDirectoryIfMissing)
-import System.FilePath ((</>))
+import System.FilePath ((</>), splitDirectories, joinPath, takeDirectory)
 import Text.Printf (printf)
 
 import EVM.Dapp (srcMapCodePos, DappInfo(..))
@@ -34,6 +38,10 @@ import Echidna.Types.Coverage (OpIx, unpackTxResults, FrozenCoverageMap, Coverag
 import Echidna.Types.Tx (TxResult(..))
 import Echidna.SourceAnalysis.Slither (AssertLocation(..), assertLocationList, SlitherInfo(..))
 
+-- | Embedded template with partials for coverage reports
+coverageTemplate :: Template
+coverageTemplate = $(embedTemplate ["lib/Echidna/Output/assets"] "coverage.mustache")
+
 saveCoverages
   :: Env
   -> Int
@@ -43,8 +51,9 @@ saveCoverages
   -> IO ()
 saveCoverages env seed d sc cs = do
   let fileTypes = env.cfg.campaignConf.coverageFormats
+      projectName = env.cfg.projectName
   coverage <- mergeCoverageMaps env.dapp env.coverageRefInit env.coverageRefRuntime
-  mapM_ (\ty -> saveCoverage ty seed d sc cs coverage) fileTypes
+  mapM_ (\ty -> saveCoverage ty seed d sc cs coverage projectName) fileTypes
 
 saveCoverage
   :: CoverageFileType
@@ -53,11 +62,12 @@ saveCoverage
   -> SourceCache
   -> [SolcContract]
   -> FrozenCoverageMap
+  -> Maybe Text
   -> IO ()
-saveCoverage fileType seed d sc cs covMap = do
+saveCoverage fileType seed d sc cs covMap projectName = do
   let extension = coverageFileExtension fileType
       fn = d </> "covered." <> show seed <> extension
-      cc = ppCoveredCode fileType sc cs covMap
+      cc = ppCoveredCode fileType sc cs covMap projectName
   createDirectoryIfMissing True d
   writeFile fn cc
 
@@ -67,8 +77,8 @@ coverageFileExtension Html = ".html"
 coverageFileExtension Txt = ".txt"
 
 -- | Pretty-print the covered code
-ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> FrozenCoverageMap -> Text
-ppCoveredCode fileType sc cs s | null s = "Coverage map is empty"
+ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> FrozenCoverageMap -> Maybe Text -> Text
+ppCoveredCode fileType sc cs s projectName | null s = "Coverage map is empty"
   | otherwise =
   let
     -- List of covered lines during the fuzzing campaign
@@ -80,16 +90,11 @@ ppCoveredCode fileType sc cs s | null s = "Coverage map is empty"
     -- Pretty print individual file coverage
     ppFile (srcPath, srcLines) =
       let runtimeLines = fromMaybe mempty $ Map.lookup srcPath runtimeLinesMap
-          marked = markLines fileType srcLines runtimeLines (fromMaybe Map.empty (Map.lookup srcPath covLines))
+          marked = markLines fileType (T.pack srcPath) srcLines runtimeLines (fromMaybe Map.empty (Map.lookup srcPath covLines))
       in T.unlines (changeFileName srcPath : changeFileLines (V.toList marked))
     topHeader = case fileType of
       Lcov -> "TN:\n"
-      Html -> "<style> code { white-space: pre-wrap; display: block; background-color: #eee; }" <>
-              ".e { background-color: #afa; }" <> -- executed
-              ".r { background-color: #ffa; }" <> -- reverted
-              ".u { background-color: #faa; }" <> -- unexecuted
-              ".n { background-color: #eee; }" <> -- neutral
-              "</style>"
+      Html -> htmlTemplate allFiles runtimeLinesMap covLines projectName
       Txt  -> ""
     -- ^ Text to add to top of the file
     changeFileName (T.pack -> fn) = case fileType of
@@ -102,11 +107,13 @@ ppCoveredCode fileType sc cs s | null s = "Coverage map is empty"
       Html -> "<code>" : ls ++ ["", "</code>","<br />"]
       Txt  -> ls
     -- ^ Alter file contents, in the case of html encasing it in <code> and adding a line break
-  in topHeader <> T.unlines (map ppFile allFiles)
+  in case fileType of
+       Html -> topHeader
+       _    -> topHeader <> T.unlines (map ppFile allFiles)
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
-markLines :: CoverageFileType -> V.Vector Text -> S.Set Int -> Map Int [TxResult] -> V.Vector Text
-markLines fileType codeLines runtimeLines resultMap =
+markLines :: CoverageFileType -> Text -> V.Vector Text -> S.Set Int -> Map Int [TxResult] -> V.Vector Text
+markLines fileType _srcPath codeLines runtimeLines resultMap =
   V.map markLine . V.filter shouldUseLine $ V.indexed codeLines
   where
   shouldUseLine (i, _) = case fileType of
@@ -217,3 +224,163 @@ checkAssertionReached covLines assert =
    warnAssertNotReached =
     putStrLn $ "WARNING: assertion at file: " ++ assert.filenameRelative
        ++ " starting at line: " ++ show (NE.head assert.assertLines) ++ " was never reached"
+
+-- | Find the common path prefix among all file paths
+findCommonPathPrefix :: [FilePath] -> FilePath
+findCommonPathPrefix [] = ""
+findCommonPathPrefix [path] = takeDirectory path
+findCommonPathPrefix paths =
+  let pathComponents = map splitDirectories paths
+      commonComponents = foldl1 commonPrefix pathComponents
+  in joinPath commonComponents
+  where
+    commonPrefix [] _ = []
+    commonPrefix _ [] = []
+    commonPrefix (x:xs) (y:ys)
+      | x == y = x : commonPrefix xs ys
+      | otherwise = []
+
+-- | Convert absolute path to relative path given a base directory
+makeRelativePath :: FilePath -> FilePath -> FilePath
+makeRelativePath basePath filePath =
+  let baseComponents = splitDirectories basePath
+      fileComponents = splitDirectories filePath
+  in case stripPrefix baseComponents fileComponents of
+       Just relComponents -> joinPath relComponents
+       Nothing -> filePath -- fallback to absolute path if can't make relative
+  where
+    stripPrefix [] ys = Just ys
+    stripPrefix _ [] = Nothing
+    stripPrefix (x:xs) (y:ys)
+      | x == y = stripPrefix xs ys
+      | otherwise = Nothing
+
+-- | Generate modern HTML coverage report using mustache template
+htmlTemplate :: [(FilePath, V.Vector Text)] -> Map FilePath (S.Set Int) -> Map FilePath (Map Int [TxResult]) -> Maybe Text -> Text
+htmlTemplate allFiles runtimeLinesMap covLines projectName =
+  substituteValue coverageTemplate $ buildTemplateContext allFiles runtimeLinesMap covLines projectName
+
+-- | Build the context object for the mustache template
+buildTemplateContext :: [(FilePath, V.Vector Text)] -> Map FilePath (S.Set Int) -> Map FilePath (Map Int [TxResult]) -> Maybe Text -> Value
+buildTemplateContext allFiles runtimeLinesMap covLines projectName =
+  let
+    totalFiles = length allFiles
+    (totalLines, totalCoveredLines, totalActiveLines) = calculateTotalStats allFiles runtimeLinesMap covLines
+    coveragePercentage = if totalActiveLines == 0 then 0 else (totalCoveredLines * 100) `div` totalActiveLines
+
+    -- Find common path prefix for cleaner display
+    commonPrefix = findCommonPathPrefix (map fst allFiles)
+
+    -- Build title with optional project name
+    title = case projectName of
+      Just name -> "Echidna Coverage Report - " <> name
+      Nothing -> "Echidna Coverage Report"
+
+    filesData = map (buildFileContext runtimeLinesMap covLines commonPrefix) allFiles
+  in toMustache $ (Map.fromList :: [(Text, Value)] -> Map Text Value)
+    [ ("title", toMustache title)
+    , ("totalFiles", toMustache $ T.pack $ show totalFiles)
+    , ("totalLines", toMustache $ T.pack $ show totalLines)
+    , ("totalCoveredLines", toMustache $ T.pack $ show totalCoveredLines)
+    , ("totalActiveLines", toMustache $ T.pack $ show totalActiveLines)
+    , ("coveragePercentage", toMustache $ T.pack $ printf "%.1f" (fromIntegral coveragePercentage :: Double))
+    , ("coverageColor", toMustache $ getCoverageColorHsl coveragePercentage)
+    , ("files", toMustache filesData)
+    ]
+
+-- | Build context for a single file
+buildFileContext :: Map FilePath (S.Set Int) -> Map FilePath (Map Int [TxResult]) -> FilePath -> (FilePath, V.Vector Text) -> Value
+buildFileContext runtimeLinesMap covLines commonPrefix (srcPath, srcLines) =
+  let
+    runtimeLines = fromMaybe mempty $ Map.lookup srcPath runtimeLinesMap
+    covered = fromMaybe Map.empty (Map.lookup srcPath covLines)
+    activeLines = S.size runtimeLines
+    coveredLines = length $ filter (\lineNum -> lineNum `Map.member` covered) (S.toList runtimeLines)
+    coveragePercentage = if activeLines == 0 then 0 else (coveredLines * 100) `div` activeLines
+
+    -- Use relative path for display
+    displayPath = makeRelativePath commonPrefix srcPath
+    fileId = T.pack $ map (\c -> if c `elem` ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789" :: String) then c else '_') displayPath
+
+    linesData = V.toList $ V.imap (buildLineContext runtimeLines covered) srcLines
+  in toMustache $ (Map.fromList :: [(Text, Value)] -> Map Text Value)
+    [ ("fileId", toMustache fileId)
+    , ("filePath", toMustache $ T.pack displayPath)
+    , ("activeLines", toMustache $ T.pack $ show activeLines)
+    , ("coveredLines", toMustache $ T.pack $ show coveredLines)
+    , ("coveragePercentage", toMustache $ T.pack $ printf "%.1f" (fromIntegral coveragePercentage :: Double))
+    , ("coverageColor", toMustache $ getCoverageColorHsl coveragePercentage)
+    , ("coverageColorAlpha", toMustache $ getCoverageColorAlpha coveragePercentage)
+    , ("lines", toMustache linesData)
+    ]
+
+-- | Build context for a single line of code
+buildLineContext :: S.Set Int -> Map Int [TxResult] -> Int -> Text -> Value
+buildLineContext runtimeLines covered lineIndex codeLine =
+  let
+    lineNum = lineIndex + 1
+    results = fromMaybe [] (Map.lookup lineNum covered)
+    isActive = lineNum `S.member` runtimeLines
+    isCovered = not (null results)
+
+    successCount = length $ filter (\r -> r `elem` [ReturnTrue, ReturnFalse, Stop]) results
+    revertCount = length $ filter (== ErrorRevert) results
+
+    successColumn = if successCount > 0
+      then "<div title=\"The source line executed without reverting " <> T.pack (show successCount) <> " times.\" style=\"color: var(--success); padding: 0;\">✓ " <> formatNumber successCount <> "</div>"
+      else ""
+
+    revertColumn = if revertCount > 0
+      then "<div title=\"The source line executed, but was reverted " <> T.pack (show revertCount) <> " times.\" style=\"color: var(--warning); padding: 0;\">⟲ " <> formatNumber revertCount <> "</div>"
+      else ""
+
+    rowClass = if not isActive then Nothing
+               else if isCovered then Just ("row-line-covered" :: Text)
+               else Just ("row-line-uncovered" :: Text)
+
+  in toMustache $ (Map.fromList :: [(Text, Value)] -> Map Text Value) $ catMaybes
+    [ Just ("lineNumber", toMustache $ T.pack $ show lineNum)
+    , Just ("successColumn", toMustache successColumn)
+    , Just ("revertColumn", toMustache revertColumn)
+    , Just ("sourceCode", toMustache codeLine)
+    , fmap (\v -> ("rowClass", toMustache v)) rowClass
+    ]
+
+-- | Calculate total statistics across all files
+calculateTotalStats :: [(FilePath, V.Vector Text)] -> Map FilePath (S.Set Int) -> Map FilePath (Map Int [TxResult]) -> (Int, Int, Int)
+calculateTotalStats allFiles runtimeLinesMap covLines =
+  let
+    fileStats (srcPath, srcLines) =
+      let runtimeLines = fromMaybe mempty $ Map.lookup srcPath runtimeLinesMap
+          covered = fromMaybe Map.empty (Map.lookup srcPath covLines)
+          fileTotalLines = V.length srcLines
+          activeLines = S.size runtimeLines
+          coveredLines = length $ filter (\lineNum -> lineNum `Map.member` covered) (S.toList runtimeLines)
+      in (fileTotalLines, coveredLines, activeLines)
+
+    allStats = map fileStats allFiles
+    totalLines = sum $ map (\(t,_,_) -> t) allStats
+    totalCoveredLines = sum $ map (\(_,c,_) -> c) allStats
+    totalActiveLines = sum $ map (\(_,_,a) -> a) allStats
+  in (totalLines, totalCoveredLines, totalActiveLines)
+
+
+-- | Format large numbers for display (e.g., 1234 → 1.2K)
+formatNumber :: Int -> Text
+formatNumber num
+  | num < 1000 = T.pack (show num)
+  | num < 1000000 = T.pack $ printf "%.1fK" (fromIntegral num / 1000.0 :: Double)
+  | num < 1000000000 = T.pack $ printf "%.1fM" (fromIntegral num / 1000000.0 :: Double)
+  | otherwise = T.pack $ printf "%.1fB" (fromIntegral num / 1000000000.0 :: Double)
+
+-- | Get HSL color based on coverage percentage
+getCoverageColorHsl :: Int -> Text
+getCoverageColorHsl percentage
+  | percentage < 50 = "hsl(" <> T.pack (show (percentage * 12 `div` 10)) <> ", 90%, 50%)"
+  | otherwise = "hsl(" <> T.pack (show (60 + ((percentage - 50) * 12 `div` 10))) <> ", 90%, 45%)"
+
+-- | Get HSL color with alpha based on coverage percentage
+getCoverageColorAlpha :: Int -> Text
+getCoverageColorAlpha percentage
+  | percentage < 50 = "hsla(" <> T.pack (show (percentage * 12 `div` 10)) <> ", 90%, 50%, 0.15)"
+  | otherwise = "hsla(" <> T.pack (show (60 + ((percentage - 50) * 12 `div` 10))) <> ", 90%, 45%, 0.15)"
