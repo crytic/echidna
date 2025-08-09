@@ -81,42 +81,39 @@ coverageFileExtension Txt = ".txt"
 
 -- | Pretty-print the covered code
 ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> FrozenCoverageMap -> Maybe Text -> Text -> Text
-ppCoveredCode fileType sc cs s projectName timestamp | null s = "Coverage map is empty"
-  | otherwise =
-  let
+ppCoveredCode fileType sc cs s projectName timestamp
+  | null s = "Coverage map is empty"
+  | Html <- fileType = htmlTemplate allFiles runtimeLinesMap covLines projectName timestamp
+  | otherwise = let
+    -- Pretty print individual file coverage
+    ppFile (srcPath, srcLines) =
+      let runtimeLines = fromMaybe mempty $ Map.lookup srcPath runtimeLinesMap
+          marked = markLines fileType srcLines runtimeLines (fromMaybe Map.empty (Map.lookup srcPath covLines))
+      in T.unlines (changeFileName srcPath : changeFileLines (V.toList marked))
+    -- Text to add to top of the file
+    topHeader = case fileType of
+      Lcov -> "TN:\n"
+      Txt  -> ""
+    -- Alter file name
+    changeFileName (T.pack -> fn) = case fileType of
+      Lcov -> "SF:" <> fn
+      Txt  -> fn
+    -- Alter file contents
+    changeFileLines ls = case fileType of
+      Lcov -> ls ++ ["end_of_record"]
+      Txt  -> ls
+    in topHeader <> T.unlines (map ppFile allFiles)
+  where
     -- List of covered lines during the fuzzing campaign
     covLines = srcMapCov sc s cs
     -- Collect all the possible lines from all the files
     allFiles = (\(path, src) -> (path, V.fromList (decodeUtf8 <$> BS.split 0xa src))) <$> Map.elems sc.files
     -- Excludes lines such as comments or blanks
     runtimeLinesMap = buildRuntimeLinesMap sc cs
-    -- Pretty print individual file coverage
-    ppFile (srcPath, srcLines) =
-      let runtimeLines = fromMaybe mempty $ Map.lookup srcPath runtimeLinesMap
-          marked = markLines fileType (T.pack srcPath) srcLines runtimeLines (fromMaybe Map.empty (Map.lookup srcPath covLines))
-      in T.unlines (changeFileName srcPath : changeFileLines (V.toList marked))
-    topHeader = case fileType of
-      Lcov -> "TN:\n"
-      Html -> htmlTemplate allFiles runtimeLinesMap covLines projectName timestamp
-      Txt  -> ""
-    -- ^ Text to add to top of the file
-    changeFileName (T.pack -> fn) = case fileType of
-      Lcov -> "SF:" <> fn
-      Html -> "<b>" <> HTML.text fn <> "</b>"
-      Txt  -> fn
-    -- ^ Alter file name, in the case of html turning it into bold text
-    changeFileLines ls = case fileType of
-      Lcov -> ls ++ ["end_of_record"]
-      Html -> "<code>" : ls ++ ["", "</code>","<br />"]
-      Txt  -> ls
-    -- ^ Alter file contents, in the case of html encasing it in <code> and adding a line break
-  in case fileType of
-       Html -> topHeader
-       _    -> topHeader <> T.unlines (map ppFile allFiles)
 
 -- | Mark one particular line, from a list of lines, keeping the order of them
-markLines :: CoverageFileType -> Text -> V.Vector Text -> S.Set Int -> Map Int [TxResult] -> V.Vector Text
-markLines fileType _srcPath codeLines runtimeLines resultMap =
+markLines :: CoverageFileType -> V.Vector Text -> S.Set Int -> Map Int [TxResult] -> V.Vector Text
+markLines fileType codeLines runtimeLines resultMap =
   V.map markLine . V.filter shouldUseLine $ V.indexed codeLines
   where
   shouldUseLine (i, _) = case fileType of
