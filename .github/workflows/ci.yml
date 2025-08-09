@@ -219,9 +219,11 @@ jobs:
         os:
           - ubuntu-latest
           - windows-latest
-        solc:
-          - "0.8.10"
-          - "0.8.25"
+        solc: ${{
+            (github.event_name == 'push' && github.ref == 'refs/heads/master') &&
+            fromJSON('["0.4.25", "0.5.7", "0.6.12", "0.7.5", "0.8.10", "0.8.25"]') ||
+            fromJSON('["0.8.10", "0.8.25"]')
+          }}
         include:
           - os: windows-latest
             experimental: true
