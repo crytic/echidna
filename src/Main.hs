@@ -93,7 +93,7 @@ main = withUtf8 $ withCP65001 $ do
                 (results, finalVM) <- reproduceTest vm test
                 let subdir = dir </> "reproducers-traces"
                 liftIO $ createDirectoryIfMissing True subdir
-                let file = subdir </> (show . abs . hash . show) test.reproducer <.> "txt"
+                let file = subdir </> (show . abs . hash) test.reproducer <.> "txt"
                 txsPrinted <- ppFailWithTraces Nothing finalVM results
                 liftIO $ writeFile file (ppTestName test <> ": " <> txsPrinted)
 
