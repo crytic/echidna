@@ -22,6 +22,7 @@ import Data.Text (Text, pack)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO (writeFile)
+import Data.Time (getCurrentTime, formatTime, defaultTimeLocale)
 import Data.Vector qualified as V
 import Data.Vector.Unboxed qualified as VU
 import HTMLEntities.Text qualified as HTML
@@ -67,7 +68,9 @@ saveCoverage
 saveCoverage fileType seed d sc cs covMap projectName = do
   let extension = coverageFileExtension fileType
       fn = d </> "covered." <> show seed <> extension
-      cc = ppCoveredCode fileType sc cs covMap projectName
+  currentTime <- getCurrentTime
+  let timestamp = T.pack $ formatTime defaultTimeLocale "%B %d, %Y at %H:%M:%S UTC" currentTime
+      cc = ppCoveredCode fileType sc cs covMap projectName timestamp
   createDirectoryIfMissing True d
   writeFile fn cc
 
@@ -77,8 +80,8 @@ coverageFileExtension Html = ".html"
 coverageFileExtension Txt = ".txt"
 
 -- | Pretty-print the covered code
-ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> FrozenCoverageMap -> Maybe Text -> Text
-ppCoveredCode fileType sc cs s projectName | null s = "Coverage map is empty"
+ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> FrozenCoverageMap -> Maybe Text -> Text -> Text
+ppCoveredCode fileType sc cs s projectName timestamp | null s = "Coverage map is empty"
   | otherwise =
   let
     -- List of covered lines during the fuzzing campaign
@@ -94,7 +97,7 @@ ppCoveredCode fileType sc cs s projectName | null s = "Coverage map is empty"
       in T.unlines (changeFileName srcPath : changeFileLines (V.toList marked))
     topHeader = case fileType of
       Lcov -> "TN:\n"
-      Html -> htmlTemplate allFiles runtimeLinesMap covLines projectName
+      Html -> htmlTemplate allFiles runtimeLinesMap covLines projectName timestamp
       Txt  -> ""
     -- ^ Text to add to top of the file
     changeFileName (T.pack -> fn) = case fileType of
@@ -256,13 +259,13 @@ makeRelativePath basePath filePath =
       | otherwise = Nothing
 
 -- | Generate modern HTML coverage report using mustache template
-htmlTemplate :: [(FilePath, V.Vector Text)] -> Map FilePath (S.Set Int) -> Map FilePath (Map Int [TxResult]) -> Maybe Text -> Text
-htmlTemplate allFiles runtimeLinesMap covLines projectName =
-  substituteValue coverageTemplate $ buildTemplateContext allFiles runtimeLinesMap covLines projectName
+htmlTemplate :: [(FilePath, V.Vector Text)] -> Map FilePath (S.Set Int) -> Map FilePath (Map Int [TxResult]) -> Maybe Text -> Text -> Text
+htmlTemplate allFiles runtimeLinesMap covLines projectName timestamp =
+  substituteValue coverageTemplate $ buildTemplateContext allFiles runtimeLinesMap covLines projectName timestamp
 
 -- | Build the context object for the mustache template
-buildTemplateContext :: [(FilePath, V.Vector Text)] -> Map FilePath (S.Set Int) -> Map FilePath (Map Int [TxResult]) -> Maybe Text -> Value
-buildTemplateContext allFiles runtimeLinesMap covLines projectName =
+buildTemplateContext :: [(FilePath, V.Vector Text)] -> Map FilePath (S.Set Int) -> Map FilePath (Map Int [TxResult]) -> Maybe Text -> Text -> Value
+buildTemplateContext allFiles runtimeLinesMap covLines projectName timestamp =
   let
     totalFiles = length allFiles
     (totalLines, totalCoveredLines, totalActiveLines) = calculateTotalStats allFiles runtimeLinesMap covLines
@@ -285,6 +288,7 @@ buildTemplateContext allFiles runtimeLinesMap covLines projectName =
     , ("totalActiveLines", toMustache $ T.pack $ show totalActiveLines)
     , ("coveragePercentage", toMustache $ T.pack $ printf "%.1f" (fromIntegral coveragePercentage :: Double))
     , ("coverageColor", toMustache $ getCoverageColorHsl coveragePercentage)
+    , ("timestamp", toMustache timestamp)
     , ("files", toMustache filesData)
     ]
 
