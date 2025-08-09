@@ -1,12 +1,12 @@
 module Tests.Symbolic (symbolicTests) where
 
 import Test.Tasty (TestTree, testGroup)
-import Common (testContract', solved, verified)
+import Common (testContract', solcV, solved, verified)
 import Echidna.Types.Worker (WorkerType(..))
 
 symbolicTests :: TestTree
 symbolicTests = testGroup "Symbolic tests"
-  [ testContract' "symbolic/verify.sol" Nothing Nothing (Just "symbolic/verify.yaml") True SymbolicWorker
+  [ testContract' "symbolic/verify.sol" Nothing (Just (>= solcV (0,8,0))) (Just "symbolic/verify.yaml") True SymbolicWorker
       [ ("simple passed", solved "simple")
       , ("array passed", solved "array")
       , ("negative passed", solved "negative")
