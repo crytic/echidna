@@ -271,9 +271,14 @@ function initializeFileSearch() {
     
     // Function to highlight text that matches the search term
     function highlightText(element, searchTerm) {
-        if (!searchTerm) return element.textContent;
-        
         const text = element.textContent;
+        
+        if (!searchTerm) {
+            // Clear any existing highlights
+            element.textContent = text;
+            return false;
+        }
+        
         const lowerText = text.toLowerCase();
         const lowerSearchTerm = searchTerm.toLowerCase();
         
@@ -298,48 +303,54 @@ function initializeFileSearch() {
         const fileTreeItems = document.querySelectorAll('.file-tree li');
         let hasVisibleItems = false;
         
-        fileTreeItems.forEach(item => {
-            const nameElement = item.querySelector('.file-name');
-            const isMatch = highlightText(nameElement, searchTerm);
-            
-            if (searchTerm === '') {
-                // If search is cleared, show everything
+        if (searchTerm === '') {
+            // If search is cleared, show everything and reset expansion state
+            fileTreeItems.forEach(item => {
+                const nameElement = item.querySelector('.file-name');
+                highlightText(nameElement, ''); // Clear highlights
                 item.style.display = '';
                 
                 // Only expand first level by default
-                if (item.classList.contains('directory') && !item.parentElement.classList.contains('file-tree-root')) {
-                    item.classList.remove('expanded');
+                if (item.classList.contains('directory')) {
+                    // Check if this is a direct child of the root file tree
+                    if (item.parentElement.id === 'file-tree-root') {
+                        item.classList.add('expanded');
+                    } else {
+                        item.classList.remove('expanded');
+                    }
                 }
-            } else if (isMatch) {
-                // Show this item if it matches
-                item.style.display = '';
+            });
+        } else {
+            // Two-pass filtering for search
+            
+            // First pass: hide everything and find matches
+            const matchingItems = [];
+            fileTreeItems.forEach(item => {
+                const nameElement = item.querySelector('.file-name');
+                const isMatch = highlightText(nameElement, searchTerm);
+                item.style.display = 'none'; // Hide everything initially
+                
+                if (isMatch) {
+                    matchingItems.push(item);
+                }
+            });
+            
+            // Second pass: show matching items and all their ancestor directories
+            matchingItems.forEach(item => {
                 hasVisibleItems = true;
                 
-                // Expand all parent directories
-                let parent = item.parentElement.closest('.directory');
+                // Show the matching item
+                item.style.display = '';
+                
+                // Show and expand all parent directories
+                let parent = item.parentElement.closest('li.directory');
                 while (parent) {
-                    parent.classList.add('expanded');
                     parent.style.display = '';
-                    parent = parent.parentElement.closest('.directory');
+                    parent.classList.add('expanded');
+                    parent = parent.parentElement.closest('li.directory');
                 }
-            } else {
-                // For directories, only hide if none of their children match
-                if (item.classList.contains('directory')) {
-                    const hasVisibleChildren = Array.from(item.querySelectorAll('li')).some(
-                        child => child.style.display !== 'none'
-                    );
-                    
-                    if (hasVisibleChildren) {
-                        item.style.display = '';
-                        hasVisibleItems = true;
-                    } else {
-                        item.style.display = 'none';
-                    }
-                } else {
-                    item.style.display = 'none';
-                }
-            }
-        });
+            });
+        }
         
         // Show/hide the "no results" message
         noResultsMessage.style.display = searchTerm && !hasVisibleItems ? 'block' : 'none';
