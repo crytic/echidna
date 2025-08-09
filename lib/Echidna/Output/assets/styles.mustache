@@ -32,7 +32,7 @@
 }
 
 body {
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: 'Roboto', -apple-system, sans-serif;
     font-size: 0.875rem;
     line-height: 1.5;
     color: var(--text);
@@ -84,7 +84,7 @@ header {
     align-items: center;
     justify-content: space-between;
     max-width: 1400px;
-    margin: 0 auto;
+    margin: 0;
     width: 100%;
 }
 
@@ -100,7 +100,7 @@ header {
     align-items: center;
     justify-content: center;
     height: 2.25rem;
-    padding: 0 1rem;
+    padding: 0 0.5rem;
     font-size: 0.875rem;
     font-weight: 500;
     border-radius: var(--radius);
@@ -121,7 +121,7 @@ header {
 
 .btn-sm {
     height: 2rem;
-    padding: 0 1rem;
+    padding: 0 0.5rem;
     font-size: 0.75rem;
 }
 
@@ -161,6 +161,7 @@ header {
     max-width: 500px;
     display: flex;
     flex-direction: column;
+    overflow-x: hidden; /* to not show horizontal scrollbar with resizer */
 }
 
 #file-explorer-resizer {
@@ -459,7 +460,7 @@ header {
 
 .code-coverage-table {
     border-collapse: collapse;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Roboto Mono', monospace;
     font-size: 0.8125rem;
     line-height: 1.5;
     tab-size: 4;
