@@ -3,11 +3,12 @@ contract C {
   uint time;
 
   function set() public {
-    time = block.timestamp;
+    if (time == 0)
+      time = block.timestamp;
   }
 
   function guess(uint x) public {
-    if (x <= time + 4 weeks && x >= time - 4 weeks )
+    if (time > 0 && x <= time + 4 weeks && x >= time - 4 weeks )
       state = true;
   }
 
