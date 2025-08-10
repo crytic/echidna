@@ -363,15 +363,6 @@ calculateTotalStats allFiles runtimeLinesMap covLines =
     totalActiveLines = sum $ map (\(_,_,a) -> a) allStats
   in (totalLines, totalCoveredLines, totalActiveLines)
 
-
--- | Format large numbers for display (e.g., 1234 → 1.2K)
-formatNumber :: Int -> Text
-formatNumber num
-  | num < 1000 = T.pack (show num)
-  | num < 1000000 = T.pack $ printf "%.1fK" (fromIntegral num / 1000.0 :: Double)
-  | num < 1000000000 = T.pack $ printf "%.1fM" (fromIntegral num / 1000000.0 :: Double)
-  | otherwise = T.pack $ printf "%.1fB" (fromIntegral num / 1000000000.0 :: Double)
-
 -- | Get HSL color based on coverage percentage
 getCoverageColorHsl :: Int -> Text
 getCoverageColorHsl percentage
