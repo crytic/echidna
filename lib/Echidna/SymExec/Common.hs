@@ -246,4 +246,4 @@ exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo con
   (_, models, partials) <- verifyInputs solvers veriOpts fetcher vm' (Just $ checkAssertions [0x1])
   let results = map fst models
   --liftIO $ mapM_ TIO.putStrLn partials
-  return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results, map formatPartial partials)
+  return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results, map (formatPartial . fst) partials)
