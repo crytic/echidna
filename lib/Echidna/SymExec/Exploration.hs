@@ -14,11 +14,12 @@ import Data.Maybe (fromJust)
 import Data.Set qualified as Set
 import Data.Text (unpack, Text)
 import Data.Text.Encoding (encodeUtf8)
+import Data.Text.IO qualified as TIO
 import Data.List.NonEmpty (fromList) 
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
-import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..), defaultVeriOpts)
+import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..), defaultVeriOpts, checkAssertions)
 import EVM.Types (abiKeccak, FunctionSelector, VMType(..))
 import qualified EVM.Types (VM(..))
 import Control.Monad.ST (RealWorld)
@@ -31,6 +32,7 @@ import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerEvent(..))
 import Echidna.Types.Random (rElem)
 import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, rpcFetcher, TxOrError(..), PartialsLogs)
+import Echidna.SymExec.Bounds (findApproximateBounds)
 import Echidna.Worker (pushWorkerEvent)
 
 -- | Uses symbolic execution to find transactions which would increase coverage.
@@ -82,8 +84,8 @@ filterTarget :: Maybe [Text] -> [FunctionSelector] -> Maybe Tx -> Method -> Bool
 filterTarget symExecTargets assertSigs tx method =
   case (symExecTargets, tx) of
     (Just ms, _)                                       -> method.name `elem` ms
-    (_,  Just (Tx { call = SolCall (methodName, _) })) -> (null assertSigs || methodSig `elem` assertSigs) && method.name == methodName && suitableForSymExec method
-    _                                                  -> (null assertSigs || methodSig `elem` assertSigs) && suitableForSymExec method
+    (_,  Just (Tx { call = SolCall (methodName, _) })) -> (null assertSigs) && method.name == methodName && suitableForSymExec method
+    _                                                  -> (null assertSigs) && suitableForSymExec method
  where methodSig = abiKeccak $ encodeUtf8 method.methodSignature
 
 exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SolcContract -> Method -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
@@ -112,11 +114,17 @@ exploreContract contract method vm = do
       -- For now, we will be exploring a single method at a time.
       -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.
       -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
-      res <- exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
+      res <- exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef (checkAssertions [0x1])
       liftIO $ putMVar resultChan res
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
     liftIO $ takeMVar doneChan
 
   threadId <- liftIO $ takeMVar threadIdChan
+  let boundsEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = Just 8, maxBufSize = 12, promiseNoReent = True, debug = False, dumpQueries = False, numCexFuzz = 10 } }
+  liftIO $ flip runReaderT boundsEnv $ withSolvers conf.campaignConf.symExecSMTSolver 1 1 (Just 1) $ \solvers -> do
+    liftIO $ flip runReaderT boundsEnv $ do
+      bounds <- findApproximateBounds method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
+      liftIO $ mapM_ TIO.putStrLn bounds
+
   pure (threadId, resultChan)
