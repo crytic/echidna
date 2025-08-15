@@ -203,7 +203,7 @@ You can get further information in the [`echidna` Homebrew Formula](https://form
 If you prefer to use a pre-built Docker container, check out our [docker
 package](https://github.com/orgs/crytic/packages?repo_name=echidna), which is
 auto-built via GitHub Actions. The `echidna` container is based on
-`ubuntu:focal` and it is meant to be a small yet flexible enough image to use
+`ubuntu:noble` and it is meant to be a small yet flexible enough image to use
 Echidna on. It provides a pre-built version of `echidna`, as well as
 `slither`, `crytic-compile`, `solc-select` and `nvm` under 200 MB.
 
