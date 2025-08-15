@@ -220,7 +220,8 @@ jobs:
           - ubuntu-latest
           - windows-latest
         solc: ${{
-            (github.event_name == 'push' && github.ref == 'refs/heads/master') &&
+            ((github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+             (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-all-solc'))) &&
             fromJSON('["0.4.25", "0.5.7", "0.6.12", "0.7.5", "0.8.10", "0.8.25"]') ||
             fromJSON('["0.8.10", "0.8.25"]')
           }}
