@@ -243,6 +243,7 @@ jobs:
           .github/scripts/install-solc.sh
           .github/scripts/install-crytic-compile.sh
           .github/scripts/install-z3.sh
+          .github/scripts/install-bitwuzla.sh
         env:
           HOST_OS: ${{ runner.os }}
           SOLC_VER: ${{ matrix.solc }}
