@@ -1,20 +1,24 @@
-FROM ubuntu:noble AS builder-echidna
-ENV LD_LIBRARY_PATH=/usr/local/lib PREFIX=/usr/local HOST_OS=Linux
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-suggests --no-install-recommends \
+FROM docker.io/benz0li/ghc-musl:9.8.4 AS builder-echidna
+# https://gitlab.com/benz0li/ghc-musl
+
+RUN apk upgrade --no-cache &&\
+    apk add --no-cache \
+        autoconf \
+        automake \
+        binutils-gold \
         cmake \
-        curl \
-        git \
-        libbz2-dev \
-        libgmp-dev \
-        libreadline-dev \
-        libsecp256k1-dev \
-        libssl-dev \
-        software-properties-common \
-        sudo
-RUN curl -sSL https://get.haskellstack.org/ | sh
+        libtool
+
+RUN mkdir -p /etc/stack &&\
+    { echo "system-ghc: true" ;\
+      echo "install-ghc: false" ;\
+      echo "skip-ghc-check: true" ;\
+    } >> /etc/stack/config.yaml
+
+ENV LD_LIBRARY_PATH=/usr/local/lib PREFIX=/usr/local HOST_OS=Linux
 COPY . /echidna/
 WORKDIR /echidna
+RUN .github/scripts/install-libsecp256k1.sh
 RUN .github/scripts/install-libff.sh
 RUN stack upgrade && stack setup && stack install --flag echidna:static --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
 
