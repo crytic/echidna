@@ -1,0 +1,5 @@
+testMode: assertion
+symExec: true
+symExecSMTSolver: bitwuzla
+workers: 0
+seqLen: 1
