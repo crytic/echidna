@@ -256,6 +256,8 @@ jobs:
 
       - name: Test
         run: |
+          export PATH="$PATH:$HOME/.local/bin"
           solc-select use ${{ matrix.solc }}
           chmod +x echidna-testsuite*
           ./echidna-testsuite*
+        shell: bash
