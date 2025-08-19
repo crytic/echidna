@@ -8,7 +8,7 @@ import Echidna.Types.Worker (WorkerType(..))
 
 valuesTests :: TestTree
 valuesTests = testGroup "Value extraction tests"
-  [ 
+  [
     testContract "values/nearbyMining.sol" Nothing
       [ ("echidna_findNearby passed", solved "echidna_findNearby") ]
     , testContract' "values/smallValues.sol" Nothing Nothing (Just "coverage/test.yaml") False FuzzWorker
@@ -46,6 +46,8 @@ valuesTests = testGroup "Value extraction tests"
     , testContract' "values/contract.sol" (Just "Test") Nothing (Just "values/contract.yaml") False FuzzWorker
       [ ("verify_first passed",                    solved      "verify_first")
       , ("verify_later passed",                    solved      "verify_later") ]
+    , testContract' "values/struct.sol"      Nothing Nothing (Just "values/contract.yaml") False FuzzWorker
+      [ ("getItem passed",                   solved      "getItem") ]
     , testContract' "values/events.sol" Nothing Nothing (Just "values/events.yaml") False FuzzWorker
       [ ("check passed",                           solved      "check") ]
   ]
