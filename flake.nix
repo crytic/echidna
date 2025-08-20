@@ -7,17 +7,13 @@
       url = "github:edolstra/flake-compat";
       flake = false;
     };
-    nix-bundle-exe = {
-      url = "github:3noch/nix-bundle-exe";
-      flake = false;
-    };
     solc-pkgs = {
       url = "github:hellwolf/solc.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, nix-bundle-exe, solc-pkgs, foundry, ... }:
+  outputs = { self, nixpkgs, flake-utils, solc-pkgs, foundry, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
