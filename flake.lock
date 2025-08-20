@@ -73,33 +73,17 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1724145005,
-        "narHash": "sha256-fTvalF9fSKWJj/HJWtHQ8DrMR1nBH1NV1w/x+O4M/Zw=",
+        "lastModified": 1754989872,
+        "narHash": "sha256-RTl+0GmWIoQium3VN+HjHl2wbZjnRLz5kawo6PMpOYc=",
         "owner": "shazow",
         "repo": "foundry.nix",
-        "rev": "47f8ae49275eeff9bf0526d45e3c1f76723bb5d3",
+        "rev": "6eebe42cec5740c1fbcf2c32ce49f2f8d0e992a9",
         "type": "github"
       },
       "original": {
         "owner": "shazow",
+        "ref": "stable",
         "repo": "foundry.nix",
-        "rev": "47f8ae49275eeff9bf0526d45e3c1f76723bb5d3",
-        "type": "github"
-      }
-    },
-    "nix-bundle-exe": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1727401894,
-        "narHash": "sha256-NKdglYdwN4M7/UOZ8Ml3fuJT1MYXAb6aU4ccU920BjM=",
-        "owner": "3noch",
-        "repo": "nix-bundle-exe",
-        "rev": "7f61fe91a73119e1e39d821f0d215d6186d01363",
-        "type": "github"
-      },
-      "original": {
-        "owner": "3noch",
-        "repo": "nix-bundle-exe",
         "type": "github"
       }
     },
@@ -119,11 +103,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1750898778,
-        "narHash": "sha256-DXI7+SKDlTyA+C4zp0LoIywQ+BfdH5m4nkuxbWgV4UU=",
+        "lastModified": 1755577059,
+        "narHash": "sha256-5hYhxIpco8xR+IpP3uU56+4+Bw7mf7EMyxS/HqUYHQY=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "322d8a3c6940039f7cff179a8b09c5d7ca06359d",
+        "rev": "97eb7ee0da337d385ab015a23e15022c865be75c",
         "type": "github"
       },
       "original": {
@@ -138,7 +122,6 @@
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
         "foundry": "foundry",
-        "nix-bundle-exe": "nix-bundle-exe",
         "nixpkgs": "nixpkgs_2",
         "solc-pkgs": "solc-pkgs"
       }

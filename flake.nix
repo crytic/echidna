@@ -2,7 +2,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    foundry.url = "github:shazow/foundry.nix/47f8ae49275eeff9bf0526d45e3c1f76723bb5d3";
+    foundry.url = "github:shazow/foundry.nix/stable";
     flake-compat = {
       url = "github:edolstra/flake-compat";
       flake = false;
