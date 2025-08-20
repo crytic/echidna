@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
@@ -47,11 +48,27 @@ import Echidna.Types.Solidity
 import Echidna.Types.Test (TestMode, EchidnaTest(..))
 import Echidna.UI
 import Echidna.UI.Report (ppFailWithTraces, ppTestName)
-import Echidna.Utility (measureIO)
+import Echidna.Utility (includeFile, measureIO)
 
 main :: IO ()
 main = withUtf8 $ withCP65001 $ do
-  opts@Options{..} <- execParser optsParser
+  cli <- execParser cliParser
+  case cli of
+    InitCommand -> do
+      let config = "echidna.yaml"
+      configExists <- doesFileExist config
+      if configExists
+        then do
+          putStrLn $ "Config file " <> config <> " already exists."
+          exitWith (ExitFailure 1)
+        else do
+          writeFile config $(includeFile "tests/solidity/basic/default.yaml")
+          putStrLn $ "Sample config file written to " <> config
+    FuzzCommand fuzzOpts ->
+      fuzz fuzzOpts
+
+fuzz :: FuzzOptions -> IO ()
+fuzz opts@FuzzOptions {..} = do
   EConfigWithUsage loadedCfg ks _ <-
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
   cfg <- overrideConfig loadedCfg opts
@@ -118,7 +135,11 @@ main = withUtf8 $ withCP65001 $ do
 
   if isSuccessful tests then exitSuccess else exitWith (ExitFailure 1)
 
-data Options = Options
+data CLI
+  = InitCommand
+    | FuzzCommand FuzzOptions
+
+data FuzzOptions = FuzzOptions
   { cliFilePath         :: NE.NonEmpty FilePath
   , cliWorkers          :: Maybe Word8
   , cliServerPort       :: Maybe Word16
@@ -147,8 +168,8 @@ data Options = Options
   , cliSymExecNSolvers  :: Maybe Int
   }
 
-optsParser :: ParserInfo Options
-optsParser = info (helper <*> versionOption <*> options) $ fullDesc
+cliParser :: ParserInfo CLI
+cliParser = info (helper <*> versionOption <*> commands) $ fullDesc
   <> progDesc "EVM property-based testing framework"
   <> header "Echidna"
 
@@ -158,8 +179,15 @@ bool = maybeReader (f . map toLower) where
   f "false" = Just False
   f _ = Nothing
 
-options :: Parser Options
-options = Options . NE.fromList
+  where
+  commands = subparser $
+    command "init" (info (pure InitCommand)
+            (progDesc "Write a sample config file to echidna.yaml"))
+    <> command "fuzz" (info (FuzzCommand <$> fuzzOptions)
+               (progDesc "Run fuzzing"))
+
+fuzzOptions :: Parser FuzzOptions
+fuzzOptions = FuzzOptions
   <$> some (argument str (metavar "FILES"
     <> help "Solidity files to analyze"))
   <*> optional (option auto $ long "workers"
@@ -240,8 +268,8 @@ versionOption = infoOption
                   ("Echidna " ++ showVersion version)
                   (long "version" <> help "Show version")
 
-overrideConfig :: EConfig -> Options -> IO EConfig
-overrideConfig config Options{..} = do
+overrideConfig :: EConfig -> FuzzOptions -> IO EConfig
+overrideConfig config FuzzOptions{..} = do
   envRpcUrl <- Onchain.rpcUrlEnv
   envRpcBlock <- Onchain.rpcBlockEnv
   envEtherscanApiKey <- Onchain.etherscanApiKey
