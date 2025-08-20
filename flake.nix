@@ -2,13 +2,9 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    foundry.url = "github:shazow/foundry.nix/47f8ae49275eeff9bf0526d45e3c1f76723bb5d3";
+    foundry.url = "github:shazow/foundry.nix/stable";
     flake-compat = {
       url = "github:edolstra/flake-compat";
-      flake = false;
-    };
-    nix-bundle-exe = {
-      url = "github:3noch/nix-bundle-exe";
       flake = false;
     };
     solc-pkgs = {
@@ -17,12 +13,12 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, nix-bundle-exe, solc-pkgs, foundry, ... }:
+  outputs = { self, nixpkgs, flake-utils, solc-pkgs, foundry, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [solc-pkgs.overlay];
+          overlays = [solc-pkgs.overlay foundry.overlay];
         };
 
         # prefer musl on Linux, static glibc + threading does not work properly
@@ -169,7 +165,7 @@
             packages = [
               (echidna pkgs)
               slither-analyzer
-              foundry.defaultPackage.${system}
+              foundry-bin
               bitwuzla
               cvc5
               z3
