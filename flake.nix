@@ -170,6 +170,8 @@
               (echidna pkgs)
               slither-analyzer
               foundry.defaultPackage.${system}
+              bitwuzla
+              cvc5
               z3
             ];
           };
