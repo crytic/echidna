@@ -1,5 +1,5 @@
-resolver: lts-23.21
-# matching https://github.com/NixOS/nixpkgs/blob/322d8a3c6940039f7cff179a8b09c5d7ca06359d/pkgs/development/haskell-modules/configuration-hackage2nix/stackage.yaml#L1
+resolver: lts-23.24
+# matching https://github.com/NixOS/nixpkgs/blob/97eb7ee0da337d385ab015a23e15022c865be75c/pkgs/development/haskell-modules/configuration-hackage2nix/stackage.yaml#L1
 
 packages:
 - '.'
