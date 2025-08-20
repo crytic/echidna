@@ -22,7 +22,7 @@
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [solc-pkgs.overlay];
+          overlays = [solc-pkgs.overlay foundry.overlay];
         };
 
         # prefer musl on Linux, static glibc + threading does not work properly
@@ -169,7 +169,7 @@
             packages = [
               (echidna pkgs)
               slither-analyzer
-              foundry.defaultPackage.${system}
+              foundry-bin
               bitwuzla
               cvc5
               z3
