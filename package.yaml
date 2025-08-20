@@ -79,6 +79,7 @@ library:
     - word-wrap
     - xml-conduit
     - yaml
+    - mcp-server
 
 executables:
   echidna:

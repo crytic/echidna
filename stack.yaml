@@ -3,7 +3,7 @@ resolver: lts-23.21
 
 packages:
 - '.'
-
+- './haskell-mcp-server'
 extra-deps:
 - git: https://github.com/ethereum/hevm.git
   commit: 9982c580ed19b88ebab9744d29d940fd2f0bd8c6
