@@ -12,7 +12,7 @@ import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..))
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Tx (TxConf(..))
 import Echidna.Config (defaultConfig, parseConfig)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, isNothing)
 
 configTests :: TestTree
 configTests = testGroup "Configuration tests" $
@@ -35,11 +35,11 @@ configTests = testGroup "Configuration tests" $
   , testCase "coverageDir fallback to corpusDir" $ do
       config <- (.econfig) <$> parseConfig "basic/corpus-fallback-test.yaml"
       assertBool "corpusDir should be set" $ config.campaignConf.corpusDir == Just "test-corpus"
-      assertBool "coverageDir should not be set" $ config.campaignConf.coverageDir == Nothing
+      assertBool "coverageDir should not be set" $ isNothing (config.campaignConf.coverageDir)
   , testCase "corpusDir defaults to Nothing" $
-      assertBool "" $ defaultConfig.campaignConf.corpusDir == Nothing
+      assertBool "" $ isNothing (defaultConfig.campaignConf.corpusDir)
   , testCase "coverageDir defaults to Nothing" $
-      assertBool "" $ defaultConfig.campaignConf.coverageDir == Nothing
+      assertBool "" $ isNothing (defaultConfig.campaignConf.coverageDir)
   , testCase "default.yaml" $ do
       EConfigWithUsage _ bad unset <- parseConfig "basic/default.yaml"
       assertBool ("unused options: " ++ show bad) $ null bad
