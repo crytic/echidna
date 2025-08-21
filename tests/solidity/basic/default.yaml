@@ -11,9 +11,9 @@ psender: "0x10000"
 #prefix is the prefix for Boolean functions that are properties to be checked
 prefix: "echidna_"
 #propMaxGas defines gas cost at which a property fails
-propMaxGas: 8000030
+propMaxGas: 12500000
 #testMaxGas is a gas limit; does not cause failure, but terminates sequence
-testMaxGas: 8000030
+testMaxGas: 12500000
 #maxGasprice is the maximum gas price
 maxGasprice: 0
 #testLimit is the number of test sequences to run
@@ -25,9 +25,10 @@ seqLen: 100
 #shrinkLimit determines how much effort is spent shrinking failing sequences
 shrinkLimit: 5000
 #coverage controls coverage guided testing
-coverage: false
+coverage: true
 #format can be "text" or "json" for different output (human or machine readable)
-format: "text"
+#default is interactive if running on an interactive tty or text mode if not
+format: null
 #contractAddr is the address of the contract itself
 contractAddr: "0x00a329c0648769a73afac7f9381e08fb43dbea72"
 #deployer is address of the contract deployer (who often is privileged owner, etc.)
@@ -103,7 +104,7 @@ symExecNSolvers: 1
 symExecTimeout: 30
 # Number of times we may revisit a particular branching point
 # only relevant if symExec is true
-symExecMaxIters: 10
+symExecMaxIters: 5
 # Number of times we may revisit a particular branching point before we consult the smt solver to check reachability
 # only relevant if symExec is true
 symExecAskSMTIters: 1
