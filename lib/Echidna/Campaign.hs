@@ -29,6 +29,8 @@ import Data.Time (LocalTime)
 import Data.Vector qualified as V
 import System.Random (mkStdGen)
 
+import Echidna.MCP (runMCPServer)
+
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
 import EVM.Dapp (DappInfo(..))
@@ -57,7 +59,7 @@ import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..))
 import Echidna.Types.Worker
-import Echidna.Worker 
+import Echidna.Worker
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -156,7 +158,7 @@ runSymWorker callback vm dict workerId _ name = do
     shrinkAndRandomlyExplore transactions (10 :: Int)
   listenerFunc _ = pure ()
 
-  shrinkAndRandomlyExplore _ 0 = do 
+  shrinkAndRandomlyExplore _ 0 = do
     testRefs <- asks (.testRefs)
     tests <- liftIO $ traverse readIORef testRefs
     CampaignConf{shrinkLimit} <- asks (.cfg.campaignConf)
@@ -166,7 +168,7 @@ runSymWorker callback vm dict workerId _ name = do
     testRefs <- asks (.testRefs)
     tests <- liftIO $ traverse readIORef testRefs
     CampaignConf{stopOnFail, shrinkLimit} <- asks (.cfg.campaignConf)
-    if stopOnFail && any final tests then 
+    if stopOnFail && any final tests then
       lift callback -- >> pure FastFailed
     else if any shrinkable tests then do
       shrinkLoop shrinkLimit
@@ -191,7 +193,7 @@ runSymWorker callback vm dict workerId _ name = do
 
 
   shrinkLoop 0 = return ()
-  shrinkLoop n = do 
+  shrinkLoop n = do
     lift callback
     updateTests $ \test -> do
       if test.workerId == Just workerId then
@@ -235,7 +237,7 @@ runSymWorker callback vm dict workerId _ name = do
     contract <- chooseContract cs name
     failedTests <- findFailedTests
     let failedTestSignatures = map getAssertionSignature failedTests
-    case tx of 
+    case tx of
       Nothing -> getRandomTargetMethod contract conf.campaignConf.symExecTargets failedTestSignatures >>= \case
         Nothing -> do
           return ()
@@ -245,7 +247,7 @@ runSymWorker callback vm dict workerId _ name = do
           return ()
         Just method -> do
           exploreAndVerify contract method vm' txsBase
-    
+
   exploreAndVerify contract method vm' txsBase = do
     (threadId, symTxsChan) <- exploreContract contract method vm'
     modify' (\ws -> ws { runningThreads = [threadId] })
@@ -685,6 +687,12 @@ spawnListener handler = do
   stopVar <- liftIO newEmptyMVar
   liftIO $ void $ forkFinally (listenerLoop handler chan nworkers) (const $ putMVar stopVar ())
   pure stopVar
+
+spawnMCPServer :: (MonadReader Env m, MonadIO m) => m ()
+spawnMCPServer = do
+  env <- ask
+  forM_ env.cfg.campaignConf.mcpPort $ \port ->
+    liftIO $ void $ forkIO (runMCPServer env (fromIntegral port))
 
 -- | Repeatedly run 'handler' on events from 'chan'.
 -- Stops once 'workersAlive' workers stop.

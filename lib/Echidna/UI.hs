@@ -32,7 +32,7 @@ import UnliftIO.Concurrent hiding (killThread, threadDelay)
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
-import Echidna.Campaign (runWorker, spawnListener)
+import Echidna.Campaign (runWorker, spawnListener, spawnMCPServer)
 import Echidna.Output.Corpus (saveCorpusEvent)
 import Echidna.Output.JSON qualified
 import Echidna.Server (runSSEServer)
@@ -43,7 +43,7 @@ import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
-import Echidna.Types.Worker 
+import Echidna.Types.Worker
 import Echidna.UI.Report
 import Echidna.UI.Widgets
 import Echidna.Utility (timePrefix, getTimestamp)
@@ -93,6 +93,8 @@ ui vm dict initialCorpus cliSelectedContract = do
     corpusChunks = chunksOf chunkSize initialCorpus ++ repeat []
 
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
+
+  spawnMCPServer
 
   workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
     uncurry (spawnWorker env perWorkerTestLimit)

@@ -99,6 +99,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "coverageFormats" ..!= [Txt,Html,Lcov]
         <*> v ..:? "workers"
         <*> v ..:? "server"
+        <*> v ..:? "mcp"
         <*> v ..:? "symExec"            ..!= False
         <*> smtSolver
         <*> v ..:? "symExecTargets"     ..!= Nothing
