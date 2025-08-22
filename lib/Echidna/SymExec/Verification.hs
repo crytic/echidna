@@ -43,7 +43,7 @@ verifyMethod method contract vm = do
   let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
   let veriOpts = defaultVeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
-  let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = False, debug = isNonInteractive, numCexFuzz = 100 } }
+  let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, numCexFuzz = 100 } }
   pushWorkerEvent $ SymExecLog ("Verifying " <> (show method.name))
   
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
