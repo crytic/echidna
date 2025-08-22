@@ -31,6 +31,8 @@ data CampaignConf = CampaignConf
     -- ^ Frequency for the use of dictionary values in the random transactions
   , corpusDir          :: Maybe FilePath
     -- ^ Directory to load and save lists of transactions
+  , coverageDir        :: Maybe FilePath
+    -- ^ Directory to save coverage reports
   , mutConsts          :: MutationConsts Integer
     -- ^ Mutation constants for fuzzing
   , coverageFormats    :: [CoverageFileType]

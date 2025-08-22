@@ -1,0 +1,7 @@
+# Test configuration for coverage directory functionality
+testMode: "property"
+testLimit: 100
+corpusDir: "corpus-data"
+coverageDir: "coverage-reports"
+coverageFormats: ["txt", "html"]
+quiet: true

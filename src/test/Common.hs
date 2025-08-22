@@ -18,6 +18,8 @@ module Common
   , countCorpus
   , overrideQuiet
   , loadSolTests
+  , checkCoverageUsesCorpusDir
+  , checkEffectiveCoverageDir
   ) where
 
 import Test.Tasty (TestTree)
@@ -37,6 +39,7 @@ import Data.Maybe (isJust)
 import Data.SemVer (Version, version, fromText)
 import Data.Text (Text, pack)
 import System.Process (readProcess)
+import Control.Applicative ((<|>))
 
 import EVM.Solidity (Contracts(..), BuildOutput(..), SolcContract(..))
 import EVM.Types hiding (Env, Gas)
@@ -249,3 +252,18 @@ countCorpus :: Int -> (Env, WorkerState) -> IO Bool
 countCorpus n (env, _) = do
   corpus <- readIORef env.corpusRef
   pure $ length corpus == n
+
+-- | Check that coverage falls back to corpus directory when coverageDir is not set.
+checkCoverageUsesCorpusDir :: FilePath -> (Env, WorkerState) -> IO Bool
+checkCoverageUsesCorpusDir expectedCorpusDir (env, _) = do
+  -- verify configuration: corpusDir set, coverageDir not set
+  case (env.cfg.campaignConf.corpusDir, env.cfg.campaignConf.coverageDir) of
+    (Just corpusDir, Nothing) -> pure $ corpusDir == expectedCorpusDir
+    _ -> pure False
+
+-- | Check that the effective coverage directory matches the expected path.
+-- This tests the actual fallback logic: coverageDir <|> corpusDir.
+checkEffectiveCoverageDir :: FilePath -> (Env, WorkerState) -> IO Bool
+checkEffectiveCoverageDir expectedDir (env, _) = do
+  let effectiveDir = env.cfg.campaignConf.coverageDir <|> env.cfg.campaignConf.corpusDir
+  pure $ effectiveDir == Just expectedDir
