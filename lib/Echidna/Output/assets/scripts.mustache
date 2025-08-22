@@ -1,0 +1,395 @@
+// Initialize the application when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    initSourceFileExpansion();
+    initializeFileTree();
+    initResizer();
+});
+
+// Initialize source file expansion behavior
+function initSourceFileExpansion() {
+    document.querySelectorAll('.source-file').forEach(file => {
+        const header = file.querySelector('.source-file-header');
+        header.addEventListener('click', () => {
+            file.classList.toggle('expanded');
+            const chevron = header.querySelector('.chevron-icon');
+            chevron.style.transform = file.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0)';
+        });
+    });
+}
+
+// Initialize the resizer functionality
+function initResizer() {
+    const fileExplorer = document.getElementById('file-explorer');
+    const resizer = document.getElementById('file-explorer-resizer');
+    let startX, startWidth;
+
+    // Handle mousedown on the resizer
+    resizer.addEventListener('mousedown', e => {
+        startX = e.clientX;
+        startWidth = parseInt(window.getComputedStyle(fileExplorer).width, 10);
+
+        // Add event listeners for resizing
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+
+        // Prevent text selection during resize
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'col-resize';
+    });
+
+    // Handle mousemove for resizing
+    function handleMouseMove(e) {
+        const newWidth = startWidth + (e.clientX - startX);
+
+        // Apply width constraints
+        if (newWidth >= 200 && newWidth <= 500) {
+            fileExplorer.style.width = newWidth + 'px';
+            fileExplorer.style.flex = `0 0 ${newWidth}px`;
+        }
+    }
+
+    // Handle mouseup to end resizing
+    function handleMouseUp() {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+    }
+}
+
+// Helper function to get color based on coverage percentage
+function getCoverageColor(percentage) {
+    return percentage < 50
+        ? `hsl(${percentage * 1.2}, 90%, 50%)`
+        : `hsl(${60 + (percentage - 50) * 1.2}, 90%, 45%)`;
+}
+
+// Helper function for transparent background with coverage color
+function getCoverageColorAlpha(percentage) {
+    return percentage < 50
+        ? `hsla(${percentage * 1.2}, 90%, 50%, 0.15)`
+        : `hsla(${60 + (percentage - 50) * 1.2}, 90%, 45%, 0.15)`;
+}
+
+// Build file tree structure from file paths
+function buildFileTree() {
+    const root = { name: '', type: 'directory', children: {}, path: '' };
+    const sourceFiles = document.getElementsByClassName("source-file");
+
+    // First pass: build the tree structure
+    for (let i = 0; i < sourceFiles.length; i++) {
+        const filePath = sourceFiles[i].dataset.filePath;
+        const pathParts = filePath.split(/[\/\\]+/);
+        let current = root;
+        let currentPath = '';
+
+        for (let j = 0; j < pathParts.length; j++) {
+            const part = pathParts[j];
+            if (part === '') continue;
+
+            currentPath += (currentPath ? '/' : '') + part;
+
+            if (j === pathParts.length - 1) {
+                // This is a file
+                current.children[part] = {
+                    name: part,
+                    type: 'file',
+                    path: filePath,
+                    element: sourceFiles[i],
+                    coveredLines: parseInt(sourceFiles[i].dataset.linesCovered),
+                    activeLines: parseInt(sourceFiles[i].dataset.linesActive)
+                };
+            } else {
+                // This is a directory
+                if (!current.children[part]) {
+                    current.children[part] = {
+                        name: part,
+                        type: 'directory',
+                        children: {},
+                        path: currentPath
+                    };
+                }
+                current = current.children[part];
+            }
+        }
+    }
+
+    // Second pass: calculate directory coverage
+    calculateDirectoryCoverage(root);
+
+    return root;
+}
+
+// Calculate coverage for directories by aggregating file coverage
+function calculateDirectoryCoverage(node) {
+    if (node.type === 'file') {
+        return {
+            coveredLines: node.coveredLines,
+            activeLines: node.activeLines
+        };
+    }
+
+    let totalCovered = 0;
+    let totalActive = 0;
+
+    for (const childName in node.children) {
+        const child = node.children[childName];
+        const { coveredLines, activeLines } = calculateDirectoryCoverage(child);
+        totalCovered += coveredLines;
+        totalActive += activeLines;
+    }
+
+    node.coveredLines = totalCovered;
+    node.activeLines = totalActive;
+
+    return {
+        coveredLines: totalCovered,
+        activeLines: totalActive
+    };
+}
+
+// Render the file tree to the DOM
+function renderFileTree(node, parentElement, isRoot = false) {
+    const list = isRoot ? parentElement : document.createElement('ul');
+
+    // Sort children: directories first, then files, both alphabetically
+    const sortedChildren = Object.values(node.children).sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+        return a.name.localeCompare(b.name);
+    });
+
+    for (const child of sortedChildren) {
+        const li = document.createElement('li');
+        li.className = child.type;
+
+        // Create item container
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'file-item';
+
+        // Create toggle button for directories
+        const toggle = document.createElement('span');
+        toggle.className = 'file-toggle';
+        itemDiv.appendChild(toggle);
+
+        // Create file/folder icon
+        const icon = document.createElement('span');
+        icon.className = 'file-icon';
+        itemDiv.appendChild(icon);
+
+        // Create name span
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'file-name';
+        nameSpan.textContent = child.name;
+        itemDiv.appendChild(nameSpan);
+
+        // Add coverage indicator
+        if (child.activeLines > 0) {
+            const coverage = document.createElement('span');
+            coverage.className = 'file-coverage';
+            const percentage = Math.round((child.coveredLines / child.activeLines) * 100);
+            coverage.style.backgroundColor = getCoverageColor(percentage);
+            coverage.title = `${child.coveredLines}/${child.activeLines} lines covered (${percentage}%)`;
+            itemDiv.appendChild(coverage);
+        }
+
+        li.appendChild(itemDiv);
+
+        // Handle click events
+        if (child.type === 'directory') {
+            toggle.addEventListener('click', e => {
+                e.stopPropagation();
+                li.classList.toggle('expanded');
+            });
+
+            itemDiv.addEventListener('click', () => {
+                li.classList.toggle('expanded');
+            });
+
+            // Recursively render children
+            renderFileTree(child, li);
+        } else {
+            // Add click handler for files
+            itemDiv.addEventListener('click', () => {
+                // Deactivate all other items
+                document.querySelectorAll('.file-item.active').forEach(el => {
+                    el.classList.remove('active');
+                });
+
+                // Activate this item
+                itemDiv.classList.add('active');
+
+                // Navigate to the file
+                const fileElement = child.element;
+                fileElement.scrollIntoView({ behavior: 'smooth' });
+
+                // Expand the file if it's collapsed
+                if (!fileElement.classList.contains('expanded')) {
+                    fileElement.querySelector('.source-file-header').click();
+                }
+            });
+        }
+
+        list.appendChild(li);
+    }
+
+    if (!isRoot) {
+        parentElement.appendChild(list);
+    }
+}
+
+// Initialize the file tree
+function initializeFileTree() {
+    const fileTreeRoot = document.getElementById('file-tree-root');
+    const fileTree = buildFileTree();
+    renderFileTree(fileTree, fileTreeRoot, true);
+
+    // Expand the first level directories by default
+    document.querySelectorAll('#file-tree-root > li.directory').forEach(dir => {
+        dir.classList.add('expanded');
+    });
+
+    // Initialize search functionality
+    initializeFileSearch();
+}
+
+// Initialize file search functionality
+function initializeFileSearch() {
+    const searchInput = document.getElementById('file-search-input');
+    const clearButton = document.getElementById('file-search-clear');
+    const noResultsMessage = document.getElementById('search-no-results');
+
+    // Debounce function to limit how often the search is performed during typing
+    function debounce(func, delay) {
+        let timeout;
+        return function() {
+            const context = this;
+            const args = arguments;
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(context, args), delay);
+        };
+    }
+
+    // Function to highlight text that matches the search term
+    function highlightText(element, searchTerm) {
+        const text = element.textContent;
+
+        if (!searchTerm) {
+            // Clear any existing highlights
+            element.textContent = text;
+            return false;
+        }
+
+        const lowerText = text.toLowerCase();
+        const lowerSearchTerm = searchTerm.toLowerCase();
+
+        if (lowerText.includes(lowerSearchTerm)) {
+            const startIndex = lowerText.indexOf(lowerSearchTerm);
+            const endIndex = startIndex + lowerSearchTerm.length;
+
+            const beforeMatch = text.substring(0, startIndex);
+            const match = text.substring(startIndex, endIndex);
+            const afterMatch = text.substring(endIndex);
+
+            element.innerHTML = beforeMatch + '<span class="search-highlight">' + match + '</span>' + afterMatch;
+            return true;
+        }
+
+        element.textContent = text;
+        return false;
+    }
+
+    // Function to filter the file tree based on search term
+    function filterFileTree(searchTerm) {
+        const fileTreeItems = document.querySelectorAll('.file-tree li');
+        let hasVisibleItems = false;
+
+        if (searchTerm === '') {
+            // If search is cleared, show everything and reset expansion state
+            fileTreeItems.forEach(item => {
+                const nameElement = item.querySelector('.file-name');
+                highlightText(nameElement, ''); // Clear highlights
+                item.style.display = '';
+
+                // Only expand first level by default
+                if (item.classList.contains('directory')) {
+                    // Check if this is a direct child of the root file tree
+                    if (item.parentElement.id === 'file-tree-root') {
+                        item.classList.add('expanded');
+                    } else {
+                        item.classList.remove('expanded');
+                    }
+                }
+            });
+        } else {
+            // Two-pass filtering for search
+
+            // First pass: hide everything and find matches
+            const matchingItems = [];
+            fileTreeItems.forEach(item => {
+                const nameElement = item.querySelector('.file-name');
+                const isMatch = highlightText(nameElement, searchTerm);
+                item.style.display = 'none'; // Hide everything initially
+
+                if (isMatch) {
+                    matchingItems.push(item);
+                }
+            });
+
+            // Second pass: show matching items and all their ancestor directories
+            matchingItems.forEach(item => {
+                hasVisibleItems = true;
+
+                // Show the matching item
+                item.style.display = '';
+
+                // Show and expand all parent directories
+                let parent = item.parentElement.closest('li.directory');
+                while (parent) {
+                    parent.style.display = '';
+                    parent.classList.add('expanded');
+                    parent = parent.parentElement.closest('li.directory');
+                }
+            });
+        }
+
+        // Show/hide the "no results" message
+        noResultsMessage.style.display = searchTerm && !hasVisibleItems ? 'block' : 'none';
+    }
+
+    // Debounced search function to avoid excessive filtering while typing
+    const debouncedSearch = debounce(filterFileTree, 200);
+
+    // Search input event
+    searchInput.addEventListener('input', function() {
+        debouncedSearch(this.value.trim());
+    });
+
+    // Clear button event
+    clearButton.addEventListener('click', function() {
+        searchInput.value = '';
+        filterFileTree('');
+        searchInput.focus();
+    });
+}
+
+// Button click handler for expanding/collapsing all files
+function setAllSourceFilesCollapsed(collapsed) {
+    document.querySelectorAll('.source-file').forEach(file => {
+        if ((collapsed && file.classList.contains('expanded')) ||
+            (!collapsed && !file.classList.contains('expanded'))) {
+            file.querySelector('.source-file-header').click();
+        }
+    });
+}
+
+// Button click handler for expanding/collapsing empty files
+function setEmptySourceFilesCollapsed(collapsed) {
+    document.querySelectorAll('.source-file').forEach(file => {
+        if (parseInt(file.dataset.linesActive) <= 0) {
+            if ((collapsed && file.classList.contains('expanded')) ||
+                (!collapsed && !file.classList.contains('expanded'))) {
+                file.querySelector('.source-file-header').click();
+            }
+        }
+    });
+}
