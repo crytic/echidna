@@ -44,7 +44,7 @@ import Echidna.Solidity (chooseContract)
 import Echidna.SymExec.Common (extractTxs, extractErrors)
 import Echidna.SymExec.Symbolic (forceAddr)
 import Echidna.SymExec.Exploration (exploreContract, getTargetMethodFromTx, getRandomTargetMethod)
-import Echidna.SymExec.Verification (verifyMethod)
+import Echidna.SymExec.Verification (verifyMethod, isSuitableToVerifyMethod)
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types.Campaign
@@ -274,7 +274,12 @@ runSymWorker callback vm dict workerId _ name = do
     let cs = Map.elems dapp.solcByName
     contract <- chooseContract cs name
     let allMethods = contract.abiMap
-    mapM_ (symExecMethod contract) allMethods
+    mapM_ (\method -> do
+           isSuitable <- isSuitableToVerifyMethod contract method
+           if isSuitable 
+            then (symExecMethod contract method) 
+            else pushWorkerEvent $ SymExecError ("Skipped verification of method " <> unpack method.methodSignature)
+          ) allMethods
 
   symExecMethod contract method = do
     lift callback

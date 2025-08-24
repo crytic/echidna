@@ -5,8 +5,9 @@ import Control.Concurrent (ThreadId, forkIO)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Reader (MonadReader, asks, runReaderT, liftIO)
+import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
 import Control.Monad.State.Strict (MonadState)
+import Data.Map (assocs)
 import Data.Maybe (fromJust)
 import Data.Set qualified as Set
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
@@ -19,10 +20,24 @@ import Control.Monad.ST (RealWorld)
 
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
+import Echidna.Types.World (World(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Worker (WorkerEvent(..))
-import Echidna.SymExec.Common (rpcFetcher, exploreMethod, TxOrError(..), PartialsLogs)
+import Echidna.SymExec.Common (rpcFetcher, exploreMethod, suitableForSymExec, TxOrError(..), PartialsLogs)
 import Echidna.Worker (pushWorkerEvent)
+
+isSuitableToVerifyMethod :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> Method -> m Bool
+isSuitableToVerifyMethod contract method = do
+  env <- ask  
+  let allMethods = assocs contract.abiMap
+      assertSigs = env.world.assertSigs
+      (selector, _) = case filter (\(_, m) -> m == method) allMethods of
+        [] -> error $ "Method " ++ show method.name ++ " not found in contract ABI"
+        (x:_) -> x
+
+  return $ (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method
+
+
 
 verifyMethod :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 verifyMethod method contract vm = do
