@@ -277,7 +277,7 @@ runSymWorker callback vm dict workerId _ name = do
     mapM_ (\method -> do
            isSuitable <- isSuitableToVerifyMethod contract method
            if isSuitable 
-            then (symExecMethod contract method) 
+            then symExecMethod contract method 
             else pushWorkerEvent $ SymExecError ("Skipped verification of method " <> unpack method.methodSignature)
           ) allMethods
 
