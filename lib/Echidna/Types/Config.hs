@@ -3,22 +3,25 @@ module Echidna.Types.Config where
 import Control.Concurrent (Chan)
 import Data.Aeson.Key (Key)
 import Data.IORef (IORef)
-import Data.Map (Map)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Time (LocalTime)
 import Data.Word (Word64)
 
 import EVM.Dapp (DappInfo)
-import EVM.Types (Addr, Contract, W256)
+import EVM.Types (Addr, W256)
 
-import Echidna.Types.Campaign (CampaignConf, CampaignEvent)
+import Echidna.SourceAnalysis.Slither (SlitherInfo)
+import Echidna.SourceMapping (CodehashMap)
+import Echidna.Types.Campaign (CampaignConf)
+import Echidna.Types.Worker (CampaignEvent)
 import Echidna.Types.Corpus (Corpus)
 import Echidna.Types.Coverage (CoverageMap)
-import Echidna.Types.Signature (MetadataCache)
 import Echidna.Types.Solidity (SolConf)
 import Echidna.Types.Test (TestConf, EchidnaTest)
 import Echidna.Types.Tx (TxConf)
+import Echidna.Types.Cache 
+import Echidna.Types.World (World)
 
 data OperationMode = Interactive | NonInteractive OutputFormat deriving (Show, Eq)
 data OutputFormat = Text | JSON | None deriving (Show, Eq)
@@ -43,6 +46,8 @@ data EConfig = EConfig
 
   , rpcUrl :: Maybe Text
   , rpcBlock :: Maybe Word64
+  , etherscanApiKey :: Maybe Text
+  , projectName :: Maybe Text
   }
 
 instance Read OutputFormat where
@@ -65,14 +70,18 @@ data Env = Env
 
   -- | Shared between all workers. Events are fairly rare so contention is
   -- minimal.
-  , eventQueue :: Chan (Int, LocalTime, CampaignEvent)
+  , eventQueue :: Chan (LocalTime, CampaignEvent)
 
-  , testsRef :: IORef [EchidnaTest]
-  , coverageRef :: IORef CoverageMap
+  , testRefs :: [IORef EchidnaTest]
+  , coverageRefInit :: IORef CoverageMap
+  , coverageRefRuntime :: IORef CoverageMap
   , corpusRef :: IORef Corpus
 
-  , metadataCache :: IORef MetadataCache
-  , fetchContractCache :: IORef (Map Addr (Maybe Contract))
-  , fetchSlotCache :: IORef (Map Addr (Map W256 (Maybe W256)))
+  , slitherInfo :: Maybe SlitherInfo
+  , codehashMap :: CodehashMap
+  , fetchContractCache :: IORef ContractCache
+  , fetchSlotCache :: IORef SlotCache
+  , contractNameCache :: IORef ContractNameCache
   , chainId :: Maybe W256
+  , world :: World
   }

@@ -329,24 +329,24 @@ contract TEST {
     if (!AddressArrayUtils.contains(addrs1, a)) {
       return true;
     }
-    uint256 acount = 0;
+    uint256 account = 0;
     uint256 i;
     for (i = 0; i < addrs1.length; i++) {
       if (addrs1[i] == a) {
-	acount++;
+	account++;
       }
     }
     address [] memory removed = AddressArrayUtils.remove(addrs1, a);
     if (removed.length != (addrs1.length-1)) {
       return false;
     }
-    uint256 acountNew = 0;
+    uint256 accountNew = 0;
     for (i = 0; i < removed.length; i++) {
       if (removed[i] == a) {
-	acountNew++;
+	accountNew++;
       }
     }
-    if (acountNew != (acount-1)) {
+    if (accountNew != (account-1)) {
       return false;
     }
     if (!AddressArrayUtils.hasDuplicate(addrs1)) {
@@ -367,11 +367,11 @@ contract TEST {
     uint256 aIndex;
     bool aFound;
     (aIndex, aFound) = AddressArrayUtils.indexOf(addrs1, a);
-    uint256 acount = 0;
+    uint256 account = 0;
     uint256 i;
     for (i = 0; i < addrs1.length; i++) {
       if (addrs1[i] == a) {
-	acount++;
+	account++;
       }
     }
     address [] memory removed;
@@ -383,13 +383,13 @@ contract TEST {
     if (removed.length != (addrs1.length-1)) {
       return false;
     }
-    uint256 acountNew = 0;
+    uint256 accountNew = 0;
     for (i = 0; i < removed.length; i++) {
       if (removed[i] == a) {
-	acountNew++;
+	accountNew++;
       }
     }
-    if (acountNew != (acount-1)) {
+    if (accountNew != (account-1)) {
       return false;
     }
     if (!AddressArrayUtils.hasDuplicate(addrs1)) {
@@ -407,11 +407,11 @@ contract TEST {
     if (!AddressArrayUtils.contains(addrs1, a)) {
       return true;
     }
-    uint256 acount = 0;
+    uint256 account = 0;
     uint256 i;
     for (i = 0; i < addrs1.length; i++) {
       if (addrs1[i] == a) {
-	acount++;
+	account++;
       }
     }
     uint256 oldLength = addrs1.length;
@@ -420,13 +420,13 @@ contract TEST {
     if (addrs1.length != (oldLength-1)) {
       return false;
     }
-    uint256 acountNew = 0;
+    uint256 accountNew = 0;
     for (i = 0; i < addrs1.length; i++) {
       if (addrs1[i] == a) {
-	acountNew++;
+	accountNew++;
       }
     }
-    if (acountNew != (acount-1)) {
+    if (accountNew != (account-1)) {
       return false;
     }
     if (!anyDuplicates) {
@@ -447,11 +447,11 @@ contract TEST {
     uint256 aIndex;
     bool aFound;
     (aIndex, aFound) = AddressArrayUtils.indexOf(addrs1, a);
-    uint256 acount = 0;
+    uint256 account = 0;
     uint256 i;
     for (i = 0; i < addrs1.length; i++) {
       if (addrs1[i] == a) {
-	acount++;
+	account++;
       }
     }    
     uint256 oldLength = addrs1.length;
@@ -463,13 +463,13 @@ contract TEST {
     if (addrs1.length != (oldLength-1)) {
       return false;
     }
-    uint256 acountNew = 0;
+    uint256 accountNew = 0;
     for (i = 0; i < addrs1.length; i++) {
       if (addrs1[i] == a) {
-	acountNew++;
+	accountNew++;
       }
     }
-    if (acountNew != (acount-1)) {
+    if (accountNew != (account-1)) {
       return false;
     }
     if (!anyDuplicates) {
@@ -490,11 +490,11 @@ contract TEST {
     uint256 aIndex;
     bool aFound;
     (aIndex, aFound) = AddressArrayUtils.indexOf(addrs1, a);
-    uint256 acount = 0;
+    uint256 account = 0;
     uint256 i;
     for (i = 0; i < addrs1.length; i++) {
       if (addrs1[i] == a) {
-	acount++;
+	account++;
       }
     }    
     uint256 oldLength = addrs1.length;
@@ -506,13 +506,13 @@ contract TEST {
     if (addrs1.length != (oldLength-1)) {
       return false;
     }
-    uint256 acountNew = 0;
+    uint256 accountNew = 0;
     for (i = 0; i < addrs1.length; i++) {
       if (addrs1[i] == a) {
-	acountNew++;
+	accountNew++;
       }
     }
-    if (acountNew != (acount-1)) {
+    if (accountNew != (account-1)) {
       return false;
     }
     if (!anyDuplicates) {

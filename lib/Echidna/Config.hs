@@ -14,15 +14,16 @@ import Data.Text (isPrefixOf)
 import Data.Yaml qualified as Y
 
 import EVM.Types (VM(..), W256)
+import EVM.Solvers (Solver(..))
 
+import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Test
 import Echidna.Types.Campaign
-import Echidna.Mutator.Corpus (defaultMutationConsts)
-import Echidna.Output.Source (CoverageFileType(..))
-import Echidna.Types.Solidity
-import Echidna.Types.Tx (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
-import Echidna.Types.Test (TestConf(..))
 import Echidna.Types.Config
+import Echidna.Types.Coverage (CoverageFileType(..))
+import Echidna.Types.Solidity
+import Echidna.Types.Test (TestConf(..))
+import Echidna.Types.Tx (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
 
 instance FromJSON EConfig where
   -- retrieve the config from the key usage annotated parse
@@ -32,7 +33,7 @@ instance FromJSON EConfigWithUsage where
   -- this runs the parser in a StateT monad which keeps track of the keys
   -- utilized by the config parser
   -- we can then compare the set difference between the keys found in the config
-  -- file and the keys used by the parser to comopute which keys were set in the
+  -- file and the keys used by the parser to compute which keys were set in the
   -- config and not used and which keys were unset in the config and defaulted
   parseJSON o = do
     let v' = case o of
@@ -56,6 +57,8 @@ instance FromJSON EConfigWithUsage where
               <*> (UIConf <$> v ..:? "timeout" <*> formatParser)
               <*> v ..:? "rpcUrl"
               <*> v ..:? "rpcBlock"
+              <*> v ..:? "etherscanApiKey"
+              <*> v ..:? "projectName"
       where
       useKey k = modify' $ Set.insert k
       x ..:? k = useKey k >> lift (x .:? k)
@@ -86,7 +89,6 @@ instance FromJSON EConfigWithUsage where
       campaignConfParser = CampaignConf
         <$> v ..:? "testLimit" ..!= defaultTestLimit
         <*> v ..:? "stopOnFail" ..!= False
-        <*> v ..:? "estimateGas" ..!= False
         <*> v ..:? "seqLen" ..!= defaultSequenceLength
         <*> v ..:? "shrinkLimit" ..!= defaultShrinkLimit
         <*> (v ..:? "coverage" <&> \case Just False -> Nothing;  _ -> Just mempty)
@@ -96,6 +98,22 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "mutConsts" ..!= defaultMutationConsts
         <*> v ..:? "coverageFormats" ..!= [Txt,Html,Lcov]
         <*> v ..:? "workers"
+        <*> v ..:? "server"
+        <*> v ..:? "symExec"            ..!= False
+        <*> smtSolver
+        <*> v ..:? "symExecTargets"     ..!= Nothing
+        <*> v ..:? "symExecTimeout"     ..!= defaultSymExecTimeout
+        <*> v ..:? "symExecNSolvers"    ..!= defaultSymExecNWorkers
+        <*> v ..:? "symExecMaxIters"    ..!= defaultSymExecMaxIters
+        <*> v ..:? "symExecAskSMTIters" ..!= defaultSymExecAskSMTIters
+        <*> v ..:? "symExecMaxExplore"  ..!= defaultSymExecMaxExplore
+        where
+        smtSolver = v ..:? "symExecSMTSolver" >>= \case
+          Just ("z3" :: String)  -> pure Z3
+          Just "cvc5"            -> pure CVC5
+          Just "bitwuzla"        -> pure Bitwuzla
+          Just s                 -> fail $ "Unrecognized SMT solver: " <> s
+          Nothing                -> pure Bitwuzla
 
       solConfParser = SolConf
         <$> v ..:? "contractAddr"    ..!= defaultContractAddr
@@ -103,13 +121,13 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "sender"          ..!= Set.fromList [0x10000, 0x20000, defaultDeployerAddr]
         <*> v ..:? "balanceAddr"     ..!= 0xffffffff
         <*> v ..:? "balanceContract" ..!= 0
-        <*> v ..:? "codeSize"        ..!= 0x6000      -- 24576 (EIP-170)
+        <*> v ..:? "codeSize"        ..!= 0xffffffff
         <*> v ..:? "prefix"          ..!= "echidna_"
+        <*> v ..:? "disableSlither"  ..!= False
         <*> v ..:? "cryticArgs"      ..!= []
         <*> v ..:? "solcArgs"        ..!= ""
         <*> v ..:? "solcLibs"        ..!= []
         <*> v ..:? "quiet"           ..!= False
-        <*> v ..:? "initialize"      ..!= Nothing
         <*> v ..:? "deployContracts" ..!= []
         <*> v ..:? "deployBytecodes" ..!= []
         <*> ((<|>) <$> v ..:? "allContracts"

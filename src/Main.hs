@@ -2,59 +2,52 @@
 
 module Main where
 
-import Optics.Core (view)
-
-import Control.Concurrent (newChan)
 import Control.Monad (unless, forM_, when)
-import Control.Monad.Reader (runReaderT)
+import Control.Monad.Reader (runReaderT, liftIO)
 import Control.Monad.Random (getRandomR)
-import Data.Aeson qualified as JSON
 import Data.Aeson.Key qualified as Aeson.Key
-import Data.ByteString qualified as BS
-import Data.ByteString.UTF8 qualified as UTF8
+import Data.Char (toLower)
 import Data.Function ((&))
-import Data.Functor ((<&>))
-import Data.IORef (newIORef, readIORef)
+import Data.Hashable (hash)
+import Data.IORef (readIORef)
 import Data.List.NonEmpty qualified as NE
-import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
-import Data.Vector qualified as Vector
 import Data.Version (showVersion)
-import Data.Word (Word8)
+import Data.Word (Word8, Word16, Word64)
 import Main.Utf8 (withUtf8)
 import Options.Applicative
 import Paths_echidna (version)
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.Directory (createDirectoryIfMissing)
+import System.Environment (lookupEnv)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
-import System.FilePath ((</>))
+import System.FilePath ((</>), (<.>))
 import System.IO (hPutStrLn, stderr)
 import System.IO.CodePage (withCP65001)
 
-import EVM (bytecode)
-import EVM.Dapp (dappInfo)
-import EVM.Solidity (SolcContract(..), SourceCache(..), BuildOutput(..), Contracts(..))
-import EVM.Types (Addr, Contract(..), keccak', W256)
+import EVM.Dapp (DappInfo(..))
+import EVM.Solidity (BuildOutput(..))
+import EVM.Types (Addr)
 
 import Echidna
+import Echidna.Campaign (isSuccessful)
 import Echidna.Config
-import Echidna.Types.Buffer (forceBuf)
+import Echidna.Onchain qualified as Onchain
+import Echidna.Output.Corpus
+import Echidna.Output.Source
+import Echidna.Solidity (compileContracts)
+import Echidna.Test (reproduceTest, validateTestMode)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Solidity
 import Echidna.Types.Test (TestMode, EchidnaTest(..))
-import Echidna.Test (validateTestMode)
-import Echidna.Campaign (isSuccessful)
 import Echidna.UI
-import Echidna.Output.Source
-import Echidna.Output.Corpus
-import Echidna.RPC qualified as RPC
-import Echidna.Solidity (compileContracts, selectBuildOutput)
+import Echidna.UI.Report (ppFailWithTraces, ppTestName)
 import Echidna.Utility (measureIO)
-import Etherscan qualified
 
 main :: IO ()
 main = withUtf8 $ withCP65001 $ do
@@ -63,168 +56,72 @@ main = withUtf8 $ withCP65001 $ do
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
   cfg <- overrideConfig loadedCfg opts
 
+  printProjectName cfg.projectName
+
   unless cfg.solConf.quiet $
     forM_ ks $ hPutStrLn stderr . ("Warning: unused option: " ++) . Aeson.Key.toString
 
-  -- Try to load the persisted RPC cache. TODO: we use the corpus dir for now,
-  -- think where to place it
-  (loadedContractsCache, loadedSlotsCache) <-
-    case cfg.campaignConf.corpusDir of
-      Nothing -> pure (Nothing, Nothing)
-      Just dir -> do
-        let cache_dir = dir </> "cache"
-        createDirectoryIfMissing True cache_dir
-        case cfg.rpcBlock of
-          Just block -> do
-            parsedContracts :: Maybe (Map Addr RPC.FetchedContractData) <-
-              readFileIfExists (cache_dir </> "block_" <> show block <> "_fetch_cache_contracts.json")
-              <&> (>>= JSON.decodeStrict)
-            parsedSlots :: Maybe (Map Addr (Map W256 (Maybe W256))) <-
-              readFileIfExists (cache_dir </> "block_" <> show block <> "_fetch_cache_slots.json")
-              <&> (>>= JSON.decodeStrict)
-            pure (Map.map (Just . RPC.fromFetchedContractData) <$> parsedContracts, parsedSlots)
-          Nothing ->
-            pure (Nothing, Nothing)
-
-  buildOutputs <- compileContracts cfg.solConf cliFilePath
-  cacheContractsRef <- newIORef $ fromMaybe mempty loadedContractsCache
-  cacheSlotsRef <- newIORef $ fromMaybe mempty loadedSlotsCache
-  cacheMetaRef <- newIORef mempty
-  chainId <- RPC.fetchChainId cfg.rpcUrl
-  eventQueue <- newChan
-  coverageRef <- newIORef mempty
-  corpusRef <- newIORef mempty
-  testsRef <- newIORef mempty
-
-  let
-    contracts = Map.elems . Map.unions $ (\(BuildOutput (Contracts c) _) -> c) <$> buildOutputs
-    buildOutput = selectBuildOutput cliSelectedContract buildOutputs
-    env = Env { cfg
-                -- TODO put in real path
-              , dapp = dappInfo "/" buildOutput
-              , metadataCache = cacheMetaRef
-              , fetchContractCache = cacheContractsRef
-              , fetchSlotCache = cacheSlotsRef
-              , chainId = chainId
-              , eventQueue
-              , coverageRef
-              , corpusRef
-              , testsRef
-              }
+  buildOutput <- compileContracts cfg.solConf cliFilePath
 
   -- take the seed from config, otherwise generate a new one
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
-  (vm, world, dict) <-
-    prepareContract env contracts cliFilePath cliSelectedContract seed
+  (vm, env, dict) <- prepareContract cfg cliFilePath buildOutput cliSelectedContract seed
 
-  initialCorpus <- loadInitialCorpus env world
+  initialCorpus <- loadInitialCorpus env
   -- start ui and run tests
-  _campaign <- runReaderT (ui vm world dict initialCorpus) env
+  _campaign <- runReaderT (ui vm dict initialCorpus cliSelectedContract) env
 
-  contractsCache <- readIORef cacheContractsRef
-  slotsCache <- readIORef cacheSlotsRef
+  tests <- traverse readIORef env.testRefs
 
-  tests <- readIORef testsRef
+  checkAssertionsCoverage buildOutput.sources env
+
+  Onchain.saveRpcCache env
 
   -- save corpus
   case cfg.campaignConf.corpusDir of
     Nothing -> pure ()
     Just dir -> do
-      let cache_dir = dir </> "cache"
-      case cfg.rpcBlock of
-        Just block -> do
-          -- Save fetched data, it's okay to override as the cache only grows
-          JSON.encodeFile (cache_dir </> "block_" <> show block <> "_fetch_cache_contracts.json")
-                          (RPC.toFetchedContractData <$> Map.mapMaybe id contractsCache)
-          JSON.encodeFile (cache_dir </> "block_" <> show block <> "_fetch_cache_slots.json")
-                          slotsCache
-        Nothing ->
-          pure ()
-
       measureIO cfg.solConf.quiet "Saving test reproducers" $
-        saveTxs (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> tests)
+        saveTxs env (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> tests)
+
+      saveTracesEnabled <- lookupEnv "ECHIDNA_SAVE_TRACES"
+      when (isJust saveTracesEnabled) $ do
+        measureIO cfg.solConf.quiet "Saving test reproducers-traces" $ do
+          flip runReaderT env $ do
+            forM_ tests $ \test ->
+              unless (null test.reproducer) $ do
+                (results, finalVM) <- reproduceTest vm test
+                let subdir = dir </> "reproducers-traces"
+                liftIO $ createDirectoryIfMissing True subdir
+                let file = subdir </> (show . abs . hash) test.reproducer <.> "txt"
+                txsPrinted <- ppFailWithTraces Nothing finalVM results
+                liftIO $ writeFile file (ppTestName test <> ": " <> txsPrinted)
+
       measureIO cfg.solConf.quiet "Saving corpus" $ do
-        corpus <- readIORef corpusRef
-        saveTxs (dir </> "coverage") (snd <$> Set.toList corpus)
+        corpus <- readIORef env.corpusRef
+        saveTxs env (dir </> "coverage") (snd <$> Set.toList corpus)
 
       -- TODO: We use the corpus dir to save coverage reports which is confusing.
       -- Add config option to pass dir for saving coverage report and decouple it
       -- from corpusDir.
-      unless (null cfg.campaignConf.coverageFormats) $ do
+      unless (null cfg.campaignConf.coverageFormats) $ measureIO cfg.solConf.quiet "Saving coverage" $ do
         -- We need runId to have a unique directory to save files under so they
         -- don't collide with the next runs. We use the current time for this
         -- as it orders the runs chronologically.
         runId <- fromIntegral . systemSeconds <$> getSystemTime
 
-        coverage <- readIORef coverageRef
-
-        -- coverage reports for external contracts, we only support
-        -- Ethereum Mainnet for now
-        when (chainId == Just 1) $ do
-          forM_ (Map.toList contractsCache) $ \(addr, mc) ->
-            case mc of
-              Just contract -> do
-                r <- externalSolcContract addr contract
-                case r of
-                  Just (externalSourceCache, solcContract) -> do
-                    let dir' = dir </> show addr
-                    saveCoverages cfg.campaignConf.coverageFormats runId dir' externalSourceCache [solcContract] coverage
-                  Nothing -> pure ()
-              Nothing -> pure ()
+        Onchain.saveCoverageReport env runId
 
         -- save source coverage reports
-        saveCoverages cfg.campaignConf.coverageFormats runId dir buildOutput.sources contracts coverage
+        let contracts = Map.elems env.dapp.solcByName
+        saveCoverages env runId dir buildOutput.sources contracts
 
   if isSuccessful tests then exitSuccess else exitWith (ExitFailure 1)
-
-  where
-
-  -- | "Reverse engineer" the SolcContract and SourceCache structures for the
-  -- code fetched from the outside
-  externalSolcContract :: Addr -> Contract -> IO (Maybe (SourceCache, SolcContract))
-  externalSolcContract addr c = do
-    let runtimeCode = forceBuf $ view bytecode c
-    putStr $ "Fetching Solidity source for contract at address " <> show addr <> "... "
-    srcRet <- Etherscan.fetchContractSource addr
-    putStrLn $ if isJust srcRet then "Success!" else "Error!"
-    putStr $ "Fetching Solidity source map for contract at address " <> show addr <> "... "
-    srcmapRet <- Etherscan.fetchContractSourceMap addr
-    putStrLn $ if isJust srcmapRet then "Success!" else "Error!"
-    pure $ do
-      src <- srcRet
-      (_, srcmap) <- srcmapRet
-      let
-        files = Map.singleton 0 (show addr, UTF8.fromString src.code)
-        sourceCache = SourceCache
-          { files
-          , lines = Vector.fromList . BS.split 0xa . snd <$> files
-          , asts = mempty
-          }
-        solcContract = SolcContract
-          { runtimeCode = runtimeCode
-          , creationCode = mempty
-          , runtimeCodehash = keccak' runtimeCode
-          , creationCodehash = keccak' mempty
-          , runtimeSrcmap = mempty
-          , creationSrcmap = srcmap
-          , contractName = src.name
-          , constructorInputs = [] -- error "TODO: mkConstructor abis TODO"
-          , abiMap = mempty -- error "TODO: mkAbiMap abis"
-          , eventMap = mempty -- error "TODO: mkEventMap abis"
-          , errorMap = mempty -- error "TODO: mkErrorMap abis"
-          , storageLayout = Nothing
-          , immutableReferences = mempty
-          }
-      pure (sourceCache, solcContract)
-
-readFileIfExists :: FilePath -> IO (Maybe BS.ByteString)
-readFileIfExists path = do
-  exists <- doesFileExist path
-  if exists then Just <$> BS.readFile path else pure Nothing
 
 data Options = Options
   { cliFilePath         :: NE.NonEmpty FilePath
   , cliWorkers          :: Maybe Word8
+  , cliServerPort       :: Maybe Word16
   , cliSelectedContract :: Maybe Text
   , cliConfigFilepath   :: Maybe FilePath
   , cliOutputFormat     :: Maybe OutputFormat
@@ -233,14 +130,21 @@ data Options = Options
   , cliAllContracts     :: Bool
   , cliTimeout          :: Maybe Int
   , cliTestLimit        :: Maybe Int
+  , cliRpcBlock         :: Maybe Word64
+  , cliRpcUrl           :: Maybe Text
   , cliShrinkLimit      :: Maybe Int
   , cliSeqLen           :: Maybe Int
   , cliContractAddr     :: Maybe Addr
   , cliDeployer         :: Maybe Addr
   , cliSender           :: [Addr]
   , cliSeed             :: Maybe Int
+  , cliDisableSlither   :: Bool
   , cliCryticArgs       :: Maybe String
   , cliSolcArgs         :: Maybe String
+  , cliSymExec          :: Maybe Bool
+  , cliSymExecTargets   :: Maybe Text
+  , cliSymExecTimeout   :: Maybe Int
+  , cliSymExecNSolvers  :: Maybe Int
   }
 
 optsParser :: ParserInfo Options
@@ -248,13 +152,22 @@ optsParser = info (helper <*> versionOption <*> options) $ fullDesc
   <> progDesc "EVM property-based testing framework"
   <> header "Echidna"
 
+bool :: ReadM Bool
+bool = maybeReader (f . map toLower) where
+  f "true" = Just True
+  f "false" = Just False
+  f _ = Nothing
+
 options :: Parser Options
-options = Options
-  <$> (NE.fromList <$> some (argument str (metavar "FILES"
-    <> help "Solidity files to analyze")))
+options = Options . NE.fromList
+  <$> some (argument str (metavar "FILES"
+    <> help "Solidity files to analyze"))
   <*> optional (option auto $ long "workers"
     <> metavar "N"
     <> help "Number of workers to run")
+  <*> optional (option auto $ long "server"
+    <> metavar "PORT"
+    <> help "Run events server on the given port")
   <*> optional (option str $ long "contract"
     <> metavar "CONTRACT"
     <> help "Contract to analyze")
@@ -277,6 +190,12 @@ options = Options
   <*> optional (option auto $ long "test-limit"
     <> metavar "INTEGER"
     <> help ("Number of sequences of transactions to generate during testing. Default is " ++ show defaultTestLimit))
+  <*> optional (option auto $ long "rpc-block"
+    <> metavar "BLOCK"
+    <> help "Block number to use when fetching over RPC.")
+  <*> optional (option str $ long "rpc-url"
+    <> metavar "URL"
+    <> help "RPC URL to fetch contracts over.")
   <*> optional (option auto $ long "shrink-limit"
     <> metavar "INTEGER"
     <> help ("Number of tries to attempt to shrink a failing sequence of transactions. Default is " ++ show defaultShrinkLimit))
@@ -295,12 +214,26 @@ options = Options
   <*> optional (option auto $ long "seed"
     <> metavar "SEED"
     <> help "Run with a specific seed.")
+  <*> switch (long "disable-slither"
+    <> help "Disable running Slither.")
   <*> optional (option str $ long "crytic-args"
     <> metavar "ARGS"
     <> help "Additional arguments to use in crytic-compile for the compilation of the contract to test.")
   <*> optional (option str $ long "solc-args"
     <> metavar "ARGS"
     <> help "Additional arguments to use in solc for the compilation of the contract to test.")
+  <*> optional (option bool $ long "sym-exec"
+    <> metavar "BOOL"
+    <> help "Whether to enable the experimental symbolic execution feature.")
+  <*> optional (option str $ long "sym-exec-target"
+    <> metavar "SELECTOR"
+    <> help "Target for the symbolic execution run (assuming sym-exec is enabled). Default is all functions")
+  <*> optional (option auto $ long "sym-exec-timeout"
+    <> metavar "INTEGER"
+    <> help ("Timeout for each symbolic execution run, in seconds (assuming sym-exec is enabled). Default is " ++ show defaultSymExecTimeout))
+  <*> optional (option auto $ long "sym-exec-n-solvers"
+    <> metavar "INTEGER"
+    <> help ("Number of symbolic execution solvers to run in parallel for each task (assuming sym-exec is enabled). Default is " ++ show defaultSymExecNWorkers))
 
 versionOption :: Parser (a -> a)
 versionOption = infoOption
@@ -309,14 +242,16 @@ versionOption = infoOption
 
 overrideConfig :: EConfig -> Options -> IO EConfig
 overrideConfig config Options{..} = do
-  rpcUrl <- RPC.rpcUrlEnv
-  rpcBlock <- RPC.rpcBlockEnv
+  envRpcUrl <- Onchain.rpcUrlEnv
+  envRpcBlock <- Onchain.rpcBlockEnv
+  envEtherscanApiKey <- Onchain.etherscanApiKey
   pure $
     config { solConf = overrideSolConf config.solConf
            , campaignConf = overrideCampaignConf config.campaignConf
            , uiConf = overrideUiConf config.uiConf
-           , rpcUrl = rpcUrl <|> config.rpcUrl
-           , rpcBlock = rpcBlock <|> config.rpcBlock
+           , rpcUrl = cliRpcUrl <|> envRpcUrl <|> config.rpcUrl
+           , rpcBlock = cliRpcBlock <|> envRpcBlock <|> config.rpcBlock
+           , etherscanApiKey = envEtherscanApiKey <|> config.etherscanApiKey
            }
            & overrideFormat
   where
@@ -339,10 +274,16 @@ overrideConfig config Options{..} = do
       , seqLen = fromMaybe campaignConf.seqLen cliSeqLen
       , seed = cliSeed <|> campaignConf.seed
       , workers = cliWorkers <|> campaignConf.workers
+      , serverPort = cliServerPort <|> campaignConf.serverPort
+      , symExec = fromMaybe campaignConf.symExec cliSymExec
+      , symExecTargets = (\ t -> Just [t]) =<< cliSymExecTargets
+      , symExecTimeout = fromMaybe campaignConf.symExecTimeout cliSymExecTimeout
+      , symExecNSolvers = fromMaybe campaignConf.symExecNSolvers cliSymExecNSolvers
       }
 
     overrideSolConf solConf = solConf
-      { solcArgs = fromMaybe solConf.solcArgs cliSolcArgs
+      { disableSlither = cliDisableSlither || solConf.disableSlither
+      , solcArgs = fromMaybe solConf.solcArgs cliSolcArgs
       , cryticArgs = maybe solConf.cryticArgs words cliCryticArgs
       , sender = if null cliSender then solConf.sender else Set.fromList cliSender
       , deployer = fromMaybe solConf.deployer cliDeployer
@@ -351,3 +292,7 @@ overrideConfig config Options{..} = do
       , allContracts = cliAllContracts || solConf.allContracts
       }
 
+printProjectName :: Maybe Text -> IO ()
+printProjectName (Just name) = putStrLn $
+    "This is Echidna " <> showVersion version <> " running on project `" <> T.unpack name <> "`"
+printProjectName Nothing = pure ()

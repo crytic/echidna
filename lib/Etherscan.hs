@@ -10,7 +10,6 @@ import Data.Sequence (Seq)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Network.HTTP.Simple (httpSink, parseRequest, getResponseBody, httpJSON)
-import System.Environment (lookupEnv)
 import Text.HTML.DOM (sinkDoc)
 import Text.XML.Cursor (attributeIs, content, element, fromDocument, ($//), (&//))
 
@@ -23,14 +22,13 @@ data SourceCode = SourceCode
   }
   deriving Show
 
-fetchContractSource :: Addr -> IO (Maybe SourceCode)
-fetchContractSource addr = do
-  apiKey <- lookupEnv "ETHERSCAN_API_KEY"
+fetchContractSource :: Maybe Text -> Addr -> IO (Maybe SourceCode)
+fetchContractSource apiKey addr = do
   url <- parseRequest $ "https://api.etherscan.io/api?"
                         <> "module=contract"
                         <> "&action=getsourcecode"
                         <> "&address=" <> show addr
-                        <> maybe "" ("&apikey=" <>) apiKey
+                        <> T.unpack (maybe "" ("&apikey=" <>) apiKey)
   try url (5 :: Int)
   where
   try url n = do
@@ -76,7 +74,7 @@ fetchContractSourceMap addr = do
         &// content
   -- see which <pre> content parses to a source map
   parsedCandidates <- mapM safeMakeSrcMaps candidates
-  -- combine with raw srcmap to return so it's easier to cache
+  -- combine with raw srcmap to return so it is easier to cache
   case catMaybes $ zipWith (\x -> fmap (x,)) candidates parsedCandidates of
     [] -> pure Nothing
     srcmap:_ -> pure (Just srcmap)

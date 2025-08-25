@@ -6,11 +6,13 @@ import Test.Tasty.HUnit (testCase, assertBool)
 import Common (runContract, overrideQuiet)
 import Data.Function ((&))
 import Data.IORef (readIORef)
-import Echidna.Output.Source (CoverageFileType(..))
-import Echidna.Types.Config (Env(..), EConfig(..))
-import Echidna.Types.Campaign
-import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Config (defaultConfig)
+import Echidna.Mutator.Corpus (defaultMutationConsts)
+import Echidna.Types.Campaign
+import Echidna.Types.Config (Env(..), EConfig(..))
+import Echidna.Types.Coverage (CoverageFileType(..))
+import Echidna.Types.Test
+import Echidna.Types.Worker (WorkerType(..))
 
 seedTests :: TestTree
 seedTests =
@@ -20,10 +22,9 @@ seedTests =
     ]
     where
     cfg s = defaultConfig
-      { campaignConf = CampaignConf
+      { campaignConf = defaultConfig.campaignConf
         { testLimit = 600
         , stopOnFail = False
-        , estimateGas = False
         , seqLen = 20
         , shrinkLimit = 0
         , knownCoverage = Nothing
@@ -33,10 +34,11 @@ seedTests =
         , mutConsts = defaultMutationConsts
         , coverageFormats = [Txt,Html,Lcov]
         , workers = Nothing
+        , serverPort = Nothing
         }
       }
       & overrideQuiet
     gen s = do
-      (env, _) <- runContract "basic/flags.sol" Nothing (cfg s)
-      readIORef env.testsRef
-    same s t = (==) <$> gen s <*> gen t
+      (env, _) <- runContract "basic/flags.sol" Nothing (cfg s) FuzzWorker
+      traverse readIORef env.testRefs
+    same s t = (\x y -> ((.reproducer) <$> x) == ((.reproducer) <$> y)) <$> gen s <*> gen t

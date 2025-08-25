@@ -1,4 +1,4 @@
-// Original example from https://github.com/b-mueller/sabre#example-2-integer-precision-bug
+// Original example from https://github.com/muellerberndt/sabre#example-2-integer-precision-bug
 
 contract FunWithNumbers {
     uint constant public tokensPerEth = 10;

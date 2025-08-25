@@ -10,7 +10,7 @@ on:
 
 env:
   # Tag for cache invalidation
-  CACHE_VERSION: v1
+  CACHE_VERSION: v9
 
 jobs:
   build:
@@ -20,10 +20,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-20.04
+          - os: ubuntu-latest
             shell: bash
-            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.4.7\", \"options\": \"--user 1001\"}"
-          - os: macos-latest
+            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.8.4\", \"options\": \"--user 1001\"}"
+          - os: macos-13 # x86_64 macOS
             shell: bash
           - os: macos-latest-xlarge
             shell: bash
@@ -42,9 +42,9 @@ jobs:
       - name: Get Packages (Windows)
         uses: msys2/setup-msys2@v2
         if: runner.os == 'Windows'
+        id: msys2
         with:
           msystem: CLANG64
-          release: false
           path-type: minimal
           update: true
           install: >-
@@ -67,13 +67,24 @@ jobs:
         id: stack
         if: matrix.container == ''
         with:
-          ghc-version: '9.4'
+          ghc-version: '9.8.4'
           enable-stack: true
           stack-version: 'latest'
 
       - name: Configure Stack environment
         run: |
           HOME="${{ (runner.os == 'Windows' && '$(cygpath -m ~)') || '$HOME' }}"
+          # This relative path works only if GHC was installed using chocolatey, but not when it was installed with ghcup
+          GHC_MINGW_PATH="${{ (runner.os == 'Windows' && '$(cygpath -m "$GHC_BIN_PATH/../mingw")') || '' }}"
+          if [ -n "$GHC_MINGW_PATH" ] && [ ! -d "$GHC_MINGW_PATH" ]; then
+            echo "The expected GHC_MINGW_PATH directory $GHC_MINGW_PATH does not exist"
+            echo "Trying to locate it via ghcup"
+            GHCUP_PATH=$(cygpath -m "C:\ghcup\bin\ghcup.exe")
+            GHC_REAL_PATH=$("$GHCUP_PATH" whereis ghc "$GHC_VERSION" | tr -d '\r')
+            GHC_MINGW_PATH="$(cygpath -m "$(dirname $GHC_REAL_PATH)"/../mingw)"
+          fi
+          echo "GHC_MINGW_PATH=$GHC_MINGW_PATH" >> "$GITHUB_ENV"
+
           mkdir -p "$STACK_ROOT"
           { echo "extra-include-dirs:";
             echo "- $HOME/.local/include";
@@ -81,49 +92,66 @@ jobs:
             echo "$EXTRA_INCLUDE_MAC_AARCH64";
             echo;
             echo "extra-lib-dirs:";
+            if [ ! "$GHC_MINGW_PATH" = "" ]; then
+              echo "- $GHC_MINGW_PATH/x86_64-w64-mingw32/lib";
+              echo "- $GHC_MINGW_PATH/lib";
+              echo "- D:/a/_temp/msys64/clang64/lib";
+            fi;
             echo "- $HOME/.local/lib";
             echo "$EXTRA_LIB_WIN";
             echo "$EXTRA_LIB_MAC_AARCH64";
             echo;
             echo "ghc-options:";
-            echo -n '  "$locals": -Werror'
-            "$REPLACE_LINKER_WIN" && echo ' -pgml=C:/msys64/clang64/bin/clang.exe -pgml-supports-no-pie' || echo;
+            echo '  "$locals": -Werror'
+            "$REPLACE_LINKER_WIN" && echo '  "$everything": -pgml='$(cygpath -m "$GHC_MINGW_PATH/bin/clang.exe") -optc-idirafter -optc'D:/a/_temp/msys64/clang64/include' -optcxx-idirafter -optcxx'D:/a/_temp/msys64/clang64/include';
             echo;
             "$SKIP_MSYS" && echo "skip-msys: true" || true
+            echo "system-ghc: true";
+            echo "install-ghc: false";
+            echo "skip-ghc-check: true";
           } >> "$STACK_ROOT/config.yaml"
           cat "$STACK_ROOT/config.yaml"
         env:
           STACK_ROOT: ${{ steps.stack.outputs.stack-root || '/etc/stack' }}
-          EXTRA_INCLUDE_WIN: ${{ (runner.os == 'Windows' && '- C:/msys64/clang64/include') || '' }}
-          EXTRA_LIB_WIN: ${{ (runner.os == 'Windows' && '- C:/msys64/clang64/lib') || '' }}
           REPLACE_LINKER_WIN: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
           EXTRA_INCLUDE_MAC_AARCH64: ${{ (runner.os == 'macOS' && runner.arch == 'ARM64' && '- /opt/homebrew/include') || '' }}
           EXTRA_LIB_MAC_AARCH64: ${{ (runner.os == 'macOS' && runner.arch == 'ARM64' && '- /opt/homebrew/lib') || '' }}
           SKIP_MSYS: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
+          GHC_BIN_PATH: ${{ steps.stack.outputs.ghc-path }}
+          GHC_VERSION: ${{ steps.stack.outputs.ghc-version }}
 
       - name: Configure Haskell paths (Windows)
         if: runner.os == 'Windows'
         run: |
           HASKELL_PATHS="$(cygpath -u "$GHC_PATH"):$(cygpath -u "$CABAL_PATH"):$(cygpath -u "$STACK_PATH")"
+          HASKELL_MINGW_PATH="$(cygpath -u "$GHC_MINGW_PATH")"
+          SYSTEM_MINGW_PATH="$(cygpath -m "$MSYS2_LOCATION/$MSYSTEM")"
           echo "HASKELL_PATHS=$HASKELL_PATHS" >> "$GITHUB_ENV"
+          echo "HASKELL_MINGW_PATH=$HASKELL_MINGW_PATH" >> "$GITHUB_ENV"
+          echo "SYSTEM_MINGW_PATH=$SYSTEM_MINGW_PATH" >> "$GITHUB_ENV"
         env:
           GHC_PATH: ${{ steps.stack.outputs.ghc-path }}
           CABAL_PATH: ${{ steps.stack.outputs.cabal-path }}
           STACK_PATH: ${{ steps.stack.outputs.stack-path }}
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Cache Local
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.local
-            C:\msys64\home\runneradmin\.local
+            D:\a\_temp\msys64\home\runneradmin\.local
           key: ${{ runner.os }}-${{ runner.arch }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
 
+      - name: Configure static build flags
+        run: |
+          printf "\nflags:\n  hevm:\n    static-secp256k1: true\n  echidna:\n    static: true\n" >> stack.yaml
+
       - name: Cache Stack & Cabal
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             .stack-work
@@ -136,10 +164,14 @@ jobs:
 
       - name: Build Libraries
         run: |
+          if [ "$HOST_OS" = "Windows" ]; then
+            export PATH="$(cygpath -u "$HASKELL_MINGW_PATH/bin"):$PATH"
+          fi
           .github/scripts/install-libsecp256k1.sh
           .github/scripts/install-libff.sh
         env:
           HOST_OS: ${{ runner.os }}
+          GHC_BIN_PATH: ${{ steps.stack.outputs.ghc-path }}
 
       - name: Build Dependencies
         run: |
@@ -149,7 +181,7 @@ jobs:
       - name: Build and install echidna
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack install --flag echidna:static --ghc-options="-Werror"
+          stack install --ghc-options="-Werror"
 
       - name: Amend and compress binaries (macOS)
         if: runner.os == 'macOS'
@@ -190,7 +222,7 @@ jobs:
           ARCH: ${{ runner.arch }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: echidna-${{ steps.artifact-name.outputs.name }}
           path: echidna.tar.gz
@@ -199,12 +231,12 @@ jobs:
         if: runner.os != 'macOS'
         run: |
           export PATH="$HASKELL_PATHS:$PATH"
-          stack build --flag echidna:static --test --no-run-tests --ghc-options="-Werror"
+          stack build --test --no-run-tests --ghc-options="-Werror"
           cp "$(find "$PWD" -name 'echidna-testsuite*' -type f)" .
 
       - name: Upload testsuite
         if: runner.os != 'macOS'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: echidna-testsuite-${{ runner.os }}
           path: echidna-testsuite*
@@ -221,25 +253,22 @@ jobs:
         os:
           - ubuntu-latest
           - windows-latest
-        solc:
-          - "0.4.25"
-          - "0.5.7"
-          - "0.6.12"
-          - "0.7.5"
+        solc: ${{
+            ((github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+             (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-all-solc'))) &&
+            fromJSON('["0.4.25", "0.5.7", "0.6.12", "0.7.5", "0.8.10", "0.8.25"]') ||
+            fromJSON('["0.8.10", "0.8.25"]')
+          }}
         include:
-          - solc: "0.6.12"
-            experimental: true
-          - solc: "0.7.5"
-            experimental: true
           - os: windows-latest
             experimental: true
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.8'
 
@@ -248,17 +277,21 @@ jobs:
         run: |
           .github/scripts/install-solc.sh
           .github/scripts/install-crytic-compile.sh
+          .github/scripts/install-z3.sh
+          .github/scripts/install-bitwuzla.sh
         env:
           HOST_OS: ${{ runner.os }}
           SOLC_VER: ${{ matrix.solc }}
 
       - name: Download testsuite
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v5
         with:
          name: echidna-testsuite-${{ runner.os }}
 
       - name: Test
         run: |
+          export PATH="$PATH:$HOME/.local/bin"
           solc-select use ${{ matrix.solc }}
           chmod +x echidna-testsuite*
           ./echidna-testsuite*
+        shell: bash

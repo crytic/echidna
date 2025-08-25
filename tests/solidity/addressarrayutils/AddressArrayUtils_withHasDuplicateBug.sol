@@ -313,7 +313,7 @@ library AddressArrayUtils {
    * Returns whether the two arrays are equal.
    * @param A The first array
    * @param B The second array
-   * @return True is the arrays are equal, false if not.
+   * @return True if the arrays are equal, false if not.
    */
   function isEqual(address[] memory A, address[] memory B) internal pure returns (bool) {
     if (A.length != B.length) {

@@ -4,7 +4,7 @@
 
 Echidna is a weird creature that eats bugs and is highly electrosensitive (with apologies to Jacob Stanley)
 
-More seriously, Echidna is a Haskell program designed for fuzzing/property-based testing of Ethereum smart contracts. It uses sophisticated grammar-based fuzzing campaigns based on a [contract ABI](https://solidity.readthedocs.io/en/develop/abi-spec.html) to falsify user-defined predicates or [Solidity assertions](https://solidity.readthedocs.io/en/develop/control-structures.html#id4). We designed Echidna with modularity in mind, so it can be easily extended to include new mutations or test specific contracts in specific cases.
+More seriously, Echidna is a Haskell program designed for fuzzing/property-based testing of Ethereum smart contracts. It uses sophisticated grammar-based fuzzing campaigns based on a [contract ABI](https://docs.soliditylang.org/en/develop/abi-spec.html) to falsify user-defined predicates or [Solidity assertions](https://docs.soliditylang.org/en/develop/control-structures.html#error-handling-assert-require-revert-and-exceptions). We designed Echidna with modularity in mind, so it can be easily extended to include new mutations or test specific contracts in specific cases.
 
 ## Features
 
@@ -15,8 +15,6 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 * Interactive terminal UI, text-only or JSON output
 * Automatic test case minimization for quick triage
 * Seamless integration into the development workflow
-* Maximum gas usage reporting of the fuzzing campaign
-* Support for a complex contract initialization with [Etheno](https://github.com/crytic/etheno) and Truffle
 
 .. and [a beautiful high-resolution handcrafted logo](https://raw.githubusercontent.com/crytic/echidna/master/echidna.png).
 
@@ -83,9 +81,9 @@ Our tool signals each execution trace in the corpus with the following "line mar
 
 ### Support for smart contract build systems
 
-Echidna can test contracts compiled with different smart contract build systems, including [Truffle](https://truffleframework.com/) or [hardhat](https://hardhat.org/) using [crytic-compile](https://github.com/crytic/crytic-compile). To invoke echidna with the current compilation framework, use `echidna .`.
+Echidna can test contracts compiled with different smart contract build systems, including [Foundry](https://book.getfoundry.sh/), [Hardhat](https://hardhat.org/), and [Truffle](https://archive.trufflesuite.com/), using [crytic-compile](https://github.com/crytic/crytic-compile). To invoke Echidna with the current compilation framework, use `echidna .`.
 
-On top of that, Echidna supports two modes of testing complex contracts. Firstly, one can [describe an initialization procedure with Truffle and Etheno](https://github.com/crytic/building-secure-contracts/blob/master/program-analysis/echidna/end-to-end-testing.md) and use that as the base state for Echidna. Secondly, Echidna can call into any contract with a known ABI by passing in the corresponding Solidity source in the CLI. Use `allContracts: true` in your config to turn this on.
+On top of that, Echidna supports two modes of testing complex contracts. Firstly, one can [take advantage of existing network state](https://secure-contracts.com/program-analysis/echidna/advanced/state-network-forking.html) and use that as the base state for Echidna. Secondly, Echidna can call into any contract with a known ABI by passing in the corresponding Solidity source in the CLI. Use `allContracts: true` in your config to turn this on.
 
 ### Crash course on Echidna
 
@@ -111,8 +109,8 @@ The configuration file allows users to choose EVM and test generation
 parameters. An example of a complete and annotated config file with the default
 options can be found at
 [tests/solidity/basic/default.yaml](tests/solidity/basic/default.yaml).
-More detailed documentation on the configuration options is available in our
-[wiki](https://github.com/trailofbits/echidna/wiki/Config).
+See the [documentation](https://secure-contracts.com/program-analysis/echidna/configuration.html)
+for more detailed information on the available configuration options.
 
 Echidna supports three different output drivers. There is the default `text`
 driver, a `json` driver, and a `none` driver, which should suppress all
@@ -124,8 +122,7 @@ Campaign = {
   "error"        : string?,
   "tests"        : [Test],
   "seed"         : number,
-  "coverage"     : Coverage,
-  "gas_info"     : [GasInfo]
+  "coverage"     : Coverage
 }
 Test = {
   "contract"     : string,
@@ -144,9 +141,7 @@ Transaction = {
 }
 ```
 
-`Coverage` is a dict describing certain coverage-increasing calls.
-Each `GasInfo` entry is a tuple that describes how maximal
-gas usage was achieved, and is also not too important. These interfaces are
+`Coverage` is a dict describing certain coverage-increasing calls. These interfaces are
 subject to change to be slightly more user-friendly at a later date. `testType`
 will either be `property` or `assertion`, and `status` always takes on either
 `fuzzing`, `shrinking`, `solved`, `passed`, or `error`.
@@ -164,7 +159,7 @@ $ less echidna.prof
 
 This produces a report file (`echidna.prof`), that shows which functions take up the most CPU and memory usage.
 
-If the basic profiling doesn't help, you can use more [advanced profiling techniques](https://input-output-hk.github.io/hs-opt-handbook.github.io/src/Measurement_Observation/Heap_Ghc/eventlog.html).
+If the basic profiling doesn't help, you can use more [advanced profiling techniques](https://haskell.foundation/hs-opt-handbook.github.io/src/Measurement_Observation/Haskell_Profiling/eventlog.html).
 
 Common causes for performance issues that we observed:
 
@@ -172,7 +167,7 @@ Common causes for performance issues that we observed:
 - Lazy data constructors that accumulate thunks
 - Inefficient data structures used in hot paths
 
-Checking for these is a good place to start. If you suspect some comuptation is too lazy and
+Checking for these is a good place to start. If you suspect some computation is too lazy and
 leaks memory, you can use `force` from `Control.DeepSeq` to make sure it gets evaluated.
 
 ## Limitations and known issues
@@ -208,7 +203,7 @@ You can get further information in the [`echidna` Homebrew Formula](https://form
 If you prefer to use a pre-built Docker container, check out our [docker
 package](https://github.com/orgs/crytic/packages?repo_name=echidna), which is
 auto-built via GitHub Actions. The `echidna` container is based on
-`ubuntu:focal` and it is meant to be a small yet flexible enough image to use
+`ubuntu:noble` and it is meant to be a small yet flexible enough image to use
 Echidna on. It provides a pre-built version of `echidna`, as well as
 `slither`, `crytic-compile`, `solc-select` and `nvm` under 200 MB.
 
@@ -251,7 +246,7 @@ $ docker run -it -v `pwd`:/src echidna bash -c "solc-select install 0.5.7 && sol
 
 ### Building using Stack
 
-If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/README/). `stack install` should build and compile `echidna` in `~/.local/bin`. You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choosing. You also need to install the latest release of [libff](https://github.com/scipr-lab/libff). Refer to our [CI tests](.github/scripts/install-libff.sh) for guidance.
+If you'd prefer to build from source, use [Stack](https://docs.haskellstack.org/en/stable/). `stack install` should build and compile `echidna` in `~/.local/bin`. You will need to link against libreadline and libsecp256k1 (built with recovery enabled), which should be installed with the package manager of your choosing. You also need to install the latest release of [libff](https://github.com/scipr-lab/libff). Refer to our [CI tests](.github/scripts/install-libff.sh) for guidance.
 
 Some Linux distributions do not ship static libraries for certain things that Haskell needs, e.g. Arch Linux, which will cause `stack build` to fail with linking errors because we use the `-static` flag. In that case, use `--flag echidna:-static` to produce a dynamically linked binary.
 
@@ -259,7 +254,7 @@ If you're getting errors building related to linking, try tinkering with `--extr
 
 ### Building using Nix (works natively on Apple M1 systems)
 
-[Nix users](https://nixos.org/download.html) can install the latest Echidna with:
+[Nix users](https://nixos.org/download/) can install the latest Echidna with:
 
 ```sh
 $ nix-env -i -f https://github.com/crytic/echidna/tarball/master
@@ -272,10 +267,11 @@ $ nix run github:crytic/echidna/v2.1.1 # specific ref (tag/branch/commit)
 ```
 
 To build a standalone release for non-Nix macOS systems, the following will
-bundle Echidna and all linked dylibs:
+build Echidna in a mostly static binary. This can also be used on Linux systems
+to produce a fully static binary.
 
 ```sh
-$ nix build .#echidna-bundle
+$ nix build .#echidna-redistributable
 ```
 
 Nix will automatically install all the dependencies required for development
@@ -296,18 +292,53 @@ $ nix develop # alternatively nix-shell
 
 This is a partial list of smart contracts projects that use Echidna for testing:
 
+* [Curvance](https://github.com/curvance/Curvance-CantinaCompetition/tree/CodeFAQAndAdjustments/tests/fuzzing)
 * [Primitive](https://github.com/primitivefinance/rmm-core/tree/main/contracts/crytic)
 * [Uniswap-v3](https://github.com/search?q=org%3AUniswap+echidna&type=commits)
-* [Balancer](https://github.com/balancer-labs/balancer-core/tree/master/echidna)
+* [Balancer](https://github.com/balancer/balancer-core/tree/master/echidna)
 * [MakerDAO vest](https://github.com/makerdao/dss-vest/pull/16)
-* [Optimism DAI Bridge](https://github.com/BellwoodStudios/optimism-dai-bridge/blob/master/contracts/test/DaiEchidnaTest.sol)
+* [Optimism DAI Bridge](https://github.com/makerdao/optimism-dai-bridge/blob/master/contracts/test/DaiEchidnaTest.sol)
 * [WETH10](https://github.com/WETH10/WETH10/tree/main/contracts/fuzzing)
 * [Yield](https://github.com/yieldprotocol/fyDai/pull/312)
 * [Convexity Protocol](https://github.com/opynfinance/ConvexityProtocol/tree/dev/contracts/echidna)
 * [Aragon Staking](https://github.com/aragon/staking/blob/82bf54a3e11ec4e50d470d66048a2dd3154f940b/packages/protocol/contracts/test/lib/EchidnaStaking.sol)
-* [Centre Token](https://github.com/centrehq/centre-tokens/tree/master/echidna_tests)
+* [Centre Token](https://github.com/circlefin/stablecoin-evm/tree/release-2024-03-15T223309/echidna_tests)
 * [Tokencard](https://github.com/tokencard/contracts/tree/master/tools/echidna)
 * [Minimalist USD Stablecoin](https://github.com/usmfum/USM/pull/41)
+
+### Security reviews
+
+The following shows public security reviews that used Echidna to uncover vulnerabilities
+
+- [Advanced Blockchain](https://github.com/trailofbits/publications/blob/master/reviews/AdvancedBlockchain.pdf)
+- [Amp](https://github.com/trailofbits/publications/blob/master/reviews/amp.pdf)
+- [Ampleforth](https://github.com/trailofbits/publications/blob/master/reviews/ampleforth.pdf)
+- [Atlendis](https://github.com/trailofbits/publications/blob/master/reviews/2023-03-atlendis-atlendissmartcontracts-securityreview.pdf)
+- [Balancer](https://github.com/trailofbits/publications/blob/master/reviews/2021-04-balancer-balancerv2-securityreview.pdf)
+- [Basis](https://github.com/trailofbits/publications/blob/master/reviews/basis.pdf)
+- [Dai](https://github.com/trailofbits/publications/blob/master/reviews/mc-dai.pdf)
+- [Frax](https://github.com/trailofbits/publications/blob/master/reviews/FraxQ22022.pdf)
+- [Liquity](https://github.com/trailofbits/publications/blob/master/reviews/LiquityProtocolandStabilityPoolFinalReport.pdf)
+- [LooksRare](https://github.com/trailofbits/publications/blob/master/reviews/LooksRare.pdf)
+- [Maple](https://github.com/trailofbits/publications/blob/master/reviews/2022-03-maplefinance-securityreview.pdf)
+- [Optimism](https://github.com/trailofbits/publications/blob/master/reviews/2022-11-optimism-securityreview.pdf)
+- [Opyn](https://github.com/trailofbits/publications/blob/master/reviews/Opyn.pdf)
+- [Origin Dollar](https://github.com/trailofbits/publications/blob/master/reviews/OriginDollar.pdf)
+- [Origin](https://github.com/trailofbits/publications/blob/master/reviews/origin.pdf)
+- [Paxos](https://github.com/trailofbits/publications/blob/master/reviews/paxos.pdf)
+- [Primitive](https://github.com/trailofbits/publications/blob/master/reviews/Primitive.pdf)
+- [RocketPool](https://github.com/trailofbits/publications/blob/master/reviews/RocketPool.pdf)
+- [Seaport](https://github.com/trailofbits/publications/blob/master/reviews/SeaportProtocol.pdf)
+- [Set Protocol](https://github.com/trailofbits/publications/blob/master/reviews/setprotocol.pdf)
+- [Shell protocol](https://github.com/trailofbits/publications/blob/master/reviews/ShellProtocolv2.pdf)
+- [Sherlock](https://github.com/trailofbits/publications/blob/master/reviews/Sherlockv2.pdf)
+- [Pegasys Pantheon](https://github.com/trailofbits/publications/blob/master/reviews/pantheon.pdf)
+- [TokenCard](https://github.com/trailofbits/publications/blob/master/reviews/TokenCard.pdf)
+- [Uniswap](https://github.com/trailofbits/publications/blob/master/reviews/UniswapV3Core.pdf)
+- [Yearn](https://github.com/trailofbits/publications/blob/master/reviews/YearnV2Vaults.pdf)
+- [Yield](https://github.com/trailofbits/publications/blob/master/reviews/YieldProtocol.pdf)
+- [88mph](https://github.com/trailofbits/publications/blob/master/reviews/88mph.pdf)
+- [0x](https://github.com/trailofbits/publications/blob/master/reviews/0x-protocol.pdf)
 
 ### Trophies
 
@@ -337,9 +368,9 @@ We can also use Echidna to reproduce research examples from smart contract fuzzi
 | Source | Code
 |--|--
 [Using automatic analysis tools with MakerDAO contracts](https://forum.openzeppelin.com/t/using-automatic-analysis-tools-with-makerdao-contracts/1021) | [SimpleDSChief](https://github.com/crytic/echidna/blob/master/tests/solidity/research/vera_dschief.sol)
-[Integer precision bug in Sigma Prime](https://github.com/b-mueller/sabre#example-2-integer-precision-bug) | [VerifyFunWithNumbers](https://github.com/crytic/echidna/blob/master/tests/solidity/research/solcfuzz_funwithnumbers.sol)
+[Integer precision bug in Sigma Prime](https://github.com/muellerberndt/sabre#example-2-integer-precision-bug) | [VerifyFunWithNumbers](https://github.com/crytic/echidna/blob/master/tests/solidity/research/solcfuzz_funwithnumbers.sol)
 [Learning to Fuzz from Symbolic Execution with Application to Smart Contracts](https://files.sri.inf.ethz.ch/website/papers/ccs19-ilf.pdf) | [Crowdsale](https://github.com/crytic/echidna/blob/master/tests/solidity/research/ilf_crowdsale.sol)
-[Harvey: A Greybox Fuzzer for Smart Contracts](https://arxiv.org/abs/1905.06944) | [Foo](https://github.com/crytic/echidna/blob/master/test/solidity/research/harvey_foo.sol), [Baz](https://github.com/crytic/echidna/blob/master/tests/solidity/research/harvey_baz.sol)
+[Harvey: A Greybox Fuzzer for Smart Contracts](https://arxiv.org/abs/1905.06944) | [Foo](https://github.com/crytic/echidna/blob/master/tests/solidity/research/harvey_foo.sol), [Baz](https://github.com/crytic/echidna/blob/master/tests/solidity/research/harvey_baz.sol)
 
 ### Academic Publications
 
@@ -347,7 +378,7 @@ We can also use Echidna to reproduce research examples from smart contract fuzzi
 | --- | --- | --- |
 | [echidna-parade: Diverse multicore smart contract fuzzing](https://agroce.github.io/issta21.pdf) | [ISSTA 2021](https://conf.researchr.org/home/issta-2021) | July 2021 |
 | [Echidna: Effective, usable, and fast fuzzing for smart contracts](https://agroce.github.io/issta20.pdf) | [ISSTA 2020](https://conf.researchr.org/home/issta-2020) | July 2020 |
-| [Echidna: A Practical Smart Contract Fuzzer](papers/echidna_fc_poster.pdf) | [FC 2020](https://fc20.ifca.ai/program.html) | Feb 2020 |
+| [Echidna: A Practical Smart Contract Fuzzer](https://github.com/trailofbits/publications/blob/master/papers/echidna_fc_poster.pdf) | [FC 2020](https://fc20.ifca.ai/program.html) | Feb 2020 |
 
 If you are using Echidna for academic work, consider applying to the [Crytic $10k Research Prize](https://blog.trailofbits.com/2019/11/13/announcing-the-crytic-10k-research-prize/).
 

@@ -9,11 +9,11 @@ if [ -f $HOME/.local/lib/libsecp256k1.a ]; then
   exit 0
 fi
 
-gitRef="21ffe4b22a9683cf24ae0763359e401d1284cc7a"
-curl -LO "https://github.com/bitcoin-core/secp256k1/archive/$gitRef.zip"
+INSTALL_VERSION=0.6.0
+curl -LO "https://github.com/bitcoin-core/secp256k1/archive/v$INSTALL_VERSION.zip"
 
-unzip "$gitRef.zip"
-cd "secp256k1-$gitRef"
+unzip "v$INSTALL_VERSION.zip" && rm "v$INSTALL_VERSION.zip"
+cd "secp256k1-$INSTALL_VERSION"
 
 ./autogen.sh
 # hevm needs reecovery module

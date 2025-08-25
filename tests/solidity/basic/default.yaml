@@ -1,4 +1,6 @@
 # TODO
+#a friendly name to identify what is being fuzzed. Shown next to the echidna version in the UI
+projectName: null
 #select the mode to test, which can be property, assertion, overflow, exploration, optimization
 testMode: "property"
 #check if some contract was destructed or not
@@ -9,25 +11,24 @@ psender: "0x10000"
 #prefix is the prefix for Boolean functions that are properties to be checked
 prefix: "echidna_"
 #propMaxGas defines gas cost at which a property fails
-propMaxGas: 8000030
+propMaxGas: 12500000
 #testMaxGas is a gas limit; does not cause failure, but terminates sequence
-testMaxGas: 8000030
+testMaxGas: 12500000
 #maxGasprice is the maximum gas price
 maxGasprice: 0
 #testLimit is the number of test sequences to run
 testLimit: 50000
 #stopOnFail makes echidna terminate as soon as any property fails and has been shrunk
 stopOnFail: false
-#estimateGas makes echidna perform analysis of maximum gas costs for functions (experimental)
-estimateGas: false
 #seqLen defines how many transactions are in a test sequence
 seqLen: 100
 #shrinkLimit determines how much effort is spent shrinking failing sequences
 shrinkLimit: 5000
 #coverage controls coverage guided testing
-coverage: false
+coverage: true
 #format can be "text" or "json" for different output (human or machine readable)
-format: "text"
+#default is interactive if running on an interactive tty or text mode if not
+format: null
 #contractAddr is the address of the contract itself
 contractAddr: "0x00a329c0648769a73afac7f9381e08fb43dbea72"
 #deployer is address of the contract deployer (who often is privileged owner, etc.)
@@ -38,8 +39,10 @@ sender: ["0x10000", "0x20000", "0x30000"]
 balanceAddr: 0xffffffff
 #balanceContract overrides balanceAddr for the contract address
 balanceContract: 0
-#codeSize max code size for deployed contratcs (default 24576, per EIP-170)
-codeSize: 0x6000
+#codeSize max code size for deployed contracts (default 0xffffffff)
+codeSize: 0xffffffff
+#whether or not to disable running slither (default false, uses slither)
+disableSlither: false
 #solcArgs allows special args to solc
 solcArgs: ""
 #solcLibs is solc libraries
@@ -48,8 +51,6 @@ solcLibs: []
 cryticArgs: []
 #quiet produces (much) less verbose output
 quiet: false
-#initialize the blockchain with some data
-initialize: null
 #initialize the blockchain with some predeployed contracts in some addresses
 deployContracts: []
 #initialize the blockchain with some bytecode in some addresses
@@ -87,5 +88,32 @@ maxValue: 100000000000000000000 # 100 eth
 rpcUrl: null
 # block number to use when fetching over RPC
 rpcBlock: null
-# number of workers
-workers: 1
+# Etherscan API key
+etherscanApiKey: null
+# number of workers. By default (unset) its value is the clamp of the number cores between 1 and 4
+workers: null
+# events server port
+server: null
+# whether to add an additional symbolic execution worker
+symExec: false
+# number of SMT solvers used in symbolic execution
+# only relevant if symExec is true
+symExecNSolvers: 1
+# timeout for symbolic execution SMT solver queries
+# only relevant if symExec is true
+symExecTimeout: 30
+# Number of times we may revisit a particular branching point
+# only relevant if symExec is true
+symExecMaxIters: 5
+# Number of times we may revisit a particular branching point before we consult the smt solver to check reachability
+# only relevant if symExec is true
+symExecAskSMTIters: 1
+# List of whitelisted functions for using symbolic exploration
+# only relevant if symExec is true
+symExecTargets: null
+# List the max number of states to explore when using symbolc execution
+# only relevant if symExec is true
+symExecMaxExplore: 10
+# Select the SMT solver when using symbolic execution. Valid values are: "cvc5", "z3" and "bitwuzla"
+# only relevant if symExec is true
+symExecSMTSolver: bitwuzla
