@@ -1,9 +1,8 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Echidna.Processor where
+module Echidna.SourceAnalysis.Slither where
 
-import Control.Exception (Exception)
-import Control.Monad.Catch (MonadThrow(..))
+import Control.Applicative ((<|>))
 import Data.Aeson ((.:), (.:?), (.!=), eitherDecode, parseJSON, withEmbeddedJSON, withObject)
 import Data.Aeson.Types (FromJSON, Parser, Value(String))
 import Data.ByteString.Base16 qualified as BS16 (decode)
@@ -18,40 +17,20 @@ import Data.Maybe (catMaybes, fromMaybe)
 import Data.SemVer (Version, fromText)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text (pack, isSuffixOf)
+import Data.Text (pack)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode(..))
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import Text.Read (readMaybe)
 
 import EVM.ABI (AbiValue(..))
-import EVM.Types (Addr(..), FunctionSelector)
+import EVM.Types (Addr(..))
 
-import Echidna.ABI (hashSig, makeNumAbiValues, makeArrayAbiValues)
+import Echidna.ABI (makeNumAbiValues, makeArrayAbiValues)
 import Echidna.Types.Signature (ContractName, FunctionName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Utility (measureIO)
-
--- | Things that can go wrong trying to run a processor. Read the 'Show'
--- instance for more detailed explanations.
-data ProcException = ProcessorFailure String String
-                   | ProcessorNotFound String String
-
-instance Show ProcException where
-  show = \case
-    ProcessorFailure p e -> "Error running " ++ p ++ ":\n" ++ e
-    ProcessorNotFound p e -> "Cannot find " ++ p ++ " in PATH.\n" ++ e
-
-instance Exception ProcException
-
--- | This function is used to filter the lists of function names according to the supplied
--- contract name (if any) and returns a list of hashes
-filterResults :: Maybe ContractName -> Map ContractName [FunctionName] -> [FunctionSelector]
-filterResults (Just c) rs =
-  case Map.lookup c rs of
-    Nothing -> filterResults Nothing rs
-    Just s -> hashSig <$> s
-filterResults Nothing rs = hashSig <$> (concat . Map.elems) rs
+import System.IO (stderr, hPutStrLn)
 
 enhanceConstants :: SlitherInfo -> Set AbiValue
 enhanceConstants si =
@@ -62,11 +41,53 @@ enhanceConstants si =
     enh (AbiString s) = makeArrayAbiValues s
     enh v = [v]
 
--- we loose info on what constants are in which functions
+data AssertLocation = AssertLocation
+  { start :: Int
+  , filenameRelative :: String
+  , filenameAbsolute :: String
+  , assertLines :: NE.NonEmpty Int
+  , startColumn :: Int
+  , endingColumn :: Int
+  } deriving (Show)
+
+-- | Assertion listing for a contract.
+-- There are two possibilities because different solc's give different formats.
+-- We either have a list of functions that have assertions, or a full listing of individual assertions.
+data ContractAssertListing
+  = AssertFunctionList [FunctionName]
+  | AssertLocationList (Map FunctionName [AssertLocation])
+  deriving (Show)
+
+type AssertListingByContract = Map ContractName ContractAssertListing
+
+-- | Get a list of functions that have assertions
+assertFunctionList :: ContractAssertListing -> [FunctionName]
+assertFunctionList (AssertFunctionList l) = l
+assertFunctionList (AssertLocationList m) = map fst $ filter (not . null . snd) $ Map.toList m
+
+-- | Get a list of assertions, or an empty list if we don't have enough info
+assertLocationList :: ContractAssertListing -> [AssertLocation]
+assertLocationList (AssertFunctionList _) = []
+assertLocationList (AssertLocationList m) = concat $ Map.elems m
+
+instance FromJSON AssertLocation where
+  parseJSON = withObject "" $ \o -> do
+    start <- o.: "start"
+    filenameRelative <- o.: "filename_relative"
+    filenameAbsolute <- o.: "filename_absolute"
+    assertLines <- o.: "lines"
+    startColumn <- o.: "starting_column"
+    endingColumn <- o.: "ending_column"
+    pure AssertLocation {..}
+
+instance FromJSON ContractAssertListing where
+  parseJSON x = (AssertFunctionList <$> parseJSON x) <|> (AssertLocationList <$> parseJSON x)
+
+-- we lose info on what constants are in which functions
 data SlitherInfo = SlitherInfo
   { payableFunctions :: Map ContractName [FunctionName]
   , constantFunctions :: Map ContractName [FunctionName]
-  , asserts :: Map ContractName [FunctionName]
+  , asserts :: AssertListingByContract
   , constantValues  :: Map ContractName (Map FunctionName [AbiValue])
   , generationGraph :: Map ContractName (Map FunctionName [FunctionName])
   , solcVersions :: [Version]
@@ -94,7 +115,7 @@ instance FromJSON SlitherInfo where
           :: Map ContractName (Map FunctionName [[Maybe AbiValue]])
           <- o .: "constants_used" >>= (traverse . traverse . traverse . traverse) parseConstant
         -- flatten [[AbiValue]], the array probably shouldn't be nested, fix it in Slither
-        let constantValues = (fmap . fmap) (catMaybes . concat) constantValues'
+        let constantValues = (fmap . fmap) (concatMap catMaybes) constantValues'
         functionsRelations <- o .: "functions_relations"
         generationGraph <-
           (traverse . traverse) (withObject "relations" (.: "impacts")) functionsRelations
@@ -124,24 +145,45 @@ instance FromJSON SlitherInfo where
 
 -- Slither processing
 runSlither :: FilePath -> SolConf -> IO SlitherInfo
-runSlither fp _ | ".vy" `isSuffixOf` pack fp = pure noInfo
-runSlither fp solConf = do
-  path <- findExecutable "slither" >>= \case
-    Nothing -> throwM $
-      ProcessorNotFound "slither" "You should install it using 'pip3 install slither-analyzer --user'"
-    Just path -> pure path
+runSlither fp solConf = if solConf.disableSlither
+  then do
+    hPutStrLn stderr $
+        "WARNING: Slither was explicitly disabled. Echidna uses Slither (https://github.com/crytic/slither)"
+        <> " to perform source analysis, which makes fuzzing more effective. You should enable it."
+    pure emptySlitherInfo
+  else findExecutable "slither" >>= \case
+    Nothing -> do
+      hPutStrLn stderr $
+        "WARNING: slither not found. Echidna uses Slither (https://github.com/crytic/slither)"
+        <> " to perform source analysis, which makes fuzzing more effective. You should install it with"
+        <> " 'pip3 install slither-analyzer --user'"
+      pure emptySlitherInfo
+    Just path -> do
+      let args = ["--ignore-compile", "--print", "echidna", "--json", "-"]
+                 ++ solConf.cryticArgs ++ [fp]
+      (exitCode, out, err) <- measureIO solConf.quiet ("Running slither on `" <> fp <> "`") $
+        readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
+      case exitCode of
+        ExitSuccess ->
+          case eitherDecode (BSL.pack out) of
+            Right si -> pure si
+            Left msg -> do
+              hPutStrLn stderr $
+                "WARNING: Decoding slither output failed. Echidna will continue,"
+                <> " however fuzzing will likely be less effective.\n"
+                <> msg
+              pure emptySlitherInfo
+        ExitFailure _ -> do
+          hPutStrLn stderr $
+            "WARNING: Running slither failed. Echidna will continue,"
+            <> " however fuzzing will likely be less effective.\n"
+            <> err
+          pure emptySlitherInfo
 
-  let args = ["--ignore-compile", "--print", "echidna", "--json", "-"]
-             ++ solConf.cryticArgs ++ [fp]
-  (ec, out, err) <- measureIO solConf.quiet ("Running slither on " <> fp) $
-    readCreateProcessWithExitCode (proc path args) {std_err = Inherit} ""
-  case ec of
-    ExitSuccess ->
-      case eitherDecode (BSL.pack out) of
-        Right si -> pure si
-        Left msg -> throwM $
-          ProcessorFailure "slither" ("decoding slither output failed:\n" ++ msg)
-    ExitFailure _ -> throwM $ ProcessorFailure "slither" err
+emptySlitherInfo :: SlitherInfo
+emptySlitherInfo = SlitherInfo mempty mempty mempty mempty mempty [] [] []
 
-noInfo :: SlitherInfo
-noInfo = SlitherInfo mempty mempty mempty mempty mempty [] [] []
+isEmptySlitherInfo :: Maybe SlitherInfo -> Bool
+isEmptySlitherInfo (Just (SlitherInfo _ _ _ _ _ [] [] [])) = True
+isEmptySlitherInfo Nothing = True
+isEmptySlitherInfo _ = False

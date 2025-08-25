@@ -4,12 +4,14 @@ import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract, testContract', solved, solvedLen)
 
+import Echidna.Types.Worker (WorkerType(..))
+
 valuesTests :: TestTree
 valuesTests = testGroup "Value extraction tests"
-  [ 
+  [
     testContract "values/nearbyMining.sol" Nothing
       [ ("echidna_findNearby passed", solved "echidna_findNearby") ]
-    , testContract' "values/smallValues.sol" Nothing Nothing (Just "coverage/test.yaml") False
+    , testContract' "values/smallValues.sol" Nothing Nothing (Just "coverage/test.yaml") False FuzzWorker
       [ ("echidna_findSmall passed", solved "echidna_findSmall") ]
     , testContract "values/constants.sol"    Nothing
       [ ("echidna_found failed",                   solved      "echidna_found")
@@ -20,15 +22,15 @@ valuesTests = testGroup "Value extraction tests"
       [ ("echidna_found_sender failed",            solved      "echidna_found_sender") ]
     , testContract "values/rconstants.sol"   Nothing
       [ ("echidna_found failed",                   solved      "echidna_found") ]
-    , testContract' "values/extreme.sol"   Nothing Nothing (Just "values/extreme.yaml") False
+    , testContract' "values/extreme.sol"   Nothing Nothing (Just "values/extreme.yaml") False FuzzWorker
       [ ("testMinInt8 passed",                   solved      "testMinInt8"),
         ("testMinInt16 passed",                  solved      "testMinInt16"),
         ("testMinInt64 passed",                  solved      "testMinInt32"),
         ("testMinInt128 passed",                 solved      "testMinInt128")
       ]
-    , testContract' "values/utf8.sol"   Nothing Nothing (Just "values/extreme.yaml") False
-      [ ("testNonUtf8 passed",                   solved      "testNonUTF8")]
-    , testContract' "values/create.sol" (Just "C") Nothing Nothing True
+    , testContract' "values/utf8.sol"   Nothing Nothing (Just "values/extreme.yaml") False FuzzWorker
+      [ ("testNonUTF8 passed",                   solved      "testNonUTF8")]
+    , testContract' "values/create.sol" (Just "C") Nothing Nothing True FuzzWorker
       [ ("echidna_state failed",                   solved      "echidna_state") ]
     , testContract "values/time.sol"         (Just "values/time.yaml")
       [ ("echidna_timepassed passed",              solved      "echidna_timepassed") ]
@@ -41,5 +43,11 @@ valuesTests = testGroup "Value extraction tests"
     , testContract "values/darray.sol"       Nothing
       [ ("echidna_darray passed",                  solved      "echidna_darray")
       , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
-
+    , testContract' "values/contract.sol" (Just "Test") Nothing (Just "values/contract.yaml") False FuzzWorker
+      [ ("verify_first passed",                    solved      "verify_first")
+      , ("verify_later passed",                    solved      "verify_later") ]
+    , testContract' "values/struct.sol"      Nothing Nothing (Just "values/contract.yaml") False FuzzWorker
+      [ ("getItem passed",                   solved      "getItem") ]
+    , testContract' "values/events.sol" Nothing Nothing (Just "values/events.yaml") False FuzzWorker
+      [ ("check passed",                           solved      "check") ]
   ]

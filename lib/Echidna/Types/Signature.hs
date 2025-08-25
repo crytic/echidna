@@ -4,14 +4,11 @@ module Echidna.Types.Signature where
 
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Foldable (find)
 import Data.List.NonEmpty (NonEmpty)
-import Data.Map.Strict qualified as M
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 
 import EVM.ABI (AbiType, AbiValue)
-import EVM.Types (Addr)
+import EVM.Types (Addr, W256)
 import Data.Map (Map)
 
 -- | Name of the contract
@@ -31,24 +28,8 @@ type SolCall = (FunctionName, [AbiValue])
 -- | A contract is just an address with an ABI (for our purposes).
 type ContractA = (Addr, NonEmpty SolSignature)
 
--- | Used to memoize results of getBytecodeMetadata
-type MetadataCache = Map ByteString ByteString
-
-type SignatureMap = Map ByteString (NonEmpty SolSignature)
-
-getBytecodeMetadata :: ByteString -> ByteString
-getBytecodeMetadata bs =
-  let stripCandidates = flip BS.breakSubstring bs <$> knownBzzrPrefixes in
-    case find ((/= mempty) . snd) stripCandidates of
-      Nothing     -> bs -- if no metadata is found, return the complete bytecode
-      Just (_, m) -> m
-
-lookupBytecodeMetadata :: MetadataCache -> ByteString -> ByteString
-lookupBytecodeMetadata memo bs = fromMaybe (getBytecodeMetadata bs) (memo M.!? bs)
-
--- | Precalculate getBytecodeMetadata for all contracts in a list
-makeBytecodeCache :: [ByteString] -> MetadataCache
-makeBytecodeCache bss = M.fromList $ bss `zip` (getBytecodeMetadata <$> bss)
+-- | Indexed by contracts' compile-time codehash; see `CodehashMap`.
+type SignatureMap = Map W256 (NonEmpty SolSignature)
 
 knownBzzrPrefixes :: [ByteString]
 knownBzzrPrefixes =

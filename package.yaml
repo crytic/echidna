@@ -3,40 +3,27 @@ name: echidna
 author: Trail of Bits <echidna-dev@trailofbits.com>
 maintainer: Trail of Bits <echidna-dev@trailofbits.com>
 
-version: 2.2.1
+version: 2.2.7
 
-# https://github.com/haskell/cabal/issues/4739
-ghc-options: -Wall -fno-warn-orphans -O2 -optP-Wno-nonportable-include-path
+ghc-options:
+  - -O2
+  - -Wall
+  - -fno-warn-orphans
+  - -feager-blackholing
+  # https://github.com/haskell/cabal/issues/4739
+  - -optP-Wno-nonportable-include-path
+  - -fspecialize-aggressively
+  - -fexpose-all-unfoldings
+  - -Wunused-packages
 
 dependencies:
-  - base
   - aeson
-  - base16-bytestring
-  - binary
-  - bytestring
-  - code-page
+  - base
   - containers
-  - data-bword
-  - data-dword
-  - deepseq
-  - extra
   - directory
-  - exceptions
-  - filepath
-  - hashable
   - hevm
-  - html-entities
-  - ListLike
   - MonadRandom
   - mtl
-  - optparse-applicative
-  - optics
-  - optics-core
-  - process
-  - random
-  - rosezipper
-  - semver
-  - split
   - text
   - transformers
   - time
@@ -54,6 +41,7 @@ dependencies:
 language: GHC2021
 
 default-extensions:
+  - DataKinds
   - DuplicateRecordFields
   - LambdaCase
   - MultiWayIf
@@ -64,21 +52,61 @@ default-extensions:
 
 library:
   source-dirs: lib/
-
-when:
-  - condition: "!os(windows)"
-    cpp-options: -DINTERACTIVE_UI
-    dependencies:
-      - brick
-      - unix
-      - vty
+  dependencies:
+    - ansi-terminal
+    - array
+    - base16-bytestring
+    - binary
+    - brick
+    - bytestring
+    - data-bword
+    - data-dword
+    - deepseq
+    - exceptions
+    - extra
+    - filepath
+    - hashable
+    - html-conduit
+    - html-entities
+    - http-conduit
+    - ListLike
+    - optics
+    - optics-core
+    - process
+    - random
+    - rosezipper
+    - semver
+    - signal
+    - split
+    - strip-ansi-escape
+    - time
+    - unliftio
+    - unliftio-core
+    - utf8-string
+    - vector
+    - vty
+    - vty-crossplatform
+    - wai-extra
+    - warp
+    - word-wrap
+    - xml-conduit
+    - yaml
 
 executables:
   echidna:
     main: Main.hs
     source-dirs: src/
-    dependencies: echidna
-    ghc-options: -threaded -with-rtsopts=-N
+    dependencies:
+      - code-page
+      - echidna
+      - filepath
+      - hashable
+      - optparse-applicative
+      - time
+      - with-utf8
+    ghc-options:
+      - -threaded
+      - '"-with-rtsopts=-A64m -N"'
     when:
       - condition: (os(linux) || os(windows)) && flag(static)
         ghc-options:
@@ -88,21 +116,25 @@ executables:
           - -O2
           - -optl-pthread
       - condition: os(darwin)
-        extra-libraries: c++
         ld-options: -Wl,-keep_dwarf_unwind
         ghc-options: -fcompact-unwind
-      - condition: os(windows)
-        extra-libraries: stdc++
 
 tests:
   echidna-testsuite:
     main: Spec.hs
     source-dirs: src/test
     dependencies:
+      - data-dword
       - echidna
+      - exceptions
+      - optics-core
+      - process
+      - semver
+      - split
       - tasty
       - tasty-hunit
       - tasty-quickcheck
+      - yaml
     when:
         - condition: (os(linux) || os(windows)) && flag(static)
           ghc-options:
@@ -112,11 +144,8 @@ tests:
             - -O2
             - -optl-pthread
         - condition: os(darwin)
-          extra-libraries: c++
           ld-options: -Wl,-keep_dwarf_unwind
           ghc-options: -fcompact-unwind
-        - condition: os(windows)
-          extra-libraries: stdc++
 
 flags:
   static:

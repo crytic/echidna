@@ -1,7 +1,7 @@
 module Echidna.ABI where
 
 import Control.Monad (liftM2, liftM3, foldM, replicateM)
-import Control.Monad.Random.Strict (MonadRandom, join, getRandom, getRandoms, getRandomR)
+import Control.Monad.Random.Strict (MonadRandom, join, getRandom, getRandoms, getRandomR, uniform, fromList)
 import Control.Monad.Random.Strict qualified as Random
 import Data.Binary.Put (runPut, putWord32be)
 import Data.BinaryWord (unsignedWord)
@@ -55,7 +55,7 @@ mkValidAbiUInt i x = if x < bit i then Just $ AbiUInt i x else Nothing
 
 makeNumAbiValues :: Integer -> [AbiValue]
 makeNumAbiValues i =
-  let l f = f <$> commonTypeSizes <*> fmap fromIntegral ([i-1..i+1] ++ [(-i)-1 .. (-i)+1])
+  let l f = f <$> commonTypeSizes <*> fmap fromIntegral ([i-3..i+3] ++ [(-i)-3 .. (-i)+3])
   in catMaybes (l mkValidAbiInt ++ l mkValidAbiUInt)
 
 makeArrayAbiValues :: ByteString -> [AbiValue]
@@ -65,11 +65,11 @@ makeArrayAbiValues b =
      fmap (\n -> AbiBytes n . BS.append b $ BS.replicate (n - size) 0) [size..32]
 
 -- | Pretty-print some 'AbiValue'.
-ppAbiValue :: AbiValue -> String
-ppAbiValue = \case
+ppAbiValue :: Map Addr Text -> AbiValue -> String
+ppAbiValue labels = \case
   AbiUInt _ n         -> show n
   AbiInt  _ n         -> show n
-  AbiAddress n        -> "0x" <> showHex n ""
+  AbiAddress n        -> ppAddr labels n
   AbiBool b           -> if b then "true" else "false"
   AbiBytes _ b        -> show b
   AbiBytesDynamic b   -> show b
@@ -78,7 +78,15 @@ ppAbiValue = \case
   AbiArray _ _ v      -> "[" <> commaSeparated v <> "]"
   AbiTuple v          -> "(" <> commaSeparated v <> ")"
   AbiFunction v       -> show v
-  where commaSeparated v = intercalate ", " (ppAbiValue <$> toList v)
+  where
+    commaSeparated v = intercalate ", " $ ppAbiValue labels <$> toList v
+
+ppAddr :: Map Addr Text -> Addr -> String
+ppAddr labels addr = "0x" <> showHex addr "" <> label
+  where
+    label = case Map.lookup addr labels of
+      Nothing -> ""
+      Just l -> " «" <> T.unpack l <> "»"
 
 -- | Get the signature from a Solidity function.
 signatureCall :: SolCall -> SolSignature
@@ -153,14 +161,20 @@ mkDictValues =
         fromValue (AbiInt  _ n) = Just (fromIntegral n)
         fromValue _             = Nothing
 
--- Generation (synthesis)
-
+-- Generate a random integer using a pow scale:
 getRandomPow :: (MonadRandom m) => Int -> m Integer
 getRandomPow n = if n <= 0 then return 0 else
   do
+   -- uniformly generate a number from 20 to n
    mexp <- getRandomR (20, n)
+   -- uniformly generate a number from the range 2 ^ (mexp / 2) to 2 ^ mexp
    getRandomR (2 ^ (mexp `div` 2), 2 ^ mexp)
 
+-- Generate a random unsigned integer with the following distribution:
+-- * 9% (2/21) uniformly from 0 to 1024
+-- * 76% (16/21) uniformly from 0 to 2 ^ n - 5
+-- * 9% (2/21) uniformly from 2 ^ n - 5 to 2 ^ n - 1.
+-- * 4% (1/21) using the getRandomPow function
 getRandomUint :: MonadRandom m => Int -> m Integer
 getRandomUint n =
   join $ Random.weighted
@@ -170,16 +184,19 @@ getRandomUint n =
     , (getRandomPow (n - 5), 1)
     ]
 
+-- | Generate a random signed integer with the following distribution:
+-- * 10% uniformly from the range -1023 to 1023.
+-- * 90% uniformly from the range -1 * 2 ^ (n - 1) to 2 ^ (n - 1) - 1.
 getRandomInt :: MonadRandom m => Int -> m Integer
 getRandomInt n =
   getRandomR =<< Random.weighted
     [ ((-1023, 1023), 1)
-    , ((-1 * 2 ^ n, 2 ^ (n - 1)), 9)
+    , (((-1) * 2 ^ (n - 1), 2 ^ (n - 1) - 1), 9)
     ]
 
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Doesn't use a dictionary.
 -- Note that we define the dictionary case ('genAbiValueM') first (below), so
--- recursive types can be be generated using the same dictionary easily
+-- recursive types can be generated using the same dictionary easily
 genAbiValue :: MonadRandom m => AbiType -> m AbiValue
 genAbiValue = genAbiValueM emptyDict
 
@@ -201,7 +218,7 @@ fixAbiInt n x =
      else AbiInt n (x `mod` (2 ^ (n - 1) - 1))
 
 -- | Given a way to generate random 'Word8's and a 'ByteString' b of length l,
--- generate between 0 and 2l 'Word8's and add insert them into b at random indices.
+-- generate between 0 and 2l 'Word8's and insert them into b at random indices.
 addChars :: MonadRandom m => m Word8 -> ByteString -> m ByteString
 addChars c b = foldM withR b . enumFromTo 0 =<< rand where
   rand       = getRandomR (0, BS.length b - 1)
@@ -211,7 +228,7 @@ addChars c b = foldM withR b . enumFromTo 0 =<< rand where
 addNulls :: MonadRandom m => ByteString -> m ByteString
 addNulls = addChars $ pure 0
 
--- | Given a \"list-y\" structure with analogues of 'take', 'drop', and 'length',
+-- | Given a \"list-y\" structure with analogs of 'take', 'drop', and 'length',
 -- remove some elements at random.
 shrinkWith
   :: MonadRandom m
@@ -274,7 +291,31 @@ shrinkAbiValue = \case
 
 -- | Given a 'SolCall', generate a random \"smaller\" (simpler) call.
 shrinkAbiCall :: MonadRandom m => SolCall -> m SolCall
-shrinkAbiCall = traverse $ traverse shrinkAbiValue
+shrinkAbiCall (name, vals) = do
+  let numShrinkable = length $ filter canShrinkAbiValue vals
+
+  halfwayVal <- getRandomR (0, numShrinkable)
+  -- This list was made arbitrarily. Feel free to change
+  let numToShrinkOptions = [1, 2, halfwayVal, numShrinkable]
+
+  numToShrink <- min numShrinkable <$> uniform numToShrinkOptions
+  shrunkVals <- shrinkVals (fromIntegral numShrinkable) (fromIntegral numToShrink) vals
+  pure (name, shrunkVals)
+  where
+    shrinkVals 0 _ l = pure l
+    shrinkVals _ 0 l = pure l
+    shrinkVals _ _ [] = pure []
+    shrinkVals numShrinkable numToShrink (h:t)
+      | not (canShrinkAbiValue h) = (h:) <$> shrinkVals numShrinkable numToShrink t
+      | otherwise = do
+          -- We want to pick which ones to shrink uniformly from the vals list.
+          -- Odds of shrinking one element is numToShrink/numShrinkable.
+          shouldShrink <- fromList [(True, numToShrink), (False, numShrinkable-numToShrink)]
+          h' <- if shouldShrink then shrinkAbiValue h else pure h
+          let
+            numShrinkable' = numShrinkable-1
+            numToShrink' = if shouldShrink then numToShrink-1 else numToShrink
+          (h':) <$> shrinkVals numShrinkable' numToShrink' t
 
 -- | Given an 'AbiValue', generate a random \"similar\" value of the same 'AbiType'.
 mutateAbiValue :: MonadRandom m => AbiValue -> m AbiValue
@@ -286,8 +327,8 @@ mutateAbiValue = \case
                 \case 0 -> fixAbiInt n <$> mutateNum x
                       _ -> pure $ AbiInt n x
 
-  AbiAddress x -> pure $ AbiAddress x
-  AbiBool _ -> genAbiValue AbiBoolType
+  AbiAddress x -> pure $ AbiAddress x -- Address are not mutated at all
+  AbiBool _ -> genAbiValue AbiBoolType -- Booleans are regenerated
   AbiBytes n b -> do fs <- replicateM n getRandom
                      xs <- mutateLL (Just n) (BS.pack fs) b
                      pure $ AbiBytes n xs
@@ -303,6 +344,7 @@ mutateAbiValue = \case
   AbiFunction v -> pure $ AbiFunction v
 
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
+-- Note that this function will mutate a *single* argument (if any)
 mutateAbiCall :: MonadRandom m => SolCall -> m SolCall
 mutateAbiCall = traverse f
   where f [] = pure []
@@ -330,6 +372,7 @@ genWithDict genDict m g t = do
                    Just cs -> Just <$> rElem' cs
   fromMaybe <$> g t <*> maybeValM
 
+-- | A small number of dummy addresses
 pregenAdds :: [Addr]
 pregenAdds = [i*0xffffffff | i <- [1 .. 3]]
 
@@ -337,6 +380,7 @@ pregenAbiAdds :: [AbiValue]
 pregenAbiAdds = map (AbiAddress . fromIntegral) pregenAdds
 
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Requires a dictionary.
+-- Only produce lists with number of elements in the range [1, 32]
 genAbiValueM :: MonadRandom m => GenDict -> AbiType -> m AbiValue
 genAbiValueM genDict = genWithDict genDict genDict.constants $ \case
   AbiUIntType n         -> fixAbiUInt n . fromInteger <$> getRandomUint n

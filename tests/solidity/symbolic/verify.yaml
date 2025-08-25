@@ -1,0 +1,5 @@
+testMode: assertion
+symExec: true
+symExecSMTSolver: z3
+workers: 0
+seqLen: 1

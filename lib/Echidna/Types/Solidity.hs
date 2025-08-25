@@ -10,6 +10,9 @@ import EVM.Types (Addr)
 minSupportedSolcVersion :: Version
 minSupportedSolcVersion = version 0 4 25 [] []
 
+detectVyperVersion :: Version -> Bool
+detectVyperVersion x = x > version 0 3 0 [] [] && x < version 0 4 0 [] []
+
 data Filter = Blacklist [Text] | Whitelist [Text] deriving Show
 
 -- | Things that can go wrong trying to load a Solidity file for Echidna testing.
@@ -46,9 +49,9 @@ instance Show SolException where
     OnlyTests              -> "Only tests and no public functions found in ABI"
     ConstructorArgs s      -> "Constructor arguments are required: " ++ s
     NoCryticCompile        -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
-    InvalidMethodFilters f -> "Applying " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions or fuzzing the correct contract?"
-    SetUpCallFailed        -> "Calling the setUp() function failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.)"
-    DeploymentFailed a t   -> "Deploying the contract " ++ show a ++ " failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.):\n" ++ unpack t
+    InvalidMethodFilters f -> "Applying the filter " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions using `filterFunctions` or fuzzing the correct contract?"
+    SetUpCallFailed        -> "Calling the setUp() function failed (revert, out-of-gas, sending ether to a non-payable constructor, etc.)"
+    DeploymentFailed a t   -> "Deploying the contract " ++ show a ++ " failed (revert, out-of-gas, sending ether to a non-payable constructor, etc.):\n" ++ unpack t
     OutdatedSolcVersion v  -> "Solc version " ++ toString v ++ " detected. Echidna doesn't support versions of solc before " ++ toString minSupportedSolcVersion ++ ". Please use a newer version."
 
 
@@ -61,13 +64,13 @@ data SolConf = SolConf
   , sender          :: Set Addr         -- ^ Sender addresses to use
   , balanceAddr     :: Integer          -- ^ Initial balance of deployer and senders
   , balanceContract :: Integer          -- ^ Initial balance of contract to test
-  , codeSize        :: Integer          -- ^ Max code size for deployed contratcs (default 24576, per EIP-170)
+  , codeSize        :: Integer          -- ^ Max code size for deployed contracts (default 0xffffffff)
   , prefix          :: Text             -- ^ Function name prefix used to denote tests
+  , disableSlither  :: Bool             -- ^ Whether or not to skip running Slither
   , cryticArgs      :: [String]         -- ^ Args to pass to crytic
   , solcArgs        :: String           -- ^ Args to pass to @solc@
   , solcLibs        :: [String]         -- ^ List of libraries to load, in order.
   , quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
-  , initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
   , deployContracts :: [(Addr, String)] -- ^ List of contracts to deploy in specific addresses
   , deployBytecodes :: [(Addr, Text)]   -- ^ List of contracts to deploy in specific addresses
   , allContracts    :: Bool             -- ^ Whether or not to fuzz all contracts

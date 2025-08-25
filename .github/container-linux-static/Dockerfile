@@ -1,13 +1,13 @@
-FROM fpco/alpine-haskell-stack:9.2.7
+FROM docker.io/benz0li/ghc-musl:9.8.4
+# https://gitlab.com/benz0li/ghc-musl
 
 RUN apk upgrade --no-cache &&\
     apk add --no-cache \
+        autoconf \
+        automake \
+        binutils-gold \
         cmake \
-        libtool \
-        openssl-dev \
-        tar \
-        zlib-dev \
-        zlib-static
+        libtool
 
 RUN addgroup \
         --gid 115 \
@@ -22,8 +22,9 @@ RUN addgroup \
         runneruser
 
 RUN mkdir -p /etc/stack &&\
-    { cat /root/.stack/config.yaml ;\
-      echo "system-ghc: true" ;\
+    { echo "system-ghc: true" ;\
       echo "install-ghc: false" ;\
       echo "skip-ghc-check: true" ;\
-    } >> /etc/stack/config.yaml
+    } >> /etc/stack/config.yaml &&\
+    chmod 664 /etc/stack/config.yaml &&\
+    chown root:runneruser /etc/stack/config.yaml

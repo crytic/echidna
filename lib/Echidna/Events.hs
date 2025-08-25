@@ -3,25 +3,30 @@
 
 module Echidna.Events where
 
+import Data.Binary.Get
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy (fromStrict)
+import Data.List (foldl')
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust, catMaybes, maybeToList)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (pack, Text)
 import Data.Tree (flatten)
 import Data.Tree.Zipper (fromForest, TreePos, Empty)
 import Data.Vector (fromList)
 
 import EVM (traceForest)
-import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, AbiType(..), AbiValue(..))
+import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, getAbi, AbiType(..), AbiValue(..))
 import EVM.Dapp (DappContext(..), DappInfo(..))
+import EVM.Expr (maybeLitWordSimp)
 import EVM.Format (showValues, showError, contractNamePart)
 import EVM.Solidity (SolcContract(..))
 import EVM.Types
 
-import Echidna.Types.Buffer (forceLit, forceBuf)
-import Data.ByteString (ByteString)
+import Echidna.SymExec.Symbolic (forceWord, forceBuf)
 
 type EventMap = Map W256 Event
 type Events = [Text]
@@ -29,19 +34,19 @@ type Events = [Text]
 emptyEvents :: TreePos Empty a
 emptyEvents = fromForest []
 
-extractEvents :: Bool -> DappInfo -> VM -> Events
+extractEvents :: Bool -> DappInfo -> VM Concrete s -> Events
 extractEvents decodeErrors dappInfo vm =
   let forest = traceForest vm
   in maybeToList (decodeRevert decodeErrors vm)
-     ++ catMaybes (concatMap flatten (fmap (fmap showTrace) forest))
+     ++ concatMap ((catMaybes . flatten) . fmap showTrace) forest
   where
   showTrace trace =
-    let ?context = DappContext { info = dappInfo, env = vm.env.contracts } in
-    let codehash' = fromJust $ maybeLitWord trace.contract.codehash
+    let ?context = DappContext { info = dappInfo, contracts = vm.env.contracts, labels = vm.labels } in
+    let codehash' = fromJust $ maybeLitWordSimp trace.contract.codehash
         maybeContractName = maybeContractNameFromCodeHash dappInfo codehash'
     in case trace.tracedata of
       EventTrace addr bytes (topic:_) ->
-        case Map.lookup (forceLit topic) dappInfo.eventMap of
+        case Map.lookup (forceWord topic) dappInfo.eventMap of
           Just (Event name _ types) ->
             -- TODO this is where indexed types are filtered out
             -- they are filtered out for a reason as they only contain
@@ -51,8 +56,8 @@ extractEvents decodeErrors dappInfo vm =
               <> showValues [t | (_, t, NotIndexed) <- types] bytes
               <> " from: "
               <> maybe mempty (<> "@") maybeContractName
-              <> pack (show $ forceLit addr)
-          Nothing -> Just $ pack $ show (forceLit topic)
+              <> pack (show $ forceWord addr)
+          Nothing -> Just $ pack $ show (forceWord topic)
       ErrorTrace e ->
         case e of
           Revert out ->
@@ -71,12 +76,41 @@ extractEvents decodeErrors dappInfo vm =
         Just $ humanPanic $ decodePanic d
       _ -> Nothing
 
+-- | Extract all non‑indexed event values emitted between two VM states.
+extractEventValues :: DappInfo -> VM Concrete s -> VM Concrete s -> Map AbiType (Set AbiValue)
+extractEventValues dappInfo vm vm' =
+  let
+    oldLogs = vm.logs
+    newLogs = vm'.logs
+
+    -- only the newly emitted entries
+    delta   = filter (`notElem` oldLogs) newLogs
+
+    -- decode each Expr Log
+    goLog = \case
+      LogEntry _addr (ConcreteBuf bs) (sigHash : _) ->
+        case Map.lookup (forceWord sigHash) dappInfo.eventMap of
+          Just (Event _ _ params) ->
+            [ (ty, val)
+            | (_, ty, NotIndexed) <- params
+            , Right (_, _, val) <- [ runGetOrFail (getAbi ty) (fromStrict bs) ]
+            ]
+          Nothing -> []
+      _ -> []
+
+    pairs = concatMap goLog delta
+  in
+    foldl'
+      (\m (ty,v) -> Map.insertWith Set.union ty (Set.singleton v) m)
+      Map.empty
+      pairs
+
 maybeContractNameFromCodeHash :: DappInfo -> W256 -> Maybe Text
 maybeContractNameFromCodeHash info codeHash = contractToName <$> maybeContract
   where maybeContract = snd <$> Map.lookup codeHash info.solcByHash
         contractToName c = contractNamePart c.contractName
 
-decodeRevert :: Bool -> VM -> Maybe Text
+decodeRevert :: Bool -> VM Concrete s -> Maybe Text
 decodeRevert decodeErrors vm =
   case vm.result of
     Just (VMFailure (Revert (ConcreteBuf bs))) -> decodeRevertMsg decodeErrors bs
