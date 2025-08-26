@@ -13,13 +13,12 @@ import Data.Map qualified as Map
 import Data.Maybe (fromJust)
 import Data.Set qualified as Set
 import Data.Text (unpack, Text)
-import Data.Text.Encoding (encodeUtf8)
 import Data.List.NonEmpty (fromList)
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..), defaultVeriOpts)
-import EVM.Types (abiKeccak, FunctionSelector, VMType(..))
+import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 import Control.Monad.ST (RealWorld)
 
