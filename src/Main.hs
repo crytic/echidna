@@ -185,9 +185,9 @@ bool = maybeReader (f . map toLower) where
   f _ = Nothing
 
 fuzzOptions :: Parser FuzzOptions
-fuzzOptions = FuzzOptions
-  <$> (NE.fromList <$> some (argument str (metavar "FILES"
-    <> help "Solidity files to analyze")))
+fuzzOptions = FuzzOptions . NE.fromList
+  <$> some (argument str (metavar "FILES"
+    <> help "Solidity files to analyze"))
   <*> optional (option auto $ long "workers"
     <> metavar "N"
     <> help "Number of workers to run")
