@@ -57,7 +57,7 @@ import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..))
 import Echidna.Types.Worker
-import Echidna.Worker 
+import Echidna.Worker
 
 instance MonadThrow m => MonadThrow (RandT g m) where
   throwM = lift . throwM
@@ -156,7 +156,7 @@ runSymWorker callback vm dict workerId _ name = do
     shrinkAndRandomlyExplore transactions (10 :: Int)
   listenerFunc _ = pure ()
 
-  shrinkAndRandomlyExplore _ 0 = do 
+  shrinkAndRandomlyExplore _ 0 = do
     testRefs <- asks (.testRefs)
     tests <- liftIO $ traverse readIORef testRefs
     CampaignConf{shrinkLimit} <- asks (.cfg.campaignConf)
@@ -166,7 +166,7 @@ runSymWorker callback vm dict workerId _ name = do
     testRefs <- asks (.testRefs)
     tests <- liftIO $ traverse readIORef testRefs
     CampaignConf{stopOnFail, shrinkLimit} <- asks (.cfg.campaignConf)
-    if stopOnFail && any final tests then 
+    if stopOnFail && any final tests then
       lift callback -- >> pure FastFailed
     else if any shrinkable tests then do
       shrinkLoop shrinkLimit
@@ -191,7 +191,7 @@ runSymWorker callback vm dict workerId _ name = do
 
 
   shrinkLoop 0 = return ()
-  shrinkLoop n = do 
+  shrinkLoop n = do
     lift callback
     updateTests $ \test -> do
       if test.workerId == Just workerId then
@@ -215,10 +215,9 @@ runSymWorker callback vm dict workerId _ name = do
     rvm <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm rtxs
     cfg <- asks (.cfg)
     let targets = cfg.campaignConf.symExecTargets
-    if isJust targets then
-      pure [(Nothing, rvm, rtxs)]
-    else
-      pure [(Just ltx, ivm, txs), (Nothing, rvm, rtxs)]
+    if null targets
+    then pure [(Just ltx, ivm, txs), (Nothing, rvm, rtxs)]
+    else pure [(Nothing, rvm, rtxs)]
 
   txsToTxAndVmsSym True txs = do
     -- Split the sequence randomly and select any next transaction
@@ -235,7 +234,7 @@ runSymWorker callback vm dict workerId _ name = do
     contract <- chooseContract cs name
     failedTests <- findFailedTests
     let failedTestSignatures = map getAssertionSignature failedTests
-    case tx of 
+    case tx of
       Nothing -> getRandomTargetMethod contract conf.campaignConf.symExecTargets failedTestSignatures >>= \case
         Nothing -> do
           return ()
@@ -245,7 +244,7 @@ runSymWorker callback vm dict workerId _ name = do
           return ()
         Just method -> do
           exploreAndVerify contract method vm' txsBase
-    
+
   exploreAndVerify contract method vm' txsBase = do
     (threadId, symTxsChan) <- exploreContract contract method vm'
     modify' (\ws -> ws { runningThreads = [threadId] })
@@ -274,10 +273,11 @@ runSymWorker callback vm dict workerId _ name = do
     let cs = Map.elems dapp.solcByName
     contract <- chooseContract cs name
     let allMethods = contract.abiMap
+    conf <- asks (.cfg)
     mapM_ (\method -> do
-           isSuitable <- isSuitableToVerifyMethod contract method
-           if isSuitable 
-            then symExecMethod contract method 
+           isSuitable <- isSuitableToVerifyMethod contract method conf.campaignConf.symExecTargets
+           if isSuitable
+            then symExecMethod contract method
             else pushWorkerEvent $ SymExecError ("Skipped verification of method " <> unpack method.methodSignature)
           ) allMethods
 

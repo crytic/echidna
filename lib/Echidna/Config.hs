@@ -101,7 +101,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "server"
         <*> v ..:? "symExec"            ..!= False
         <*> smtSolver
-        <*> v ..:? "symExecTargets"     ..!= Nothing
+        <*> v ..:? "symExecTargets"     ..!= []
         <*> v ..:? "symExecTimeout"     ..!= defaultSymExecTimeout
         <*> v ..:? "symExecNSolvers"    ..!= defaultSymExecNWorkers
         <*> v ..:? "symExecMaxIters"    ..!= defaultSymExecMaxIters
