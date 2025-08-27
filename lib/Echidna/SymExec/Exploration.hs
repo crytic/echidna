@@ -13,13 +13,12 @@ import Data.Map qualified as Map
 import Data.Maybe (fromJust)
 import Data.Set qualified as Set
 import Data.Text (unpack, Text)
-import Data.Text.Encoding (encodeUtf8)
-import Data.List.NonEmpty (fromList) 
+import Data.List.NonEmpty (fromList)
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..), defaultVeriOpts)
-import EVM.Types (abiKeccak, FunctionSelector, VMType(..))
+import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 import Control.Monad.ST (RealWorld)
 
@@ -44,14 +43,14 @@ import Echidna.Worker (pushWorkerEvent)
 
 getTargetMethodFromTx :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => Tx -> SolcContract -> [String] -> m (Maybe Method)
 getTargetMethodFromTx (Tx { call = SolCall (methodName, _) }) contract failedProperties = do
-  env <- ask  
+  env <- ask
   let allMethods = Map.assocs contract.abiMap
       assertSigs = env.world.assertSigs
       (selector, method) = case filter (\(_, m) -> m.name == methodName) allMethods of
         [] -> error $ "Method " ++ show methodName ++ " not found in contract ABI"
         (x:_) -> x
 
-  if (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method && (unpack method.methodSignature) `notElem` failedProperties 
+  if (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method && (unpack method.methodSignature) `notElem` failedProperties
   then return $ Just method
   else return Nothing
 
@@ -60,31 +59,24 @@ getTargetMethodFromTx _ _ _ = return Nothing
 -- This function selects a random method from the contract's ABI to explore.
 -- It uses the campaign configuration to determine which methods are suitable for symbolic execution.
 -- Additionally, it filter methods that are associated with failed properties, if any.
-getRandomTargetMethod :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> Maybe [Text] -> [String] -> m (Maybe Method)
+getRandomTargetMethod :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> [Text] -> [String] -> m (Maybe Method)
 getRandomTargetMethod contract targets failedProperties = do
   env <- ask
   let allMethods = Map.assocs contract.abiMap
       assertSigs = env.world.assertSigs
       filterFunc (selector, method) = (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method && (unpack method.methodSignature) `notElem` failedProperties
       filteredMethods = filter filterFunc allMethods
-  
-  case (targets, filteredMethods) of
-    (Just ms, _) -> liftIO $ rElem (fromList $ map (Just . snd) $ filter (\(_, m) -> m.name `elem` ms) allMethods)
-    (_,      []) -> return Nothing
-    _            -> liftIO $ rElem (fromList $ map (Just . snd) filteredMethods)
 
-
--- | Filters methods based on the campaign configuration.
--- If symExecTargets is Just, it filters methods by their name.
--- If symExecTargets is Nothing, it filters methods by their signature and checks if they are suitable for symbolic execution.
--- If the list of assertSigs is empty, it does not filter by signature (to workaround a potential bug in Slither).
-filterTarget :: Maybe [Text] -> [FunctionSelector] -> Maybe Tx -> Method -> Bool
-filterTarget symExecTargets assertSigs tx method =
-  case (symExecTargets, tx) of
-    (Just ms, _)                                       -> method.name `elem` ms
-    (_,  Just (Tx { call = SolCall (methodName, _) })) -> (null assertSigs || methodSig `elem` assertSigs) && method.name == methodName && suitableForSymExec method
-    _                                                  -> (null assertSigs || methodSig `elem` assertSigs) && suitableForSymExec method
- where methodSig = abiKeccak $ encodeUtf8 method.methodSignature
+  if null targets
+  then case filteredMethods of
+    [] -> return Nothing
+    _  -> liftIO $ rElem (fromList $ map (Just . snd) filteredMethods)
+  else
+    let
+      targetMethods = filter (\(_, m) -> m.name `elem` targets) allMethods
+    in case targetMethods of
+      [] -> return Nothing
+      _  -> liftIO $ rElem (fromList $ map (Just . snd) targetMethods)
 
 exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SolcContract -> Method -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 exploreContract contract method vm = do
