@@ -142,7 +142,7 @@ data Options = Options
   , cliCryticArgs       :: Maybe String
   , cliSolcArgs         :: Maybe String
   , cliSymExec          :: Maybe Bool
-  , cliSymExecTargets   :: Maybe Text
+  , cliSymExecTargets   :: [Text]
   , cliSymExecTimeout   :: Maybe Int
   , cliSymExecNSolvers  :: Maybe Int
   }
@@ -225,9 +225,9 @@ options = Options . NE.fromList
   <*> optional (option bool $ long "sym-exec"
     <> metavar "BOOL"
     <> help "Whether to enable the experimental symbolic execution feature.")
-  <*> optional (option str $ long "sym-exec-target"
+  <*> many (option str $ long "sym-exec-target"
     <> metavar "SELECTOR"
-    <> help "Target for the symbolic execution run (assuming sym-exec is enabled). Default is all functions")
+    <> help "Target for the symbolic execution run (assuming sym-exec is enabled). Can be passed multiple times. Default is all functions")
   <*> optional (option auto $ long "sym-exec-timeout"
     <> metavar "INTEGER"
     <> help ("Timeout for each symbolic execution run, in seconds (assuming sym-exec is enabled). Default is " ++ show defaultSymExecTimeout))
@@ -276,7 +276,7 @@ overrideConfig config Options{..} = do
       , workers = cliWorkers <|> campaignConf.workers
       , serverPort = cliServerPort <|> campaignConf.serverPort
       , symExec = fromMaybe campaignConf.symExec cliSymExec
-      , symExecTargets = (\ t -> Just [t]) =<< cliSymExecTargets
+      , symExecTargets = if null cliSymExecTargets then campaignConf.symExecTargets else cliSymExecTargets
       , symExecTimeout = fromMaybe campaignConf.symExecTimeout cliSymExecTimeout
       , symExecNSolvers = fromMaybe campaignConf.symExecNSolvers cliSymExecNSolvers
       }

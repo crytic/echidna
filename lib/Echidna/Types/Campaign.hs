@@ -44,9 +44,9 @@ data CampaignConf = CampaignConf
   , symExecSMTSolver   :: Solver
     -- ^ SMT solver to use for symbolic execution.
     -- Supported solvers: "cvc5", "z3" and "bitwuzla"
-  , symExecTargets     :: Maybe [Text]
+  , symExecTargets     :: [Text]
     -- ^ List of target functions for symbolic execution.
-    -- If this is 'Nothing', all functions are considered targets.
+    -- If this is empty, all functions are considered targets.
   , symExecTimeout     :: Int
     -- ^ Timeout for symbolic execution SMT solver queries.
     -- Only relevant if symExec is True
