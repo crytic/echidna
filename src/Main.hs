@@ -101,7 +101,7 @@ main = withUtf8 $ withCP65001 $ do
         corpus <- readIORef env.corpusRef
         saveTxs env (dir </> "coverage") (snd <$> Set.toList corpus)
 
-  -- save coverage reports (now using separate directory)
+  -- save coverage reports
   let coverageDir = cfg.campaignConf.coverageDir <|> cfg.campaignConf.corpusDir
   case coverageDir of
     Nothing -> pure ()
