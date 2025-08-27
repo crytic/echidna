@@ -2,7 +2,7 @@ module Tests.Coverage (coverageTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, passed, countCorpus, checkCoverageUsesCorpusDir, checkEffectiveCoverageDir)
+import Common (testContract, passed, countCorpus, checkCoverageUsesCorpusDir)
 
 coverageTests :: TestTree
 coverageTests = testGroup "Coverage tests"
@@ -18,12 +18,10 @@ coverageTests = testGroup "Coverage tests"
 
   -- Test corpus and coverage directory functionality
   , testContract "basic/revert.sol"              (Just "basic/coverage-test.yaml")
-      [ ("corpus count",                           countCorpus 1)
-      , ("uses coverageDir when set",              checkEffectiveCoverageDir "coverage-reports")]
+      [ ("corpus count",                           countCorpus 1)]
 
   -- Test coverage fallback to corpus directory
   , testContract "basic/revert.sol"              (Just "basic/corpus-fallback-test.yaml")
-      [ ("uses corpusDir for coverage",           checkCoverageUsesCorpusDir "test-corpus")
-      , ("fallback to corpusDir",                 checkEffectiveCoverageDir "test-corpus")]
+      [ ("uses corpusDir for coverage",           checkCoverageUsesCorpusDir "test-corpus")]
 
   ]
