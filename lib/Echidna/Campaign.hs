@@ -274,12 +274,12 @@ runSymWorker callback vm dict workerId _ name = do
     contract <- chooseContract cs name
     let allMethods = contract.abiMap
     conf <- asks (.cfg)
-    mapM_ (\method -> do
+    forM_ allMethods (\method -> do
            isSuitable <- isSuitableToVerifyMethod contract method conf.campaignConf.symExecTargets
            if isSuitable
             then symExecMethod contract method
             else pushWorkerEvent $ SymExecError ("Skipped verification of method " <> unpack method.methodSignature)
-          ) allMethods
+          )
 
   symExecMethod contract method = do
     lift callback

@@ -11,6 +11,7 @@ import Data.Map (assocs)
 import Data.Maybe (fromJust)
 import Data.Text qualified as Text
 import Data.Set qualified as Set
+import Data.List (find)
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
@@ -32,9 +33,9 @@ isSuitableToVerifyMethod contract method symExecTargets = do
   env <- ask
   let allMethods = assocs contract.abiMap
       assertSigs = env.world.assertSigs
-      (selector, _) = case filter (\(_, m) -> m == method) allMethods of
-        [] -> error $ "Method " ++ show method.name ++ " not found in contract ABI"
-        (x:_) -> x
+      (selector, _) = case find (\(_, m) -> m == method) allMethods of
+        Nothing -> error $ "Method " ++ show method.name ++ " not found in contract ABI"
+        Just x  -> x
 
   return $
     if null symExecTargets
