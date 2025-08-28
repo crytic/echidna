@@ -39,8 +39,6 @@ contract TestCheatGas {
   }
 
   function echidna_gas_zero() public returns (bool){
-    // 0x14 as measured from opcodes, but let's leave some leeway in case solc changes
-    // GAS PUSH1 0x0 DUP1 PUSH1 0x24 PUSH1 0x9C PUSH1 0x0 DUP7 GAS CALLCODE GAS
     return spent > 0x20;
   }
 }
