@@ -173,7 +173,7 @@ leaks memory, you can use `force` from `Control.DeepSeq` to make sure it gets ev
 ## Limitations and known issues
 
 EVM emulation and testing are hard. Echidna has some limitations in the latest release. Some of
-these are inherited from [hevm](https://github.com/ethereum/hevm) while some are results from
+these are inherited from [hevm](https://github.com/argotorg/hevm) while some are results from
 design/performance decisions or simply bugs in our code. We list them here including their
 corresponding issue and the status ("wont fix", "on hold", "in review", "fixed"). Issues that are
 "fixed" are expected to be included in the next Echidna release.
