@@ -226,7 +226,7 @@ something like the following command. It will map the current directory as
 `echidna`:
 
 ```sh
-$ docker run --rm -it -v `pwd`:/src ghcr.io/crytic/echidna/echidna
+$ docker run --rm -it -v "$(pwd)":/src ghcr.io/crytic/echidna/echidna
 ```
 
 Otherwise, if you want to locally build the latest version of Echidna, we
@@ -241,7 +241,7 @@ Then, you can run the `echidna` image locally. For example, to install solc
 0.5.7 and check `tests/solidity/basic/flags.sol`, you can run:
 
 ```sh
-$ docker run -it -v `pwd`:/src echidna bash -c "solc-select install 0.5.7 && solc-select use 0.5.7 && echidna /src/tests/solidity/basic/flags.sol"
+$ docker run -it -v "$(pwd)":/src echidna bash -c "solc-select install 0.5.7 && solc-select use 0.5.7 && echidna /src/tests/solidity/basic/flags.sol"
 ```
 
 ### Building using Stack
