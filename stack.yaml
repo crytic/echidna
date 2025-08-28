@@ -5,7 +5,7 @@ packages:
 - '.'
 
 extra-deps:
-- git: https://github.com/ethereum/hevm.git
+- git: https://github.com/argotorg/hevm.git
   commit: 9982c580ed19b88ebab9744d29d940fd2f0bd8c6
 
 - smt2-parser-0.1.0.1@sha256:1e1a4565915ed851c13d1e6b8bb5185cf5d454da3b43170825d53e221f753d77,1421

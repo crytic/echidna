@@ -117,7 +117,7 @@ defaultSymExecMaxIters :: Integer
 defaultSymExecMaxIters = 5
 
 -- | Same default as in hevm, "everything else is unsound"
--- (https://github.com/ethereum/hevm/pull/252)
+-- (https://github.com/argotorg/hevm/pull/252)
 defaultSymExecAskSMTIters :: Integer
 defaultSymExecAskSMTIters = 1
 
