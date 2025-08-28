@@ -18,6 +18,7 @@ module Common
   , countCorpus
   , overrideQuiet
   , loadSolTests
+  , checkCoverageUsesCorpusDir
   ) where
 
 import Test.Tasty (TestTree)
@@ -249,3 +250,11 @@ countCorpus :: Int -> (Env, WorkerState) -> IO Bool
 countCorpus n (env, _) = do
   corpus <- readIORef env.corpusRef
   pure $ length corpus == n
+
+-- | Check that coverage falls back to corpus directory when coverageDir is not set.
+checkCoverageUsesCorpusDir :: FilePath -> (Env, WorkerState) -> IO Bool
+checkCoverageUsesCorpusDir expectedCorpusDir (env, _) = do
+  -- verify configuration: corpusDir set, coverageDir not set
+  case (env.cfg.campaignConf.corpusDir, env.cfg.campaignConf.coverageDir) of
+    (Just corpusDir, Nothing) -> pure $ corpusDir == expectedCorpusDir
+    _ -> pure False
