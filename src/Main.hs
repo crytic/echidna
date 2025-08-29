@@ -45,7 +45,7 @@ import Echidna.Test (reproduceTest, validateTestMode)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Solidity
-import Echidna.Types.Test (TestMode, EchidnaTest(..), TestType(..), TestState(..), getAssertionFunctionName)
+import Echidna.Types.Test (TestMode, EchidnaTest(..), TestType(..), TestState(..))
 import Echidna.UI
 import Echidna.UI.Report (ppFailWithTraces, ppTestName)
 import Echidna.Utility (measureIO)
@@ -109,15 +109,15 @@ main = withUtf8 $ withCP65001 $ do
           case (test.testType, test.state) of
             (AssertionTest{}, Solved) -> do
               let
-                testName = getAssertionFunctionName test
-                fileName = foundryDir </> "Test" ++ testName <.> "sol"
-                content = foundryTest cliSelectedContract test
+                reproducerHash = (show . abs . hash) test.reproducer
+                fileName = foundryDir </> "Test" ++ reproducerHash <.> "sol"
+                content = foundryTest cliSelectedContract reproducerHash test
               liftIO $ writeFile fileName content
             (AssertionTest{}, Large _) -> do
               let
-                testName = getAssertionFunctionName test
-                fileName = foundryDir </> "Test" ++ testName <.> "sol"
-                content = foundryTest cliSelectedContract test
+                reproducerHash = (show . abs . hash) test.reproducer
+                fileName = foundryDir </> "Test" ++ reproducerHash <.> "sol"
+                content = foundryTest cliSelectedContract reproducerHash test
               liftIO $ writeFile fileName content
             _ -> pure ()
 

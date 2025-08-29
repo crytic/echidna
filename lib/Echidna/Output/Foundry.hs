@@ -9,7 +9,7 @@ import Echidna.ABI ()
 import EVM.Types (W256, Addr)
 import Numeric (showHex)
 
-import Echidna.Types.Test (EchidnaTest(..), TestType(..), getAssertionFunctionName)
+import Echidna.Types.Test (EchidnaTest(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 
 foundryTestHeader :: String
@@ -21,13 +21,12 @@ foundryTestHeader = unlines
   , ""
   ]
 
-foundryTestBody :: Maybe Text -> EchidnaTest -> String
-foundryTestBody mContractName test =
+foundryTestBody :: Maybe Text -> String -> EchidnaTest -> String
+foundryTestBody mContractName reproducerHash test =
   case test.testType of
     AssertionTest{} ->
       let
-        testName = getAssertionFunctionName test
-        contractName = "Test" ++ testName
+        contractName = "Test." ++ reproducerHash
         senders = nub $ map (.src) test.reproducer
         actors = foundryActors senders
         repro = foundryReproducer test
@@ -43,7 +42,7 @@ foundryTestBody mContractName test =
         , "      Tester = new " ++ cName ++ "();"
         , "  }"
         , ""
-        , "  function test" ++ testName ++ "() public {"
+        , "  function test_replay() public {"
         , repro
         , "  }"
         , ""
@@ -68,8 +67,8 @@ foundryActor sender i = "    address constant USER" ++ show i ++ " = " ++ format
 formatAddr :: Addr -> String
 formatAddr addr = "address(0x" ++ showHex (fromIntegral addr :: W256) "" ++ ")"
 
-foundryTest :: Maybe Text -> EchidnaTest -> String
-foundryTest mContractName test = foundryTestHeader ++ foundryTestBody mContractName test
+foundryTest :: Maybe Text -> String -> EchidnaTest -> String
+foundryTest mContractName reproducerHash test = foundryTestHeader ++ foundryTestBody mContractName reproducerHash test
 
 foundryReproducer :: EchidnaTest -> String
 foundryReproducer test = unlines $ map foundryTx test.reproducer
