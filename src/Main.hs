@@ -38,13 +38,14 @@ import Echidna.Campaign (isSuccessful)
 import Echidna.Config
 import Echidna.Onchain qualified as Onchain
 import Echidna.Output.Corpus
+import Echidna.Output.Foundry
 import Echidna.Output.Source
 import Echidna.Solidity (compileContracts)
 import Echidna.Test (reproduceTest, validateTestMode)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Solidity
-import Echidna.Types.Test (TestMode, EchidnaTest(..))
+import Echidna.Types.Test (TestMode, EchidnaTest(..), TestType(..), TestState(..), getAssertionFunctionName)
 import Echidna.UI
 import Echidna.UI.Report (ppFailWithTraces, ppTestName)
 import Echidna.Utility (measureIO)
@@ -100,6 +101,25 @@ main = withUtf8 $ withCP65001 $ do
       measureIO cfg.solConf.quiet "Saving corpus" $ do
         corpus <- readIORef env.corpusRef
         saveTxs env (dir </> "coverage") (snd <$> Set.toList corpus)
+
+      measureIO cfg.solConf.quiet "Saving foundry reproducers" $ do
+        let foundryDir = dir </> "foundry"
+        liftIO $ createDirectoryIfMissing True foundryDir
+        forM_ tests $ \test ->
+          case (test.testType, test.state) of
+            (AssertionTest{}, Solved) -> do
+              let
+                testName = getAssertionFunctionName test
+                fileName = foundryDir </> "Test" ++ testName <.> "sol"
+                content = foundryTest cliSelectedContract test
+              liftIO $ writeFile fileName content
+            (AssertionTest{}, Large _) -> do
+              let
+                testName = getAssertionFunctionName test
+                fileName = foundryDir </> "Test" ++ testName <.> "sol"
+                content = foundryTest cliSelectedContract test
+              liftIO $ writeFile fileName content
+            _ -> pure ()
 
       -- TODO: We use the corpus dir to save coverage reports which is confusing.
       -- Add config option to pass dir for saving coverage report and decouple it
