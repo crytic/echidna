@@ -7,9 +7,12 @@ import GHC.Conc (numCapabilities)
 
 import EVM.Solvers (Solver(..))
 
+import Bandit.EpsGreedy
+import Bandit.Types
 import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
 import Echidna.Types.Coverage (CoverageFileType, CoverageMap)
+import Echidna.Types.Tx (Tx)
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf
@@ -73,6 +76,8 @@ data WorkerState = WorkerState
     -- ^ Worker ID starting from 0
   , genDict     :: !GenDict
     -- ^ Generation dictionary
+  , bandit      :: EpsGreedy (Int, [Tx]) FixedRate
+    -- ^ Multi-armed bandit state
   , newCoverage :: !Bool
     -- ^ Flag to indicate new coverage found
   , ncallseqs   :: !Int
@@ -90,6 +95,7 @@ initialWorkerState :: WorkerState
 initialWorkerState =
   WorkerState { workerId = 0
               , genDict = emptyDict
+              , bandit = EpsGreedy 0 (FixedRate 0.1) undefined undefined
               , newCoverage = False
               , ncallseqs = 0
               , ncalls = 0
