@@ -102,22 +102,20 @@ main = withUtf8 $ withCP65001 $ do
         corpus <- readIORef env.corpusRef
         saveTxs env (dir </> "coverage") (snd <$> Set.toList corpus)
 
+      let isLargeOrSolved Solved = True
+          isLargeOrSolved (Large _) = True
+          isLargeOrSolved _ = False
       measureIO cfg.solConf.quiet "Saving foundry reproducers" $ do
         let foundryDir = dir </> "foundry"
         liftIO $ createDirectoryIfMissing True foundryDir
         forM_ tests $ \test ->
           case (test.testType, test.state) of
-            (AssertionTest{}, Solved) -> do
+            (AssertionTest{}, state) | isLargeOrSolved state ->
+              do
               let
                 reproducerHash = (show . abs . hash) test.reproducer
-                fileName = foundryDir </> "Test" ++ reproducerHash <.> "sol"
-                content = foundryTest cliSelectedContract reproducerHash test
-              liftIO $ writeFile fileName content
-            (AssertionTest{}, Large _) -> do
-              let
-                reproducerHash = (show . abs . hash) test.reproducer
-                fileName = foundryDir </> "Test" ++ reproducerHash <.> "sol"
-                content = foundryTest cliSelectedContract reproducerHash test
+                fileName = foundryDir </> "Test." ++ reproducerHash <.> "sol"
+                content = foundryTest cliSelectedContract test
               liftIO $ writeFile fileName content
             _ -> pure ()
 

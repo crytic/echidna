@@ -21,12 +21,12 @@ foundryTestHeader = unlines
   , ""
   ]
 
-foundryTestBody :: Maybe Text -> String -> EchidnaTest -> String
-foundryTestBody mContractName reproducerHash test =
+foundryTestBody :: Maybe Text -> EchidnaTest -> String
+foundryTestBody mContractName test =
   case test.testType of
     AssertionTest{} ->
       let
-        contractName = "Test." ++ reproducerHash
+        contractName = "Test"
         senders = nub $ map (.src) test.reproducer
         actors = foundryActors senders
         repro = foundryReproducer test
@@ -35,7 +35,7 @@ foundryTestBody mContractName reproducerHash test =
         [ "contract " ++ contractName ++ " is Test {"
         , actors
         , "    // TODO: Replace with your actual contract instance"
-        , "    " ++ cName ++ " Tester;"
+        , "    " ++ cName ++ " Target;"
         , ""
         , "  function setUp() public {"
         , "      // TODO: Initialize your contract here"
@@ -67,8 +67,8 @@ foundryActor sender i = "    address constant USER" ++ show i ++ " = " ++ format
 formatAddr :: Addr -> String
 formatAddr addr = "address(0x" ++ showHex (fromIntegral addr :: W256) "" ++ ")"
 
-foundryTest :: Maybe Text -> String -> EchidnaTest -> String
-foundryTest mContractName reproducerHash test = foundryTestHeader ++ foundryTestBody mContractName reproducerHash test
+foundryTest :: Maybe Text -> EchidnaTest -> String
+foundryTest mContractName test = foundryTestHeader ++ foundryTestBody mContractName test
 
 foundryReproducer :: EchidnaTest -> String
 foundryReproducer test = unlines $ map foundryTx test.reproducer
@@ -79,7 +79,7 @@ foundryTx tx =
     SolCall (name, args) ->
       let
         sender = "_setUpActor(address(0x" ++ showHex (fromIntegral tx.src :: W256) "" ++ "));"
-        call = "Tester." ++ unpack name ++ "(" ++ foundryArgs (map abiValueToString args) ++ ");"
+        call = "Target." ++ unpack name ++ "(" ++ foundryArgs (map abiValueToString args) ++ ");"
       in "    " ++ sender ++ "\n" ++ "    " ++ call
     _ -> ""
 
