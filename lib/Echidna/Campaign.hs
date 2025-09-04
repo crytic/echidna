@@ -29,6 +29,8 @@ import Data.Time (LocalTime)
 import Data.Vector qualified as V
 import System.Random (mkStdGen)
 
+import Echidna.MCP (runMCPServer)
+
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
 import EVM.Dapp (DappInfo(..))
@@ -690,6 +692,12 @@ spawnListener handler = do
   stopVar <- liftIO newEmptyMVar
   liftIO $ void $ forkFinally (listenerLoop handler chan nworkers) (const $ putMVar stopVar ())
   pure stopVar
+
+spawnMCPServer :: (MonadReader Env m, MonadIO m) => m ()
+spawnMCPServer = do
+  env <- ask
+  forM_ env.cfg.campaignConf.mcpPort $ \port ->
+    liftIO $ void $ forkIO (runMCPServer env (fromIntegral port))
 
 -- | Repeatedly run 'handler' on events from 'chan'.
 -- Stops once 'workersAlive' workers stop.
