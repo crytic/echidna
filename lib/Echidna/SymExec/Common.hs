@@ -1,24 +1,23 @@
 module Echidna.SymExec.Common where
 
 import Control.Monad.IO.Unlift (MonadUnliftIO, liftIO)
-import Data.ByteString.Lazy qualified as BS
 import Data.Function ((&))
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified as T
-import Data.Vector (toList, fromList)
 import GHC.IORef (IORef, readIORef)
 import Optics.Core ((.~), (%), (%~))
-import EVM.ABI (abiKind, AbiKind(Dynamic), AbiValue(..), AbiType(..), Sig(..), decodeAbiValue)
+import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..))
 import EVM.Fetch qualified as Fetch
 import EVM (loadContract, resetState, forceLit)
 import EVM.Effects (TTY, ReadConfig)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (SolverGroup)
-import EVM.SymExec (abstractVM, mkCalldata, verifyInputs, VeriOpts(..), checkAssertions)
-import EVM.Types (Addr, Frame(..), FrameState(..), VMType(..), EType(..), Expr(..), word256Bytes, Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query(..))
+import EVM.SymExec (abstractVM, mkCalldata, verifyInputs, VeriOpts(..), checkAssertions, subModel, defaultSymbolicValues)
+import EVM.Expr qualified as EVM.Expr
+import EVM.Types (Addr, Frame(..), FrameState(..), VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query(..))
 import qualified EVM.Types (VM(..), Env(..))
 import EVM.Format (formatPartial)
 import Control.Monad.ST (stToIO, RealWorld)
@@ -116,49 +115,21 @@ frameStateMakeSymbolic fs
 frameMakeSymbolic :: Frame Concrete s -> Frame Symbolic s
 frameMakeSymbolic fr = Frame { context = fr.context, state = frameStateMakeSymbolic fr.state }
 
--- | Convert a n-bit unsigned integer to a n-bit signed integer.
-uintToInt :: W256 -> Integer
-uintToInt w = fromIntegral (w - 2 ^ (256 :: Int))
-
-modelToTx :: Addr -> Expr EWord -> Expr EWord -> Method -> Set Addr -> Addr -> ProofResult SMTCex String -> TxOrError
-modelToTx dst oldTimestamp oldNumber method senders fallbackSender result =
+modelToTx :: Addr -> Expr EWord -> Expr EWord -> Method -> Set Addr -> Addr -> Expr Buf -> ProofResult SMTCex String -> TxOrError
+modelToTx dst oldTimestamp oldNumber method senders fallbackSender calldata result =
   case result of
     Cex cex ->
       let
-        args = zipWith grabArg (snd <$> method.inputs) ["arg" <> T.pack (show n) | n <- [1..] :: [Int]]
-
-        grabArg t
-          = case t of
-              AbiUIntType _ -> grabNormalArg t
-              AbiIntType _ -> grabNormalArgInt t
-              AbiBoolType -> grabNormalArg t
-              AbiBytesType _ -> grabNormalArg t
-              AbiAddressType -> grabAddressArg
-              AbiArrayType n mt -> grabArrayArg n mt
-              AbiTupleType mt -> grabTupleArg mt
-              _ -> error "Unexpected ABI type in `modelToTx`"
-
-        grabNormalArg argType name
-          = case Map.lookup (Var name) cex.vars of
-              Just w ->
-                decodeAbiValue argType (BS.fromStrict (word256Bytes w))
-              Nothing -> -- put a placeholder
-                decodeAbiValue argType (BS.repeat 0)
-
-        grabNormalArgInt argType name
-          = case Map.lookup (Var name) cex.vars of
-              Just w ->
-                case argType of
-                  AbiIntType n -> AbiInt n (fromIntegral (uintToInt w))
-                  _ -> error "Expected AbiIntType"
-              Nothing -> -- put a placeholder
-                decodeAbiValue argType (BS.repeat 0)
-
-        grabAddressArg name = AbiAddress $ fromMaybe 0 $ Map.lookup (SymAddr name) cex.addrs
-
-        grabArrayArg nElem memberType name = AbiArray nElem memberType $ fromList [grabArg memberType $ name <> "-a-" <> T.pack (show n) | n <- [0..nElem - 1] :: [Int]]
-
-        grabTupleArg memberTypes name = AbiTuple $ fromList [grabArg t $ name <> "-t-" <> T.pack (show n) | (n, t) <- zip ([0..] :: [Int]) (toList memberTypes)]
+        cd = defaultSymbolicValues $ subModel cex calldata
+        types = snd <$> method.inputs
+        argdata = case cd of
+          Right cd' -> Right $ EVM.Expr.drop 4 (EVM.Expr.simplify cd')
+          Left e -> Left e
+        args = case argdata of
+          Right argdata' -> case decodeBuf types argdata' of
+            CAbi v -> v
+            _ -> []
+          Left _ -> []
 
         src_ = fromMaybe 0 $ Map.lookup (SymAddr "caller") cex.addrs
         src = if Set.member src_ senders then src_ else fallbackSender
@@ -227,7 +198,9 @@ exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
 exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef = do
   --liftIO $ putStrLn ("Exploring: " ++ T.unpack method.methodSignature)
   --pushWorkerEvent undefined
-  calldataSym@(cd, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
+  calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
+  let
+    cd = fst calldataSym
   let
     fetcher = cachedOracle contractCacheRef slotCacheRef solvers rpcInfo
     dst = conf.solConf.contractAddr
@@ -246,4 +219,4 @@ exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo con
   (_, models, partials) <- verifyInputs solvers veriOpts fetcher vm' (Just $ checkAssertions [0x1])
   let results = map fst models
   --liftIO $ mapM_ TIO.putStrLn partials
-  return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender) results, map (formatPartial . fst) partials)
+  return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (formatPartial . fst) partials)
