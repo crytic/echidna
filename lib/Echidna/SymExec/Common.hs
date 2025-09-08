@@ -15,12 +15,12 @@ import EVM (loadContract, resetState, forceLit, symbolify)
 import EVM.Effects (TTY, ReadConfig)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (SolverGroup)
-import EVM.SymExec (abstractVM, mkCalldata, verifyInputs, VeriOpts(..), checkAssertions, subModel, defaultSymbolicValues)
+import EVM.SymExec (mkCalldata, verifyInputs, VeriOpts(..), checkAssertions, subModel, defaultSymbolicValues)
 import EVM.Expr qualified as EVM.Expr
 import EVM.Types (Addr, VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query(..))
-import qualified EVM.Types (VM(..), Env(..))
+import qualified EVM.Types (VM(..))
 import EVM.Format (formatPartial)
-import Control.Monad.ST (stToIO, RealWorld)
+import Control.Monad.ST (RealWorld)
 import Control.Monad.State.Strict (execState, runStateT)
 
 import Echidna.Types (fromEVM)
@@ -154,8 +154,6 @@ exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo con
   let
     fetcher = cachedOracle contractCacheRef slotCacheRef solvers rpcInfo
     dst = conf.solConf.contractAddr
-    vmSym = abstractVM calldataSym contract.runtimeCode Nothing False
-  vmSym' <- liftIO $ stToIO vmSym
   vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
   let
     vm' = vmReset & execState (loadContract (LitAddr dst))
@@ -163,7 +161,7 @@ exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo con
                   & #state % #callvalue .~ TxValue
                   & #state % #caller .~ SymAddr "caller"
                   & #state % #calldata .~ cd
-                  & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
+                  -- & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
 
     vm'' = symbolify vm'
         & #block %~ blockMakeSymbolic
