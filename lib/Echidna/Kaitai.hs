@@ -9,19 +9,36 @@ import Data.Yaml as Y
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
 import GHC.Generics
-import System.Random (randomRIO, newStdGen)
+import System.Random (randomRIO)
 import Data.Word (Word8)
-import qualified Control.Monad.Random.Strict as Random
-import Echidna.ABI (genAbiValueM, GenDict)
-import EVM.ABI (AbiType(..), encodeAbiValue)
+import EVM.ABI (AbiValue(..), AbiType(..), encodeAbiValue, selector, parseTypeName, putAbi)
+import Data.Binary.Put (runPut)
+import Control.Monad.Random (MonadRandom)
+import Control.Monad.IO.Class (liftIO, MonadIO)
+import Control.Applicative ((<|>))
+import Data.Aeson (FromJSON(..), withObject, (.:), (.:?), withText, withArray)
+import Data.Maybe (fromMaybe)
+import Data.Vector (Vector, toList, fromList)
+import qualified Data.Vector as Vector
+
+-- | Kaitai Struct content
+data KContent
+  = KContentBytes [Word8]
+  | KContentSignature Text
+  deriving (Show, Eq)
+
+instance FromJSON KContent where
+  parseJSON val = withText "KContent" (pure . KContentSignature) val
+              <|> withArray "KContent" (fmap (KContentBytes . toList) . traverse parseJSON) val
 
 -- | Kaitai Struct seq item
 data KSeq = KSeq
   { kid :: Text
   , ktype :: Maybe Text
   , size :: Maybe Int
-  , contents :: Maybe [Word8]
+  , contents :: Maybe KContent
   } deriving (Show, Eq, Generic)
 
 instance FromJSON KSeq where
@@ -34,49 +51,69 @@ instance FromJSON KSeq where
 -- | Kaitai Struct specification
 data KStruct = KStruct
   { kseqs :: [KSeq]
+  , function :: Maybe Text
+  , param :: Maybe Int
   } deriving (Show, Eq, Generic)
 
 instance FromJSON KStruct where
-  parseJSON = withObject "KStruct" $ \v -> KStruct
-    <$> v .: "seq"
+  parseJSON = withObject "KStruct" $ \v -> do
+    meta <- v .:? "meta"
+    KStruct
+      <$> v .: "seq"
+      <*> maybe (pure Nothing) (.:? "function") meta
+      <*> maybe (pure Nothing) (.:? "param") meta
+
+-- | Simple ABI type parser
+parseAbiType :: Text -> Maybe AbiType
+parseAbiType = parseTypeName Vector.empty
+
+-- | ABI-encode a list of values
+encodeAbiValues :: Vector AbiValue -> BL.ByteString
+encodeAbiValues = runPut . putAbi . AbiTuple
 
 -- | Generate random bytestring of a given size
 randomBS :: Int -> IO B.ByteString
 randomBS len = B.pack <$> mapM (const $ randomRIO (0, 255)) [1..len]
 
 -- | Generate random value based on Kaitai type
-genValue :: GenDict -> Text -> Maybe Int -> IO B.ByteString
-genValue dict t _ = do
-  g <- newStdGen
-  let abiType = case t of
-        "address" -> AbiAddressType
-        "uint256" -> AbiUIntType 256
-        "str" -> AbiStringType
-        _ -> error $ "Unsupported Kaitai type: " ++ T.unpack t
-  let val = Random.evalRand (genAbiValueM dict abiType) g
+genValue :: (MonadRandom m) => (AbiType -> m AbiValue) -> Text -> m B.ByteString
+genValue gen t = do
+  let abiType = fromMaybe (error $ "Unsupported Kaitai type: " ++ T.unpack t) (parseAbiType t)
+  val <- gen abiType
   pure $ encodeAbiValue val
 
+-- | Generate calldata from a function signature
+genCalldataFromSignature :: (MonadRandom m) => (AbiType -> m AbiValue) -> Text -> m B.ByteString
+genCalldataFromSignature gen sig = do
+  let
+    typeString = T.takeWhile (/= ')') $ T.drop 1 $ T.dropWhile (/= '(') sig
+    types = if T.null typeString
+            then []
+            else map (fromMaybe (error "Invalid ABI type in signature") . parseAbiType) (T.splitOn "," typeString)
+    funcSelector = selector sig
+  vals <- fromList <$> mapM gen types
+  pure $ B.concat [funcSelector, BL.toStrict $ encodeAbiValues vals]
+
 -- | Generate calldata from a Kaitai sequence
-genCalldata :: GenDict -> [KSeq] -> IO B.ByteString
-genCalldata dict = fmap B.concat . mapM (genSeq dict)
+genCalldata :: (MonadRandom m, MonadIO m) => (AbiType -> m AbiValue) -> [KSeq] -> m B.ByteString
+genCalldata gen = fmap B.concat . mapM (genSeq gen)
 
 -- | Generate calldata for a single Kaitai sequence item
-genSeq :: GenDict -> KSeq -> IO B.ByteString
-genSeq dict KSeq{..} =
-  case contents of
-    Just c -> pure (B.pack c)
+genSeq :: (MonadRandom m, MonadIO m) => (AbiType -> m AbiValue) -> KSeq -> m B.ByteString
+genSeq gen kseq =
+  case kseq.contents of
+    Just (KContentBytes c) -> pure (B.pack c)
+    Just (KContentSignature sig) -> genCalldataFromSignature gen sig
     Nothing ->
-      case ktype of
-        Just t -> genValue dict t size
+      case kseq.ktype of
+        Just t -> genValue gen t
         Nothing ->
-          case size of
-            Just s -> randomBS s
+          case kseq.size of
+            Just s -> liftIO $ randomBS s
             Nothing -> error "Either type or size must be specified for a seq item"
 
 -- | Main function to decode Kaitai YAML and generate calldata
-processKaitai :: GenDict -> FilePath -> IO B.ByteString
-processKaitai dict f = do
-  yaml <- Y.decodeFileEither f
-  case (yaml :: Either Y.ParseException KStruct) of
-    Left err -> error $ "Failed to parse YAML: " ++ show err
-    Right (KStruct kseqs) -> genCalldata dict kseqs
+processKaitai :: (MonadRandom m, MonadIO m) => (AbiType -> m AbiValue) -> KStruct -> m (KStruct, B.ByteString)
+processKaitai gen kstruct@(KStruct kseqs _ _) = do
+  calldata <- genCalldata gen kseqs
+  pure (kstruct, calldata)
