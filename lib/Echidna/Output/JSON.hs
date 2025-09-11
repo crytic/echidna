@@ -144,6 +144,6 @@ mapTest dappInfo test =
 
   mapCall = \case
     SolCreate _          -> ("<CREATE>", Nothing)
-    SolCall (name, args) -> (name, Just $ ppAbiValue <$> mempty <*> args)
+    SolCall (name, args) -> (name, Just $ ppAbiValue mempty <$> args)
     NoCall               -> ("*wait*", Nothing)
     SolCalldata x        -> (decodeUtf8 $ "0x" <> BS16.encode x, Nothing)
