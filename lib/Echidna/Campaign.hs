@@ -28,7 +28,7 @@ import Data.Set qualified as Set
 import Data.Text (Text, unpack)
 import Data.Time (LocalTime)
 import Data.Vector qualified as V
-import System.Random (mkStdGen)
+import System.Random (mkStdGen, newStdGen)
 
 import Echidna.Kaitai (processKaitai)
 import EVM (cheatCode)
@@ -429,32 +429,20 @@ randseq deployedContracts = do
   env <- ask
   let world = env.world
       conf = env.cfg.campaignConf
-
-  useKaitai <- (<= conf.kaitaiFreq) <$> Random.getRandomR (0.0 :: Float, 1.0)
-
-  if useKaitai && isJust conf.kaitaiFile && not (Map.null deployedContracts)
-  then do
-    let f = fromJust conf.kaitaiFile
-    genDict <- gets (.genDict)
-    calldata <- liftIO $ processKaitai genDict f
-    mtx <- genTxWithCalldata world deployedContracts calldata
-    pure $ maybe [] pure mtx
-  else do
-    let
       mutConsts = conf.mutConsts
       seqLen = conf.seqLen
 
-    -- Generate new random transactions
-    randTxs <- replicateM seqLen (genTx world deployedContracts)
-    -- Generate a random mutator
-    cmut <- if seqLen == 1 then seqMutatorsStateless (fromConsts mutConsts)
-                           else seqMutatorsStateful (fromConsts mutConsts)
-    -- Fetch the mutator
-    let mut = getCorpusMutation cmut
-    corpus <- liftIO $ readIORef env.corpusRef
-    if null corpus
-      then pure randTxs -- Use the generated random transactions
-      else mut seqLen corpus randTxs -- Apply the mutator
+  -- Generate new random transactions
+  randTxs <- replicateM seqLen (genTx world deployedContracts)
+  -- Generate a random mutator
+  cmut <- if seqLen == 1 then seqMutatorsStateless (fromConsts mutConsts)
+                         else seqMutatorsStateful (fromConsts mutConsts)
+  -- Fetch the mutator
+  let mut = getCorpusMutation cmut
+  corpus <- liftIO $ readIORef env.corpusRef
+  if null corpus
+    then pure randTxs -- Use the generated random transactions
+    else mut seqLen corpus randTxs -- Apply the mutator
 
 -- TODO callseq ideally shouldn't need to be MonadRandom
 

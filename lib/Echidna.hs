@@ -2,6 +2,7 @@ module Echidna where
 
 import Control.Concurrent (newChan)
 import Control.Monad.Catch (MonadThrow(..))
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.ST (RealWorld)
 import Data.IORef (newIORef)
 import Data.List (find)
@@ -9,6 +10,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
+import Data.Text qualified as T
 import System.FilePath ((</>))
 
 import EVM (cheatCode)
@@ -32,6 +34,9 @@ import Echidna.Types.Tx
 import Echidna.Types.World
 import Echidna.Types.Test (EchidnaTest)
 import Echidna.Types.Signature (ContractName)
+import Echidna.Kaitai (KStruct(..))
+import Data.Yaml as Y
+import Data.Maybe (catMaybes)
 
 -- | This function is used to prepare, process, compile and initialize smart contracts for testing.
 -- It takes:
@@ -82,12 +87,26 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
                 <> staticAddresses solConf
                 <> deployedAddresses
 
-    dict = mkGenDict env.cfg.campaignConf.dictFreq
-                     -- make sure we don't use cheat codes to form fuzzing call sequences
-                     (Set.delete (AbiAddress $ forceAddr cheatCode) constants)
-                     Set.empty
-                     seed
-                     (returnTypes contracts)
+  kaitaiMap <- case env.cfg.campaignConf.kaitaiFile of
+    Just f -> do
+      structs <- liftIO (Y.decodeFileEither f :: IO (Either Y.ParseException [KStruct]))
+      case structs of
+        Left err -> error ("Failed to parse Kaitai YAML: " ++ show err)
+        Right kstructs ->
+          pure $ Map.fromList $ catMaybes $ flip map kstructs $ \k ->
+            case (k.function, k.param) of
+              (Just funcSig, Just paramIdx) ->
+                let funcName = T.takeWhile (/= '(') funcSig
+                in Just ((funcName, paramIdx), k)
+              _ -> Nothing
+    Nothing -> pure Map.empty
+  let dict = mkGenDict env.cfg.campaignConf.dictFreq
+                        -- make sure we don't use cheat codes to form fuzzing call sequences
+                        (Set.delete (AbiAddress $ forceAddr cheatCode) constants)
+                        Set.empty
+                        seed
+                        (returnTypes contracts)
+                        kaitaiMap
 
   pure (vm, env, dict)
 

@@ -9,6 +9,7 @@ import Optics.State.Operators
 import Control.Monad (join, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
+import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Control.Monad.ST (RealWorld)
@@ -21,7 +22,7 @@ import Data.Vector qualified as V
 import Data.ByteString (ByteString)
 
 import EVM (ceilDiv, initialContract, loadContract, resetState)
-import EVM.ABI (abiValueType)
+import EVM.ABI (abiValueType, encodeAbiValue, AbiValue(..))
 import EVM.FeeSchedule (FeeSchedule(..))
 import EVM.Types hiding (Env, Gas, VMOpts(timestamp, gasprice))
 
@@ -72,10 +73,12 @@ genTx world deployedContracts = do
   contractAList <- liftIO $ mapM (toContractA env sigMap) (toList deployedContracts)
   (dstAddr, dstAbis) <- rElem' $ Set.fromList $ catMaybes contractAList
   solCall <- genInteractionsM genDict dstAbis
+  let calldata = encodeAbiValue $ AbiTuple $ V.fromList $ snd solCall
+  txCall <- uniform [SolCall solCall, SolCalldata calldata]
   value <- genValue txConf.maxValue genDict.dictValues world.payableSigs solCall
   ts <- (,) <$> genDelay txConf.maxTimeDelay genDict.dictValues
             <*> genDelay txConf.maxBlockDelay genDict.dictValues
-  pure $ Tx { call = SolCall solCall
+  pure $ Tx { call = txCall
             , src = sender
             , dst = dstAddr
             , gas = txConf.txGas
@@ -187,7 +190,7 @@ shrinkTx tx =
       ]
   in join $ usuallyRarely (join (uniform possibilities)) (pure $ removeCallTx tx)
 
-mutateTx :: (MonadRandom m) => Tx -> m Tx
+mutateTx :: (MonadRandom m, MonadIO m) => Tx -> m Tx
 mutateTx tx@Tx{call = SolCall c} = do
   f <- oftenUsually skip mutate
   f c
