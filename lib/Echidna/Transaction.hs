@@ -18,6 +18,7 @@ import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
+import Data.ByteString (ByteString)
 
 import EVM (ceilDiv, initialContract, loadContract, resetState)
 import EVM.ABI (abiValueType)
@@ -87,11 +88,48 @@ genTx world deployedContracts = do
     toContractA env sigMap (addr, c) =
       fmap (forceAddr addr,) . snd <$> lookupUsingCodehash env.codehashMap c env.dapp sigMap
 
+-- | Generate a random 'Transaction' with specific calldata.
+genTxWithCalldata
+  :: (MonadIO m, MonadRandom m, MonadState WorkerState m, MonadReader Env m)
+  => World
+  -> Map (Expr EAddr) Contract
+  -> ByteString
+  -> m (Maybe Tx)
+genTxWithCalldata world deployedContracts calldata = do
+  env <- ask
+  let txConf = env.cfg.txConf
+  if Set.null world.senders
+  then pure Nothing
+  else do
+    sender <- rElem' world.senders
+    contractAList <- liftIO $ mapM (toContractA env world.highSignatureMap) (toList deployedContracts)
+    let contracts = catMaybes contractAList
+    if null contracts
+    then pure Nothing
+    else do
+      (dstAddr, _) <- rElem' $ Set.fromList contracts
+      ts <- (,) <$> genDelay txConf.maxTimeDelay Set.empty
+                <*> genDelay txConf.maxBlockDelay Set.empty
+      pure $ Just $ Tx { call = SolCalldata calldata
+                       , src = sender
+                       , dst = dstAddr
+                       , gas = txConf.txGas
+                       , gasprice = txConf.maxGasprice
+                       , value = 0 -- Value is set to 0 for simplicity
+                       , delay = level ts
+                       }
+  where
+    toContractA :: Env -> SignatureMap -> (Expr EAddr, Contract) -> IO (Maybe ContractA)
+    toContractA env sigMap (addr, c) =
+      fmap (forceAddr addr,) . snd <$> lookupUsingCodehash env.codehashMap c env.dapp sigMap
+
 genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
-genDelay mv ds = do
-  join $ oftenUsually fromDict randValue
-  where randValue = fromIntegral <$> getRandomR (1 :: Integer, fromIntegral mv)
-        fromDict = (`mod` (mv + 1)) <$> rElem' ds
+genDelay mv ds
+  | Set.null ds = randValue
+  | otherwise = join $ oftenUsually fromDict randValue
+  where
+    randValue = fromIntegral <$> getRandomR (1 :: Integer, fromIntegral mv)
+    fromDict = (`mod` (mv + 1)) <$> rElem' ds
 
 genValue
   :: MonadRandom m

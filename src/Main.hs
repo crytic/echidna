@@ -147,6 +147,8 @@ data Options = Options
   , cliSymExecTargets   :: [Text]
   , cliSymExecTimeout   :: Maybe Int
   , cliSymExecNSolvers  :: Maybe Int
+  , cliKaitaiFile       :: Maybe FilePath
+  , cliKaitaiFreq       :: Maybe Float
   }
 
 optsParser :: ParserInfo Options
@@ -239,6 +241,12 @@ options = Options . NE.fromList
   <*> optional (option auto $ long "sym-exec-n-solvers"
     <> metavar "INTEGER"
     <> help ("Number of symbolic execution solvers to run in parallel for each task (assuming sym-exec is enabled). Default is " ++ show defaultSymExecNWorkers))
+  <*> optional (option str $ long "kaitai-file"
+    <> metavar "PATH"
+    <> help "Kaitai Struct file for calldata generation.")
+  <*> optional (option auto $ long "kaitai-freq"
+    <> metavar "FLOAT"
+    <> help "Frequency for Kaitai-based calldata generation.")
 
 versionOption :: Parser (a -> a)
 versionOption = infoOption
@@ -285,6 +293,8 @@ overrideConfig config Options{..} = do
       , symExecTargets = if null cliSymExecTargets then campaignConf.symExecTargets else cliSymExecTargets
       , symExecTimeout = fromMaybe campaignConf.symExecTimeout cliSymExecTimeout
       , symExecNSolvers = fromMaybe campaignConf.symExecNSolvers cliSymExecNSolvers
+      , kaitaiFile = cliKaitaiFile <|> campaignConf.kaitaiFile
+      , kaitaiFreq = fromMaybe campaignConf.kaitaiFreq cliKaitaiFreq
       }
 
     overrideSolConf solConf = solConf
