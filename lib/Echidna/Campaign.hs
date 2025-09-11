@@ -434,8 +434,9 @@ randseq deployedContracts = do
 
   if useKaitai && isJust conf.kaitaiFile && not (Map.null deployedContracts)
   then do
-    let Just f = conf.kaitaiFile
-    calldata <- liftIO $ processKaitai f
+    let f = fromJust conf.kaitaiFile
+    genDict <- gets (.genDict)
+    calldata <- liftIO $ processKaitai genDict f
     mtx <- genTxWithCalldata world deployedContracts calldata
     pure $ maybe [] pure mtx
   else do
