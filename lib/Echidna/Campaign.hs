@@ -8,6 +8,7 @@ import Control.DeepSeq (force)
 import Control.Monad (replicateM, when, unless, void, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
+import qualified Control.Monad.Random.Strict as Random
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
 import Control.Monad.State.Strict
   (MonadState(..), StateT(..), gets, MonadIO, modify')
@@ -29,6 +30,7 @@ import Data.Time (LocalTime)
 import Data.Vector qualified as V
 import System.Random (mkStdGen)
 
+import Echidna.Kaitai (processKaitai)
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
 import EVM.Dapp (DappInfo(..))
@@ -426,25 +428,32 @@ randseq
 randseq deployedContracts = do
   env <- ask
   let world = env.world
+      conf = env.cfg.campaignConf
 
-  let
-    mutConsts = env.cfg.campaignConf.mutConsts
-    seqLen = env.cfg.campaignConf.seqLen
+  useKaitai <- (<= conf.kaitaiFreq) <$> Random.getRandomR (0.0 :: Float, 1.0)
 
-  -- TODO: include reproducer when optimizing
-  --let rs = filter (not . null) $ map (.testReproducer) $ ca._tests
+  if useKaitai && isJust conf.kaitaiFile && not (Map.null deployedContracts)
+  then do
+    let Just f = conf.kaitaiFile
+    calldata <- liftIO $ processKaitai f
+    mtx <- genTxWithCalldata world deployedContracts calldata
+    pure $ maybe [] pure mtx
+  else do
+    let
+      mutConsts = conf.mutConsts
+      seqLen = conf.seqLen
 
-  -- Generate new random transactions
-  randTxs <- replicateM seqLen (genTx world deployedContracts)
-  -- Generate a random mutator
-  cmut <- if seqLen == 1 then seqMutatorsStateless (fromConsts mutConsts)
-                         else seqMutatorsStateful (fromConsts mutConsts)
-  -- Fetch the mutator
-  let mut = getCorpusMutation cmut
-  corpus <- liftIO $ readIORef env.corpusRef
-  if null corpus
-    then pure randTxs -- Use the generated random transactions
-    else mut seqLen corpus randTxs -- Apply the mutator
+    -- Generate new random transactions
+    randTxs <- replicateM seqLen (genTx world deployedContracts)
+    -- Generate a random mutator
+    cmut <- if seqLen == 1 then seqMutatorsStateless (fromConsts mutConsts)
+                           else seqMutatorsStateful (fromConsts mutConsts)
+    -- Fetch the mutator
+    let mut = getCorpusMutation cmut
+    corpus <- liftIO $ readIORef env.corpusRef
+    if null corpus
+      then pure randTxs -- Use the generated random transactions
+      else mut seqLen corpus randTxs -- Apply the mutator
 
 -- TODO callseq ideally shouldn't need to be MonadRandom
 
