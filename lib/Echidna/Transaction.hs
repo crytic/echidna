@@ -9,7 +9,6 @@ import Optics.State.Operators
 import Control.Monad (join, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
-import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Control.Monad.ST (RealWorld)

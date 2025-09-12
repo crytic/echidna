@@ -2,7 +2,6 @@ module Echidna where
 
 import Control.Concurrent (newChan)
 import Control.Monad.Catch (MonadThrow(..))
-import Control.Monad.IO.Class (liftIO)
 import Control.Monad.ST (RealWorld)
 import Data.IORef (newIORef)
 import Data.List (find)
@@ -10,7 +9,6 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
-import Data.Text qualified as T
 import System.FilePath ((</>))
 
 import EVM (cheatCode)
@@ -34,8 +32,6 @@ import Echidna.Types.Tx
 import Echidna.Types.World
 import Echidna.Types.Test (EchidnaTest)
 import Echidna.Types.Signature (ContractName)
-import Data.Yaml as Y
-import Data.Maybe (catMaybes)
 
 -- | This function is used to prepare, process, compile and initialize smart contracts for testing.
 -- It takes:
