@@ -18,7 +18,7 @@ cd libff
 git checkout v0.2.1
 git submodule init && git submodule update
 
-ARGS=("-DCMAKE_INSTALL_PREFIX=$PREFIX" "-DWITH_PROCPS=OFF" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5")
+ARGS=("-DCMAKE_INSTALL_PREFIX=$PREFIX" "-DWITH_PROCPS=OFF" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DCMAKE_CXX_STANDARD=11")
 CXXFLAGS=""
 if [ "$HOST_OS" = "macOS" ]; then
   OPENSSL_PREFIX=$(brew --prefix openssl)
