@@ -36,7 +36,6 @@ import EVM.Types (Addr, abiKeccak, W256, FunctionSelector(..))
 import Echidna.Mutator.Array (mutateLL, replaceAt)
 import Echidna.Types.Random
 import Echidna.Types.Signature
-import Echidna.Kaitai (KStruct(..), processKaitai)
 import System.Random (newStdGen)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
@@ -123,10 +122,9 @@ data GenDict = GenDict
     -- ^ Default seed to use if one is not provided in EConfig
   , rTypes     :: Text -> Maybe AbiType
     -- ^ Return types of any methods we scrape return values from
-  , kaitaiMap  :: !(Map (Text, Int) KStruct)
-    -- ^ Kaitai structs to use for generating inputs
   , dictValues :: !(Set W256)
     -- ^ A set of int/uint constants for better performance
+  , allSigs    :: ![SolSignature]
   }
 
 hashMapBy
@@ -148,19 +146,19 @@ mkGenDict
   -> Set SolCall  -- ^ A list of complete 'SolCall's to mutate
   -> Int          -- ^ A default seed
   -> (Text -> Maybe AbiType) -- ^ A return value typing rule
-  -> Map (Text, Int) KStruct
+  -> [SolSignature]
   -> GenDict
-mkGenDict mutationChance abiValues solCalls seed typingRule kaitaiMap =
+mkGenDict mutationChance abiValues solCalls seed typingRule allSigs =
   GenDict mutationChance
           (hashMapBy abiValueType abiValues)
           (hashMapBy (fmap $ fmap abiValueType) solCalls)
           seed
           typingRule
-          kaitaiMap
           (mkDictValues abiValues)
+          allSigs
 
 emptyDict :: GenDict
-emptyDict = mkGenDict 0 Set.empty Set.empty 0 (const Nothing) Map.empty
+emptyDict = mkGenDict 0 Set.empty Set.empty 0 (const Nothing) []
 
 mkDictValues :: Set AbiValue -> Set W256
 mkDictValues =
@@ -394,30 +392,25 @@ genAbiValueM genDict = genAbiValueM' genDict "" 0
 
 genAbiValueM' :: (MonadRandom m, MonadIO m) => GenDict -> Text -> Int -> AbiType -> m AbiValue
 genAbiValueM' genDict funcName i t =
-  case Map.lookup (funcName, i) genDict.kaitaiMap of
-    Just kstruct -> do
-      (_, calldata) <- liftIO $ do
-        g <- newStdGen
-        Random.evalRandT (processKaitai (genAbiValueM genDict) kstruct) g
-      pure $ AbiBytesDynamic calldata
-    Nothing -> genWithDict genDict genDict.constants go t
-  where
-    go = \case
-      AbiUIntType n         -> fixAbiUInt n . fromInteger <$> getRandomUint n
-      AbiIntType n          -> fixAbiInt n . fromInteger <$> getRandomInt n
-      AbiAddressType        -> rElem $ NE.fromList pregenAbiAdds
-      AbiBoolType           -> AbiBool <$> getRandom
-      AbiBytesType n        -> AbiBytes n . BS.pack . take n <$> getRandoms
-      AbiBytesDynamicType   -> liftM2 (\n -> AbiBytesDynamic . BS.pack . take n)
-                                      (getRandomR (1, 32)) getRandoms
-      AbiStringType         -> liftM2 (\n -> AbiString       . BS.pack . take n)
-                                      (getRandomR (1, 32)) getRandoms
-      AbiArrayDynamicType t' -> fmap (AbiArrayDynamic t') $ getRandomR (1, 32)
-                               >>= flip V.replicateM (genAbiValueM' genDict funcName i t')
-      AbiArrayType n t'      -> AbiArray n t' <$> V.replicateM n (genAbiValueM' genDict funcName i t')
-      AbiTupleType v        -> AbiTuple <$> traverse (genAbiValueM' genDict funcName i) v
-      AbiFunctionType       -> liftM2 (\n -> AbiString . BS.pack . take n)
-                                      (getRandomR (1, 32)) getRandoms
+  let go = \case
+        AbiUIntType n         -> fixAbiUInt n . fromInteger <$> getRandomUint n
+        AbiIntType n          -> fixAbiInt n . fromInteger <$> getRandomInt n
+        AbiAddressType        -> rElem $ NE.fromList pregenAbiAdds
+        AbiBoolType           -> AbiBool <$> getRandom
+        AbiBytesType n        -> AbiBytes n . BS.pack . take n <$> getRandoms
+        AbiBytesDynamicType   -> do
+          sig@(_, types) <- uniform genDict.allSigs
+          params <- V.fromList <$> mapM (genAbiValueM genDict) types
+          pure $ AbiBytesDynamic (abiCalldata (encodeSig sig) params)
+        AbiStringType         -> liftM2 (\n -> AbiString       . BS.pack . take n)
+                                        (getRandomR (1, 32)) getRandoms
+        AbiArrayDynamicType t' -> fmap (AbiArrayDynamic t') $ getRandomR (1, 32)
+                                 >>= flip V.replicateM (genAbiValueM' genDict funcName i t')
+        AbiArrayType n t'      -> AbiArray n t' <$> V.replicateM n (genAbiValueM' genDict funcName i t')
+        AbiTupleType v        -> AbiTuple <$> traverse (genAbiValueM' genDict funcName i) v
+        AbiFunctionType       -> liftM2 (\n -> AbiString . BS.pack . take n)
+                                        (getRandomR (1, 32)) getRandoms
+  in genWithDict genDict genDict.constants go t
 
 -- | Given a 'SolSignature', generate a random 'SolCall' with that signature,
 -- possibly with a dictionary.

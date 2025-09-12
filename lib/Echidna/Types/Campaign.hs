@@ -65,10 +65,6 @@ data CampaignConf = CampaignConf
   , symExecMaxExplore :: Integer
     -- ^ Maximum number of states to explore before we stop exploring it.
     -- Only relevant if symExec is True
-  , kaitaiFile :: Maybe FilePath
-    -- ^ Optional Kaitai Struct file for calldata generation
-  , kaitaiFreq :: Float
-    -- ^ Frequency for the use of Kaitai-based calldata generation
   }
 
 -- | The state of a fuzzing campaign.

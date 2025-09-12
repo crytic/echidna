@@ -30,7 +30,6 @@ import Data.Time (LocalTime)
 import Data.Vector qualified as V
 import System.Random (mkStdGen, newStdGen)
 
-import Echidna.Kaitai (processKaitai)
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
 import EVM.Dapp (DappInfo(..))
