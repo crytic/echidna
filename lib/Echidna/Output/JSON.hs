@@ -132,7 +132,7 @@ mapTest dappInfo test =
   mapTestState T.Passed _ = (Passed, Nothing, Nothing)
   mapTestState T.Solved txs = (Solved, Just $ mapTx <$> txs, Nothing)
   mapTestState (T.Large _) txs = (Shrinking, Just $ mapTx <$> txs, Nothing)
-  mapTestState (T.Failed e) _ = (Error, Nothing, Just $ show e) -- TODO add (show e)
+  mapTestState (T.Failed e) _ = (Error, Nothing, Just $ Prelude.show e) -- TODO add (show e)
 
   mapTx tx =
     let (function, args) = mapCall tx.call
