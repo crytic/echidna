@@ -36,8 +36,7 @@ import EVM.Types (Addr, abiKeccak, W256, FunctionSelector(..))
 import Echidna.Mutator.Array (mutateLL, replaceAt)
 import Echidna.Types.Random
 import Echidna.Types.Signature
-import System.Random (newStdGen)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (MonadIO)
 
 -- | Fallback function is the null string
 fallback :: SolSignature

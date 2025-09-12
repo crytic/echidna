@@ -8,7 +8,6 @@ import Control.DeepSeq (force)
 import Control.Monad (replicateM, when, unless, void, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
-import qualified Control.Monad.Random.Strict as Random
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
 import Control.Monad.State.Strict
   (MonadState(..), StateT(..), gets, MonadIO, modify')
@@ -28,7 +27,7 @@ import Data.Set qualified as Set
 import Data.Text (Text, unpack)
 import Data.Time (LocalTime)
 import Data.Vector qualified as V
-import System.Random (mkStdGen, newStdGen)
+import System.Random (mkStdGen)
 
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
