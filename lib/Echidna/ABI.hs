@@ -1,4 +1,3 @@
-{-# LANGUAGE RecordWildCards #-}
 module Echidna.ABI where
 
 import Control.Monad (liftM2, liftM3, foldM, replicateM, zipWithM)
@@ -147,14 +146,13 @@ mkGenDict
   -> (Text -> Maybe AbiType) -- ^ A return value typing rule
   -> [SolSignature]
   -> GenDict
-mkGenDict mutationChance abiValues solCalls seed typingRule allSigs =
+mkGenDict mutationChance abiValues solCalls seed typingRule =
   GenDict mutationChance
           (hashMapBy abiValueType abiValues)
           (hashMapBy (fmap $ fmap abiValueType) solCalls)
           seed
           typingRule
           (mkDictValues abiValues)
-          allSigs
 
 emptyDict :: GenDict
 emptyDict = mkGenDict 0 Set.empty Set.empty 0 (const Nothing) []
@@ -419,7 +417,7 @@ genAbiValueM' genDict funcName i t =
 -- possibly with a dictionary.
 genAbiCallM :: (MonadRandom m, MonadIO m) => GenDict -> SolSignature -> m SolCall
 genAbiCallM genDict (name, types) = do
-  let genVals = zipWithM (\t i -> genAbiValueM' genDict name i t) types [0..]
+  let genVals = zipWithM (flip (genAbiValueM' genDict name)) types [0..]
   solCall <- genWithDict genDict
                          genDict.wholeCalls
                          (const ((name,) <$> genVals))
