@@ -388,7 +388,7 @@ genAbiValueM :: (MonadRandom m, MonadIO m) => GenDict -> AbiType -> m AbiValue
 genAbiValueM genDict = genAbiValueM' genDict "" 0
 
 genAbiValueM' :: (MonadRandom m, MonadIO m) => GenDict -> Text -> Int -> AbiType -> m AbiValue
-genAbiValueM' genDict funcName i t =
+genAbiValueM' genDict funcName depth t =
   let go = \case
         AbiUIntType n         -> fixAbiUInt n . fromInteger <$> getRandomUint n
         AbiIntType n          -> fixAbiInt n . fromInteger <$> getRandomInt n
@@ -398,14 +398,14 @@ genAbiValueM' genDict funcName i t =
         AbiBytesDynamicType   ->
           let
             filteredSigs = filter ((/= funcName) . fst) genDict.allSigs
-          in if null filteredSigs then
+          in if null filteredSigs || depth >= 2 then
                liftM2 (\n -> AbiBytesDynamic . BS.pack . take n)
                  (getRandomR (1, 32)) getRandoms
              else
                join $ Random.weighted
                  [ (do
                      sig@(_, types) <- uniform filteredSigs
-                     params <- V.fromList <$> mapM (genAbiValueM genDict) types
+                     params <- V.fromList <$> mapM (genAbiValueM' genDict "" $ depth + 1) types
                      pure $ AbiBytesDynamic (abiCalldata (encodeSig sig) params), 9)
                  , (liftM2 (\n -> AbiBytesDynamic . BS.pack . take n)
                      (getRandomR (1, 32)) getRandoms, 1)
@@ -413,9 +413,9 @@ genAbiValueM' genDict funcName i t =
         AbiStringType         -> liftM2 (\n -> AbiString       . BS.pack . take n)
                                         (getRandomR (1, 32)) getRandoms
         AbiArrayDynamicType t' -> fmap (AbiArrayDynamic t') $ getRandomR (1, 32)
-                                 >>= flip V.replicateM (genAbiValueM' genDict funcName i t')
-        AbiArrayType n t'      -> AbiArray n t' <$> V.replicateM n (genAbiValueM' genDict funcName i t')
-        AbiTupleType v        -> AbiTuple <$> traverse (genAbiValueM' genDict funcName i) v
+                                 >>= flip V.replicateM (genAbiValueM' genDict funcName (depth + 1) t')
+        AbiArrayType n t'      -> AbiArray n t' <$> V.replicateM n (genAbiValueM' genDict funcName (depth + 1) t')
+        AbiTupleType v        -> AbiTuple <$> traverse (genAbiValueM' genDict funcName (depth + 1)) v
         AbiFunctionType       -> liftM2 (\n -> AbiString . BS.pack . take n)
                                         (getRandomR (1, 32)) getRandoms
   in genWithDict genDict genDict.constants go t
@@ -424,7 +424,7 @@ genAbiValueM' genDict funcName i t =
 -- possibly with a dictionary.
 genAbiCallM :: (MonadRandom m, MonadIO m) => GenDict -> SolSignature -> m SolCall
 genAbiCallM genDict (name, types) = do
-  let genVals = zipWithM (flip (genAbiValueM' genDict name)) types [0..]
+  let genVals = zipWithM (flip (genAbiValueM' genDict name)) types (repeat 0)
   solCall <- genWithDict genDict
                          genDict.wholeCalls
                          (const ((name,) <$> genVals))
