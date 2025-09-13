@@ -4,10 +4,11 @@ import Control.Concurrent (newChan)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.ST (RealWorld)
 import Data.IORef (newIORef)
-import Data.List (find)
+import Data.List (find, nub)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
+import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import System.FilePath ((</>))
 
@@ -15,7 +16,7 @@ import EVM (cheatCode)
 import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Dapp (dappInfo)
 import EVM.Fetch qualified
-import EVM.Solidity (BuildOutput(..), Contracts(Contracts), Method(..), SolcContract(..))
+import EVM.Solidity (BuildOutput(..), Contracts(Contracts), Method(..), Mutability(..), SolcContract(..))
 import EVM.Types hiding (Env)
 
 import Echidna.ABI
@@ -32,6 +33,7 @@ import Echidna.Types.Tx
 import Echidna.Types.World
 import Echidna.Types.Test (EchidnaTest)
 import Echidna.Types.Signature (ContractName)
+import Echidna.SourceMapping (findSrcForReal)
 
 -- | This function is used to prepare, process, compile and initialize smart contracts for testing.
 -- It takes:
@@ -73,7 +75,6 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
 
   -- deploy contracts
   vm <- loadSpecified env mainContract contracts
-
   let
     deployedAddresses = Set.fromList $ AbiAddress . forceAddr <$> Map.keys vm.env.contracts
     constants = enhanceConstants slitherInfo
@@ -81,16 +82,21 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
                 <> extremeConstants
                 <> staticAddresses solConf
                 <> deployedAddresses
-
-  let allSigs = concatMap (map (\(Method {name, inputs}) -> (name, map snd inputs)) . Map.elems . (\(SolcContract {abiMap}) -> abiMap)) contracts
-      dict = mkGenDict env.cfg.campaignConf.dictFreq
-                        -- make sure we don't use cheat codes to form fuzzing call sequences
-                        (Set.delete (AbiAddress $ forceAddr cheatCode) constants)
-                        Set.empty
-                        seed
-                        (returnTypes contracts)
-                        allSigs
-
+    deployedSolcContracts = nub $ mapMaybe (findSrcForReal env.dapp) $ Map.elems vm.env.contracts
+    nonViewPureSigs = concatMap (mapMaybe (\ (Method {name, inputs, mutability}) -> 
+      case mutability of
+        View -> Nothing
+        Pure -> Nothing
+        Payable -> Just (name, map snd inputs)
+        NonPayable -> Just (name, map snd inputs))
+      . Map.elems . (\ (SolcContract {abiMap}) -> abiMap)) deployedSolcContracts
+    dict = mkGenDict env.cfg.campaignConf.dictFreq
+                      -- make sure we don't use cheat codes to form fuzzing call sequences
+                      (Set.delete (AbiAddress $ forceAddr cheatCode) constants)
+                      Set.empty
+                      seed
+                      (returnTypes deployedSolcContracts)
+                      nonViewPureSigs
   pure (vm, env, dict)
 
 loadInitialCorpus :: Env -> IO [(FilePath, [Tx])]
