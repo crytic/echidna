@@ -395,14 +395,21 @@ genAbiValueM' genDict funcName i t =
         AbiAddressType        -> rElem $ NE.fromList pregenAbiAdds
         AbiBoolType           -> AbiBool <$> getRandom
         AbiBytesType n        -> AbiBytes n . BS.pack . take n <$> getRandoms
-        AbiBytesDynamicType   -> join $ Random.weighted
-          [ (do
-              sig@(_, types) <- uniform genDict.allSigs
-              params <- V.fromList <$> mapM (genAbiValueM genDict) types
-              pure $ AbiBytesDynamic (abiCalldata (encodeSig sig) params), 9)
-          , (liftM2 (\n -> AbiBytesDynamic . BS.pack . take n)
-              (getRandomR (1, 32)) getRandoms, 1)
-          ]
+        AbiBytesDynamicType   ->
+          let
+            filteredSigs = filter ((/= funcName) . fst) genDict.allSigs
+          in if null filteredSigs then
+               liftM2 (\n -> AbiBytesDynamic . BS.pack . take n)
+                 (getRandomR (1, 32)) getRandoms
+             else
+               join $ Random.weighted
+                 [ (do
+                     sig@(_, types) <- uniform filteredSigs
+                     params <- V.fromList <$> mapM (genAbiValueM genDict) types
+                     pure $ AbiBytesDynamic (abiCalldata (encodeSig sig) params), 9)
+                 , (liftM2 (\n -> AbiBytesDynamic . BS.pack . take n)
+                     (getRandomR (1, 32)) getRandoms, 1)
+                 ]
         AbiStringType         -> liftM2 (\n -> AbiString       . BS.pack . take n)
                                         (getRandomR (1, 32)) getRandoms
         AbiArrayDynamicType t' -> fmap (AbiArrayDynamic t') $ getRandomR (1, 32)
