@@ -14,7 +14,6 @@ import System.FilePath ((</>))
 import EVM (cheatCode)
 import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Dapp (dappInfo)
-import EVM.Fetch qualified
 import EVM.Solidity (BuildOutput(..), Contracts(Contracts))
 import EVM.Types hiding (Env)
 
@@ -103,7 +102,7 @@ loadInitialCorpus env = do
 mkEnv :: EConfig -> BuildOutput -> [EchidnaTest] -> World -> Maybe SlitherInfo -> IO Env
 mkEnv cfg buildOutput tests world slitherInfo = do
   codehashMap <- newIORef mempty
-  chainId <- maybe (pure Nothing) EVM.Fetch.fetchChainIdFrom cfg.rpcUrl
+  chainId <- maybe (pure Nothing) Onchain.fetchChainIdFrom (Just cfg.rpcUrl)
   eventQueue <- newChan
   coverageRefInit <- newIORef mempty
   coverageRefRuntime <- newIORef mempty
