@@ -1,7 +1,6 @@
 module Echidna.Mutator.Corpus where
 
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, weighted)
-import Control.Monad.IO.Class (MonadIO)
 import Data.Set qualified as Set
 
 import Echidna.Mutator.Array
@@ -30,7 +29,7 @@ data CorpusMutation = RandomAppend TxsMutation
                     | RandomInterleave
   deriving (Eq, Ord, Show)
 
-mutator :: (MonadRandom m, MonadIO m) => TxsMutation -> [Tx] -> m [Tx]
+mutator :: MonadRandom m => TxsMutation -> [Tx] -> m [Tx]
 mutator Identity  = return
 mutator Shrinking = mapM shrinkTx
 mutator Mutation = mapM mutateTx
@@ -39,7 +38,7 @@ mutator Swapping = swapRandList
 mutator Deletion = deleteRandList
 
 selectAndMutate
-  :: (MonadRandom m, MonadIO m)
+  :: MonadRandom m
   => ([Tx] -> m [Tx])
   -> Corpus
   -> m [Tx]
@@ -69,7 +68,7 @@ selectFromCorpus =
   weighted . map (\(i, txs) -> (txs, fromIntegral i)) . Set.toDescList
 
 getCorpusMutation
-  :: (MonadRandom m, MonadIO m)
+  :: MonadRandom m
   => CorpusMutation
   -> (Int -> Corpus -> [Tx] -> m [Tx])
 getCorpusMutation (RandomAppend m) = mut (mutator m)

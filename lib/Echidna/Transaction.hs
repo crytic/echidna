@@ -149,7 +149,7 @@ shrinkTx tx =
       ]
   in join $ usuallyRarely (join (uniform possibilities)) (pure $ removeCallTx tx)
 
-mutateTx :: (MonadRandom m, MonadIO m) => Tx -> m Tx
+mutateTx :: (MonadRandom m) => Tx -> m Tx
 mutateTx tx@Tx{call = SolCall c} = do
   f <- oftenUsually skip mutate
   f c
