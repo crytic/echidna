@@ -95,7 +95,7 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
                       (Set.delete (AbiAddress $ forceAddr cheatCode) constants)
                       Set.empty
                       seed
-                      (returnTypes deployedSolcContracts)
+                      (returnTypes contracts)
                       nonViewPureSigs
   pure (vm, env, dict)
 

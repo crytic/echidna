@@ -338,7 +338,7 @@ mutateAbiValue = \case
 
   AbiBytesDynamic b -> AbiBytesDynamic <$> mutateLL Nothing mempty b
   AbiString b -> AbiString <$> mutateLL Nothing mempty b
-  AbiArray n t l -> do fs <- replicateM n (genAbiValue t)
+  AbiArray n t l -> do fs <- replicateM n $ genAbiValue t
                        xs <- mutateLL (Just n) (V.fromList fs) l
                        pure $ AbiArray n t xs
 
