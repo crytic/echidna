@@ -16,7 +16,7 @@ import EVM.Effects (TTY, ReadConfig)
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (SolverGroup)
 import EVM.SymExec (mkCalldata, verifyInputs, VeriOpts(..), checkAssertions, subModel, defaultSymbolicValues)
-import EVM.Expr qualified as EVM.Expr
+import EVM.Expr qualified
 import EVM.Types (Addr, VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query(..), forceLit)
 import qualified EVM.Types (VM(..))
 import EVM.Format (formatPartial)
