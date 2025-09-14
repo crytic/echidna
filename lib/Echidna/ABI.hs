@@ -35,7 +35,6 @@ import EVM.Types (Addr, abiKeccak, W256, FunctionSelector(..))
 import Echidna.Mutator.Array (mutateLL, replaceAt)
 import Echidna.Types.Random
 import Echidna.Types.Signature
-import Control.Monad.IO.Class (MonadIO)
 
 -- | Fallback function is the null string
 fallback :: SolSignature
@@ -200,7 +199,7 @@ getRandomInt n =
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Doesn't use a dictionary.
 -- Note that we define the dictionary case ('genAbiValueM') first (below), so
 -- recursive types can be generated using the same dictionary easily
-genAbiValue :: (MonadRandom m, MonadIO m) => AbiType -> m AbiValue
+genAbiValue :: (MonadRandom m) => AbiType -> m AbiValue
 genAbiValue = genAbiValueM emptyDict
 
 -- Mutation helper functions
@@ -321,7 +320,7 @@ shrinkAbiCall (name, vals) = do
           (h':) <$> shrinkVals numShrinkable' numToShrink' t
 
 -- | Given an 'AbiValue', generate a random \"similar\" value of the same 'AbiType'.
-mutateAbiValue :: (MonadRandom m, MonadIO m) => AbiValue -> m AbiValue
+mutateAbiValue :: (MonadRandom m) => AbiValue -> m AbiValue
 mutateAbiValue = \case
   AbiUInt n x -> getRandomR (0, 9 :: Int) >>= -- 10% of chance of mutation
                  \case 0 -> fixAbiUInt n <$> mutateNum x
@@ -348,7 +347,7 @@ mutateAbiValue = \case
 
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
 -- Note that this function will mutate a *single* argument (if any)
-mutateAbiCall :: (MonadRandom m, MonadIO m) => SolCall -> m SolCall
+mutateAbiCall :: (MonadRandom m) => SolCall -> m SolCall
 mutateAbiCall = traverse f
   where f [] = pure []
         f xs = do k <- getRandomR (0, length xs - 1)
@@ -384,10 +383,10 @@ pregenAbiAdds = map (AbiAddress . fromIntegral) pregenAdds
 
 -- | Synthesize a random 'AbiValue' given its 'AbiType'. Requires a dictionary.
 -- Only produce lists with number of elements in the range [1, 32]
-genAbiValueM :: (MonadRandom m, MonadIO m) => GenDict -> AbiType -> m AbiValue
+genAbiValueM :: (MonadRandom m) => GenDict -> AbiType -> m AbiValue
 genAbiValueM genDict = genAbiValueM' genDict "" 0
 
-genAbiValueM' :: (MonadRandom m, MonadIO m) => GenDict -> Text -> Int -> AbiType -> m AbiValue
+genAbiValueM' :: (MonadRandom m) => GenDict -> Text -> Int -> AbiType -> m AbiValue
 genAbiValueM' genDict funcName depth t =
   let go = \case
         AbiUIntType n         -> fixAbiUInt n . fromInteger <$> getRandomUint n
@@ -422,7 +421,7 @@ genAbiValueM' genDict funcName depth t =
 
 -- | Given a 'SolSignature', generate a random 'SolCall' with that signature,
 -- possibly with a dictionary.
-genAbiCallM :: (MonadRandom m, MonadIO m) => GenDict -> SolSignature -> m SolCall
+genAbiCallM :: (MonadRandom m) => GenDict -> SolSignature -> m SolCall
 genAbiCallM genDict (name, types) = do
   let genVals = zipWithM (flip (genAbiValueM' genDict name)) types (repeat 0)
   solCall <- genWithDict genDict
@@ -434,7 +433,7 @@ genAbiCallM genDict (name, types) = do
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one,
 -- possibly with a dictionary.
 genInteractionsM
-  :: (MonadRandom m, MonadIO m)
+  :: (MonadRandom m)
   => GenDict
   -> NonEmpty SolSignature
   -> m SolCall

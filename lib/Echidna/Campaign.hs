@@ -426,9 +426,13 @@ randseq
 randseq deployedContracts = do
   env <- ask
   let world = env.world
-      conf = env.cfg.campaignConf
-      mutConsts = conf.mutConsts
-      seqLen = conf.seqLen
+  
+  let
+    mutConsts = env.cfg.campaignConf.mutConsts
+    seqLen = env.cfg.campaignConf.seqLen
+
+  -- TODO: include reproducer when optimizing
+  --let rs = filter (not . null) $ map (.testReproducer) $ ca._tests
 
   -- Generate new random transactions
   randTxs <- replicateM seqLen (genTx world deployedContracts)
