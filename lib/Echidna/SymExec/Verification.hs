@@ -17,6 +17,7 @@ import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
 import EVM.Types (VMType(..))
+import EVM.Fetch (RpcInfo(..))
 import qualified EVM.Types (VM(..))
 import Control.Monad.ST (RealWorld)
 
@@ -53,7 +54,7 @@ verifyMethod method contract vm = do
     maxIters = Just conf.campaignConf.symExecMaxIters
     maxExplore = Just (fromIntegral conf.campaignConf.symExecMaxExplore)
     askSmtIters = conf.campaignConf.symExecAskSMTIters
-    rpcInfo = rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock)
+    rpcInfo = RpcInfo (rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock)) Nothing Nothing Nothing
     defaultSender = fromJust $ Set.lookupMin conf.solConf.sender <|> Just 0
 
   threadIdChan <- liftIO newEmptyMVar
@@ -62,7 +63,7 @@ verifyMethod method contract vm = do
   let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
   let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
   let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, dumpExprs = True, maxBufSize = 12, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, numCexFuzz = 100 }
-  let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo }
+  let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = hevmConfig }
   pushWorkerEvent $ SymExecLog ("Verifying " <> (show method.name))
 

@@ -18,6 +18,7 @@ import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
+import EVM.Fetch (RpcInfo(..))
 import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 import Control.Monad.ST (RealWorld)
@@ -88,7 +89,7 @@ exploreContract contract method vm = do
     maxIters = Just conf.campaignConf.symExecMaxIters
     maxExplore = Just (fromIntegral conf.campaignConf.symExecMaxExplore)
     askSmtIters = conf.campaignConf.symExecAskSMTIters
-    rpcInfo = rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock)
+    rpcInfo = RpcInfo (rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock)) Nothing Nothing Nothing
     defaultSender = fromJust $ Set.lookupMin conf.solConf.sender <|> Just 0
 
   threadIdChan <- liftIO newEmptyMVar
@@ -97,7 +98,7 @@ exploreContract contract method vm = do
   let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
   let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
   let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, dumpQueries = False, numCexFuzz = 100 }
-  let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo }
+  let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = hevmConfig }
   pushWorkerEvent $ SymExecLog ("Exploring " <> (show method.name))
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
