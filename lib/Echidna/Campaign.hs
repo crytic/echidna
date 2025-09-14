@@ -307,16 +307,14 @@ runSymWorker callback vm dict workerId _ name = do
           pure $ Just test
       pushWorkerEvent $ SymExecLog ("Symbolic execution finished verifying contract " <> unpack (fromJust name) <> " using a single symbolic transaction."))
 
-    if not (null partials) || not (null errors) then do
+    when (not (null partials) || not (null errors)) $ do
       unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) solving constraints produced by method " <> methodSignature <> ": " <> show e)) errors
       unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic verification of method " <> methodSignature <> ": " <> unpack e)) partials
       updateTests $ \test -> do
-          if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
-              pure $ Just $ test { Test.state = Passed }
-          else
-            pure $ Just test
-    else 
-      return ()
+        if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
+          pure $ Just $ test {Test.state = Passed}
+        else
+          pure $ Just test
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
