@@ -15,6 +15,7 @@ import Data.List (find)
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
+import EVM.Dapp (DappInfo(..))
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
 import EVM.Types (VMType(..))
 import EVM.Fetch (RpcInfo(..))
@@ -47,6 +48,7 @@ isSuitableToVerifyMethod contract method symExecTargets = do
 verifyMethod :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 verifyMethod method contract vm = do
   conf <- asks (.cfg)
+  dappInfo <- asks (.dapp)
   contractCacheRef <- asks (.fetchContractCache)
   slotCacheRef <- asks (.fetchSlotCache)
   let
@@ -69,7 +71,7 @@ verifyMethod method contract vm = do
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      (res, partials) <- exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
+      (res, partials) <- exploreMethod method contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
       liftIO $ putMVar resultChan (res, partials)
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId

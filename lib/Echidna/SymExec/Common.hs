@@ -13,13 +13,13 @@ import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..))
 import EVM.Fetch qualified as Fetch
 import EVM (loadContract, resetState, symbolify)
 import EVM.Effects (TTY, ReadConfig)
-import EVM.Solidity (SolcContract(..), Method(..))
+import EVM.Solidity (SolcContract(..), SourceCache(..), Method(..), WarningData(..))
 import EVM.Solvers (SolverGroup)
 import EVM.SymExec (mkCalldata, verifyInputs, VeriOpts(..), checkAssertions, subModel, defaultSymbolicValues)
 import EVM.Expr qualified
 import EVM.Types (Addr, VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query(..), forceLit)
 import qualified EVM.Types (VM(..))
-import EVM.Format (formatPartial)
+import EVM.Format (formatPartialDetailed)
 import Control.Monad.ST (RealWorld)
 import Control.Monad.State.Strict (execState, runStateT)
 
@@ -145,9 +145,9 @@ getUnknownLogs = mapMaybe (\case
   _ -> Nothing)
 
 exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
-  Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m ([TxOrError], PartialsLogs)
+  Method -> SolcContract -> SourceCache -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m ([TxOrError], PartialsLogs)
   
-exploreMethod method _ vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef = do
+exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef = do
   calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   let
     cd = fst calldataSym
@@ -172,5 +172,6 @@ exploreMethod method _ vm defaultSender conf veriOpts solvers rpcInfo contractCa
   -- Doing so might mess up concolic execution.
   (_, models, partials) <- verifyInputs solvers veriOpts fetcher vm'' (Just $ checkAssertions [0x1])
   let results = map fst models
+  let warnData = Just $ WarningData contract sources vm' 
   --liftIO $ mapM_ TIO.putStrLn partials
-  return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (formatPartial . fst) partials)
+  return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (formatPartialDetailed warnData . fst) partials)
