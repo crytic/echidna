@@ -292,7 +292,6 @@ runSymWorker callback vm dict workerId _ name = do
     let txs = extractTxs symTxs
     let errors = extractErrors symTxs
 
-    liftIO $ print txs
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
     -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
