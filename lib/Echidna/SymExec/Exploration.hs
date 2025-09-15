@@ -17,6 +17,7 @@ import Data.List.NonEmpty (fromList)
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
+import EVM.Dapp (DappInfo(..))
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
 import EVM.Fetch (RpcInfo(..))
 import EVM.Types (VMType(..))
@@ -82,6 +83,7 @@ getRandomTargetMethod contract targets failedProperties = do
 exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SolcContract -> Method -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 exploreContract contract method vm = do
   conf <- asks (.cfg)
+  dappInfo <- asks (.dapp)
   contractCacheRef <- asks (.fetchContractCache)
   slotCacheRef <- asks (.fetchSlotCache)
   let
@@ -106,7 +108,7 @@ exploreContract contract method vm = do
       -- For now, we will be exploring a single method at a time.
       -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.
       -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
-      res <- exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
+      res <- exploreMethod method contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
       liftIO $ putMVar resultChan res
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
