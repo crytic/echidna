@@ -1,6 +1,6 @@
 testMode: assertion
 symExec: true
-symExecSMTSolver: z3
+symExecSMTSolver: bitwuzla
 workers: 0
 seqLen: 1
 

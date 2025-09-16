@@ -128,7 +128,7 @@ jobs:
           MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Cache Local
         uses: actions/cache@v4
@@ -220,7 +220,8 @@ jobs:
           - ubuntu-latest
           - windows-latest
         solc: ${{
-            (github.event_name == 'push' && github.ref == 'refs/heads/master') &&
+            ((github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+             (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-all-solc'))) &&
             fromJSON('["0.4.25", "0.5.7", "0.6.12", "0.7.5", "0.8.10", "0.8.25"]') ||
             fromJSON('["0.8.10", "0.8.25"]')
           }}
@@ -230,10 +231,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.8'
 
@@ -243,17 +244,20 @@ jobs:
           .github/scripts/install-solc.sh
           .github/scripts/install-crytic-compile.sh
           .github/scripts/install-z3.sh
+          .github/scripts/install-bitwuzla.sh
         env:
           HOST_OS: ${{ runner.os }}
           SOLC_VER: ${{ matrix.solc }}
 
       - name: Download testsuite
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
          name: echidna-testsuite-${{ runner.os }}
 
       - name: Test
         run: |
+          export PATH="$PATH:$HOME/.local/bin"
           solc-select use ${{ matrix.solc }}
           chmod +x echidna-testsuite*
           ./echidna-testsuite*
+        shell: bash

@@ -101,20 +101,21 @@ main = withUtf8 $ withCP65001 $ do
         corpus <- readIORef env.corpusRef
         saveTxs env (dir </> "coverage") (snd <$> Set.toList corpus)
 
-      -- TODO: We use the corpus dir to save coverage reports which is confusing.
-      -- Add config option to pass dir for saving coverage report and decouple it
-      -- from corpusDir.
-      unless (null cfg.campaignConf.coverageFormats) $ measureIO cfg.solConf.quiet "Saving coverage" $ do
-        -- We need runId to have a unique directory to save files under so they
-        -- don't collide with the next runs. We use the current time for this
-        -- as it orders the runs chronologically.
-        runId <- fromIntegral . systemSeconds <$> getSystemTime
+  -- save coverage reports
+  let coverageDir = cfg.campaignConf.coverageDir <|> cfg.campaignConf.corpusDir
+  case coverageDir of
+    Nothing -> pure ()
+    Just dir -> unless (null cfg.campaignConf.coverageFormats) $ measureIO cfg.solConf.quiet "Saving coverage" $ do
+      -- We need runId to have a unique directory to save files under so they
+      -- don't collide with the next runs. We use the current time for this
+      -- as it orders the runs chronologically.
+      runId <- fromIntegral . systemSeconds <$> getSystemTime
 
-        Onchain.saveCoverageReport env runId
+      Onchain.saveCoverageReport env runId
 
-        -- save source coverage reports
-        let contracts = Map.elems env.dapp.solcByName
-        saveCoverages env runId dir buildOutput.sources contracts
+      -- save source coverage reports
+      let contracts = Map.elems env.dapp.solcByName
+      saveCoverages env runId dir buildOutput.sources contracts
 
   if isSuccessful tests then exitSuccess else exitWith (ExitFailure 1)
 
@@ -126,6 +127,7 @@ data Options = Options
   , cliConfigFilepath   :: Maybe FilePath
   , cliOutputFormat     :: Maybe OutputFormat
   , cliCorpusDir        :: Maybe FilePath
+  , cliCoverageDir      :: Maybe FilePath
   , cliTestMode         :: Maybe TestMode
   , cliAllContracts     :: Bool
   , cliTimeout          :: Maybe Int
@@ -142,7 +144,7 @@ data Options = Options
   , cliCryticArgs       :: Maybe String
   , cliSolcArgs         :: Maybe String
   , cliSymExec          :: Maybe Bool
-  , cliSymExecTargets   :: Maybe Text
+  , cliSymExecTargets   :: [Text]
   , cliSymExecTimeout   :: Maybe Int
   , cliSymExecNSolvers  :: Maybe Int
   }
@@ -179,7 +181,10 @@ options = Options . NE.fromList
     <> help "Output format. Either 'json', 'text', 'none'. All these disable interactive UI")
   <*> optional (option str $ long "corpus-dir"
     <> metavar "PATH"
-    <> help "Directory to save and load corpus and coverage data.")
+    <> help "Directory to save and load corpus data.")
+  <*> optional (option str $ long "coverage-dir"
+    <> metavar "PATH"
+    <> help "Directory to save coverage reports. Defaults to corpus-dir if not specified.")
   <*> optional (option str $ long "test-mode"
     <> help "Test mode to use. Either 'property', 'assertion', 'dapptest', 'optimization', 'overflow' or 'exploration'" )
   <*> switch (long "all-contracts"
@@ -225,9 +230,9 @@ options = Options . NE.fromList
   <*> optional (option bool $ long "sym-exec"
     <> metavar "BOOL"
     <> help "Whether to enable the experimental symbolic execution feature.")
-  <*> optional (option str $ long "sym-exec-target"
+  <*> many (option str $ long "sym-exec-target"
     <> metavar "SELECTOR"
-    <> help "Target for the symbolic execution run (assuming sym-exec is enabled). Default is all functions")
+    <> help "Target for the symbolic execution run (assuming sym-exec is enabled). Can be passed multiple times. Default is all functions")
   <*> optional (option auto $ long "sym-exec-timeout"
     <> metavar "INTEGER"
     <> help ("Timeout for each symbolic execution run, in seconds (assuming sym-exec is enabled). Default is " ++ show defaultSymExecTimeout))
@@ -269,6 +274,7 @@ overrideConfig config Options{..} = do
 
     overrideCampaignConf campaignConf = campaignConf
       { corpusDir = cliCorpusDir <|> campaignConf.corpusDir
+      , coverageDir = cliCoverageDir <|> campaignConf.coverageDir
       , testLimit = fromMaybe campaignConf.testLimit cliTestLimit
       , shrinkLimit = fromMaybe campaignConf.shrinkLimit cliShrinkLimit
       , seqLen = fromMaybe campaignConf.seqLen cliSeqLen
@@ -276,7 +282,7 @@ overrideConfig config Options{..} = do
       , workers = cliWorkers <|> campaignConf.workers
       , serverPort = cliServerPort <|> campaignConf.serverPort
       , symExec = fromMaybe campaignConf.symExec cliSymExec
-      , symExecTargets = (\ t -> Just [t]) =<< cliSymExecTargets
+      , symExecTargets = if null cliSymExecTargets then campaignConf.symExecTargets else cliSymExecTargets
       , symExecTimeout = fromMaybe campaignConf.symExecTimeout cliSymExecTimeout
       , symExecNSolvers = fromMaybe campaignConf.symExecNSolvers cliSymExecNSolvers
       }

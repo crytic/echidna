@@ -95,6 +95,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "seed"
         <*> v ..:? "dictFreq" ..!= 0.40
         <*> v ..:? "corpusDir" ..!= Nothing
+        <*> v ..:? "coverageDir" ..!= Nothing
         <*> v ..:? "mutConsts" ..!= defaultMutationConsts
         <*> v ..:? "coverageFormats" ..!= [Txt,Html,Lcov]
         <*> v ..:? "coverageExcludes" ..!= []
@@ -102,7 +103,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "server"
         <*> v ..:? "symExec"            ..!= False
         <*> smtSolver
-        <*> v ..:? "symExecTargets"     ..!= Nothing
+        <*> v ..:? "symExecTargets"     ..!= []
         <*> v ..:? "symExecTimeout"     ..!= defaultSymExecTimeout
         <*> v ..:? "symExecNSolvers"    ..!= defaultSymExecNWorkers
         <*> v ..:? "symExecMaxIters"    ..!= defaultSymExecMaxIters

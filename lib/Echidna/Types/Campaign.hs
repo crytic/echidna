@@ -31,6 +31,8 @@ data CampaignConf = CampaignConf
     -- ^ Frequency for the use of dictionary values in the random transactions
   , corpusDir          :: Maybe FilePath
     -- ^ Directory to load and save lists of transactions
+  , coverageDir        :: Maybe FilePath
+    -- ^ Directory to save coverage reports
   , mutConsts          :: MutationConsts Integer
     -- ^ Mutation constants for fuzzing
   , coverageFormats    :: [CoverageFileType]
@@ -46,9 +48,9 @@ data CampaignConf = CampaignConf
   , symExecSMTSolver   :: Solver
     -- ^ SMT solver to use for symbolic execution.
     -- Supported solvers: "cvc5", "z3" and "bitwuzla"
-  , symExecTargets     :: Maybe [Text]
+  , symExecTargets     :: [Text]
     -- ^ List of target functions for symbolic execution.
-    -- If this is 'Nothing', all functions are considered targets.
+    -- If this is empty, all functions are considered targets.
   , symExecTimeout     :: Int
     -- ^ Timeout for symbolic execution SMT solver queries.
     -- Only relevant if symExec is True
@@ -119,7 +121,7 @@ defaultSymExecMaxIters :: Integer
 defaultSymExecMaxIters = 5
 
 -- | Same default as in hevm, "everything else is unsound"
--- (https://github.com/ethereum/hevm/pull/252)
+-- (https://github.com/argotorg/hevm/pull/252)
 defaultSymExecAskSMTIters :: Integer
 defaultSymExecAskSMTIters = 1
 
