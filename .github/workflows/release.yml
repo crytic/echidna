@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v19
+        uses: DeterminateSystems/nix-installer-action@v20
 
       - name: Configure Cachix
         uses: cachix/cachix-action@v16
