@@ -17,9 +17,10 @@ import Data.Text (pack, Text)
 import Data.Tree (flatten)
 import Data.Tree.Zipper (fromForest, TreePos, Empty)
 import Data.Vector (fromList)
+import Data.Vector qualified as V
 
 import EVM (traceForest)
-import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, getAbi, AbiType(..), AbiValue(..))
+import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, getAbiSeq, AbiType(..), AbiValue(..))
 import EVM.Dapp (DappContext(..), DappInfo(..))
 import EVM.Expr (maybeLitWordSimp)
 import EVM.Format (showValues, showError, contractNamePart)
@@ -91,10 +92,12 @@ extractEventValues dappInfo vm vm' =
       LogEntry _addr (ConcreteBuf bs) (sigHash : _) ->
         case Map.lookup (forceWord sigHash) dappInfo.eventMap of
           Just (Event _ _ params) ->
-            [ (ty, val)
-            | (_, ty, NotIndexed) <- params
-            , Right (_, _, val) <- [ runGetOrFail (getAbi ty) (fromStrict bs) ]
-            ]
+            let
+              types = [ t | (_, t, NotIndexed) <- params ]
+            in
+              case runGetOrFail (getAbiSeq (length types) types) (fromStrict bs) of
+                Right (_, _, vals) -> zip types (V.toList vals)
+                _ -> []
           Nothing -> []
       _ -> []
 
