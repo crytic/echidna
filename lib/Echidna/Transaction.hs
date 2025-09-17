@@ -22,6 +22,7 @@ import Data.Vector qualified as V
 import EVM (ceilDiv, initialContract, loadContract, resetState)
 import EVM.ABI (abiValueType)
 import EVM.FeeSchedule (FeeSchedule(..))
+import EVM.Transaction (setupTx)
 import EVM.Types hiding (Env, Gas, VMOpts(timestamp, gasprice))
 
 import Echidna.ABI
@@ -191,8 +192,10 @@ setupTx tx@Tx{call} = fromEVM $ do
   modify' $ \vm ->
     let intrinsicGas = txGasCost vm.block.schedule isCreate calldata
         burned = min intrinsicGas vm.state.gas
+        reversionState = EVM.Transaction.setupTx vm.tx.origin vm.block.coinbase vm.tx.gasprice vm.tx.gaslimit vm.env.contracts
     in vm & #state % #gas %!~ subtract burned
           & #burned %!~ (+ burned)
+          & #tx % #txReversion !~ reversionState
   where
     incrementBalance = #env % #contracts % ix (LitAddr tx.dst) % #balance %= (\v -> Lit $ forceWord v + tx.value)
     encode (n, vs) = abiCalldata (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
