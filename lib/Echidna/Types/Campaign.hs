@@ -4,12 +4,30 @@ import Control.Concurrent (ThreadId)
 import Data.Text (Text)
 import Data.Word (Word8, Word16)
 import GHC.Conc (numCapabilities)
+import Data.Aeson (ToJSON(..), FromJSON(..), withText)
+import Data.Char (toLower)
 
 import EVM.Solvers (Solver(..))
 
 import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
 import Echidna.Types.Coverage (CoverageFileType, CoverageMap)
+
+-- | Shrinking operation types
+data ShrinkOp = Shorten | Shrunk | RemoveReverts | CatNoCalls | RemoveUselessNoCalls
+  deriving (Show, Eq)
+
+instance ToJSON ShrinkOp where
+  toJSON = toJSON . map toLower . show
+
+instance FromJSON ShrinkOp where
+  parseJSON = withText "ShrinkOp" $ \case
+    "shorten" -> pure Shorten
+    "shrunk" -> pure Shrunk
+    "removereverts" -> pure RemoveReverts
+    "catnocalls" -> pure CatNoCalls
+    "removeuselessnocalls" -> pure RemoveUselessNoCalls
+    other -> fail $ "Unknown ShrinkOp: " <> show other
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf
@@ -65,6 +83,9 @@ data CampaignConf = CampaignConf
   , symExecMaxExplore :: Integer
     -- ^ Maximum number of states to explore before we stop exploring it.
     -- Only relevant if symExec is True
+  , logShrinking :: Bool
+    -- ^ Whether to log shrinking steps and show shrinking progress in status
+    -- line.
   }
 
 -- | The state of a fuzzing campaign.
@@ -84,6 +105,10 @@ data WorkerState = WorkerState
   , runningThreads :: [ThreadId]
     -- ^ Extra threads currently being run,
     --   aside from the main worker thread
+  , lastShrinkOp :: Maybe ShrinkOp
+    -- ^ Last shrinking operation name
+  , lastShrinkP :: Maybe Int
+    -- ^ Last known reproducer length that still falsifies
   }
 
 initialWorkerState :: WorkerState
@@ -95,6 +120,8 @@ initialWorkerState =
               , ncalls = 0
               , totalGas = 0
               , runningThreads = []
+              , lastShrinkOp = Nothing
+              , lastShrinkP = Nothing
               }
 
 defaultTestLimit :: Int

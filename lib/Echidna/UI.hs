@@ -15,9 +15,10 @@ import Control.Monad.ST (RealWorld)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, mapMaybe)
 import Data.Sequence ((|>))
 import Data.Text (Text)
+import Data.Char (toLower)
 import Data.Time
 import Graphics.Vty.Config (VtyUserConfig, defaultConfig, configInputMap)
 import Graphics.Vty.CrossPlatform (mkVty)
@@ -41,7 +42,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage (coverageStats)
-import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker 
 import Echidna.UI.Report
@@ -408,10 +409,32 @@ statusLine env states lastUpdateRef = do
   let gasPerSecond = if deltaTime > 0 then deltaGas `div` deltaTime else 0
   writeIORef lastUpdateRef $ GasTracker now totalGas
 
+  let shrinkLimit = env.cfg.campaignConf.shrinkLimit
+  let shrinkCounters = mapMaybe getShrinkCounter tests
+        where getShrinkCounter test = case test.state of
+                Large k -> Just k
+                _       -> Nothing
+
+  let shrinkingPart
+        | not env.cfg.campaignConf.logShrinking = ""
+        | null shrinkCounters = ", shrinking: N/A"
+        | otherwise = ", shrinking: " <> show (maximum shrinkCounters) 
+                        <> "/" <> show shrinkLimit 
+                        <> formatShrinkDetails states
+        where
+          formatShrinkDetails [] = ""
+          formatShrinkDetails (ws:_) =
+            let p = maybe "" show ws.lastShrinkP
+                op = maybe "" (map toLower . show) ws.lastShrinkOp
+            in if null p 
+               then "" 
+               else " (" <> p <> if null op then ")" else ", " <> op <> ")"
+
   pure $ "tests: " <> show (length $ filter didFail tests) <> "/" <> show (length tests)
     <> ", fuzzing: " <> show totalCalls <> "/" <> show env.cfg.campaignConf.testLimit
     <> ", values: " <> show ((.value) <$> filter isOptimizationTest tests)
     <> ", cov: " <> show points
     <> ", corpus: " <> show (Corpus.corpusSize corpus)
+    <> shrinkingPart
     <> ", gas/s: " <> show gasPerSecond
 
