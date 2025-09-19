@@ -1,10 +1,10 @@
 module Echidna.Shrink (shrinkTest) where
 
-import Control.Monad ((<=<))
+import Control.Monad ((<=<), when)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader (ask), asks)
-import Control.Monad.State.Strict (MonadIO)
+import Control.Monad.State.Strict (MonadIO, MonadState, modify')
 import Control.Monad.ST (RealWorld)
 import Data.Set qualified as Set
 import Data.List qualified as List
@@ -18,12 +18,13 @@ import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (TestValue(..), EchidnaTest(..), TestState(..), isOptimizationTest)
 import Echidna.Types.Tx (Tx(..), hasReverted, isUselessNoCall, catNoCalls, TxCall(..))
 import Echidna.Types.Config
-import Echidna.Types.Campaign (CampaignConf(..))
+import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..), ShrinkOp(..))
 import Echidna.Test (getResultFromVM, checkETest)
+import Echidna.Worker (pushShrinkingStep)
 
  -- | Top level function to shrink the complexity of the sequence of transactions once
 shrinkTest
-  :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m)
+  :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM Concrete RealWorld
   -> EchidnaTest
   -> m (Maybe EchidnaTest)
@@ -42,17 +43,22 @@ shrinkTest vm test = do
           if length rr > 1 || any canShrinkTx rr then do
             maybeShrunk <- shrinkSeq vm (checkETest test) test.value rr
             -- check if the shrunk sequence passes the test or not
-            pure $ case maybeShrunk of
+            case maybeShrunk of
               -- the test still fails, let's create another test with the reduced sequence
-              Just (txs, val, vm') -> do
-                Just test { state = Large (i + 1)
+              Just (txs, val, vm', opName) -> do
+                let beforeLen = length rr
+                let afterLen = length txs
+                when (afterLen < beforeLen && env.cfg.campaignConf.logShrinking) $ do
+                  pushShrinkingStep beforeLen afterLen opName
+                  modify' $ \ws -> ws { lastShrinkOp = Just opName, lastShrinkP = Just afterLen }
+                pure $ Just test { state = Large (i + 1)
                     , reproducer = txs
                     , vm = Just vm'
                     , result = getResultFromVM vm'
                     , value = val }
               Nothing ->
                 -- The test passed, so no success with shrinking this time, just bump number of tries to shrink
-                Just test { state = Large (i + 1), reproducer = rr}
+                pure $ Just test { state = Large (i + 1), reproducer = rr}
           else
             pure $ Just test { state = if isOptimizationTest test
                                     then Large (i + 1)
@@ -89,24 +95,27 @@ removeReverts' vm (t:txs) ftxs = do
 -- | Given a call sequence that solves some Echidna test, try to randomly
 -- generate a smaller one that still solves that test.
 shrinkSeq
-  :: (MonadIO m, MonadRandom m, MonadReader Env m, MonadThrow m)
+  :: (MonadIO m, MonadRandom m, MonadReader Env m, MonadThrow m, MonadState WorkerState m)
   => VM Concrete RealWorld
   -> (VM Concrete RealWorld -> m (TestValue, VM Concrete RealWorld))
   -> TestValue
   -> [Tx]
-  -> m (Maybe ([Tx], TestValue, VM Concrete RealWorld))
+  -> m (Maybe ([Tx], TestValue, VM Concrete RealWorld, ShrinkOp))
 shrinkSeq vm f v txs = do
-  -- apply one of the two possible simplification strategies (shrunk or shorten) with equal probability
-  txs' <- uniform =<< sequence [shorten, shrunk]
+  -- choose one of the two strategies explicitly to keep track of the op name
+  i <- getRandomR (0, 1 :: Int)
+  let pick = if i == 0 then (Shorten, shorten) else (Shrunk, shrunk)
+  let (opName, action) = pick
+  txs' <- action
   -- remove certain type of "no calls"
   let txs'' = removeUselessNoCalls txs'
   -- check if the sequence still triggers a failed transaction
   (value, vm') <- check txs'' vm
   -- if the test passed it means we didn't shrink successfully (returns Nothing)
-  -- otherwise, return a reduced sequence of transaction
+  -- otherwise, return a reduced sequence of transaction and the op name used
   pure $ case (value,v) of
-    (BoolValue False, _)              -> Just (txs'', value, vm')
-    (IntValue x, IntValue y) | x >= y -> Just (txs'', value, vm')
+    (BoolValue False, _)              -> Just (txs'', value, vm', opName)
+    (IntValue x, IntValue y) | x >= y -> Just (txs'', value, vm', opName)
     _                                 -> Nothing
   where
     check [] vm' = f vm'
