@@ -10,7 +10,7 @@ on:
 
 env:
   # Tag for cache invalidation
-  CACHE_VERSION: v9
+  CACHE_VERSION: v10
 
 jobs:
   build:
