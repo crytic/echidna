@@ -29,7 +29,7 @@ jobs:
             name: Linux (aarch64)
             tuple: aarch64-linux
             timeout: 180
-          - os: macos-13
+          - os: macos-15-intel
             name: macOS (x86_64)
             tuple: x86_64-macos
           - os: macos-14
