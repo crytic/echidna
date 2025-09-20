@@ -17,7 +17,9 @@ import Data.List.NonEmpty (fromList)
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
-import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..), defaultVeriOpts)
+import EVM.Dapp (DappInfo(..))
+import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
+import EVM.Fetch (RpcInfo(..))
 import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 import Control.Monad.ST (RealWorld)
@@ -81,6 +83,7 @@ getRandomTargetMethod contract targets failedProperties = do
 exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SolcContract -> Method -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 exploreContract contract method vm = do
   conf <- asks (.cfg)
+  dappInfo <- asks (.dapp)
   contractCacheRef <- asks (.fetchContractCache)
   slotCacheRef <- asks (.fetchSlotCache)
   let
@@ -88,23 +91,24 @@ exploreContract contract method vm = do
     maxIters = Just conf.campaignConf.symExecMaxIters
     maxExplore = Just (fromIntegral conf.campaignConf.symExecMaxExplore)
     askSmtIters = conf.campaignConf.symExecAskSMTIters
-    rpcInfo = rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock)
+    rpcInfo = RpcInfo (rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock)) Nothing Nothing Nothing
     defaultSender = fromJust $ Set.lookupMin conf.solConf.sender <|> Just 0
 
   threadIdChan <- liftIO newEmptyMVar
   doneChan <- liftIO newEmptyMVar
   resultChan <- liftIO newEmptyMVar
-  let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
-  let veriOpts = defaultVeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
-  let runtimeEnv = defaultEnv { config = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = True, debug = isNonInteractive, dumpQueries = False, numCexFuzz = 100 } }
+  let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
+  let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, dumpQueries = False, numCexFuzz = 0 }
+  let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
+  let runtimeEnv = defaultEnv { config = hevmConfig }
   pushWorkerEvent $ SymExecLog ("Exploring " <> (show method.name))
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
       -- For now, we will be exploring a single method at a time.
       -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.
       -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
-      res <- exploreMethod method contract vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
+      res <- exploreMethod method contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
       liftIO $ putMVar resultChan res
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
