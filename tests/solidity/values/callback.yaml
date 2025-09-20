@@ -1,0 +1,3 @@
+seqLen: 1
+filterFunctions:
+  - Test.transfer

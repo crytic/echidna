@@ -50,4 +50,6 @@ valuesTests = testGroup "Value extraction tests"
       [ ("getItem passed",                   solved      "getItem") ]
     , testContract' "values/events.sol" Nothing Nothing (Just "values/events.yaml") False FuzzWorker
       [ ("check passed",                           solved      "check") ]
+    , testContract' "values/callback.sol" Nothing Nothing (Just "values/callback.yaml") False FuzzWorker
+      [ ("echidna_callback_executed passed",                           solved      "echidna_callback_executed") ] 
   ]
