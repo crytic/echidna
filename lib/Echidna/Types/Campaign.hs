@@ -84,8 +84,7 @@ data CampaignConf = CampaignConf
     -- ^ Maximum number of states to explore before we stop exploring it.
     -- Only relevant if symExec is True
   , logShrinking :: Bool
-    -- ^ Whether to log shrinking steps and show shrinking progress in status
-    -- line.
+    -- ^ Whether to log detailed shrinking steps.
   }
 
 -- | The state of a fuzzing campaign.

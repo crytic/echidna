@@ -242,7 +242,7 @@ options = Options . NE.fromList
     <> help ("Number of symbolic execution solvers to run in parallel for each task (assuming sym-exec is enabled). Default is " ++ show defaultSymExecNWorkers))
   <*> optional (option bool $ long "log-shrinking"
     <> metavar "BOOL"
-    <> help "Whether to log shrinking steps and show shrinking progress in status line.")
+    <> help "Whether to log detailed shrinking steps.")
 
 versionOption :: Parser (a -> a)
 versionOption = infoOption

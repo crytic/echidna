@@ -34,7 +34,6 @@ instance ToJSON WorkerEvent where
     TxSequenceReplayFailed file tx ->
       object [ "file" .= file, "tx" .= tx ]
     WorkerStopped reason -> object [ "reason" .= show reason ]
-    -- New: structured JSON for shrinking step
     ShrinkingStep { beforeLen, afterLen, op } ->
       object [ "before" .= beforeLen
              , "after" .= afterLen
