@@ -15,10 +15,9 @@ import Control.Monad.ST (RealWorld)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Data.Sequence ((|>))
 import Data.Text (Text)
-import Data.Char (toLower)
 import Data.Time
 import Graphics.Vty.Config (VtyUserConfig, defaultConfig, configInputMap)
 import Graphics.Vty.CrossPlatform (mkVty)
@@ -414,21 +413,12 @@ statusLine env states lastUpdateRef = do
         where getShrinkCounter test = case test.state of
                 Large k -> Just k
                 _       -> Nothing
-
   let shrinkingPart
         | not env.cfg.campaignConf.logShrinking = ""
         | null shrinkCounters = ", shrinking: N/A"
-        | otherwise = ", shrinking: " <> show (maximum shrinkCounters) 
-                        <> "/" <> show shrinkLimit 
-                        <> formatShrinkDetails states
-        where
-          formatShrinkDetails [] = ""
-          formatShrinkDetails (ws:_) =
-            let p = maybe "" show ws.lastShrinkP
-                op = maybe "" (map toLower . show) ws.lastShrinkOp
-            in if null p 
-               then "" 
-               else " (" <> p <> if null op then ")" else ", " <> op <> ")"
+        | otherwise = ", shrinking: " <> show (maximum shrinkCounters)
+                   <> "/" <> show shrinkLimit
+                   <> maybe "" (\p -> "(" <> show p <> ")") (listToMaybe $ mapMaybe (.lastShrinkP) states)
 
   pure $ "tests: " <> show (length $ filter didFail tests) <> "/" <> show (length tests)
     <> ", fuzzing: " <> show totalCalls <> "/" <> show env.cfg.campaignConf.testLimit

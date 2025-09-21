@@ -105,8 +105,6 @@ data WorkerState = WorkerState
   , runningThreads :: [ThreadId]
     -- ^ Extra threads currently being run,
     --   aside from the main worker thread
-  , lastShrinkOp :: Maybe ShrinkOp
-    -- ^ Last shrinking operation name
   , lastShrinkP :: Maybe Int
     -- ^ Last known reproducer length that still falsifies
   }
@@ -120,7 +118,6 @@ initialWorkerState =
               , ncalls = 0
               , totalGas = 0
               , runningThreads = []
-              , lastShrinkOp = Nothing
               , lastShrinkP = Nothing
               }
 

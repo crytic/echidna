@@ -145,7 +145,6 @@ runSymWorker callback vm dict workerId _ name = do
                 , ncalls = 0
                 , totalGas = 0
                 , runningThreads = []
-                , lastShrinkOp = Nothing
                 , lastShrinkP = Nothing
                 }
 
@@ -344,7 +343,6 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
                   , ncalls = 0
                   , totalGas = 0
                   , runningThreads = []
-                  , lastShrinkOp = Nothing
                   , lastShrinkP = Nothing
                   }
 

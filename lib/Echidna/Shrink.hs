@@ -48,9 +48,10 @@ shrinkTest vm test = do
               Just (txs, val, vm', opName) -> do
                 let beforeLen = length rr
                 let afterLen = length txs
-                when (afterLen < beforeLen && env.cfg.campaignConf.logShrinking) $ do
-                  pushShrinkingStep beforeLen afterLen opName
-                  modify' $ \ws -> ws { lastShrinkOp = Just opName, lastShrinkP = Just afterLen }
+                when (afterLen < beforeLen) $ do
+                  modify' $ \ws -> ws { lastShrinkP = Just afterLen }
+                  when (env.cfg.campaignConf.logShrinking) $ do
+                    pushShrinkingStep beforeLen afterLen opName
                 pure $ Just test { state = Large (i + 1)
                     , reproducer = txs
                     , vm = Just vm'
