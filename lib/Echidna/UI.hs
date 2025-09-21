@@ -414,7 +414,6 @@ statusLine env states lastUpdateRef = do
                 Large k -> Just k
                 _       -> Nothing
   let shrinkingPart
-        | not env.cfg.campaignConf.logShrinking = ""
         | null shrinkCounters = ", shrinking: N/A"
         | otherwise = ", shrinking: " <> show (maximum shrinkCounters)
                    <> "/" <> show shrinkLimit
