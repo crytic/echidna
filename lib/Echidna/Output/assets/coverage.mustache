@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{title}}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <style>
+{{>styles.mustache}}
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header>
+            <div class="header-content">
+                <span class="logo-text">{{title}}</span>
+            </div>
+        </header>
+
+        <!-- Main content -->
+        <div class="split-panel" id="file-split-panel">
+            <!-- File Explorer -->
+            <div id="file-explorer">
+                <div class="file-explorer-header">
+                    <h3 class="file-explorer-title">Files</h3>
+                </div>
+                <div class="file-search">
+                    <input type="text" id="file-search-input" placeholder="Search files..." />
+                    <button id="file-search-clear" title="Clear search">×</button>
+                </div>
+                <div class="file-explorer-content">
+                    <ul id="file-tree-root" class="file-tree"></ul>
+                    <div id="search-no-results" class="search-no-results" style="display: none;">No matching files found</div>
+                </div>
+                <div id="file-explorer-resizer"></div>
+            </div>
+
+            <!-- Main panel -->
+            <div id="main-view-panel">
+                <!-- Overview -->
+                <div class="stats-container">
+                    <div class="stat-card">
+                        <div class="stat-title">Files</div>
+                        <div class="stat-value">{{totalFiles}}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-title">Total Lines</div>
+                        <div class="stat-value">{{totalLines}}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-title">Coverage</div>
+                        <div class="stat-value">{{coveragePercentage}}%</div>
+                        <div class="progress-container">
+                            <div class="progress-bar" style="width: {{coveragePercentage}}%; background-color: {{coverageColor}}"></div>
+                        </div>
+                        <div style="margin-top: 0.5rem">
+                            <span class="stat-badge">{{totalCoveredLines}} / {{totalActiveLines}} lines</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-title">Actions</div>
+                        <div class="button-group">
+                            <button class="btn btn-secondary btn-sm" onclick="setAllSourceFilesCollapsed(false)">Expand All</button>
+                            <button class="btn btn-secondary btn-sm" onclick="setAllSourceFilesCollapsed(true)">Collapse All</button>
+                        </div>
+                        <div class="button-group" style="margin-top: 0.5rem">
+                            <button class="btn btn-secondary btn-sm" onclick="setEmptySourceFilesCollapsed(false)">Expand Empty</button>
+                            <button class="btn btn-secondary btn-sm" onclick="setEmptySourceFilesCollapsed(true)">Collapse Empty</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Individual file coverage -->
+                {{#files}}
+                <div class="source-file" id="{{fileId}}" data-file-path="{{filePath}}" data-lines-active="{{activeLines}}" data-lines-covered="{{coveredLines}}">
+                    <div class="source-file-header">
+                        <div class="file-info">
+                            <span class="coverage-badge" style="background-color: {{coverageColorAlpha}}; color: {{coverageColor}}">
+                                {{coveragePercentage}}%
+                            </span>
+                            <span class="file-name">{{filePath}}</span>
+                        </div>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chevron-icon">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </div>
+                    <div class="source-file-content">
+                        <div class="source-file-stats">
+                            <span>Lines covered: <strong>{{coveredLines}} / {{activeLines}}</strong> ({{coveragePercentage}}%)</span>
+                        </div>
+                        <div class="code-container">
+                            <table class="code-coverage-table">
+                                {{#lines}}
+                                <tr{{#rowClass}} class="{{rowClass}}"{{/rowClass}}>
+                                    <td class="row-line-number">{{lineNumber}}</td>
+                                    <td class="row-source"><pre>{{sourceCode}}</pre></td>
+                                </tr>
+                                {{/lines}}
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {{/files}}
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer>
+            <div>Report generated by <a href="https://github.com/crytic/echidna" target="_blank">Echidna</a> on {{timestamp}}</div>
+        </footer>
+    </div>
+    <script>
+{{>scripts.mustache}}
+    </script>
+</body>
+</html>

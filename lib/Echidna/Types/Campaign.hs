@@ -37,6 +37,8 @@ data CampaignConf = CampaignConf
     -- ^ Mutation constants for fuzzing
   , coverageFormats    :: [CoverageFileType]
     -- ^ List of file formats to save coverage reports
+  , coverageExcludes   :: [Text]
+    -- ^ List of glob patterns for files/directories to exclude from coverage reports
   , workers            :: Maybe Word8
     -- ^ Number of fuzzing workers
   , serverPort         :: Maybe Word16
