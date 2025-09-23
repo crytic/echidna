@@ -94,7 +94,7 @@ executables:
       - with-utf8
     ghc-options:
       - -threaded
-      - '"-with-rtsopts=-A64m -N"'
+      - '"-with-rtsopts=-A64m -N --nonmoving-gc"'
     when:
       - condition: (os(linux) || os(windows)) && flag(static)
         ghc-options:
