@@ -192,6 +192,8 @@ setupTx tx@Tx{call} = fromEVM $ do
   modify' $ \vm ->
     let intrinsicGas = txGasCost vm.block.schedule isCreate calldata
         burned = min intrinsicGas vm.state.gas
+        -- This might not be 100% accurate (it does not revert the balance transfers)
+        -- but Echidna resets the vm on revert so it should not make a difference
         reversionState = EVM.Transaction.setupTx vm.tx.origin vm.block.coinbase vm.tx.gasprice vm.tx.gaslimit vm.env.contracts
     in vm & #state % #gas %!~ subtract burned
           & #burned %!~ (+ burned)
