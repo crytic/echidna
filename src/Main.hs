@@ -120,19 +120,22 @@ main = withUtf8 $ withCP65001 $ do
             _ -> pure ()
 
       -- TODO: We use the corpus dir to save coverage reports which is confusing.
-      -- Add config option to pass dir for saving coverage report and decouple it
-      -- from corpusDir.
-      unless (null cfg.campaignConf.coverageFormats) $ measureIO cfg.solConf.quiet "Saving coverage" $ do
-        -- We need runId to have a unique directory to save files under so they
-        -- don't collide with the next runs. We use the current time for this
-        -- as it orders the runs chronologically.
-        runId <- fromIntegral . systemSeconds <$> getSystemTime
 
-        Onchain.saveCoverageReport env runId
+  -- save coverage reports
+  let coverageDir = cfg.campaignConf.coverageDir <|> cfg.campaignConf.corpusDir
+  case coverageDir of
+    Nothing -> pure ()
+    Just dir -> unless (null cfg.campaignConf.coverageFormats) $ measureIO cfg.solConf.quiet "Saving coverage" $ do
+      -- We need runId to have a unique directory to save files under so they
+      -- don't collide with the next runs. We use the current time for this
+      -- as it orders the runs chronologically.
+      runId <- fromIntegral . systemSeconds <$> getSystemTime
 
-        -- save source coverage reports
-        let contracts = Map.elems env.dapp.solcByName
-        saveCoverages env runId dir buildOutput.sources contracts
+      Onchain.saveCoverageReport env runId
+
+      -- save source coverage reports
+      let contracts = Map.elems env.dapp.solcByName
+      saveCoverages env runId dir buildOutput.sources contracts
 
   if isSuccessful tests then exitSuccess else exitWith (ExitFailure 1)
 
@@ -144,6 +147,7 @@ data Options = Options
   , cliConfigFilepath   :: Maybe FilePath
   , cliOutputFormat     :: Maybe OutputFormat
   , cliCorpusDir        :: Maybe FilePath
+  , cliCoverageDir      :: Maybe FilePath
   , cliTestMode         :: Maybe TestMode
   , cliAllContracts     :: Bool
   , cliTimeout          :: Maybe Int
@@ -197,7 +201,10 @@ options = Options . NE.fromList
     <> help "Output format. Either 'json', 'text', 'none'. All these disable interactive UI")
   <*> optional (option str $ long "corpus-dir"
     <> metavar "PATH"
-    <> help "Directory to save and load corpus and coverage data.")
+    <> help "Directory to save and load corpus data.")
+  <*> optional (option str $ long "coverage-dir"
+    <> metavar "PATH"
+    <> help "Directory to save coverage reports. Defaults to corpus-dir if not specified.")
   <*> optional (option str $ long "test-mode"
     <> help "Test mode to use. Either 'property', 'assertion', 'dapptest', 'optimization', 'overflow' or 'exploration'" )
   <*> switch (long "all-contracts"
@@ -287,6 +294,7 @@ overrideConfig config Options{..} = do
 
     overrideCampaignConf campaignConf = campaignConf
       { corpusDir = cliCorpusDir <|> campaignConf.corpusDir
+      , coverageDir = cliCoverageDir <|> campaignConf.coverageDir
       , testLimit = fromMaybe campaignConf.testLimit cliTestLimit
       , shrinkLimit = fromMaybe campaignConf.shrinkLimit cliShrinkLimit
       , seqLen = fromMaybe campaignConf.seqLen cliSeqLen

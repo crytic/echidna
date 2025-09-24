@@ -29,7 +29,7 @@ jobs:
             name: Linux (aarch64)
             tuple: aarch64-linux
             timeout: 180
-          - os: macos-13
+          - os: macos-15-intel
             name: macOS (x86_64)
             tuple: x86_64-macos
           - os: macos-14
@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v19
+        uses: DeterminateSystems/nix-installer-action@v20
 
       - name: Configure Cachix
         uses: cachix/cachix-action@v16
@@ -100,7 +100,7 @@ jobs:
           inputs: ./echidna-*.tar.gz
 
       - name: Create GitHub release and upload binaries
-        uses: softprops/action-gh-release@v2.3.2
+        uses: softprops/action-gh-release@v2.3.3
         with:
           draft: true
           name: "Echidna ${{ needs.nixBuild.outputs.version }}"

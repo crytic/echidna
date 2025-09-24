@@ -18,7 +18,7 @@ cd libff
 git checkout v0.2.1
 git submodule init && git submodule update
 
-ARGS=("-DCMAKE_INSTALL_PREFIX=$PREFIX" "-DWITH_PROCPS=OFF" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5")
+ARGS=("-DCMAKE_INSTALL_PREFIX=$PREFIX" "-DWITH_PROCPS=OFF" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DCMAKE_CXX_STANDARD=11")
 CXXFLAGS=""
 if [ "$HOST_OS" = "macOS" ]; then
   OPENSSL_PREFIX=$(brew --prefix openssl)
@@ -44,7 +44,7 @@ if [ "$HOST_OS" = "Windows" ]; then
   sed -i '/INCLUDE_DIRECTORIES.*OPENSSL_INCLUDE_DIR/d' CMakeLists.txt
 
   # Apply windows-specific libff patch carried by hevm
-  curl -fsSL https://raw.githubusercontent.com/ethereum/hevm/1abe4c79eeada928acc279b631c48eeb2a1376c2/.github/scripts/libff.patch | patch -p1
+  curl -fsSL https://raw.githubusercontent.com/argotorg/hevm/1abe4c79eeada928acc279b631c48eeb2a1376c2/.github/scripts/libff.patch | patch -p1
 fi
 
 mkdir -p build

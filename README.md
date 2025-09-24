@@ -173,7 +173,7 @@ leaks memory, you can use `force` from `Control.DeepSeq` to make sure it gets ev
 ## Limitations and known issues
 
 EVM emulation and testing are hard. Echidna has some limitations in the latest release. Some of
-these are inherited from [hevm](https://github.com/ethereum/hevm) while some are results from
+these are inherited from [hevm](https://github.com/argotorg/hevm) while some are results from
 design/performance decisions or simply bugs in our code. We list them here including their
 corresponding issue and the status ("wont fix", "on hold", "in review", "fixed"). Issues that are
 "fixed" are expected to be included in the next Echidna release.
@@ -226,7 +226,7 @@ something like the following command. It will map the current directory as
 `echidna`:
 
 ```sh
-$ docker run --rm -it -v `pwd`:/src ghcr.io/crytic/echidna/echidna
+$ docker run --rm -it -v "$(pwd)":/src ghcr.io/crytic/echidna/echidna
 ```
 
 Otherwise, if you want to locally build the latest version of Echidna, we
@@ -241,7 +241,7 @@ Then, you can run the `echidna` image locally. For example, to install solc
 0.5.7 and check `tests/solidity/basic/flags.sol`, you can run:
 
 ```sh
-$ docker run -it -v `pwd`:/src echidna bash -c "solc-select install 0.5.7 && solc-select use 0.5.7 && echidna /src/tests/solidity/basic/flags.sol"
+$ docker run -it -v "$(pwd)":/src echidna bash -c "solc-select install 0.5.7 && solc-select use 0.5.7 && echidna /src/tests/solidity/basic/flags.sol"
 ```
 
 ### Building using Stack

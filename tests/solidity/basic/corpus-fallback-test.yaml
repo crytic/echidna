@@ -1,0 +1,7 @@
+# Test configuration for coverage fallback to corpus directory
+testMode: "property"
+testLimit: 100
+corpusDir: "test-corpus"
+# coverageDir is intentionally not set to test fallback behavior
+coverageFormats: ["txt", "html"]
+quiet: true

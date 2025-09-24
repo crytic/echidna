@@ -10,7 +10,7 @@ on:
 
 env:
   # Tag for cache invalidation
-  CACHE_VERSION: v9
+  CACHE_VERSION: v10
 
 jobs:
   build:
@@ -23,7 +23,7 @@ jobs:
           - os: ubuntu-latest
             shell: bash
             container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.8.4\", \"options\": \"--user 1001\"}"
-          - os: macos-13 # x86_64 macOS
+          - os: macos-15-intel # x86_64 macOS
             shell: bash
           - os: windows-latest
             shell: msys2 {0}
@@ -234,7 +234,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.8'
 

@@ -53,11 +53,13 @@ library:
     - exceptions
     - extra
     - filepath
+    - Glob
     - hashable
     - html-conduit
     - html-entities
     - http-conduit
     - ListLike
+    - mustache
     - optics
     - optics-core
     - process
