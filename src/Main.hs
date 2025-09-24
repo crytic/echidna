@@ -120,7 +120,6 @@ main = withUtf8 $ withCP65001 $ do
               liftIO $ writeFile fileName (TL.unpack content)
             _ -> pure ()
 
-      -- TODO: We use the corpus dir to save coverage reports which is confusing.
 
   -- save coverage reports
   let coverageDir = cfg.campaignConf.coverageDir <|> cfg.campaignConf.corpusDir
