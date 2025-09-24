@@ -16,6 +16,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Lazy qualified as TL
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Version (showVersion)
 import Data.Word (Word8, Word16, Word64)
@@ -116,7 +117,7 @@ main = withUtf8 $ withCP65001 $ do
                 reproducerHash = (show . abs . hash) test.reproducer
                 fileName = foundryDir </> "Test." ++ reproducerHash <.> "sol"
                 content = foundryTest cliSelectedContract test
-              liftIO $ writeFile fileName content
+              liftIO $ writeFile fileName (TL.unpack content)
             _ -> pure ()
 
       -- TODO: We use the corpus dir to save coverage reports which is confusing.

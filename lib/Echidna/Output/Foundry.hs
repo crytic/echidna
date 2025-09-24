@@ -1,78 +1,66 @@
-module Echidna.Output.Foundry where
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TemplateHaskell   #-}
 
+module Echidna.Output.Foundry (foundryTest) where
+
+import Data.Aeson (Value(..), object, (.=))
 import Data.List (nub)
 import Data.Text (Text, unpack)
 import Data.Text.Encoding (decodeUtf8)
+import qualified Data.Text.Lazy as TL
+import Data.Text.Lazy (fromStrict)
+import Data.Maybe (fromMaybe)
 import Data.Vector as V hiding ((++), map, zipWith)
 import EVM.ABI (AbiValue(..))
-import Echidna.ABI ()
 import EVM.Types (W256, Addr)
 import Numeric (showHex)
+import Text.Mustache (Template, substituteValue, toMustache)
+import Text.Mustache.Compile (embedTemplate)
 
 import Echidna.Types.Test (EchidnaTest(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 
-foundryTestHeader :: String
-foundryTestHeader = unlines
-  [ "// SPDX-License-Identifier: Unlicense"
-  , "pragma solidity ^0.8.0;"
-  , ""
-  , "import \"forge-std/Test.sol\";"
-  , ""
-  ]
+template :: Template
+template = $(embedTemplate ["lib/Echidna/Output/assets"] "foundry.mustache")
 
-foundryTestBody :: Maybe Text -> EchidnaTest -> String
-foundryTestBody mContractName test =
+-- | Generate a Foundry test from an EchidnaTest result.
+foundryTest :: Maybe Text -> EchidnaTest -> TL.Text
+foundryTest mContractName test =
   case test.testType of
     AssertionTest{} ->
-      let
-        contractName = "Test"
-        senders = nub $ map (.src) test.reproducer
-        actors = foundryActors senders
-        repro = foundryReproducer test
-        cName = maybe "YourContract" unpack mContractName
-      in unlines
-        [ "contract " ++ contractName ++ " is Test {"
-        , actors
-        , "    // TODO: Replace with your actual contract instance"
-        , "    " ++ cName ++ " Target;"
-        , ""
-        , "  function setUp() public {"
-        , "      // TODO: Initialize your contract here"
-        , "      Tester = new " ++ cName ++ "();"
-        , "  }"
-        , ""
-        , "  function test_replay() public {"
-        , repro
-        , "  }"
-        , ""
-        , "  function _setUpActor(address actor) internal {"
-        , "      vm.startPrank(actor);"
-        , "      // Add any additional actor setup here if needed"
-        , "  }"
-        , ""
-        , "  function _delay(uint256 timeInSeconds) internal {"
-        , "      vm.warp(block.timestamp + timeInSeconds);"
-        , "  }"
-        , "}"
-        ]
+      let testData = createTestData mContractName test
+      in fromStrict $ substituteValue template (toMustache testData)
     _ -> ""
 
-foundryActors :: [Addr] -> String
-foundryActors senders = unlines $ zipWith foundryActor senders [1..]
+-- | Create an Aeson Value from test data for the Moustache template.
+createTestData :: Maybe Text -> EchidnaTest -> Value
+createTestData mContractName test =
+  let
+    senders = nub $ map (.src) test.reproducer
+    actors = zipWith actorObject senders [1..]
+    repro = map foundryTx test.reproducer
+    cName = fromMaybe "YourContract" mContractName
+  in
+  object
+    [ "testName"     .= ("Test" :: Text)
+    , "contractName" .= cName
+    , "actors"       .= actors
+    , "reproducer"   .= repro
+    ]
 
-foundryActor :: Addr -> Int -> String
-foundryActor sender i = "    address constant USER" ++ show i ++ " = " ++ formatAddr sender ++ ";"
+-- | Create a JSON object for an actor.
+actorObject :: Addr -> Int -> Value
+actorObject sender i = object
+  [ "name"    .= ("USER" ++ show i :: String)
+  , "address" .= formatAddr sender
+  ]
 
+-- | Format an address for Solidity.
 formatAddr :: Addr -> String
 formatAddr addr = "address(0x" ++ showHex (fromIntegral addr :: W256) "" ++ ")"
 
-foundryTest :: Maybe Text -> EchidnaTest -> String
-foundryTest mContractName test = foundryTestHeader ++ foundryTestBody mContractName test
-
-foundryReproducer :: EchidnaTest -> String
-foundryReproducer test = unlines $ map foundryTx test.reproducer
-
+-- | Generate a single transaction line for the reproducer.
 foundryTx :: Tx -> String
 foundryTx tx =
   case tx.call of
@@ -83,11 +71,13 @@ foundryTx tx =
       in "    " ++ sender ++ "\n" ++ "    " ++ call
     _ -> ""
 
+-- | Format arguments for a Solidity call.
 foundryArgs :: [String] -> String
 foundryArgs [] = ""
 foundryArgs [x] = x
 foundryArgs (x:xs) = x ++ ", " ++ foundryArgs xs
 
+-- | Convert an AbiValue to its string representation for Solidity.
 abiValueToString :: AbiValue -> String
 abiValueToString (AbiUInt _ w) = show w
 abiValueToString (AbiInt _ w) = show w
