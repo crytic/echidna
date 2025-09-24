@@ -6,12 +6,12 @@ module Echidna.Output.Foundry (foundryTest) where
 
 import Data.Aeson (Value(..), object, (.=))
 import Data.List (elemIndex, nub)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text, unpack)
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Text.Lazy as TL
 import Data.Text.Lazy (fromStrict)
-import Data.Maybe (fromMaybe)
-import Data.Vector as V hiding ((++), map, zipWith, elemIndex)
+import Data.Vector as V hiding ((++), map, zipWith, elemIndex, mapMaybe)
 import EVM.ABI (AbiValue(..))
 import EVM.Types (W256, Addr)
 import Numeric (showHex)
@@ -39,7 +39,7 @@ createTestData mContractName test =
   let
     senders = nub $ map (.src) test.reproducer
     actors = zipWith actorObject senders [1..]
-    repro = map (foundryTx senders) test.reproducer
+    repro = mapMaybe (foundryTx senders) test.reproducer
     cName = fromMaybe "YourContract" mContractName
   in
   object
@@ -61,7 +61,7 @@ formatAddr :: Addr -> String
 formatAddr addr = "address(0x" ++ showHex (fromIntegral addr :: W256) "" ++ ")"
 
 -- | Generate a single transaction line for the reproducer.
-foundryTx :: [Addr] -> Tx -> Value
+foundryTx :: [Addr] -> Tx -> Maybe Value
 foundryTx senders tx =
   case tx.call of
     SolCall (name, args) ->
@@ -75,8 +75,8 @@ foundryTx senders tx =
           (if time > 0 || blocks > 0 then "    _delay(" ++ show time ++ ", " ++ show blocks ++ ");\n" else "") ++
           "    _setUpActor(" ++ senderName ++ ");"
         call = "    Target." ++ unpack name ++ "(" ++ foundryArgs (map abiValueToString args) ++ ");"
-      in object ["prelude" .= prelude, "call" .= call]
-    _ -> object ["prelude" .= ("" :: String), "call" .= ("" :: String)]
+      in Just $ object ["prelude" .= prelude, "call" .= call]
+    _ -> Nothing
 
 -- | Format arguments for a Solidity call.
 foundryArgs :: [String] -> String
