@@ -33,7 +33,7 @@ foundryTest mContractName test =
       in fromStrict $ substituteValue template (toMustache testData)
     _ -> ""
 
--- | Create an Aeson Value from test data for the Moustache template.
+-- | Create an Aeson Value from test data for the Mustache template.
 createTestData :: Maybe Text -> EchidnaTest -> Value
 createTestData mContractName test =
   let
