@@ -18,7 +18,8 @@ contract {{testName}} is Test {
 
   function test_replay() public {
 {{#reproducer}}
-    {{{ . }}}
+    {{{prelude}}}
+    {{{call}}}
 {{/reproducer}}
   }
 
@@ -27,7 +28,8 @@ contract {{testName}} is Test {
       // Add any additional actor setup here if needed
   }
 
-  function _delay(uint256 timeInSeconds) internal {
+  function _delay(uint256 timeInSeconds, uint256 numBlocks) internal {
       vm.warp(block.timestamp + timeInSeconds);
+      vm.roll(block.number + numBlocks);
   }
 }

@@ -61,15 +61,18 @@ formatAddr :: Addr -> String
 formatAddr addr = "address(0x" ++ showHex (fromIntegral addr :: W256) "" ++ ")"
 
 -- | Generate a single transaction line for the reproducer.
-foundryTx :: Tx -> String
+foundryTx :: Tx -> Value
 foundryTx tx =
   case tx.call of
     SolCall (name, args) ->
       let
-        sender = "_setUpActor(address(0x" ++ showHex (fromIntegral tx.src :: W256) "" ++ "));"
-        call = "Target." ++ unpack name ++ "(" ++ foundryArgs (map abiValueToString args) ++ ");"
-      in "    " ++ sender ++ "\n" ++ "    " ++ call
-    _ -> ""
+        (time, blocks) = tx.delay
+        prelude =
+          (if time > 0 || blocks > 0 then "    _delay(" ++ show time ++ ", " ++ show blocks ++ ");\n" else "") ++
+          "    _setUpActor(address(0x" ++ showHex (fromIntegral tx.src :: W256) "" ++ "));"
+        call = "    Target." ++ unpack name ++ "(" ++ foundryArgs (map abiValueToString args) ++ ");"
+      in object ["prelude" .= prelude, "call" .= call]
+    _ -> object ["prelude" .= ("" :: String), "call" .= ("" :: String)]
 
 -- | Format arguments for a Solidity call.
 foundryArgs :: [String] -> String
