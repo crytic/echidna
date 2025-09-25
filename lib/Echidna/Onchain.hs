@@ -77,9 +77,6 @@ data FetchedContractData = FetchedContractData
   }
   deriving (Generic, ToJSON, FromJSON, Show)
 
---instance ToJSONKey W256 where
---  toJSONKey = toJSONKeyText (Text.pack . show)
-
 fromFetchedContractData :: FetchedContractData -> Contract
 fromFetchedContractData contractData =
   (initialContract (RuntimeCode (ConcreteRuntimeCode contractData.runtimeCode)))
