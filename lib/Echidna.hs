@@ -22,6 +22,7 @@ import EVM.Types hiding (Env)
 import Echidna.ABI
 import Echidna.Onchain as Onchain
 import Echidna.Output.Corpus
+import Echidna.SourceMapping (findSrcForReal)
 import Echidna.SourceAnalysis.Slither
 import Echidna.Solidity
 import Echidna.SymExec.Symbolic (forceAddr)
@@ -33,7 +34,6 @@ import Echidna.Types.Tx
 import Echidna.Types.World
 import Echidna.Types.Test (EchidnaTest)
 import Echidna.Types.Signature (ContractName)
-import Echidna.SourceMapping (findSrcForReal)
 
 -- | This function is used to prepare, process, compile and initialize smart contracts for testing.
 -- It takes:
