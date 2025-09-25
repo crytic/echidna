@@ -434,7 +434,7 @@ genAbiCallM genDict (name, types) = do
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one,
 -- possibly with a dictionary.
 genInteractionsM
-  :: (MonadRandom m)
+  :: MonadRandom m
   => GenDict
   -> NonEmpty SolSignature
   -> m SolCall
