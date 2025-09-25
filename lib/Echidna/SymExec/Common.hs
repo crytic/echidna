@@ -161,7 +161,6 @@ exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpc
                   & #state % #callvalue .~ TxValue
                   & #state % #caller .~ SymAddr "caller"
                   & #state % #calldata .~ cd
-                  -- & #env % #contracts .~ (Map.union vmSym'.env.contracts vm.env.contracts)
 
     vm'' = symbolify vm'
         & #block %~ blockMakeSymbolic
