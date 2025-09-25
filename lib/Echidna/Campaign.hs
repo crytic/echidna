@@ -426,7 +426,7 @@ randseq
 randseq deployedContracts = do
   env <- ask
   let world = env.world
-  
+
   let
     mutConsts = env.cfg.campaignConf.mutConsts
     seqLen = env.cfg.campaignConf.seqLen
