@@ -147,7 +147,6 @@ data Options = Options
   , cliSymExecTargets   :: [Text]
   , cliSymExecTimeout   :: Maybe Int
   , cliSymExecNSolvers  :: Maybe Int
-  , cliLogShrinking    :: Maybe Bool
   }
 
 optsParser :: ParserInfo Options
@@ -240,9 +239,6 @@ options = Options . NE.fromList
   <*> optional (option auto $ long "sym-exec-n-solvers"
     <> metavar "INTEGER"
     <> help ("Number of symbolic execution solvers to run in parallel for each task (assuming sym-exec is enabled). Default is " ++ show defaultSymExecNWorkers))
-  <*> optional (option bool $ long "log-shrinking"
-    <> metavar "BOOL"
-    <> help "Whether to log detailed shrinking steps.")
 
 versionOption :: Parser (a -> a)
 versionOption = infoOption
@@ -289,7 +285,6 @@ overrideConfig config Options{..} = do
       , symExecTargets = if null cliSymExecTargets then campaignConf.symExecTargets else cliSymExecTargets
       , symExecTimeout = fromMaybe campaignConf.symExecTimeout cliSymExecTimeout
       , symExecNSolvers = fromMaybe campaignConf.symExecNSolvers cliSymExecNSolvers
-      , logShrinking = fromMaybe campaignConf.logShrinking cliLogShrinking
       }
 
     overrideSolConf solConf = solConf

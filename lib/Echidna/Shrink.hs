@@ -1,6 +1,6 @@
 module Echidna.Shrink (shrinkTest) where
 
-import Control.Monad ((<=<), when)
+import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader (ask), asks)
@@ -18,9 +18,8 @@ import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (TestValue(..), EchidnaTest(..), TestState(..), isOptimizationTest)
 import Echidna.Types.Tx (Tx(..), hasReverted, isUselessNoCall, catNoCalls, TxCall(..))
 import Echidna.Types.Config
-import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..), ShrinkOp(..))
+import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..))
 import Echidna.Test (getResultFromVM, checkETest)
-import Echidna.Worker (pushShrinkingStep)
 
  -- | Top level function to shrink the complexity of the sequence of transactions once
 shrinkTest
@@ -45,13 +44,9 @@ shrinkTest vm test = do
             -- check if the shrunk sequence passes the test or not
             case maybeShrunk of
               -- the test still fails, let's create another test with the reduced sequence
-              Just (txs, val, vm', opName) -> do
-                let beforeLen = length rr
+              Just (txs, val, vm') -> do
                 let afterLen = length txs
-                when (afterLen < beforeLen) $ do
-                  modify' $ \ws -> ws { lastShrinkP = Just afterLen }
-                  when (env.cfg.campaignConf.logShrinking) $ do
-                    pushShrinkingStep beforeLen afterLen opName
+                modify' $ \ws -> ws { lastShrinkP = Just afterLen }
                 pure $ Just test { state = Large (i + 1)
                     , reproducer = txs
                     , vm = Just vm'
@@ -101,22 +96,19 @@ shrinkSeq
   -> (VM Concrete RealWorld -> m (TestValue, VM Concrete RealWorld))
   -> TestValue
   -> [Tx]
-  -> m (Maybe ([Tx], TestValue, VM Concrete RealWorld, ShrinkOp))
+  -> m (Maybe ([Tx], TestValue, VM Concrete RealWorld))
 shrinkSeq vm f v txs = do
-  -- choose one of the two strategies explicitly to keep track of the op name
-  i <- getRandomR (0, 1 :: Int)
-  let pick = if i == 0 then (Shorten, shorten) else (Shrunk, shrunk)
-  let (opName, action) = pick
-  txs' <- action
+  -- apply one of the two possible simplification strategies (shrunk or shorten) with equal probability
+  txs' <- uniform =<< sequence [shorten, shrunk]
   -- remove certain type of "no calls"
   let txs'' = removeUselessNoCalls txs'
   -- check if the sequence still triggers a failed transaction
   (value, vm') <- check txs'' vm
   -- if the test passed it means we didn't shrink successfully (returns Nothing)
-  -- otherwise, return a reduced sequence of transaction and the op name used
+  -- otherwise, return a reduced sequence of transactions
   pure $ case (value,v) of
-    (BoolValue False, _)              -> Just (txs'', value, vm', opName)
-    (IntValue x, IntValue y) | x >= y -> Just (txs'', value, vm', opName)
+    (BoolValue False, _)              -> Just (txs'', value, vm')
+    (IntValue x, IntValue y) | x >= y -> Just (txs'', value, vm')
     _                                 -> Nothing
   where
     check [] vm' = f vm'

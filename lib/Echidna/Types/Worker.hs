@@ -2,7 +2,6 @@ module Echidna.Types.Worker where
 
 import Echidna.Types.Test
 import Echidna.Types.Tx
-import Echidna.Types.Campaign (ShrinkOp)
 
 data WorkerType = FuzzWorker | SymbolicWorker deriving (Eq)
 
@@ -21,7 +20,6 @@ data WorkerEvent
   | SymExecLog !String
   | TxSequenceReplayed FilePath !Int !Int
   | TxSequenceReplayFailed FilePath Tx
-  | ShrinkingStep { beforeLen :: Int, afterLen :: Int, op:: ShrinkOp }
   | WorkerStopped WorkerStopReason
   -- ^ This is a terminal event. Worker exits and won't push any events after
   -- this one

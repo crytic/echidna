@@ -24,8 +24,6 @@ stopOnFail: false
 seqLen: 100
 #shrinkLimit determines how much effort is spent shrinking failing sequences
 shrinkLimit: 5000
-#logShrinking adds step logs for the shrinking process
-logShrinking: false
 #coverage controls coverage guided testing
 coverage: true
 #format can be "text" or "json" for different output (human or machine readable)

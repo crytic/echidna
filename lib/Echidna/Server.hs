@@ -58,7 +58,6 @@ runSSEServer serverStopVar env port nworkers = do
                     TxSequenceReplayed {} -> "tx_sequence_replayed"
                     TxSequenceReplayFailed {} -> "tx_sequence_replay_failed"
                     WorkerStopped _ -> "worker_stopped"
-                    ShrinkingStep {} -> "shrinking_step"
                 Failure _err -> "failure"
                 ReproducerSaved _ -> "saved_reproducer"
           case campaignEvent of

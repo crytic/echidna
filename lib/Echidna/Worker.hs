@@ -5,7 +5,6 @@ import Control.Monad.Reader (MonadReader, MonadIO, liftIO, ask)
 import Control.Monad.State.Strict(MonadState(..), gets)
 import Data.Aeson
 import Data.Text (unpack)
-import Data.Char (toLower)
 
 import Echidna.ABI (encodeSig)
 import Echidna.Types.Test
@@ -34,11 +33,6 @@ instance ToJSON WorkerEvent where
     TxSequenceReplayFailed file tx ->
       object [ "file" .= file, "tx" .= tx ]
     WorkerStopped reason -> object [ "reason" .= show reason ]
-    ShrinkingStep { beforeLen, afterLen, op } ->
-      object [ "before" .= beforeLen
-             , "after" .= afterLen
-             , "op" .= op
-             ]
 
 pushWorkerEvent
   :: (MonadReader Env m, MonadState WorkerState m, MonadIO m)
@@ -49,15 +43,6 @@ pushWorkerEvent event = do
   env <- ask
   let workerType = workerIDToType env.cfg.campaignConf workerId
   liftIO $ pushCampaignEvent env (WorkerEvent workerId workerType event)
-
-pushShrinkingStep
-  :: (MonadReader Env m, MonadState WorkerState m, MonadIO m)
-  => Int
-  -> Int
-  -> ShrinkOp
-  -> m ()
-pushShrinkingStep before after operation =
-  pushWorkerEvent (ShrinkingStep { beforeLen = before, afterLen = after, op = operation })
 
 pushCampaignEvent :: Env -> CampaignEvent -> IO ()
 pushCampaignEvent env event = do
@@ -107,8 +92,6 @@ ppWorkerEvent = \case
     "Crashed:\n\n" <>
     e <>
     "\n\nPlease report it to https://github.com/crytic/echidna/issues"
-  ShrinkingStep { beforeLen, afterLen, op } ->
-    "Shrinking step: " <> (map toLower . show) op <> " " <> show beforeLen <> " -> " <> show afterLen
   where
     showTest test = case test.testType of
       PropertyTest n _ -> n
