@@ -91,12 +91,12 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
         NonPayable -> Just (name, map snd inputs))
       . Map.elems . (\ (SolcContract {abiMap}) -> abiMap)) deployedSolcContracts
     dict = mkGenDict env.cfg.campaignConf.dictFreq
-                      -- make sure we don't use cheat codes to form fuzzing call sequences
-                      (Set.delete (AbiAddress $ forceAddr cheatCode) constants)
-                      Set.empty
-                      seed
-                      (returnTypes contracts)
-                      nonViewPureSigs
+                     -- make sure we don't use cheat codes to form fuzzing call sequences
+                     (Set.delete (AbiAddress $ forceAddr cheatCode) constants)
+                     Set.empty
+                     seed
+                     (returnTypes contracts)
+                     nonViewPureSigs
   pure (vm, env, dict)
 
 loadInitialCorpus :: Env -> IO [(FilePath, [Tx])]
