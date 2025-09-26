@@ -22,6 +22,7 @@ import Data.Vector qualified as V
 import EVM (ceilDiv, initialContract, loadContract, resetState)
 import EVM.ABI (abiValueType)
 import EVM.FeeSchedule (FeeSchedule(..))
+import EVM.Transaction (setupTx)
 import EVM.Types hiding (Env, Gas, VMOpts(timestamp, gasprice))
 
 import Echidna.ABI
@@ -88,7 +89,7 @@ genTx world deployedContracts = do
       fmap (forceAddr addr,) . snd <$> lookupUsingCodehash env.codehashMap c env.dapp sigMap
 
 genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
-genDelay mv ds = do
+genDelay mv ds =
   join $ oftenUsually fromDict randValue
   where randValue = fromIntegral <$> getRandomR (1 :: Integer, fromIntegral mv)
         fromDict = (`mod` (mv + 1)) <$> rElem' ds
@@ -191,8 +192,12 @@ setupTx tx@Tx{call} = fromEVM $ do
   modify' $ \vm ->
     let intrinsicGas = txGasCost vm.block.schedule isCreate calldata
         burned = min intrinsicGas vm.state.gas
+        -- This might not be 100% accurate (it does not revert the balance transfers)
+        -- but Echidna resets the vm on revert so it should not make a difference
+        reversionState = EVM.Transaction.setupTx vm.tx.origin vm.block.coinbase vm.tx.gasprice vm.tx.gaslimit vm.env.contracts
     in vm & #state % #gas %!~ subtract burned
           & #burned %!~ (+ burned)
+          & #tx % #txReversion !~ reversionState
   where
     incrementBalance = #env % #contracts % ix (LitAddr tx.dst) % #balance %= (\v -> Lit $ forceWord v + tx.value)
     encode (n, vs) = abiCalldata (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
