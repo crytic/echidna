@@ -16,6 +16,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Lazy qualified as TL
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Version (showVersion)
 import Data.Word (Word8, Word16, Word64)
@@ -38,13 +39,14 @@ import Echidna.Campaign (isSuccessful)
 import Echidna.Config
 import Echidna.Onchain qualified as Onchain
 import Echidna.Output.Corpus
+import Echidna.Output.Foundry
 import Echidna.Output.Source
 import Echidna.Solidity (compileContracts)
 import Echidna.Test (reproduceTest, validateTestMode)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Solidity
-import Echidna.Types.Test (TestMode, EchidnaTest(..))
+import Echidna.Types.Test (TestMode, EchidnaTest(..), TestType(..), TestState(..))
 import Echidna.UI
 import Echidna.UI.Report (ppFailWithTraces, ppTestName)
 import Echidna.Utility (measureIO)
@@ -100,6 +102,24 @@ main = withUtf8 $ withCP65001 $ do
       measureIO cfg.solConf.quiet "Saving corpus" $ do
         corpus <- readIORef env.corpusRef
         saveTxs env (dir </> "coverage") (snd <$> Set.toList corpus)
+
+      let isLargeOrSolved Solved = True
+          isLargeOrSolved (Large _) = True
+          isLargeOrSolved _ = False
+      measureIO cfg.solConf.quiet "Saving foundry reproducers" $ do
+        let foundryDir = dir </> "foundry"
+        liftIO $ createDirectoryIfMissing True foundryDir
+        forM_ tests $ \test ->
+          case (test.testType, test.state) of
+            (AssertionTest{}, state) | isLargeOrSolved state ->
+              do
+              let
+                reproducerHash = (show . abs . hash) test.reproducer
+                fileName = foundryDir </> "Test." ++ reproducerHash <.> "sol"
+                content = foundryTest cliSelectedContract test
+              liftIO $ writeFile fileName (TL.unpack content)
+            _ -> pure ()
+
 
   -- save coverage reports
   let coverageDir = cfg.campaignConf.coverageDir <|> cfg.campaignConf.corpusDir

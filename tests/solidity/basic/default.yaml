@@ -82,6 +82,10 @@ corpusDir: null
 coverageDir: null
 # list of file formats to save coverage reports in; default is all possible formats
 coverageFormats: ["txt","html","lcov"]
+# list of glob patterns for files to exclude from coverage reports
+# patterns are matched against relative paths from the common project root
+# examples: ["lib/**/*.sol", "test/mocks/**/*"]
+coverageExcludes: []
 # constants for corpus mutations (for experimentation only)
 mutConsts: [1, 1, 1, 1]
 # maximum value to send to payable functions

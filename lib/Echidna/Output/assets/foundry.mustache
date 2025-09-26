@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: Unlicense
+pragma solidity ^0.8.0;
+
+import "forge-std/Test.sol";
+
+contract {{testName}} is Test {
+{{#actors}}
+    address constant {{name}} = {{address}};
+{{/actors}}
+
+    // TODO: Replace with your actual contract instance
+    {{contractName}} Target;
+
+  function setUp() public {
+      // TODO: Initialize your contract here
+      Target = new {{contractName}}();
+  }
+
+  function test_replay() public {
+{{#reproducer}}
+    {{{prelude}}}
+    {{{call}}}
+{{/reproducer}}
+  }
+
+  function _setUpActor(address actor) internal {
+      vm.startPrank(actor);
+      // Add any additional actor setup here if needed
+  }
+
+  function _delay(uint256 timeInSeconds, uint256 numBlocks) internal {
+      vm.warp(block.timestamp + timeInSeconds);
+      vm.roll(block.number + numBlocks);
+  }
+}
