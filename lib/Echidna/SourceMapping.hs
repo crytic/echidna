@@ -83,6 +83,9 @@ findSrcByMetadata contr dapp = find compareMetadata (snd <$> Map.elems dapp.solc
     (RuntimeCode (ConcreteRuntimeCode c)) -> Just c
     (RuntimeCode (SymbolicRuntimeCode c)) -> Just $ BS.pack $ mapMaybe maybeLitByteSimp $ V.toList c
 
+findSrcForReal :: DappInfo -> Contract -> Maybe SolcContract
+findSrcForReal dapp contr = findSrc contr dapp <|> findSrcByMetadata contr dapp
+
 getBytecodeMetadata :: ByteString -> ByteString
 getBytecodeMetadata bs =
   let stripCandidates = flip BS.breakSubstring bs <$> knownBzzrPrefixes in
