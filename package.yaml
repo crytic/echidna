@@ -78,6 +78,7 @@ library:
     - vty-crossplatform
     - wai-extra
     - warp
+    - wreq
     - word-wrap
     - xml-conduit
     - yaml
