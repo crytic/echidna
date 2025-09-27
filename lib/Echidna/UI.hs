@@ -417,7 +417,13 @@ statusLine env states lastUpdateRef = do
         | null shrinkCounters = ", shrinking: N/A"
         | otherwise = ", shrinking: " <> show (maximum shrinkCounters)
                    <> "/" <> show shrinkLimit
-                   <> maybe "" (\p -> "(" <> show p <> ")") (listToMaybe $ mapMaybe (.lastShrinkP) states)
+                   <> formatCurrentLength
+        where
+          formatCurrentLength =
+            let lengths = [length test.reproducer | test <- tests,
+                          case test.state of Large _ -> True; _ -> False,
+                          not (null test.reproducer)]
+            in maybe "" (\p -> " (" <> show p <> ")") (listToMaybe lengths)
 
   pure $ "tests: " <> show (length $ filter didFail tests) <> "/" <> show (length tests)
     <> ", fuzzing: " <> show totalCalls <> "/" <> show env.cfg.campaignConf.testLimit

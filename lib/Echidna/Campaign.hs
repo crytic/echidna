@@ -145,7 +145,6 @@ runSymWorker callback vm dict workerId _ name = do
                 , ncalls = 0
                 , totalGas = 0
                 , runningThreads = []
-                , lastShrinkP = Nothing
                 }
 
   -- We could pattern match on workerType here to ignore WorkerEvents from SymbolicWorkers,
@@ -343,7 +342,6 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
                   , ncalls = 0
                   , totalGas = 0
                   , runningThreads = []
-                  , lastShrinkP = Nothing
                   }
 
   flip runStateT initialState $ do

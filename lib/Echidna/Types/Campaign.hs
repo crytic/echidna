@@ -84,8 +84,6 @@ data WorkerState = WorkerState
   , runningThreads :: [ThreadId]
     -- ^ Extra threads currently being run,
     --   aside from the main worker thread
-  , lastShrinkP :: Maybe Int
-    -- ^ Last known reproducer length that still falsifies
   }
 
 initialWorkerState :: WorkerState
@@ -97,7 +95,6 @@ initialWorkerState =
               , ncalls = 0
               , totalGas = 0
               , runningThreads = []
-              , lastShrinkP = Nothing
               }
 
 defaultTestLimit :: Int

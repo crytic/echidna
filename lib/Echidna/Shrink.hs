@@ -4,7 +4,7 @@ import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader (ask), asks)
-import Control.Monad.State.Strict (MonadIO, MonadState, modify')
+import Control.Monad.State.Strict (MonadIO)
 import Control.Monad.ST (RealWorld)
 import Data.Set qualified as Set
 import Data.List qualified as List
@@ -18,12 +18,12 @@ import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (TestValue(..), EchidnaTest(..), TestState(..), isOptimizationTest)
 import Echidna.Types.Tx (Tx(..), hasReverted, isUselessNoCall, catNoCalls, TxCall(..))
 import Echidna.Types.Config
-import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..))
+import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Test (getResultFromVM, checkETest)
 
  -- | Top level function to shrink the complexity of the sequence of transactions once
 shrinkTest
-  :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
+  :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m)
   => VM Concrete RealWorld
   -> EchidnaTest
   -> m (Maybe EchidnaTest)
@@ -42,19 +42,17 @@ shrinkTest vm test = do
           if length rr > 1 || any canShrinkTx rr then do
             maybeShrunk <- shrinkSeq vm (checkETest test) test.value rr
             -- check if the shrunk sequence passes the test or not
-            case maybeShrunk of
+            pure $ case maybeShrunk of
               -- the test still fails, let's create another test with the reduced sequence
               Just (txs, val, vm') -> do
-                let afterLen = length txs
-                modify' $ \ws -> ws { lastShrinkP = Just afterLen }
-                pure $ Just test { state = Large (i + 1)
+                Just test { state = Large (i + 1)
                     , reproducer = txs
                     , vm = Just vm'
                     , result = getResultFromVM vm'
                     , value = val }
               Nothing ->
                 -- The test passed, so no success with shrinking this time, just bump number of tries to shrink
-                pure $ Just test { state = Large (i + 1), reproducer = rr}
+                Just test { state = Large (i + 1), reproducer = rr}
           else
             pure $ Just test { state = if isOptimizationTest test
                                     then Large (i + 1)
@@ -91,7 +89,7 @@ removeReverts' vm (t:txs) ftxs = do
 -- | Given a call sequence that solves some Echidna test, try to randomly
 -- generate a smaller one that still solves that test.
 shrinkSeq
-  :: (MonadIO m, MonadRandom m, MonadReader Env m, MonadThrow m, MonadState WorkerState m)
+  :: (MonadIO m, MonadRandom m, MonadReader Env m, MonadThrow m)
   => VM Concrete RealWorld
   -> (VM Concrete RealWorld -> m (TestValue, VM Concrete RealWorld))
   -> TestValue
