@@ -3,6 +3,7 @@ resolver: lts-23.24
 
 packages:
 - '.'
+- 'hbandit'
 
 extra-deps:
 - git: https://github.com/argotorg/hevm.git
@@ -13,3 +14,4 @@ extra-deps:
 - spool-0.1@sha256:77780cbfc2c0be23ff2ea9e474062f3df97fcd9db946ee0b3508280a923b83e2,1461
 - strip-ansi-escape-0.1.0.0@sha256:08f2ed93b16086a837ec46eab7ce8d27cf39d47783caaeb818878ea33c2ff75f,1628
 - vty-windows-0.2.0.3@sha256:0c010b1086a725046a8bb08bb1e6bfdfdb3cfe1c72d6fa77c37306ef9ec774d8,2844
+- list-extras-0.4.1.6@sha256:2b8b7c2632f7a98ee94c74bcb836ba2df7c7089ac7ccb16b6e11aa9df4b20c21,2691
