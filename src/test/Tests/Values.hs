@@ -2,7 +2,7 @@ module Tests.Values (valuesTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, testContract', solved, solvedLen)
+import Common (testContract, testContractV, testContract', solcV, solved, solvedLen)
 
 import Echidna.Types.Worker (WorkerType(..))
 
@@ -50,6 +50,6 @@ valuesTests = testGroup "Value extraction tests"
       [ ("getItem passed",                   solved      "getItem") ]
     , testContract' "values/events.sol" Nothing Nothing (Just "values/events.yaml") False FuzzWorker
       [ ("check passed",                           solved      "check") ]
-    , testContract' "values/callback.sol" Nothing Nothing (Just "values/callback.yaml") False FuzzWorker
+    , testContractV "values/callback.sol" (Just (>= solcV (0,8,0))) (Just "values/callback.yaml")
       [ ("echidna_callback_executed passed",                           solved      "echidna_callback_executed") ] 
   ]
