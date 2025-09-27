@@ -294,27 +294,26 @@ runSymWorker callback vm dict workerId _ name = do
 
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
+    -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
+    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm [symTx]) txs
     let methodSignature = unpack method.methodSignature
-    if not (null partials) || not (null errors) then do
+    unless newCoverage ( do
+      unless (null txs) $ error "No new coverage but symbolic execution found valid txs. Something is wrong."
+      updateTests $ \test -> do
+        if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
+              pure $ Just $ test { Test.state = Unsolvable }
+        else
+          pure $ Just test
+      pushWorkerEvent $ SymExecLog ("Symbolic execution finished verifying contract " <> unpack (fromJust name) <> " using a single symbolic transaction."))
+
+    when (not (null partials) || not (null errors)) $ do
       unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) solving constraints produced by method " <> methodSignature <> ": " <> show e)) errors
       unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic verification of method " <> methodSignature <> ": " <> unpack e)) partials
       updateTests $ \test -> do
-          if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
-              pure $ Just $ test { Test.state = Passed }
-          else
-            pure $ Just test
-    else do
-      -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
-      newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm [symTx]) txs
-
-      unless newCoverage ( do
-        unless (null txs) $ error "No new coverage but symbolic execution found valid txs. Something is wrong."
-        updateTests $ \test -> do
-          if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
-                pure $ Just $ test { Test.state = Unsolvable }
-          else
-            pure $ Just test
-        pushWorkerEvent $ SymExecLog ("Symbolic execution finished verifying contract " <> unpack (fromJust name) <> " using a single symbolic transaction."))
+        if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
+          pure $ Just $ test {Test.state = Passed}
+        else
+          pure $ Just test
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once

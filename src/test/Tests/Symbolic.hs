@@ -7,7 +7,7 @@ import Echidna.Types.Worker (WorkerType(..))
 symbolicTests :: TestTree
 symbolicTests = testGroup "Symbolic tests" $
   map (\conf ->
-    testContract' "symbolic/verify.sol" Nothing (Just (>= solcV (0,6,9))) (Just conf) True SymbolicWorker
+    testContract' "symbolic/verify.sol" (Just "VulnerableContract") (Just (>= solcV (0,6,9))) (Just conf) True SymbolicWorker
       [ ("simple passed", solved "simple")
       , ("array passed", solved "array")
       , ("negative passed", solved "negative")

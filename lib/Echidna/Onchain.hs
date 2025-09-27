@@ -3,9 +3,8 @@
 module Echidna.Onchain where
 
 import Control.Exception (catch)
-import Data.Aeson (ToJSON, FromJSON, ToJSONKey(toJSONKey))
+import Data.Aeson (ToJSON, FromJSON)
 import Data.Aeson qualified as JSON
-import Data.Aeson.Types (toJSONKeyText)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as UTF8
@@ -25,9 +24,11 @@ import Optics (view)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
+import Network.Wreq.Session qualified as Session
 import Text.Read (readMaybe)
 
 import EVM (initialContract, bytecode)
+import EVM.Effects (defaultConfig)
 import EVM.Fetch qualified
 import EVM.Solidity (SourceCache(..), SolcContract (..))
 import EVM.Types hiding (Env)
@@ -57,16 +58,16 @@ etherscanApiKey = do
 
 -- TODO: temporary solution, handle errors gracefully
 safeFetchContractFrom :: EVM.Fetch.BlockNumber -> Text -> Addr -> IO (Maybe Contract)
-safeFetchContractFrom rpcBlock rpcUrl addr =
+safeFetchContractFrom rpcBlock rpcUrl addr = do
   catch
-    (EVM.Fetch.fetchContractFrom rpcBlock rpcUrl addr)
+    (EVM.Fetch.fetchContractFrom defaultConfig rpcBlock rpcUrl addr)
     (\(_ :: HttpException) -> pure $ Just emptyAccount)
 
 -- TODO: temporary solution, handle errors gracefully
 safeFetchSlotFrom :: EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (Maybe W256)
 safeFetchSlotFrom rpcBlock rpcUrl addr slot =
   catch
-    (EVM.Fetch.fetchSlotFrom rpcBlock rpcUrl addr slot)
+    (EVM.Fetch.fetchSlotFrom defaultConfig rpcBlock rpcUrl addr slot)
     (\(_ :: HttpException) -> pure $ Just 0)
 
 data FetchedContractData = FetchedContractData
@@ -75,9 +76,6 @@ data FetchedContractData = FetchedContractData
   , balance :: W256
   }
   deriving (Generic, ToJSON, FromJSON, Show)
-
-instance ToJSONKey W256 where
-  toJSONKey = toJSONKeyText (Text.pack . show)
 
 fromFetchedContractData :: FetchedContractData -> Contract
 fromFetchedContractData contractData =
@@ -211,3 +209,12 @@ saveCoverageReport env runId = do
                                 [solcContract]
                 Nothing -> pure ()
             Nothing -> pure ()
+
+fetchChainIdFrom :: Maybe Text -> IO (Maybe W256)
+fetchChainIdFrom (Just url) = do
+  sess <- Session.newAPISession
+  EVM.Fetch.fetchQuery
+    EVM.Fetch.Latest -- this shouldn't matter
+    (EVM.Fetch.fetchWithSession url sess)
+    EVM.Fetch.QueryChainId
+fetchChainIdFrom Nothing = pure Nothing

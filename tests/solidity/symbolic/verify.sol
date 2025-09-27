@@ -1,12 +1,19 @@
+contract C {
+  function f() public returns (uint256) {
+    return 42;
+  }
+}
+
 contract VulnerableContract {
-    mapping (uint256 => uint256) a;
-    uint256 private last_number = block.number;
-    function simple(uint256 x) public payable {
-        a[12323] = ((x >> 5) / 7777);
-        if (a[12323] == 2222) {
-            assert(false); // BUG
-        }
+  C c = new C(); 
+  mapping (uint256 => uint256) a;
+  uint256 private last_number = block.number;
+  function simple(uint256 x) public payable {
+    a[12323] = ((x >> 5) / 7777);
+    if (a[12323] == 2222) {
+       assert(false); // BUG
     }
+  }
   function array(uint256[3] calldata xs) public {
     assert(xs[0] != xs[2] + 1);
   }
@@ -25,6 +32,11 @@ contract VulnerableContract {
 
   function far(uint256 x) public {
     assert(block.number != type(uint256).max);
+  }
+
+  function onlyDeployed(address x) public {
+    uint256 y = C(x).f();
+    assert(y != 42);
   }
 
 }
