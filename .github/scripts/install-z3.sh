@@ -12,5 +12,5 @@ if [ "$HOST_OS" = "Linux" ]; then
   rm -rf z3-*/ z3.zip
 fi
 if [ "$HOST_OS" = "Windows" ]; then
-  choco install z3
+  choco install z3 --version=4.12.6
 fi
