@@ -109,8 +109,8 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender calldata resu
     r -> error ("Unexpected value in `modelToTx`: " ++ show r)
 
 
-cachedOracle :: IORef ContractCache -> IORef SlotCache -> SolverGroup -> Fetch.RpcInfo -> Fetch.Fetcher t m s
-cachedOracle contractCacheRef slotCacheRef solvers info q = do
+cachedOracle :: IORef ContractCache -> IORef SlotCache -> SolverGroup -> Maybe Fetch.Session -> Fetch.RpcInfo -> Fetch.Fetcher t m s
+cachedOracle contractCacheRef slotCacheRef solvers session info q = do
   case q of
     PleaseFetchContract addr _ continue -> do
       cache <- liftIO $ readIORef contractCacheRef
@@ -124,7 +124,7 @@ cachedOracle contractCacheRef slotCacheRef solvers info q = do
         _                 -> oracle q
     _ -> oracle q
 
-  where oracle = Fetch.oracle solvers info
+  where oracle = Fetch.oracle solvers session info
 
 rpcFetcher :: Functor f =>
   f a -> Maybe W256 -> f (Fetch.BlockNumber, a)
@@ -151,8 +151,9 @@ exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpc
   calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   let
     cd = fst calldataSym
+  session <- Fetch.mkSession
   let
-    fetcher = cachedOracle contractCacheRef slotCacheRef solvers rpcInfo
+    fetcher = cachedOracle contractCacheRef slotCacheRef solvers (Just session) rpcInfo
     dst = conf.solConf.contractAddr
   vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
   let

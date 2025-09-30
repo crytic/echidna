@@ -40,6 +40,7 @@ import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Output.Source (saveCoverages)
 import Control.Monad (when, forM_)
+import Control.Concurrent.MVar (newMVar)
 
 rpcUrlEnv :: IO (Maybe Text)
 rpcUrlEnv = do
@@ -59,15 +60,21 @@ etherscanApiKey = do
 -- TODO: temporary solution, handle errors gracefully
 safeFetchContractFrom :: EVM.Fetch.BlockNumber -> Text -> Addr -> IO (Maybe Contract)
 safeFetchContractFrom rpcBlock rpcUrl addr = do
-  catch
-    (EVM.Fetch.fetchContractFrom defaultConfig rpcBlock rpcUrl addr)
+  catch (do
+    sess <- Session.newAPISession
+    let emptyCache = EVM.Fetch.FetchCache Map.empty Map.empty Map.empty
+    cache <- newMVar emptyCache
+    latestBlockNum <- newMVar Nothing
+    let session = EVM.Fetch.Session sess latestBlockNum cache
+    EVM.Fetch.fetchContractWithSession defaultConfig session rpcBlock rpcUrl addr)
     (\(_ :: HttpException) -> pure $ Just emptyAccount)
 
 -- TODO: temporary solution, handle errors gracefully
 safeFetchSlotFrom :: EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (Maybe W256)
 safeFetchSlotFrom rpcBlock rpcUrl addr slot =
-  catch
-    (EVM.Fetch.fetchSlotFrom defaultConfig rpcBlock rpcUrl addr slot)
+  catch (do
+    sess <- Session.newAPISession
+    EVM.Fetch.fetchSlotWithSession sess rpcBlock rpcUrl addr slot)
     (\(_ :: HttpException) -> pure $ Just 0)
 
 data FetchedContractData = FetchedContractData
