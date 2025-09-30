@@ -83,8 +83,9 @@ data Transaction = Transaction
   { contract :: Text
   , function :: Text
   , arguments :: Maybe [String]
-  , gas :: Integer
-  , gasprice :: Integer
+  , gas :: String
+  , gasprice :: String
+  , value :: String
   }
 
 instance ToJSON Transaction where
@@ -94,6 +95,7 @@ instance ToJSON Transaction where
     , "arguments" .= arguments
     , "gas" .= gas
     , "gasprice" .= gasprice
+    , "value" .= value
     ]
 
 encodeCampaign :: Env -> [WorkerState] -> IO L.ByteString
@@ -138,8 +140,9 @@ mapTest dappInfo test =
       { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
       , function = function
       , arguments = args
-      , gas = toInteger tx.gas
-      , gasprice = toInteger tx.gasprice
+      , gas = show tx.gas
+      , gasprice = show tx.gasprice
+      , value = show tx.value
       }
 
   mapCall = \case
