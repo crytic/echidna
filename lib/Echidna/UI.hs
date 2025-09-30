@@ -15,7 +15,7 @@ import Control.Monad.ST (RealWorld)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Data.Sequence ((|>))
 import Data.Text (Text)
 import Data.Time
@@ -41,7 +41,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage (coverageStats)
-import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker 
 import Echidna.UI.Report
@@ -408,10 +408,28 @@ statusLine env states lastUpdateRef = do
   let gasPerSecond = if deltaTime > 0 then deltaGas `div` deltaTime else 0
   writeIORef lastUpdateRef $ GasTracker now totalGas
 
+  let shrinkLimit = env.cfg.campaignConf.shrinkLimit
+  let shrinkCounters = mapMaybe getShrinkCounter tests
+        where getShrinkCounter test = case test.state of
+                Large k -> Just k
+                _       -> Nothing
+  let shrinkingPart
+        | null shrinkCounters = ", shrinking: N/A"
+        | otherwise = ", shrinking: " <> show (maximum shrinkCounters)
+                   <> "/" <> show shrinkLimit
+                   <> formatCurrentLength
+        where
+          formatCurrentLength =
+            let lengths = [length test.reproducer | test <- tests,
+                          case test.state of Large _ -> True; _ -> False,
+                          not (null test.reproducer)]
+            in maybe "" (\p -> " (" <> show p <> ")") (listToMaybe lengths)
+
   pure $ "tests: " <> show (length $ filter didFail tests) <> "/" <> show (length tests)
     <> ", fuzzing: " <> show totalCalls <> "/" <> show env.cfg.campaignConf.testLimit
     <> ", values: " <> show ((.value) <$> filter isOptimizationTest tests)
     <> ", cov: " <> show points
     <> ", corpus: " <> show (Corpus.corpusSize corpus)
+    <> shrinkingPart
     <> ", gas/s: " <> show gasPerSecond
 
