@@ -7,7 +7,6 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified as T
-import GHC.IORef (IORef, readIORef)
 import Optics.Core ((.~), (%), (%~))
 import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..))
 import EVM.Fetch qualified as Fetch
@@ -17,7 +16,7 @@ import EVM.Solidity (SolcContract(..), SourceCache(..), Method(..), WarningData(
 import EVM.Solvers (SolverGroup)
 import EVM.SymExec (mkCalldata, verifyInputs, VeriOpts(..), checkAssertions, subModel, defaultSymbolicValues)
 import EVM.Expr qualified
-import EVM.Types (Addr, VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query(..), forceLit)
+import EVM.Types (Addr, VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit)
 import qualified EVM.Types (VM(..))
 import EVM.Format (formatPartialDetailed)
 import Control.Monad.ST (RealWorld)
@@ -27,7 +26,6 @@ import Echidna.Types (fromEVM)
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..), maxGasPerBlock)
-import Echidna.Types.Cache (ContractCache, SlotCache)
 
 type PartialsLogs = [T.Text]
 
@@ -109,22 +107,7 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender calldata resu
     r -> error ("Unexpected value in `modelToTx`: " ++ show r)
 
 
-cachedOracle :: IORef ContractCache -> IORef SlotCache -> SolverGroup -> Maybe Fetch.Session -> Fetch.RpcInfo -> Fetch.Fetcher t m s
-cachedOracle contractCacheRef slotCacheRef solvers session info q = do
-  case q of
-    PleaseFetchContract addr _ continue -> do
-      cache <- liftIO $ readIORef contractCacheRef
-      case Map.lookup addr cache of
-          Just (Just contract) -> pure $ continue contract
-          _                    -> oracle q
-    PleaseFetchSlot addr slot continue -> do
-      cache <- liftIO $ readIORef slotCacheRef
-      case Map.lookup addr cache >>= Map.lookup slot of
-        Just (Just value) -> pure $ continue value
-        _                 -> oracle q
-    _ -> oracle q
-
-  where oracle = Fetch.oracle solvers session info
+-- cachedOracle removed - hevm session handles all caching now
 
 rpcFetcher :: Functor f =>
   f a -> Maybe W256 -> f (Fetch.BlockNumber, a)
@@ -145,15 +128,13 @@ getUnknownLogs = mapMaybe (\case
   _ -> Nothing)
 
 exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
-  Method -> SolcContract -> SourceCache -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> IORef ContractCache -> IORef SlotCache -> m ([TxOrError], PartialsLogs)
+  Method -> SolcContract -> SourceCache -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
   
-exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef = do
+exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpcInfo session = do
   calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   let
     cd = fst calldataSym
-  session <- Fetch.mkSession
-  let
-    fetcher = cachedOracle contractCacheRef slotCacheRef solvers (Just session) rpcInfo
+    fetcher = Fetch.oracle solvers (Just session) rpcInfo
     dst = conf.solConf.contractAddr
   vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
   let

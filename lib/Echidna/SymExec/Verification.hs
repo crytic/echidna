@@ -49,8 +49,6 @@ verifyMethod :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m
 verifyMethod method contract vm = do
   conf <- asks (.cfg)
   dappInfo <- asks (.dapp)
-  contractCacheRef <- asks (.fetchContractCache)
-  slotCacheRef <- asks (.fetchSlotCache)
   let
     timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
     maxIters = Just conf.campaignConf.symExecMaxIters
@@ -67,11 +65,12 @@ verifyMethod method contract vm = do
   let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, dumpExprs = True, maxBufSize = 12, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive }
   let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = hevmConfig }
+  session <- asks (.fetchSession)
   pushWorkerEvent $ SymExecLog ("Verifying " <> (show method.name))
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      (res, partials) <- exploreMethod method contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
+      (res, partials) <- exploreMethod method contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan (res, partials)
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
