@@ -143,6 +143,7 @@ data Options = Options
   { cliFilePath         :: NE.NonEmpty FilePath
   , cliWorkers          :: Maybe Word8
   , cliServerPort       :: Maybe Word16
+  , cliMcpPort          :: Maybe Word16
   , cliSelectedContract :: Maybe Text
   , cliConfigFilepath   :: Maybe FilePath
   , cliOutputFormat     :: Maybe OutputFormat
@@ -190,6 +191,9 @@ options = Options . NE.fromList
   <*> optional (option auto $ long "server"
     <> metavar "PORT"
     <> help "Run events server on the given port")
+  <*> optional (option auto $ long "mcp"
+    <> metavar "PORT"
+    <> help "Run MCP server on the given port")
   <*> optional (option str $ long "contract"
     <> metavar "CONTRACT"
     <> help "Contract to analyze")
@@ -301,6 +305,7 @@ overrideConfig config Options{..} = do
       , seed = cliSeed <|> campaignConf.seed
       , workers = cliWorkers <|> campaignConf.workers
       , serverPort = cliServerPort <|> campaignConf.serverPort
+      , mcpPort = cliMcpPort <|> campaignConf.mcpPort
       , symExec = fromMaybe campaignConf.symExec cliSymExec
       , symExecTargets = if null cliSymExecTargets then campaignConf.symExecTargets else cliSymExecTargets
       , symExecTimeout = fromMaybe campaignConf.symExecTimeout cliSymExecTimeout
