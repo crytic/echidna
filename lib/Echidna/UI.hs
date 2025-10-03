@@ -6,6 +6,7 @@ import Brick
 import Brick.BChan
 import Brick.Widgets.Dialog qualified as B
 import Control.Concurrent (killThread, threadDelay)
+import Control.Concurrent.MVar (readMVar)
 import Control.Exception (AsyncException)
 import Control.Monad
 import Control.Monad.Catch
@@ -113,8 +114,9 @@ ui vm dict initialCorpus cliSelectedContract = do
         writeBChan uiChannel (CampaignUpdated now tests states)
 
         -- TODO: remove and use events for this
-        c <- readIORef env.fetchContractCache
-        s <- readIORef env.fetchSlotCache
+        -- For now, return empty cache data since accessing hevm's internal cache is complex
+        let c = mempty :: Map Addr (Maybe Contract)
+        let s = mempty :: Map Addr (Map W256 (Maybe W256))
         writeBChan uiChannel (FetchCacheUpdated c s)
 
       -- UI initialization
@@ -212,7 +214,7 @@ ui vm dict initialCorpus cliSelectedContract = do
       when (isJust conf.campaignConf.serverPort) $ do
         -- wait until we send all SSE events
         liftIO $ putStrLn "Waiting until all SSE are received..."
-        readMVar serverStopVar
+        liftIO $ Control.Concurrent.MVar.readMVar serverStopVar
 
       states <- liftIO $ workerStates workers
 

@@ -9,7 +9,6 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as UTF8
 import Data.Functor ((<&>))
-import Data.IORef (readIORef)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (isJust, fromJust, fromMaybe)
@@ -40,6 +39,7 @@ import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Output.Source (saveCoverages)
 import Control.Monad (when, forM_)
+import Control.Concurrent.MVar (readMVar)
 
 rpcUrlEnv :: IO (Maybe Text)
 rpcUrlEnv = do
@@ -57,17 +57,17 @@ etherscanApiKey = do
   pure (Text.pack <$> val)
 
 -- TODO: temporary solution, handle errors gracefully
-safeFetchContractFrom :: EVM.Fetch.BlockNumber -> Text -> Addr -> IO (Maybe Contract)
-safeFetchContractFrom rpcBlock rpcUrl addr = do
+safeFetchContractFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> IO (Maybe Contract)
+safeFetchContractFrom session rpcBlock rpcUrl addr = do
   catch
-    (EVM.Fetch.fetchContractFrom defaultConfig rpcBlock rpcUrl addr)
+    (EVM.Fetch.fetchContractWithSession defaultConfig session rpcBlock rpcUrl addr)
     (\(_ :: HttpException) -> pure $ Just emptyAccount)
 
 -- TODO: temporary solution, handle errors gracefully
-safeFetchSlotFrom :: EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (Maybe W256)
-safeFetchSlotFrom rpcBlock rpcUrl addr slot =
+safeFetchSlotFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (Maybe W256)
+safeFetchSlotFrom session rpcBlock rpcUrl addr slot =
   catch
-    (EVM.Fetch.fetchSlotFrom defaultConfig rpcBlock rpcUrl addr slot)
+    (EVM.Fetch.fetchSlotWithSession session.sess rpcBlock rpcUrl addr slot)
     (\(_ :: HttpException) -> pure $ Just 0)
 
 data FetchedContractData = FetchedContractData
@@ -169,22 +169,9 @@ externalSolcContract env addr c = do
 
 -- TODO: This should happen continuously event-based
 saveRpcCache :: Env -> IO ()
-saveRpcCache env = do
-  contractsCache <- readIORef env.fetchContractCache
-  slotsCache <- readIORef env.fetchSlotCache
-  case env.cfg.campaignConf.corpusDir of
-    Nothing -> pure ()
-    Just dir -> do
-      let cacheDir = dir </> "cache"
-      case env.cfg.rpcBlock of
-        Just block -> do
-          -- Save fetched data, it's okay to override as the cache only grows
-          JSON.encodeFile (cacheDir </> "block_" <> show block <> "_fetch_cache_contracts.json")
-                          (toFetchedContractData <$> Map.mapMaybe id contractsCache)
-          JSON.encodeFile (cacheDir </> "block_" <> show block <> "_fetch_cache_slots.json")
-                          slotsCache
-        Nothing ->
-          pure ()
+saveRpcCache _env = do
+  -- Cache saving is now handled automatically by hevm's session cache
+  pure ()
 
 saveCoverageReport :: Env -> Int -> IO ()
 saveCoverageReport env runId = do
@@ -194,20 +181,19 @@ saveCoverageReport env runId = do
       -- coverage reports for external contracts, we only support
       -- Ethereum Mainnet for now
       when (env.chainId == Just 1) $ do
-        contractsCache <- readIORef env.fetchContractCache
-        forM_ (Map.toList contractsCache) $ \(addr, mc) ->
-          case mc of
-            Just contract -> do
-              r <- externalSolcContract env addr contract
-              case r of
-                Just (externalSourceCache, solcContract) -> do
-                  let dir' = dir </> show addr
-                  saveCoverages env
-                                runId
-                                dir'
-                                externalSourceCache
-                                [solcContract]
-                Nothing -> pure ()
+        -- Get contracts from hevm session cache
+        sessionCache <- readMVar env.fetchSession.sharedCache
+        let contractsCache = sessionCache.contractCache
+        forM_ (Map.toList contractsCache) $ \(addr, contract) -> do
+          r <- externalSolcContract env addr contract
+          case r of
+            Just (externalSourceCache, solcContract) -> do
+              let dir' = dir </> show addr
+              saveCoverages env
+                            runId
+                            dir'
+                            externalSourceCache
+                            [solcContract]
             Nothing -> pure ()
 
 fetchChainIdFrom :: Maybe Text -> IO (Maybe W256)

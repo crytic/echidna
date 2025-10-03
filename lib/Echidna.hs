@@ -1,7 +1,10 @@
 module Echidna where
 
 import Control.Concurrent (newChan)
+import Control.Concurrent.MVar (newMVar)
 import Control.Monad.Catch (MonadThrow(..))
+import Control.Monad.IO.Class (liftIO)
+import Network.Wreq.Session qualified as NetSession
 import Control.Monad.ST (RealWorld)
 import Data.IORef (newIORef)
 import Data.List (find, nub)
@@ -15,6 +18,7 @@ import System.FilePath ((</>))
 import EVM (cheatCode)
 import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Dapp (dappInfo)
+import EVM.Fetch qualified
 import EVM.Solidity (BuildOutput(..), Contracts(Contracts), Method(..), Mutability(..), SolcContract(..))
 import EVM.Types hiding (Env)
 
@@ -116,13 +120,16 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   coverageRefRuntime <- newIORef mempty
   corpusRef <- newIORef mempty
   testRefs <- traverse newIORef tests
-  (contractCache, slotCache) <- Onchain.loadRpcCache cfg
-  fetchContractCache <- newIORef contractCache
-  fetchSlotCache <- newIORef slotCache
+  -- Create session manually since mkSession needs App context
+  sess <- liftIO NetSession.newAPISession
+  let emptyCache = EVM.Fetch.FetchCache Map.empty Map.empty Map.empty
+  cache <- liftIO $ newMVar emptyCache
+  latestBlockNum <- liftIO $ newMVar Nothing
+  let fetchSession = EVM.Fetch.Session sess latestBlockNum cache
   contractNameCache <- newIORef mempty
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
-  pure $ Env { cfg, dapp, codehashMap, fetchContractCache, fetchSlotCache, contractNameCache
+  pure $ Env { cfg, dapp, codehashMap, fetchSession, contractNameCache
              , chainId, eventQueue, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
              , slitherInfo
              }
