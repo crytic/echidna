@@ -32,6 +32,7 @@ import System.Info (os)
 import EVM (initialContract, currentContract)
 import EVM.ABI
 import EVM.Effects (runApp)
+import EVM.Format (showTraceTree)
 import EVM.Solidity
 import EVM.Types hiding (Env)
 
@@ -39,7 +40,6 @@ import Echidna.ABI
   ( encodeSig, encodeSigWithName, hashSig, fallback
   , commonTypeSizes, mkValidAbiInt, mkValidAbiUInt )
 import Echidna.Deploy (deployContracts, deployBytecodes)
-import Echidna.Events (extractEvents)
 import Echidna.Exec (execTx, execTxWithCov, initialVM)
 import Echidna.SourceAnalysis.Slither
 import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
@@ -213,7 +213,7 @@ loadSpecified env mainContract cs = do
 
     vm3 <- deployment
     when (isNothing $ currentContract vm3) $
-      throwM $ DeploymentFailed solConf.contractAddr $ T.unlines $ extractEvents True env.dapp vm3
+      throwM $ DeploymentFailed solConf.contractAddr $ showTraceTree env.dapp vm3
 
     -- Run setUp function
     let
