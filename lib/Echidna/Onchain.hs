@@ -9,7 +9,6 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as UTF8
 import Data.Functor ((<&>))
-import Data.IORef (readIORef)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (isJust, fromJust, fromMaybe)
@@ -40,7 +39,7 @@ import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Output.Source (saveCoverages)
 import Control.Monad (when, forM_)
-import Control.Concurrent.MVar (newMVar, readMVar)
+import Control.Concurrent.MVar (readMVar)
 
 rpcUrlEnv :: IO (Maybe Text)
 rpcUrlEnv = do

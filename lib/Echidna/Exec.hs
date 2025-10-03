@@ -14,7 +14,7 @@ import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.ST (ST, stToIO, RealWorld)
 import Data.Bits
 import Data.ByteString qualified as BS
-import Data.IORef (readIORef, atomicWriteIORef, newIORef, writeIORef, modifyIORef')
+import Data.IORef (readIORef, newIORef, writeIORef, modifyIORef')
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
