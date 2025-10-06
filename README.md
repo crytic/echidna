@@ -205,7 +205,8 @@ package](https://github.com/orgs/crytic/packages?repo_name=echidna), which is
 auto-built via GitHub Actions. The `echidna` container is based on
 `ubuntu:noble` and it is meant to be a small yet flexible enough image to use
 Echidna on. It provides a pre-built version of `echidna`, as well as
-`slither`, `crytic-compile`, `solc-select` and `nvm` under 200 MB.
+`slither`, `crytic-compile`, `solc-select`, `nvm`, and `foundry` (including
+`forge`, `cast`, `anvil`, and `chisel`) under 200 MB.
 
 Note that the container images currently only build on x86 systems. Running them
 on ARM devices, such as Mac M1 systems, is not recommended due to the performance
@@ -242,6 +243,25 @@ Then, you can run the `echidna` image locally. For example, to install solc
 
 ```sh
 $ docker run -it -v "$(pwd)":/src echidna bash -c "solc-select install 0.5.7 && solc-select use 0.5.7 && echidna /src/tests/solidity/basic/flags.sol"
+```
+
+The Docker image also includes Foundry tools for comprehensive smart contract development and testing. You can use `forge`, `cast`, `anvil`, and `chisel` directly in the container:
+
+```sh
+# Run an interactive shell with Foundry tools available
+$ docker run -it -v "$(pwd)":/src echidna bash
+
+# Inside the container, you can use Foundry commands:
+$ forge --version
+$ cast --version
+$ anvil --version
+$ chisel --version
+
+# Example: Initialize a new Foundry project
+$ forge init my-project
+$ cd my-project
+$ forge build
+$ forge test
 ```
 
 ### Building using Stack
