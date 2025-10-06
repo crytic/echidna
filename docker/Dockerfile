@@ -61,6 +61,20 @@ RUN if [ $(uname -m) = "aarch64" ]; then \
     rm -rf Bitwuzla-*/ bitwuzla.zip
 
 
+FROM ubuntu:noble AS builder-foundry
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-suggests --no-install-recommends \
+        curl \
+        ca-certificates \
+        bash \
+        git
+# Install Foundry using the official installation script
+RUN curl -L https://foundry.paradigm.xyz | bash
+# Add foundryup to PATH and install foundry tools
+ENV PATH="/root/.foundry/bin:$PATH"
+RUN foundryup
+
+
 FROM gcr.io/distroless/python3-debian11:nonroot AS final-distroless
 COPY --from=builder-echidna /root/.local/bin/echidna /usr/local/bin/echidna
 COPY --from=builder-python3 /venv /venv
@@ -75,6 +89,7 @@ RUN apt-get update && \
         ca-certificates \
         curl \
         python3 \
+        bash \
         && \
     rm -rf /var/lib/apt/lists/*
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
@@ -82,5 +97,11 @@ COPY --from=builder-solvers /solvers/bin/z3 /solvers/bin/bitwuzla /usr/local/bin
 COPY --from=builder-echidna /root/.local/bin/echidna /usr/local/bin/echidna
 RUN ln -s /usr/local/bin/echidna /usr/local/bin/echidna-test
 COPY --from=builder-python3 /venv /venv
+# Copy Foundry tools from builder stage
+COPY --from=builder-foundry /root/.foundry/bin/forge /usr/local/bin/forge
+COPY --from=builder-foundry /root/.foundry/bin/cast /usr/local/bin/cast
+COPY --from=builder-foundry /root/.foundry/bin/anvil /usr/local/bin/anvil
+COPY --from=builder-foundry /root/.foundry/bin/chisel /usr/local/bin/chisel
+COPY --from=builder-foundry /root/.foundry/bin/foundryup /usr/local/bin/foundryup
 ENV LANG="C.UTF-8"
 ENV PATH="$PATH:/venv/bin"
