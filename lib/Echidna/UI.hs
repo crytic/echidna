@@ -15,7 +15,7 @@ import Control.Monad.ST (RealWorld)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
-import Data.Maybe (isJust, listToMaybe, mapMaybe)
+import Data.Maybe (isJust, mapMaybe)
 import Data.Sequence ((|>))
 import Data.Text (Text)
 import Data.Time
@@ -409,21 +409,16 @@ statusLine env states lastUpdateRef = do
   writeIORef lastUpdateRef $ GasTracker now totalGas
 
   let shrinkLimit = env.cfg.campaignConf.shrinkLimit
-  let shrinkCounters = mapMaybe getShrinkCounter tests
-        where getShrinkCounter test = case test.state of
-                Large k -> Just k
-                _       -> Nothing
+  let shrinkingWorkers = mapMaybe getShrinkingWorker tests
+        where getShrinkingWorker test = case (test.state, test.workerId) of
+                (Large step, Just wid) -> Just (wid, step, length test.reproducer)
+                _                      -> Nothing
   let shrinkingPart
-        | null shrinkCounters = ", shrinking: N/A"
-        | otherwise = ", shrinking: " <> show (maximum shrinkCounters)
-                   <> "/" <> show shrinkLimit
-                   <> formatCurrentLength
+        | null shrinkingWorkers = ", shrinking: N/A"
+        | otherwise = ", shrinking: " <> unwords (map formatWorker shrinkingWorkers)
         where
-          formatCurrentLength =
-            let lengths = [length test.reproducer | test <- tests,
-                          case test.state of Large _ -> True; _ -> False,
-                          not (null test.reproducer)]
-            in maybe "" (\p -> " (" <> show p <> ")") (listToMaybe lengths)
+          formatWorker (wid, step, seqLength) =
+            "W" <> show wid <> ":" <> show step <> "/" <> show shrinkLimit <> "(" <> show seqLength <> ")"
 
   pure $ "tests: " <> show (length $ filter didFail tests) <> "/" <> show (length tests)
     <> ", fuzzing: " <> show totalCalls <> "/" <> show env.cfg.campaignConf.testLimit
