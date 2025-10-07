@@ -411,10 +411,10 @@ statusLine env states lastUpdateRef = do
   let shrinkLimit = env.cfg.campaignConf.shrinkLimit
   let shrinkingWorkers = mapMaybe getShrinkingWorker tests
         where getShrinkingWorker test = case (test.state, test.workerId) of
-                (Large step, Just wid) -> Just (wid, step, length test.reproducer)
-                _                      -> Nothing
+                (Large step, Just wid) | step < shrinkLimit -> Just (wid, step, length test.reproducer)
+                _                                           -> Nothing
   let shrinkingPart
-        | null shrinkingWorkers = ", shrinking: N/A"
+        | null shrinkingWorkers = ""
         | otherwise = ", shrinking: " <> unwords (map formatWorker shrinkingWorkers)
         where
           formatWorker (wid, step, seqLength) =
