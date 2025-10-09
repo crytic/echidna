@@ -15,7 +15,7 @@ import Control.Monad.ST (RealWorld)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, mapMaybe)
 import Data.Sequence ((|>))
 import Data.Text (Text)
 import Data.Time
@@ -41,7 +41,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage (coverageStats)
-import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker 
 import Echidna.UI.Report
@@ -408,10 +408,23 @@ statusLine env states lastUpdateRef = do
   let gasPerSecond = if deltaTime > 0 then deltaGas `div` deltaTime else 0
   writeIORef lastUpdateRef $ GasTracker now totalGas
 
+  let shrinkLimit = env.cfg.campaignConf.shrinkLimit
+  let shrinkingWorkers = mapMaybe getShrinkingWorker tests
+        where getShrinkingWorker test = case (test.state, test.workerId) of
+                (Large step, Just wid) | step < shrinkLimit -> Just (wid, step, length test.reproducer)
+                _                                           -> Nothing
+  let shrinkingPart
+        | null shrinkingWorkers = ""
+        | otherwise = ", shrinking: " <> unwords (map formatWorker shrinkingWorkers)
+        where
+          formatWorker (wid, step, seqLength) =
+            "W" <> show wid <> ":" <> show step <> "/" <> show shrinkLimit <> "(" <> show seqLength <> ")"
+
   pure $ "tests: " <> show (length $ filter didFail tests) <> "/" <> show (length tests)
     <> ", fuzzing: " <> show totalCalls <> "/" <> show env.cfg.campaignConf.testLimit
     <> ", values: " <> show ((.value) <$> filter isOptimizationTest tests)
     <> ", cov: " <> show points
     <> ", corpus: " <> show (Corpus.corpusSize corpus)
+    <> shrinkingPart
     <> ", gas/s: " <> show gasPerSecond
 
