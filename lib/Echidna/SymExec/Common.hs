@@ -77,7 +77,7 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender calldata resu
           Left e -> Left e
         args = case argdata of
           Right argdata' -> case decodeBuf types argdata' of
-            CAbi v -> v
+            (CAbi v, _) -> v
             _ -> []
           Left _ -> []
 

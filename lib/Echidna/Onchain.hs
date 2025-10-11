@@ -4,14 +4,11 @@ module Echidna.Onchain where
 
 import Control.Exception (catch)
 import Data.Aeson (ToJSON, FromJSON)
-import Data.Aeson qualified as JSON
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as UTF8
-import Data.Functor ((<&>))
-import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (isJust, fromJust, fromMaybe)
+import Data.Maybe (isJust, fromJust)
 import Data.Text qualified as Text
 import Data.Text (Text)
 import Data.Vector qualified as Vector
@@ -20,7 +17,7 @@ import Etherscan qualified
 import GHC.Generics (Generic)
 import Network.HTTP.Simple (HttpException)
 import Optics (view)
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.Directory (doesFileExist)
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import Network.Wreq.Session qualified as Session
@@ -32,7 +29,6 @@ import EVM.Fetch qualified
 import EVM.Solidity (SourceCache(..), SolcContract (..))
 import EVM.Types hiding (Env)
 
-import Echidna.Orphans.JSON ()
 import Echidna.SymExec.Symbolic (forceWord, forceBuf)
 import Echidna.Types (emptyAccount)
 import Echidna.Types.Campaign (CampaignConf(..))
@@ -40,6 +36,14 @@ import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Output.Source (saveCoverages)
 import Control.Monad (when, forM_)
 import Control.Concurrent.MVar (readMVar)
+
+saveRpcCache :: Env -> IO ()
+saveRpcCache env = do
+  case env.fetchSession.cacheDir of
+    Just dir -> do
+      cache <- readMVar env.fetchSession.sharedCache
+      EVM.Fetch.saveCache dir cache
+    Nothing -> pure ()
 
 rpcUrlEnv :: IO (Maybe Text)
 rpcUrlEnv = do
@@ -67,7 +71,7 @@ safeFetchContractFrom session rpcBlock rpcUrl addr = do
 safeFetchSlotFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (Maybe W256)
 safeFetchSlotFrom session rpcBlock rpcUrl addr slot =
   catch
-    (EVM.Fetch.fetchSlotWithSession session.sess rpcBlock rpcUrl addr slot)
+    (EVM.Fetch.fetchSlotWithCache defaultConfig session rpcBlock rpcUrl addr slot)
     (\(_ :: HttpException) -> pure $ Just 0)
 
 data FetchedContractData = FetchedContractData
@@ -96,33 +100,6 @@ toFetchedContractData contract =
     , balance = forceWord contract.balance
     }
 
--- | Try to load the persisted RPC cache.
--- TODO: we use the corpus dir for now, think about where to place it
-loadRpcCache
-  :: EConfig
-  -> IO ( Map Addr (Maybe Contract)
-        , Map Addr (Map W256 (Maybe W256))
-        )
-loadRpcCache cfg =
-  case cfg.campaignConf.corpusDir of
-    Nothing -> pure (mempty, mempty)
-    Just dir -> do
-      let cache_dir = dir </> "cache"
-      createDirectoryIfMissing True cache_dir
-      case cfg.rpcBlock of
-        Just block -> do
-          parsedContracts :: Maybe (Map Addr FetchedContractData) <-
-            readFileIfExists (cache_dir </> "block_" <> show block <> "_fetch_cache_contracts.json")
-            <&> (>>= JSON.decodeStrict)
-          parsedSlots :: Maybe (Map Addr (Map W256 (Maybe W256))) <-
-            readFileIfExists (cache_dir </> "block_" <> show block <> "_fetch_cache_slots.json")
-            <&> (>>= JSON.decodeStrict)
-          pure
-            ( maybe mempty (Map.map (Just . fromFetchedContractData)) parsedContracts
-            , fromMaybe mempty parsedSlots
-            )
-        Nothing ->
-          pure (mempty, mempty)
 
 readFileIfExists :: FilePath -> IO (Maybe BS.ByteString)
 readFileIfExists path = do
@@ -167,11 +144,6 @@ externalSolcContract env addr c = do
         }
     pure (sourceCache, solcContract)
 
--- TODO: This should happen continuously event-based
-saveRpcCache :: Env -> IO ()
-saveRpcCache _env = do
-  -- Cache saving is now handled automatically by hevm's session cache
-  pure ()
 
 saveCoverageReport :: Env -> Int -> IO ()
 saveCoverageReport env runId = do

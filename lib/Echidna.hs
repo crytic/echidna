@@ -4,6 +4,7 @@ import Control.Concurrent (newChan)
 import Control.Concurrent.MVar (newMVar)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Reader (runReaderT)
 import Network.Wreq.Session qualified as NetSession
 import Control.Monad.ST (RealWorld)
 import Data.IORef (newIORef)
@@ -21,6 +22,9 @@ import EVM.Dapp (dappInfo)
 import EVM.Fetch qualified
 import EVM.Solidity (BuildOutput(..), Contracts(Contracts), Method(..), Mutability(..), SolcContract(..))
 import EVM.Types hiding (Env)
+import EVM.Effects (TTY(..), ReadConfig(..), defaultConfig)
+import Data.Text qualified as T
+import System.IO (stderr, hPutStrLn)
 
 import Echidna.ABI
 import Echidna.Onchain as Onchain
@@ -111,6 +115,13 @@ loadInitialCorpus env = do
       ctxs2 <- loadTxs (dir </> "coverage")
       pure (ctxs1 ++ ctxs2)
 
+instance TTY IO where
+  writeOutput = liftIO . putStrLn . T.unpack
+  writeErr = liftIO . hPutStrLn stderr . T.unpack
+
+instance ReadConfig IO where
+  readConfig = pure defaultConfig
+
 mkEnv :: EConfig -> BuildOutput -> [EchidnaTest] -> World -> Maybe SlitherInfo -> IO Env
 mkEnv cfg buildOutput tests world slitherInfo = do
   codehashMap <- newIORef mempty
@@ -120,12 +131,7 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   coverageRefRuntime <- newIORef mempty
   corpusRef <- newIORef mempty
   testRefs <- traverse newIORef tests
-  -- Create session manually since mkSession needs App context
-  sess <- liftIO NetSession.newAPISession
-  let emptyCache = EVM.Fetch.FetchCache Map.empty Map.empty Map.empty
-  cache <- liftIO $ newMVar emptyCache
-  latestBlockNum <- liftIO $ newMVar Nothing
-  let fetchSession = EVM.Fetch.Session sess latestBlockNum cache
+  fetchSession <- EVM.Fetch.mkSession cfg.campaignConf.corpusDir
   contractNameCache <- newIORef mempty
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
