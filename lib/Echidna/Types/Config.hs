@@ -10,6 +10,7 @@ import Data.Word (Word64)
 
 import EVM.Dapp (DappInfo)
 import EVM.Types (Addr, W256)
+import EVM.Fetch qualified as Fetch
 
 import Echidna.SourceAnalysis.Slither (SlitherInfo)
 import Echidna.SourceMapping (CodehashMap)
@@ -79,8 +80,7 @@ data Env = Env
 
   , slitherInfo :: Maybe SlitherInfo
   , codehashMap :: CodehashMap
-  , fetchContractCache :: IORef ContractCache
-  , fetchSlotCache :: IORef SlotCache
+  , fetchSession :: Fetch.Session
   , contractNameCache :: IORef ContractNameCache
   , chainId :: Maybe W256
   , world :: World
