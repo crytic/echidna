@@ -103,7 +103,7 @@ shrinkSeq vm f v txs = do
   -- check if the sequence still triggers a failed transaction
   (value, vm') <- check txs'' vm
   -- if the test passed it means we didn't shrink successfully (returns Nothing)
-  -- otherwise, return a reduced sequence of transaction
+  -- otherwise, return a reduced sequence of transactions
   pure $ case (value,v) of
     (BoolValue False, _)              -> Just (txs'', value, vm')
     (IntValue x, IntValue y) | x >= y -> Just (txs'', value, vm')
