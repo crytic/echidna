@@ -1,11 +1,8 @@
 module Echidna where
 
 import Control.Concurrent (newChan)
-import Control.Concurrent.MVar (newMVar)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Reader (runReaderT)
-import Network.Wreq.Session qualified as NetSession
 import Control.Monad.ST (RealWorld)
 import Data.IORef (newIORef)
 import Data.List (find, nub)
