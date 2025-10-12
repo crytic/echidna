@@ -113,7 +113,7 @@ execTxWith executeTx tx = do
     case getQuery vmResult of
       -- A previously unknown contract is required
       Just q@(PleaseFetchContract addr _ continuation) -> do
-        logMsg $ "INFO: Performing RPC: " <> show q
+        --logMsg $ "INFO: Performing RPC: " <> show q
         case config.rpcUrl of
           Just rpcUrl -> do
             session <- asks (.fetchSession)
@@ -130,7 +130,7 @@ execTxWith executeTx tx = do
                 -- RPC server returning junk etc.
                 fromEVM (continuation emptyAccount)
           Nothing -> do
-            logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
+            --logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
             -- TODO: How should we fail here? RPC is not configured but VM
             -- wants to fetch
             fromEVM (continuation emptyAccount)
@@ -138,7 +138,7 @@ execTxWith executeTx tx = do
 
       -- A previously unknown slot is required
       Just q@(PleaseFetchSlot addr slot continuation) -> do
-        logMsg $ "INFO: Performing RPC: " <> show q
+        --logMsg $ "INFO: Performing RPC: " <> show q
         case config.rpcUrl of
           Just rpcUrl -> do
             session <- asks (.fetchSession)
@@ -152,7 +152,7 @@ execTxWith executeTx tx = do
                 logMsg $ "ERROR: Failed to fetch slot: " <> show q
                 fromEVM (continuation 0)
           Nothing -> do
-            logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
+            --logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
             -- Use the zero slot
             fromEVM (continuation 0)
         runFully -- resume execution
