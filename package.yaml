@@ -25,6 +25,18 @@ dependencies:
   - MonadRandom
   - mtl
   - text
+  - transformers
+  - time
+  - unliftio
+  - utf8-string
+  - vector
+  - with-utf8
+  - word-wrap
+  - yaml
+  - http-conduit
+  - html-conduit
+  - xml-conduit
+  - template-haskell
 
 language: GHC2021
 
