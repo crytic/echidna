@@ -2,7 +2,7 @@
 
 module Main where
 
-import Control.Monad (unless, forM_, when)
+import Control.Monad (unless, forM_)
 import Control.Monad.Reader (runReaderT, liftIO)
 import Control.Monad.Random (getRandomR)
 import Data.Aeson.Key qualified as Aeson.Key
@@ -12,7 +12,7 @@ import Data.Hashable (hash)
 import Data.IORef (readIORef)
 import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -24,7 +24,6 @@ import Main.Utf8 (withUtf8)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Directory (createDirectoryIfMissing)
-import System.Environment (lookupEnv)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.FilePath ((</>), (<.>))
 import System.IO (hPutStrLn, stderr)
@@ -42,13 +41,12 @@ import Echidna.Output.Corpus
 import Echidna.Output.Foundry
 import Echidna.Output.Source
 import Echidna.Solidity (compileContracts)
-import Echidna.Test (reproduceTest, validateTestMode)
+import Echidna.Test (validateTestMode)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Solidity
 import Echidna.Types.Test (TestMode, EchidnaTest(..), TestType(..), TestState(..))
 import Echidna.UI
-import Echidna.UI.Report (ppFailWithTraces, ppTestName)
 import Echidna.Utility (measureIO)
 
 main :: IO ()
@@ -85,19 +83,6 @@ main = withUtf8 $ withCP65001 $ do
     Just dir -> do
       measureIO cfg.solConf.quiet "Saving test reproducers" $
         saveTxs env (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> tests)
-
-      saveTracesEnabled <- lookupEnv "ECHIDNA_SAVE_TRACES"
-      when (isJust saveTracesEnabled) $ do
-        measureIO cfg.solConf.quiet "Saving test reproducers-traces" $ do
-          flip runReaderT env $ do
-            forM_ tests $ \test ->
-              unless (null test.reproducer) $ do
-                (results, finalVM) <- reproduceTest vm test
-                let subdir = dir </> "reproducers-traces"
-                liftIO $ createDirectoryIfMissing True subdir
-                let file = subdir </> (show . abs . hash) test.reproducer <.> "txt"
-                txsPrinted <- ppFailWithTraces Nothing finalVM results
-                liftIO $ writeFile file (ppTestName test <> ": " <> txsPrinted)
 
       measureIO cfg.solConf.quiet "Saving corpus" $ do
         corpus <- readIORef env.corpusRef
