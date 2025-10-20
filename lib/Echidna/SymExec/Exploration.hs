@@ -89,7 +89,7 @@ exploreContract contract method vm = do
     maxIters = Just conf.campaignConf.symExecMaxIters
     maxExplore = Just (fromIntegral conf.campaignConf.symExecMaxExplore)
     askSmtIters = conf.campaignConf.symExecAskSMTIters
-    rpcInfo = RpcInfo (rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock)) Nothing Nothing Nothing
+    rpcInfo = RpcInfo (rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock))
     defaultSender = fromJust $ Set.lookupMin conf.solConf.sender <|> Just 0
 
   threadIdChan <- liftIO newEmptyMVar

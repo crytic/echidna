@@ -128,7 +128,7 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   coverageRefRuntime <- newIORef mempty
   corpusRef <- newIORef mempty
   testRefs <- traverse newIORef tests
-  fetchSession <- EVM.Fetch.mkSession cfg.campaignConf.corpusDir
+  fetchSession <- EVM.Fetch.mkSession cfg.campaignConf.corpusDir (fromIntegral <$> cfg.rpcBlock)
   contractNameCache <- newIORef mempty
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput

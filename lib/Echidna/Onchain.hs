@@ -39,11 +39,12 @@ import Control.Concurrent.MVar (readMVar)
 
 saveRpcCache :: Env -> IO ()
 saveRpcCache env = do
-  case env.fetchSession.cacheDir of
-    Just dir -> do
-      cache <- readMVar env.fetchSession.sharedCache
-      EVM.Fetch.saveCache dir cache
-    Nothing -> pure ()
+  case (env.fetchSession.cacheDir, env.cfg.rpcBlock) of
+    (Just dir, Just n) -> do
+      cache <- readMVar (env.fetchSession.sharedCache)
+      EVM.Fetch.saveCache dir (fromIntegral n) cache
+    (_, Nothing) -> putStrLn "Warning: cannot save RPC cache without a specified block number."
+    (Nothing, _) -> pure ()
 
 rpcUrlEnv :: IO (Maybe Text)
 rpcUrlEnv = do
