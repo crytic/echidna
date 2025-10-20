@@ -90,7 +90,8 @@ execTxWith executeTx tx = do
   if hasSelfdestructed vm tx.dst then
     pure $ VMFailure (Revert (ConcreteBuf ""))
   else do
-    #traces .= emptyEvents
+    config <- asks (.cfg)
+    when (not config.allEvents) $ #traces .= emptyEvents
     vmBeforeTx <- get
     setupTx tx
     case tx.call of

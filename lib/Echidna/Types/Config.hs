@@ -45,6 +45,7 @@ data EConfig = EConfig
   , txConf :: TxConf
   , uiConf :: UIConf
 
+  , allEvents :: Bool
   , rpcUrl :: Maybe Text
   , rpcBlock :: Maybe Word64
   , etherscanApiKey :: Maybe Text
