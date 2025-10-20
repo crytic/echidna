@@ -98,6 +98,8 @@ rpcBlock: null
 etherscanApiKey: null
 # number of workers. By default (unset) its value is the clamp of the number cores between 1 and 4
 workers: null
+# show all events from all the transactions, not just the last one
+allEvents: false
 # events server port
 server: null
 # whether to add an additional symbolic execution worker
