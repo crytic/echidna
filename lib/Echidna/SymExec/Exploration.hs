@@ -44,6 +44,7 @@ import Echidna.Worker (pushWorkerEvent)
 --   The Tx argument, if present, must have a .call value of type SolCall.
 
 getTargetMethodFromTx :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => Tx -> SolcContract -> [String] -> m (Maybe Method)
+getTargetMethodFromTx (Tx { call = SolCall ("", _) }) _ _ = return Nothing
 getTargetMethodFromTx (Tx { call = SolCall (methodName, _) }) contract failedProperties = do
   env <- ask
   let allMethods = Map.assocs contract.abiMap
