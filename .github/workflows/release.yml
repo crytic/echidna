@@ -70,7 +70,7 @@ jobs:
           tar -czf "echidna-${{ steps.version.outputs.version }}-${{ matrix.tuple }}.tar.gz" -C ./redistributable/bin/ echidna
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: echidna-redistributable-${{ matrix.tuple }}
           path: echidna-${{ steps.version.outputs.version }}-${{ matrix.tuple }}.tar.gz
