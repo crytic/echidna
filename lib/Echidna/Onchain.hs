@@ -43,7 +43,9 @@ saveRpcCache env = do
     (Just dir, Just n) -> do
       cache <- readMVar (env.fetchSession.sharedCache)
       EVM.Fetch.saveCache dir (fromIntegral n) cache
-    (_, Nothing) -> putStrLn "Warning: cannot save RPC cache without a specified block number."
+    (_, Nothing) -> if (env.cfg.rpcUrl /= Nothing)
+      then putStrLn "Warning: cannot save RPC cache without a specified block number."
+      else pure ()
     (Nothing, _) -> pure ()
 
 rpcUrlEnv :: IO (Maybe Text)
