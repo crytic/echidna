@@ -188,7 +188,7 @@ jobs:
         run: GZIP=-9 tar -czf echidna.tar.gz -C $APPDATA/local/bin/ echidna.exe
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: echidna-${{ runner.os }}
           path: echidna.tar.gz
@@ -202,7 +202,7 @@ jobs:
 
       - name: Upload testsuite
         if: runner.os != 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: echidna-testsuite-${{ runner.os }}
           path: echidna-testsuite*
