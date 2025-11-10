@@ -87,7 +87,7 @@ jobs:
           DIGEST_UBUNTU: "${{ steps.build-ubuntu.outputs.digest }}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: digests-${{ env.PLATFORM_PAIR }}
           path: ${{ runner.temp }}/digests/*
