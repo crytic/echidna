@@ -24,17 +24,21 @@ jobs:
           - os: ubuntu-latest
             name: Linux (x86_64)
             tuple: x86_64-linux
+            system: x86_64-linux
             timeout: 180
           - os: ubuntu-24.04-arm
             name: Linux (aarch64)
             tuple: aarch64-linux
+            system: aarch64-linux
             timeout: 180
-          - os: macos-15-intel
+          - os: macos-14
             name: macOS (x86_64)
             tuple: x86_64-macos
+            system: x86_64-darwin
           - os: macos-14
             name: macOS (aarch64)
             tuple: aarch64-macos
+            system: aarch64-darwin
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -66,8 +70,10 @@ jobs:
 
       - name: Build redistributable echidna
         run: |
-          nix build .#echidna-redistributable --out-link redistributable
+          nix build ".#packages.${NIX_SYSTEM}.echidna-redistributable" --out-link redistributable
           tar -czf "echidna-${{ steps.version.outputs.version }}-${{ matrix.tuple }}.tar.gz" -C ./redistributable/bin/ echidna
+        env:
+          NIX_SYSTEM: ${{ matrix.system }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
