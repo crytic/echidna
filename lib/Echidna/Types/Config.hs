@@ -11,6 +11,8 @@ import Data.Word (Word64)
 import EVM.Dapp (DappInfo)
 import EVM.Types (Addr, W256)
 
+import Bandit.EpsGreedy
+import Bandit.Types
 import Echidna.SourceAnalysis.Slither (SlitherInfo)
 import Echidna.SourceMapping (CodehashMap)
 import Echidna.Types.Campaign (CampaignConf)
@@ -19,7 +21,7 @@ import Echidna.Types.Corpus (Corpus)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Solidity (SolConf)
 import Echidna.Types.Test (TestConf, EchidnaTest)
-import Echidna.Types.Tx (TxConf)
+import Echidna.Types.Tx (TxConf, Tx)
 import Echidna.Types.Cache 
 import Echidna.Types.World (World)
 
@@ -77,6 +79,7 @@ data Env = Env
   , coverageRefInit :: IORef CoverageMap
   , coverageRefRuntime :: IORef CoverageMap
   , corpusRef :: IORef Corpus
+  , banditRef :: IORef (EpsGreedy (Int, [Tx]) FixedRate)
 
   , slitherInfo :: Maybe SlitherInfo
   , codehashMap :: CodehashMap

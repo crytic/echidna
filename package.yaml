@@ -16,6 +16,9 @@ ghc-options:
   - -fexpose-all-unfoldings
   - -Wunused-packages
 
+packages:
+- hbandit
+
 dependencies:
   - aeson
   - base
@@ -82,6 +85,7 @@ library:
     - word-wrap
     - xml-conduit
     - yaml
+    - hbandit
 
 executables:
   echidna:

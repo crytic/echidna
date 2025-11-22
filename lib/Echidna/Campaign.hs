@@ -7,10 +7,11 @@ import Control.Concurrent
 import Control.DeepSeq (force)
 import Control.Monad (replicateM, when, unless, void, forM_)
 import Control.Monad.Catch (MonadThrow(..))
-import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
+import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT, runRand, runRandT)
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
+import Prelude hiding (init)
 import Control.Monad.State.Strict
-  (MonadState(..), StateT(..), gets, MonadIO, modify')
+  (MonadState(..), StateT(..), gets, MonadIO, modify', runState)
 import Control.Monad.ST (RealWorld)
 import Control.Monad.Trans (lift)
 import Data.Binary.Get (runGetOrFail)
@@ -18,6 +19,7 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.IORef (readIORef, atomicModifyIORef', writeIORef)
 import Data.Foldable (foldlM)
 import Data.List qualified as List
+import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty qualified as NEList
 import Data.Map qualified as Map
 import Data.Map (Map, (\\))
@@ -27,8 +29,12 @@ import Data.Set qualified as Set
 import Data.Text (Text, unpack)
 import Data.Time (LocalTime)
 import Data.Vector qualified as V
-import System.Random (mkStdGen)
+import System.Random (mkStdGen, getStdGen, setStdGen, StdGen)
 
+import Bandit.Class
+import Bandit.EpsGreedy
+import Bandit.Types
+import Bandit.UCB
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
 import EVM.Dapp (DappInfo(..))
@@ -207,7 +213,7 @@ runSymWorker callback vm dict workerId _ name = do
   txsToTxAndVmsSym _ [] = pure [(Nothing, vm, [])]
   txsToTxAndVmsSym False txs = do
     -- Separate the last tx, which should be the one increasing coverage
-    let (itxs, ltx) = (init txs, last txs)
+    let (itxs, ltx) = (List.init txs, last txs)
     ivm <- foldlM (\vm' tx -> snd <$> execTx vm' tx) vm itxs
     -- Split the sequence randomly and select any next transaction
     i <- if length txs == 1 then pure 0 else rElem $ NEList.fromList [1 .. length txs - 1]
@@ -333,9 +339,11 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
   let
     effectiveSeed = dict.defSeed + workerId
     effectiveGenDict = dict { defSeed = effectiveSeed }
+    (bandit, _, _) = init (mkStdGen effectiveSeed) (EpsGreedyHyper (FixedRate 0.1) (Arms (NE.fromList (zip [0..] (snd <$> initialCorpus)))))
     initialState =
       WorkerState { workerId
                   , genDict = effectiveGenDict
+                  , bandit = bandit
                   , newCoverage = False
                   , ncallseqs = 0
                   , ncalls = 0
@@ -443,7 +451,13 @@ randseq deployedContracts = do
   corpus <- liftIO $ readIORef env.corpusRef
   if null corpus
     then pure randTxs -- Use the generated random transactions
-    else mut seqLen corpus randTxs -- Apply the mutator
+    else do
+      banditState <- gets (.bandit)
+      g <- getStdGen
+      let ((selectedCorpus', newG), banditState') = runState (step g 0.0) banditState
+      setStdGen newG
+      modify' $ \ws -> ws { bandit = banditState' }
+      mut seqLen (Set.fromList [selectedCorpus']) randTxs -- Apply the mutator
 
 -- TODO callseq ideally shouldn't need to be MonadRandom
 
@@ -485,6 +499,18 @@ callseq vm txSeq = do
                                 , corpusSize = newSize
                                 , transactions = fst <$> results
                                 }
+    ws <- get
+    g <- getStdGen
+    let ((_, newG), bandit') = runState (step g 1.0) ws.bandit
+    setStdGen newG
+    put $ ws { bandit = bandit' }
+
+  unless newCoverage $ do
+    ws <- get
+    g <- getStdGen
+    let ((_, newG), bandit') = runState (step g 0.0) ws.bandit
+    setStdGen newG
+    put $ ws { bandit = bandit' }
 
   modify' $ \workerState ->
 

@@ -18,6 +18,8 @@ import EVM.Dapp (dappInfo)
 import EVM.Solidity (BuildOutput(..), Contracts(Contracts), Method(..), Mutability(..), SolcContract(..))
 import EVM.Types hiding (Env)
 
+import Bandit.EpsGreedy
+import Bandit.Types
 import Echidna.ABI
 import Echidna.Onchain as Onchain
 import Echidna.Output.Corpus
@@ -115,6 +117,7 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   coverageRefInit <- newIORef mempty
   coverageRefRuntime <- newIORef mempty
   corpusRef <- newIORef mempty
+  banditRef <- newIORef (EpsGreedy 0 (FixedRate 0.1) undefined undefined)
   testRefs <- traverse newIORef tests
   (contractCache, slotCache) <- Onchain.loadRpcCache cfg
   fetchContractCache <- newIORef contractCache
@@ -123,6 +126,6 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
   pure $ Env { cfg, dapp, codehashMap, fetchContractCache, fetchSlotCache, contractNameCache
-             , chainId, eventQueue, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
+             , chainId, eventQueue, coverageRefInit, coverageRefRuntime, corpusRef, banditRef, testRefs, world
              , slitherInfo
              }
