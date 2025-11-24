@@ -37,7 +37,7 @@ jobs:
             tuple: aarch64-macos
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v20
@@ -86,7 +86,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Download binaries
         uses: actions/download-artifact@v6
