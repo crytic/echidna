@@ -106,9 +106,6 @@ modelToTx dst oldTimestamp oldNumber method senders fallbackSender calldata resu
     Unknown err -> SMTErrorFromResult err
     r -> error ("Unexpected value in `modelToTx`: " ++ show r)
 
-
--- cachedOracle removed - hevm session handles all caching now
-
 rpcFetcher :: Functor f =>
   f a -> Maybe W256 -> f (Fetch.BlockNumber, a)
 
