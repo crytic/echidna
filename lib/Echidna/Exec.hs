@@ -14,7 +14,7 @@ import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.ST (ST, stToIO, RealWorld)
 import Data.Bits
 import Data.ByteString qualified as BS
-import Data.IORef (readIORef, atomicWriteIORef, newIORef, writeIORef, modifyIORef')
+import Data.IORef (readIORef, newIORef, writeIORef, modifyIORef')
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
@@ -114,68 +114,48 @@ execTxWith executeTx tx = do
     case getQuery vmResult of
       -- A previously unknown contract is required
       Just q@(PleaseFetchContract addr _ continuation) -> do
-        cacheRef <- asks (.fetchContractCache)
-        cache <- liftIO $ readIORef cacheRef
-        case Map.lookup addr cache of
-          Just (Just contract) -> fromEVM (continuation contract)
-          Just Nothing -> do
-            v <- get
-            v' <- liftIO $ stToIO $ execStateT (continuation emptyAccount) v
-            put v'
-          Nothing -> do
-            logMsg $ "INFO: Performing RPC: " <> show q
-            case config.rpcUrl of
-              Just rpcUrl -> do
-                ret <- liftIO $ safeFetchContractFrom rpcBlock rpcUrl addr
-                case ret of
-                  -- TODO: fix hevm to not return an empty contract in case of an error
-                  Just contract | contract.code /= RuntimeCode (ConcreteRuntimeCode "") -> do
-                    fromEVM (continuation contract)
-                    liftIO $ atomicWriteIORef cacheRef $ Map.insert addr (Just contract) cache
-                  _ -> do
-                    -- TODO: better error reporting in HEVM, when intermittent
-                    -- network error then retry
-                    liftIO $ atomicWriteIORef cacheRef $ Map.insert addr Nothing cache
-                    logMsg $ "ERROR: Failed to fetch contract: " <> show q
-                    -- TODO: How should we fail here? It could be a network error,
-                    -- RPC server returning junk etc.
-                    fromEVM (continuation emptyAccount)
-              Nothing -> do
-                liftIO $ atomicWriteIORef cacheRef $ Map.insert addr Nothing cache
-                logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
-                -- TODO: How should we fail here? RPC is not configured but VM
-                -- wants to fetch
+        --logMsg $ "INFO: Performing RPC: " <> show q
+        case config.rpcUrl of
+          Just rpcUrl -> do
+            session <- asks (.fetchSession)
+            ret <- liftIO $ safeFetchContractFrom session rpcBlock rpcUrl addr
+            case ret of
+              -- TODO: fix hevm to not return an empty contract in case of an error
+              Just contract | contract.code /= RuntimeCode (ConcreteRuntimeCode "") -> do
+                fromEVM (continuation contract)
+              _ -> do
+                -- TODO: better error reporting in HEVM, when intermittent
+                -- network error then retry
+                logMsg $ "ERROR: Failed to fetch contract: " <> show q
+                -- TODO: How should we fail here? It could be a network error,
+                -- RPC server returning junk etc.
                 fromEVM (continuation emptyAccount)
+          Nothing -> do
+            --logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
+            -- TODO: How should we fail here? RPC is not configured but VM
+            -- wants to fetch
+            fromEVM (continuation emptyAccount)
         runFully -- resume execution
 
       -- A previously unknown slot is required
       Just q@(PleaseFetchSlot addr slot continuation) -> do
-        cacheRef <- asks (.fetchSlotCache)
-        cache <- liftIO $ readIORef cacheRef
-        case Map.lookup addr cache >>= Map.lookup slot of
-          Just (Just value) -> fromEVM (continuation value)
-          Just Nothing -> fromEVM (continuation 0)
-          Nothing -> do
-            logMsg $ "INFO: Performing RPC: " <> show q
-            case config.rpcUrl of
-              Just rpcUrl -> do
-                ret <- liftIO $ safeFetchSlotFrom rpcBlock rpcUrl addr slot
-                case ret of
-                  Just value -> do
-                    fromEVM (continuation value)
-                    liftIO $ atomicWriteIORef cacheRef $
-                      Map.insertWith Map.union addr (Map.singleton slot (Just value)) cache
-                  Nothing -> do
-                    -- TODO: How should we fail here? It could be a network error,
-                    -- RPC server returning junk etc.
-                    logMsg $ "ERROR: Failed to fetch slot: " <> show q
-                    liftIO $ atomicWriteIORef cacheRef $
-                      Map.insertWith Map.union addr (Map.singleton slot Nothing) cache
-                    fromEVM (continuation 0)
+        --logMsg $ "INFO: Performing RPC: " <> show q
+        case config.rpcUrl of
+          Just rpcUrl -> do
+            session <- asks (.fetchSession)
+            ret <- liftIO $ safeFetchSlotFrom session rpcBlock rpcUrl addr slot
+            case ret of
+              Just value -> do
+                fromEVM (continuation value)
               Nothing -> do
-                logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
-                -- Use the zero slot
+                -- TODO: How should we fail here? It could be a network error,
+                -- RPC server returning junk etc.
+                logMsg $ "ERROR: Failed to fetch slot: " <> show q
                 fromEVM (continuation 0)
+          Nothing -> do
+            --logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
+            -- Use the zero slot
+            fromEVM (continuation 0)
         runFully -- resume execution
 
       -- Execute a FFI call

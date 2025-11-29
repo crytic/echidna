@@ -44,6 +44,7 @@ import Echidna.Worker (pushWorkerEvent)
 --   The Tx argument, if present, must have a .call value of type SolCall.
 
 getTargetMethodFromTx :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => Tx -> SolcContract -> [String] -> m (Maybe Method)
+getTargetMethodFromTx (Tx { call = SolCall ("", _) }) _ _ = return Nothing
 getTargetMethodFromTx (Tx { call = SolCall (methodName, _) }) contract failedProperties = do
   env <- ask
   let allMethods = Map.assocs contract.abiMap
@@ -84,31 +85,30 @@ exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.En
 exploreContract contract method vm = do
   conf <- asks (.cfg)
   dappInfo <- asks (.dapp)
-  contractCacheRef <- asks (.fetchContractCache)
-  slotCacheRef <- asks (.fetchSlotCache)
   let
     timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
     maxIters = Just conf.campaignConf.symExecMaxIters
     maxExplore = Just (fromIntegral conf.campaignConf.symExecMaxExplore)
     askSmtIters = conf.campaignConf.symExecAskSMTIters
-    rpcInfo = RpcInfo (rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock)) Nothing Nothing Nothing
+    rpcInfo = RpcInfo (rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock))
     defaultSender = fromJust $ Set.lookupMin conf.solConf.sender <|> Just 0
 
   threadIdChan <- liftIO newEmptyMVar
   doneChan <- liftIO newEmptyMVar
   resultChan <- liftIO newEmptyMVar
   let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
-  let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = Naive}
-  let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, dumpQueries = False, numCexFuzz = 0 }
+  let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = StackBased}
+  let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, dumpQueries = False }
   let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = hevmConfig }
+  session <- asks (.fetchSession)
   pushWorkerEvent $ SymExecLog ("Exploring " <> (show method.name))
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
       -- For now, we will be exploring a single method at a time.
       -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.
       -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
-      res <- exploreMethod method contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo contractCacheRef slotCacheRef
+      res <- exploreMethod method contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan res
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
