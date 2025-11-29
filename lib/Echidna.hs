@@ -2,6 +2,7 @@ module Echidna where
 
 import Control.Concurrent (newChan)
 import Control.Monad.Catch (MonadThrow(..))
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.ST (RealWorld)
 import Data.IORef (newIORef)
 import Data.List (find, nub)
@@ -15,8 +16,12 @@ import System.FilePath ((</>))
 import EVM (cheatCode)
 import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Dapp (dappInfo)
+import EVM.Fetch qualified
 import EVM.Solidity (BuildOutput(..), Contracts(Contracts), Method(..), Mutability(..), SolcContract(..))
 import EVM.Types hiding (Env)
+import EVM.Effects (TTY(..), ReadConfig(..), defaultConfig)
+import Data.Text qualified as T
+import System.IO (stderr, hPutStrLn)
 
 import Echidna.ABI
 import Echidna.Onchain as Onchain
@@ -107,6 +112,13 @@ loadInitialCorpus env = do
       ctxs2 <- loadTxs (dir </> "coverage")
       pure (ctxs1 ++ ctxs2)
 
+instance TTY IO where
+  writeOutput = liftIO . putStrLn . T.unpack
+  writeErr = liftIO . hPutStrLn stderr . T.unpack
+
+instance ReadConfig IO where
+  readConfig = pure defaultConfig
+
 mkEnv :: EConfig -> BuildOutput -> [EchidnaTest] -> World -> Maybe SlitherInfo -> IO Env
 mkEnv cfg buildOutput tests world slitherInfo = do
   codehashMap <- newIORef mempty
@@ -116,13 +128,11 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   coverageRefRuntime <- newIORef mempty
   corpusRef <- newIORef mempty
   testRefs <- traverse newIORef tests
-  (contractCache, slotCache) <- Onchain.loadRpcCache cfg
-  fetchContractCache <- newIORef contractCache
-  fetchSlotCache <- newIORef slotCache
+  fetchSession <- EVM.Fetch.mkSession cfg.campaignConf.corpusDir (fromIntegral <$> cfg.rpcBlock)
   contractNameCache <- newIORef mempty
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
-  pure $ Env { cfg, dapp, codehashMap, fetchContractCache, fetchSlotCache, contractNameCache
+  pure $ Env { cfg, dapp, codehashMap, fetchSession, contractNameCache
              , chainId, eventQueue, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
              , slitherInfo
              }

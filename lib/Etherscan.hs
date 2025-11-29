@@ -24,8 +24,9 @@ data SourceCode = SourceCode
 
 fetchContractSource :: Maybe Text -> Addr -> IO (Maybe SourceCode)
 fetchContractSource apiKey addr = do
-  url <- parseRequest $ "https://api.etherscan.io/api?"
-                        <> "module=contract"
+  url <- parseRequest $ "https://api.etherscan.io/v2/api?"
+                        <> "&chainid=1"
+                        <> "&module=contract"
                         <> "&action=getsourcecode"
                         <> "&address=" <> show addr
                         <> T.unpack (maybe "" ("&apikey=" <>) apiKey)
