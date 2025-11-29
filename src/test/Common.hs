@@ -27,7 +27,6 @@ import Test.Tasty.HUnit (testCase, assertBool)
 import Control.Monad (forM_)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
-import Control.Monad.ST (RealWorld)
 import Data.DoubleWord (Int256)
 import Data.Function ((&))
 import Data.IORef
@@ -148,7 +147,7 @@ loadSolTests
   :: EConfig
   -> BuildOutput
   -> Maybe Text
-  -> IO (VM Concrete RealWorld, Env, [EchidnaTest])
+  -> IO (VM Concrete, Env, [EchidnaTest])
 loadSolTests cfg buildOutput name = do
   let solConf = cfg.solConf
       (Contracts contractMap) = buildOutput.contracts

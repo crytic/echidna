@@ -12,7 +12,6 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Control.Monad.State.Strict hiding (state)
-import Control.Monad.ST (RealWorld)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
@@ -44,7 +43,7 @@ import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
-import Echidna.Types.Worker 
+import Echidna.Types.Worker
 import Echidna.UI.Report
 import Echidna.UI.Widgets
 import Echidna.Utility (timePrefix, getTimestamp)
@@ -66,7 +65,7 @@ data GasTracker = GasTracker
 -- print non-interactive output in desired format at the end
 ui
   :: (MonadCatch m, MonadReader Env m, MonadUnliftIO m)
-  => VM Concrete RealWorld -- ^ Initial VM state
+  => VM Concrete -- ^ Initial VM state
   -> GenDict
   -> [(FilePath, [Tx])]
   -> Maybe Text

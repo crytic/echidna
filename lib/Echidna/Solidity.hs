@@ -6,7 +6,7 @@ import Control.Monad (when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Extra (whenM)
 import Control.Monad.Reader (ReaderT(runReaderT))
-import Control.Monad.ST (stToIO, RealWorld)
+import Control.Monad.ST (stToIO)
 import Control.Monad.State (runStateT)
 import Data.Foldable (toList)
 import Data.List (find, partition, isSuffixOf, (\\))
@@ -115,7 +115,7 @@ staticAddresses SolConf{contractAddr, deployer, sender} =
   Set.map AbiAddress $
     Set.union sender (Set.fromList [contractAddr, deployer, 0x0])
 
-populateAddresses :: Set Addr -> Integer -> VM Concrete s -> VM Concrete s
+populateAddresses :: Set Addr -> Integer -> VM Concrete -> VM Concrete
 populateAddresses addrs b vm =
   Set.foldl' (\vm' addr ->
     if deployed addr
@@ -169,7 +169,7 @@ loadSpecified
   :: Env
   -> SolcContract
   -> [SolcContract]
-  -> IO (VM Concrete RealWorld)
+  -> IO (VM Concrete)
 loadSpecified env mainContract cs = do
   let solConf = env.cfg.solConf
 

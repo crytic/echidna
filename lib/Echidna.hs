@@ -3,7 +3,6 @@ module Echidna where
 import Control.Concurrent (newChan)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.ST (RealWorld)
 import Data.IORef (newIORef)
 import Data.List (find, nub)
 import Data.List.NonEmpty (NonEmpty)
@@ -56,7 +55,7 @@ prepareContract
   -> BuildOutput
   -> Maybe ContractName
   -> Seed
-  -> IO (VM Concrete RealWorld, Env, GenDict)
+  -> IO (VM Concrete, Env, GenDict)
 prepareContract cfg solFiles buildOutput selectedContract seed = do
   let solConf = cfg.solConf
       (Contracts contractMap) = buildOutput.contracts

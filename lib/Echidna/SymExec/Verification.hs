@@ -12,6 +12,7 @@ import Data.Maybe (fromJust)
 import Data.Text qualified as Text
 import Data.Set qualified as Set
 import Data.List (find)
+
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
@@ -20,7 +21,6 @@ import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
 import EVM.Types (VMType(..))
 import EVM.Fetch (RpcInfo(..))
 import qualified EVM.Types (VM(..))
-import Control.Monad.ST (RealWorld)
 
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
@@ -45,7 +45,7 @@ isSuitableToVerifyMethod contract method symExecTargets = do
     else method.name `elem` symExecTargets
 
 
-verifyMethod :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => Method -> SolcContract -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+verifyMethod :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => Method -> SolcContract -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 verifyMethod method contract vm = do
   conf <- asks (.cfg)
   dappInfo <- asks (.dapp)

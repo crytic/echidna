@@ -14,6 +14,7 @@ import Data.Maybe (fromJust)
 import Data.Set qualified as Set
 import Data.Text (unpack, Text)
 import Data.List.NonEmpty (fromList)
+
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
@@ -22,7 +23,6 @@ import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
 import EVM.Fetch (RpcInfo(..))
 import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
-import Control.Monad.ST (RealWorld)
 
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
@@ -81,7 +81,7 @@ getRandomTargetMethod contract targets failedProperties = do
       [] -> return Nothing
       _  -> liftIO $ rElem (fromList $ map (Just . snd) targetMethods)
 
-exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SolcContract -> Method -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SolcContract -> Method -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 exploreContract contract method vm = do
   conf <- asks (.cfg)
   dappInfo <- asks (.dapp)

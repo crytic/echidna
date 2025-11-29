@@ -5,7 +5,6 @@ import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader (ask), asks)
 import Control.Monad.State.Strict (MonadIO)
-import Control.Monad.ST (RealWorld)
 import Data.Set qualified as Set
 import Data.List qualified as List
 import Data.Maybe (mapMaybe)
@@ -24,7 +23,7 @@ import Echidna.Test (getResultFromVM, checkETest)
  -- | Top level function to shrink the complexity of the sequence of transactions once
 shrinkTest
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m)
-  => VM Concrete RealWorld
+  => VM Concrete
   -> EchidnaTest
   -> m (Maybe EchidnaTest)
 shrinkTest vm test = do
@@ -71,14 +70,14 @@ removeUselessNoCalls = mapMaybe f
 -- | Given a VM and a sequence of transactions, execute each transaction except the last one.
 -- If a transaction reverts, replace it by a "NoCall" with the same parameters as the original call
 -- (e.g. same block increment timestamp and number)
-removeReverts :: (MonadIO m, MonadReader Env m, MonadThrow m) => VM Concrete RealWorld -> [Tx] -> m [Tx]
+removeReverts :: (MonadIO m, MonadReader Env m, MonadThrow m) => VM Concrete -> [Tx] -> m [Tx]
 removeReverts _ [] = return []
 removeReverts vm txs = do
   let (itxs, le) = (init txs, last txs)
   ftxs <- removeReverts' vm itxs []
   return (ftxs ++ [le])
 
-removeReverts' :: (MonadIO m, MonadReader Env m, MonadThrow m) => VM Concrete RealWorld -> [Tx] -> [Tx] -> m [Tx]
+removeReverts' :: (MonadIO m, MonadReader Env m, MonadThrow m) => VM Concrete -> [Tx] -> [Tx] -> m [Tx]
 removeReverts' _ [] ftxs = return $ reverse ftxs
 removeReverts' vm (t:txs) ftxs = do
   (_, vm') <- execTx vm t
@@ -90,11 +89,11 @@ removeReverts' vm (t:txs) ftxs = do
 -- generate a smaller one that still solves that test.
 shrinkSeq
   :: (MonadIO m, MonadRandom m, MonadReader Env m, MonadThrow m)
-  => VM Concrete RealWorld
-  -> (VM Concrete RealWorld -> m (TestValue, VM Concrete RealWorld))
+  => VM Concrete
+  -> (VM Concrete -> m (TestValue, VM Concrete))
   -> TestValue
   -> [Tx]
-  -> m (Maybe ([Tx], TestValue, VM Concrete RealWorld))
+  -> m (Maybe ([Tx], TestValue, VM Concrete))
 shrinkSeq vm f v txs = do
   -- apply one of the two possible simplification strategies (shrunk or shorten) with equal probability
   txs' <- uniform =<< sequence [shorten, shrunk]

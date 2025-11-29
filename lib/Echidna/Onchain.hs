@@ -66,7 +66,7 @@ etherscanApiKey = do
 safeFetchContractFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> IO (Maybe Contract)
 safeFetchContractFrom session rpcBlock rpcUrl addr = do
   catch
-    (EVM.Fetch.fetchContractWithSession defaultConfig session rpcBlock rpcUrl addr)
+    (fmap EVM.Fetch.makeContractFromRPC <$> EVM.Fetch.fetchContractWithSession defaultConfig session rpcBlock rpcUrl addr)
     (\(_ :: HttpException) -> pure $ Just emptyAccount)
 
 -- TODO: temporary solution, handle errors gracefully
@@ -157,7 +157,7 @@ saveCoverageReport env runId = do
       when (env.chainId == Just 1) $ do
         -- Get contracts from hevm session cache
         sessionCache <- readMVar env.fetchSession.sharedCache
-        let contractsCache = sessionCache.contractCache
+        let contractsCache = EVM.Fetch.makeContractFromRPC <$> sessionCache.contractCache
         forM_ (Map.toList contractsCache) $ \(addr, contract) -> do
           r <- externalSolcContract env addr contract
           case r of
