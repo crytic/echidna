@@ -2,25 +2,27 @@
 
 module Echidna.Onchain where
 
+import Control.Concurrent.MVar (readMVar)
 import Control.Exception (catch)
+import Control.Monad (when, forM_)
 import Data.Aeson (ToJSON, FromJSON)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as UTF8
 import Data.Map qualified as Map
 import Data.Maybe (isJust, fromJust)
-import Data.Text qualified as Text
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Data.Vector qualified as Vector
 import Data.Word (Word64)
 import Etherscan qualified
 import GHC.Generics (Generic)
 import Network.HTTP.Simple (HttpException)
+import Network.Wreq.Session qualified as Session
 import Optics (view)
 import System.Directory (doesFileExist)
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
-import Network.Wreq.Session qualified as Session
 import Text.Read (readMaybe)
 
 import EVM (initialContract, bytecode)
@@ -29,13 +31,11 @@ import EVM.Fetch qualified
 import EVM.Solidity (SourceCache(..), SolcContract (..))
 import EVM.Types hiding (Env)
 
+import Echidna.Output.Source (saveCoverages)
 import Echidna.SymExec.Symbolic (forceWord, forceBuf)
 import Echidna.Types (emptyAccount)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
-import Echidna.Output.Source (saveCoverages)
-import Control.Monad (when, forM_)
-import Control.Concurrent.MVar (readMVar)
 
 saveRpcCache :: Env -> IO ()
 saveRpcCache env = do

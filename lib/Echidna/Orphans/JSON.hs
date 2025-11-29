@@ -5,16 +5,16 @@ module Echidna.Orphans.JSON () where
 -- THIS MODULE EXPORTS NO FUNCTIONS
 -- IT ONLY EXPORTS ORPHAN INSTANCES
 
-import Prelude hiding (Word, fail)
-
 import Control.Monad.Fail (fail)
 import Data.Aeson (ToJSON(..), FromJSON(..), withText)
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.ByteString (ByteString)
 import Data.DoubleWord (Word256, Int256)
 import Data.Text (Text, unpack)
-import EVM.ABI (AbiValue, AbiType)
+import Prelude hiding (Word, fail)
 import Text.Read (readMaybe)
+
+import EVM.ABI (AbiValue, AbiType)
 
 readT :: Read a => Text -> Maybe a
 readT = readMaybe . unpack

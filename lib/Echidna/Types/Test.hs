@@ -12,10 +12,10 @@ import GHC.Generics (Generic)
 import EVM.Dapp (DappInfo)
 import EVM.Types (Addr, VM, VMType(Concrete))
 
+import Echidna.ABI (encodeSig)
 import Echidna.Types (ExecException)
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Tx (Tx, TxResult)
-import Echidna.ABI (encodeSig)
 
 -- | Test mode is parsed from a string
 type TestMode = String

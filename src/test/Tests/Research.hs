@@ -3,7 +3,6 @@ module Tests.Research (researchTests) where
 import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract, testContract', solcV, solved)
-
 import Echidna.Types.Worker (WorkerType(..))
 
 researchTests :: TestTree

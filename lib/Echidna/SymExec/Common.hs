@@ -10,17 +10,17 @@ import Data.Set qualified as Set
 import Data.Text qualified as T
 import Optics.Core ((.~), (%), (%~))
 
-import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..))
-import EVM.Fetch qualified as Fetch
 import EVM (loadContract, resetState, symbolify)
+import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..))
 import EVM.Effects (TTY, ReadConfig)
+import EVM.Expr qualified
+import EVM.Fetch qualified as Fetch
+import EVM.Format (formatPartialDetailed)
 import EVM.Solidity (SolcContract(..), SourceCache(..), Method(..), WarningData(..))
 import EVM.Solvers (SolverGroup)
 import EVM.SymExec (mkCalldata, verifyInputs, VeriOpts(..), checkAssertions, subModel, defaultSymbolicValues)
-import EVM.Expr qualified
 import EVM.Types (Addr, VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit)
 import qualified EVM.Types (VM(..))
-import EVM.Format (formatPartialDetailed)
 
 import Echidna.Types (fromEVM)
 import Echidna.Types.Config (EConfig(..))

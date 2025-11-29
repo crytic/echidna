@@ -7,8 +7,8 @@ import Brick.AttrMap qualified as A
 import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Brick.Widgets.Dialog qualified as B
-import Control.Monad.Reader (MonadReader, asks, ask)
 import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Reader (MonadReader, asks, ask)
 import Data.List (nub, intersperse, sortBy)
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -33,7 +33,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..))
-import Echidna.Types.Worker 
+import Echidna.Types.Worker
 import Echidna.UI.Report
 import Echidna.Utility (timePrefix)
 import Echidna.Worker (ppCampaignEvent)

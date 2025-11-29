@@ -4,14 +4,11 @@
 
 module Echidna.Exec where
 
-import Optics.Core
-import Optics.State.Operators
-
 import Control.Monad (when, forM_)
 import Control.Monad.Catch (MonadThrow(..))
-import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO), gets, modify', execStateT)
 import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.ST (ST, stToIO, RealWorld)
+import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO), gets, modify', execStateT)
 import Data.Bits
 import Data.ByteString qualified as BS
 import Data.IORef (readIORef, newIORef, writeIORef, modifyIORef')
@@ -20,6 +17,8 @@ import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Data.Vector.Unboxed.Mutable qualified as VMut
+import Optics.Core
+import Optics.State.Operators
 import System.Environment (lookupEnv, getEnvironment)
 import System.Process qualified as P
 

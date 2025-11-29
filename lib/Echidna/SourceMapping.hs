@@ -5,15 +5,17 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.IORef (IORef, readIORef, atomicModifyIORef')
 import Data.List (find)
-import Data.Map.Strict qualified as Map
 import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Vector qualified as V
-import Echidna.SymExec.Symbolic (forceWord)
+
 import EVM.Dapp (DappInfo(..), findSrc)
 import EVM.Expr (maybeLitByteSimp)
 import EVM.Solidity (SolcContract(..))
 import EVM.Types (Contract(..), ContractCode(..), RuntimeCode(..), W256)
+
+import Echidna.SymExec.Symbolic (forceWord)
 
 -- | Map from contracts' codehashes to their compile-time codehash.
 -- This is relevant when the immutables solidity feature is used;

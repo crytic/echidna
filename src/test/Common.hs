@@ -21,12 +21,9 @@ module Common
   , checkCoverageUsesCorpusDir
   ) where
 
-import Test.Tasty (TestTree)
-import Test.Tasty.HUnit (testCase, assertBool)
-
 import Control.Monad (forM_)
-import Control.Monad.Reader (runReaderT)
 import Control.Monad.Random (getRandomR)
+import Control.Monad.Reader (runReaderT)
 import Data.DoubleWord (Int256)
 import Data.Function ((&))
 import Data.IORef
@@ -37,17 +34,19 @@ import Data.Maybe (isJust)
 import Data.SemVer (Version, version, fromText)
 import Data.Text (Text, pack)
 import System.Process (readProcess)
+import Test.Tasty (TestTree)
+import Test.Tasty.HUnit (testCase, assertBool)
 
 import EVM.Solidity (Contracts(..), BuildOutput(..), SolcContract(..))
 import EVM.Types hiding (Env, Gas)
 
 import Echidna (mkEnv, prepareContract)
-import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Campaign (runWorker)
+import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Solidity (selectMainContract, mkTests, loadSpecified, compileContracts)
 import Echidna.Test (checkETest)
-import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
 import Echidna.Types.Campaign
+import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
 import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test

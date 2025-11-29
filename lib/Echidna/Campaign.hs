@@ -14,12 +14,12 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans (lift)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
-import Data.IORef (readIORef, atomicModifyIORef', writeIORef)
 import Data.Foldable (foldlM)
+import Data.IORef (readIORef, atomicModifyIORef', writeIORef)
 import Data.List qualified as List
 import Data.List.NonEmpty qualified as NEList
-import Data.Map qualified as Map
 import Data.Map (Map, (\\))
+import Data.Map qualified as Map
 import Data.Maybe (isJust, mapMaybe, fromJust)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -31,8 +31,8 @@ import System.Random (mkStdGen)
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
 import EVM.Dapp (DappInfo(..))
-import EVM.Types hiding (Env, Frame(state), Gas)
 import EVM.Solidity (SolcContract(..), Method(..))
+import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
 import Echidna.Events (extractEventValues)
@@ -41,15 +41,15 @@ import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
 import Echidna.Solidity (chooseContract)
 import Echidna.SymExec.Common (extractTxs, extractErrors)
-import Echidna.SymExec.Symbolic (forceAddr)
 import Echidna.SymExec.Exploration (exploreContract, getTargetMethodFromTx, getRandomTargetMethod)
+import Echidna.SymExec.Symbolic (forceAddr)
 import Echidna.SymExec.Verification (verifyMethod, isSuitableToVerifyMethod)
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types.Campaign
+import Echidna.Types.Config
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
-import Echidna.Types.Config
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test

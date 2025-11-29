@@ -5,20 +5,20 @@ import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader.Class (MonadReader (ask), asks)
 import Control.Monad.State.Strict (MonadIO)
-import Data.Set qualified as Set
 import Data.List qualified as List
 import Data.Maybe (mapMaybe)
+import Data.Set qualified as Set
 
 import EVM.Types (VM, VMType(..))
 
 import Echidna.Exec
+import Echidna.Test (getResultFromVM, checkETest)
 import Echidna.Transaction
+import Echidna.Types.Campaign (CampaignConf(..))
+import Echidna.Types.Config
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (TestValue(..), EchidnaTest(..), TestState(..), isOptimizationTest)
 import Echidna.Types.Tx (Tx(..), hasReverted, isUselessNoCall, catNoCalls, TxCall(..))
-import Echidna.Types.Config
-import Echidna.Types.Campaign (CampaignConf(..))
-import Echidna.Test (getResultFromVM, checkETest)
 
  -- | Top level function to shrink the complexity of the sequence of transactions once
 shrinkTest

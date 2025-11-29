@@ -19,10 +19,10 @@ import Data.Maybe (isJust, mapMaybe)
 import Data.Sequence ((|>))
 import Data.Text (Text)
 import Data.Time
+import Graphics.Vty qualified as Vty
 import Graphics.Vty.Config (VtyUserConfig, defaultConfig, configInputMap)
 import Graphics.Vty.CrossPlatform (mkVty)
 import Graphics.Vty.Input.Events
-import Graphics.Vty qualified as Vty
 import System.Console.ANSI (hNowSupportsANSI)
 import System.Signal
 import UnliftIO

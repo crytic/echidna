@@ -10,33 +10,33 @@ import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
+import Data.Text qualified as T
 import System.FilePath ((</>))
+import System.IO (stderr, hPutStrLn)
 
 import EVM (cheatCode)
 import EVM.ABI (AbiValue(AbiAddress))
 import EVM.Dapp (dappInfo)
+import EVM.Effects (TTY(..), ReadConfig(..), defaultConfig)
 import EVM.Fetch qualified
 import EVM.Solidity (BuildOutput(..), Contracts(Contracts), Method(..), Mutability(..), SolcContract(..))
 import EVM.Types hiding (Env)
-import EVM.Effects (TTY(..), ReadConfig(..), defaultConfig)
-import Data.Text qualified as T
-import System.IO (stderr, hPutStrLn)
 
 import Echidna.ABI
 import Echidna.Onchain as Onchain
 import Echidna.Output.Corpus
-import Echidna.SourceMapping (findSrcForReal)
-import Echidna.SourceAnalysis.Slither
 import Echidna.Solidity
+import Echidna.SourceAnalysis.Slither
+import Echidna.SourceMapping (findSrcForReal)
 import Echidna.SymExec.Symbolic (forceAddr)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Random
+import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Solidity
+import Echidna.Types.Test (EchidnaTest)
 import Echidna.Types.Tx
 import Echidna.Types.World
-import Echidna.Types.Test (EchidnaTest)
-import Echidna.Types.Signature (ContractName)
 
 -- | This function is used to prepare, process, compile and initialize smart contracts for testing.
 -- It takes:

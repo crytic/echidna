@@ -7,27 +7,27 @@ import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
 import Control.Monad.State.Strict (MonadState)
+import Data.List (find)
 import Data.Map (assocs)
 import Data.Maybe (fromJust)
-import Data.Text qualified as Text
 import Data.Set qualified as Set
-import Data.List (find)
+import Data.Text qualified as Text
 
+import EVM.Dapp (DappInfo(..))
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
+import EVM.Fetch (RpcInfo(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
-import EVM.Dapp (DappInfo(..))
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
 import EVM.Types (VMType(..))
-import EVM.Fetch (RpcInfo(..))
 import qualified EVM.Types (VM(..))
 
+import Echidna.SymExec.Common (rpcFetcher, exploreMethod, suitableForSymExec, TxOrError(..), PartialsLogs)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
-import Echidna.Types.World (World(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Worker (WorkerEvent(..))
-import Echidna.SymExec.Common (rpcFetcher, exploreMethod, suitableForSymExec, TxOrError(..), PartialsLogs)
+import Echidna.Types.World (World(..))
 import Echidna.Worker (pushWorkerEvent)
 
 isSuitableToVerifyMethod :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> Method -> [Text.Text] -> m Bool

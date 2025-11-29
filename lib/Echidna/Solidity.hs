@@ -1,7 +1,5 @@
 module Echidna.Solidity where
 
-import Optics.Core hiding (filtered)
-
 import Control.Monad (when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Extra (whenM)
@@ -20,14 +18,15 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text qualified as T
+import Optics.Core hiding (filtered)
 import System.Directory
   (doesDirectoryExist, doesFileExist, findExecutable, listDirectory, removeFile)
-import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit (ExitCode(..))
 import System.FilePath (joinPath, splitDirectories, (</>))
 import System.FilePath.Posix qualified as FPP
 import System.IO (openFile, IOMode(..))
 import System.Info (os)
+import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 
 import EVM (initialContract, currentContract)
 import EVM.ABI

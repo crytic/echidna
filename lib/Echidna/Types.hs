@@ -1,10 +1,11 @@
 module Echidna.Types where
 
 import Control.Exception (Exception)
-import Control.Monad.State.Strict (MonadState, get, put, MonadIO(liftIO), runStateT)
 import Control.Monad.ST (stToIO)
+import Control.Monad.State.Strict (MonadState, get, put, MonadIO(liftIO), runStateT)
 import Data.Text (Text, unpack)
 import Data.Word (Word64)
+
 import EVM (initialContract)
 import EVM.Types
 

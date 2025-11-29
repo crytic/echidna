@@ -6,17 +6,19 @@
 
 module Echidna.Types.Tx where
 
-import Prelude hiding (Word)
-
 import Control.Applicative ((<|>))
+import Control.DeepSeq (NFData)
 import Data.Aeson (FromJSON, ToJSON, parseJSON, toJSON, object, withObject, (.=), (.:))
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.Aeson.Types (Parser)
 import Data.ByteString (ByteString)
+import Data.DoubleWord (Word256, Word128, Int256, Int128, Word160)
 import Data.Hashable (Hashable(..))
 import Data.Text (Text)
 import Data.Vector (Vector, toList)
 import Data.Word (Word64)
+import GHC.Generics (Generic)
+import Prelude hiding (Word)
 
 import EVM.ABI (encodeAbiValue, AbiValue(..), AbiType)
 import EVM.Types
@@ -24,9 +26,6 @@ import EVM.Types
 import Echidna.Orphans.JSON ()
 import Echidna.SymExec.Symbolic (forceBuf)
 import Echidna.Types.Signature (SolCall)
-import Control.DeepSeq (NFData)
-import GHC.Generics (Generic)
-import Data.DoubleWord (Word256, Word128, Int256, Int128, Word160)
 
 -- | A transaction call is either a @CREATE@, a fully instrumented 'SolCall', or
 -- an abstract call consisting only of calldata.

@@ -2,8 +2,6 @@
 
 module Echidna.Test where
 
-import Prelude hiding (Word)
-
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
@@ -11,6 +9,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as LBS
 import Data.Text (Text)
 import Data.Text qualified as T
+import Prelude hiding (Word)
 
 import EVM.ABI (AbiValue(..), AbiType(..), encodeAbiValue, decodeAbiValue)
 import EVM.Dapp (DappInfo)

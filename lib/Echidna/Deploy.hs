@@ -15,8 +15,8 @@ import Data.Text.Encoding (encodeUtf8)
 import EVM.Solidity
 import EVM.Types hiding (Env)
 
-import Echidna.Exec (execTx, execTxWithCov)
 import Echidna.Events (extractEvents)
+import Echidna.Exec (execTx, execTxWithCov)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Solidity (SolException(..))
