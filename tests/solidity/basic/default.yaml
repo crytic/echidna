@@ -11,25 +11,24 @@ psender: "0x10000"
 #prefix is the prefix for Boolean functions that are properties to be checked
 prefix: "echidna_"
 #propMaxGas defines gas cost at which a property fails
-propMaxGas: 8000030
+propMaxGas: 12500000
 #testMaxGas is a gas limit; does not cause failure, but terminates sequence
-testMaxGas: 8000030
+testMaxGas: 12500000
 #maxGasprice is the maximum gas price
 maxGasprice: 0
 #testLimit is the number of test sequences to run
 testLimit: 50000
 #stopOnFail makes echidna terminate as soon as any property fails and has been shrunk
 stopOnFail: false
-#estimateGas makes echidna perform analysis of maximum gas costs for functions (experimental)
-estimateGas: false
 #seqLen defines how many transactions are in a test sequence
 seqLen: 100
 #shrinkLimit determines how much effort is spent shrinking failing sequences
 shrinkLimit: 5000
 #coverage controls coverage guided testing
-coverage: false
+coverage: true
 #format can be "text" or "json" for different output (human or machine readable)
-format: "text"
+#default is interactive if running on an interactive tty or text mode if not
+format: null
 #contractAddr is the address of the contract itself
 contractAddr: "0x00a329c0648769a73afac7f9381e08fb43dbea72"
 #deployer is address of the contract deployer (who often is privileged owner, etc.)
@@ -52,8 +51,6 @@ solcLibs: []
 cryticArgs: []
 #quiet produces (much) less verbose output
 quiet: false
-#initialize the blockchain with some data
-initialize: null
 #initialize the blockchain with some predeployed contracts in some addresses
 deployContracts: []
 #initialize the blockchain with some bytecode in some addresses
@@ -81,8 +78,14 @@ filterBlacklist: true
 allowFFI: false
 #directory to save the corpus; by default is disabled
 corpusDir: null
+#directory to save coverage reports; by default is disabled
+coverageDir: null
 # list of file formats to save coverage reports in; default is all possible formats
 coverageFormats: ["txt","html","lcov"]
+# list of glob patterns for files to exclude from coverage reports
+# patterns are matched against relative paths from the common project root
+# examples: ["lib/**/*.sol", "test/mocks/**/*"]
+coverageExcludes: []
 # constants for corpus mutations (for experimentation only)
 mutConsts: [1, 1, 1, 1]
 # maximum value to send to payable functions
@@ -95,13 +98,12 @@ rpcBlock: null
 etherscanApiKey: null
 # number of workers. By default (unset) its value is the clamp of the number cores between 1 and 4
 workers: null
+# show all events from all the transactions, not just the last one
+allEvents: false
 # events server port
 server: null
 # whether to add an additional symbolic execution worker
 symExec: false
-# whether symbolic execution will be concolic (vs full symbolic execution)
-# only relevant if symExec is true
-symExecConcolic: true
 # number of SMT solvers used in symbolic execution
 # only relevant if symExec is true
 symExecNSolvers: 1
@@ -109,11 +111,17 @@ symExecNSolvers: 1
 # only relevant if symExec is true
 symExecTimeout: 30
 # Number of times we may revisit a particular branching point
-# only relevant if symExec is true and symExecConcolic is false
-symExecMaxIters: 10
+# only relevant if symExec is true
+symExecMaxIters: 5
 # Number of times we may revisit a particular branching point before we consult the smt solver to check reachability
-# only relevant if symExec is true and symExecConcolic is false
+# only relevant if symExec is true
 symExecAskSMTIters: 1
-# List of whitelisted functions for using symbolic/concolic exploration
+# List of whitelisted functions for using symbolic exploration
 # only relevant if symExec is true
 symExecTargets: null
+# List the max number of states to explore when using symbolc execution
+# only relevant if symExec is true
+symExecMaxExplore: 10
+# Select the SMT solver when using symbolic execution. Valid values are: "cvc5", "z3" and "bitwuzla"
+# only relevant if symExec is true
+symExecSMTSolver: bitwuzla

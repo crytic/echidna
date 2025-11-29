@@ -11,20 +11,22 @@ import Data.Time (LocalTime)
 import System.Directory (createDirectoryIfMissing, makeRelativeToCurrentDirectory, doesFileExist)
 import System.FilePath ((</>), (<.>))
 
-import Echidna.Campaign (pushCampaignEvent)
 import Echidna.Types.Config
 import Echidna.Types.Campaign
 import Echidna.Types.Test (EchidnaTest(..))
+import Echidna.Types.Worker 
 import Echidna.Types.Tx (Tx)
+import Echidna.Worker (pushCampaignEvent)
 import Echidna.Utility (listDirectory, withCurrentDirectory)
 
 saveTxs :: Env -> FilePath -> [[Tx]] -> IO ()
 saveTxs env dir = mapM_ saveTxSeq where
   saveTxSeq txSeq = do
     createDirectoryIfMissing True dir
-    let file = dir </> (show . abs . hash . show) txSeq <.> "txt"
-    unlessM (doesFileExist file) $ encodeFile file (toJSON txSeq)
-    pushCampaignEvent env (ReproducerSaved file)
+    let file = dir </> (show . abs . hash) txSeq <.> "txt"
+    unlessM (doesFileExist file) $ do
+      encodeFile file (toJSON txSeq)
+      pushCampaignEvent env (ReproducerSaved file)
 
 loadTxs :: FilePath -> IO [(FilePath, [Tx])]
 loadTxs dir = do

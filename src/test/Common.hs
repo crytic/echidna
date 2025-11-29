@@ -10,15 +10,15 @@ module Common
   , solnFor
   , solved
   , passed
+  , verified
   , solvedLen
   , solvedWith
   , solvedWithout
   , solvedUsing
-  , getGas
-  , gasInRange
   , countCorpus
   , overrideQuiet
   , loadSolTests
+  , checkCoverageUsesCorpusDir
   ) where
 
 import Test.Tasty (TestTree)
@@ -39,22 +39,22 @@ import Data.SemVer (Version, version, fromText)
 import Data.Text (Text, pack)
 import System.Process (readProcess)
 
+import EVM.Solidity (Contracts(..), BuildOutput(..), SolcContract(..))
+import EVM.Types hiding (Env, Gas)
+
 import Echidna (mkEnv, prepareContract)
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Campaign (runWorker)
 import Echidna.Solidity (selectMainContract, mkTests, loadSpecified, compileContracts)
 import Echidna.Test (checkETest)
-import Echidna.Types (Gas)
 import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
 import Echidna.Types.Campaign
 import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..))
+import Echidna.Types.Worker (WorkerType(..))
 import Echidna.Types.World (World(..))
-
-import EVM.Solidity (Contracts(..), BuildOutput(..), SolcContract(..))
-import EVM.Types hiding (Env, Gas)
 
 testConfig :: EConfig
 testConfig = defaultConfig & overrideQuiet
@@ -99,7 +99,7 @@ runContract f selectedContract cfg workerType = do
   (_stopReason, finalState) <- flip runReaderT env $
     runWorker workerType (pure ()) vm dict 0 [] cfg.campaignConf.testLimit selectedContract
 
-  -- TODO: consider snapshotting the state so checking function don't need to
+  -- TODO: consider snapshotting the state so checking functions don't need to
   -- be IO
   pure (env, finalState)
 
@@ -154,7 +154,7 @@ loadSolTests cfg buildOutput name = do
       (Contracts contractMap) = buildOutput.contracts
       contracts = Map.elems contractMap
       eventMap = Map.unions $ map (.eventMap) contracts
-      world = World solConf.sender mempty Nothing [] eventMap
+      world = World solConf.sender mempty Nothing [] [] eventMap
   mainContract <- selectMainContract solConf name contracts
   echidnaTests <- mkTests solConf mainContract
   env <- mkEnv cfg buildOutput echidnaTests world Nothing
@@ -219,6 +219,15 @@ passed n (env, _) = do
     Nothing             -> error ("no test was found with name: " ++ show n)
     _                   -> False
 
+verified :: Text -> (Env, WorkerState) -> IO Bool
+verified n (env, _) = do
+  tests <- traverse readIORef env.testRefs
+  pure $ case getResult n tests of
+    Just t | isVerified t -> True
+    Just t | isOpen t     -> True
+    Nothing               -> error ("no test was found with name: " ++ show n)
+    _                     -> False
+
 solvedLen :: Int -> Text -> (Env, WorkerState) -> IO Bool
 solvedLen i t final = (== Just i) . fmap length <$> solnFor t final
 
@@ -237,16 +246,15 @@ solvedWithout :: TxCall -> Text -> (Env, WorkerState) -> IO Bool
 solvedWithout tx t final =
   maybe False (all $ (/= tx) . (.call)) <$> solnFor t final
 
-getGas :: Text -> WorkerState -> Maybe (Gas, [Tx])
-getGas t camp = Map.lookup t camp.gasInfo
-
-gasInRange :: Text -> Gas -> Gas -> (Env, WorkerState) -> IO Bool
-gasInRange t l h (_, workerState) = do
-  pure $ case getGas t workerState of
-    Just (g, _) -> g >= l && g <= h
-    _           -> False
-
 countCorpus :: Int -> (Env, WorkerState) -> IO Bool
 countCorpus n (env, _) = do
   corpus <- readIORef env.corpusRef
   pure $ length corpus == n
+
+-- | Check that coverage falls back to corpus directory when coverageDir is not set.
+checkCoverageUsesCorpusDir :: FilePath -> (Env, WorkerState) -> IO Bool
+checkCoverageUsesCorpusDir expectedCorpusDir (env, _) = do
+  -- verify configuration: corpusDir set, coverageDir not set
+  case (env.cfg.campaignConf.corpusDir, env.cfg.campaignConf.coverageDir) of
+    (Just corpusDir, Nothing) -> pure $ corpusDir == expectedCorpusDir
+    _ -> pure False

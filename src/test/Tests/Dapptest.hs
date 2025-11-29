@@ -4,7 +4,7 @@ import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract', solcV, solved, passed)
 
-import Echidna.Types.Campaign (WorkerType(..))
+import Echidna.Types.Worker (WorkerType(..))
 
 dapptestTests :: TestTree
 dapptestTests = testGroup "Dapptest Integration Testing"
@@ -12,7 +12,6 @@ dapptestTests = testGroup "Dapptest Integration Testing"
      [ 
         ("testShrinking passed", solved "testShrinking"),
         ("testFuzzFixedArray passed", solved "testFuzzFixedArray"),
-        ("testFuzzVariableArray passed", solved "testFuzzVariableArray"),
         ("testFuzzVariableArray passed", solved "testFuzzVariableArray"),
         ("testFuzzBytes1 passed", solved "testFuzzBytes1"),
         ("testFuzzBytes14 passed", solved "testFuzzBytes14"),

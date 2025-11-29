@@ -2,13 +2,12 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    foundry.url = "github:shazow/foundry.nix/47f8ae49275eeff9bf0526d45e3c1f76723bb5d3";
+    foundry = {
+      url = "github:shazow/foundry.nix/stable";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     flake-compat = {
       url = "github:edolstra/flake-compat";
-      flake = false;
-    };
-    nix-bundle-exe = {
-      url = "github:3noch/nix-bundle-exe";
       flake = false;
     };
     solc-pkgs = {
@@ -17,12 +16,12 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, nix-bundle-exe, solc-pkgs, foundry, ... }:
+  outputs = { self, nixpkgs, flake-utils, solc-pkgs, foundry, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [solc-pkgs.overlay];
+          overlays = [solc-pkgs.overlay foundry.overlay];
         };
 
         # prefer musl on Linux, static glibc + threading does not work properly
@@ -55,8 +54,8 @@
           (pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "ethereum";
             repo = "hevm";
-            rev = "d282dff6e0d9ea9f7cf02e17e8ac0b268ef634da";
-            sha256 = "sha256-PQ0vm1K4DWiX6hiITdCqniMSAtxpQHezzIGdWGwmjrc=";
+            rev = "87fe0eec5abb69c0b54c097784dfd8712a36de70";
+            sha256 = "sha256-cgfrP+K5NoXvVPRN6XRnTkdOIJztc/4wrto9nQ/9tnY=";
           }) { secp256k1 = pkgs.secp256k1; })
           ([
             pkgs.haskell.lib.compose.dontCheck
@@ -169,7 +168,9 @@
             packages = [
               (echidna pkgs)
               slither-analyzer
-              foundry.defaultPackage.${system}
+              foundry-bin
+              bitwuzla
+              cvc5
               z3
             ];
           };

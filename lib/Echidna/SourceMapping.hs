@@ -9,7 +9,7 @@ import Data.Map.Strict qualified as Map
 import Data.Map.Strict (Map)
 import Data.Maybe (mapMaybe)
 import Data.Vector qualified as V
-import Echidna.Symbolic (forceWord)
+import Echidna.SymExec.Symbolic (forceWord)
 import EVM.Dapp (DappInfo(..), findSrc)
 import EVM.Expr (maybeLitByteSimp)
 import EVM.Solidity (SolcContract(..))
@@ -82,6 +82,9 @@ findSrcByMetadata contr dapp = find compareMetadata (snd <$> Map.elems dapp.solc
     (InitCode c _) -> Just c
     (RuntimeCode (ConcreteRuntimeCode c)) -> Just c
     (RuntimeCode (SymbolicRuntimeCode c)) -> Just $ BS.pack $ mapMaybe maybeLitByteSimp $ V.toList c
+
+findSrcForReal :: DappInfo -> Contract -> Maybe SolcContract
+findSrcForReal dapp contr = findSrc contr dapp <|> findSrcByMetadata contr dapp
 
 getBytecodeMetadata :: ByteString -> ByteString
 getBytecodeMetadata bs =

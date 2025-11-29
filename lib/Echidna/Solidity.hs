@@ -32,6 +32,7 @@ import System.Info (os)
 import EVM (initialContract, currentContract)
 import EVM.ABI
 import EVM.Effects (runApp)
+import EVM.Format (showTraceTree)
 import EVM.Solidity
 import EVM.Types hiding (Env)
 
@@ -39,8 +40,6 @@ import Echidna.ABI
   ( encodeSig, encodeSigWithName, hashSig, fallback
   , commonTypeSizes, mkValidAbiInt, mkValidAbiUInt )
 import Echidna.Deploy (deployContracts, deployBytecodes)
-import Echidna.Etheno (loadEthenoBatch)
-import Echidna.Events (extractEvents)
 import Echidna.Exec (execTx, execTxWithCov, initialVM)
 import Echidna.SourceAnalysis.Slither
 import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
@@ -98,7 +97,7 @@ compileContracts solConf fp = do
     -- | OS-specific path to the "null" file, which accepts writes without storing them
     nullFilePath :: String
     nullFilePath = if os == "mingw32" then "\\\\.\\NUL" else "/dev/null"
-  -- clean up previous artifacts
+  -- clean up previous artifact files
   removeJsonFiles "crytic-export"
   mconcat . NE.toList <$> mapM compileOne fp
 
@@ -174,17 +173,16 @@ loadSpecified
 loadSpecified env mainContract cs = do
   let solConf = env.cfg.solConf
 
-  -- Set up initial VM, either with chosen contract or Etheno initialization file
+  -- Set up initial VM with chosen contract
   -- need to use snd to add to ABI dict
   initVM <- stToIO $ initialVM solConf.allowFFI
   let vm = initVM & #block % #gaslimit .~ unlimitedGasPerBlock
                   & #block % #maxCodeSize .~ fromIntegral solConf.codeSize
 
-  blank' <- maybe (pure vm) (loadEthenoBatch solConf.allowFFI) solConf.initialize
   let blank = populateAddresses (Set.insert solConf.deployer solConf.sender)
-                                solConf.balanceAddr blank'
+                                solConf.balanceAddr vm
 
-  unless (null mainContract.constructorInputs || isJust solConf.initialize) $
+  unless (null mainContract.constructorInputs) $
     throwM $ ConstructorArgs (show mainContract.constructorInputs)
 
   -- Select libraries
@@ -215,7 +213,7 @@ loadSpecified env mainContract cs = do
 
     vm3 <- deployment
     when (isNothing $ currentContract vm3) $
-      throwM $ DeploymentFailed solConf.contractAddr $ T.unlines $ extractEvents True env.dapp vm3
+      throwM $ DeploymentFailed solConf.contractAddr $ showTraceTree env.dapp vm3
 
     -- Run setUp function
     let
@@ -349,6 +347,7 @@ mkWorld SolConf{sender, testMode} sigMap maybeContract slitherInfo contracts =
   let
     eventMap = Map.unions $ map (.eventMap) contracts
     payableSigs = filterResults maybeContract slitherInfo.payableFunctions
+    assertSigs = filterResults maybeContract (assertFunctionList <$> slitherInfo.asserts)
     as = if isAssertionMode testMode then filterResults maybeContract (assertFunctionList <$> slitherInfo.asserts) else []
     cs = if isDapptestMode testMode then [] else filterResults maybeContract slitherInfo.constantFunctions \\ as
     (highSignatureMap, lowSignatureMap) = prepareHashMaps cs as $
@@ -357,6 +356,7 @@ mkWorld SolConf{sender, testMode} sigMap maybeContract slitherInfo contracts =
            , highSignatureMap
            , lowSignatureMap
            , payableSigs
+           , assertSigs
            , eventMap
            }
 

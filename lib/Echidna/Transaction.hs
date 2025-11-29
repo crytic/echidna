@@ -6,27 +6,30 @@ module Echidna.Transaction where
 import Optics.Core
 import Optics.State.Operators
 
-import Control.Monad (join)
+import Control.Monad (join, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Control.Monad.ST (RealWorld)
+import Data.ByteString qualified as BS
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
 
-import EVM (initialContract, loadContract, resetState)
+import EVM (ceilDiv, initialContract, loadContract, resetState)
 import EVM.ABI (abiValueType)
-import EVM.Types hiding (Env, VMOpts(timestamp, gasprice))
+import EVM.FeeSchedule (FeeSchedule(..))
+import EVM.Transaction (setupTx)
+import EVM.Types hiding (Env, Gas, VMOpts(timestamp, gasprice))
 
 import Echidna.ABI
 import Echidna.Orphans.JSON ()
 import Echidna.SourceMapping (lookupUsingCodehash)
-import Echidna.Symbolic (forceWord, forceAddr)
-import Echidna.Types (fromEVM)
+import Echidna.SymExec.Symbolic (forceWord, forceAddr)
+import Echidna.Types (fromEVM, Gas)
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Random
 import Echidna.Types.Signature
@@ -86,7 +89,7 @@ genTx world deployedContracts = do
       fmap (forceAddr addr,) . snd <$> lookupUsingCodehash env.codehashMap c env.dapp sigMap
 
 genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
-genDelay mv ds = do
+genDelay mv ds =
   join $ oftenUsually fromDict randValue
   where randValue = fromIntegral <$> getRandomR (1 :: Integer, fromIntegral mv)
         fromDict = (`mod` (mv + 1)) <$> rElem' ds
@@ -175,27 +178,61 @@ setupTx tx@Tx{call} = fromEVM $ do
                  , callvalue = Lit tx.value
                  }
     , block = advanceBlock vm.block tx.delay
-    , tx = vm.tx { gasprice = tx.gasprice, origin = LitAddr tx.src }
+    , tx = vm.tx { gasprice = tx.gasprice, origin = LitAddr tx.src, subState = subState vm }
     }
-  case call of
-    SolCreate bc -> do
-      #env % #contracts % at (LitAddr tx.dst) .=
-        Just (initialContract (InitCode bc mempty) & set #balance (Lit tx.value))
-      modify' $ execState $ loadContract (LitAddr tx.dst)
-      #state % #code .= RuntimeCode (ConcreteRuntimeCode bc)
-    SolCall cd -> do
-      incrementBalance
-      modify' $ execState $ loadContract (LitAddr tx.dst)
-      #state % #calldata .= ConcreteBuf (encode cd)
-    SolCalldata cd -> do
-      incrementBalance
-      modify' $ execState $ loadContract (LitAddr tx.dst)
-      #state % #calldata .= ConcreteBuf cd
+  when isCreate $ do
+    #env % #contracts % at (LitAddr tx.dst) .=
+      Just (initialContract (InitCode calldata mempty) & set #balance (Lit tx.value))
+    modify' $ execState $ loadContract (LitAddr tx.dst)
+    #state % #code .= RuntimeCode (ConcreteRuntimeCode calldata)
+  when isCall $ do
+    incrementBalance
+    modify' $ execState $ loadContract (LitAddr tx.dst)
+    #state % #calldata .= ConcreteBuf calldata
+  modify' $ \vm ->
+    let intrinsicGas = txGasCost vm.block.schedule isCreate calldata
+        burned = min intrinsicGas vm.state.gas
+        -- This might not be 100% accurate (it does not revert the balance transfers)
+        -- but Echidna resets the vm on revert so it should not make a difference
+        reversionState = EVM.Transaction.setupTx vm.tx.origin vm.block.coinbase vm.tx.gasprice vm.tx.gaslimit vm.env.contracts
+    in vm & #state % #gas %!~ subtract burned
+          & #burned %!~ (+ burned)
+          & #tx % #txReversion !~ reversionState
   where
     incrementBalance = #env % #contracts % ix (LitAddr tx.dst) % #balance %= (\v -> Lit $ forceWord v + tx.value)
     encode (n, vs) = abiCalldata (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
+    isCall = case call of
+      SolCall _ -> True
+      SolCalldata _ -> True
+      _ -> False
+    isCreate = case call of
+      SolCreate _ -> True
+      _ -> False
+    calldata = case call of
+      SolCreate bc -> bc
+      SolCall cd -> encode cd
+      SolCalldata cd -> cd
+    subState vm = let
+        initialAccessedAddrs = Set.fromList $
+            [LitAddr tx.src, LitAddr tx.dst, vm.block.coinbase]
+          ++ fmap LitAddr [1..10] -- precompile addresses
+        touched = if isCreate then [LitAddr tx.src] else [LitAddr tx.src, LitAddr tx.dst]
+      in SubState mempty touched initialAccessedAddrs mempty mempty mempty
 
 advanceBlock :: Block -> (W256, W256) -> Block
 advanceBlock blk (t,b) =
   blk { timestamp = Lit (forceWord blk.timestamp + t)
       , number = Lit (forceWord blk.number + b) }
+
+-- | Calculate transaction gas cost for Echidna Tx
+-- Adapted from HEVM's txGasCost function
+txGasCost :: FeeSchedule Gas -> Bool -> BS.ByteString -> Gas
+txGasCost fs isCreate calldata = baseCost + zeroCost + nonZeroCost
+  where
+    zeroBytes = BS.count 0 calldata
+    nonZeroBytes = BS.length calldata - zeroBytes
+    baseCost = fs.g_transaction
+      + (if isCreate then fs.g_txcreate + initcodeCost else 0)
+    zeroCost = fs.g_txdatazero * fromIntegral zeroBytes
+    nonZeroCost = fs.g_txdatanonzero * fromIntegral nonZeroBytes
+    initcodeCost = fs.g_initcodeword * fromIntegral (ceilDiv (BS.length calldata) 32)

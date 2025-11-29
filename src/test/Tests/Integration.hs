@@ -2,10 +2,10 @@ module Tests.Integration (integrationTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout, gasInRange)
+import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout)
 import Data.Functor ((<&>))
 import Data.Text (unpack)
-import Echidna.Types.Campaign (WorkerType(..))
+import Echidna.Types.Worker (WorkerType(..))
 import Echidna.Types.Tx (TxCall(..))
 import EVM.ABI (AbiValue(..))
 
@@ -83,17 +83,10 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
   , testContract "basic/darray-mutation.sol"  Nothing
       [ ("echidna_mutated passed",                 solved      "echidna_mutated") ]
-  , testContract "basic/gasuse.sol"       (Just "basic/gasuse.yaml")
-      [ ("echidna_true failed",                    passed     "echidna_true")
-      , ("g gas estimate wrong",                   gasInRange "g" 130000 40000000)
-      , ("f_close1 gas estimate wrong",            gasInRange "f_close1" 400 2000)
-      , ("f_open1 gas estimate wrong",             gasInRange "f_open1"  18000 23000)
-      , ("push_b gas estimate wrong",              gasInRange "push_b"   39000 45000)
-      ]
   , testContract "basic/gaslimit.sol"  Nothing
       [ ("echidna_gaslimit passed",                passed      "echidna_gaslimit") ]
-  ,  testContractV "basic/killed.sol"      (Just (< solcV (0,8,0))) (Just "basic/killed.yaml")
-      [ ("echidna_still_alive failed",             solved      "echidna_still_alive") ]
+  , testContract "basic/gasleft.sol"     (Just "basic/gasleft.yaml")
+      [ ("unexpected gas left",                    passed      "echidna_expected_gasleft") ]
   ,  checkConstructorConditions "basic/codesize.sol"
       "invalid codesize"
   , testContractV "basic/eip-170.sol" (Just (>= solcV (0,5,0))) (Just "basic/eip-170.yaml")
@@ -102,8 +95,6 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("test passed",                    solved     "test") ]
   , testContract' "basic/deploy.sol" (Just "Test") Nothing (Just "basic/deployBytecode.yaml") True FuzzWorker
       [ ("test passed",                    solved     "test") ]
-  , testContract "basic/flags.sol" (Just "basic/etheno-query-error.yaml")
-      [] -- Just check if the etheno config does not crash Echidna
   , testContractV "tstore/tstore.sol" (Just (>= solcV (0,8,25))) Nothing
       [ ("echidna_foo passed", solved "echidna_foo") ]
   ]

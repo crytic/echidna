@@ -14,14 +14,16 @@ import Data.Aeson (FromJSON, ToJSON, parseJSON, toJSON, object, withObject, (.=)
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.Aeson.Types (Parser)
 import Data.ByteString (ByteString)
+import Data.Hashable (Hashable(..))
 import Data.Text (Text)
+import Data.Vector (Vector, toList)
 import Data.Word (Word64)
 
 import EVM.ABI (encodeAbiValue, AbiValue(..), AbiType)
 import EVM.Types
 
 import Echidna.Orphans.JSON ()
-import Echidna.Symbolic (forceBuf)
+import Echidna.SymExec.Symbolic (forceBuf)
 import Echidna.Types.Signature (SolCall)
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
@@ -66,6 +68,16 @@ data Tx = Tx
   , value :: !W256         -- ^ Value
   , delay :: !(W256, W256) -- ^ (Time, # of blocks since last call)
   } deriving (Eq, Ord, Show, Generic)
+
+instance Hashable a => Hashable (Vector a) where
+  hashWithSalt s v = s `hashWithSalt` toList v
+
+deriving instance Hashable Tx
+deriving instance Hashable TxCall
+deriving instance Hashable AbiValue
+deriving instance Hashable AbiType
+deriving anyclass instance Hashable Addr
+deriving anyclass instance Hashable W256
 
 deriving instance NFData Tx
 deriving instance NFData TxCall

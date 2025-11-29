@@ -2,13 +2,13 @@ module Tests.Values (valuesTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, testContract', solved, solvedLen)
+import Common (testContract, testContractV, testContract', solcV, solved, solvedLen)
 
-import Echidna.Types.Campaign (WorkerType(..))
+import Echidna.Types.Worker (WorkerType(..))
 
 valuesTests :: TestTree
 valuesTests = testGroup "Value extraction tests"
-  [ 
+  [
     testContract "values/nearbyMining.sol" Nothing
       [ ("echidna_findNearby passed", solved "echidna_findNearby") ]
     , testContract' "values/smallValues.sol" Nothing Nothing (Just "coverage/test.yaml") False FuzzWorker
@@ -29,7 +29,7 @@ valuesTests = testGroup "Value extraction tests"
         ("testMinInt128 passed",                 solved      "testMinInt128")
       ]
     , testContract' "values/utf8.sol"   Nothing Nothing (Just "values/extreme.yaml") False FuzzWorker
-      [ ("testNonUtf8 passed",                   solved      "testNonUTF8")]
+      [ ("testNonUTF8 passed",                   solved      "testNonUTF8")]
     , testContract' "values/create.sol" (Just "C") Nothing Nothing True FuzzWorker
       [ ("echidna_state failed",                   solved      "echidna_state") ]
     , testContract "values/time.sol"         (Just "values/time.yaml")
@@ -43,5 +43,13 @@ valuesTests = testGroup "Value extraction tests"
     , testContract "values/darray.sol"       Nothing
       [ ("echidna_darray passed",                  solved      "echidna_darray")
       , ("echidna_darray didn't shrink optimally", solvedLen 1 "echidna_darray") ]
-
+    , testContract' "values/contract.sol" (Just "Test") Nothing (Just "values/contract.yaml") False FuzzWorker
+      [ ("verify_first passed",                    solved      "verify_first")
+      , ("verify_later passed",                    solved      "verify_later") ]
+    , testContract' "values/struct.sol"      Nothing Nothing (Just "values/contract.yaml") False FuzzWorker
+      [ ("getItem passed",                   solved      "getItem") ]
+    , testContract' "values/events.sol" Nothing Nothing (Just "values/events.yaml") False FuzzWorker
+      [ ("check passed",                           solved      "check") ]
+    , testContractV "values/callback.sol" (Just (>= solcV (0,8,0))) (Just "values/callback.yaml")
+      [ ("echidna_callback_executed passed",                           solved      "echidna_callback_executed") ] 
   ]

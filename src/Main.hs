@@ -2,7 +2,7 @@
 
 module Main where
 
-import Control.Monad (unless, forM_, when)
+import Control.Monad (unless, forM_)
 import Control.Monad.Reader (runReaderT, liftIO)
 import Control.Monad.Random (getRandomR)
 import Data.Aeson.Key qualified as Aeson.Key
@@ -12,10 +12,11 @@ import Data.Hashable (hash)
 import Data.IORef (readIORef)
 import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Lazy qualified as TL
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Version (showVersion)
 import Data.Word (Word8, Word16, Word64)
@@ -23,7 +24,6 @@ import Main.Utf8 (withUtf8)
 import Options.Applicative
 import Paths_echidna (version)
 import System.Directory (createDirectoryIfMissing)
-import System.Environment (lookupEnv)
 import System.Exit (exitWith, exitSuccess, ExitCode(..))
 import System.FilePath ((</>), (<.>))
 import System.IO (hPutStrLn, stderr)
@@ -38,15 +38,15 @@ import Echidna.Campaign (isSuccessful)
 import Echidna.Config
 import Echidna.Onchain qualified as Onchain
 import Echidna.Output.Corpus
+import Echidna.Output.Foundry
 import Echidna.Output.Source
 import Echidna.Solidity (compileContracts)
-import Echidna.Test (reproduceTest, validateTestMode)
+import Echidna.Test (validateTestMode)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Solidity
-import Echidna.Types.Test (TestMode, EchidnaTest(..))
+import Echidna.Types.Test (TestMode, EchidnaTest(..), TestType(..), TestState(..))
 import Echidna.UI
-import Echidna.UI.Report (ppFailWithTraces, ppTestName)
 import Echidna.Utility (measureIO)
 
 main :: IO ()
@@ -84,37 +84,43 @@ main = withUtf8 $ withCP65001 $ do
       measureIO cfg.solConf.quiet "Saving test reproducers" $
         saveTxs env (dir </> "reproducers") (filter (not . null) $ (.reproducer) <$> tests)
 
-      saveTracesEnabled <- lookupEnv "ECHIDNA_SAVE_TRACES"
-      when (isJust saveTracesEnabled) $ do
-        measureIO cfg.solConf.quiet "Saving test reproducers-traces" $ do
-          flip runReaderT env $ do
-            forM_ tests $ \test ->
-              unless (null test.reproducer) $ do
-                (results, finalVM) <- reproduceTest vm test
-                let subdir = dir </> "reproducers-traces"
-                liftIO $ createDirectoryIfMissing True subdir
-                let file = subdir </> (show . abs . hash . show) test.reproducer <.> "txt"
-                txsPrinted <- ppFailWithTraces Nothing finalVM results
-                liftIO $ writeFile file (ppTestName test <> ": " <> txsPrinted)
-
       measureIO cfg.solConf.quiet "Saving corpus" $ do
         corpus <- readIORef env.corpusRef
         saveTxs env (dir </> "coverage") (snd <$> Set.toList corpus)
 
-      -- TODO: We use the corpus dir to save coverage reports which is confusing.
-      -- Add config option to pass dir for saving coverage report and decouple it
-      -- from corpusDir.
-      unless (null cfg.campaignConf.coverageFormats) $ measureIO cfg.solConf.quiet "Saving coverage" $ do
-        -- We need runId to have a unique directory to save files under so they
-        -- don't collide with the next runs. We use the current time for this
-        -- as it orders the runs chronologically.
-        runId <- fromIntegral . systemSeconds <$> getSystemTime
+      let isLargeOrSolved Solved = True
+          isLargeOrSolved (Large _) = True
+          isLargeOrSolved _ = False
+      measureIO cfg.solConf.quiet "Saving foundry reproducers" $ do
+        let foundryDir = dir </> "foundry"
+        liftIO $ createDirectoryIfMissing True foundryDir
+        forM_ tests $ \test ->
+          case (test.testType, test.state) of
+            (AssertionTest{}, state) | isLargeOrSolved state ->
+              do
+              let
+                reproducerHash = (show . abs . hash) test.reproducer
+                fileName = foundryDir </> "Test." ++ reproducerHash <.> "sol"
+                content = foundryTest cliSelectedContract test
+              liftIO $ writeFile fileName (TL.unpack content)
+            _ -> pure ()
 
-        Onchain.saveCoverageReport env runId
 
-        -- save source coverage reports
-        let contracts = Map.elems env.dapp.solcByName
-        saveCoverages env runId dir buildOutput.sources contracts
+  -- save coverage reports
+  let coverageDir = cfg.campaignConf.coverageDir <|> cfg.campaignConf.corpusDir
+  case coverageDir of
+    Nothing -> pure ()
+    Just dir -> unless (null cfg.campaignConf.coverageFormats) $ measureIO cfg.solConf.quiet "Saving coverage" $ do
+      -- We need runId to have a unique directory to save files under so they
+      -- don't collide with the next runs. We use the current time for this
+      -- as it orders the runs chronologically.
+      runId <- fromIntegral . systemSeconds <$> getSystemTime
+
+      Onchain.saveCoverageReport env runId
+
+      -- save source coverage reports
+      let contracts = Map.elems env.dapp.solcByName
+      saveCoverages env runId dir buildOutput.sources contracts
 
   if isSuccessful tests then exitSuccess else exitWith (ExitFailure 1)
 
@@ -126,6 +132,7 @@ data Options = Options
   , cliConfigFilepath   :: Maybe FilePath
   , cliOutputFormat     :: Maybe OutputFormat
   , cliCorpusDir        :: Maybe FilePath
+  , cliCoverageDir      :: Maybe FilePath
   , cliTestMode         :: Maybe TestMode
   , cliAllContracts     :: Bool
   , cliTimeout          :: Maybe Int
@@ -142,7 +149,7 @@ data Options = Options
   , cliCryticArgs       :: Maybe String
   , cliSolcArgs         :: Maybe String
   , cliSymExec          :: Maybe Bool
-  , cliSymExecTargets   :: Maybe Text
+  , cliSymExecTargets   :: [Text]
   , cliSymExecTimeout   :: Maybe Int
   , cliSymExecNSolvers  :: Maybe Int
   }
@@ -179,7 +186,10 @@ options = Options . NE.fromList
     <> help "Output format. Either 'json', 'text', 'none'. All these disable interactive UI")
   <*> optional (option str $ long "corpus-dir"
     <> metavar "PATH"
-    <> help "Directory to save and load corpus and coverage data.")
+    <> help "Directory to save and load corpus data.")
+  <*> optional (option str $ long "coverage-dir"
+    <> metavar "PATH"
+    <> help "Directory to save coverage reports. Defaults to corpus-dir if not specified.")
   <*> optional (option str $ long "test-mode"
     <> help "Test mode to use. Either 'property', 'assertion', 'dapptest', 'optimization', 'overflow' or 'exploration'" )
   <*> switch (long "all-contracts"
@@ -225,9 +235,9 @@ options = Options . NE.fromList
   <*> optional (option bool $ long "sym-exec"
     <> metavar "BOOL"
     <> help "Whether to enable the experimental symbolic execution feature.")
-  <*> optional (option str $ long "sym-exec-target"
+  <*> many (option str $ long "sym-exec-target"
     <> metavar "SELECTOR"
-    <> help "Target for the symbolic execution run (assuming sym-exec is enabled). Default is all functions")
+    <> help "Target for the symbolic execution run (assuming sym-exec is enabled). Can be passed multiple times. Default is all functions")
   <*> optional (option auto $ long "sym-exec-timeout"
     <> metavar "INTEGER"
     <> help ("Timeout for each symbolic execution run, in seconds (assuming sym-exec is enabled). Default is " ++ show defaultSymExecTimeout))
@@ -269,6 +279,7 @@ overrideConfig config Options{..} = do
 
     overrideCampaignConf campaignConf = campaignConf
       { corpusDir = cliCorpusDir <|> campaignConf.corpusDir
+      , coverageDir = cliCoverageDir <|> campaignConf.coverageDir
       , testLimit = fromMaybe campaignConf.testLimit cliTestLimit
       , shrinkLimit = fromMaybe campaignConf.shrinkLimit cliShrinkLimit
       , seqLen = fromMaybe campaignConf.seqLen cliSeqLen
@@ -276,7 +287,7 @@ overrideConfig config Options{..} = do
       , workers = cliWorkers <|> campaignConf.workers
       , serverPort = cliServerPort <|> campaignConf.serverPort
       , symExec = fromMaybe campaignConf.symExec cliSymExec
-      , symExecTargets = (\ t -> Just [t]) =<< cliSymExecTargets
+      , symExecTargets = if null cliSymExecTargets then campaignConf.symExecTargets else cliSymExecTargets
       , symExecTimeout = fromMaybe campaignConf.symExecTimeout cliSymExecTimeout
       , symExecNSolvers = fromMaybe campaignConf.symExecNSolvers cliSymExecNSolvers
       }

@@ -35,9 +35,9 @@ import EVM.Types hiding (Env, Gas)
 import Echidna.Events (emptyEvents)
 import Echidna.Onchain (safeFetchContractFrom, safeFetchSlotFrom)
 import Echidna.SourceMapping (lookupUsingCodehashOrInsert)
-import Echidna.Symbolic (forceBuf)
+import Echidna.SymExec.Symbolic (forceBuf)
 import Echidna.Transaction
-import Echidna.Types (ExecException(..), Gas, fromEVM, emptyAccount)
+import Echidna.Types (ExecException(..), fromEVM, emptyAccount)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Solidity (SolConf(..))
@@ -84,24 +84,23 @@ execTxWith
   :: (MonadIO m, MonadState (VM Concrete RealWorld) m, MonadReader Env m, MonadThrow m)
   => m (VMResult Concrete RealWorld)
   -> Tx
-  -> m (VMResult Concrete RealWorld, Gas)
+  -> m (VMResult Concrete RealWorld)
 execTxWith executeTx tx = do
   vm <- get
   if hasSelfdestructed vm tx.dst then
-    pure (VMFailure (Revert (ConcreteBuf "")), 0)
+    pure $ VMFailure (Revert (ConcreteBuf ""))
   else do
-    #traces .= emptyEvents
+    config <- asks (.cfg)
+    when (not config.allEvents) $ #traces .= emptyEvents
     vmBeforeTx <- get
     setupTx tx
     case tx.call of
-      NoCall -> pure (VMSuccess (ConcreteBuf ""), 0)
+      NoCall -> pure $ VMSuccess (ConcreteBuf "")
       _ -> do
-        gasLeftBeforeTx <- gets (.state.gas)
         vmResult <- runFully
-        gasLeftAfterTx <- gets (.state.gas)
         handleErrorsAndConstruction vmResult vmBeforeTx
         fromEVM clearTStorages
-        pure (vmResult, gasLeftBeforeTx - gasLeftAfterTx)
+        pure vmResult
   where
   runFully = do
     config <- asks (.cfg)
@@ -240,7 +239,7 @@ execTx
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
   => VM Concrete RealWorld
   -> Tx
-  -> m ((VMResult Concrete RealWorld, Gas), VM Concrete RealWorld)
+  -> m (VMResult Concrete RealWorld, VM Concrete RealWorld)
 execTx vm tx = runStateT (execTxWith (fromEVM (exec defaultConfig)) tx) vm
 
 -- | A type alias for the context we carry while executing instructions
@@ -250,7 +249,7 @@ type CoverageContext = (Bool, Maybe (VMut.IOVector CoverageInfo, Int))
 execTxWithCov
   :: (MonadIO m, MonadState (VM Concrete RealWorld) m, MonadReader Env m, MonadThrow m)
   => Tx
-  -> m ((VMResult Concrete RealWorld, Gas), Bool)
+  -> m (VMResult Concrete RealWorld, Bool)
 execTxWithCov tx = do
   env <- ask
 
@@ -263,7 +262,7 @@ execTxWithCov tx = do
   -- Update the last valid location with the transaction result
   grew' <- liftIO $ case lastLoc of
     Just (vec, pc) -> do
-      let txResultBit = fromEnum $ getResult $ fst r
+      let txResultBit = fromEnum $ getResult r
       VMut.read vec pc >>= \case
         (opIx, depths, txResults) | not (txResults `testBit` txResultBit) -> do
           VMut.write vec pc (opIx, depths, txResults `setBit` txResultBit)

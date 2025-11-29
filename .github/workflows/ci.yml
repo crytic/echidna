@@ -10,7 +10,7 @@ on:
 
 env:
   # Tag for cache invalidation
-  CACHE_VERSION: v9
+  CACHE_VERSION: v10
 
 jobs:
   build:
@@ -23,7 +23,7 @@ jobs:
           - os: ubuntu-latest
             shell: bash
             container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.8.4\", \"options\": \"--user 1001\"}"
-          - os: macos-13 # x86_64 macOS
+          - os: macos-15-intel # x86_64 macOS
             shell: bash
           - os: windows-latest
             shell: msys2 {0}
@@ -128,7 +128,7 @@ jobs:
           MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Cache Local
         uses: actions/cache@v4
@@ -188,7 +188,7 @@ jobs:
         run: GZIP=-9 tar -czf echidna.tar.gz -C $APPDATA/local/bin/ echidna.exe
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: echidna-${{ runner.os }}
           path: echidna.tar.gz
@@ -202,7 +202,7 @@ jobs:
 
       - name: Upload testsuite
         if: runner.os != 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: echidna-testsuite-${{ runner.os }}
           path: echidna-testsuite*
@@ -219,25 +219,22 @@ jobs:
         os:
           - ubuntu-latest
           - windows-latest
-        solc:
-          - "0.4.25"
-          - "0.5.7"
-          - "0.6.12"
-          - "0.7.5"
+        solc: ${{
+            ((github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+             (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-all-solc'))) &&
+            fromJSON('["0.4.25", "0.5.7", "0.6.12", "0.7.5", "0.8.10", "0.8.25"]') ||
+            fromJSON('["0.8.10", "0.8.25"]')
+          }}
         include:
-          - solc: "0.6.12"
-            experimental: true
-          - solc: "0.7.5"
-            experimental: true
           - os: windows-latest
             experimental: true
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.8'
 
@@ -247,17 +244,20 @@ jobs:
           .github/scripts/install-solc.sh
           .github/scripts/install-crytic-compile.sh
           .github/scripts/install-z3.sh
+          .github/scripts/install-bitwuzla.sh
         env:
           HOST_OS: ${{ runner.os }}
           SOLC_VER: ${{ matrix.solc }}
 
       - name: Download testsuite
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
          name: echidna-testsuite-${{ runner.os }}
 
       - name: Test
         run: |
+          export PATH="$PATH:$HOME/.local/bin"
           solc-select use ${{ matrix.solc }}
           chmod +x echidna-testsuite*
           ./echidna-testsuite*
+        shell: bash

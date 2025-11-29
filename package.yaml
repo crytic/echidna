@@ -3,7 +3,7 @@ name: echidna
 author: Trail of Bits <echidna-dev@trailofbits.com>
 maintainer: Trail of Bits <echidna-dev@trailofbits.com>
 
-version: 2.2.6
+version: 2.2.7
 
 ghc-options:
   - -O2
@@ -42,7 +42,7 @@ library:
   source-dirs: lib/
   dependencies:
     - ansi-terminal
-    - async
+    - array
     - base16-bytestring
     - binary
     - brick
@@ -53,11 +53,13 @@ library:
     - exceptions
     - extra
     - filepath
+    - Glob
     - hashable
     - html-conduit
     - html-entities
     - http-conduit
     - ListLike
+    - mustache
     - optics
     - optics-core
     - process
@@ -69,12 +71,14 @@ library:
     - strip-ansi-escape
     - time
     - unliftio
+    - unliftio-core
     - utf8-string
     - vector
     - vty
     - vty-crossplatform
     - wai-extra
     - warp
+    - wreq
     - word-wrap
     - xml-conduit
     - yaml
@@ -93,6 +97,7 @@ executables:
       - with-utf8
     ghc-options:
       - -threaded
+      - -rtsopts
       - '"-with-rtsopts=-A64m -N"'
     when:
       - condition: (os(linux) || os(windows)) && flag(static)

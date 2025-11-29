@@ -1,12 +1,12 @@
-resolver: lts-23.21
-# matching https://github.com/NixOS/nixpkgs/blob/322d8a3c6940039f7cff179a8b09c5d7ca06359d/pkgs/development/haskell-modules/configuration-hackage2nix/stackage.yaml#L1
+resolver: lts-23.24
+# matching https://github.com/NixOS/nixpkgs/blob/97eb7ee0da337d385ab015a23e15022c865be75c/pkgs/development/haskell-modules/configuration-hackage2nix/stackage.yaml#L1
 
 packages:
 - '.'
 
 extra-deps:
-- git: https://github.com/ethereum/hevm.git
-  commit: d282dff6e0d9ea9f7cf02e17e8ac0b268ef634da
+- git: https://github.com/argotorg/hevm.git
+  commit: 87fe0eec5abb69c0b54c097784dfd8712a36de70
 
 - smt2-parser-0.1.0.1@sha256:1e1a4565915ed851c13d1e6b8bb5185cf5d454da3b43170825d53e221f753d77,1421
 - spawn-0.3@sha256:b91e01d8f2b076841410ae284b32046f91471943dc799c1af77d666c72101f02,1162

@@ -1,0 +1,7 @@
+testMode: assertion
+symExec: true
+symExecSMTSolver: z3
+workers: 0
+seqLen: 1
+
+disableSlither: true # TODO: re-enable when slither fixes https://github.com/crytic/slither/issues/2770

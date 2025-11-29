@@ -15,8 +15,6 @@ More seriously, Echidna is a Haskell program designed for fuzzing/property-based
 * Interactive terminal UI, text-only or JSON output
 * Automatic test case minimization for quick triage
 * Seamless integration into the development workflow
-* Maximum gas usage reporting of the fuzzing campaign
-* Support for a complex contract initialization with [Etheno](https://github.com/crytic/etheno) and Truffle
 
 .. and [a beautiful high-resolution handcrafted logo](https://raw.githubusercontent.com/crytic/echidna/master/echidna.png).
 
@@ -85,7 +83,7 @@ Our tool signals each execution trace in the corpus with the following "line mar
 
 Echidna can test contracts compiled with different smart contract build systems, including [Foundry](https://book.getfoundry.sh/), [Hardhat](https://hardhat.org/), and [Truffle](https://archive.trufflesuite.com/), using [crytic-compile](https://github.com/crytic/crytic-compile). To invoke Echidna with the current compilation framework, use `echidna .`.
 
-On top of that, Echidna supports two modes of testing complex contracts. Firstly, one can [describe an initialization procedure with Truffle and Etheno](https://github.com/crytic/building-secure-contracts/blob/master/program-analysis/echidna/advanced/end-to-end-testing.md) and use that as the base state for Echidna. Secondly, Echidna can call into any contract with a known ABI by passing in the corresponding Solidity source in the CLI. Use `allContracts: true` in your config to turn this on.
+On top of that, Echidna supports two modes of testing complex contracts. Firstly, one can [take advantage of existing network state](https://secure-contracts.com/program-analysis/echidna/advanced/state-network-forking.html) and use that as the base state for Echidna. Secondly, Echidna can call into any contract with a known ABI by passing in the corresponding Solidity source in the CLI. Use `allContracts: true` in your config to turn this on.
 
 ### Crash course on Echidna
 
@@ -124,8 +122,7 @@ Campaign = {
   "error"        : string?,
   "tests"        : [Test],
   "seed"         : number,
-  "coverage"     : Coverage,
-  "gas_info"     : [GasInfo]
+  "coverage"     : Coverage
 }
 Test = {
   "contract"     : string,
@@ -144,9 +141,7 @@ Transaction = {
 }
 ```
 
-`Coverage` is a dict describing certain coverage-increasing calls.
-Each `GasInfo` entry is a tuple that describes how maximal
-gas usage was achieved, and is also not too important. These interfaces are
+`Coverage` is a dict describing certain coverage-increasing calls. These interfaces are
 subject to change to be slightly more user-friendly at a later date. `testType`
 will either be `property` or `assertion`, and `status` always takes on either
 `fuzzing`, `shrinking`, `solved`, `passed`, or `error`.
@@ -178,7 +173,7 @@ leaks memory, you can use `force` from `Control.DeepSeq` to make sure it gets ev
 ## Limitations and known issues
 
 EVM emulation and testing are hard. Echidna has some limitations in the latest release. Some of
-these are inherited from [hevm](https://github.com/ethereum/hevm) while some are results from
+these are inherited from [hevm](https://github.com/argotorg/hevm) while some are results from
 design/performance decisions or simply bugs in our code. We list them here including their
 corresponding issue and the status ("wont fix", "on hold", "in review", "fixed"). Issues that are
 "fixed" are expected to be included in the next Echidna release.
@@ -208,9 +203,10 @@ You can get further information in the [`echidna` Homebrew Formula](https://form
 If you prefer to use a pre-built Docker container, check out our [docker
 package](https://github.com/orgs/crytic/packages?repo_name=echidna), which is
 auto-built via GitHub Actions. The `echidna` container is based on
-`ubuntu:focal` and it is meant to be a small yet flexible enough image to use
+`ubuntu:noble` and it is meant to be a small yet flexible enough image to use
 Echidna on. It provides a pre-built version of `echidna`, as well as
-`slither`, `crytic-compile`, `solc-select` and `nvm` under 200 MB.
+`slither`, `crytic-compile`, `solc-select`, `nvm`, and `foundry` (including
+`forge`, `cast`, `anvil`, and `chisel`) under 200 MB.
 
 Note that the container images currently only build on x86 systems. Running them
 on ARM devices, such as Mac M1 systems, is not recommended due to the performance
@@ -231,7 +227,7 @@ something like the following command. It will map the current directory as
 `echidna`:
 
 ```sh
-$ docker run --rm -it -v `pwd`:/src ghcr.io/crytic/echidna/echidna
+$ docker run --rm -it -v "$(pwd)":/src ghcr.io/crytic/echidna/echidna
 ```
 
 Otherwise, if you want to locally build the latest version of Echidna, we
@@ -246,7 +242,26 @@ Then, you can run the `echidna` image locally. For example, to install solc
 0.5.7 and check `tests/solidity/basic/flags.sol`, you can run:
 
 ```sh
-$ docker run -it -v `pwd`:/src echidna bash -c "solc-select install 0.5.7 && solc-select use 0.5.7 && echidna /src/tests/solidity/basic/flags.sol"
+$ docker run -it -v "$(pwd)":/src echidna bash -c "solc-select install 0.5.7 && solc-select use 0.5.7 && echidna /src/tests/solidity/basic/flags.sol"
+```
+
+The Docker image also includes Foundry tools for comprehensive smart contract development and testing. You can use `forge`, `cast`, `anvil`, and `chisel` directly in the container:
+
+```sh
+# Run an interactive shell with Foundry tools available
+$ docker run -it -v "$(pwd)":/src echidna bash
+
+# Inside the container, you can use Foundry commands:
+$ forge --version
+$ cast --version
+$ anvil --version
+$ chisel --version
+
+# Example: Initialize a new Foundry project
+$ forge init my-project
+$ cd my-project
+$ forge build
+$ forge test
 ```
 
 ### Building using Stack

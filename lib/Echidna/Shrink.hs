@@ -30,7 +30,7 @@ shrinkTest
 shrinkTest vm test = do
   env <- ask
   case test.state of
-    -- If we run out of tries to shrink, return the sequence as we have them
+    -- If we run out of tries to shrink, return the sequence as we have it
     Large i | i >= env.cfg.campaignConf.shrinkLimit && not (isOptimizationTest test) ->
       pure $ Just test { state = Solved }
     Large i ->
@@ -103,7 +103,7 @@ shrinkSeq vm f v txs = do
   -- check if the sequence still triggers a failed transaction
   (value, vm') <- check txs'' vm
   -- if the test passed it means we didn't shrink successfully (returns Nothing)
-  -- otherwise, return a reduced sequence of transaction
+  -- otherwise, return a reduced sequence of transactions
   pure $ case (value,v) of
     (BoolValue False, _)              -> Just (txs'', value, vm')
     (IntValue x, IntValue y) | x >= y -> Just (txs'', value, vm')
@@ -128,6 +128,6 @@ shrinkSender x = do
   let orderedSenders = List.sort $ Set.toList senderSet
   case List.elemIndex x.src orderedSenders of
     Just i | i > 0 -> do
-      sender <- uniform (take i orderedSenders)
+      sender <- uniform (take (i+1) orderedSenders)
       pure x{src = sender}
     _ -> pure x

@@ -51,7 +51,7 @@ instance Show SolException where
     NoCryticCompile        -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
     InvalidMethodFilters f -> "Applying the filter " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions using `filterFunctions` or fuzzing the correct contract?"
     SetUpCallFailed        -> "Calling the setUp() function failed (revert, out-of-gas, sending ether to a non-payable constructor, etc.)"
-    DeploymentFailed a t   -> "Deploying the contract " ++ show a ++ " failed (revert, out-of-gas, sending ether to an non-payable constructor, etc.):\n" ++ unpack t
+    DeploymentFailed a t   -> "Deploying the contract " ++ show a ++ " failed (revert, out-of-gas, sending ether to a non-payable constructor, etc.):\n" ++ unpack t
     OutdatedSolcVersion v  -> "Solc version " ++ toString v ++ " detected. Echidna doesn't support versions of solc before " ++ toString minSupportedSolcVersion ++ ". Please use a newer version."
 
 
@@ -71,7 +71,6 @@ data SolConf = SolConf
   , solcArgs        :: String           -- ^ Args to pass to @solc@
   , solcLibs        :: [String]         -- ^ List of libraries to load, in order.
   , quiet           :: Bool             -- ^ Suppress @solc@ output, errors, and warnings
-  , initialize      :: Maybe FilePath   -- ^ Initialize world with Etheno txns
   , deployContracts :: [(Addr, String)] -- ^ List of contracts to deploy in specific addresses
   , deployBytecodes :: [(Addr, Text)]   -- ^ List of contracts to deploy in specific addresses
   , allContracts    :: Bool             -- ^ Whether or not to fuzz all contracts
