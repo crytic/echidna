@@ -249,6 +249,9 @@ jobs:
           HOST_OS: ${{ runner.os }}
           SOLC_VER: ${{ matrix.solc }}
 
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
       - name: Download testsuite
         uses: actions/download-artifact@v6
         with:
@@ -256,7 +259,7 @@ jobs:
 
       - name: Test
         run: |
-          export PATH="$PATH:$HOME/.local/bin"
+          export PATH="$PATH:$HOME/.local/bin:$HOME/.foundry/bin"
           solc-select use ${{ matrix.solc }}
           chmod +x echidna-testsuite*
           ./echidna-testsuite*
