@@ -4,6 +4,8 @@
 
 module Echidna.Exec where
 
+import Control.Concurrent (writeChan)
+import Control.Concurrent.MVar (readMVar)
 import Control.Monad (when, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Reader (MonadReader, ask, asks)
@@ -14,6 +16,7 @@ import Data.ByteString qualified as BS
 import Data.IORef (readIORef, newIORef, writeIORef, modifyIORef')
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, fromJust)
+import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Data.Vector.Unboxed.Mutable qualified as VMut
@@ -41,6 +44,7 @@ import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..)
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (TxCall(..), Tx(call, dst), TxResult(..), initialTimestamp, initialBlockNumber, getResult)
+import Echidna.Types.Worker (CampaignEvent(..))
 import Echidna.Utility (getTimestamp, timePrefix)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
@@ -114,46 +118,72 @@ execTxWith executeTx tx = do
       -- A previously unknown contract is required
       Just q@(PleaseFetchContract addr _ continuation) -> do
         --logMsg $ "INFO: Performing RPC: " <> show q
+        env <- ask
         case config.rpcUrl of
           Just rpcUrl -> do
             session <- asks (.fetchSession)
+            -- Check if contract is already in cache before fetching
+            cacheBefore <- liftIO $ readMVar session.sharedCache
+            let alreadyCached = Map.member addr cacheBefore.contractCache
+
             ret <- liftIO $ safeFetchContractFrom session rpcBlock rpcUrl addr
             case ret of
               -- TODO: fix hevm to not return an empty contract in case of an error
               Just contract | contract.code /= RuntimeCode (ConcreteRuntimeCode "") -> do
                 fromEVM (continuation contract)
+                -- Only emit event if this was a real fetch (not from cache)
+                when (not alreadyCached) $ do
+                  now <- liftIO getTimestamp
+                  liftIO $ writeChan env.eventQueue (now, FetchCacheUpdated)
               _ -> do
                 -- TODO: better error reporting in HEVM, when intermittent
                 -- network error then retry
                 logMsg $ "ERROR: Failed to fetch contract: " <> show q
                 -- TODO: How should we fail here? It could be a network error,
                 -- RPC server returning junk etc.
+                -- Record the failure
+                liftIO $ modifyIORef' env.failedContractFetches (Set.insert addr)
                 fromEVM (continuation emptyAccount)
           Nothing -> do
             --logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
             -- TODO: How should we fail here? RPC is not configured but VM
             -- wants to fetch
+            -- Record the failure
+            liftIO $ modifyIORef' env.failedContractFetches (Set.insert addr)
             fromEVM (continuation emptyAccount)
         runFully -- resume execution
 
       -- A previously unknown slot is required
       Just q@(PleaseFetchSlot addr slot continuation) -> do
         --logMsg $ "INFO: Performing RPC: " <> show q
+        env <- ask
         case config.rpcUrl of
           Just rpcUrl -> do
             session <- asks (.fetchSession)
+            -- Check if slot is already in cache before fetching
+            cacheBefore <- liftIO $ readMVar session.sharedCache
+            let alreadyCached = Map.member (addr, slot) cacheBefore.slotCache
+
             ret <- liftIO $ safeFetchSlotFrom session rpcBlock rpcUrl addr slot
             case ret of
               Just value -> do
                 fromEVM (continuation value)
+                -- Only emit event if this was a real fetch (not from cache)
+                when (not alreadyCached) $ do
+                  now <- liftIO getTimestamp
+                  liftIO $ writeChan env.eventQueue (now, FetchCacheUpdated)
               Nothing -> do
                 -- TODO: How should we fail here? It could be a network error,
                 -- RPC server returning junk etc.
                 logMsg $ "ERROR: Failed to fetch slot: " <> show q
+                -- Record the failure
+                liftIO $ modifyIORef' env.failedSlotFetches (Set.insert (addr, slot))
                 fromEVM (continuation 0)
           Nothing -> do
             --logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
             -- Use the zero slot
+            -- Record the failure
+            liftIO $ modifyIORef' env.failedSlotFetches (Set.insert (addr, slot))
             fromEVM (continuation 0)
         runFully -- resume execution
 

@@ -6,7 +6,6 @@ import Brick
 import Brick.BChan
 import Brick.Widgets.Dialog qualified as B
 import Control.Concurrent (killThread, threadDelay)
-import Control.Concurrent.MVar (readMVar)
 import Control.Exception (AsyncException)
 import Control.Monad
 import Control.Monad.Catch
@@ -15,8 +14,10 @@ import Control.Monad.State.Strict hiding (state)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Maybe (isJust, mapMaybe)
 import Data.Sequence ((|>))
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Time
 import Graphics.Vty qualified as Vty
@@ -29,6 +30,7 @@ import UnliftIO
   ( MonadUnliftIO, IORef, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
+import EVM.Fetch qualified
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
@@ -51,8 +53,6 @@ import Echidna.Worker (getNWorkers, workerIDToType)
 
 data UIEvent =
   CampaignUpdated LocalTime [EchidnaTest] [WorkerState]
-  | FetchCacheUpdated (Map Addr (Maybe Contract))
-                      (Map Addr (Map W256 (Maybe W256)))
   | EventReceived (LocalTime, CampaignEvent)
 
 -- | Gas tracking state for calculating gas consumption rate
@@ -60,6 +60,42 @@ data GasTracker = GasTracker
   { lastUpdateTime :: LocalTime
   , totalGasConsumed :: Int
   }
+
+-- | Merge hevm's successful fetch cache with Echidna's failure tracking
+-- to produce the full cache state for the UI
+mergeFetchCaches
+  :: Env
+  -> IO (Map Addr (Maybe Contract), Map Addr (Map W256 (Maybe W256)))
+mergeFetchCaches env = do
+  -- Read hevm's cache for successes
+  sessionCache <- readMVar env.fetchSession.sharedCache
+
+  -- Convert contract cache: Map Addr RPCContract -> Map Addr (Maybe Contract)
+  let successfulContracts = fmap (Just . EVM.Fetch.makeContractFromRPC) sessionCache.contractCache
+
+  -- Read Echidna's failure tracking
+  failedContracts <- readIORef env.failedContractFetches
+  failedSlots <- readIORef env.failedSlotFetches
+
+  -- Add failures as Nothing entries
+  let allContracts = successfulContracts <> Map.fromSet (const Nothing) failedContracts
+
+  -- Convert slot cache: Map (Addr, W256) W256 -> Map Addr (Map W256 (Maybe W256))
+  -- First, group successful slots by address
+  let successfulSlotsByAddr = Map.foldrWithKey
+        (\(addr, slot) value acc ->
+          Map.insertWith Map.union addr (Map.singleton slot (Just value)) acc)
+        Map.empty
+        sessionCache.slotCache
+
+  -- Add failed slots
+  let allSlots = Set.foldr
+        (\(addr, slot) acc ->
+          Map.insertWith Map.union addr (Map.singleton slot Nothing) acc)
+        successfulSlotsByAddr
+        failedSlots
+
+  pure (allContracts, allSlots)
 
 -- | Set up and run an Echidna 'Campaign' and display interactive UI or
 -- print non-interactive output in desired format at the end
@@ -111,12 +147,6 @@ ui vm dict initialCorpus cliSelectedContract = do
         tests <- traverse readIORef env.testRefs
         states <- workerStates workers
         writeBChan uiChannel (CampaignUpdated now tests states)
-
-        -- TODO: remove and use events for this
-        -- For now, return empty cache data since accessing hevm's internal cache is complex
-        let c = mempty :: Map Addr (Maybe Contract)
-        let s = mempty :: Map Addr (Map W256 (Maybe W256))
-        writeBChan uiChannel (FetchCacheUpdated c s)
 
       -- UI initialization
       let buildVty = do
@@ -213,7 +243,7 @@ ui vm dict initialCorpus cliSelectedContract = do
       when (isJust conf.campaignConf.serverPort) $ do
         -- wait until we send all SSE events
         liftIO $ putStrLn "Waiting until all SSE are received..."
-        liftIO $ Control.Concurrent.MVar.readMVar serverStopVar
+        liftIO $ readMVar serverStopVar
 
       states <- liftIO $ workerStates workers
 
@@ -308,10 +338,6 @@ monitor = do
         newWidget <- liftIO $ runReaderT (campaignStatus updatedState) env
         -- intentionally using lazy modify here, so unnecessary widget states don't get computed
         modify $ const updatedState { campaignWidget = newWidget }
-      AppEvent (FetchCacheUpdated contracts slots) ->
-        modify' $ \state ->
-          state { fetchedContracts = contracts
-                , fetchedSlots = slots }
       AppEvent (EventReceived event@(time,campaignEvent)) -> do
         modify' $ \state -> state { events = state.events |> event }
 
@@ -328,6 +354,14 @@ monitor = do
               state { workersAlive = state.workersAlive - 1
                     , timeStopped = if state.workersAlive == 1
                                        then Just time else Nothing
+                    }
+
+          FetchCacheUpdated -> do
+            -- Merge hevm's cache with our failure tracking and update UI
+            (contracts, slots) <- liftIO $ mergeFetchCaches env
+            modify' $ \state ->
+              state { fetchedContracts = contracts
+                    , fetchedSlots = slots
                     }
 
           _ -> pure ()

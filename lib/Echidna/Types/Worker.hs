@@ -11,6 +11,7 @@ data CampaignEvent
   = WorkerEvent WorkerId WorkerType WorkerEvent
   | Failure String
   | ReproducerSaved String -- filename
+  | FetchCacheUpdated -- ^ Signal that RPC fetch cache has been updated
 
 data WorkerEvent
   = TestFalsified !EchidnaTest

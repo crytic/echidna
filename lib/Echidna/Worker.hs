@@ -54,6 +54,7 @@ ppCampaignEvent = \case
   WorkerEvent _ _ e -> ppWorkerEvent e
   Failure err -> err
   ReproducerSaved f -> "Saved reproducer to " <> f
+  FetchCacheUpdated -> "RPC cache updated"
 
 ppWorkerEvent :: WorkerEvent -> String
 ppWorkerEvent = \case

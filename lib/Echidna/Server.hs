@@ -35,6 +35,10 @@ instance ToJSON SSE where
     object [ "timestamp" .= time
            , "filename" .= filename
            ]
+  toJSON (SSE (time, FetchCacheUpdated)) =
+    object [ "timestamp" .= time
+           , "data" .= ("RPC cache updated" :: String)
+           ]
 
 runSSEServer :: MVar () -> Env -> Word16 -> Int -> IO ()
 runSSEServer serverStopVar env port nworkers = do
@@ -60,6 +64,7 @@ runSSEServer serverStopVar env port nworkers = do
                     WorkerStopped _ -> "worker_stopped"
                 Failure _err -> "failure"
                 ReproducerSaved _ -> "saved_reproducer"
+                FetchCacheUpdated -> "fetch_cache_updated"
           case campaignEvent of
             WorkerEvent _ _ (WorkerStopped _) -> do
               aliveAfter <- atomicModifyIORef' aliveRef (\n -> (n-1, n-1))

@@ -175,7 +175,7 @@ showLogLine (time, event@(WorkerEvent workerId workerType _)) =
     SymbolicWorker -> ", symbolic"
     _ -> ""
 showLogLine (time, event) =
-  withAttr (attrName "time") (str $ timePrefix time <> " ") <+> strBreak (ppCampaignEvent event)
+  withAttr (attrName "time") (str $ timePrefix time) <+> strBreak (ppCampaignEvent event)
 
 summaryWidget :: Env -> UIState -> Widget Name
 summaryWidget env uiState =
