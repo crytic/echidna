@@ -19,7 +19,7 @@ import EVM.Format (formatPartialDetailed)
 import EVM.Solidity (SolcContract(..), SourceCache(..), Method(..), WarningData(..))
 import EVM.Solvers (SolverGroup)
 import EVM.SymExec (mkCalldata, verifyInputs, VeriOpts(..), checkAssertions, subModel, defaultSymbolicValues)
-import EVM.Types (Addr, VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit)
+import EVM.Types (Addr, VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit, isQed)
 import qualified EVM.Types (VM(..))
 
 import Echidna.Types (fromEVM)
@@ -149,7 +149,7 @@ exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpc
   -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
   -- Doing so might mess up concolic execution.
   (models, partials) <- verifyInputs solvers veriOpts fetcher vm'' (checkAssertions [0x1])
-  let results = map fst models
+  let results = filter (\(r, _) -> not (isQed r)) models & map fst
   let warnData = Just $ WarningData contract sources vm' 
   --liftIO $ mapM_ TIO.putStrLn partials
   return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (formatPartialDetailed warnData . fst) partials)
