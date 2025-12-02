@@ -3,7 +3,7 @@ resolver: lts-23.24
 
 packages:
 - '.'
-
+- './haskell-mcp-server'
 extra-deps:
 - git: https://github.com/argotorg/hevm.git
   commit: 0d9e2744903d160b175cd9e727660b493d9fac6f
