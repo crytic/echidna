@@ -1,6 +1,7 @@
 module Echidna.SymExec.Common where
 
 import Control.Monad.IO.Unlift (MonadUnliftIO, liftIO)
+import Control.Monad.State.Strict (execState, runStateT)
 import Data.Function ((&))
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
@@ -8,19 +9,18 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified as T
 import Optics.Core ((.~), (%), (%~))
-import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..))
-import EVM.Fetch qualified as Fetch
+
 import EVM (loadContract, resetState, symbolify)
+import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..))
 import EVM.Effects (TTY, ReadConfig)
+import EVM.Expr qualified
+import EVM.Fetch qualified as Fetch
+import EVM.Format (formatPartialDetailed)
 import EVM.Solidity (SolcContract(..), SourceCache(..), Method(..), WarningData(..))
 import EVM.Solvers (SolverGroup)
 import EVM.SymExec (mkCalldata, verifyInputs, VeriOpts(..), checkAssertions, subModel, defaultSymbolicValues)
-import EVM.Expr qualified
-import EVM.Types (Addr, VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit)
+import EVM.Types (Addr, VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit, isQed)
 import qualified EVM.Types (VM(..))
-import EVM.Format (formatPartialDetailed)
-import Control.Monad.ST (RealWorld)
-import Control.Monad.State.Strict (execState, runStateT)
 
 import Echidna.Types (fromEVM)
 import Echidna.Types.Config (EConfig(..))
@@ -125,7 +125,7 @@ getUnknownLogs = mapMaybe (\case
   _ -> Nothing)
 
 exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
-  Method -> SolcContract -> SourceCache -> EVM.Types.VM Concrete RealWorld -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+  Method -> SolcContract -> SourceCache -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
   
 exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpcInfo session = do
   calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
@@ -148,8 +148,8 @@ exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpc
 
   -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
   -- Doing so might mess up concolic execution.
-  (_, models, partials) <- verifyInputs solvers veriOpts fetcher vm'' (Just $ checkAssertions [0x1])
-  let results = map fst models
+  (models, partials) <- verifyInputs solvers veriOpts fetcher vm'' (checkAssertions [0x1])
+  let results = filter (\(r, _) -> not (isQed r)) models & map fst
   let warnData = Just $ WarningData contract sources vm' 
   --liftIO $ mapM_ TIO.putStrLn partials
   return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (formatPartialDetailed warnData . fst) partials)

@@ -20,8 +20,8 @@ import Echidna.Events (Events, extractEvents)
 import Echidna.Types.Campaign (WorkerState(..))
 import Echidna.Types.Config (Env(..))
 import Echidna.Types.Coverage (CoverageInfo, mergeCoverageMaps)
-import Echidna.Types.Test qualified as T
 import Echidna.Types.Test (EchidnaTest(..))
+import Echidna.Types.Test qualified as T
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 
 data Campaign = Campaign

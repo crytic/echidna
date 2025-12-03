@@ -3,8 +3,8 @@
 module Main where
 
 import Control.Monad (unless, forM_)
-import Control.Monad.Reader (runReaderT, liftIO)
 import Control.Monad.Random (getRandomR)
+import Control.Monad.Reader (runReaderT, liftIO)
 import Data.Aeson.Key qualified as Aeson.Key
 import Data.Char (toLower)
 import Data.Function ((&))

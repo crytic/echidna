@@ -3,7 +3,6 @@ module Tests.Dapptest (dapptestTests) where
 import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract', solcV, solved, passed)
-
 import Echidna.Types.Worker (WorkerType(..))
 
 dapptestTests :: TestTree

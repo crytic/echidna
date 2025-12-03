@@ -3,21 +3,19 @@
 
 module Echidna.Transaction where
 
-import Optics.Core
-import Optics.State.Operators
-
 import Control.Monad (join, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, gets, modify', execState)
-import Control.Monad.ST (RealWorld)
 import Data.ByteString qualified as BS
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
+import Optics.Core
+import Optics.State.Operators
 
 import EVM (ceilDiv, initialContract, loadContract, resetState)
 import EVM.ABI (abiValueType)
@@ -38,7 +36,7 @@ import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign
 
-hasSelfdestructed :: VM Concrete s -> Addr -> Bool
+hasSelfdestructed :: VM Concrete -> Addr -> Bool
 hasSelfdestructed vm addr = LitAddr addr `elem` vm.tx.subState.selfdestructs
 
 -- | If half a tuple is zero, make both halves zero. Useful for generating
@@ -160,7 +158,7 @@ mutateTx tx = pure tx
 
 -- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
 -- 'Transaction's \"on-chain\".
-setupTx :: (MonadIO m, MonadState (VM Concrete RealWorld) m) => Tx -> m ()
+setupTx :: (MonadIO m, MonadState (VM Concrete) m) => Tx -> m ()
 setupTx tx@Tx{call = NoCall} = fromEVM $ do
   resetState
   modify' $ \vm -> vm

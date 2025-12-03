@@ -5,11 +5,11 @@ module Echidna.Types.Signature where
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.List.NonEmpty (NonEmpty)
+import Data.Map (Map)
 import Data.Text (Text)
 
 import EVM.ABI (AbiType, AbiValue)
 import EVM.Types (Addr, W256)
-import Data.Map (Map)
 
 -- | Name of the contract
 type ContractName = Text

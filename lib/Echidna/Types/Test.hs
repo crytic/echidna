@@ -3,7 +3,6 @@
 
 module Echidna.Types.Test where
 
-import Control.Monad.ST (RealWorld)
 import Data.Aeson
 import Data.DoubleWord (Int256)
 import Data.Maybe (maybeToList)
@@ -13,17 +12,17 @@ import GHC.Generics (Generic)
 import EVM.Dapp (DappInfo)
 import EVM.Types (Addr, VM, VMType(Concrete))
 
+import Echidna.ABI (encodeSig)
 import Echidna.Types (ExecException)
 import Echidna.Types.Signature (SolSignature)
 import Echidna.Types.Tx (Tx, TxResult)
-import Echidna.ABI (encodeSig)
 
 -- | Test mode is parsed from a string
 type TestMode = String
 
 -- | Configuration for the creation of Echidna tests.
 data TestConf = TestConf
-  { classifier :: Text -> VM Concrete RealWorld -> Bool
+  { classifier :: Text -> VM Concrete -> Bool
     -- ^ Given a VM state and test name, check if a test just passed (typically
     -- examining '_result'.)
   , testSender :: Addr -> Addr
@@ -57,7 +56,7 @@ data TestType
   = PropertyTest Text Addr
   | OptimizationTest Text Addr
   | AssertionTest Bool SolSignature Addr
-  | CallTest Text (DappInfo -> VM Concrete RealWorld -> TestValue)
+  | CallTest Text (DappInfo -> VM Concrete -> TestValue)
   | Exploration
 
 instance Eq TestType where
@@ -104,7 +103,7 @@ data EchidnaTest = EchidnaTest
   , value      :: TestValue
   , reproducer :: [Tx]
   , result     :: TxResult
-  , vm         :: Maybe (VM Concrete RealWorld)
+  , vm         :: Maybe (VM Concrete)
   -- | Worker which falsified the test will also shrink it.
   , workerId   :: Maybe Int
   } deriving (Show)

@@ -7,9 +7,9 @@ import Data.Aeson
 import Data.Text (unpack)
 
 import Echidna.ABI (encodeSig)
-import Echidna.Types.Test
 import Echidna.Types.Campaign
 import Echidna.Types.Config (Env(..), EConfig(..))
+import Echidna.Types.Test
 import Echidna.Types.Worker
 import Echidna.Utility (getTimestamp)
 

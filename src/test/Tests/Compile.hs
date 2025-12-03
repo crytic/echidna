@@ -1,16 +1,15 @@
 module Tests.Compile (compilationTests) where
 
+import Control.Monad (void)
+import Control.Monad.Catch (catch)
+import Data.Text (Text)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool)
 
 import Common (testConfig, loadSolTests)
-import Control.Monad (void)
-import Control.Monad.Catch (catch)
-import Data.Text (Text)
-
 import Echidna.Solidity (compileContracts)
-import Echidna.Types.Solidity (SolException(..))
 import Echidna.Types.Config (EConfig(..))
+import Echidna.Types.Solidity (SolException(..))
 
 compilationTests :: TestTree
 compilationTests = testGroup "Compilation and loading tests"

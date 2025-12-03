@@ -1,18 +1,17 @@
 module Tests.Config (configTests) where
 
+import Control.Monad (void)
+import Data.Function ((&))
+import Data.Maybe (isJust, isNothing)
+import Data.Yaml qualified as Y
+import Optics.Core (sans)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool, assertFailure)
 
-import Optics.Core (sans)
-import Control.Monad (void)
-import Data.Function ((&))
-import Data.Yaml qualified as Y
-
-import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..))
-import Echidna.Types.Campaign (CampaignConf(..))
-import Echidna.Types.Tx (TxConf(..))
 import Echidna.Config (defaultConfig, parseConfig)
-import Data.Maybe (isJust, isNothing)
+import Echidna.Types.Campaign (CampaignConf(..))
+import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..))
+import Echidna.Types.Tx (TxConf(..))
 
 configTests :: TestTree
 configTests = testGroup "Configuration tests" $

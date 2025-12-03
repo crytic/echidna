@@ -35,7 +35,7 @@ type Events = [Text]
 emptyEvents :: TreePos Empty a
 emptyEvents = fromForest []
 
-extractEvents :: Bool -> DappInfo -> VM Concrete s -> Events
+extractEvents :: Bool -> DappInfo -> VM Concrete -> Events
 extractEvents decodeErrors dappInfo vm =
   let forest = traceForest vm
   in maybeToList (decodeRevert decodeErrors vm)
@@ -78,7 +78,7 @@ extractEvents decodeErrors dappInfo vm =
       _ -> Nothing
 
 -- | Extract all non‑indexed event values emitted between two VM states.
-extractEventValues :: DappInfo -> VM Concrete s -> VM Concrete s -> Map AbiType (Set AbiValue)
+extractEventValues :: DappInfo -> VM Concrete -> VM Concrete -> Map AbiType (Set AbiValue)
 extractEventValues dappInfo vm vm' =
   let
     oldLogs = vm.logs
@@ -113,7 +113,7 @@ maybeContractNameFromCodeHash info codeHash = contractToName <$> maybeContract
   where maybeContract = snd <$> Map.lookup codeHash info.solcByHash
         contractToName c = contractNamePart c.contractName
 
-decodeRevert :: Bool -> VM Concrete s -> Maybe Text
+decodeRevert :: Bool -> VM Concrete -> Maybe Text
 decodeRevert decodeErrors vm =
   case vm.result of
     Just (VMFailure (Revert (ConcreteBuf bs))) -> decodeRevertMsg decodeErrors bs

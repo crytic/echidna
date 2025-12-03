@@ -9,29 +9,29 @@ import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
 import Control.Monad.State.Strict (MonadState)
+import Data.List.NonEmpty (fromList)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust)
 import Data.Set qualified as Set
 import Data.Text (unpack, Text)
-import Data.List.NonEmpty (fromList)
+
+import EVM.Dapp (DappInfo(..))
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
+import EVM.Fetch (RpcInfo(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (withSolvers)
-import EVM.Dapp (DappInfo(..))
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
-import EVM.Fetch (RpcInfo(..))
 import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
-import Control.Monad.ST (RealWorld)
 
+import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, rpcFetcher, TxOrError(..), PartialsLogs)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
-import Echidna.Types.World (World(..))
+import Echidna.Types.Random (rElem)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerEvent(..))
-import Echidna.Types.Random (rElem)
-import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, rpcFetcher, TxOrError(..), PartialsLogs)
+import Echidna.Types.World (World(..))
 import Echidna.Worker (pushWorkerEvent)
 
 -- | Uses symbolic execution to find transactions which would increase coverage.
@@ -81,7 +81,7 @@ getRandomTargetMethod contract targets failedProperties = do
       [] -> return Nothing
       _  -> liftIO $ rElem (fromList $ map (Just . snd) targetMethods)
 
-exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SolcContract -> Method -> EVM.Types.VM Concrete RealWorld -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SolcContract -> Method -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 exploreContract contract method vm = do
   conf <- asks (.cfg)
   dappInfo <- asks (.dapp)

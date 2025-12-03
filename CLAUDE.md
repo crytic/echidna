@@ -72,6 +72,27 @@ cabal --enable-profiling run echidna -- contract.sol +RTS -p -s
 - Main config types in `lib/Echidna/Types/Config.hs`
 - Supports campaign, UI, transaction, and Solidity-specific settings
 
+## Code Style
+
+### Import Organization
+Imports should be organized into three groups, separated by blank lines, with imports **alphabetically ordered** within each group:
+
+1. **System and 3rd-party imports**: Standard library and external dependencies (alphabetically ordered)
+2. **EVM imports**: Modules from `hevm` (e.g., `EVM.*`, `EVM.Types.*`) (alphabetically ordered)
+3. **Echidna imports**: Internal modules from this project (e.g., `Echidna.*`) (alphabetically ordered)
+
+Example:
+```haskell
+import Control.Monad (when)
+import Data.Text (Text)
+
+import EVM (VM)
+import EVM.Types (Addr)
+
+import Echidna.ABI (genAbiCall)
+import Echidna.Types.Campaign (Campaign)
+```
+
 ## Important Development Notes
 
 - The project uses GHC2021 language standard with several extensions enabled

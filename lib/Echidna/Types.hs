@@ -1,10 +1,11 @@
 module Echidna.Types where
 
 import Control.Exception (Exception)
+import Control.Monad.ST (stToIO)
 import Control.Monad.State.Strict (MonadState, get, put, MonadIO(liftIO), runStateT)
-import Control.Monad.ST (RealWorld, stToIO)
 import Data.Text (Text, unpack)
 import Data.Word (Word64)
+
 import EVM (initialContract)
 import EVM.Types
 
@@ -34,7 +35,7 @@ type Gas = Word64
 type MutationConsts a = (a, a, a, a)
 
 -- | Transform an EVM action from HEVM to our MonadState VM
-fromEVM :: (MonadIO m, MonadState (VM Concrete RealWorld) m) => EVM Concrete RealWorld r -> m r
+fromEVM :: (MonadIO m, MonadState (VM Concrete) m) => EVM Concrete r -> m r
 fromEVM evmAction = do
   vm <- get
   (result, vm') <- liftIO $ stToIO $ runStateT evmAction vm

@@ -15,28 +15,27 @@ import Data.Text.Encoding (encodeUtf8)
 import EVM.Solidity
 import EVM.Types hiding (Env)
 
-import Echidna.Exec (execTx, execTxWithCov)
 import Echidna.Events (extractEvents)
+import Echidna.Exec (execTx, execTxWithCov)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Solidity (SolException(..))
 import Echidna.Types.Tx (createTx, unlimitedGasPerBlock)
-import Control.Monad.ST (RealWorld)
 
 deployContracts
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
   => [(Addr, SolcContract)]
   -> Addr
-  -> VM Concrete RealWorld
-  -> m (VM Concrete RealWorld)
+  -> VM Concrete
+  -> m (VM Concrete)
 deployContracts cs = deployBytecodes' $ map (\(a, c) -> (a, c.creationCode)) cs
 
 deployBytecodes
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
   => [(Addr, Text)]
   -> Addr
-  -> VM Concrete RealWorld
-  -> m (VM Concrete RealWorld)
+  -> VM Concrete
+  -> m (VM Concrete)
 deployBytecodes cs = deployBytecodes' $
   (\(a, bc) ->
     (a, fromRight (error ("invalid b16 decoding of: " ++ show bc)) $ BS16.decode $ encodeUtf8 bc)
@@ -47,8 +46,8 @@ deployBytecodes'
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
   => [(Addr, ByteString)]
   -> Addr
-  -> VM Concrete RealWorld
-  -> m (VM Concrete RealWorld)
+  -> VM Concrete
+  -> m (VM Concrete)
 deployBytecodes' cs src initialVM = foldM deployOne initialVM cs
   where
   deployOne vm (dst, bytecode) = do

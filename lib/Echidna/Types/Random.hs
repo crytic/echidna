@@ -1,11 +1,11 @@
 module Echidna.Types.Random where
 
-import Prelude hiding ((!!))
 import Control.Monad.Random.Strict (MonadRandom, RandT, StdGen, getRandomR, weighted, evalRandT, getStdGen, forM_, liftIO)
 import Data.Array.IO (IOArray, newListArray, readArray, writeArray, getElems)
 import Data.List.NonEmpty ((!!), NonEmpty(..))
 import Data.Set (Set)
 import Data.Set qualified as S
+import Prelude hiding ((!!))
 
 type Seed = Int
 

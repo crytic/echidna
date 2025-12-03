@@ -1,12 +1,10 @@
 module Echidna.Solidity where
 
-import Optics.Core hiding (filtered)
-
 import Control.Monad (when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Extra (whenM)
 import Control.Monad.Reader (ReaderT(runReaderT))
-import Control.Monad.ST (stToIO, RealWorld)
+import Control.Monad.ST (stToIO)
 import Control.Monad.State (runStateT)
 import Data.Foldable (toList)
 import Data.List (find, partition, isSuffixOf, (\\))
@@ -20,14 +18,15 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text, isPrefixOf, isSuffixOf, append)
 import Data.Text qualified as T
+import Optics.Core hiding (filtered)
 import System.Directory
   (doesDirectoryExist, doesFileExist, findExecutable, listDirectory, removeFile)
-import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import System.Exit (ExitCode(..))
 import System.FilePath (joinPath, splitDirectories, (</>))
 import System.FilePath.Posix qualified as FPP
 import System.IO (openFile, IOMode(..))
 import System.Info (os)
+import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 
 import EVM (initialContract, currentContract)
 import EVM.ABI
@@ -115,7 +114,7 @@ staticAddresses SolConf{contractAddr, deployer, sender} =
   Set.map AbiAddress $
     Set.union sender (Set.fromList [contractAddr, deployer, 0x0])
 
-populateAddresses :: Set Addr -> Integer -> VM Concrete s -> VM Concrete s
+populateAddresses :: Set Addr -> Integer -> VM Concrete -> VM Concrete
 populateAddresses addrs b vm =
   Set.foldl' (\vm' addr ->
     if deployed addr
@@ -169,7 +168,7 @@ loadSpecified
   :: Env
   -> SolcContract
   -> [SolcContract]
-  -> IO (VM Concrete RealWorld)
+  -> IO (VM Concrete)
 loadSpecified env mainContract cs = do
   let solConf = env.cfg.solConf
 

@@ -9,14 +9,15 @@ import Data.List (elemIndex, nub)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text, unpack)
 import Data.Text.Encoding (decodeUtf8)
-import qualified Data.Text.Lazy as TL
 import Data.Text.Lazy (fromStrict)
 import Data.Vector as V hiding ((++), map, zipWith, elemIndex, mapMaybe)
-import EVM.ABI (AbiValue(..))
-import EVM.Types (W256, Addr)
 import Numeric (showHex)
+import qualified Data.Text.Lazy as TL
 import Text.Mustache (Template, substituteValue, toMustache)
 import Text.Mustache.Compile (embedTemplate)
+
+import EVM.ABI (AbiValue(..))
+import EVM.Types (W256, Addr)
 
 import Echidna.Types.Test (EchidnaTest(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))

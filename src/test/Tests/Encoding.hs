@@ -1,12 +1,13 @@
 module Tests.Encoding (encodingJSONTests) where
 
+import Data.Aeson (encode, decode)
+import Data.Text (pack)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (Arbitrary(..), Gen, (===), property, testProperty, resize)
 
-import Data.Aeson (encode, decode)
-import Data.Text (pack)
-import Echidna.Types.Tx (TxCall(..), Tx(..))
 import EVM.Types (Addr, W256)
+
+import Echidna.Types.Tx (TxCall(..), Tx(..))
 
 instance Arbitrary Addr where
   arbitrary = fromInteger <$> arbitrary

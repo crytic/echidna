@@ -4,6 +4,7 @@
 module Echidna.SymExec.Symbolic where
 
 import Data.ByteString (ByteString)
+
 import EVM.Types (Expr(..), EType(..), W256, Addr)
 
 forceBuf :: Expr Buf -> ByteString

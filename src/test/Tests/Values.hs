@@ -3,7 +3,6 @@ module Tests.Values (valuesTests) where
 import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract, testContractV, testContract', solcV, solved, solvedLen)
-
 import Echidna.Types.Worker (WorkerType(..))
 
 valuesTests :: TestTree

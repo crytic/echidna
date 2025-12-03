@@ -20,6 +20,7 @@ import Data.Set qualified as Set
 import Data.Text (pack)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode(..))
+import System.IO (stderr, hPutStrLn)
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 import Text.Read (readMaybe)
 
@@ -30,7 +31,6 @@ import Echidna.ABI (makeNumAbiValues, makeArrayAbiValues)
 import Echidna.Types.Signature (ContractName, FunctionName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Utility (measureIO)
-import System.IO (stderr, hPutStrLn)
 
 enhanceConstants :: SlitherInfo -> Set AbiValue
 enhanceConstants si =

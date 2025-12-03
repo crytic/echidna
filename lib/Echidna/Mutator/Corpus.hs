@@ -6,8 +6,8 @@ import Data.Set qualified as Set
 import Echidna.Mutator.Array
 import Echidna.Transaction (mutateTx, shrinkTx)
 import Echidna.Types (MutationConsts)
-import Echidna.Types.Tx (Tx)
 import Echidna.Types.Corpus
+import Echidna.Types.Tx (Tx)
 
 defaultMutationConsts :: Num a => MutationConsts a
 defaultMutationConsts = (1, 1, 1, 1)
