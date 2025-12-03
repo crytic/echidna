@@ -15,6 +15,8 @@ import Control.Monad.ST (RealWorld)
 import Control.Monad.Trans (lift)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
+import Data.ByteString qualified as BS
+import Data.DoubleWord (Word256)
 import Data.IORef (readIORef, atomicModifyIORef', writeIORef)
 import Data.Foldable (foldlM)
 import Data.List qualified as List
@@ -30,7 +32,7 @@ import Data.Vector qualified as V
 import System.Random (mkStdGen)
 
 import EVM (cheatCode)
-import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
+import EVM.ABI (getAbi, AbiType(..), AbiValue(..), abiValueType)
 import EVM.Dapp (DappInfo(..))
 import EVM.Types hiding (Env, Frame(state), Gas)
 import EVM.Solidity (SolcContract(..), Method(..))
@@ -499,8 +501,10 @@ callseq vm txSeq = do
       resultMap = returnValues results workerState.genDict.rTypes
       -- compute the new events to be stored
       eventDiffs = extractEventValues env.dapp vm vm'
+      -- compute the keccak256 preimages from the VM result
+      keccakPreImgs = extractKeccakPreimages vm'
       -- union the return results with the new addresses
-      additions = Map.unionsWith Set.union [resultMap, eventDiffs, diffs]
+      additions = Map.unionsWith Set.union [resultMap, eventDiffs, diffs, keccakPreImgs]
       -- append to the constants dictionary
       updatedDict = workerState.genDict
         { constants = Map.unionWith Set.union workerState.genDict.constants additions
@@ -553,6 +557,17 @@ callseq vm txSeq = do
       isTuple _ = False
       getTupleVector (AbiTuple ts) = ts
       getTupleVector _ = error "Not a tuple!"
+
+  -- | Given a vm, extract the keccak256 preimages from the VM result and return them as Uint256 ABI values
+  extractKeccakPreimages
+    :: VM Concrete RealWorld
+    -> Map AbiType (Set AbiValue)
+  extractKeccakPreimages x = Map.unionsWith Set.union [
+    Map.singleton (AbiUIntType 256) $ Set.map (AbiUInt 256 . convertNBytesLen . fst) x.keccakPreImgs,
+    Map.singleton (AbiBytesType 32) $ Set.map (AbiBytes 32 . fst) x.keccakPreImgs
+    ]
+    where convertNBytesLen :: BS.ByteString -> Word256
+          convertNBytesLen bs = fromIntegral $ BS.foldl' (\acc b -> acc * 256 + fromIntegral b) 0 bs
 
   -- | Add transactions to the corpus, discarding reverted ones
   addToCorpus :: Int -> [(Tx, VMResult Concrete RealWorld)] -> Corpus -> Corpus
