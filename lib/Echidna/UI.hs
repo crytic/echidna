@@ -17,7 +17,6 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (isJust, mapMaybe)
 import Data.Sequence ((|>))
-import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Time
 import Graphics.Vty qualified as Vty
@@ -60,42 +59,6 @@ data GasTracker = GasTracker
   { lastUpdateTime :: LocalTime
   , totalGasConsumed :: Int
   }
-
--- | Merge hevm's successful fetch cache with Echidna's failure tracking
--- to produce the full cache state for the UI
-mergeFetchCaches
-  :: Env
-  -> IO (Map Addr (Maybe Contract), Map Addr (Map W256 (Maybe W256)))
-mergeFetchCaches env = do
-  -- Read hevm's cache for successes
-  sessionCache <- readMVar env.fetchSession.sharedCache
-
-  -- Convert contract cache: Map Addr RPCContract -> Map Addr (Maybe Contract)
-  let successfulContracts = fmap (Just . EVM.Fetch.makeContractFromRPC) sessionCache.contractCache
-
-  -- Read Echidna's failure tracking
-  failedContracts <- readIORef env.failedContractFetches
-  failedSlots <- readIORef env.failedSlotFetches
-
-  -- Add failures as Nothing entries
-  let allContracts = successfulContracts <> Map.fromSet (const Nothing) failedContracts
-
-  -- Convert slot cache: Map (Addr, W256) W256 -> Map Addr (Map W256 (Maybe W256))
-  -- First, group successful slots by address
-  let successfulSlotsByAddr = Map.foldrWithKey
-        (\(addr, slot) value acc ->
-          Map.insertWith Map.union addr (Map.singleton slot (Just value)) acc)
-        Map.empty
-        sessionCache.slotCache
-
-  -- Add failed slots
-  let allSlots = Set.foldr
-        (\(addr, slot) acc ->
-          Map.insertWith Map.union addr (Map.singleton slot Nothing) acc)
-        successfulSlotsByAddr
-        failedSlots
-
-  pure (allContracts, allSlots)
 
 -- | Set up and run an Echidna 'Campaign' and display interactive UI or
 -- print non-interactive output in desired format at the end
@@ -357,8 +320,8 @@ monitor = do
                     }
 
           FetchCacheUpdated -> do
-            -- Merge hevm's cache with our failure tracking and update UI
-            (contracts, slots) <- liftIO $ mergeFetchCaches env
+            -- Use hevm's cache query API instead of manual merging
+            (contracts, slots) <- liftIO $ EVM.Fetch.getCacheState env.fetchSession
             modify' $ \state ->
               state { fetchedContracts = contracts
                     , fetchedSlots = slots

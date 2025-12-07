@@ -63,18 +63,20 @@ etherscanApiKey = do
   pure (Text.pack <$> val)
 
 -- TODO: temporary solution, handle errors gracefully
-safeFetchContractFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> IO (Maybe Contract)
-safeFetchContractFrom session rpcBlock rpcUrl addr = do
+safeFetchContractFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> IO (Maybe Contract, Bool)
+safeFetchContractFrom session rpcBlock rpcUrl addr =
   catch
-    (fmap EVM.Fetch.makeContractFromRPC <$> EVM.Fetch.fetchContractWithSession defaultConfig session rpcBlock rpcUrl addr)
-    (\(_ :: HttpException) -> pure $ Just emptyAccount)
+    (do
+      (rpcContract, wasCached) <- EVM.Fetch.fetchContractWithSession defaultConfig session rpcBlock rpcUrl addr
+      pure (fmap EVM.Fetch.makeContractFromRPC rpcContract, wasCached))
+    (\(_ :: HttpException) -> pure (Just emptyAccount, False))  -- Network error
 
 -- TODO: temporary solution, handle errors gracefully
-safeFetchSlotFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (Maybe W256)
+safeFetchSlotFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (Maybe W256, Bool)
 safeFetchSlotFrom session rpcBlock rpcUrl addr slot =
   catch
     (EVM.Fetch.fetchSlotWithCache defaultConfig session rpcBlock rpcUrl addr slot)
-    (\(_ :: HttpException) -> pure $ Just 0)
+    (\(_ :: HttpException) -> pure (Just 0, False))  -- Network error
 
 data FetchedContractData = FetchedContractData
   { runtimeCode :: ByteString

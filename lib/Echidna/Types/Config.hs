@@ -83,8 +83,6 @@ data Env = Env
   , codehashMap :: CodehashMap
   , fetchSession :: Fetch.Session
   , contractNameCache :: IORef ContractNameCache
-  , failedContractFetches :: IORef (Set Addr)
-  , failedSlotFetches :: IORef (Set (Addr, W256))
   , chainId :: Maybe W256
   , world :: World
   }
