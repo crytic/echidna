@@ -30,6 +30,8 @@ import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Fetch qualified
 import EVM.Format (hexText, showTraceTree)
 import EVM.Types hiding (Env, Gas)
+import qualified EVM.ConcreteExecution as CE
+import qualified Data.Map.Strict as StrictMap
 
 import Echidna.Events (emptyEvents)
 import Echidna.Onchain (safeFetchContractFrom, safeFetchSlotFrom)
@@ -40,7 +42,7 @@ import Echidna.Types (ExecException(..), fromEVM, emptyAccount)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Solidity (SolConf(..))
-import Echidna.Types.Tx (TxCall(..), Tx(call, dst), TxResult(..), initialTimestamp, initialBlockNumber, getResult)
+import Echidna.Types.Tx (TxCall(..), Tx(..), TxResult(..), initialTimestamp, initialBlockNumber, getResult)
 import Echidna.Utility (getTimestamp, timePrefix)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
@@ -219,7 +221,144 @@ execTx
   => VM Concrete
   -> Tx
   -> m (VMResult Concrete, VM Concrete)
-execTx vm tx = runStateT (execTxWith (fromEVM (exec defaultConfig)) tx) vm
+execTx vm tx = 
+  if isSolCall tx 
+    then runStateT (execTxWithConcrete tx) vm
+    else runStateT (execTxWith (fromEVM (exec defaultConfig)) tx) vm
+
+isSolCall :: Tx -> Bool
+isSolCall tx = case tx.call of
+  SolCall _ -> True
+  SolCalldata _ -> True
+  _ -> False
+
+execTxWithConcrete
+  :: (MonadIO m, MonadState (VM Concrete) m, MonadReader Env m, MonadThrow m)
+  => Tx
+  -> m (VMResult Concrete)
+execTxWithConcrete tx = do
+  vm <- get
+  if hasSelfdestructed vm tx.dst then
+    pure $ VMFailure (Revert (ConcreteBuf ""))
+  else do
+    vmBeforeTx <- get
+    
+    vmResult <- execConcrete tx
+    
+    handleErrorsAndConstruction vmResult vmBeforeTx
+    fromEVM clearTStorages
+    pure vmResult
+
+  where
+    handleErrorsAndConstruction vmResult vmBeforeTx = case (vmResult, tx.call) of
+      (Reversion, _) -> do
+        tracesBeforeVMReset <- gets (.traces)
+        codeContractBeforeVMReset <- gets (.state.codeContract)
+        calldataBeforeVMReset <- gets (.state.calldata)
+        callvalueBeforeVMReset <- gets (.state.callvalue)
+        put vmBeforeTx
+        #result ?= vmResult
+        #state % #calldata .= calldataBeforeVMReset
+        #state % #callvalue .= callvalueBeforeVMReset
+        #traces .= tracesBeforeVMReset
+        #state % #codeContract .= codeContractBeforeVMReset
+      (VMFailure x, _) -> do
+        dapp <- asks (.dapp)
+        vm <- get
+        vmExcept (Just (dapp, vm)) x
+      _ -> pure ()
+
+execConcrete :: (MonadIO m, MonadState (VM Concrete) m) => Tx -> m (VMResult Concrete)
+execConcrete tx = do
+  vm <- get
+  let accounts = convertAccounts (vm ^. #env % #contracts)
+      context = convertContext vm tx
+      (result, snapshot) = CE.exec context accounts
+  
+  -- Update VM from snapshot
+  let newContracts = convertAccountsBack snapshot.worldState
+  #env % #contracts .= newContracts
+  #result ?= convertResult result
+  
+  pure (convertResult result)
+
+convertAccounts :: Map.Map (Expr EAddr) Contract -> CE.Accounts
+convertAccounts m = StrictMap.fromList $ map convertPair (Map.toList m)
+  where
+    convertPair :: (Expr EAddr, Contract) -> (Addr, CE.Account)
+    convertPair (LitAddr k, v) = (k, convertAccount v)
+    convertPair _ = error "Symbolic address in concrete execution"
+
+convertAccount :: Contract -> CE.Account
+convertAccount c = CE.Account
+  { CE.accCode = convertCode c.code
+  , CE.accStorage = convertStorage c.storage
+  , CE.accBalance = CE.Wei (forceLit c.balance)
+  , CE.accNonce = CE.Nonce (case c.nonce of Just (W64 n) -> W64 n; Nothing -> W64 0)
+  }
+
+convertCode :: ContractCode -> CE.RuntimeCode
+convertCode (RuntimeCode (ConcreteRuntimeCode bs)) = CE.RuntimeCode bs
+convertCode _ = CE.RuntimeCode mempty
+
+convertStorage :: Expr Storage -> CE.Storage
+convertStorage (ConcreteStore m) = StrictMap.fromList (Map.toList m)
+convertStorage _ = mempty
+
+convertContext :: VM Concrete -> Tx -> CE.ExecutionContext
+convertContext vm tx = CE.ExecutionContext
+  { CE.transaction = convertTransaction tx
+  , CE.blockHeader = convertBlockHeader vm.block
+  }
+
+convertTransaction :: Tx -> CE.Transaction
+convertTransaction (Tx {src=src, dst=dst, value=value, call=call, gas=gas, gasprice=gasprice}) = CE.Transaction
+  { CE.from = src
+  , CE.to = Just dst
+  , CE.value = CE.CallValue value
+  , CE.txdata = CE.CallData (case call of SolCall (_, args) -> encodeAbiValue (AbiTuple (V.fromList args)); SolCalldata bs -> bs; _ -> mempty) -- Approximate, TxCall handling needed
+  , CE.code = Nothing -- TODO: code for creation?
+  , CE.gasLimit = CE.Gas gas
+  , CE.gasPrice = gasprice
+  , CE.priorityFee = 0 -- Tx doesn't have priority fee
+  }
+
+convertBlockHeader :: Block -> CE.BlockHeader
+convertBlockHeader (Block {coinbase=coinbase, timestamp=timestamp, number=number, gaslimit=gaslimit, prevRandao=prevRandao, baseFee=baseFee}) = CE.BlockHeader
+  { CE.coinbase = forceAddrConcrete coinbase
+  , CE.timestamp = forceLit timestamp
+  , CE.number = forceLit number
+  , CE.gaslimit = CE.Gas gaslimit
+  , CE.prevRandao = prevRandao
+  , CE.baseFee = baseFee
+  }
+
+forceAddrConcrete :: Expr EAddr -> Addr
+forceAddrConcrete (LitAddr a) = a
+forceAddrConcrete _ = error "Symbolic address in concrete execution"
+
+convertResult :: CE.VMResult -> VMResult Concrete
+convertResult (CE.VMFailure e) = VMFailure e
+convertResult (CE.VMSuccess d) = VMSuccess (ConcreteBuf d)
+
+convertAccountsBack :: CE.Accounts -> Map.Map (Expr EAddr) Contract
+convertAccountsBack m = Map.fromList $ map convertPairBack (StrictMap.toList m)
+  where
+    convertPairBack (k, v) = (LitAddr k, convertAccountBack v)
+
+convertAccountBack :: CE.Account -> Contract
+convertAccountBack a = Contract
+  { code = RuntimeCode (ConcreteRuntimeCode a.accCode.code)
+  , storage = ConcreteStore a.accStorage
+  , tStorage = ConcreteStore mempty
+  , origStorage = ConcreteStore a.accStorage
+  , balance = Lit a.accBalance.value
+  , nonce = Just a.accNonce.value
+  , codehash = Lit 0 -- Recompute?
+  , opIxMap = mempty
+  , codeOps = mempty
+  , external = True -- Assumption
+  }
 
 -- | A type alias for the context we carry while executing instructions
 type CoverageContext = (Bool, Maybe (VMut.IOVector CoverageInfo, Int))
