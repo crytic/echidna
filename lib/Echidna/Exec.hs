@@ -144,7 +144,9 @@ execTxWith executeTx tx = do
             session <- asks (.fetchSession)
             ret <- liftIO $ safeFetchSlotFrom session rpcBlock rpcUrl addr slot
             case ret of
-              Just value -> do
+              Just (value, fresh) -> do
+                -- Log only in text mode, ignoring quiet flag as this is important info
+                when fresh $ logMsg $ "Fetched new slot: " <> show q
                 fromEVM (continuation value)
               Nothing -> do
                 -- TODO: How should we fail here? It could be a network error,

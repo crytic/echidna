@@ -29,6 +29,7 @@ import UnliftIO
   ( MonadUnliftIO, IORef, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
+import EVM.Fetch qualified
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
@@ -83,6 +84,15 @@ ui vm dict initialCorpus cliSelectedContract = do
       Interactive | not terminalPresent -> NonInteractive Text
       other -> other
 
+    -- Update env with effective mode so workers (Exec.hs) see the correct mode for logging
+    envWithEffectiveMode = env
+      { cfg = env.cfg
+        { uiConf = env.cfg.uiConf
+          { operationMode = effectiveMode
+          }
+        }
+      }
+
     -- Distribute over all workers, could be slightly bigger overall due to
     -- ceiling but this doesn't matter
     perWorkerTestLimit = ceiling
@@ -95,7 +105,7 @@ ui vm dict initialCorpus cliSelectedContract = do
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
   workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
-    uncurry (spawnWorker env perWorkerTestLimit)
+    uncurry (spawnWorker envWithEffectiveMode perWorkerTestLimit)
 
   case effectiveMode of
     Interactive -> do
@@ -113,9 +123,7 @@ ui vm dict initialCorpus cliSelectedContract = do
         writeBChan uiChannel (CampaignUpdated now tests states)
 
         -- TODO: remove and use events for this
-        -- For now, return empty cache data since accessing hevm's internal cache is complex
-        let c = mempty :: Map Addr (Maybe Contract)
-        let s = mempty :: Map Addr (Map W256 (Maybe W256))
+        (c, s) <- EVM.Fetch.getCacheState env.fetchSession
         writeBChan uiChannel (FetchCacheUpdated c s)
 
       -- UI initialization
@@ -428,4 +436,3 @@ statusLine env states lastUpdateRef = do
     <> ", corpus: " <> show (Corpus.corpusSize corpus)
     <> shrinkingPart
     <> ", gas/s: " <> show gasPerSecond
-

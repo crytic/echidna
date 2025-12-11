@@ -66,15 +66,26 @@ etherscanApiKey = do
 safeFetchContractFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> IO (Maybe Contract)
 safeFetchContractFrom session rpcBlock rpcUrl addr = do
   catch
-    (fmap EVM.Fetch.makeContractFromRPC <$> EVM.Fetch.fetchContractWithSession defaultConfig session rpcBlock rpcUrl addr)
+    (do
+      res <- EVM.Fetch.fetchContractWithSession defaultConfig session rpcBlock rpcUrl addr
+      pure $ case res of
+        EVM.Fetch.FetchSuccess c _ -> Just (EVM.Fetch.makeContractFromRPC c)
+        _ -> Nothing
+    )
     (\(_ :: HttpException) -> pure $ Just emptyAccount)
 
 -- TODO: temporary solution, handle errors gracefully
-safeFetchSlotFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (Maybe W256)
+safeFetchSlotFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (Maybe (W256, Bool))
 safeFetchSlotFrom session rpcBlock rpcUrl addr slot =
   catch
-    (EVM.Fetch.fetchSlotWithCache defaultConfig session rpcBlock rpcUrl addr slot)
-    (\(_ :: HttpException) -> pure $ Just 0)
+    (do
+      res <- EVM.Fetch.fetchSlotWithCache defaultConfig session rpcBlock rpcUrl addr slot
+      pure $ case res of
+        EVM.Fetch.FetchSuccess v status -> do
+          Just (v, status == EVM.Fetch.Fresh)
+        _ -> Nothing
+    )
+    (\(_ :: HttpException) -> pure $ Just (0, False))
 
 data FetchedContractData = FetchedContractData
   { runtimeCode :: ByteString
@@ -173,8 +184,11 @@ saveCoverageReport env runId = do
 fetchChainIdFrom :: Maybe Text -> IO (Maybe W256)
 fetchChainIdFrom (Just url) = do
   sess <- Session.newAPISession
-  EVM.Fetch.fetchQuery
+  res <- EVM.Fetch.fetchQuery
     EVM.Fetch.Latest -- this shouldn't matter
     (EVM.Fetch.fetchWithSession url sess)
     EVM.Fetch.QueryChainId
+  pure $ case res of
+    Right val -> Just val
+    Left _ -> Nothing
 fetchChainIdFrom Nothing = pure Nothing
