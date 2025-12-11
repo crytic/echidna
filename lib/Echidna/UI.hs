@@ -84,15 +84,6 @@ ui vm dict initialCorpus cliSelectedContract = do
       Interactive | not terminalPresent -> NonInteractive Text
       other -> other
 
-    -- Update env with effective mode so workers (Exec.hs) see the correct mode for logging
-    envWithEffectiveMode = env
-      { cfg = env.cfg
-        { uiConf = env.cfg.uiConf
-          { operationMode = effectiveMode
-          }
-        }
-      }
-
     -- Distribute over all workers, could be slightly bigger overall due to
     -- ceiling but this doesn't matter
     perWorkerTestLimit = ceiling
@@ -105,7 +96,7 @@ ui vm dict initialCorpus cliSelectedContract = do
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
   workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
-    uncurry (spawnWorker envWithEffectiveMode perWorkerTestLimit)
+    uncurry (spawnWorker env perWorkerTestLimit)
 
   case effectiveMode of
     Interactive -> do
