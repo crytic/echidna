@@ -119,15 +119,12 @@ execTxWith executeTx tx = do
             session <- asks (.fetchSession)
             ret <- liftIO $ safeFetchContractFrom session rpcBlock rpcUrl addr
             case ret of
-              -- TODO: fix hevm to not return an empty contract in case of an error
-              Just contract | contract.code /= RuntimeCode (ConcreteRuntimeCode "") -> do
+              EVM.Fetch.FetchSuccess contract _ -> do
                 fromEVM (continuation contract)
-              _ -> do
-                -- TODO: better error reporting in HEVM, when intermittent
-                -- network error then retry
-                logMsg $ "ERROR: Failed to fetch contract: " <> show q
-                -- TODO: How should we fail here? It could be a network error,
-                -- RPC server returning junk etc.
+              EVM.Fetch.FetchFailure _ -> do
+                fromEVM (continuation emptyAccount)
+              EVM.Fetch.FetchError e -> do
+                logMsg $ "ERROR: Failed to fetch contract: " <> show q <> " " <> T.unpack e
                 fromEVM (continuation emptyAccount)
           Nothing -> do
             --logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
@@ -144,15 +141,14 @@ execTxWith executeTx tx = do
             session <- asks (.fetchSession)
             ret <- liftIO $ safeFetchSlotFrom session rpcBlock rpcUrl addr slot
             case ret of
-              Just (value, fresh) -> do
+              EVM.Fetch.FetchSuccess value status -> do
                 -- Log only in text mode, ignoring quiet flag as this is important info
-                when fresh $ logMsg $ "Fetched new slot: " <> show q
+                when (status == EVM.Fetch.Fresh) $ logMsg $ "Fetched new slot: " <> show q
                 fromEVM (continuation value)
-              Nothing -> do
-                -- TODO: How should we fail here? It could be a network error,
-                -- RPC server returning junk etc.
-                logMsg $ "ERROR: Failed to fetch slot: " <> show q
+              EVM.Fetch.FetchFailure _ -> do
                 fromEVM (continuation 0)
+              EVM.Fetch.FetchError e -> do
+                error $ "ERROR: Failed to fetch slot: " <> show q <> " " <> T.unpack e
           Nothing -> do
             --logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
             -- Use the zero slot
