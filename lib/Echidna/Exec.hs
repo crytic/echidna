@@ -124,8 +124,7 @@ execTxWith executeTx tx = do
               EVM.Fetch.FetchFailure _ -> do
                 fromEVM (continuation emptyAccount)
               EVM.Fetch.FetchError e -> do
-                logMsg $ "ERROR: Failed to fetch contract: " <> show q <> " " <> T.unpack e
-                fromEVM (continuation emptyAccount)
+                error $ "ERROR: Failed to fetch contract: " <> show q <> " " <> T.unpack e
           Nothing -> do
             --logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
             -- TODO: How should we fail here? RPC is not configured but VM
@@ -135,7 +134,6 @@ execTxWith executeTx tx = do
 
       -- A previously unknown slot is required
       Just q@(PleaseFetchSlot addr slot continuation) -> do
-        --logMsg $ "INFO: Performing RPC: " <> show q
         case config.rpcUrl of
           Just rpcUrl -> do
             session <- asks (.fetchSession)
