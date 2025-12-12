@@ -2,25 +2,27 @@
 
 module Echidna.Onchain where
 
+import Control.Concurrent.MVar (readMVar)
 import Control.Exception (catch)
+import Control.Monad (when, forM_)
 import Data.Aeson (ToJSON, FromJSON)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as UTF8
 import Data.Map qualified as Map
 import Data.Maybe (isJust, fromJust)
-import Data.Text qualified as Text
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Data.Vector qualified as Vector
 import Data.Word (Word64)
 import Etherscan qualified
 import GHC.Generics (Generic)
 import Network.HTTP.Simple (HttpException)
+import Network.Wreq.Session qualified as Session
 import Optics (view)
 import System.Directory (doesFileExist)
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
-import Network.Wreq.Session qualified as Session
 import Text.Read (readMaybe)
 
 import EVM (initialContract, bytecode)
@@ -29,13 +31,10 @@ import EVM.Fetch qualified
 import EVM.Solidity (SourceCache(..), SolcContract (..))
 import EVM.Types hiding (Env)
 
+import Echidna.Output.Source (saveCoverages)
 import Echidna.SymExec.Symbolic (forceWord, forceBuf)
-import Echidna.Types (emptyAccount)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
-import Echidna.Output.Source (saveCoverages)
-import Control.Monad (when, forM_)
-import Control.Concurrent.MVar (readMVar)
 
 saveRpcCache :: Env -> IO ()
 saveRpcCache env = do
@@ -62,19 +61,23 @@ etherscanApiKey = do
   val <- lookupEnv "ETHERSCAN_API_KEY"
   pure (Text.pack <$> val)
 
--- TODO: temporary solution, handle errors gracefully
-safeFetchContractFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> IO (Maybe Contract)
+safeFetchContractFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> IO (EVM.Fetch.FetchResult Contract)
 safeFetchContractFrom session rpcBlock rpcUrl addr = do
   catch
-    (EVM.Fetch.fetchContractWithSession defaultConfig session rpcBlock rpcUrl addr)
-    (\(_ :: HttpException) -> pure $ Just emptyAccount)
+    (do
+      res <- EVM.Fetch.fetchContractWithSession defaultConfig session rpcBlock rpcUrl addr
+      pure $ case res of
+        EVM.Fetch.FetchSuccess c status -> EVM.Fetch.FetchSuccess (EVM.Fetch.makeContractFromRPC c) status
+        EVM.Fetch.FetchFailure status -> EVM.Fetch.FetchFailure status
+        EVM.Fetch.FetchError e -> EVM.Fetch.FetchError e
+    )
+    (\(e :: HttpException) -> pure $ EVM.Fetch.FetchError (Text.pack $ show e))
 
--- TODO: temporary solution, handle errors gracefully
-safeFetchSlotFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (Maybe W256)
+safeFetchSlotFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (EVM.Fetch.FetchResult W256)
 safeFetchSlotFrom session rpcBlock rpcUrl addr slot =
   catch
     (EVM.Fetch.fetchSlotWithCache defaultConfig session rpcBlock rpcUrl addr slot)
-    (\(_ :: HttpException) -> pure $ Just 0)
+    (\(e :: HttpException) -> pure $ EVM.Fetch.FetchError (Text.pack $ show e))
 
 data FetchedContractData = FetchedContractData
   { runtimeCode :: ByteString
@@ -157,7 +160,7 @@ saveCoverageReport env runId = do
       when (env.chainId == Just 1) $ do
         -- Get contracts from hevm session cache
         sessionCache <- readMVar env.fetchSession.sharedCache
-        let contractsCache = sessionCache.contractCache
+        let contractsCache = EVM.Fetch.makeContractFromRPC <$> sessionCache.contractCache
         forM_ (Map.toList contractsCache) $ \(addr, contract) -> do
           r <- externalSolcContract env addr contract
           case r of
@@ -173,8 +176,9 @@ saveCoverageReport env runId = do
 fetchChainIdFrom :: Maybe Text -> IO (Maybe W256)
 fetchChainIdFrom (Just url) = do
   sess <- Session.newAPISession
-  EVM.Fetch.fetchQuery
+  res <- EVM.Fetch.fetchQuery
     EVM.Fetch.Latest -- this shouldn't matter
     (EVM.Fetch.fetchWithSession url sess)
     EVM.Fetch.QueryChainId
+  pure $ either (const Nothing) Just res
 fetchChainIdFrom Nothing = pure Nothing

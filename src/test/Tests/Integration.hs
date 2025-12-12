@@ -1,13 +1,14 @@
 module Tests.Integration (integrationTests) where
 
-import Test.Tasty (TestTree, testGroup)
-
-import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout)
 import Data.Functor ((<&>))
 import Data.Text (unpack)
-import Echidna.Types.Worker (WorkerType(..))
-import Echidna.Types.Tx (TxCall(..))
+import Test.Tasty (TestTree, testGroup)
+
 import EVM.ABI (AbiValue(..))
+
+import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout)
+import Echidna.Types.Tx (TxCall(..))
+import Echidna.Types.Worker (WorkerType(..))
 
 integrationTests :: TestTree
 integrationTests = testGroup "Solidity Integration Testing"

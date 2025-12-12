@@ -1,11 +1,11 @@
 module Tests.Seed (seedTests) where
 
+import Data.Function ((&))
+import Data.IORef (readIORef)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool)
 
 import Common (runContract, overrideQuiet)
-import Data.Function ((&))
-import Data.IORef (readIORef)
 import Echidna.Config (defaultConfig)
 import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Types.Campaign
