@@ -180,5 +180,5 @@ fetchChainIdFrom (Just url) = do
     EVM.Fetch.Latest -- this shouldn't matter
     (EVM.Fetch.fetchWithSession url sess)
     EVM.Fetch.QueryChainId
-  pure $ either (const Nothing) Just $ res
+  pure $ either (const Nothing) Just res
 fetchChainIdFrom Nothing = pure Nothing
