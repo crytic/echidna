@@ -3,7 +3,6 @@ module Tests.Assertion (assertionTests) where
 import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract, testContract', testContractV, solcV, solved, solvedUsing, passed)
-
 import Echidna.Types.Worker (WorkerType(..))
 
 assertionTests :: TestTree

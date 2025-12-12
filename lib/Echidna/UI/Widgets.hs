@@ -7,9 +7,8 @@ import Brick.AttrMap qualified as A
 import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Brick.Widgets.Dialog qualified as B
-import Control.Monad.Reader (MonadReader, asks, ask)
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.ST (RealWorld)
+import Control.Monad.Reader (MonadReader, asks, ask)
 import Data.List (nub, intersperse, sortBy)
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -26,18 +25,18 @@ import Paths_echidna qualified (version)
 import Text.Printf (printf)
 import Text.Wrap
 
+import EVM.Format (showTraceTree)
+import EVM.Types (Addr, Contract, W256, VM(..), VMType(Concrete))
+
 import Echidna.ABI
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..))
-import Echidna.Types.Worker 
+import Echidna.Types.Worker
 import Echidna.UI.Report
 import Echidna.Utility (timePrefix)
 import Echidna.Worker (ppCampaignEvent)
-
-import EVM.Format (showTraceTree)
-import EVM.Types (Addr, Contract, W256, VM(..), VMType(Concrete))
 
 data UIState = UIState
   { status :: UIStateStatus
@@ -344,7 +343,7 @@ tsWidget (Large n)  test = do
 titleWidget :: Widget n
 titleWidget = str "Call sequence" <+> str ":"
 
-tracesWidget :: MonadReader Env m => VM Concrete RealWorld -> m (Widget n)
+tracesWidget :: MonadReader Env m => VM Concrete -> m (Widget n)
 tracesWidget vm = do
   dappInfo <- asks (.dapp)
   -- TODO: showTraceTree does coloring with ANSI escape codes, we need to strip
@@ -416,7 +415,7 @@ shrinkWidget b test =
   where
   showWorker = maybe "" (\i -> " (worker " <> show i <> ")") test.workerId
 
-seqWidget :: (MonadReader Env m, MonadIO m) => VM Concrete RealWorld -> [Tx] -> m (Widget Name)
+seqWidget :: (MonadReader Env m, MonadIO m) => VM Concrete -> [Tx] -> m (Widget Name)
 seqWidget vm xs = do
   ppTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> xs) /= 1) xs
   let ordinals = str . printf "%d. " <$> [1 :: Int ..]

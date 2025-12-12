@@ -9,19 +9,19 @@ import Data.Time (LocalTime)
 import Data.Word (Word64)
 
 import EVM.Dapp (DappInfo)
-import EVM.Types (Addr, W256)
 import EVM.Fetch qualified as Fetch
+import EVM.Types (Addr, W256)
 
 import Echidna.SourceAnalysis.Slither (SlitherInfo)
 import Echidna.SourceMapping (CodehashMap)
+import Echidna.Types.Cache
 import Echidna.Types.Campaign (CampaignConf)
-import Echidna.Types.Worker (CampaignEvent)
 import Echidna.Types.Corpus (Corpus)
 import Echidna.Types.Coverage (CoverageMap)
 import Echidna.Types.Solidity (SolConf)
 import Echidna.Types.Test (TestConf, EchidnaTest)
 import Echidna.Types.Tx (TxConf)
-import Echidna.Types.Cache 
+import Echidna.Types.Worker (CampaignEvent)
 import Echidna.Types.World (World)
 
 data OperationMode = Interactive | NonInteractive OutputFormat deriving (Show, Eq)

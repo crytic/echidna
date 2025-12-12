@@ -11,16 +11,15 @@ import Control.Monad.Random.Strict (MonadRandom, RandT, evalRandT)
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
 import Control.Monad.State.Strict
   (MonadState(..), StateT(..), gets, MonadIO, modify')
-import Control.Monad.ST (RealWorld)
 import Control.Monad.Trans (lift)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
-import Data.IORef (readIORef, atomicModifyIORef', writeIORef)
 import Data.Foldable (foldlM)
+import Data.IORef (readIORef, atomicModifyIORef', writeIORef)
 import Data.List qualified as List
 import Data.List.NonEmpty qualified as NEList
-import Data.Map qualified as Map
 import Data.Map (Map, (\\))
+import Data.Map qualified as Map
 import Data.Maybe (isJust, mapMaybe, fromJust)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -32,8 +31,8 @@ import System.Random (mkStdGen)
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
 import EVM.Dapp (DappInfo(..))
-import EVM.Types hiding (Env, Frame(state), Gas)
 import EVM.Solidity (SolcContract(..), Method(..))
+import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
 import Echidna.Events (extractEventValues)
@@ -42,15 +41,15 @@ import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
 import Echidna.Solidity (chooseContract)
 import Echidna.SymExec.Common (extractTxs, extractErrors)
-import Echidna.SymExec.Symbolic (forceAddr)
 import Echidna.SymExec.Exploration (exploreContract, getTargetMethodFromTx, getRandomTargetMethod)
+import Echidna.SymExec.Symbolic (forceAddr)
 import Echidna.SymExec.Verification (verifyMethod, isSuitableToVerifyMethod)
 import Echidna.Test
 import Echidna.Transaction
 import Echidna.Types.Campaign
+import Echidna.Types.Config
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
-import Echidna.Types.Config
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
@@ -73,7 +72,7 @@ isSuccessful =
 -- contain minimized corpus without sequences that didn't increase the coverage.
 replayCorpus
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
-  => VM Concrete RealWorld -- ^ VM to start replaying from
+  => VM Concrete -- ^ VM to start replaying from
   -> [(FilePath, [Tx])] -- ^ corpus to replay
   -> m ()
 replayCorpus vm txSeqs =
@@ -93,7 +92,7 @@ runWorker
   => WorkerType
   -> StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
-  -> VM Concrete RealWorld -- ^ Initial VM state
+  -> VM Concrete -- ^ Initial VM state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
   -> [(FilePath, [Tx])]
@@ -110,7 +109,7 @@ runSymWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
   => StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
-  -> VM Concrete RealWorld -- ^ Initial VM state
+  -> VM Concrete -- ^ Initial VM state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
   -> [(FilePath, [Tx])]
@@ -324,7 +323,7 @@ runFuzzWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
   => StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
-  -> VM Concrete RealWorld -- ^ Initial VM state
+  -> VM Concrete -- ^ Initial VM state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
   -> [(FilePath, [Tx])]
@@ -454,9 +453,9 @@ randseq deployedContracts = do
 -- Returns resulting VM, as well as whether any new coverage was found.
 callseq
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
-  => VM Concrete RealWorld
+  => VM Concrete
   -> [Tx]
-  -> m (VM Concrete RealWorld, Bool)
+  -> m (VM Concrete, Bool)
 callseq vm txSeq = do
   env <- ask
   -- First, we figure out whether we need to execute with or without coverage
@@ -524,7 +523,7 @@ callseq vm txSeq = do
   -- know the return type for each function called. If yes, try to parse the
   -- return value as a value of that type. Returns a 'GenDict' style Map.
   returnValues
-    :: [(Tx, VMResult Concrete RealWorld)]
+    :: [(Tx, VMResult Concrete)]
     -> (FunctionName -> Maybe AbiType)
     -> Map AbiType (Set AbiValue)
   returnValues txResults returnTypeOf =
@@ -555,7 +554,7 @@ callseq vm txSeq = do
       getTupleVector _ = error "Not a tuple!"
 
   -- | Add transactions to the corpus, discarding reverted ones
-  addToCorpus :: Int -> [(Tx, VMResult Concrete RealWorld)] -> Corpus -> Corpus
+  addToCorpus :: Int -> [(Tx, VMResult Concrete)] -> Corpus -> Corpus
   addToCorpus n res corpus =
     if null rtxs then corpus else Set.insert (n, rtxs) corpus
     where rtxs = fst <$> res
@@ -564,8 +563,8 @@ callseq vm txSeq = do
 -- executed, saving the transaction if it finds new coverage.
 execTxOptC
   :: (MonadIO m, MonadReader Env m, MonadState WorkerState m, MonadThrow m)
-  => VM Concrete RealWorld -> Tx
-  -> m (VMResult Concrete RealWorld, VM Concrete RealWorld)
+  => VM Concrete -> Tx
+  -> m (VMResult Concrete, VM Concrete)
 execTxOptC vm tx = do
   ((res, grew), vm') <- runStateT (execTxWithCov tx) vm
   when grew $ do
@@ -581,10 +580,10 @@ execTxOptC vm tx = do
 -- of transactions, constantly checking if we've solved any tests.
 evalSeq
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
-  => VM Concrete RealWorld -- ^ Initial VM
-  -> (VM Concrete RealWorld -> Tx -> m (result, VM Concrete RealWorld))
+  => VM Concrete -- ^ Initial VM
+  -> (VM Concrete -> Tx -> m (result, VM Concrete))
   -> [Tx]
-  -> m ([(Tx, result)], VM Concrete RealWorld)
+  -> m ([(Tx, result)], VM Concrete)
 evalSeq vm0 execFunc = go vm0 [] where
   go vm executedSoFar toExecute = do
     -- NOTE: we do reverse here because we build up this list by prepending,
@@ -627,7 +626,7 @@ findFailedTests = do
 -- | Update an open test after checking if it is falsified by the 'reproducer'
 updateOpenTest
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
-  => VM Concrete RealWorld -- ^ VM after applying potential reproducer
+  => VM Concrete -- ^ VM after applying potential reproducer
   -> [Tx] -- ^ potential reproducer
   -> EchidnaTest
   -> m (Maybe EchidnaTest)

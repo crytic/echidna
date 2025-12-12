@@ -1,6 +1,7 @@
 module Tests.Symbolic (symbolicTests) where
 
 import Test.Tasty (TestTree, testGroup)
+
 import Common (testContract', solcV, solved, verified)
 import Echidna.Types.Worker (WorkerType(..))
 

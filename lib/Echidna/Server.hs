@@ -10,9 +10,9 @@ import Data.Word (Word16)
 import Network.Wai.EventSource (ServerEvent(..), eventSourceAppIO)
 import Network.Wai.Handler.Warp (run)
 
-import Echidna.Worker()
 import Echidna.Types.Config (Env(..))
 import Echidna.Types.Worker
+import Echidna.Worker()
 
 newtype SSE = SSE (LocalTime, CampaignEvent)
 

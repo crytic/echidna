@@ -9,10 +9,11 @@ import Data.Map qualified as Map
 import Data.Map.Strict (Map)
 import Data.Set qualified as Set
 import Data.Text (toLower)
+import Data.Vector.Unboxed qualified as V
 import Data.Vector.Unboxed.Mutable (IOVector)
 import Data.Vector.Unboxed.Mutable qualified as VM
-import Data.Vector.Unboxed qualified as V
 import Data.Word (Word64)
+
 import EVM.Dapp (DappInfo(..))
 import EVM.Solidity (SolcContract(..))
 import EVM.Types (W256)
