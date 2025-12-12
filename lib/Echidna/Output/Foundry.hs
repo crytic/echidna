@@ -44,7 +44,7 @@ createTestData mContractName test =
     cName = fromMaybe "YourContract" mContractName
   in
   object
-    [ "testName"     .= ("Test" :: Text)
+    [ "testName"     .= ("FoundryTest" :: Text)
     , "contractName" .= cName
     , "actors"       .= actors
     , "reproducer"   .= repro

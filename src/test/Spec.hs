@@ -8,6 +8,7 @@ import Tests.Config (configTests)
 import Tests.Coverage (coverageTests)
 import Tests.Dapptest (dapptestTests)
 import Tests.Encoding (encodingJSONTests)
+import Tests.FoundryTestGen (foundryTestGenTests)
 import Tests.Integration (integrationTests)
 import Tests.Optimization (optimizationTests)
 import Tests.Overflow (overflowTests)
@@ -32,6 +33,7 @@ main = withCurrentDirectory "./tests/solidity" . defaultMain $
            , researchTests
            , dapptestTests
            , encodingJSONTests
+           , foundryTestGenTests
            , cheatTests
            , symbolicTests
            ]
