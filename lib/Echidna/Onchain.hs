@@ -115,39 +115,42 @@ readFileIfExists path = do
 -- code fetched from the outside
 externalSolcContract :: Env -> Addr -> Contract -> IO (Maybe (SourceCache, SolcContract))
 externalSolcContract env addr c = do
-  let runtimeCode = forceBuf $ fromJust $ view bytecode c
-  putStr $ "Fetching Solidity source for contract at address " <> show addr <> "... "
-  srcRet <- Etherscan.fetchContractSource env.cfg.etherscanApiKey addr
-  putStrLn $ if isJust srcRet then "Success!" else "Error!"
-  putStr $ "Fetching Solidity source map for contract at address " <> show addr <> "... "
-  srcmapRet <- Etherscan.fetchContractSourceMap addr
-  putStrLn $ if isJust srcmapRet then "Success!" else "Error!"
-  pure $ do
-    src <- srcRet
-    (_, srcmap) <- srcmapRet
-    let
-      files = Map.singleton 0 (show addr, UTF8.fromString src.code)
-      sourceCache = SourceCache
-        { files
-        , lines = Vector.fromList . BS.split 0xa . snd <$> files
-        , asts = mempty
-        }
-      solcContract = SolcContract
-        { runtimeCode = runtimeCode
-        , creationCode = mempty
-        , runtimeCodehash = keccak' runtimeCode
-        , creationCodehash = keccak' mempty
-        , runtimeSrcmap = mempty
-        , creationSrcmap = srcmap
-        , contractName = src.name
-        , constructorInputs = [] -- error "TODO: mkConstructor abis TODO"
-        , abiMap = mempty -- error "TODO: mkAbiMap abis"
-        , eventMap = mempty -- error "TODO: mkEventMap abis"
-        , errorMap = mempty -- error "TODO: mkErrorMap abis"
-        , storageLayout = Nothing
-        , immutableReferences = mempty
-        }
-    pure (sourceCache, solcContract)
+  case env.cfg.etherscanApiKey of
+    Nothing -> pure Nothing
+    Just _ -> do
+      let runtimeCode = forceBuf $ fromJust $ view bytecode c
+      putStr $ "Fetching Solidity source for contract at address " <> show addr <> "... "
+      srcRet <- Etherscan.fetchContractSource env.chainId env.cfg.etherscanApiKey addr
+      putStrLn $ if isJust srcRet then "Success!" else "Error!"
+      putStr $ "Fetching Solidity source map for contract at address " <> show addr <> "... "
+      srcmapRet <- Etherscan.fetchContractSourceMap addr
+      putStrLn $ if isJust srcmapRet then "Success!" else "Error!"
+      pure $ do
+        src <- srcRet
+        (_, srcmap) <- srcmapRet
+        let
+          files = Map.singleton 0 (show addr, UTF8.fromString src.code)
+          sourceCache = SourceCache
+            { files
+            , lines = Vector.fromList . BS.split 0xa . snd <$> files
+            , asts = mempty
+            }
+          solcContract = SolcContract
+            { runtimeCode = runtimeCode
+            , creationCode = mempty
+            , runtimeCodehash = keccak' runtimeCode
+            , creationCodehash = keccak' mempty
+            , runtimeSrcmap = mempty
+            , creationSrcmap = srcmap
+            , contractName = src.name
+            , constructorInputs = [] -- error "TODO: mkConstructor abis TODO"
+            , abiMap = mempty -- error "TODO: mkAbiMap abis"
+            , eventMap = mempty -- error "TODO: mkEventMap abis"
+            , errorMap = mempty -- error "TODO: mkErrorMap abis"
+            , storageLayout = Nothing
+            , immutableReferences = mempty
+            }
+        pure (sourceCache, solcContract)
 
 
 saveCoverageReport :: Env -> Int -> IO ()
@@ -155,23 +158,21 @@ saveCoverageReport env runId = do
   case env.cfg.campaignConf.corpusDir of
     Nothing -> pure ()
     Just dir -> do
-      -- coverage reports for external contracts, we only support
-      -- Ethereum Mainnet for now
-      when (env.chainId == Just 1) $ do
-        -- Get contracts from hevm session cache
-        sessionCache <- readMVar env.fetchSession.sharedCache
-        let contractsCache = EVM.Fetch.makeContractFromRPC <$> sessionCache.contractCache
-        forM_ (Map.toList contractsCache) $ \(addr, contract) -> do
-          r <- externalSolcContract env addr contract
-          case r of
-            Just (externalSourceCache, solcContract) -> do
-              let dir' = dir </> show addr
-              saveCoverages env
-                            runId
-                            dir'
-                            externalSourceCache
-                            [solcContract]
-            Nothing -> pure ()
+      -- coverage reports for external contracts
+      -- Get contracts from hevm session cache
+      sessionCache <- readMVar env.fetchSession.sharedCache
+      let contractsCache = EVM.Fetch.makeContractFromRPC <$> sessionCache.contractCache
+      forM_ (Map.toList contractsCache) $ \(addr, contract) -> do
+        r <- externalSolcContract env addr contract
+        case r of
+          Just (externalSourceCache, solcContract) -> do
+            let dir' = dir </> show addr
+            saveCoverages env
+                          runId
+                          dir'
+                          externalSourceCache
+                          [solcContract]
+          Nothing -> pure ()
 
 fetchChainIdFrom :: Maybe Text -> IO (Maybe W256)
 fetchChainIdFrom (Just url) = do

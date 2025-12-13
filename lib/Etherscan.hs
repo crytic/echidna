@@ -14,7 +14,7 @@ import Text.HTML.DOM (sinkDoc)
 import Text.XML.Cursor (attributeIs, content, element, fromDocument, ($//), (&//))
 
 import EVM.Solidity (makeSrcMaps, SrcMap)
-import EVM.Types (Addr)
+import EVM.Types (Addr, W256)
 
 data SourceCode = SourceCode
   { name :: Text
@@ -22,10 +22,11 @@ data SourceCode = SourceCode
   }
   deriving Show
 
-fetchContractSource :: Maybe Text -> Addr -> IO (Maybe SourceCode)
-fetchContractSource apiKey addr = do
+fetchContractSource :: Maybe W256 -> Maybe Text -> Addr -> IO (Maybe SourceCode)
+fetchContractSource chainId apiKey addr = do
+  let chainParam = maybe "&chainid=1" (\c -> "&chainid=" <> show c) chainId
   url <- parseRequest $ "https://api.etherscan.io/v2/api?"
-                        <> "&chainid=1"
+                        <> chainParam
                         <> "&module=contract"
                         <> "&action=getsourcecode"
                         <> "&address=" <> show addr
