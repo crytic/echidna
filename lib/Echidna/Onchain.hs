@@ -123,7 +123,7 @@ externalSolcContract env addr c = do
       srcRet <- Etherscan.fetchContractSource env.chainId env.cfg.etherscanApiKey addr
       putStrLn $ if isJust srcRet then "Success!" else "Error!"
       putStr $ "Fetching Solidity source map for contract at address " <> show addr <> "... "
-      srcmapRet <- Etherscan.fetchContractSourceMap addr
+      srcmapRet <- Etherscan.fetchContractSourceMap env.chainlistCache env.chainId addr
       putStrLn $ if isJust srcmapRet then "Success!" else "Error!"
       pure $ do
         src <- srcRet
