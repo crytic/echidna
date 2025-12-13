@@ -33,7 +33,7 @@ import EVM.Fetch qualified
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
-import Echidna.Campaign (runWorker, spawnListener)
+import Echidna.Campaign (runWorker, spawnListener, spawnMCPServer)
 import Echidna.Output.Corpus (saveCorpusEvent)
 import Echidna.Output.JSON qualified
 import Echidna.Server (runSSEServer)
@@ -94,6 +94,8 @@ ui vm dict initialCorpus cliSelectedContract = do
     corpusChunks = chunksOf chunkSize initialCorpus ++ repeat []
 
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
+
+  spawnMCPServer
 
   workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
     uncurry (spawnWorker env perWorkerTestLimit)
