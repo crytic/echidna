@@ -5,13 +5,20 @@ import Control.Monad (when, void)
 import Data.Aeson
 import Data.Binary.Builder (fromLazyByteString)
 import Data.IORef
+import Data.Map qualified as Map
 import Data.Time (LocalTime)
 import Data.Word (Word16)
+import Network.HTTP.Types (status200, status404)
+import Network.Wai (Application, responseLBS, pathInfo, requestMethod)
 import Network.Wai.EventSource (ServerEvent(..), eventSourceAppIO)
 import Network.Wai.Handler.Warp (run)
 
+import EVM.Dapp (DappInfo(..))
+
+import Echidna.Output.Source (saveLcovHook)
+import Echidna.Types.Campaign (CampaignConf(..))
+import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Worker()
-import Echidna.Types.Config (Env(..))
 import Echidna.Types.Worker
 
 newtype SSE = SSE (LocalTime, CampaignEvent)
@@ -71,5 +78,28 @@ runSSEServer serverStopVar env port nworkers = do
             , eventData = [ fromLazyByteString $ encode (SSE event) ]
             }
 
+  let sseApp = eventSourceAppIO sseListener
+
+  let app :: Application
+      app req respond = case (requestMethod req, pathInfo req) of
+        -- SSE endpoint
+        ("GET", ["events"]) -> sseApp req respond
+
+        -- Dump LCOV coverage
+        ("POST", ["dump_lcov"]) -> do
+          case env.cfg.campaignConf.corpusDir of
+            Nothing ->
+              respond $ responseLBS status404 [("Content-Type", "application/json")]
+                "{\"error\":\"No corpus directory configured\"}"
+            Just dir -> do
+              let contracts = Map.elems env.dapp.solcByName
+              fn <- saveLcovHook env dir env.sourceCache contracts
+              respond $ responseLBS status200 [("Content-Type", "application/json")]
+                (encode $ object ["file" .= fn])
+
+        -- Unknown endpoint
+        _ -> respond $ responseLBS status404 [("Content-Type", "application/json")]
+              "{\"error\":\"Not found\"}"
+
   void . forkIO $ do
-    run (fromIntegral port) $ eventSourceAppIO sseListener
+    run (fromIntegral port) app
