@@ -19,7 +19,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-latest-m
             name: Linux (x86_64)
             tuple: x86_64-linux
             system: x86_64-linux
@@ -28,7 +28,7 @@ jobs:
             tuple: aarch64-macos
             system: aarch64-darwin
           # Uncomment for additional platforms:
-          # - os: ubuntu-24.04-arm
+          # - os: ubuntu-latest-m
           #   name: Linux (aarch64)
           #   tuple: aarch64-linux
           #   system: aarch64-linux
