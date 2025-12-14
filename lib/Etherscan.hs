@@ -50,7 +50,7 @@ instance FromJSON ChainlistResponse
 
 fetchContractSource :: Maybe W256 -> Maybe Text -> Addr -> IO (Maybe SourceCode)
 fetchContractSource chainId apiKey addr = do
-  let chainParam = maybe "&chainid=1" (\c -> "&chainid=" <> show (fromIntegral c :: Integer)) chainId
+  let chainParam = maybe "chainid=1" (\c -> "chainid=" <> show (fromIntegral c :: Integer)) chainId
   url <- parseRequest $ "https://api.etherscan.io/v2/api?"
                         <> chainParam
                         <> "&module=contract"
