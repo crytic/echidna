@@ -1,20 +1,24 @@
 module Echidna.Server where
 
 import Control.Concurrent
+import Control.DeepSeq (force)
 import Control.Monad (when, void)
 import Data.Aeson
 import Data.Binary.Builder (fromLazyByteString)
 import Data.IORef
 import Data.Map qualified as Map
+import Data.Set qualified as Set
 import Data.Time (LocalTime)
 import Data.Word (Word16)
 import Network.HTTP.Types (status200, status404)
 import Network.Wai (Application, responseLBS, pathInfo, requestMethod)
 import Network.Wai.EventSource (ServerEvent(..), eventSourceAppIO)
 import Network.Wai.Handler.Warp (run)
+import System.FilePath ((</>))
 
 import EVM.Dapp (DappInfo(..))
 
+import Echidna.Output.Corpus (loadTxs)
 import Echidna.Output.Source (saveLcovHook)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
@@ -96,6 +100,25 @@ runSSEServer serverStopVar env port nworkers = do
               fn <- saveLcovHook env dir env.sourceCache contracts
               respond $ responseLBS status200 [("Content-Type", "application/json")]
                 (encode $ object ["file" .= fn])
+
+        -- Reload corpus from disk
+        ("POST", ["reload_corpus"]) -> do
+          case env.cfg.campaignConf.corpusDir of
+            Nothing ->
+              respond $ responseLBS status404 [("Content-Type", "application/json")]
+                "{\"error\":\"No corpus directory configured\"}"
+            Just dir -> do
+              -- Load transactions from reproducers and coverage directories
+              ctxs1 <- loadTxs (dir </> "reproducers")
+              ctxs2 <- loadTxs (dir </> "coverage")
+              let allTxs = ctxs1 ++ ctxs2
+              -- Add to corpus (with index based on current corpus size)
+              loaded <- atomicModifyIORef' env.corpusRef $ \corpus ->
+                let newEntries = Set.fromList $ zip [Set.size corpus + 1..] (map snd allTxs)
+                    !corpus' = force $ Set.union corpus newEntries
+                in (corpus', length allTxs)
+              respond $ responseLBS status200 [("Content-Type", "application/json")]
+                (encode $ object ["loaded" .= loaded, "message" .= ("Loaded " ++ show loaded ++ " transaction sequences" :: String)])
 
         -- Unknown endpoint
         _ -> respond $ responseLBS status404 [("Content-Type", "application/json")]
