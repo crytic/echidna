@@ -6,4 +6,3 @@ import Data.Text (Text)
 import EVM.Types (W256)
 
 type ContractNameCache = Map W256 Text
-type ChainlistCache = Map W256 Text

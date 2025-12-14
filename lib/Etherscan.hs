@@ -1,14 +1,19 @@
-module Etherscan where
+module Etherscan
+  ( SourceCode(..)
+  , getBlockExplorerUrl
+  , fetchContractSource
+  , fetchContractSourceMap
+  )
+where
 
 import Control.Concurrent (threadDelay)
 import Control.Exception (catch, SomeException)
 import Control.Monad
 import Data.Aeson
 import Data.Aeson.Types (parseEither)
-import Data.IORef (IORef, atomicWriteIORef, readIORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Sequence (Seq)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -113,36 +118,24 @@ fetchChainlist = do
             pure Nothing
       )
 
--- | Get block explorer URL for a chainId, fetching and caching chainlist if needed
-getBlockExplorerUrl :: IORef (Maybe (Map W256 Text)) -> W256 -> IO (Maybe Text)
-getBlockExplorerUrl cacheRef chainId = do
-  cacheVal <- readIORef cacheRef
-  case cacheVal of
-    Just cache -> pure $ Map.lookup chainId cache
+-- | Get block explorer URL for a chainId
+getBlockExplorerUrl :: Maybe W256 -> IO String
+getBlockExplorerUrl maybeChainId = do
+  let chainId = fromMaybe 1 maybeChainId
+  maybeChainlist <- fetchChainlist
+  let chainlist = fromMaybe Map.empty maybeChainlist
+  case Map.lookup chainId chainlist of
     Nothing -> do
-      -- Fetch and populate cache (done at most once)
-      maybeChainlist <- fetchChainlist
-      atomicWriteIORef cacheRef maybeChainlist
-      pure $ maybeChainlist >>= Map.lookup chainId
+      putStrLn $ "Warning: No block explorer found for chainId "
+        <> show (fromIntegral chainId :: Integer) <> ", defaulting to mainnet"
+      pure "https://etherscan.io"
+    Just url -> pure $ T.unpack url
 
 -- | Unfortunately, Etherscan doesn't expose source maps in the JSON API.
 -- This function scrapes it from the HTML. Return a tuple where the first element
 -- is raw srcmap in text format and the second element is a parsed map.
-fetchContractSourceMap :: IORef (Maybe (Map W256 Text)) -> Maybe W256 -> Addr -> IO (Maybe (Text, Seq SrcMap))
-fetchContractSourceMap cacheRef chainId addr = do
-  -- Determine block explorer URL
-  let defaultUrl = "https://etherscan.io"
-  baseUrl <- case chainId of
-    Nothing -> pure defaultUrl
-    Just cid -> do
-      maybeUrl <- getBlockExplorerUrl cacheRef cid
-      case maybeUrl of
-        Just url -> pure $ T.unpack url
-        Nothing -> do
-          putStrLn $ "Warning: No block explorer found for chainId "
-                  <> show (fromIntegral cid :: Integer) <> ", defaulting to mainnet"
-          pure defaultUrl
-
+fetchContractSourceMap :: String -> Addr -> IO (Maybe (Text, Seq SrcMap))
+fetchContractSourceMap baseUrl addr = do
   -- Scrape HTML from block explorer
   url <- parseRequest $ baseUrl <> "/address/" <> show addr
   doc <- httpSink url $ const sinkDoc

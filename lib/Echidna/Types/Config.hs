@@ -83,7 +83,6 @@ data Env = Env
   , codehashMap :: CodehashMap
   , fetchSession :: Fetch.Session
   , contractNameCache :: IORef ContractNameCache
-  , chainlistCache :: IORef (Maybe ChainlistCache)
   , chainId :: Maybe W256
   , world :: World
   }

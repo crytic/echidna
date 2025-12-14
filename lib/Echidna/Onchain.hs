@@ -113,8 +113,8 @@ readFileIfExists path = do
 
 -- | "Reverse engineer" the SolcContract and SourceCache structures for the
 -- code fetched from the outside
-externalSolcContract :: Env -> Addr -> Contract -> IO (Maybe (SourceCache, SolcContract))
-externalSolcContract env addr c = do
+externalSolcContract :: Env -> String -> Addr -> Contract -> IO (Maybe (SourceCache, SolcContract))
+externalSolcContract env explorerUrl addr c = do
   case env.cfg.etherscanApiKey of
     Nothing -> pure Nothing
     Just _ -> do
@@ -123,7 +123,7 @@ externalSolcContract env addr c = do
       srcRet <- Etherscan.fetchContractSource env.chainId env.cfg.etherscanApiKey addr
       putStrLn $ if isJust srcRet then "Success!" else "Error!"
       putStr $ "Fetching Solidity source map for contract at address " <> show addr <> "... "
-      srcmapRet <- Etherscan.fetchContractSourceMap env.chainlistCache env.chainId addr
+      srcmapRet <- Etherscan.fetchContractSourceMap explorerUrl addr
       putStrLn $ if isJust srcmapRet then "Success!" else "Error!"
       pure $ do
         src <- srcRet
@@ -161,9 +161,10 @@ saveCoverageReport env runId = do
       -- coverage reports for external contracts
       -- Get contracts from hevm session cache
       sessionCache <- readMVar env.fetchSession.sharedCache
+      explorerUrl <- Etherscan.getBlockExplorerUrl env.chainId
       let contractsCache = EVM.Fetch.makeContractFromRPC <$> sessionCache.contractCache
       forM_ (Map.toList contractsCache) $ \(addr, contract) -> do
-        r <- externalSolcContract env addr contract
+        r <- externalSolcContract env explorerUrl addr contract
         case r of
           Just (externalSourceCache, solcContract) -> do
             let dir' = dir </> show addr
