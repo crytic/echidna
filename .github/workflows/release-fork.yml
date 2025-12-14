@@ -28,7 +28,7 @@ jobs:
             tuple: aarch64-macos
             system: aarch64-darwin
           # Uncomment for additional platforms:
-          # - os: ubuntu-latest-m
+          # - os: ubuntu-24.04-arm  # ARM runner required for aarch64
           #   name: Linux (aarch64)
           #   tuple: aarch64-linux
           #   system: aarch64-linux
@@ -38,6 +38,16 @@ jobs:
           #   system: x86_64-darwin
 
     steps:
+      - name: Free disk space
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
+
       - name: Checkout
         uses: actions/checkout@v4
 
