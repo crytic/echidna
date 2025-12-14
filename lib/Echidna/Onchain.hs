@@ -1,12 +1,18 @@
-{-# LANGUAGE DeriveAnyClass #-}
-
-module Echidna.Onchain where
+module Echidna.Onchain
+  ( etherscanApiKey
+  , fetchChainIdFrom
+  , rpcBlockEnv
+  , rpcUrlEnv
+  , safeFetchContractFrom
+  , safeFetchSlotFrom
+  , saveCoverageReport
+  , saveRpcCache
+  )
+where
 
 import Control.Concurrent.MVar (readMVar)
 import Control.Exception (catch)
 import Control.Monad (when, forM_)
-import Data.Aeson (ToJSON, FromJSON)
-import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as UTF8
 import Data.Map qualified as Map
@@ -16,23 +22,21 @@ import Data.Text qualified as Text
 import Data.Vector qualified as Vector
 import Data.Word (Word64)
 import Etherscan qualified
-import GHC.Generics (Generic)
 import Network.HTTP.Simple (HttpException)
 import Network.Wreq.Session qualified as Session
 import Optics (view)
-import System.Directory (doesFileExist)
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import Text.Read (readMaybe)
 
-import EVM (initialContract, bytecode)
+import EVM (bytecode)
 import EVM.Effects (defaultConfig)
 import EVM.Fetch qualified
 import EVM.Solidity (SourceCache(..), SolcContract (..))
 import EVM.Types hiding (Env)
 
 import Echidna.Output.Source (saveCoverages)
-import Echidna.SymExec.Symbolic (forceWord, forceBuf)
+import Echidna.SymExec.Symbolic (forceBuf)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 
@@ -78,38 +82,6 @@ safeFetchSlotFrom session rpcBlock rpcUrl addr slot =
   catch
     (EVM.Fetch.fetchSlotWithCache defaultConfig session rpcBlock rpcUrl addr slot)
     (\(e :: HttpException) -> pure $ EVM.Fetch.FetchError (Text.pack $ show e))
-
-data FetchedContractData = FetchedContractData
-  { runtimeCode :: ByteString
-  , nonce :: Maybe W64
-  , balance :: W256
-  }
-  deriving (Generic, ToJSON, FromJSON, Show)
-
-fromFetchedContractData :: FetchedContractData -> Contract
-fromFetchedContractData contractData =
-  (initialContract (RuntimeCode (ConcreteRuntimeCode contractData.runtimeCode)))
-    { nonce = contractData.nonce
-    , balance = Lit contractData.balance
-    , external = True
-    }
-
-toFetchedContractData :: Contract -> FetchedContractData
-toFetchedContractData contract =
-  let code = case contract.code of
-               RuntimeCode (ConcreteRuntimeCode c) -> c
-               _ -> error "unexpected code"
-  in FetchedContractData
-    { runtimeCode = code
-    , nonce = contract.nonce
-    , balance = forceWord contract.balance
-    }
-
-
-readFileIfExists :: FilePath -> IO (Maybe BS.ByteString)
-readFileIfExists path = do
-  exists <- doesFileExist path
-  if exists then Just <$> BS.readFile path else pure Nothing
 
 -- | "Reverse engineer" the SolcContract and SourceCache structures for the
 -- code fetched from the outside
