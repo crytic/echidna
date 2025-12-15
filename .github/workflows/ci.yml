@@ -250,7 +250,7 @@ jobs:
           SOLC_VER: ${{ matrix.solc }}
 
       - name: Download testsuite
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
          name: echidna-testsuite-${{ runner.os }}
 
