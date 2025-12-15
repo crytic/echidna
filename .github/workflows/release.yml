@@ -76,7 +76,7 @@ jobs:
           NIX_SYSTEM: ${{ matrix.system }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: echidna-redistributable-${{ matrix.tuple }}
           path: echidna-${{ steps.version.outputs.version }}-${{ matrix.tuple }}.tar.gz
