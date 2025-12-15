@@ -1,7 +1,7 @@
 name: "Build & Release"
 
 on:
-  workflow_dispatch:  # Manual trigger from GitHub UI
+  workflow_dispatch:
     inputs:
       version:
         description: 'Version name (e.g., 2.3.0-custom)'
@@ -16,24 +16,23 @@ on:
 jobs:
   build:
     name: Build Linux (x86_64)
-    timeout-minutes: 180
+    timeout-minutes: 30
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force
-          df -h
-
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v14
+        uses: DeterminateSystems/nix-installer-action@v21
+
+      - name: Configure Cachix
+        uses: cachix/cachix-action@v16
+        with:
+          name: trailofbits
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Set version
         id: version
@@ -52,7 +51,7 @@ jobs:
           tar -czf "echidna-${{ steps.version.outputs.version }}-x86_64-linux.tar.gz" -C ./redistributable/bin/ echidna
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: echidna-x86_64-linux
           path: echidna-${{ steps.version.outputs.version }}-x86_64-linux.tar.gz
@@ -60,13 +59,12 @@ jobs:
   release:
     name: Create release
     needs: [build]
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v6
         with:
           pattern: echidna-*
           merge-multiple: true
@@ -74,10 +72,24 @@ jobs:
       - name: List artifacts
         run: ls -la echidna-*.tar.gz
 
-      - name: Create GitHub release
+      - name: Create/Update rolling release (main branch)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Echidna Latest (main)"
+          body: |
+            Rolling release from main branch.
+            Version: ${{ needs.build.outputs.version }}
+            Commit: ${{ github.sha }}
+          prerelease: true
+          files: ./echidna-*.tar.gz
+
+      - name: Create tagged release
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          name: "Echidna (custom build)"
+          name: "Echidna ${{ needs.build.outputs.version }}"
           tag_name: ${{ github.ref_name || format('v{0}', github.event.inputs.version) }}
           files: ./echidna-*.tar.gz
