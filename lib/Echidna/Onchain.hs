@@ -33,7 +33,6 @@ import EVM.Types hiding (Env)
 
 import Echidna.Output.Source (saveCoverages)
 import Echidna.SymExec.Symbolic (forceWord, forceBuf)
-import Echidna.Types (emptyAccount)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 
@@ -62,19 +61,23 @@ etherscanApiKey = do
   val <- lookupEnv "ETHERSCAN_API_KEY"
   pure (Text.pack <$> val)
 
--- TODO: temporary solution, handle errors gracefully
-safeFetchContractFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> IO (Maybe Contract)
+safeFetchContractFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> IO (EVM.Fetch.FetchResult Contract)
 safeFetchContractFrom session rpcBlock rpcUrl addr = do
   catch
-    (fmap EVM.Fetch.makeContractFromRPC <$> EVM.Fetch.fetchContractWithSession defaultConfig session rpcBlock rpcUrl addr)
-    (\(_ :: HttpException) -> pure $ Just emptyAccount)
+    (do
+      res <- EVM.Fetch.fetchContractWithSession defaultConfig session rpcBlock rpcUrl addr
+      pure $ case res of
+        EVM.Fetch.FetchSuccess c status -> EVM.Fetch.FetchSuccess (EVM.Fetch.makeContractFromRPC c) status
+        EVM.Fetch.FetchFailure status -> EVM.Fetch.FetchFailure status
+        EVM.Fetch.FetchError e -> EVM.Fetch.FetchError e
+    )
+    (\(e :: HttpException) -> pure $ EVM.Fetch.FetchError (Text.pack $ show e))
 
--- TODO: temporary solution, handle errors gracefully
-safeFetchSlotFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (Maybe W256)
+safeFetchSlotFrom :: EVM.Fetch.Session -> EVM.Fetch.BlockNumber -> Text -> Addr -> W256 -> IO (EVM.Fetch.FetchResult W256)
 safeFetchSlotFrom session rpcBlock rpcUrl addr slot =
   catch
     (EVM.Fetch.fetchSlotWithCache defaultConfig session rpcBlock rpcUrl addr slot)
-    (\(_ :: HttpException) -> pure $ Just 0)
+    (\(e :: HttpException) -> pure $ EVM.Fetch.FetchError (Text.pack $ show e))
 
 data FetchedContractData = FetchedContractData
   { runtimeCode :: ByteString
@@ -173,8 +176,9 @@ saveCoverageReport env runId = do
 fetchChainIdFrom :: Maybe Text -> IO (Maybe W256)
 fetchChainIdFrom (Just url) = do
   sess <- Session.newAPISession
-  EVM.Fetch.fetchQuery
+  res <- EVM.Fetch.fetchQuery
     EVM.Fetch.Latest -- this shouldn't matter
     (EVM.Fetch.fetchWithSession url sess)
     EVM.Fetch.QueryChainId
+  pure $ either (const Nothing) Just res
 fetchChainIdFrom Nothing = pure Nothing

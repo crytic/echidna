@@ -122,7 +122,7 @@ execTxWith executeTx tx = do
             ret <- liftIO $ safeFetchContractFrom session rpcBlock rpcUrl addr
             case ret of
               -- TODO: fix hevm to not return an empty contract in case of an error
-              Just contract | contract.code /= RuntimeCode (ConcreteRuntimeCode "") -> do
+              EVM.Fetch.FetchSuccess contract _ | contract.code /= RuntimeCode (ConcreteRuntimeCode "") -> do
                 fromEVM (continuation contract)
               _ -> do
                 -- TODO: better error reporting in HEVM, when intermittent
@@ -146,9 +146,9 @@ execTxWith executeTx tx = do
             session <- asks (.fetchSession)
             ret <- liftIO $ safeFetchSlotFrom session rpcBlock rpcUrl addr slot
             case ret of
-              Just value -> do
+              EVM.Fetch.FetchSuccess value _ -> do
                 fromEVM (continuation value)
-              Nothing -> do
+              _ -> do
                 -- TODO: How should we fail here? It could be a network error,
                 -- RPC server returning junk etc.
                 logMsg $ "ERROR: Failed to fetch slot: " <> show q
@@ -271,12 +271,12 @@ execTxWithConcrete tx = do
 execConcrete :: (MonadIO m, MonadState (VM Concrete) m) => Tx -> m (VMResult Concrete)
 execConcrete tx = do
   vm <- get
-  let accounts = convertAccounts (vm ^. #env % #contracts)
+  let contracts = vm ^. #env % #contracts
+  let accounts = convertAccounts contracts
       context = convertContext vm tx
       (result, snapshot) = CE.exec context accounts
-  
   -- Update VM from snapshot
-  let newContracts = convertAccountsBack snapshot.worldState
+  let newContracts = convertAccountsBack (vm ^. #env % #contracts) snapshot.worldState
   #env % #contracts .= newContracts
   #result ?= convertResult result
   
@@ -307,21 +307,33 @@ convertStorage _ = mempty
 
 convertContext :: VM Concrete -> Tx -> CE.ExecutionContext
 convertContext vm tx = CE.ExecutionContext
-  { CE.transaction = convertTransaction tx
+  { CE.transaction = convertTransaction vm tx
   , CE.blockHeader = convertBlockHeader vm.block
   }
 
-convertTransaction :: Tx -> CE.Transaction
-convertTransaction (Tx {src=src, dst=dst, value=value, call=call, gas=gas, gasprice=gasprice}) = CE.Transaction
+convertTransaction :: VM Concrete -> Tx -> CE.Transaction
+convertTransaction vm (Tx {src=src, dst=dst, value=value, call=call, gas=gas, gasprice=gasprice}) = CE.Transaction
   { CE.from = src
   , CE.to = Just dst
   , CE.value = CE.CallValue value
-  , CE.txdata = CE.CallData (case call of SolCall (_, args) -> encodeAbiValue (AbiTuple (V.fromList args)); SolCalldata bs -> bs; _ -> mempty) -- Approximate, TxCall handling needed
-  , CE.code = Nothing -- TODO: code for creation?
+  , CE.txdata = CE.CallData (case call of
+      SolCall (sig, args) ->
+        let fullSig = if T.any (== '(') sig
+                      then sig
+                      else sig <> "(" <> (T.intercalate "," $ map (abiTypeSolidity . abiValueType) args) <> ")"
+        in abiMethod fullSig (AbiTuple (V.fromList args))
+      SolCalldata bs -> bs; _ -> mempty) -- Approximate, TxCall handling needed
+  , CE.code = Just $ getCode vm dst
   , CE.gasLimit = CE.Gas gas
   , CE.gasPrice = gasprice
   , CE.priorityFee = 0 -- Tx doesn't have priority fee
   }
+
+getCode :: VM Concrete -> Addr -> CE.RuntimeCode
+getCode vm addr =
+  case Map.lookup (LitAddr addr) (vm ^. #env % #contracts) of
+    Just contract -> convertCode contract.code
+    Nothing -> CE.RuntimeCode mempty
 
 convertBlockHeader :: Block -> CE.BlockHeader
 convertBlockHeader (Block {coinbase=coinbase, timestamp=timestamp, number=number, gaslimit=gaslimit, prevRandao=prevRandao, baseFee=baseFee}) = CE.BlockHeader
@@ -341,23 +353,23 @@ convertResult :: CE.VMResult -> VMResult Concrete
 convertResult (CE.VMFailure e) = VMFailure e
 convertResult (CE.VMSuccess d) = VMSuccess (ConcreteBuf d)
 
-convertAccountsBack :: CE.Accounts -> Map.Map (Expr EAddr) Contract
-convertAccountsBack m = Map.fromList $ map convertPairBack (StrictMap.toList m)
+convertAccountsBack :: Map.Map (Expr EAddr) Contract -> CE.Accounts -> Map.Map (Expr EAddr) Contract
+convertAccountsBack oldContracts m = Map.fromList $ map convertPairBack (StrictMap.toList m)
   where
-    convertPairBack (k, v) = (LitAddr k, convertAccountBack v)
+    convertPairBack (k, v) = (LitAddr k, convertAccountBack (Map.lookup (LitAddr k) oldContracts) v)
 
-convertAccountBack :: CE.Account -> Contract
-convertAccountBack a = Contract
+convertAccountBack :: Maybe Contract -> CE.Account -> Contract
+convertAccountBack maybeOld a = Contract
   { code = RuntimeCode (ConcreteRuntimeCode a.accCode.code)
   , storage = ConcreteStore a.accStorage
   , tStorage = ConcreteStore mempty
   , origStorage = ConcreteStore a.accStorage
   , balance = Lit a.accBalance.value
   , nonce = Just a.accNonce.value
-  , codehash = Lit 0 -- Recompute?
-  , opIxMap = mempty
-  , codeOps = mempty
-  , external = True -- Assumption
+  , codehash = maybe (Lit $ keccak' a.accCode.code) (.codehash) maybeOld
+  , opIxMap = maybe mempty (.opIxMap) maybeOld
+  , codeOps = maybe mempty (.codeOps) maybeOld
+  , external = maybe True (.external) maybeOld
   }
 
 -- | A type alias for the context we carry while executing instructions
