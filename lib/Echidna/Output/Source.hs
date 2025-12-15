@@ -7,19 +7,14 @@ module Echidna.Output.Source (
   checkAssertionsCoverage
 ) where
 
-import Prelude hiding (writeFile)
-
 import Control.Monad (unless)
 import Data.ByteString qualified as BS
-import Text.Mustache (substituteValue, toMustache)
-import Text.Mustache.Compile (embedTemplate)
-import Text.Mustache.Types (Template, Value(..))
 import Data.Foldable
 import Data.List (nub, sort)
 import Data.List.NonEmpty qualified as NE
-import Data.Maybe (fromMaybe, mapMaybe, catMaybes)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe (fromMaybe, mapMaybe, catMaybes)
 import Data.Sequence qualified as Seq
 import Data.Set qualified as S
 import Data.Text (Text, pack)
@@ -30,19 +25,23 @@ import Data.Time (getCurrentTime, formatTime, defaultTimeLocale)
 import Data.Vector qualified as V
 import Data.Vector.Unboxed qualified as VU
 import HTMLEntities.Text qualified as HTML
+import Prelude hiding (writeFile)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>), splitDirectories, joinPath, takeDirectory)
 import System.FilePath.Glob qualified as Glob
+import Text.Mustache (substituteValue, toMustache)
+import Text.Mustache.Compile (embedTemplate)
+import Text.Mustache.Types (Template, Value(..))
 import Text.Printf (printf)
 
 import EVM.Dapp (srcMapCodePos, DappInfo(..))
 import EVM.Solidity (SourceCache(..), SrcMap, SolcContract(..))
 
+import Echidna.SourceAnalysis.Slither (AssertLocation(..), assertLocationList, SlitherInfo(..))
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Coverage (OpIx, unpackTxResults, FrozenCoverageMap, CoverageFileType (..), mergeCoverageMaps)
 import Echidna.Types.Tx (TxResult(..))
-import Echidna.SourceAnalysis.Slither (AssertLocation(..), assertLocationList, SlitherInfo(..))
 
 -- | Embedded template with partials for coverage reports
 coverageTemplate :: Template

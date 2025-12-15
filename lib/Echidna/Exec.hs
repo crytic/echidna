@@ -4,14 +4,11 @@
 
 module Echidna.Exec where
 
-import Optics.Core
-import Optics.State.Operators
-
 import Control.Monad (when, forM_)
 import Control.Monad.Catch (MonadThrow(..))
-import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO), gets, modify', execStateT)
 import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.ST (ST, stToIO, RealWorld)
+import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO), gets, modify', execStateT)
 import Data.Bits
 import Data.ByteString qualified as BS
 import Data.IORef (readIORef, newIORef, writeIORef, modifyIORef')
@@ -20,6 +17,8 @@ import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Data.Vector.Unboxed.Mutable qualified as VMut
+import Optics.Core
+import Optics.State.Operators
 import System.Environment (lookupEnv, getEnvironment)
 import System.Process qualified as P
 
@@ -60,31 +59,31 @@ classifyError = \case
   _                    -> UnknownE
 
 -- | Extracts the 'Query' if there is one.
-getQuery :: VMResult Concrete s -> Maybe (Query Concrete s)
+getQuery :: VMResult Concrete -> Maybe (Query Concrete)
 getQuery (HandleEffect (Query q)) = Just q
 getQuery _ = Nothing
 
 -- | Matches execution errors that just cause a reversion.
-pattern Reversion :: VMResult Concrete s
+pattern Reversion :: VMResult Concrete
 pattern Reversion <- VMFailure (classifyError -> RevertE)
 
 -- | Matches execution errors caused by illegal behavior.
-pattern Illegal :: VMResult Concrete s
+pattern Illegal :: VMResult Concrete
 pattern Illegal <- VMFailure (classifyError -> IllegalE)
 
 -- | Given an execution error, throw the appropriate exception.
 -- Also optionally takes a DappInfo and VM, which are used to show the stack trace.
-vmExcept :: MonadThrow m => Maybe (DappInfo, VM Concrete RealWorld) -> EvmError -> m ()
+vmExcept :: MonadThrow m => Maybe (DappInfo, VM Concrete) -> EvmError -> m ()
 vmExcept traceInfo e =
   let trace = uncurry showTraceTree <$> traceInfo
   in throwM $
     case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e trace}
 
 execTxWith
-  :: (MonadIO m, MonadState (VM Concrete RealWorld) m, MonadReader Env m, MonadThrow m)
-  => m (VMResult Concrete RealWorld)
+  :: (MonadIO m, MonadState (VM Concrete) m, MonadReader Env m, MonadThrow m)
+  => m (VMResult Concrete)
   -> Tx
-  -> m (VMResult Concrete RealWorld)
+  -> m (VMResult Concrete)
 execTxWith executeTx tx = do
   vm <- get
   if hasSelfdestructed vm tx.dst then
@@ -120,16 +119,12 @@ execTxWith executeTx tx = do
             session <- asks (.fetchSession)
             ret <- liftIO $ safeFetchContractFrom session rpcBlock rpcUrl addr
             case ret of
-              -- TODO: fix hevm to not return an empty contract in case of an error
-              Just contract | contract.code /= RuntimeCode (ConcreteRuntimeCode "") -> do
+              EVM.Fetch.FetchSuccess contract _ -> do
                 fromEVM (continuation contract)
-              _ -> do
-                -- TODO: better error reporting in HEVM, when intermittent
-                -- network error then retry
-                logMsg $ "ERROR: Failed to fetch contract: " <> show q
-                -- TODO: How should we fail here? It could be a network error,
-                -- RPC server returning junk etc.
+              EVM.Fetch.FetchFailure _ -> do
                 fromEVM (continuation emptyAccount)
+              EVM.Fetch.FetchError e -> do
+                error $ "ERROR: Failed to fetch contract: " <> show q <> " " <> T.unpack e
           Nothing -> do
             --logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
             -- TODO: How should we fail here? RPC is not configured but VM
@@ -139,19 +134,19 @@ execTxWith executeTx tx = do
 
       -- A previously unknown slot is required
       Just q@(PleaseFetchSlot addr slot continuation) -> do
-        --logMsg $ "INFO: Performing RPC: " <> show q
         case config.rpcUrl of
           Just rpcUrl -> do
             session <- asks (.fetchSession)
             ret <- liftIO $ safeFetchSlotFrom session rpcBlock rpcUrl addr slot
             case ret of
-              Just value -> do
+              EVM.Fetch.FetchSuccess value status -> do
+                -- Log only in text mode, ignoring quiet flag as this is important info
+                when (status == EVM.Fetch.Fresh) $ logMsg $ "Fetched new slot: " <> show q
                 fromEVM (continuation value)
-              Nothing -> do
-                -- TODO: How should we fail here? It could be a network error,
-                -- RPC server returning junk etc.
-                logMsg $ "ERROR: Failed to fetch slot: " <> show q
+              EVM.Fetch.FetchFailure _ -> do
                 fromEVM (continuation 0)
+              EVM.Fetch.FetchError e -> do
+                error $ "ERROR: Failed to fetch slot: " <> show q <> " " <> T.unpack e
           Nothing -> do
             --logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
             -- Use the zero slot
@@ -217,9 +212,9 @@ logMsg msg = do
 -- | Execute a transaction "as normal".
 execTx
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
-  => VM Concrete RealWorld
+  => VM Concrete
   -> Tx
-  -> m (VMResult Concrete RealWorld, VM Concrete RealWorld)
+  -> m (VMResult Concrete, VM Concrete)
 execTx vm tx = runStateT (execTxWith (fromEVM (exec defaultConfig)) tx) vm
 
 -- | A type alias for the context we carry while executing instructions
@@ -227,9 +222,9 @@ type CoverageContext = (Bool, Maybe (VMut.IOVector CoverageInfo, Int))
 
 -- | Execute a transaction, logging coverage at every step.
 execTxWithCov
-  :: (MonadIO m, MonadState (VM Concrete RealWorld) m, MonadReader Env m, MonadThrow m)
+  :: (MonadIO m, MonadState (VM Concrete) m, MonadReader Env m, MonadThrow m)
   => Tx
-  -> m (VMResult Concrete RealWorld, Bool)
+  -> m (VMResult Concrete, Bool)
 execTxWithCov tx = do
   env <- ask
 
@@ -260,7 +255,7 @@ execTxWithCov tx = do
       pure r
       where
       -- | Repeatedly exec a step and add coverage until we have an end result
-      loop :: VM Concrete RealWorld -> IO (VMResult Concrete RealWorld, VM Concrete RealWorld)
+      loop :: VM Concrete -> IO (VMResult Concrete, VM Concrete)
       loop !vm = case vm.result of
         Nothing -> do
           addCoverage vm
@@ -268,11 +263,11 @@ execTxWithCov tx = do
         Just r -> pure (r, vm)
 
       -- | Execute one instruction on the EVM
-      stepVM :: VM Concrete RealWorld -> IO (VM Concrete RealWorld)
+      stepVM :: VM Concrete -> IO (VM Concrete)
       stepVM = stToIO . execStateT (exec1 defaultConfig)
 
       -- | Add current location to the CoverageMap
-      addCoverage :: VM Concrete RealWorld -> IO ()
+      addCoverage :: VM Concrete -> IO ()
       addCoverage !vm = do
         let (pc, opIx, depth) = currentCovLoc vm
             contract = currentContract vm
@@ -315,7 +310,7 @@ execTxWithCov tx = do
       currentContract vm = fromMaybe (error "no contract information on coverage") $
         vm ^? #env % #contracts % at vm.state.codeContract % _Just
 
-initialVM :: Bool -> ST s (VM Concrete s)
+initialVM :: Bool -> ST RealWorld (VM Concrete)
 initialVM ffi = do
   vm <- vmForEthrunCreation mempty
   pure $ vm & #block % #timestamp .~ Lit initialTimestamp

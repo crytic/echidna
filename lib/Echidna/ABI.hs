@@ -7,19 +7,19 @@ import Data.Binary.Put (runPut, putWord32be)
 import Data.BinaryWord (unsignedWord)
 import Data.Bits (bit)
 import Data.Bool (bool)
-import Data.ByteString.Lazy as BSLazy (toStrict)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.ByteString.Lazy as BSLazy (toStrict)
 import Data.DoubleWord (Int256, Word256)
 import Data.Foldable (toList)
-import Data.Map (Map)
-import Data.Map qualified as Map
-import Data.Set (Set)
-import Data.Set qualified as Set
 import Data.List (intercalate)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
+import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, catMaybes)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (encodeUtf8)

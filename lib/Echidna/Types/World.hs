@@ -4,8 +4,8 @@ import Data.Set (Set)
 
 import EVM.Types (Addr, FunctionSelector)
 
-import Echidna.Types.Signature (SignatureMap)
 import Echidna.Events (EventMap)
+import Echidna.Types.Signature (SignatureMap)
 
 -- | The world is composed by:
 --    * A list of "human" addresses

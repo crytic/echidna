@@ -12,7 +12,6 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Control.Monad.State.Strict hiding (state)
-import Control.Monad.ST (RealWorld)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
@@ -20,16 +19,17 @@ import Data.Maybe (isJust, mapMaybe)
 import Data.Sequence ((|>))
 import Data.Text (Text)
 import Data.Time
+import Graphics.Vty qualified as Vty
 import Graphics.Vty.Config (VtyUserConfig, defaultConfig, configInputMap)
 import Graphics.Vty.CrossPlatform (mkVty)
 import Graphics.Vty.Input.Events
-import Graphics.Vty qualified as Vty
 import System.Console.ANSI (hNowSupportsANSI)
 import System.Signal
 import UnliftIO
   ( MonadUnliftIO, IORef, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
+import EVM.Fetch qualified
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
@@ -44,7 +44,7 @@ import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
-import Echidna.Types.Worker 
+import Echidna.Types.Worker
 import Echidna.UI.Report
 import Echidna.UI.Widgets
 import Echidna.Utility (timePrefix, getTimestamp)
@@ -66,7 +66,7 @@ data GasTracker = GasTracker
 -- print non-interactive output in desired format at the end
 ui
   :: (MonadCatch m, MonadReader Env m, MonadUnliftIO m)
-  => VM Concrete RealWorld -- ^ Initial VM state
+  => VM Concrete -- ^ Initial VM state
   -> GenDict
   -> [(FilePath, [Tx])]
   -> Maybe Text
@@ -114,9 +114,7 @@ ui vm dict initialCorpus cliSelectedContract = do
         writeBChan uiChannel (CampaignUpdated now tests states)
 
         -- TODO: remove and use events for this
-        -- For now, return empty cache data since accessing hevm's internal cache is complex
-        let c = mempty :: Map Addr (Maybe Contract)
-        let s = mempty :: Map Addr (Map W256 (Maybe W256))
+        (c, s) <- EVM.Fetch.getCacheState env.fetchSession
         writeBChan uiChannel (FetchCacheUpdated c s)
 
       -- UI initialization
@@ -429,4 +427,3 @@ statusLine env states lastUpdateRef = do
     <> ", corpus: " <> show (Corpus.corpusSize corpus)
     <> shrinkingPart
     <> ", gas/s: " <> show gasPerSecond
-
