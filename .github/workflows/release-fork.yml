@@ -8,38 +8,19 @@ on:
         required: true
         default: 'dev'
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
 jobs:
   build:
-    name: Build ${{ matrix.name }}
+    name: Build Linux (x86_64)
     timeout-minutes: 180
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest-m
-            name: Linux (x86_64)
-            tuple: x86_64-linux
-            system: x86_64-linux
-          - os: macos-14
-            name: macOS (aarch64)
-            tuple: aarch64-macos
-            system: aarch64-darwin
-          # Uncomment for additional platforms:
-          # - os: ubuntu-24.04-arm  # ARM runner required for aarch64
-          #   name: Linux (aarch64)
-          #   tuple: aarch64-linux
-          #   system: aarch64-linux
-          # - os: macos-14
-          #   name: macOS (x86_64)
-          #   tuple: x86_64-macos
-          #   system: x86_64-darwin
+    runs-on: ubuntu-latest
 
     steps:
       - name: Free disk space
-        if: runner.os == 'Linux'
         run: |
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
@@ -67,14 +48,14 @@ jobs:
 
       - name: Build redistributable echidna
         run: |
-          nix build ".#packages.${{ matrix.system }}.echidna-redistributable" --out-link redistributable
-          tar -czf "echidna-${{ steps.version.outputs.version }}-${{ matrix.tuple }}.tar.gz" -C ./redistributable/bin/ echidna
+          nix build ".#packages.x86_64-linux.echidna-redistributable" --out-link redistributable
+          tar -czf "echidna-${{ steps.version.outputs.version }}-x86_64-linux.tar.gz" -C ./redistributable/bin/ echidna
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: echidna-${{ matrix.tuple }}
-          path: echidna-${{ steps.version.outputs.version }}-${{ matrix.tuple }}.tar.gz
+          name: echidna-x86_64-linux
+          path: echidna-${{ steps.version.outputs.version }}-x86_64-linux.tar.gz
 
   release:
     name: Create release
