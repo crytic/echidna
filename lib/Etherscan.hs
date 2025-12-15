@@ -1,20 +1,30 @@
-module Etherscan where
+module Etherscan
+  ( SourceCode(..)
+  , getBlockExplorerUrl
+  , fetchContractSource
+  , fetchContractSourceMap
+  )
+where
 
 import Control.Concurrent (threadDelay)
 import Control.Exception (catch, SomeException)
 import Control.Monad
 import Data.Aeson
 import Data.Aeson.Types (parseEither)
-import Data.Maybe (catMaybes)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Sequence (Seq)
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Generics (Generic)
 import Network.HTTP.Simple (httpSink, parseRequest, getResponseBody, httpJSON)
 import Text.HTML.DOM (sinkDoc)
+import Text.Read (readMaybe)
 import Text.XML.Cursor (attributeIs, content, element, fromDocument, ($//), (&//))
 
 import EVM.Solidity (makeSrcMaps, SrcMap)
-import EVM.Types (Addr)
+import EVM.Types (Addr, W256)
 
 data SourceCode = SourceCode
   { name :: Text
@@ -22,10 +32,27 @@ data SourceCode = SourceCode
   }
   deriving Show
 
-fetchContractSource :: Maybe Text -> Addr -> IO (Maybe SourceCode)
-fetchContractSource apiKey addr = do
+data ChainInfo = ChainInfo
+  { chainname :: Text
+  , chainid :: Text
+  , blockexplorer :: Text
+  , apiurl :: Text
+  , status :: Int
+  } deriving (Show, Generic)
+
+instance FromJSON ChainInfo
+
+newtype ChainlistResponse = ChainlistResponse
+  { result :: [ChainInfo]
+  } deriving (Show, Generic)
+
+instance FromJSON ChainlistResponse
+
+fetchContractSource :: Maybe W256 -> Maybe Text -> Addr -> IO (Maybe SourceCode)
+fetchContractSource chainId apiKey addr = do
+  let chainParam = maybe "chainid=1" (\c -> "chainid=" <> show (fromIntegral c :: Integer)) chainId
   url <- parseRequest $ "https://api.etherscan.io/v2/api?"
-                        <> "&chainid=1"
+                        <> chainParam
                         <> "&module=contract"
                         <> "&action=getsourcecode"
                         <> "&address=" <> show addr
@@ -60,12 +87,57 @@ fetchContractSource apiKey addr = do
         try url (n - 1)
       _ -> pure Nothing
 
+-- | Fetch the chainlist from Etherscan API and return a map of chainId to block explorer URL
+fetchChainlist :: IO (Maybe (Map W256 Text))
+fetchChainlist = do
+  putStr "Fetching Etherscan chainlist... "
+  url <- parseRequest "https://api.etherscan.io/v2/chainlist"
+  try url (3 :: Int)
+  where
+    try url n = catch
+      (do
+        resp <- httpJSON url
+        let result = getResponseBody resp :: ChainlistResponse
+        putStrLn "Success!"
+        let chainMap = Map.fromList
+              [ (cid, T.dropWhileEnd (== '/') ci.blockexplorer)
+              | ci <- result.result
+              , ci.status == 1  -- Only active chains
+              , Just cid <- [readMaybe $ T.unpack ci.chainid]
+              ]
+        pure $ Just chainMap
+      )
+      (\(e :: SomeException) -> do
+        if n > 0
+          then do
+            putStrLn $ "Retrying (" <> show n <> " left). Error: " <> show e
+            threadDelay 1000000  -- 1 second
+            try url (n - 1)
+          else do
+            putStrLn $ "Failed: " <> show e
+            pure Nothing
+      )
+
+-- | Get block explorer URL for a chainId
+getBlockExplorerUrl :: Maybe W256 -> IO String
+getBlockExplorerUrl maybeChainId = do
+  let chainId = fromMaybe 1 maybeChainId
+  maybeChainlist <- fetchChainlist
+  let chainlist = fromMaybe Map.empty maybeChainlist
+  case Map.lookup chainId chainlist of
+    Nothing -> do
+      putStrLn $ "Warning: No block explorer found for chainId "
+        <> show (fromIntegral chainId :: Integer) <> ", defaulting to mainnet"
+      pure "https://etherscan.io"
+    Just url -> pure $ T.unpack url
+
 -- | Unfortunately, Etherscan doesn't expose source maps in the JSON API.
 -- This function scrapes it from the HTML. Return a tuple where the first element
 -- is raw srcmap in text format and the second element is a parsed map.
-fetchContractSourceMap :: Addr -> IO (Maybe (Text, Seq SrcMap))
-fetchContractSourceMap addr = do
-  url <- parseRequest $ "https://etherscan.io/address/" <> show addr
+fetchContractSourceMap :: String -> Addr -> IO (Maybe (Text, Seq SrcMap))
+fetchContractSourceMap baseUrl addr = do
+  -- Scrape HTML from block explorer
+  url <- parseRequest $ baseUrl <> "/address/" <> show addr
   doc <- httpSink url $ const sinkDoc
   let cursor = fromDocument doc
   -- reverse to start looking from the end
