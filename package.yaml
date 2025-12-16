@@ -76,8 +76,10 @@ library:
     - vector
     - vty
     - vty-crossplatform
+    - wai
     - wai-extra
     - warp
+    - http-types
     - wreq
     - word-wrap
     - xml-conduit

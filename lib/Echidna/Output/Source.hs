@@ -1,7 +1,11 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Echidna.Output.Source where
+module Echidna.Output.Source (
+  saveCoverages,
+  saveLcovHook,
+  checkAssertionsCoverage
+) where
 
 import Control.Monad (unless)
 import Data.ByteString qualified as BS
@@ -89,6 +93,24 @@ coverageFileExtension :: CoverageFileType -> String
 coverageFileExtension Lcov = ".lcov"
 coverageFileExtension Html = ".html"
 coverageFileExtension Txt = ".txt"
+
+-- | Save only LCOV coverage triggered by HTTP hook, with timestamp in filename
+saveLcovHook
+  :: Env
+  -> FilePath
+  -> SourceCache
+  -> [SolcContract]
+  -> IO FilePath
+saveLcovHook env d sc cs = do
+  coverage <- mergeCoverageMaps env.dapp env.coverageRefInit env.coverageRefRuntime
+  currentTime <- getCurrentTime
+  let timestamp = formatTime defaultTimeLocale "%Y%m%d_%H%M%S" currentTime
+      fn = d </> "hook_" <> timestamp <> ".lcov"
+      excludePatterns = env.cfg.campaignConf.coverageExcludes
+      cc = ppCoveredCode Lcov sc cs coverage Nothing (T.pack timestamp) excludePatterns
+  createDirectoryIfMissing True d
+  writeFile fn cc
+  pure fn
 
 -- | Pretty-print the covered code
 ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> FrozenCoverageMap -> Maybe Text -> Text -> [Text] -> Text
