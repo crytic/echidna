@@ -323,7 +323,6 @@ convertTransaction vm (Tx {src=src, dst=dst, value=value, call=call, gas=gas, ga
                       else sig <> "(" <> (T.intercalate "," $ map (abiTypeSolidity . abiValueType) args) <> ")"
         in abiMethod fullSig (AbiTuple (V.fromList args))
       SolCalldata bs -> bs; _ -> mempty) -- Approximate, TxCall handling needed
-  , CE.code = Just $ getCode vm dst
   , CE.gasLimit = CE.Gas gas
   , CE.gasPrice = gasprice
   , CE.priorityFee = 0 -- Tx doesn't have priority fee
