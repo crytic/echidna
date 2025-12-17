@@ -62,16 +62,16 @@ validateTestMode s = case s of
   "exploration"  -> s
   "overflow"     -> s
   "optimization" -> s
-  "verify"       -> s
+  "verification" -> s
   _              -> error validateTestModeError
 
 isAssertionMode :: TestMode -> Bool
 isAssertionMode "assertion" = True
 isAssertionMode _           = False
 
-isVerifyMode :: TestMode -> Bool
-isVerifyMode "verify" = True
-isVerifyMode _        = False
+isVerificationMode :: TestMode -> Bool
+isVerificationMode "verification" = True
+isVerificationMode _              = False
 
 isExplorationMode :: TestMode -> Bool
 isExplorationMode "exploration" = True
@@ -104,9 +104,8 @@ createTests m td ts r ss = case m of
   "assertion" ->
     map (\s -> createTest (AssertionTest False s r))
         (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
-  "verify" ->
-    map (\s -> createTest (AssertionTest False s r))
-        (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
+  "verification" ->
+    map (\s -> createTest (AssertionTest False s r)) (filter (/= fallback) ss)
   "dapptest" ->
     map (\s -> createTest (AssertionTest True s r))
         (filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ss)
