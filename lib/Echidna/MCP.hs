@@ -4,7 +4,7 @@
 module Echidna.MCP where
 
 import Control.Concurrent.STM
-import Data.IORef (readIORef)
+import Data.IORef (readIORef, IORef)
 import Data.List (find)
 import qualified Data.Set as Set
 import Data.Text (Text, pack, unpack)
@@ -22,37 +22,40 @@ import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(
 data Tool = Tool
   { toolName :: String
   , toolDescription :: String
-  , execute :: [(Text, Text)] -> Env -> Bus -> IO String
+  , execute :: [(Text, Text)] -> Env -> Bus -> IORef [Text] -> IO String
   }
 
 -- | Registry of available tools
 availableTools :: [Tool]
 availableTools =
-  [ Tool "read_corpus" "Read the current corpus size" $ \_ env _ -> do
+  [ Tool "read_corpus" "Read the current corpus size" $ \_ env _ _ -> do
       c <- readIORef env.corpusRef
       return $ printf "Corpus Size: %d" (Set.size c)
-  , Tool "broadcast_message" "Broadcast a text message to all agents" $ \args _ bus -> do
+  , Tool "broadcast_message" "Broadcast a text message to all agents" $ \args _ bus _ -> do
       -- Extract "message" argument or join all values
       let msg = case lookup "message" args of
                   Just m -> m
                   Nothing -> T.unwords $ map snd args
       atomically $ writeTChan bus (WrappedMessage AIId (Broadcast (StrategyUpdate msg)))
       return $ printf "Broadcasted: %s" (unpack msg)
-  , Tool "dump_lcov" "Dump coverage in LCOV format" $ \_ _ bus -> do
+  , Tool "dump_lcov" "Dump coverage in LCOV format" $ \_ _ bus _ -> do
       atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer 0 DumpLcov))
       return "Requested LCOV dump from Fuzzer 0"
-  , Tool "prioritize_function" "Prioritize a function for fuzzing" $ \args env bus -> do
+  , Tool "prioritize_function" "Prioritize a function for fuzzing" $ \args env bus _ -> do
       let msg = case lookup "function" args of
                   Just m -> m
                   Nothing -> ""
       let nWorkers = getNFuzzWorkers env.cfg.campaignConf
       mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (PrioritizeFunction (unpack msg))))) [0 .. nWorkers - 1]
       return $ printf "Requested prioritization of function '%s' on %d fuzzers" (unpack msg) nWorkers
+  , Tool "read_logs" "Read the last 100 log messages" $ \_ _ _ logsRef -> do
+      logs <- readIORef logsRef
+      return $ unpack $ T.unlines $ reverse logs
   ]
 
 -- | Run the MCP Server
-runMCPServer :: Env -> Int -> IO ()
-runMCPServer env port = do
+runMCPServer :: Env -> Int -> IORef [Text] -> IO ()
+runMCPServer env port logsRef = do
     let httpConfig = HttpConfig
             { httpPort = port
             , httpHost = "127.0.0.1"
@@ -83,6 +86,10 @@ runMCPServer env port = do
                     { properties = [("function", InputSchemaDefinitionProperty "string" "The name of the function to prioritize")]
                     , required = ["function"]
                     }
+                "read_logs" -> InputSchemaDefinitionObject
+                    { properties = []
+                    , required = []
+                    }
                 _ -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
@@ -98,7 +105,7 @@ runMCPServer env port = do
             case find (\t -> pack (t.toolName) == name) availableTools of
                 Nothing -> return $ Left $ UnknownTool name
                 Just tool -> do
-                    result <- tool.execute args env env.bus
+                    result <- tool.execute args env env.bus logsRef
                     return $ Right $ ContentText $ pack result
 
     let handlers = McpServerHandlers
