@@ -68,6 +68,7 @@ library:
     - semver
     - signal
     - split
+    - stm
     - strip-ansi-escape
     - time
     - unliftio
