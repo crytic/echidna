@@ -43,7 +43,7 @@ import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.InterWorker (AgentId(..), Bus, WrappedMessage(..), Message(..), SymbolicCmd(..), FuzzerCmd(..), BroadcastMsg(NewCoverageInfo))
 import qualified Echidna.Types.InterWorker as InterWorker
 import Echidna.Types.Random (rElem)
-import Echidna.Test (isVerifyMode)
+import Echidna.Test (isVerificationMode)
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), isAssertionTest, getAssertionSignature, isOpen, didFail)
 import qualified Echidna.Types.Test as Test
 import Echidna.Types.Tx (Tx)
@@ -100,7 +100,7 @@ instance Agent SymbolicAgent where
                liftIO $ putStrLn "Starting SymbolicAgent"
 
                -- Check for stateless verification mode
-               if isVerifyMode cfg.solConf.testMode then do
+               if isVerificationMode cfg.solConf.testMode then do
                  verifyMethods vm name callback
                  pure SymbolicVerificationDone
                else do
