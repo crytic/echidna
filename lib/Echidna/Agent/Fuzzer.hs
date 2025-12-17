@@ -9,7 +9,7 @@ module Echidna.Agent.Fuzzer where
 import Control.Concurrent.STM (atomically, tryReadTChan, dupTChan)
 import Control.Monad (replicateM, void, forM_)
 import Control.Monad.Reader (runReaderT, liftIO, asks, MonadReader, ask)
-import Control.Monad.State.Strict (runStateT, get, gets, MonadState)
+import Control.Monad.State.Strict (runStateT, get, gets, modify', MonadState)
 import Control.Monad.Random.Strict (evalRandT, MonadRandom, RandT)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Trans (lift)
@@ -76,6 +76,7 @@ instance Agent FuzzerAgent where
           , ncalls = 0
           , totalGas = 0
           , runningThreads = []
+          , prioritizedFunctions = []
           }
 
     -- Callback to update the IORef with the current state
@@ -197,6 +198,12 @@ fuzzerLoop callback vm testLimit bus = do
                void $ saveLcovHook env dir env.sourceCache contracts
                putStrLn $ "Fuzzer " ++ show workerId ++ ": dumped LCOV coverage."
             pure ()
+          else pure ()
+       Just (WrappedMessage _ (ToFuzzer tid (PrioritizeFunction funcName))) -> do
+          workerId <- gets (.workerId)
+          if tid == workerId then do
+             modify' $ \s -> s { prioritizedFunctions = funcName : s.prioritizedFunctions }
+             pure ()
           else pure ()
        _ -> pure ()
 
