@@ -40,7 +40,7 @@ import Echidna.SymExec.Verification (verifyMethod, isSuitableToVerifyMethod)
 import Echidna.Types.Agent
 import Echidna.Types.Campaign (WorkerState(..), CampaignConf(..), getNFuzzWorkers)
 import Echidna.Types.Config (Env(..), EConfig(..))
-import Echidna.Types.InterWorker (AgentId(..), Bus, WrappedMessage(..), Message(..), DirectMsg(..), BroadcastMsg(NewCoverageInfo))
+import Echidna.Types.InterWorker (AgentId(..), Bus, WrappedMessage(..), Message(..), SymbolicCmd(..), FuzzerCmd(..), BroadcastMsg(NewCoverageInfo))
 import qualified Echidna.Types.InterWorker as InterWorker
 import Echidna.Types.Random (rElem)
 import Echidna.Test (isVerifyMode)
@@ -143,7 +143,7 @@ handleMessage _ (WrappedMessage _ (Broadcast (NewCoverageInfo _ txs))) callback 
     symexecTxs callback vm False name txs
     shrinkAndRandomlyExplore callback vm txs (10 :: Int)
 
-handleMessage bus (WrappedMessage from (Direct SymbolicId (SolveThis txs))) callback vm name = do
+handleMessage bus (WrappedMessage from (ToSymbolic (SolveThis txs))) callback vm name = do
     -- Received a request to solve constraints or generate inputs based on txs
     -- We can use symexecTxs to try to explore around these txs
     -- But we need to return the result to 'from'
@@ -169,7 +169,10 @@ handleMessage bus (WrappedMessage from (Direct SymbolicId (SolveThis txs))) call
     -- The PoC says "The symbolic worker should be able to answer with some solved constraints / generator".
 
     -- Let's just send a message saying we tried.
-    liftIO $ atomically $ writeTChan bus (WrappedMessage SymbolicId (Direct from (SolutionFound [])))
+    case from of
+      FuzzerId fid ->
+         liftIO $ atomically $ writeTChan bus (WrappedMessage SymbolicId (ToFuzzer fid (SolutionFound [])))
+      _ -> pure ()
 
 handleMessage _ _ _ _ _ = pure ()
 
