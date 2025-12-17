@@ -13,7 +13,8 @@ import Text.Printf (printf)
 
 import MCP.Server
 
-import Echidna.Types.Config (Env(..))
+import Echidna.Types.Config (Env(..), EConfig(..))
+import Echidna.Types.Campaign (getNFuzzWorkers)
 import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(..), BroadcastMsg(..), FuzzerCmd(..))
 
 -- | MCP Tool Definition
@@ -40,6 +41,13 @@ availableTools =
   , Tool "dump_lcov" "Dump coverage in LCOV format" $ \_ _ bus -> do
       atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer 0 DumpLcov))
       return "Requested LCOV dump from Fuzzer 0"
+  , Tool "prioritize_function" "Prioritize a function for fuzzing" $ \args env bus -> do
+      let msg = case lookup "function" args of
+                  Just m -> m
+                  Nothing -> ""
+      let nWorkers = getNFuzzWorkers env.cfg.campaignConf
+      mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (PrioritizeFunction (unpack msg))))) [0 .. nWorkers - 1]
+      return $ printf "Requested prioritization of function '%s' on %d fuzzers" (unpack msg) nWorkers
   ]
 
 -- | Run the MCP Server
@@ -70,6 +78,10 @@ runMCPServer env port = do
                 "dump_lcov" -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
+                    }
+                "prioritize_function" -> InputSchemaDefinitionObject
+                    { properties = [("function", InputSchemaDefinitionProperty "string" "The name of the function to prioritize")]
+                    , required = ["function"]
                     }
                 _ -> InputSchemaDefinitionObject
                     { properties = []

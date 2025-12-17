@@ -5,14 +5,18 @@ module Echidna.Transaction where
 
 import Control.Monad (join, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
+import Control.Monad.Random.Strict (MonadRandom, getRandom, getRandomR, uniform)
 import Control.Monad.Reader (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Data.ByteString qualified as BS
+import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NE
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Vector qualified as V
 import Optics.Core
 import Optics.State.Operators
@@ -65,10 +69,27 @@ genTx world deployedContracts = do
   env <- ask
   let txConf = env.cfg.txConf
   genDict <- gets (.genDict)
+  prioritized <- gets (.prioritizedFunctions)
+  let prioritizedTxt = map T.pack prioritized
   sigMap <- getSignatures world.highSignatureMap world.lowSignatureMap
   sender <- rElem' world.senders
   contractAList <- liftIO $ mapM (toContractA env sigMap) (toList deployedContracts)
-  (dstAddr, dstAbis) <- rElem' $ Set.fromList $ catMaybes contractAList
+  let allContracts = catMaybes contractAList
+  (dstAddr, dstAbis) <- if null prioritizedTxt
+    then rElem' $ Set.fromList allContracts
+    else do
+      let prioritizedContracts = filter (\(_, sigs) -> any (\(n,_) -> n `elem` prioritizedTxt) sigs) allContracts
+      usePrioritized <- (<= (0.9 :: Double)) <$> getRandom
+      if usePrioritized && not (null prioritizedContracts)
+        then do
+           (addr, sigs) <- rElem' $ Set.fromList prioritizedContracts
+           -- Filter sigs to only prioritized ones
+           let pSigs = NE.filter (\(n, _) -> n `elem` prioritizedTxt) sigs
+           case NE.nonEmpty pSigs of
+             Just pSigsNE -> pure (addr, pSigsNE)
+             Nothing -> pure (addr, sigs) -- Should not happen
+        else rElem' $ Set.fromList allContracts
+
   solCall <- genInteractionsM genDict dstAbis
   value <- genValue txConf.maxValue genDict.dictValues world.payableSigs solCall
   ts <- (,) <$> genDelay txConf.maxTimeDelay genDict.dictValues

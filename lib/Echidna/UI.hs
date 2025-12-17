@@ -6,7 +6,6 @@ import Brick
 import Brick.BChan
 import Brick.Widgets.Dialog qualified as B
 import Control.Concurrent (killThread, threadDelay)
-import Control.Concurrent.MVar (readMVar)
 import Control.Exception (AsyncException)
 import Control.Monad
 import Control.Monad.Catch
@@ -15,7 +14,7 @@ import Control.Monad.State.Strict hiding (state)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (mapMaybe)
 import Data.Sequence ((|>))
 import Data.Text (Text)
 import Data.Time
