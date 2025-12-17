@@ -21,7 +21,14 @@
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [solc-pkgs.overlay foundry.overlay];
+          overlays = [
+            solc-pkgs.overlay
+            foundry.overlay
+            (final: prev: {
+              # build with GHC 9.8
+              haskellPackages = prev.haskell.packages.ghc98;
+            })
+          ];
         };
 
         # prefer musl on Linux, static glibc + threading does not work properly
