@@ -7,7 +7,7 @@ import Data.Binary.Get
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy (fromStrict)
-import Data.List (foldl')
+import Data.Foldable (foldl', length)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust, catMaybes, maybeToList)
@@ -18,6 +18,7 @@ import Data.Tree (flatten)
 import Data.Tree.Zipper (fromForest, TreePos, Empty)
 import Data.Vector (fromList)
 import Data.Vector qualified as V
+import Prelude hiding (Foldable(..))
 
 import EVM (traceForest)
 import EVM.ABI (Event(..), Indexed(..), decodeAbiValue, getAbiSeq, AbiType(..), AbiValue(..))
