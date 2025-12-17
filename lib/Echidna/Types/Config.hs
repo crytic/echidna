@@ -4,6 +4,7 @@ import Control.Concurrent (Chan)
 import Data.Aeson.Key (Key)
 import Data.IORef (IORef)
 import Data.Set (Set)
+import Echidna.Types.InterWorker (Bus)
 import Data.Text (Text)
 import Data.Time (LocalTime)
 import Data.Word (Word64)
@@ -73,6 +74,7 @@ data Env = Env
   -- | Shared between all workers. Events are fairly rare so contention is
   -- minimal.
   , eventQueue :: Chan (LocalTime, CampaignEvent)
+  , bus :: Bus
 
   , testRefs :: [IORef EchidnaTest]
   , coverageRefInit :: IORef CoverageMap
