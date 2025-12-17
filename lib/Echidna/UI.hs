@@ -33,9 +33,12 @@ import EVM.Fetch qualified
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
-import Echidna.Campaign (runWorker, spawnListener)
+import Echidna.Campaign (spawnListener)
 import Echidna.Output.Corpus (saveCorpusEvent)
 import Echidna.Output.JSON qualified
+import Echidna.Types.Agent (runAgent)
+import Echidna.Agent.Fuzzer (FuzzerAgent(..))
+import Echidna.Agent.Symbolic (SymbolicAgent(..))
 import Echidna.Server (runSSEServer)
 import Echidna.SourceAnalysis.Slither (isEmptySlitherInfo)
 import Echidna.Types.Campaign
@@ -96,7 +99,7 @@ ui vm dict initialCorpus cliSelectedContract = do
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
   workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
-    uncurry (spawnWorker env perWorkerTestLimit)
+    liftIO . uncurry (spawnWorker env perWorkerTestLimit)
 
   case effectiveMode of
     Interactive -> do
@@ -229,27 +232,37 @@ ui vm dict initialCorpus cliSelectedContract = do
 
   spawnWorker env testLimit corpusChunk workerId = do
     stateRef <- newIORef initialWorkerState
+    let bus = env.bus
 
     threadId <- forkIO $ do
       -- TODO: maybe figure this out with forkFinally?
       let workerType = workerIDToType env.cfg.campaignConf workerId
-      stopReason <- catches (do
+      maybeStopReason <- catches (do
           let
             timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
             corpus = if workerType == SymbolicWorker then initialCorpus else corpusChunk
-          maybeResult <- timeout timeoutUsecs $
-            runWorker workerType (get >>= writeIORef stateRef)
-                      vm dict workerId corpus testLimit cliSelectedContract
+
+          maybeResult <- timeout timeoutUsecs $ case workerType of
+             FuzzWorker -> do
+                 let agent = FuzzerAgent workerId vm dict corpus testLimit stateRef
+                 runAgent agent bus env
+             SymbolicWorker -> do
+                 let agent = SymbolicAgent vm dict corpus cliSelectedContract stateRef
+                 runAgent agent bus env
+
           pure $ case maybeResult of
-            Just (stopReason, _finalState) -> stopReason
-            Nothing -> TimeLimitReached
+            Just () -> Nothing -- Agent finished and pushed event
+            Nothing -> Just TimeLimitReached
         )
-        [ Handler $ \(e :: AsyncException) -> pure $ Killed (show e)
-        , Handler $ \(e :: SomeException)  -> pure $ Crashed (show e)
+        [ Handler $ \(e :: AsyncException) -> pure $ Just (Killed (show e))
+        , Handler $ \(e :: SomeException)  -> pure $ Just (Crashed (show e))
         ]
 
-      time <- liftIO getTimestamp
-      writeChan env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
+      case maybeStopReason of
+        Just stopReason -> do
+           time <- liftIO getTimestamp
+           liftIO $ writeChan env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
+        Nothing -> pure ()
 
     pure (threadId, stateRef)
 

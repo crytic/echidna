@@ -1,6 +1,7 @@
 module Echidna where
 
 import Control.Concurrent (newChan)
+import Control.Concurrent.STM (newBroadcastTChanIO)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (liftIO)
 import Data.IORef (newIORef)
@@ -86,7 +87,7 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
                 <> staticAddresses solConf
                 <> deployedAddresses
     deployedSolcContracts = nub $ mapMaybe (findSrcForReal env.dapp) $ Map.elems vm.env.contracts
-    nonViewPureSigs = concatMap (mapMaybe (\ (Method {name, inputs, mutability}) -> 
+    nonViewPureSigs = concatMap (mapMaybe (\ (Method {name, inputs, mutability}) ->
       case mutability of
         View -> Nothing
         Pure -> Nothing
@@ -123,6 +124,7 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   codehashMap <- newIORef mempty
   chainId <- maybe (pure Nothing) Onchain.fetchChainIdFrom (Just cfg.rpcUrl)
   eventQueue <- newChan
+  bus <- newBroadcastTChanIO
   coverageRefInit <- newIORef mempty
   coverageRefRuntime <- newIORef mempty
   corpusRef <- newIORef mempty
@@ -132,6 +134,6 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
   pure $ Env { cfg, dapp, codehashMap, fetchSession, contractNameCache
-             , chainId, eventQueue, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
+             , chainId, eventQueue, bus, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
              , slitherInfo
              }

@@ -52,7 +52,7 @@ createTest m = EchidnaTest Open m v [] Stop Nothing Nothing
 
 validateTestModeError :: String
 validateTestModeError =
-  "Invalid test mode (should be property, assertion, dapptest, optimization, overflow or exploration)"
+  "Invalid test mode (should be property, assertion, dapptest, optimization, overflow, exploration or verify)"
 
 validateTestMode :: String -> TestMode
 validateTestMode s = case s of
@@ -62,11 +62,16 @@ validateTestMode s = case s of
   "exploration"  -> s
   "overflow"     -> s
   "optimization" -> s
+  "verify"       -> s
   _              -> error validateTestModeError
 
 isAssertionMode :: TestMode -> Bool
 isAssertionMode "assertion" = True
 isAssertionMode _           = False
+
+isVerifyMode :: TestMode -> Bool
+isVerifyMode "verify" = True
+isVerifyMode _        = False
 
 isExplorationMode :: TestMode -> Bool
 isExplorationMode "exploration" = True
@@ -97,6 +102,9 @@ createTests m td ts r ss = case m of
   "optimization" ->
     map (\t -> createTest (OptimizationTest t r)) ts
   "assertion" ->
+    map (\s -> createTest (AssertionTest False s r))
+        (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
+  "verify" ->
     map (\s -> createTest (AssertionTest False s r))
         (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
   "dapptest" ->

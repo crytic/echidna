@@ -54,7 +54,8 @@ main = withUtf8 $ withCP65001 $ do
   opts@Options{..} <- execParser optsParser
   EConfigWithUsage loadedCfg ks _ <-
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
-  cfg <- overrideConfig loadedCfg opts
+  cfg' <- overrideConfig loadedCfg opts
+  let cfg = adjustForVerifyMode cfg'
 
   printProjectName cfg.projectName
 
