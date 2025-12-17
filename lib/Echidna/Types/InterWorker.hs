@@ -10,10 +10,22 @@ import Echidna.Types.Test (EchidnaTest)
 data AgentId = FuzzerId Int | SymbolicId | AIId
   deriving (Show, Eq, Ord)
 
+-- | Fuzzer specific commands
+data FuzzerCmd
+  = DumpLcov
+  | SolutionFound [Tx]
+  deriving (Show)
+
+-- | Symbolic specific commands
+data SymbolicCmd
+  = SolveThis [Tx]
+  deriving (Show)
+
 -- | Message Protocol
 data Message
   = Broadcast BroadcastMsg
-  | Direct AgentId DirectMsg
+  | ToFuzzer Int FuzzerCmd
+  | ToSymbolic SymbolicCmd
   | Request RequestMsg
   deriving (Show)
 
@@ -22,12 +34,6 @@ data BroadcastMsg
   | FoundBug EchidnaTest
   | StrategyUpdate Text
   | WorkerStopped AgentId
-  deriving (Show)
-
-data DirectMsg
-  = SolveThis [Tx]
-  | SolutionFound [Tx]
-  | DumpLcov
   deriving (Show)
 
 data RequestMsg

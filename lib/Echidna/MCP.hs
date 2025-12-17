@@ -14,7 +14,7 @@ import Text.Printf (printf)
 import MCP.Server
 
 import Echidna.Types.Config (Env(..))
-import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(..), BroadcastMsg(..), DirectMsg(..))
+import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(..), BroadcastMsg(..), FuzzerCmd(..))
 
 -- | MCP Tool Definition
 -- Simulates the definition of a tool exposed by an MCP server.
@@ -38,7 +38,7 @@ availableTools =
       atomically $ writeTChan bus (WrappedMessage AIId (Broadcast (StrategyUpdate msg)))
       return $ printf "Broadcasted: %s" (unpack msg)
   , Tool "dump_lcov" "Dump coverage in LCOV format" $ \_ _ bus -> do
-      atomically $ writeTChan bus (WrappedMessage AIId (Direct (FuzzerId 0) DumpLcov))
+      atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer 0 DumpLcov))
       return "Requested LCOV dump from Fuzzer 0"
   ]
 
@@ -80,7 +80,7 @@ runMCPServer env port = do
             }
 
     let toolDefs = map mkToolDefinition availableTools
-    
+
     let handleToolCall :: ToolName -> [(ArgumentName, ArgumentValue)] -> IO (Either Error Content)
         handleToolCall name args = do
             case find (\t -> pack (t.toolName) == name) availableTools of

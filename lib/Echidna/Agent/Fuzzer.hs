@@ -33,7 +33,7 @@ import Echidna.Transaction (genTx)
 import Echidna.Types.Agent
 import Echidna.Types.Campaign (WorkerState(..), CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
-import Echidna.Types.InterWorker (AgentId(..), Bus, WrappedMessage(..), Message(..), DirectMsg(..))
+import Echidna.Types.InterWorker (AgentId(..), Bus, WrappedMessage(..), Message(..), FuzzerCmd(..))
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..), isOpen, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker (WorkerEvent(..), WorkerType(..), CampaignEvent(..), WorkerStopReason(..))
@@ -179,13 +179,13 @@ fuzzerLoop callback vm testLimit bus = do
      -- Non-blocking read
      msg <- liftIO $ atomically $ tryReadTChan bus
      case msg of
-       Just (WrappedMessage _ (Direct (FuzzerId _) (SolveThis _))) -> do
-          -- Fuzzer doesn't usually solve, but if we wanted to...
-          pure ()
-       Just (WrappedMessage _ (Direct (FuzzerId _) (SolutionFound _))) -> do
-          -- Received help!
-          pure ()
-       Just (WrappedMessage _ (Direct (FuzzerId tid) DumpLcov)) -> do
+       Just (WrappedMessage _ (ToFuzzer tid (SolutionFound _))) -> do
+          workerId <- gets (.workerId)
+          if tid == workerId then do
+             -- Received help!
+             pure ()
+          else pure ()
+       Just (WrappedMessage _ (ToFuzzer tid DumpLcov)) -> do
           workerId <- gets (.workerId)
           if tid == workerId then do
             env <- ask
