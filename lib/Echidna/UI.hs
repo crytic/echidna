@@ -16,7 +16,7 @@ import Data.List.Split (chunksOf)
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
 import Data.Sequence ((|>))
-import Data.Text (Text)
+import Data.Text (Text, pack)
 import Data.Time
 import Graphics.Vty qualified as Vty
 import Graphics.Vty.Config (VtyUserConfig, defaultConfig, configInputMap)
@@ -25,7 +25,7 @@ import Graphics.Vty.Input.Events
 import System.Console.ANSI (hNowSupportsANSI)
 import System.Signal
 import UnliftIO
-  ( MonadUnliftIO, IORef, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
+  ( MonadUnliftIO, IORef, newIORef, readIORef, hFlush, stdout , writeIORef, timeout, atomicModifyIORef')
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
 import EVM.Fetch qualified
@@ -181,7 +181,12 @@ ui vm dict initialCorpus cliSelectedContract = do
               void $ tryPutMVar serverStopVar ()
         in installHandler sig handler
 
-      let forwardEvent ev = putStrLn =<< runReaderT (ppLogLine vm ev) env
+      logBuffer <- newIORef []
+
+      let forwardEvent ev = do
+            msg <- runReaderT (ppLogLine vm ev) env
+            liftIO $ atomicModifyIORef' logBuffer (\logs -> (take 100 (pack msg : logs), ()))
+            putStrLn msg
       uiEventsForwarderStopVar <- spawnListener forwardEvent
 
       -- Track last update time and gas for delta calculation
@@ -196,7 +201,7 @@ ui vm dict initialCorpus cliSelectedContract = do
             hFlush stdout
 
       case conf.campaignConf.serverPort of
-        Just port -> void $ liftIO $ forkIO $ runMCPServer env (fromIntegral port)
+        Just port -> void $ liftIO $ forkIO $ runMCPServer env (fromIntegral port) logBuffer
         Nothing -> pure ()
 
       ticker <- liftIO . forkIO . forever $ do
