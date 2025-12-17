@@ -17,7 +17,11 @@ import Control.Monad.IO.Class (MonadIO)
 import System.Random (mkStdGen)
 import Data.IORef (IORef, writeIORef, readIORef, atomicModifyIORef')
 import Data.Map (Map)
+import qualified Data.Map as Map
+import System.Directory (getCurrentDirectory)
 
+import Echidna.Output.Source (saveLcovHook)
+import EVM.Dapp (DappInfo(..))
 import EVM.Types (VM(..), VMType(Concrete), Expr(..), EType(..), Contract)
 import qualified EVM.Types as EVM
 
@@ -181,6 +185,19 @@ fuzzerLoop callback vm testLimit bus = do
        Just (WrappedMessage _ (Direct (FuzzerId _) (SolutionFound _))) -> do
           -- Received help!
           pure ()
+       Just (WrappedMessage _ (Direct (FuzzerId tid) DumpLcov)) -> do
+          workerId <- gets (.workerId)
+          if tid == workerId then do
+            env <- ask
+            liftIO $ do
+               let contracts = Map.elems env.dapp.solcByName
+               dir <- case env.cfg.campaignConf.corpusDir of
+                        Just d -> pure d
+                        Nothing -> getCurrentDirectory
+               void $ saveLcovHook env dir env.sourceCache contracts
+               putStrLn $ "Fuzzer " ++ show workerId ++ ": dumped LCOV coverage."
+            pure ()
+          else pure ()
        _ -> pure ()
 
 -- | Generate a new sequences of transactions, either using the corpus or with

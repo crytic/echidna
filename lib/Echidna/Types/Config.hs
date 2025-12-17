@@ -11,6 +11,7 @@ import Data.Word (Word64)
 
 import EVM.Dapp (DappInfo)
 import EVM.Fetch qualified as Fetch
+import EVM.Solidity (SourceCache)
 import EVM.Types (Addr, W256)
 
 import Echidna.SourceAnalysis.Slither (SlitherInfo)
@@ -70,6 +71,7 @@ data EConfigWithUsage = EConfigWithUsage
 data Env = Env
   { cfg :: EConfig
   , dapp :: DappInfo
+  , sourceCache :: SourceCache
 
   -- | Shared between all workers. Events are fairly rare so contention is
   -- minimal.

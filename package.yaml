@@ -59,6 +59,7 @@ library:
     - html-entities
     - http-conduit
     - ListLike
+    - mcp-server
     - mustache
     - optics
     - optics-core
