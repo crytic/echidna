@@ -27,6 +27,7 @@ data BroadcastMsg
 data DirectMsg
   = SolveThis [Tx]
   | SolutionFound [Tx]
+  | DumpLcov
   deriving (Show)
 
 data RequestMsg

@@ -39,7 +39,7 @@ import Echidna.Output.JSON qualified
 import Echidna.Types.Agent (runAgent)
 import Echidna.Agent.Fuzzer (FuzzerAgent(..))
 import Echidna.Agent.Symbolic (SymbolicAgent(..))
-import Echidna.Server (runSSEServer)
+import Echidna.MCP (runMCPServer)
 import Echidna.SourceAnalysis.Slither (isEmptySlitherInfo)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
@@ -197,7 +197,7 @@ ui vm dict initialCorpus cliSelectedContract = do
             hFlush stdout
 
       case conf.campaignConf.serverPort of
-        Just port -> liftIO $ runSSEServer serverStopVar env port nworkers
+        Just port -> void $ liftIO $ forkIO $ runMCPServer env (fromIntegral port)
         Nothing -> pure ()
 
       ticker <- liftIO . forkIO . forever $ do
@@ -211,11 +211,6 @@ ui vm dict initialCorpus cliSelectedContract = do
 
       -- print final status regardless of the last scheduled update
       liftIO printStatus
-
-      when (isJust conf.campaignConf.serverPort) $ do
-        -- wait until we send all SSE events
-        liftIO $ putStrLn "Waiting until all SSE are received..."
-        liftIO $ Control.Concurrent.MVar.readMVar serverStopVar
 
       states <- liftIO $ workerStates workers
 
