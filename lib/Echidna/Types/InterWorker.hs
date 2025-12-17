@@ -14,6 +14,7 @@ data AgentId = FuzzerId Int | SymbolicId | AIId
 data FuzzerCmd
   = DumpLcov
   | SolutionFound [Tx]
+  | PrioritizeFunction String
   deriving (Show)
 
 -- | Symbolic specific commands
