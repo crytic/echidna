@@ -15,6 +15,7 @@ data FuzzerCmd
   = DumpLcov
   | SolutionFound [Tx]
   | PrioritizeFunction String
+  | ClearPrioritization
   deriving (Show)
 
 -- | Symbolic specific commands
