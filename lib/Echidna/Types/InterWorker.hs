@@ -16,7 +16,14 @@ data FuzzerCmd
   | SolutionFound [Tx]
   | PrioritizeFunction String
   | ClearPrioritization
-  deriving (Show)
+  | ExecuteSequence [Tx] (Maybe (TMVar Bool))
+
+instance Show FuzzerCmd where
+  show DumpLcov = "DumpLcov"
+  show (SolutionFound txs) = "SolutionFound " ++ show txs
+  show (PrioritizeFunction s) = "PrioritizeFunction " ++ show s
+  show ClearPrioritization = "ClearPrioritization"
+  show (ExecuteSequence txs _) = "ExecuteSequence " ++ show txs
 
 -- | Symbolic specific commands
 newtype SymbolicCmd
