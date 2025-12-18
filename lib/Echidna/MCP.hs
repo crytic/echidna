@@ -16,12 +16,11 @@ import Data.Foldable (toList)
 import Text.Read (readMaybe)
 import System.Directory (getCurrentDirectory)
 import Data.Char (isSpace)
-import Control.Concurrent.STM (newEmptyTMVarIO, takeTMVar, TMVar)
 
 import MCP.Server
 import EVM.Dapp (DappInfo(..), srcMapCodePos)
 import EVM.Solidity (SolcContract(..))
-import EVM.Types (Addr, W256)
+import EVM.Types (Addr)
 import EVM.ABI (AbiValue(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Coverage (CoverageFileType(..), mergeCoverageMaps)
@@ -105,7 +104,7 @@ parseTx :: Maybe Tx -> String -> Maybe Tx
 parseTx ctx s = do
    let parts = words s
    case parts of
-     (srcS:dstS:valS:callS:_) | length parts >= 4 -> do
+     (srcS:dstS:valS:_:_) | length parts >= 4 -> do
          src <- readAddr srcS
          dst <- readAddr dstS
          val <- readMaybe valS
@@ -115,7 +114,7 @@ parseTx ctx s = do
          (fname, args) <- parseCall s
          let (src, dst) = case ctx of
                Just t -> (t.src, t.dst)
-               Nothing -> (fromIntegral 0x1000, fromIntegral 0x2000)
+               Nothing -> (0x1000, 0x2000)
          return $ Tx (SolCall (pack fname, args)) src dst 1000000 0 0 (0,0)
 
 -- | Implementation of inject_transaction tool
@@ -127,9 +126,7 @@ injectTransactionTool args env bus _ = do
       pos = case lookup "position" args of
               Just p -> Data.Maybe.fromMaybe 0 (readMaybe (unpack p))
               Nothing -> 0
-      txStr = case lookup "transaction" args of
-                Just t -> unpack t
-                Nothing -> ""
+      txStr = maybe "" unpack (lookup "transaction" args)
   
   c <- readIORef env.corpusRef
   let corpusList = Set.toList c
@@ -141,11 +138,11 @@ injectTransactionTool args env bus _ = do
       if pos < 0 || pos > length originalSeq
         then return "Error: Invalid position."
         else do
-          let contextTx = if not (null originalSeq) 
-                          then Just (if pos > 0 && pos <= length originalSeq 
-                                     then originalSeq !! (pos - 1) 
-                                     else head originalSeq)
-                          else Nothing
+          let contextTx = case originalSeq of
+                            [] -> Nothing
+                            (x:xs) -> Just (if pos > 0 && pos <= length (x:xs) 
+                                            then (x:xs) !! (pos - 1) 
+                                            else x)
           case parseTx contextTx txStr of
             Nothing -> return "Error: Failed to parse transaction string."
             Just newTx -> do
