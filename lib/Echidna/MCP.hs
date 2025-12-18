@@ -1,11 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module Echidna.MCP where
 
 import Control.Concurrent.STM
 import Data.IORef (readIORef, IORef)
 import Data.List (find)
+import qualified Data.Maybe
 import qualified Data.Set as Set
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
@@ -48,9 +48,7 @@ availableTools =
       atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer 0 DumpLcov))
       return "Requested LCOV dump from Fuzzer 0"
   , Tool "prioritize_function" "Prioritize a function for fuzzing" $ \args env bus _ -> do
-      let msg = case lookup "function" args of
-                  Just m -> m
-                  Nothing -> ""
+      let msg = Data.Maybe.fromMaybe "" (lookup "function" args)
       let nWorkers = getNFuzzWorkers env.cfg.campaignConf
       mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (PrioritizeFunction (unpack msg))))) [0 .. nWorkers - 1]
       return $ printf "Requested prioritization of function '%s' on %d fuzzers" (unpack msg) nWorkers
@@ -58,9 +56,7 @@ availableTools =
       logs <- readIORef logsRef
       return $ unpack $ T.unlines $ reverse logs
   , Tool "show_coverage" "Show coverage report for a particular contract" $ \args env _ _ -> do
-      let contractName = case lookup "contract" args of
-                           Just c -> c
-                           Nothing -> ""
+      let contractName = Data.Maybe.fromMaybe "" (lookup "contract" args)
       if T.null contractName
          then return "Error: No contract name provided"
          else do
