@@ -6,7 +6,7 @@
 
 module Echidna.Agent.Fuzzer where
 
-import Control.Concurrent.STM (atomically, tryReadTChan, dupTChan)
+import Control.Concurrent.STM (atomically, tryReadTChan, dupTChan, putTMVar, TMVar)
 import Control.Monad (replicateM, void, forM_, when)
 import Control.Monad.Reader (runReaderT, liftIO, asks, MonadReader, ask)
 import Control.Monad.State.Strict (runStateT, get, gets, modify', MonadState)
@@ -205,6 +205,14 @@ fuzzerLoop callback vm testLimit bus = do
           workerId <- gets (.workerId)
           when (tid == workerId) $ do
              modify' $ \s -> s { prioritizedFunctions = [] }
+             pure ()
+       Just (WrappedMessage _ (ToFuzzer tid (ExecuteSequence txs replyVar))) -> do
+          workerId <- gets (.workerId)
+          when (tid == workerId) $ do
+             (_, newCov) <- callseq vm txs
+             liftIO $ case replyVar of
+                Just var -> atomically $ putTMVar var newCov
+                Nothing -> pure ()
              pure ()
        _ -> pure ()
 

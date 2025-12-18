@@ -5,7 +5,7 @@ module Echidna.MCP where
 
 import Control.Concurrent.STM
 import Data.IORef (readIORef, IORef)
-import Data.List (find)
+import Data.List (find, isPrefixOf)
 import qualified Data.Maybe
 import qualified Data.Set as Set
 import Data.Text (Text, pack, unpack)
@@ -15,10 +15,15 @@ import qualified Data.Map as Map
 import Data.Foldable (toList)
 import Text.Read (readMaybe)
 import System.Directory (getCurrentDirectory)
+import Data.Char (isSpace)
+import Control.Concurrent.STM (newEmptyTMVarIO, takeTMVar, TMVar)
 
 import MCP.Server
 import EVM.Dapp (DappInfo(..), srcMapCodePos)
 import EVM.Solidity (SolcContract(..))
+import EVM.Types (Addr, W256)
+import EVM.ABI (AbiValue(..))
+import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Coverage (CoverageFileType(..), mergeCoverageMaps)
 import Echidna.Output.Source (ppCoveredCode, saveLcovHook)
 
@@ -64,6 +69,95 @@ inspectCorpusTransactionsTool args env _ _ = do
     where
       intercalate _ [] = ""
       intercalate sep (x:xs) = x ++ sep ++ intercalate sep xs
+
+-- | Helper functions for inject_transaction
+trim :: String -> String
+trim = f . f
+  where f = reverse . dropWhile isSpace
+
+splitOn :: Char -> String -> [String]
+splitOn _ "" = []
+splitOn c s = case break (== c) s of
+                (chunk, rest) -> chunk : case rest of
+                                           [] -> []
+                                           (_:r) -> splitOn c r
+
+parseArg :: String -> Maybe AbiValue
+parseArg s = 
+   let s' = trim s
+   in if "0x" `isPrefixOf` s'
+      then AbiAddress . fromIntegral <$> (readMaybe s' :: Maybe Integer)
+      else AbiUInt 256 . fromIntegral <$> (readMaybe s' :: Maybe Integer)
+
+parseCall :: String -> Maybe (String, [AbiValue])
+parseCall s = do
+   let (fname, rest) = break (== '(') s
+   if null rest then Nothing else do
+     let argsS = take (length rest - 2) (drop 1 rest) -- remove parens
+     let argParts = if all isSpace argsS then [] else splitOn ',' argsS
+     args <- mapM parseArg argParts
+     return (fname, args)
+
+readAddr :: String -> Maybe Addr
+readAddr s = fromIntegral <$> (readMaybe s :: Maybe Integer)
+
+parseTx :: Maybe Tx -> String -> Maybe Tx
+parseTx ctx s = do
+   let parts = words s
+   case parts of
+     (srcS:dstS:valS:callS:_) | length parts >= 4 -> do
+         src <- readAddr srcS
+         dst <- readAddr dstS
+         val <- readMaybe valS
+         (fname, args) <- parseCall (unwords (drop 3 parts))
+         return $ Tx (SolCall (pack fname, args)) src dst 1000000 0 val (0,0)
+     _ -> do
+         (fname, args) <- parseCall s
+         let (src, dst) = case ctx of
+               Just t -> (t.src, t.dst)
+               Nothing -> (fromIntegral 0x1000, fromIntegral 0x2000)
+         return $ Tx (SolCall (pack fname, args)) src dst 1000000 0 0 (0,0)
+
+-- | Implementation of inject_transaction tool
+injectTransactionTool :: ToolExecution
+injectTransactionTool args env bus _ = do
+  let idx = case lookup "sequence_index" args of
+              Just i -> Data.Maybe.fromMaybe 0 (readMaybe (unpack i))
+              Nothing -> 0
+      pos = case lookup "position" args of
+              Just p -> Data.Maybe.fromMaybe 0 (readMaybe (unpack p))
+              Nothing -> 0
+      txStr = case lookup "transaction" args of
+                Just t -> unpack t
+                Nothing -> ""
+  
+  c <- readIORef env.corpusRef
+  let corpusList = Set.toList c
+  
+  if idx < 0 || idx >= length corpusList
+    then return "Error: Invalid sequence index."
+    else do
+      let (_, originalSeq) = corpusList !! idx
+      if pos < 0 || pos > length originalSeq
+        then return "Error: Invalid position."
+        else do
+          let contextTx = if not (null originalSeq) 
+                          then Just (if pos > 0 && pos <= length originalSeq 
+                                     then originalSeq !! (pos - 1) 
+                                     else head originalSeq)
+                          else Nothing
+          case parseTx contextTx txStr of
+            Nothing -> return "Error: Failed to parse transaction string."
+            Just newTx -> do
+               let newSeq = take pos originalSeq ++ [newTx]
+               replyVar <- newEmptyTMVarIO
+               atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer 0 (ExecuteSequence newSeq (Just replyVar))))
+               
+               -- Wait for reply
+               found <- atomically $ takeTMVar replyVar
+               if found
+                 then return "Transaction injected and NEW coverage found!"
+                 else return "Transaction injected but NO new coverage found."
 
 -- | Implementation of dump_lcov tool
 dumpLcovTool :: ToolExecution
@@ -150,6 +244,7 @@ availableTools :: [Tool]
 availableTools =
   [ Tool "read_corpus" "Read the current corpus size" readCorpusTool
   , Tool "inspect_corpus_transactions" "Browse the corpus transactions" inspectCorpusTransactionsTool
+  , Tool "inject_transaction" "Inject a transaction into a sequence and execute it" injectTransactionTool
   , Tool "dump_lcov" "Dump coverage in LCOV format" dumpLcovTool
   , Tool "prioritize_function" "Prioritize a function for fuzzing" prioritizeFunctionTool
   , Tool "clear_priorities" "Clear the function prioritization list" clearPrioritiesTool
@@ -181,6 +276,14 @@ runMCPServer env port logsRef = do
                 "inspect_corpus_transactions" -> InputSchemaDefinitionObject
                     { properties = [("page", InputSchemaDefinitionProperty "string" "The page number (default 1)")]
                     , required = ["page"]
+                    }
+                "inject_transaction" -> InputSchemaDefinitionObject
+                    { properties = 
+                        [ ("sequence_index", InputSchemaDefinitionProperty "string" "The index of the sequence in the corpus")
+                        , ("position", InputSchemaDefinitionProperty "string" "The position to insert the transaction at")
+                        , ("transaction", InputSchemaDefinitionProperty "string" "The transaction string (e.g. 'func(arg1, arg2)')")
+                        ]
+                    , required = ["sequence_index", "position", "transaction"]
                     }
                 "dump_lcov" -> InputSchemaDefinitionObject
                     { properties = []
