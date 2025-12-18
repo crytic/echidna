@@ -55,6 +55,7 @@
           # darwin provides these
           (zlib.override { static = true; shared = false; })
           (libffi.overrideAttrs (_: { dontDisableStatic = true; }))
+          (lib.getLib numactl)
         ];
 
         hevm = pkgs: pkgs.lib.pipe 
