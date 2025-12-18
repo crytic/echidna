@@ -76,13 +76,14 @@ genTx world deployedContracts = do
   (dstAddr, dstAbis) <- if null prioritizedTxt
     then rElem' $ Set.fromList allContracts
     else do
-      let prioritizedContracts = filter (\(_, sigs) -> any (\(n,_) -> n `elem` prioritizedTxt) sigs) allContracts
+      let isPrioritized n = any (`T.isInfixOf` n) prioritizedTxt
+      let prioritizedContracts = filter (\(_, sigs) -> any (\(n,_) -> isPrioritized n) sigs) allContracts
       usePrioritized <- (<= (0.9 :: Double)) <$> getRandom
       if usePrioritized && not (null prioritizedContracts)
         then do
            (addr, sigs) <- rElem' $ Set.fromList prioritizedContracts
            -- Filter sigs to only prioritized ones
-           let pSigs = NE.filter (\(n, _) -> n `elem` prioritizedTxt) sigs
+           let pSigs = NE.filter (\(n, _) -> isPrioritized n) sigs
            case NE.nonEmpty pSigs of
              Just pSigsNE -> pure (addr, pSigsNE)
              Nothing -> pure (addr, sigs) -- Should not happen

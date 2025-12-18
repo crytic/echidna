@@ -37,6 +37,7 @@ import Echidna.Types.InterWorker (AgentId(..), Bus, WrappedMessage(..), Message(
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..), isOpen, isOptimizationTest)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker (WorkerEvent(..), WorkerType(..), CampaignEvent(..), WorkerStopReason(..))
+import qualified Echidna.Types.Worker as Worker
 import Echidna.Worker (pushCampaignEvent)
 
 instance (MonadThrow m) => MonadThrow (RandT g m) where
@@ -85,7 +86,7 @@ instance Agent FuzzerAgent where
     (reason, _) <- flip evalRandT (mkStdGen effectiveSeed) $
            flip runReaderT env $
              flip runStateT initialState $ do
-               liftIO $ putStrLn $ "Starting FuzzerAgent " ++ show workerId
+               liftIO $ pushCampaignEvent env (WorkerEvent workerId FuzzWorker (Worker.Log ("Starting FuzzerAgent " ++ show workerId)))
                callback
                void $ replayCorpus vm corpus
                workerChan <- liftIO $ atomically $ dupTChan bus
@@ -199,6 +200,11 @@ fuzzerLoop callback vm testLimit bus = do
           workerId <- gets (.workerId)
           when (tid == workerId) $ do
              modify' $ \s -> s { prioritizedFunctions = funcName : s.prioritizedFunctions }
+             pure ()
+       Just (WrappedMessage _ (ToFuzzer tid ClearPrioritization)) -> do
+          workerId <- gets (.workerId)
+          when (tid == workerId) $ do
+             modify' $ \s -> s { prioritizedFunctions = [] }
              pure ()
        _ -> pure ()
 

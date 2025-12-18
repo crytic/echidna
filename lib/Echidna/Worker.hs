@@ -29,6 +29,7 @@ instance ToJSON WorkerEvent where
       object [ "coverage" .= points, "contracts" .= numCodehashes, "corpus_size" .= corpusSize]
     SymExecError msg -> object [ "msg" .= msg ]
     SymExecLog msg -> object [ "msg" .= msg ]
+    Log msg -> object [ "msg" .= msg ]
     TxSequenceReplayed file current total ->
       object [ "file" .= file, "current" .= current, "total" .= total ]
     TxSequenceReplayFailed file tx ->
@@ -55,6 +56,7 @@ ppCampaignEvent = \case
   WorkerEvent _ _ e -> ppWorkerEvent e
   Failure err -> err
   ReproducerSaved f -> "Saved reproducer to " <> f
+  ServerLog msg -> msg
 
 ppWorkerEvent :: WorkerEvent -> String
 ppWorkerEvent = \case
@@ -78,6 +80,8 @@ ppWorkerEvent = \case
     "Symbolic execution failed: " <> err
   SymExecLog msg ->
     "Symbolic execution log: " <> msg
+  Log msg ->
+    msg
   TxSequenceReplayed file current total ->
     "Sequence replayed from corpus file " <> file <> " (" <> show current <> "/" <> show total <> ")"
   TxSequenceReplayFailed file tx ->

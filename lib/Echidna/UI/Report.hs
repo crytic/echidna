@@ -34,6 +34,8 @@ ppLogLine vm (time, event@(WorkerEvent workerId FuzzWorker _)) =
   ((timePrefix time <> "[Worker " <> show workerId <> "] ") <>) <$> ppCampaignEventLog vm event
 ppLogLine vm (time, event@(WorkerEvent workerId SymbolicWorker _)) =
   ((timePrefix time <> "[Worker " <> show workerId <> ", symbolic] ") <>) <$> ppCampaignEventLog vm event
+ppLogLine vm (time, event@(ServerLog _)) =
+  ((timePrefix time <> "[Server] ") <>) <$> ppCampaignEventLog vm event
 ppLogLine vm (time, event) =
   ((timePrefix time <> " ") <>) <$> ppCampaignEventLog vm event
 

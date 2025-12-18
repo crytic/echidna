@@ -11,6 +11,7 @@ data CampaignEvent
   = WorkerEvent WorkerId WorkerType WorkerEvent
   | Failure String
   | ReproducerSaved String -- filename
+  | ServerLog String
 
 data WorkerEvent
   = TestFalsified !EchidnaTest
@@ -18,6 +19,7 @@ data WorkerEvent
   | NewCoverage { points :: !Int, numCodehashes :: !Int, corpusSize :: !Int, transactions :: [Tx] }
   | SymExecError !String
   | SymExecLog !String
+  | Log !String
   | TxSequenceReplayed FilePath !Int !Int
   | TxSequenceReplayFailed FilePath Tx
   | WorkerStopped WorkerStopReason
@@ -34,4 +36,3 @@ data WorkerStopReason
   | Killed !String
   | Crashed !String
   deriving Show
-

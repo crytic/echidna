@@ -50,7 +50,7 @@ import Echidna.Types.Worker
 import Echidna.UI.Report
 import Echidna.UI.Widgets
 import Echidna.Utility (timePrefix, getTimestamp)
-import Echidna.Worker (getNWorkers, workerIDToType)
+import Echidna.Worker (getNWorkers, workerIDToType, pushCampaignEvent)
 
 data UIEvent =
   CampaignUpdated LocalTime [EchidnaTest] [WorkerState]
@@ -201,7 +201,9 @@ ui vm dict initialCorpus cliSelectedContract = do
             hFlush stdout
 
       case conf.campaignConf.serverPort of
-        Just port -> void $ liftIO $ forkIO $ runMCPServer env (fromIntegral port) logBuffer
+        Just port -> do
+          liftIO $ pushCampaignEvent env (ServerLog ("MCP Server running at http://127.0.0.1:" ++ show port ++ "/mcp"))
+          void $ liftIO $ forkIO $ runMCPServer env (fromIntegral port) logBuffer
         Nothing -> pure ()
 
       ticker <- liftIO . forkIO . forever $ do
