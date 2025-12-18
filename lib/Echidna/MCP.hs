@@ -14,8 +14,8 @@ import qualified Data.Map as Map
 import Data.Foldable (toList)
 
 import MCP.Server
-import EVM.Solidity (SolcContract(..), SrcMap(..), SourceCache(..))
-import EVM.Dapp (DappInfo(..))
+import EVM.Dapp (DappInfo(..), srcMapCodePos)
+import EVM.Solidity (SolcContract(..))
 import Echidna.Types.Coverage (CoverageFileType(..), mergeCoverageMaps)
 import Echidna.Output.Source (ppCoveredCode)
 
@@ -66,12 +66,42 @@ availableTools =
              [] -> return $ printf "Error: Contract '%s' not found" (unpack contractName)
              [(_, solc)] -> do
                 covMap <- mergeCoverageMaps dapp env.coverageRefInit env.coverageRefRuntime
-                let fileIds = Set.fromList $ map (.file) (toList solc.runtimeSrcmap ++ toList solc.creationSrcmap)
                 let sc = env.sourceCache
-                let filteredFiles = Map.filterWithKey (\k _ -> k `Set.member` fileIds) sc.files
-                let filteredSc = sc { files = filteredFiles }
-                let report = ppCoveredCode Txt filteredSc [solc] covMap Nothing "" []
-                return $ unpack report
+
+                -- Identify relevant files from the requested contract's source maps
+                -- This ensures we include all files that define the contract and its dependencies,
+                -- even if they are not directly covered or if coverage is recorded against a child contract.
+                let getContractFiles c =
+                        let srcMaps = toList c.runtimeSrcmap ++ toList c.creationSrcmap
+                            resolve srcMap = fst <$> srcMapCodePos sc srcMap
+                        in Set.fromList $ Data.Maybe.mapMaybe resolve srcMaps
+
+                let relevantFiles = getContractFiles solc
+
+                -- Use all active contracts to generate coverage
+                -- This allows showing coverage for a parent contract (e.g. EchidnaTest)
+                -- derived from the execution of a child contract (e.g. Echidna).
+                let activeContracts = filter (\c -> c.runtimeCodehash `Map.member` covMap) (Map.elems dapp.solcByName)
+                -- If no contracts are active (e.g. no coverage yet), use the requested contract to at least show the source
+                let contractsToUse = if null activeContracts then [solc] else activeContracts
+
+                -- Generate full report using all active contracts, then filter by relevant files
+                let fullReport = ppCoveredCode Txt sc contractsToUse covMap Nothing "" []
+                let filterReport text =
+                      let ls = T.lines text
+                          splitSections [] = []
+                          splitSections (l:rest) =
+                              let (content, next) = span (" " `T.isPrefixOf`) rest
+                              in (l:content) : splitSections next
+                          sections = splitSections ls
+                          keepSection (header:content) =
+                              if unpack header `Set.member` relevantFiles
+                              then header : content
+                              else []
+                          keepSection [] = []
+                      in T.unlines $ concatMap keepSection sections
+
+                return $ unpack $ filterReport fullReport
              candidates -> return $ printf "Error: Ambiguous contract name '%s'. Found: %s" (unpack contractName) (unpack $ T.intercalate ", " $ map fst candidates)
   ]
 
