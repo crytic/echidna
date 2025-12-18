@@ -65,7 +65,7 @@
           owner = "gustavo-grieco";
           repo = "haskell-mcp-server";
           rev = "8b911269d8e716a61e9b8be0e7596c0039977dae";
-          sha256 = "sha256-0000000000000000000000000000000000000000000=";
+          sha256 = "sha256-DAepsEkiNU1Bs3hCok9fSJLbhk7CSlvjQn0Dgmmp23o=";
         }) {};
 
         echidna = pkgs: with pkgs; lib.pipe
