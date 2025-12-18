@@ -57,6 +57,13 @@ prioritizeFunctionTool args env bus _ = do
   mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (PrioritizeFunction (unpack msg))))) [0 .. nWorkers - 1]
   return $ printf "Requested prioritization of function '%s' on %d fuzzers" (unpack msg) nWorkers
 
+-- | Implementation of clear_priorities tool
+clearPrioritiesTool :: ToolExecution
+clearPrioritiesTool _ env bus _ = do
+  let nWorkers = getNFuzzWorkers env.cfg.campaignConf
+  mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i ClearPrioritization))) [0 .. nWorkers - 1]
+  return $ printf "Requested clearing priorities on %d fuzzers" nWorkers
+
 -- | Implementation of read_logs tool
 readLogsTool :: ToolExecution
 readLogsTool _ _ _ logsRef = do
@@ -120,6 +127,7 @@ availableTools =
   [ Tool "read_corpus" "Read the current corpus size" readCorpusTool
   , Tool "dump_lcov" "Dump coverage in LCOV format" dumpLcovTool
   , Tool "prioritize_function" "Prioritize a function for fuzzing" prioritizeFunctionTool
+  , Tool "clear_priorities" "Clear the function prioritization list" clearPrioritiesTool
   , Tool "read_logs" "Read the last 100 log messages" readLogsTool
   , Tool "show_coverage" "Show coverage report for a particular contract" showCoverageTool
   ]
@@ -137,7 +145,7 @@ runMCPServer env port logsRef = do
     let serverInfo = McpServerInfo
             { serverName = "Echidna MCP Server"
             , serverVersion = "1.0.0"
-            , serverInstructions = "Echidna Agent Interface. Available tools: read_corpus, dump_lcov, prioritize_function, read_logs, show_coverage"
+            , serverInstructions = "Echidna Agent Interface. Available tools: read_corpus, dump_lcov, prioritize_function, clear_priorities, read_logs, show_coverage"
             }
 
     let mkToolDefinition :: Tool -> ToolDefinition
@@ -152,6 +160,10 @@ runMCPServer env port logsRef = do
                 "prioritize_function" -> InputSchemaDefinitionObject
                     { properties = [("function", InputSchemaDefinitionProperty "string" "The name of the function to prioritize")]
                     , required = ["function"]
+                    }
+                "clear_priorities" -> InputSchemaDefinitionObject
+                    { properties = []
+                    , required = []
                     }
                 "show_coverage" -> InputSchemaDefinitionObject
                     { properties = [("contract", InputSchemaDefinitionProperty "string" "The name of the contract")]
