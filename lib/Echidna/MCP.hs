@@ -10,8 +10,14 @@ import qualified Data.Set as Set
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
 import Text.Printf (printf)
+import qualified Data.Map as Map
+import Data.Foldable (toList)
 
 import MCP.Server
+import EVM.Solidity (SolcContract(..), SrcMap(..), SourceCache(..))
+import EVM.Dapp (DappInfo(..))
+import Echidna.Types.Coverage (CoverageFileType(..), mergeCoverageMaps)
+import Echidna.Output.Source (ppCoveredCode)
 
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Campaign (getNFuzzWorkers)
@@ -51,6 +57,26 @@ availableTools =
   , Tool "read_logs" "Read the last 100 log messages" $ \_ _ _ logsRef -> do
       logs <- readIORef logsRef
       return $ unpack $ T.unlines $ reverse logs
+  , Tool "show_coverage" "Show coverage report for a particular contract" $ \args env _ _ -> do
+      let contractName = case lookup "contract" args of
+                           Just c -> c
+                           Nothing -> ""
+      if T.null contractName
+         then return "Error: No contract name provided"
+         else do
+           let dapp = env.dapp
+           let matches = Map.filterWithKey (\k _ -> k == contractName || (":" <> contractName) `T.isSuffixOf` k) dapp.solcByName
+           case Map.toList matches of
+             [] -> return $ printf "Error: Contract '%s' not found" (unpack contractName)
+             [(_, solc)] -> do
+                covMap <- mergeCoverageMaps dapp env.coverageRefInit env.coverageRefRuntime
+                let fileIds = Set.fromList $ map (.file) (toList solc.runtimeSrcmap ++ toList solc.creationSrcmap)
+                let sc = env.sourceCache
+                let filteredFiles = Map.filterWithKey (\k _ -> k `Set.member` fileIds) sc.files
+                let filteredSc = sc { files = filteredFiles }
+                let report = ppCoveredCode Txt filteredSc [solc] covMap Nothing "" []
+                return $ unpack report
+             candidates -> return $ printf "Error: Ambiguous contract name '%s'. Found: %s" (unpack contractName) (unpack $ T.intercalate ", " $ map fst candidates)
   ]
 
 -- | Run the MCP Server
@@ -66,7 +92,7 @@ runMCPServer env port logsRef = do
     let serverInfo = McpServerInfo
             { serverName = "Echidna MCP Server"
             , serverVersion = "1.0.0"
-            , serverInstructions = "Echidna Agent Interface. Available tools: read_corpus, broadcast_message, dump_lcov"
+            , serverInstructions = "Echidna Agent Interface. Available tools: read_corpus, broadcast_message, dump_lcov, show_coverage"
             }
 
     let mkToolDefinition :: Tool -> ToolDefinition
@@ -85,6 +111,10 @@ runMCPServer env port logsRef = do
                 "prioritize_function" -> InputSchemaDefinitionObject
                     { properties = [("function", InputSchemaDefinitionProperty "string" "The name of the function to prioritize")]
                     , required = ["function"]
+                    }
+                "show_coverage" -> InputSchemaDefinitionObject
+                    { properties = [("contract", InputSchemaDefinitionProperty "string" "The name of the contract")]
+                    , required = ["contract"]
                     }
                 "read_logs" -> InputSchemaDefinitionObject
                     { properties = []
