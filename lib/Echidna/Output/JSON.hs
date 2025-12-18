@@ -140,9 +140,9 @@ mapTest dappInfo test =
       { contract = "" -- TODO add when mapping is available https://github.com/crytic/echidna/issues/415
       , function = function
       , arguments = args
-      , gas = show tx.gas
-      , gasprice = show tx.gasprice
-      , value = show tx.value
+      , gas = Prelude.show tx.gas
+      , gasprice = Prelude.show tx.gasprice
+      , value = Prelude.show tx.value
       }
 
   mapCall = \case
