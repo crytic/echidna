@@ -6,6 +6,7 @@ import Control.Monad.State.Strict(MonadState(..), gets)
 import Data.Aeson
 import Data.Text (unpack)
 
+import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.ABI (encodeSig)
 import Echidna.Types.Campaign
 import Echidna.Types.Config (Env(..), EConfig(..))
@@ -62,10 +63,17 @@ ppWorkerEvent = \case
   TestOptimized test ->
     let name = case test.testType of OptimizationTest n _ -> n; _ -> error "fixme"
     in "New maximum value of " <> unpack name <> ": " <> show test.value
-  NewCoverage { points, numCodehashes, corpusSize } ->
-    "New coverage: " <> show points <> " instr, "
+  NewCoverage { points, numCodehashes, corpusSize, transactions } ->
+    let funcName = case reverse transactions of
+                     (tx:_) -> case tx.call of
+                                 SolCall (name, _) -> unpack name
+                                 SolCreate _ -> "constructor"
+                                 SolCalldata _ -> "fallback"
+                                 NoCall -> "no call"
+                     [] -> "init"
+    in "New coverage: " <> show points <> " instr, "
       <> show numCodehashes <> " contracts, "
-      <> show corpusSize <> " seqs in corpus"
+      <> show corpusSize <> " seqs in corpus (" <> funcName <> ")"
   SymExecError err ->
     "Symbolic execution failed: " <> err
   SymExecLog msg ->
