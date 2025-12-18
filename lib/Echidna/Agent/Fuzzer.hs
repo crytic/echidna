@@ -7,7 +7,7 @@
 module Echidna.Agent.Fuzzer where
 
 import Control.Concurrent.STM (atomically, tryReadTChan, dupTChan)
-import Control.Monad (replicateM, void, forM_)
+import Control.Monad (replicateM, void, forM_, when)
 import Control.Monad.Reader (runReaderT, liftIO, asks, MonadReader, ask)
 import Control.Monad.State.Strict (runStateT, get, gets, modify', MonadState)
 import Control.Monad.Random.Strict (evalRandT, MonadRandom, RandT)
@@ -55,7 +55,7 @@ instance Show FuzzerAgent where
   show agent = "FuzzerAgent { fuzzerId = " ++ show agent.fuzzerId ++ " }"
 
 instance Agent FuzzerAgent where
-  getAgentId agent = FuzzerId (agent.fuzzerId)
+  getAgentId agent = FuzzerId agent.fuzzerId
 
   runAgent agent bus env = do
     let workerId = agent.fuzzerId
@@ -182,29 +182,24 @@ fuzzerLoop callback vm testLimit bus = do
      case msg of
        Just (WrappedMessage _ (ToFuzzer tid (SolutionFound _))) -> do
           workerId <- gets (.workerId)
-          if tid == workerId then do
+          when (tid == workerId) $ do
              -- Received help!
              pure ()
-          else pure ()
        Just (WrappedMessage _ (ToFuzzer tid DumpLcov)) -> do
           workerId <- gets (.workerId)
-          if tid == workerId then do
+          when (tid == workerId) $ do
             env <- ask
             liftIO $ do
                let contracts = Map.elems env.dapp.solcByName
-               dir <- case env.cfg.campaignConf.corpusDir of
-                        Just d -> pure d
-                        Nothing -> getCurrentDirectory
+               dir <- maybe getCurrentDirectory pure env.cfg.campaignConf.corpusDir
                void $ saveLcovHook env dir env.sourceCache contracts
                putStrLn $ "Fuzzer " ++ show workerId ++ ": dumped LCOV coverage."
             pure ()
-          else pure ()
        Just (WrappedMessage _ (ToFuzzer tid (PrioritizeFunction funcName))) -> do
           workerId <- gets (.workerId)
-          if tid == workerId then do
+          when (tid == workerId) $ do
              modify' $ \s -> s { prioritizedFunctions = funcName : s.prioritizedFunctions }
              pure ()
-          else pure ()
        _ -> pure ()
 
 -- | Generate a new sequences of transactions, either using the corpus or with

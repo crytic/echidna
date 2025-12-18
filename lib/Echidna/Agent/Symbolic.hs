@@ -2,7 +2,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE BangPatterns #-}
 
 module Echidna.Agent.Symbolic where
 
@@ -11,11 +10,10 @@ import Control.Concurrent.STM (atomically, readTChan, writeTChan, dupTChan, TCha
 import Control.Monad (when, void, unless, forM_)
 import Control.Monad.Reader (runReaderT, liftIO, asks, MonadReader)
 import Control.Monad.State.Strict (runStateT, get, gets, MonadState, modify')
-import Control.Monad.Random.Strict (evalRandT, MonadRandom)
+import Control.Monad.Random.Strict (evalRandT, MonadRandom, RandT)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Trans (lift)
-import Control.Monad.Random.Strict (RandT)
 import System.Random (mkStdGen)
 import Data.IORef (IORef, writeIORef, readIORef)
 import Data.Foldable (foldlM)

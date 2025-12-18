@@ -18,7 +18,7 @@ data FuzzerCmd
   deriving (Show)
 
 -- | Symbolic specific commands
-data SymbolicCmd
+newtype SymbolicCmd
   = SolveThis [Tx]
   deriving (Show)
 

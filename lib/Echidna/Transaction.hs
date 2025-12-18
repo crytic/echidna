@@ -9,13 +9,11 @@ import Control.Monad.Random.Strict (MonadRandom, getRandom, getRandomR, uniform)
 import Control.Monad.Reader (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Data.ByteString qualified as BS
-import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NE
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Vector qualified as V
 import Optics.Core
