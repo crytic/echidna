@@ -13,6 +13,7 @@ import qualified Data.Text as T
 import Text.Printf (printf)
 import qualified Data.Map as Map
 import Data.Foldable (toList)
+import Text.Read (readMaybe)
 import System.Directory (getCurrentDirectory)
 
 import MCP.Server
@@ -24,6 +25,7 @@ import Echidna.Output.Source (ppCoveredCode, saveLcovHook)
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Campaign (getNFuzzWorkers, CampaignConf(..))
 import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(..), FuzzerCmd(..))
+import Echidna.Pretty (ppTx)
 
 -- | MCP Tool Definition
 -- Simulates the definition of a tool exposed by an MCP server.
@@ -40,6 +42,28 @@ readCorpusTool :: ToolExecution
 readCorpusTool _ env _ _ = do
   c <- readIORef env.corpusRef
   return $ printf "Corpus Size: %d" (Set.size c)
+
+-- | Implementation of inspect_corpus_transactions tool
+inspectCorpusTransactionsTool :: ToolExecution
+inspectCorpusTransactionsTool args env _ _ = do
+  let page = case lookup "page" args of
+               Just p -> Data.Maybe.fromMaybe 1 (readMaybe (unpack p))
+               Nothing -> 1
+      pageSize = 5
+  c <- readIORef env.corpusRef
+  let corpusList = Set.toList c
+      startIndex = (page - 1) * pageSize
+      pageItems = take pageSize $ drop startIndex corpusList
+      
+      ppSequence (i, txs) = 
+        printf "Sequence (value: %d):\n%s" i (unlines $ map (ppTx Map.empty) txs)
+
+  return $ if null pageItems 
+           then "No more transactions found."
+           else intercalate "\n" (map ppSequence pageItems)
+    where
+      intercalate _ [] = ""
+      intercalate sep (x:xs) = x ++ sep ++ intercalate sep xs
 
 -- | Implementation of dump_lcov tool
 dumpLcovTool :: ToolExecution
@@ -125,6 +149,7 @@ showCoverageTool args env _ _ = do
 availableTools :: [Tool]
 availableTools =
   [ Tool "read_corpus" "Read the current corpus size" readCorpusTool
+  , Tool "inspect_corpus_transactions" "Browse the corpus transactions" inspectCorpusTransactionsTool
   , Tool "dump_lcov" "Dump coverage in LCOV format" dumpLcovTool
   , Tool "prioritize_function" "Prioritize a function for fuzzing" prioritizeFunctionTool
   , Tool "clear_priorities" "Clear the function prioritization list" clearPrioritiesTool
@@ -145,7 +170,7 @@ runMCPServer env port logsRef = do
     let serverInfo = McpServerInfo
             { serverName = "Echidna MCP Server"
             , serverVersion = "1.0.0"
-            , serverInstructions = "Echidna Agent Interface. Available tools: read_corpus, dump_lcov, prioritize_function, clear_priorities, read_logs, show_coverage"
+            , serverInstructions = "Echidna Agent Interface. Available tools: read_corpus, inspect_corpus_transactions, dump_lcov, prioritize_function, clear_priorities, read_logs, show_coverage"
             }
 
     let mkToolDefinition :: Tool -> ToolDefinition
@@ -153,6 +178,10 @@ runMCPServer env port logsRef = do
             { toolDefinitionName = pack t.toolName
             , toolDefinitionDescription = pack t.toolDescription
             , toolDefinitionInputSchema = case t.toolName of
+                "inspect_corpus_transactions" -> InputSchemaDefinitionObject
+                    { properties = [("page", InputSchemaDefinitionProperty "string" "The page number (default 1)")]
+                    , required = ["page"]
+                    }
                 "dump_lcov" -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
