@@ -6,7 +6,7 @@
 
 module Echidna.Agent.Fuzzer where
 
-import Control.Concurrent.STM (atomically, tryReadTChan, dupTChan, putTMVar, TMVar)
+import Control.Concurrent.STM (atomically, tryReadTChan, dupTChan, putTMVar)
 import Control.Monad (replicateM, void, forM_, when)
 import Control.Monad.Reader (runReaderT, liftIO, asks, MonadReader, ask)
 import Control.Monad.State.Strict (runStateT, get, gets, modify', MonadState)
