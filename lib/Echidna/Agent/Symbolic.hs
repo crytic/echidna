@@ -96,7 +96,7 @@ instance Agent SymbolicAgent where
     (reason, _) <- flip evalRandT (mkStdGen effectiveSeed) $
            flip runReaderT env $
              flip runStateT initialState $ do
-               liftIO $ putStrLn "Starting SymbolicAgent"
+               liftIO $ pushCampaignEvent env (WorkerEvent workerId SymbolicWorker (Log ("Starting SymbolicAgent " ++ show workerId)))
 
                -- Check for stateless verification mode
                if isVerificationMode cfg.solConf.testMode then do
