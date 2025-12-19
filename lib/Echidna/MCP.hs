@@ -293,7 +293,7 @@ availableTools workerRefs statusRef =
   , Tool "inspect_corpus_transactions" "Browse the corpus transactions" inspectCorpusTransactionsTool
   , Tool "inject_transaction" "Inject a transaction into a sequence and execute it" injectTransactionTool
   , Tool "dump_lcov" "Dump coverage in LCOV format" dumpLcovTool
-  , Tool "fuzz_transaction" "Fuzz a transaction with optional concrete arguments" fuzzTransactionTool
+  , Tool "fuzz_transaction" "Fuzz a single transaction with optional concrete arguments" fuzzTransactionTool
   , Tool "clear_priorities" "Clear the function prioritization list" clearPrioritiesTool
   --, Tool "read_logs" "Read the last 100 log messages" readLogsTool
   , Tool "show_coverage" "Show coverage report for a particular contract" showCoverageTool
@@ -369,10 +369,10 @@ runMCPServer env workerRefs port logsRef = do
                     { properties = [("contract", InputSchemaDefinitionProperty "string" "The name of the contract")]
                     , required = ["contract"]
                     }
-                "read_logs" -> InputSchemaDefinitionObject
-                    { properties = []
-                    , required = []
-                    }
+                --"read_logs" -> InputSchemaDefinitionObject
+                --    { properties = []
+                --    , required = []
+                --    }
                 "status" -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
