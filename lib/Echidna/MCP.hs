@@ -3,13 +3,16 @@
 
 module Echidna.MCP where
 
+import Control.Concurrent (forkIO)
+import Control.Monad (forever, when)
 import Control.Concurrent.STM
-import Data.IORef (readIORef, IORef)
+import Data.IORef (readIORef, writeIORef, modifyIORef', newIORef, IORef)
 import Data.List (find, isPrefixOf)
 import qualified Data.Maybe
 import qualified Data.Set as Set
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
+import Data.Time (UTCTime, getCurrentTime, diffUTCTime)
 import Text.Printf (printf)
 import qualified Data.Map as Map
 import Text.Read (readMaybe)
@@ -22,13 +25,19 @@ import EVM.Solidity (SolcContract(..))
 import EVM.Types (Addr)
 import EVM.ABI (AbiValue(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
-import Echidna.Types.Coverage (CoverageFileType(..), mergeCoverageMaps)
+import Echidna.Types.Coverage (CoverageFileType(..), mergeCoverageMaps, coverageStats)
 import Echidna.Output.Source (ppCoveredCode, saveLcovHook)
 
 import Echidna.Types.Config (Env(..), EConfig(..))
-import Echidna.Types.Campaign (getNFuzzWorkers, CampaignConf(..))
-import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(..), FuzzerCmd(..))
+import Echidna.Types.Campaign (getNFuzzWorkers, CampaignConf(..), WorkerState(..))
+import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(..), FuzzerCmd(..), BroadcastMsg(..))
 import Echidna.Pretty (ppTx)
+
+-- | Status state to track coverage info
+data StatusState = StatusState
+  { lastCoverageTime :: Maybe UTCTime
+  , coveredFunctions :: [Text]
+  }
 
 -- | MCP Tool Definition
 -- Simulates the definition of a tool exposed by an MCP server.
@@ -40,11 +49,37 @@ data Tool = Tool
   , execute :: ToolExecution
   }
 
--- | Implementation of read_corpus tool
-readCorpusTool :: ToolExecution
-readCorpusTool _ env _ _ = do
+-- | Helper to get function name from Tx
+getFunctionName :: Tx -> Text
+getFunctionName tx = case tx.call of
+  SolCall (name, _) -> name
+  _ -> "unknown"
+
+-- | Implementation of status tool
+statusTool :: [IORef WorkerState] -> IORef StatusState -> ToolExecution
+statusTool workerRefs statusRef _ env _ _ = do
   c <- readIORef env.corpusRef
-  return $ printf "Corpus Size: %d" (Set.size c)
+  st <- readIORef statusRef
+  now <- getCurrentTime
+
+  -- Iterations
+  workers <- mapM readIORef workerRefs
+  let iterations = sum $ map (.ncalls) workers
+  let maxIterations = env.cfg.campaignConf.testLimit
+
+  -- Coverage
+  (covPoints, _) <- coverageStats env.coverageRefInit env.coverageRefRuntime
+
+  let timeStr = case st.lastCoverageTime of
+                  Nothing -> "Never"
+                  Just t -> show (round $ diffUTCTime now t)
+
+      funcs = if null st.coveredFunctions
+              then "None"
+              else unpack $ T.intercalate "\n- " st.coveredFunctions
+
+  return $ printf "Corpus Size: %d\nIterations: %d/%d\nCoverage: %d\nTime since last coverage: %s\nLast 10 covered functions:\n- %s"
+                  (Set.size c) iterations maxIterations covPoints timeStr funcs
 
 -- | Implementation of inspect_corpus_transactions tool
 inspectCorpusTransactionsTool :: ToolExecution
@@ -252,21 +287,42 @@ showCoverageTool args env _ _ = do
          candidates -> return $ printf "Error: Ambiguous contract name '%s'. Found: %s" (unpack contractName) (unpack $ T.intercalate ", " $ map fst candidates)
 
 -- | Registry of available tools
-availableTools :: [Tool]
-availableTools =
-  [ Tool "read_corpus" "Read the current corpus size" readCorpusTool
+availableTools :: [IORef WorkerState] -> IORef StatusState -> [Tool]
+availableTools workerRefs statusRef =
+  [ Tool "status" "Show fuzzing campaign status" (statusTool workerRefs statusRef)
   , Tool "inspect_corpus_transactions" "Browse the corpus transactions" inspectCorpusTransactionsTool
   , Tool "inject_transaction" "Inject a transaction into a sequence and execute it" injectTransactionTool
   , Tool "dump_lcov" "Dump coverage in LCOV format" dumpLcovTool
   , Tool "fuzz_transaction" "Fuzz a transaction with optional concrete arguments" fuzzTransactionTool
   , Tool "clear_priorities" "Clear the function prioritization list" clearPrioritiesTool
-  , Tool "read_logs" "Read the last 100 log messages" readLogsTool
+  --, Tool "read_logs" "Read the last 100 log messages" readLogsTool
   , Tool "show_coverage" "Show coverage report for a particular contract" showCoverageTool
   ]
 
 -- | Run the MCP Server
-runMCPServer :: Env -> Int -> IORef [Text] -> IO ()
-runMCPServer env port logsRef = do
+runMCPServer :: Env -> [IORef WorkerState] -> Int -> IORef [Text] -> IO ()
+runMCPServer env workerRefs port logsRef = do
+    statusRef <- newIORef (StatusState Nothing [])
+
+    -- Spawn listener for coverage events
+    myBus <- atomically $ dupTChan env.bus
+    _ <- forkIO $ forever $ do
+      msg <- atomically $ readTChan myBus
+      case msg of
+        WrappedMessage _ (Broadcast (NewCoverageInfo _ txs isReplaying)) -> do
+           when (not isReplaying) $ do
+               now <- getCurrentTime
+               let funcNames = map getFunctionName txs
+                   lastFunc = if null funcNames then "unknown" else last funcNames
+
+               modifyIORef' statusRef $ \st -> st
+                 { lastCoverageTime = Just now
+                 , coveredFunctions = take 10 (lastFunc : st.coveredFunctions)
+                 }
+        _ -> return ()
+
+    let toolsList = availableTools workerRefs statusRef
+
     let httpConfig = HttpConfig
             { httpPort = port
             , httpHost = "127.0.0.1"
@@ -277,7 +333,7 @@ runMCPServer env port logsRef = do
     let serverInfo = McpServerInfo
             { serverName = "Echidna MCP Server"
             , serverVersion = "1.0.0"
-            , serverInstructions = "Echidna Agent Interface. Available tools: read_corpus, inspect_corpus_transactions, dump_lcov, fuzz_transaction, clear_priorities, read_logs, show_coverage"
+            , serverInstructions = "Echidna Agent Interface. Available tools: status, inspect_corpus_transactions, dump_lcov, fuzz_transaction, clear_priorities, read_logs, show_coverage"
             }
 
     let mkToolDefinition :: Tool -> ToolDefinition
@@ -317,6 +373,10 @@ runMCPServer env port logsRef = do
                     { properties = []
                     , required = []
                     }
+                "status" -> InputSchemaDefinitionObject
+                    { properties = []
+                    , required = []
+                    }
                 _ -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
@@ -325,11 +385,11 @@ runMCPServer env port logsRef = do
             , toolDefinitionMeta = Nothing
             }
 
-    let toolDefs = map mkToolDefinition availableTools
+    let toolDefs = map mkToolDefinition toolsList
 
     let handleToolCall :: ToolName -> [(ArgumentName, ArgumentValue)] -> IO (Either Error Content)
         handleToolCall name args = do
-            case find (\t -> pack t.toolName == name) availableTools of
+            case find (\t -> pack t.toolName == name) toolsList of
                 Nothing -> return $ Left $ UnknownTool name
                 Just tool -> do
                     result <- tool.execute args env env.bus logsRef

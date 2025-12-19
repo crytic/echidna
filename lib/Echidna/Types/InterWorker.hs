@@ -42,7 +42,7 @@ data Message
   deriving (Show)
 
 data BroadcastMsg
-  = NewCoverageInfo Int [Tx] -- points, transactions
+  = NewCoverageInfo Int [Tx] Bool -- points, transactions, isReplaying
   | FoundBug EchidnaTest
   | StrategyUpdate Text
   | WorkerStopped AgentId

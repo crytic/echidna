@@ -169,7 +169,7 @@ fuzzerLoop callback vm testLimit bus = do
        | otherwise ->
          callback >> pure TestLimitReached
 
-  fuzz = randseq vm.env.contracts >>= fmap fst . callseq vm
+  fuzz = randseq vm.env.contracts >>= fmap fst . (\txs -> callseq vm txs False)
 
   shrink = do
     wid <- gets (.workerId)
@@ -214,7 +214,7 @@ fuzzerLoop callback vm testLimit bus = do
        Just (WrappedMessage _ (ToFuzzer tid (ExecuteSequence txs replyVar))) -> do
           workerId <- gets (.workerId)
           when (tid == workerId) $ do
-             (_, newCov) <- callseq vm txs
+             (_, newCov) <- callseq vm txs False
              liftIO $ case replyVar of
                 Just var -> atomically $ putTMVar var newCov
                 Nothing -> pure ()
