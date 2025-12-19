@@ -185,7 +185,7 @@ ui vm dict initialCorpus cliSelectedContract = do
 
       let forwardEvent ev = do
             msg <- runReaderT (ppLogLine vm ev) env
-            liftIO $ atomicModifyIORef' logBuffer (\logs -> (take 100 (pack msg : logs), ()))
+            liftIO $ atomicModifyIORef' logBuffer (\logs -> (pack msg : logs, ()))
             putStrLn msg
       uiEventsForwarderStopVar <- spawnListener forwardEvent
 

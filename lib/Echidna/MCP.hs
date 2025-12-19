@@ -57,11 +57,11 @@ inspectCorpusTransactionsTool args env _ _ = do
   let corpusList = Set.toList c
       startIndex = (page - 1) * pageSize
       pageItems = take pageSize $ drop startIndex corpusList
-      
-      ppSequence (i, txs) = 
+
+      ppSequence (i, txs) =
         printf "Sequence (value: %d):\n%s" i (unlines $ map (ppTx Map.empty) txs)
 
-  return $ if null pageItems 
+  return $ if null pageItems
            then "No more transactions found."
            else intercalate "\n" (map ppSequence pageItems)
     where
@@ -81,11 +81,27 @@ splitOn c s = case break (== c) s of
                                            (_:r) -> splitOn c r
 
 parseArg :: String -> Maybe AbiValue
-parseArg s = 
+parseArg s =
    let s' = trim s
    in if "0x" `isPrefixOf` s'
       then AbiAddress . fromIntegral <$> (readMaybe s' :: Maybe Integer)
       else AbiUInt 256 . fromIntegral <$> (readMaybe s' :: Maybe Integer)
+
+parseFuzzArg :: String -> Maybe (Maybe AbiValue)
+parseFuzzArg s =
+   let s' = trim s
+   in if s' == "?"
+      then Just Nothing
+      else Just <$> parseArg s'
+
+parseFuzzCall :: String -> Maybe (Text, [Maybe AbiValue])
+parseFuzzCall s = do
+   let (fname, rest) = break (== '(') s
+   if null rest then Nothing else do
+     let argsS = take (length rest - 2) (drop 1 rest) -- remove parens
+     let argParts = if all isSpace argsS then [] else splitOn ',' argsS
+     args <- mapM parseFuzzArg argParts
+     return (pack fname, args)
 
 parseCall :: String -> Maybe (String, [AbiValue])
 parseCall s = do
@@ -126,10 +142,10 @@ injectTransactionTool args env bus _ = do
               Just p -> Data.Maybe.fromMaybe 0 (readMaybe (unpack p))
               Nothing -> 0
       txStr = maybe "" unpack (lookup "transaction" args)
-  
+
   c <- readIORef env.corpusRef
   let corpusList = Set.toList c
-  
+
   if idx < 0 || idx >= length corpusList
     then return "Error: Invalid sequence index."
     else do
@@ -139,8 +155,8 @@ injectTransactionTool args env bus _ = do
         else do
           let contextTx = case originalSeq of
                             [] -> Nothing
-                            (x:xs) -> Just (if pos > 0 && pos <= length (x:xs) 
-                                            then (x:xs) !! (pos - 1) 
+                            (x:xs) -> Just (if pos > 0 && pos <= length (x:xs)
+                                            then (x:xs) !! (pos - 1)
                                             else x)
           case parseTx contextTx txStr of
             Nothing -> return "Error: Failed to parse transaction string."
@@ -148,7 +164,7 @@ injectTransactionTool args env bus _ = do
                let newSeq = take pos originalSeq ++ [newTx]
                replyVar <- newEmptyTMVarIO
                atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer 0 (ExecuteSequence newSeq (Just replyVar))))
-               
+
                -- Wait for reply
                found <- atomically $ takeTMVar replyVar
                if found
@@ -163,13 +179,16 @@ dumpLcovTool _ env _ _ = do
   filename <- saveLcovHook env dir env.sourceCache contracts
   return $ "Dumped LCOV coverage to " ++ filename
 
--- | Implementation of prioritize_function tool
-prioritizeFunctionTool :: ToolExecution
-prioritizeFunctionTool args env bus _ = do
-  let msg = Data.Maybe.fromMaybe "" (lookup "function" args)
-  let nWorkers = getNFuzzWorkers env.cfg.campaignConf
-  mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (PrioritizeFunction (unpack msg))))) [0 .. nWorkers - 1]
-  return $ printf "Requested prioritization of function '%s' on %d fuzzers" (unpack msg) nWorkers
+-- | Implementation of fuzz_transaction tool
+fuzzTransactionTool :: ToolExecution
+fuzzTransactionTool args env bus _ = do
+  let txStr = Data.Maybe.fromMaybe "" (lookup "transaction" args)
+  case parseFuzzCall (unpack txStr) of
+    Nothing -> return "Error: Failed to parse transaction string."
+    Just (fname, fuzzArgs) -> do
+      let nWorkers = getNFuzzWorkers env.cfg.campaignConf
+      mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (FuzzTransaction fname fuzzArgs)))) [0 .. nWorkers - 1]
+      return $ printf "Requested fuzzing of transaction '%s' on %d fuzzers" (unpack txStr) nWorkers
 
 -- | Implementation of clear_priorities tool
 clearPrioritiesTool :: ToolExecution
@@ -182,7 +201,11 @@ clearPrioritiesTool _ env bus _ = do
 readLogsTool :: ToolExecution
 readLogsTool _ _ _ logsRef = do
   logs <- readIORef logsRef
-  return $ unpack $ T.unlines $ reverse logs
+  -- Get last 100 logs
+  -- logs is [Newest, ..., Oldest]
+  -- We want to take the 100 newest, and show them in chronological order
+  let logsToShow = reverse $ take 100 logs
+  return $ unpack $ T.unlines $ logsToShow
 
 -- | Implementation of show_coverage tool
 showCoverageTool :: ToolExecution
@@ -235,7 +258,7 @@ availableTools =
   , Tool "inspect_corpus_transactions" "Browse the corpus transactions" inspectCorpusTransactionsTool
   , Tool "inject_transaction" "Inject a transaction into a sequence and execute it" injectTransactionTool
   , Tool "dump_lcov" "Dump coverage in LCOV format" dumpLcovTool
-  , Tool "prioritize_function" "Prioritize a function for fuzzing" prioritizeFunctionTool
+  , Tool "fuzz_transaction" "Fuzz a transaction with optional concrete arguments" fuzzTransactionTool
   , Tool "clear_priorities" "Clear the function prioritization list" clearPrioritiesTool
   , Tool "read_logs" "Read the last 100 log messages" readLogsTool
   , Tool "show_coverage" "Show coverage report for a particular contract" showCoverageTool
@@ -254,7 +277,7 @@ runMCPServer env port logsRef = do
     let serverInfo = McpServerInfo
             { serverName = "Echidna MCP Server"
             , serverVersion = "1.0.0"
-            , serverInstructions = "Echidna Agent Interface. Available tools: read_corpus, inspect_corpus_transactions, dump_lcov, prioritize_function, clear_priorities, read_logs, show_coverage"
+            , serverInstructions = "Echidna Agent Interface. Available tools: read_corpus, inspect_corpus_transactions, dump_lcov, fuzz_transaction, clear_priorities, read_logs, show_coverage"
             }
 
     let mkToolDefinition :: Tool -> ToolDefinition
@@ -267,7 +290,7 @@ runMCPServer env port logsRef = do
                     , required = ["page"]
                     }
                 "inject_transaction" -> InputSchemaDefinitionObject
-                    { properties = 
+                    { properties =
                         [ ("sequence_index", InputSchemaDefinitionProperty "string" "The index of the sequence in the corpus")
                         , ("position", InputSchemaDefinitionProperty "string" "The position to insert the transaction at")
                         , ("transaction", InputSchemaDefinitionProperty "string" "The transaction string (e.g. 'func(arg1, arg2)')")
@@ -278,9 +301,9 @@ runMCPServer env port logsRef = do
                     { properties = []
                     , required = []
                     }
-                "prioritize_function" -> InputSchemaDefinitionObject
-                    { properties = [("function", InputSchemaDefinitionProperty "string" "The name of the function to prioritize")]
-                    , required = ["function"]
+                "fuzz_transaction" -> InputSchemaDefinitionObject
+                    { properties = [("transaction", InputSchemaDefinitionProperty "string" "The transaction string (e.g. 'func(arg1, ?, arg3)')")]
+                    , required = ["transaction"]
                     }
                 "clear_priorities" -> InputSchemaDefinitionObject
                     { properties = []
