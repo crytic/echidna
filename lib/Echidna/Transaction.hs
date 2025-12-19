@@ -78,7 +78,7 @@ genTx world deployedContracts = do
       call <- genInteractionsM genDict sigs
       pure (addr, call)
     else do
-      usePrioritized <- (<= (0.9 :: Double)) <$> getRandom
+      usePrioritized <- (<= (0.25 :: Double)) <$> getRandom
       if usePrioritized
         then do
            (pName, pArgs) <- rElem (NE.fromList prioritized)
