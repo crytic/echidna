@@ -16,6 +16,8 @@ import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class (MonadIO)
 import System.Random (mkStdGen)
 import Data.IORef (IORef, writeIORef, readIORef, atomicModifyIORef')
+import Data.Text (Text)
+import EVM.ABI (AbiValue)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import System.Directory (getCurrentDirectory)
@@ -197,9 +199,12 @@ fuzzerLoop callback vm testLimit bus = do
                putStrLn $ "Fuzzer " ++ show workerId ++ ": dumped LCOV coverage."
             pure ()
        Just (WrappedMessage _ (ToFuzzer tid (PrioritizeFunction funcName))) -> do
+          -- Deprecated
+          pure ()
+       Just (WrappedMessage _ (ToFuzzer tid (FuzzTransaction funcName args))) -> do
           workerId <- gets (.workerId)
           when (tid == workerId) $ do
-             modify' $ \s -> s { prioritizedFunctions = funcName : s.prioritizedFunctions }
+             modify' $ \s -> s { prioritizedFunctions = (funcName, args) : s.prioritizedFunctions }
              pure ()
        Just (WrappedMessage _ (ToFuzzer tid ClearPrioritization)) -> do
           workerId <- gets (.workerId)
