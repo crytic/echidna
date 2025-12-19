@@ -4,9 +4,9 @@
 module Echidna.MCP where
 
 import Control.Concurrent (forkIO)
-import Control.Monad (forever, when)
+import Control.Monad (forever, unless)
 import Control.Concurrent.STM
-import Data.IORef (readIORef, writeIORef, modifyIORef', newIORef, IORef)
+import Data.IORef (readIORef, modifyIORef', newIORef, IORef)
 import Data.List (find, isPrefixOf)
 import qualified Data.Maybe
 import qualified Data.Set as Set
@@ -72,7 +72,7 @@ statusTool workerRefs statusRef _ env _ _ = do
 
   let timeStr = case st.lastCoverageTime of
                   Nothing -> "Never"
-                  Just t -> show (round $ diffUTCTime now t)
+                  Just t -> show (round (diffUTCTime now t) :: Integer)
 
       funcs = if null st.coveredFunctions
               then "None"
@@ -240,7 +240,7 @@ readLogsTool _ _ _ logsRef = do
   -- logs is [Newest, ..., Oldest]
   -- We want to take the 100 newest, and show them in chronological order
   let logsToShow = reverse $ take 100 logs
-  return $ unpack $ T.unlines $ logsToShow
+  return $ unpack $ T.unlines logsToShow
 
 -- | Implementation of show_coverage tool
 showCoverageTool :: ToolExecution
@@ -310,7 +310,7 @@ runMCPServer env workerRefs port logsRef = do
       msg <- atomically $ readTChan myBus
       case msg of
         WrappedMessage _ (Broadcast (NewCoverageInfo _ txs isReplaying)) -> do
-           when (not isReplaying) $ do
+           unless isReplaying $ do
                now <- getCurrentTime
                let funcNames = map getFunctionName txs
                    lastFunc = if null funcNames then "unknown" else last funcNames
