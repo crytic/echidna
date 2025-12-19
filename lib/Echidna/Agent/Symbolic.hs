@@ -137,8 +137,8 @@ handleMessage
   -> VM Concrete
   -> Maybe Text
   -> m ()
-handleMessage _ (WrappedMessage _ (Broadcast (NewCoverageInfo _ txs))) callback vm name = do
-    void $ callseq vm txs
+handleMessage _ (WrappedMessage _ (Broadcast (NewCoverageInfo _ txs _))) callback vm name = do
+    void $ callseq vm txs False
     symexecTxs callback vm False name txs
     shrinkAndRandomlyExplore callback vm txs (10 :: Int)
 
@@ -366,7 +366,7 @@ exploreAndVerify callback vm contract method vm' txsBase = do
     -- For now, let's assume I can get it.
     -- I'll pass it from runAgent -> busListenerLoop -> handleMessage -> symexecTxs -> symexecTx -> exploreAndVerify
 
-    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) txs
+    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx]) False) txs
 
     when (not newCoverage && null errors && not (null txs)) (
       pushWorkerEvent $ SymExecError "No errors but symbolic execution found valid txs breaking assertions. Something is wrong.")
@@ -413,7 +413,7 @@ symExecMethod vm name callback contract method = do
     modify' (\ws -> ws { runningThreads = [] })
     callback
 
-    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm [symTx]) txs
+    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm [symTx] False) txs
     let methodSignature = unpack method.methodSignature
     unless newCoverage $ do
       unless (null txs) $ error "No new coverage but symbolic execution found valid txs. Something is wrong."
