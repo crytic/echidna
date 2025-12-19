@@ -12,13 +12,12 @@ import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
 import Text.Printf (printf)
 import qualified Data.Map as Map
-import Data.Foldable (toList)
 import Text.Read (readMaybe)
 import System.Directory (getCurrentDirectory)
 import Data.Char (isSpace)
 
 import MCP.Server
-import EVM.Dapp (DappInfo(..), srcMapCodePos)
+import EVM.Dapp (DappInfo(..))
 import EVM.Solidity (SolcContract(..))
 import EVM.Types (Addr)
 import EVM.ABI (AbiValue(..))
@@ -196,19 +195,12 @@ showCoverageTool args env _ _ = do
        let matches = Map.filterWithKey (\k _ -> k == contractName || (":" <> contractName) `T.isSuffixOf` k) dapp.solcByName
        case Map.toList matches of
          [] -> return $ printf "Error: Contract '%s' not found" (unpack contractName)
-         [(_, solc)] -> do
+         [(k, solc)] -> do
             covMap <- mergeCoverageMaps dapp env.coverageRefInit env.coverageRefRuntime
             let sc = env.sourceCache
 
-            -- Identify relevant files from the requested contract's source maps
-            -- This ensures we include all files that define the contract and its dependencies,
-            -- even if they are not directly covered or if coverage is recorded against a child contract.
-            let getContractFiles c =
-                    let srcMaps = toList c.runtimeSrcmap ++ toList c.creationSrcmap
-                        resolve srcMap = fst <$> srcMapCodePos sc srcMap
-                    in Set.fromList $ Data.Maybe.mapMaybe resolve srcMaps
-
-            let relevantFiles = getContractFiles solc
+            -- Identify relevant files: only the file defining the contract
+            let relevantFiles = Set.singleton $ unpack $ T.dropEnd 1 $ fst $ T.breakOnEnd ":" k
 
             -- Use all active contracts to generate coverage
             -- This allows showing coverage for a parent contract (e.g. EchidnaTest)
