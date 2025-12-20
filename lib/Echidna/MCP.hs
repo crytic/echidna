@@ -138,6 +138,9 @@ parseFuzzCall s = do
      args <- mapM parseFuzzArg argParts
      return (pack fname, args)
 
+parseFuzzSequence :: String -> Maybe [(Text, [Maybe AbiValue])]
+parseFuzzSequence s = mapM parseFuzzCall (map trim $ splitOn ';' s)
+
 parseCall :: String -> Maybe (String, [AbiValue])
 parseCall s = do
    let (fname, rest) = break (== '(') s
@@ -218,12 +221,12 @@ dumpLcovTool _ env _ _ = do
 fuzzTransactionTool :: ToolExecution
 fuzzTransactionTool args env bus _ = do
   let txStr = Data.Maybe.fromMaybe "" (lookup "transaction" args)
-  case parseFuzzCall (unpack txStr) of
-    Nothing -> return "Error: Failed to parse transaction string."
-    Just (fname, fuzzArgs) -> do
+  case parseFuzzSequence (unpack txStr) of
+    Nothing -> return "Error: Failed to parse transaction sequence string."
+    Just seqPrototype -> do
       let nWorkers = getNFuzzWorkers env.cfg.campaignConf
-      mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (FuzzTransaction fname fuzzArgs)))) [0 .. nWorkers - 1]
-      return $ printf "Requested fuzzing of transaction '%s' on %d fuzzers" (unpack txStr) nWorkers
+      mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (FuzzSequence seqPrototype)))) [0 .. nWorkers - 1]
+      return $ printf "Requested fuzzing of transaction sequence '%s' on %d fuzzers" (unpack txStr) nWorkers
 
 -- | Implementation of clear_priorities tool
 clearPrioritiesTool :: ToolExecution
@@ -358,7 +361,7 @@ runMCPServer env workerRefs port logsRef = do
                     , required = []
                     }
                 "fuzz_transaction" -> InputSchemaDefinitionObject
-                    { properties = [("transaction", InputSchemaDefinitionProperty "string" "The transaction string (e.g. 'func(arg1, ?, arg3)')")]
+                    { properties = [("transaction", InputSchemaDefinitionProperty "string" "The transaction sequence string separated by ';' (e.g. 'func1();func2(arg1, ?)')")]
                     , required = ["transaction"]
                     }
                 "clear_priorities" -> InputSchemaDefinitionObject

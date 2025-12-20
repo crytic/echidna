@@ -87,8 +87,8 @@ data WorkerState = WorkerState
   , runningThreads :: [ThreadId]
     -- ^ Extra threads currently being run,
     --   aside from the main worker thread
-  , prioritizedFunctions :: ![(Text, [Maybe AbiValue])]
-    -- ^ Functions to prioritize during fuzzing
+  , prioritizedSequences :: ![[(Text, [Maybe AbiValue])]]
+    -- ^ Sequences of functions to prioritize during fuzzing
   }
 
 initialWorkerState :: WorkerState
@@ -100,7 +100,7 @@ initialWorkerState =
               , ncalls = 0
               , totalGas = 0
               , runningThreads = []
-              , prioritizedFunctions = []
+              , prioritizedSequences = []
               }
 
 defaultTestLimit :: Int
