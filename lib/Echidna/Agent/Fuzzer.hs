@@ -198,13 +198,10 @@ fuzzerLoop callback vm testLimit bus = do
                void $ saveLcovHook env dir env.sourceCache contracts
                putStrLn $ "Fuzzer " ++ show workerId ++ ": dumped LCOV coverage."
             pure ()
-       Just (WrappedMessage _ (ToFuzzer _ (PrioritizeFunction _))) -> do
-          -- Deprecated
-          pure ()
-       Just (WrappedMessage _ (ToFuzzer tid (FuzzSequence seq))) -> do
+       Just (WrappedMessage _ (ToFuzzer tid (FuzzSequence txs))) -> do
           workerId <- gets (.workerId)
           when (tid == workerId) $ do
-             modify' $ \s -> s { prioritizedSequences = seq : s.prioritizedSequences }
+             modify' $ \s -> s { prioritizedSequences = txs : s.prioritizedSequences }
              pure ()
        Just (WrappedMessage _ (ToFuzzer tid ClearPrioritization)) -> do
           workerId <- gets (.workerId)
