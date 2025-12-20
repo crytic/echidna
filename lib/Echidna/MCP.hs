@@ -6,7 +6,7 @@ module Echidna.MCP where
 import Control.Concurrent (forkIO)
 import Control.Monad (forever, unless)
 import Control.Concurrent.STM
-import Data.IORef (readIORef, modifyIORef', newIORef, IORef)
+import Data.IORef (readIORef, modifyIORef', newIORef, IORef, atomicModifyIORef')
 import Data.List (find, isPrefixOf)
 import qualified Data.Maybe
 import qualified Data.Set as Set
@@ -27,11 +27,13 @@ import EVM.ABI (AbiValue(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Coverage (CoverageFileType(..), mergeCoverageMaps, coverageStats)
 import Echidna.Output.Source (ppCoveredCode, saveLcovHook)
+import Echidna.Output.Corpus (loadTxs)
 
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Campaign (getNFuzzWorkers, CampaignConf(..), WorkerState(..))
 import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(..), FuzzerCmd(..), BroadcastMsg(..))
 import Echidna.Pretty (ppTx)
+import Echidna.Types.Test (didFail)
 
 -- | Status state to track coverage info
 data StatusState = StatusState
@@ -70,6 +72,11 @@ statusTool workerRefs statusRef _ env _ _ = do
   -- Coverage
   (covPoints, _) <- coverageStats env.coverageRefInit env.coverageRefRuntime
 
+  -- Tests
+  tests <- mapM readIORef env.testRefs
+  let failedCount = length $ filter didFail tests
+  let totalCount = length tests
+
   let timeStr = case st.lastCoverageTime of
                   Nothing -> "Never"
                   Just t -> show (round (diffUTCTime now t) :: Integer)
@@ -78,8 +85,8 @@ statusTool workerRefs statusRef _ env _ _ = do
               then "None"
               else unpack $ T.intercalate "\n- " st.coveredFunctions
 
-  return $ printf "Corpus Size: %d\nIterations: %d/%d\nCoverage: %d\nTime since last coverage: %s\nLast 10 covered functions:\n- %s"
-                  (Set.size c) iterations maxIterations covPoints timeStr funcs
+  return $ printf "Corpus Size: %d\nIterations: %d/%d\nCoverage: %d\nTests: %d/%d\nTime since last coverage: %s\nLast 10 covered functions:\n- %s"
+                  (Set.size c) iterations maxIterations covPoints failedCount totalCount timeStr funcs
 
 -- | Implementation of inspect_corpus_transactions tool
 inspectCorpusTransactionsTool :: ToolExecution
@@ -169,6 +176,34 @@ parseTx ctx s = do
                Just t -> (t.src, t.dst)
                Nothing -> (0x1000, 0x2000)
          return $ Tx (SolCall (pack fname, args)) src dst 1000000 0 0 (0,0)
+
+-- | Implementation of reload_corpus tool
+reloadCorpusTool :: ToolExecution
+reloadCorpusTool _ env _ _ = do
+  dir <- maybe getCurrentDirectory pure env.cfg.campaignConf.corpusDir
+  loadedSeqs <- loadTxs dir -- returns [(FilePath, [Tx])]
+
+  if null loadedSeqs
+    then return "No transaction sequences found in corpus directory."
+    else do
+      currentCorpus <- readIORef env.corpusRef
+      let existingTxs = Set.map snd currentCorpus
+
+      let newSeqs = map snd loadedSeqs
+      let uniqueNewSeqs = filter (`Set.notMember` existingTxs) newSeqs
+
+      if null uniqueNewSeqs
+        then return "No NEW transaction sequences found in corpus directory."
+        else do
+             let maxId = if Set.null currentCorpus
+                         then 0
+                         else fst (Set.findMax currentCorpus)
+
+             let indexedNewSeqs = zip [maxId + 1 ..] uniqueNewSeqs
+             let newCorpus = Set.union currentCorpus (Set.fromList indexedNewSeqs)
+
+             atomicModifyIORef' env.corpusRef $ const (newCorpus, ())
+             return $ printf "Reloaded %d new transaction sequences from %s" (length uniqueNewSeqs) dir
 
 -- | Implementation of inject_transaction tool
 injectTransactionTool :: ToolExecution
@@ -293,6 +328,7 @@ showCoverageTool args env _ _ = do
 availableTools :: [IORef WorkerState] -> IORef StatusState -> [Tool]
 availableTools workerRefs statusRef =
   [ Tool "status" "Show fuzzing campaign status" (statusTool workerRefs statusRef)
+  , Tool "reload_corpus" "Reload the transactions from the corpus, but without replay them" reloadCorpusTool
   --, Tool "inspect_corpus_transactions" "Browse the corpus transactions" inspectCorpusTransactionsTool
   --, Tool "inject_transaction" "Inject a transaction into a sequence and execute it" injectTransactionTool
   , Tool "dump_lcov" "Dump coverage in LCOV format" dumpLcovTool
@@ -336,7 +372,7 @@ runMCPServer env workerRefs port logsRef = do
     let serverInfo = McpServerInfo
             { serverName = "Echidna MCP Server"
             , serverVersion = "1.0.0"
-            , serverInstructions = "Echidna Agent Interface. Available tools: status, dump_lcov, inject_fuzz_transactions, clear_fuzz_priorities, show_coverage"
+            , serverInstructions = "Echidna Agent Interface. Available tools: status, reload_corpus, dump_lcov, inject_fuzz_transactions, clear_fuzz_priorities, show_coverage"
             }
 
     let mkToolDefinition :: Tool -> ToolDefinition
@@ -377,6 +413,10 @@ runMCPServer env workerRefs port logsRef = do
                 --    , required = []
                 --    }
                 "status" -> InputSchemaDefinitionObject
+                    { properties = []
+                    , required = []
+                    }
+                "reload_corpus" -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
                     }

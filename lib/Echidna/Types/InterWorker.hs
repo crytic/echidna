@@ -15,7 +15,6 @@ data AgentId = FuzzerId Int | SymbolicId | AIId
 data FuzzerCmd
   = DumpLcov
   | SolutionFound [Tx]
-  | PrioritizeFunction String -- Deprecated
   | FuzzSequence [(Text, [Maybe AbiValue])]
   | ClearPrioritization
   | ExecuteSequence [Tx] (Maybe (TMVar Bool))
@@ -23,7 +22,6 @@ data FuzzerCmd
 instance Show FuzzerCmd where
   show DumpLcov = "DumpLcov"
   show (SolutionFound txs) = "SolutionFound " ++ show txs
-  show (PrioritizeFunction s) = "PrioritizeFunction " ++ show s
   show (FuzzSequence s) = "FuzzSequence " ++ show s
   show ClearPrioritization = "ClearPrioritization"
   show (ExecuteSequence txs _) = "ExecuteSequence " ++ show txs
