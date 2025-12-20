@@ -7,7 +7,7 @@ import Control.Concurrent (forkIO)
 import Control.Monad (forever, unless)
 import Control.Concurrent.STM
 import Data.IORef (readIORef, modifyIORef', newIORef, IORef, atomicModifyIORef')
-import Data.List (find, isPrefixOf, sort)
+import Data.List (find, isPrefixOf, sort, intercalate)
 import qualified Data.Maybe
 import qualified Data.Set as Set
 import Data.Text (Text, pack, unpack)
@@ -24,7 +24,7 @@ import EVM.Dapp (DappInfo(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Types (Addr)
 import EVM.ABI (AbiValue(..))
-import Echidna.Types.Test (didFail)
+import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Coverage (CoverageFileType(..), mergeCoverageMaps, coverageStats)
 import Echidna.Output.Source (ppCoveredCode, saveLcovHook)
@@ -77,6 +77,11 @@ statusTool workerRefs statusRef _ env _ _ = do
   let failedCount = length $ filter didFail tests
   let totalCount = length tests
 
+  -- Optimization values
+  let optTests = filter isOptimizationTest tests
+      optValues = map (\(EchidnaTest {testType = ty, value = val}) -> printf "%s: %s" (show ty) (show val)) optTests
+      optStr = if null optValues then "None" else intercalate ", " optValues
+
   let timeStr = case st.lastCoverageTime of
                   Nothing -> "Never"
                   Just t -> show (round (diffUTCTime now t) :: Integer)
@@ -85,8 +90,8 @@ statusTool workerRefs statusRef _ env _ _ = do
               then "None"
               else unpack $ T.intercalate "\n- " st.coveredFunctions
 
-  return $ printf "Corpus Size: %d\nIterations: %d/%d\nCoverage: %d\nTests: %d/%d\nTime since last coverage: %s\nLast 10 covered functions:\n- %s"
-                  (Set.size c) iterations maxIterations covPoints failedCount totalCount timeStr funcs
+  return $ printf "Corpus Size: %d\nIterations: %d/%d\nCoverage: %d\nTests: %d/%d\nOptimization Values: %s\nTime since last coverage: %s\nLast 10 covered functions:\n- %s"
+                  (Set.size c) iterations maxIterations covPoints failedCount totalCount optStr timeStr funcs
 
 -- | Helper functions for inject_transaction
 trim :: String -> String
