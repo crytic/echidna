@@ -21,7 +21,7 @@ import Data.Char (isSpace)
 
 import MCP.Server
 import EVM.Dapp (DappInfo(..))
-import EVM.Solidity (SolcContract(..))
+import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Types (Addr)
 import EVM.ABI (AbiValue(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
@@ -32,7 +32,6 @@ import Echidna.Output.Corpus (loadTxs)
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Campaign (getNFuzzWorkers, CampaignConf(..), WorkerState(..))
 import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(..), FuzzerCmd(..), BroadcastMsg(..))
-import Echidna.Pretty (ppTx)
 import Echidna.Types.Test (didFail)
 
 -- | Status state to track coverage info
@@ -87,28 +86,6 @@ statusTool workerRefs statusRef _ env _ _ = do
 
   return $ printf "Corpus Size: %d\nIterations: %d/%d\nCoverage: %d\nTests: %d/%d\nTime since last coverage: %s\nLast 10 covered functions:\n- %s"
                   (Set.size c) iterations maxIterations covPoints failedCount totalCount timeStr funcs
-
--- | Implementation of inspect_corpus_transactions tool
-inspectCorpusTransactionsTool :: ToolExecution
-inspectCorpusTransactionsTool args env _ _ = do
-  let page = case lookup "page" args of
-               Just p -> Data.Maybe.fromMaybe 1 (readMaybe (unpack p))
-               Nothing -> 1
-      pageSize = 5
-  c <- readIORef env.corpusRef
-  let corpusList = Set.toList c
-      startIndex = (page - 1) * pageSize
-      pageItems = take pageSize $ drop startIndex corpusList
-
-      ppSequence (i, txs) =
-        printf "Sequence (value: %d):\n%s" i (unlines $ map (ppTx Map.empty) txs)
-
-  return $ if null pageItems
-           then "No more transactions found."
-           else intercalate "\n" (map ppSequence pageItems)
-    where
-      intercalate _ [] = ""
-      intercalate sep (x:xs) = x ++ sep ++ intercalate sep xs
 
 -- | Helper functions for inject_transaction
 trim :: String -> String
@@ -205,45 +182,6 @@ reloadCorpusTool _ env _ _ = do
              atomicModifyIORef' env.corpusRef $ const (newCorpus, ())
              return $ printf "Reloaded %d new transaction sequences from %s" (length uniqueNewSeqs) dir
 
--- | Implementation of inject_transaction tool
-injectTransactionTool :: ToolExecution
-injectTransactionTool args env bus _ = do
-  let idx = case lookup "sequence_index" args of
-              Just i -> Data.Maybe.fromMaybe 0 (readMaybe (unpack i))
-              Nothing -> 0
-      pos = case lookup "position" args of
-              Just p -> Data.Maybe.fromMaybe 0 (readMaybe (unpack p))
-              Nothing -> 0
-      txStr = maybe "" unpack (lookup "transaction" args)
-
-  c <- readIORef env.corpusRef
-  let corpusList = Set.toList c
-
-  if idx < 0 || idx >= length corpusList
-    then return "Error: Invalid sequence index."
-    else do
-      let (_, originalSeq) = corpusList !! idx
-      if pos < 0 || pos > length originalSeq
-        then return "Error: Invalid position."
-        else do
-          let contextTx = case originalSeq of
-                            [] -> Nothing
-                            (x:xs) -> Just (if pos > 0 && pos <= length (x:xs)
-                                            then (x:xs) !! (pos - 1)
-                                            else x)
-          case parseTx contextTx txStr of
-            Nothing -> return "Error: Failed to parse transaction string."
-            Just newTx -> do
-               let newSeq = take pos originalSeq ++ [newTx]
-               replyVar <- newEmptyTMVarIO
-               atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer 0 (ExecuteSequence newSeq (Just replyVar))))
-
-               -- Wait for reply
-               found <- atomically $ takeTMVar replyVar
-               if found
-                 then return "Transaction injected and NEW coverage found!"
-                 else return "Transaction injected but NO new coverage found."
-
 -- | Implementation of dump_lcov tool
 dumpLcovTool :: ToolExecution
 dumpLcovTool _ env _ _ = do
@@ -259,9 +197,28 @@ fuzzTransactionTool args env bus _ = do
   case parseFuzzSequence (unpack txStr) of
     Nothing -> return "Error: Failed to parse transaction sequence string."
     Just seqPrototype -> do
-      let nWorkers = getNFuzzWorkers env.cfg.campaignConf
-      mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (FuzzSequence seqPrototype)))) [0 .. nWorkers - 1]
-      return $ printf "Requested fuzzing of transaction sequence '%s' on %d fuzzers" (unpack txStr) nWorkers
+      -- Validate function names and argument counts
+      let dapp = env.dapp
+          methods = Map.elems dapp.abiMap
+
+          methodsByName = Map.fromListWith (++) [(m.name, [m]) | m <- methods]
+
+          validateCall (name, callArgs) =
+            case Map.lookup name methodsByName of
+              Nothing -> Just $ printf "Function '%s' not found." (unpack name)
+              Just ms ->
+                if any (\m -> length m.inputs == length callArgs) ms
+                then Nothing
+                else Just $ printf "Function '%s' found but with different argument count. Expected: %s, Got: %d" (unpack name) (show $ map (length . (.inputs)) ms) (length callArgs)
+
+          errors = Data.Maybe.mapMaybe validateCall seqPrototype
+
+      if not (null errors)
+        then return $ "Error:\n" ++ unlines errors
+        else do
+          let nWorkers = getNFuzzWorkers env.cfg.campaignConf
+          mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (FuzzSequence seqPrototype)))) [0 .. nWorkers - 1]
+          return $ printf "Requested fuzzing of transaction sequence '%s' on %d fuzzers" (unpack txStr) nWorkers
 
 -- | Implementation of clear_fuzz_priorities tool
 clearPrioritiesTool :: ToolExecution
@@ -329,8 +286,6 @@ availableTools :: [IORef WorkerState] -> IORef StatusState -> [Tool]
 availableTools workerRefs statusRef =
   [ Tool "status" "Show fuzzing campaign status" (statusTool workerRefs statusRef)
   , Tool "reload_corpus" "Reload the transactions from the corpus, but without replay them" reloadCorpusTool
-  --, Tool "inspect_corpus_transactions" "Browse the corpus transactions" inspectCorpusTransactionsTool
-  --, Tool "inject_transaction" "Inject a transaction into a sequence and execute it" injectTransactionTool
   , Tool "dump_lcov" "Dump coverage in LCOV format" dumpLcovTool
   , Tool "inject_fuzz_transactions" "Inject a sequence of transaction to fuzz with optional concrete arguments" fuzzTransactionTool
   , Tool "clear_fuzz_priorities" "Clear the function prioritization list used in fuzzing" clearPrioritiesTool
@@ -380,18 +335,6 @@ runMCPServer env workerRefs port logsRef = do
             { toolDefinitionName = pack t.toolName
             , toolDefinitionDescription = pack t.toolDescription
             , toolDefinitionInputSchema = case t.toolName of
-                -- "inspect_corpus_transactions" -> InputSchemaDefinitionObject
-                --     { properties = [("page", InputSchemaDefinitionProperty "string" "The page number (default 1)")]
-                --     , required = ["page"]
-                --     }
-                -- "inject_transaction" -> InputSchemaDefinitionObject
-                --     { properties =
-                --         [ ("sequence_index", InputSchemaDefinitionProperty "string" "The index of the sequence in the corpus")
-                --         , ("position", InputSchemaDefinitionProperty "string" "The position to insert the transaction at")
-                --         , ("transaction", InputSchemaDefinitionProperty "string" "The transaction string (e.g. 'func(arg1, arg2)')")
-                --         ]
-                --     , required = ["sequence_index", "position", "transaction"]
-                --     }
                 "dump_lcov" -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
