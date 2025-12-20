@@ -223,7 +223,7 @@ loadSpecified env mainContract cs = do
                                            solConf.contractAddr
                                            unlimitedGasPerBlock
                                            (0, 0)
-    vm4 <- if isDapptestMode solConf.testMode && setUpFunction `elem` abi
+    vm4 <- if is_testFunction `elem` abi && setUpFunction `elem` abi
               then snd <$> transaction
               else pure vm3
 
@@ -233,6 +233,7 @@ loadSpecified env mainContract cs = do
 
   where
     setUpFunction = ("setUp", [])
+    is_testFunction = ("IS_TEST", [])
 
 
 selectMainContract
