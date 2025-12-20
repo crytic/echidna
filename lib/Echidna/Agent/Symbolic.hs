@@ -83,7 +83,7 @@ instance Agent SymbolicAgent where
           , ncalls = 0
           , totalGas = 0
           , runningThreads = []
-          , prioritizedFunctions = []
+          , prioritizedSequences = []
           }
 
     let callback = get >>= liftIO . writeIORef ref
