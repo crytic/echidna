@@ -139,7 +139,7 @@ parseFuzzCall s = do
      return (pack fname, args)
 
 parseFuzzSequence :: String -> Maybe [(Text, [Maybe AbiValue])]
-parseFuzzSequence s = mapM parseFuzzCall (map trim $ splitOn ';' s)
+parseFuzzSequence s = mapM (parseFuzzCall . trim) (splitOn ';' s)
 
 parseCall :: String -> Maybe (String, [AbiValue])
 parseCall s = do
@@ -217,10 +217,10 @@ dumpLcovTool _ env _ _ = do
   filename <- saveLcovHook env dir env.sourceCache contracts
   return $ "Dumped LCOV coverage to " ++ filename
 
--- | Implementation of fuzz_transaction tool
+-- | Implementation of inject_fuzz_transactions tool
 fuzzTransactionTool :: ToolExecution
 fuzzTransactionTool args env bus _ = do
-  let txStr = Data.Maybe.fromMaybe "" (lookup "transaction" args)
+  let txStr = Data.Maybe.fromMaybe "" (lookup "transactions" args)
   case parseFuzzSequence (unpack txStr) of
     Nothing -> return "Error: Failed to parse transaction sequence string."
     Just seqPrototype -> do
@@ -228,7 +228,7 @@ fuzzTransactionTool args env bus _ = do
       mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (FuzzSequence seqPrototype)))) [0 .. nWorkers - 1]
       return $ printf "Requested fuzzing of transaction sequence '%s' on %d fuzzers" (unpack txStr) nWorkers
 
--- | Implementation of clear_priorities tool
+-- | Implementation of clear_fuzz_priorities tool
 clearPrioritiesTool :: ToolExecution
 clearPrioritiesTool _ env bus _ = do
   let nWorkers = getNFuzzWorkers env.cfg.campaignConf
@@ -293,11 +293,11 @@ showCoverageTool args env _ _ = do
 availableTools :: [IORef WorkerState] -> IORef StatusState -> [Tool]
 availableTools workerRefs statusRef =
   [ Tool "status" "Show fuzzing campaign status" (statusTool workerRefs statusRef)
-  , Tool "inspect_corpus_transactions" "Browse the corpus transactions" inspectCorpusTransactionsTool
-  , Tool "inject_transaction" "Inject a transaction into a sequence and execute it" injectTransactionTool
+  --, Tool "inspect_corpus_transactions" "Browse the corpus transactions" inspectCorpusTransactionsTool
+  --, Tool "inject_transaction" "Inject a transaction into a sequence and execute it" injectTransactionTool
   , Tool "dump_lcov" "Dump coverage in LCOV format" dumpLcovTool
-  , Tool "fuzz_transaction" "Fuzz a single transaction with optional concrete arguments" fuzzTransactionTool
-  , Tool "clear_priorities" "Clear the function prioritization list" clearPrioritiesTool
+  , Tool "inject_fuzz_transactions" "Inject a sequence of transaction to fuzz with optional concrete arguments" fuzzTransactionTool
+  , Tool "clear_fuzz_priorities" "Clear the function prioritization list used in fuzzing" clearPrioritiesTool
   --, Tool "read_logs" "Read the last 100 log messages" readLogsTool
   , Tool "show_coverage" "Show coverage report for a particular contract" showCoverageTool
   ]
@@ -336,7 +336,7 @@ runMCPServer env workerRefs port logsRef = do
     let serverInfo = McpServerInfo
             { serverName = "Echidna MCP Server"
             , serverVersion = "1.0.0"
-            , serverInstructions = "Echidna Agent Interface. Available tools: status, inspect_corpus_transactions, dump_lcov, fuzz_transaction, clear_priorities, read_logs, show_coverage"
+            , serverInstructions = "Echidna Agent Interface. Available tools: status, dump_lcov, inject_fuzz_transactions, clear_fuzz_priorities, show_coverage"
             }
 
     let mkToolDefinition :: Tool -> ToolDefinition
@@ -344,27 +344,27 @@ runMCPServer env workerRefs port logsRef = do
             { toolDefinitionName = pack t.toolName
             , toolDefinitionDescription = pack t.toolDescription
             , toolDefinitionInputSchema = case t.toolName of
-                "inspect_corpus_transactions" -> InputSchemaDefinitionObject
-                    { properties = [("page", InputSchemaDefinitionProperty "string" "The page number (default 1)")]
-                    , required = ["page"]
-                    }
-                "inject_transaction" -> InputSchemaDefinitionObject
-                    { properties =
-                        [ ("sequence_index", InputSchemaDefinitionProperty "string" "The index of the sequence in the corpus")
-                        , ("position", InputSchemaDefinitionProperty "string" "The position to insert the transaction at")
-                        , ("transaction", InputSchemaDefinitionProperty "string" "The transaction string (e.g. 'func(arg1, arg2)')")
-                        ]
-                    , required = ["sequence_index", "position", "transaction"]
-                    }
+                -- "inspect_corpus_transactions" -> InputSchemaDefinitionObject
+                --     { properties = [("page", InputSchemaDefinitionProperty "string" "The page number (default 1)")]
+                --     , required = ["page"]
+                --     }
+                -- "inject_transaction" -> InputSchemaDefinitionObject
+                --     { properties =
+                --         [ ("sequence_index", InputSchemaDefinitionProperty "string" "The index of the sequence in the corpus")
+                --         , ("position", InputSchemaDefinitionProperty "string" "The position to insert the transaction at")
+                --         , ("transaction", InputSchemaDefinitionProperty "string" "The transaction string (e.g. 'func(arg1, arg2)')")
+                --         ]
+                --     , required = ["sequence_index", "position", "transaction"]
+                --     }
                 "dump_lcov" -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
                     }
-                "fuzz_transaction" -> InputSchemaDefinitionObject
-                    { properties = [("transaction", InputSchemaDefinitionProperty "string" "The transaction sequence string separated by ';' (e.g. 'func1();func2(arg1, ?)')")]
-                    , required = ["transaction"]
+                "inject_fuzz_transactions" -> InputSchemaDefinitionObject
+                    { properties = [("transactions", InputSchemaDefinitionProperty "string" "The transaction sequence string separated by ';' (e.g. 'func1();func2(arg1, ?)')")]
+                    , required = ["transactions"]
                     }
-                "clear_priorities" -> InputSchemaDefinitionObject
+                "clear_fuzz_priorities" -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
                     }
