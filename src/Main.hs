@@ -2,7 +2,7 @@
 
 module Main where
 
-import Control.Monad (unless, forM_)
+import Control.Monad (unless, when, forM_)
 import Control.Monad.Random (getRandomR)
 import Control.Monad.Reader (runReaderT, liftIO)
 import Data.Aeson.Key qualified as Aeson.Key
@@ -12,7 +12,7 @@ import Data.Hashable (hash)
 import Data.IORef (readIORef)
 import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -116,7 +116,7 @@ main = withUtf8 $ withCP65001 $ do
       -- as it orders the runs chronologically.
       runId <- fromIntegral . systemSeconds <$> getSystemTime
 
-      Onchain.saveCoverageReport env runId
+      when (isJust env.cfg.rpcUrl) $ Onchain.saveCoverageReport env runId
 
       -- save source coverage reports
       let contracts = Map.elems env.dapp.solcByName
