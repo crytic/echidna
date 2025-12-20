@@ -7,7 +7,7 @@ import Control.Concurrent (forkIO)
 import Control.Monad (forever, unless)
 import Control.Concurrent.STM
 import Data.IORef (readIORef, modifyIORef', newIORef, IORef, atomicModifyIORef')
-import Data.List (find, isPrefixOf)
+import Data.List (find, isPrefixOf, sort)
 import qualified Data.Maybe
 import qualified Data.Set as Set
 import Data.Text (Text, pack, unpack)
@@ -24,15 +24,16 @@ import EVM.Dapp (DappInfo(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Types (Addr)
 import EVM.ABI (AbiValue(..))
+import Echidna.Types.Test (didFail)
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Coverage (CoverageFileType(..), mergeCoverageMaps, coverageStats)
 import Echidna.Output.Source (ppCoveredCode, saveLcovHook)
 import Echidna.Output.Corpus (loadTxs)
 
 import Echidna.Types.Config (Env(..), EConfig(..))
+import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign (getNFuzzWorkers, CampaignConf(..), WorkerState(..))
 import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(..), FuzzerCmd(..), BroadcastMsg(..))
-import Echidna.Types.Test (didFail)
 
 -- | Status state to track coverage info
 data StatusState = StatusState
@@ -237,6 +238,27 @@ readLogsTool _ _ _ logsRef = do
   let logsToShow = reverse $ take 100 logs
   return $ unpack $ T.unlines logsToShow
 
+-- | Implementation of target tool
+targetTool :: ToolExecution
+targetTool _ env _ _ = do
+  let contracts = env.dapp.solcByName
+      world = env.world
+
+      -- Helper to check if a contract is a target
+      isTarget :: SolcContract -> Bool
+      isTarget c = c.runtimeCodehash `Map.member` world.highSignatureMap
+
+      -- Find candidates
+      candidates = filter (isTarget . snd) (Map.toList contracts)
+
+  case candidates of
+    [] -> return "Error: No target contract found."
+    ((name, contract):_) -> do
+      let signatures = map (.methodSignature) (Map.elems contract.abiMap)
+          sortedSigs = sort signatures
+      return $ printf "Contract: %s\nFunctions:\n- %s" (unpack name) (unpack $ T.intercalate "\n- " sortedSigs)
+
+
 -- | Implementation of show_coverage tool
 showCoverageTool :: ToolExecution
 showCoverageTool args env _ _ = do
@@ -285,6 +307,7 @@ showCoverageTool args env _ _ = do
 availableTools :: [IORef WorkerState] -> IORef StatusState -> [Tool]
 availableTools workerRefs statusRef =
   [ Tool "status" "Show fuzzing campaign status" (statusTool workerRefs statusRef)
+  , Tool "target" "Show the name and the ABI of the target contract" targetTool
   , Tool "reload_corpus" "Reload the transactions from the corpus, but without replay them" reloadCorpusTool
   , Tool "dump_lcov" "Dump coverage in LCOV format" dumpLcovTool
   , Tool "inject_fuzz_transactions" "Inject a sequence of transaction to fuzz with optional concrete arguments" fuzzTransactionTool
@@ -327,7 +350,7 @@ runMCPServer env workerRefs port logsRef = do
     let serverInfo = McpServerInfo
             { serverName = "Echidna MCP Server"
             , serverVersion = "1.0.0"
-            , serverInstructions = "Echidna Agent Interface. Available tools: status, reload_corpus, dump_lcov, inject_fuzz_transactions, clear_fuzz_priorities, show_coverage"
+            , serverInstructions = "Echidna Agent Interface. Available tools: status, target, reload_corpus, dump_lcov, inject_fuzz_transactions, clear_fuzz_priorities, show_coverage"
             }
 
     let mkToolDefinition :: Tool -> ToolDefinition
@@ -336,6 +359,10 @@ runMCPServer env workerRefs port logsRef = do
             , toolDefinitionDescription = pack t.toolDescription
             , toolDefinitionInputSchema = case t.toolName of
                 "dump_lcov" -> InputSchemaDefinitionObject
+                    { properties = []
+                    , required = []
+                    }
+                "target" -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
                     }
