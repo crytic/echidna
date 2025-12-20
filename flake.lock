@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "crytic-compile": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1755965041,
+        "narHash": "sha256-hMgHWuC1IdfPcRD9DXD9j38AJZNh4WuTsco8GGte3MU=",
+        "owner": "crytic",
+        "repo": "crytic-compile",
+        "rev": "4183fee8a0671b1a4228900779556e6dba795915",
+        "type": "github"
+      },
+      "original": {
+        "owner": "crytic",
+        "ref": "dev-autolink",
+        "repo": "crytic-compile",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -107,6 +124,7 @@
     },
     "root": {
       "inputs": {
+        "crytic-compile": "crytic-compile",
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
         "foundry": "foundry",

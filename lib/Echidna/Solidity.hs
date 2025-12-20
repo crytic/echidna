@@ -40,6 +40,7 @@ import Echidna.ABI
   , commonTypeSizes, mkValidAbiInt, mkValidAbiUInt )
 import Echidna.Deploy (deployContracts, deployBytecodes)
 import Echidna.Exec (execTx, execTxWithCov, initialVM)
+import Echidna.Libraries (deployAutolinkLibraries)
 import Echidna.SourceAnalysis.Slither
 import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
 import Echidna.Types.Campaign (CampaignConf(..))
@@ -188,12 +189,15 @@ loadSpecified env mainContract cs = do
   ls <- mapM (chooseContract cs . Just . T.pack) solConf.solcLibs
 
   flip runReaderT env $ do
-    -- library deployment
+    -- library deployment (solcLibs)
     vm0 <- deployContracts (zip [addrLibrary ..] ls) solConf.deployer blank
+
+    -- library deployment (from autolink, if link file exists)
+    vm0' <- deployAutolinkLibraries cs solConf.deployer vm0
 
     -- additional contract deployment (by name)
     cs' <- mapM ((chooseContract cs . Just) . T.pack . snd) solConf.deployContracts
-    vm1 <- deployContracts (zip (map fst solConf.deployContracts) cs') solConf.deployer vm0
+    vm1 <- deployContracts (zip (map fst solConf.deployContracts) cs') solConf.deployer vm0'
 
     -- additional contract deployment (bytecode)
     vm2 <- deployBytecodes solConf.deployBytecodes solConf.deployer vm1
