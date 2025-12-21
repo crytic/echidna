@@ -87,7 +87,7 @@ data WorkerState = WorkerState
   , runningThreads :: [ThreadId]
     -- ^ Extra threads currently being run,
     --   aside from the main worker thread
-  , prioritizedSequences :: ![[(Text, [Maybe AbiValue])]]
+  , prioritizedSequences :: ![(Double, [(Text, [Maybe AbiValue])])]
     -- ^ Sequences of functions to prioritize during fuzzing
   }
 

@@ -261,7 +261,12 @@ fuzzTransactionTool args env bus _ = do
         then return $ "Error:\n" ++ unlines errors
         else do
           let nWorkers = getNFuzzWorkers env.cfg.campaignConf
-          mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (FuzzSequence seqPrototype)))) [0 .. nWorkers - 1]
+              calcProb i
+                | i == 0 = 0.0
+                | nWorkers <= 2 = 0.2
+                | otherwise = 0.2 + fromIntegral (i - 1) * (0.7 / fromIntegral (nWorkers - 2))
+
+          mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (FuzzSequence seqPrototype (calcProb i))))) [0 .. nWorkers - 1]
           return $ printf "Requested fuzzing of transaction sequence '%s' on %d fuzzers" (unpack txStr) nWorkers
 
 -- | Implementation of clear_fuzz_priorities tool

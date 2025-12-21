@@ -18,6 +18,7 @@ import System.Random (mkStdGen)
 import Data.IORef (IORef, writeIORef, readIORef, atomicModifyIORef')
 import Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import System.Directory (getCurrentDirectory)
 
 import Echidna.Output.Source (saveLcovHook)
@@ -198,10 +199,10 @@ fuzzerLoop callback vm testLimit bus = do
                void $ saveLcovHook env dir env.sourceCache contracts
                putStrLn $ "Fuzzer " ++ show workerId ++ ": dumped LCOV coverage."
             pure ()
-       Just (WrappedMessage _ (ToFuzzer tid (FuzzSequence txs))) -> do
+       Just (WrappedMessage _ (ToFuzzer tid (FuzzSequence txs prob))) -> do
           workerId <- gets (.workerId)
           when (tid == workerId) $ do
-             modify' $ \s -> s { prioritizedSequences = txs : s.prioritizedSequences }
+             modify' $ \s -> s { prioritizedSequences = (prob, txs) : s.prioritizedSequences }
              pure ()
        Just (WrappedMessage _ (ToFuzzer tid ClearPrioritization)) -> do
           workerId <- gets (.workerId)
@@ -233,11 +234,16 @@ randseq deployedContracts = do
     seqLen = env.cfg.campaignConf.seqLen
 
   prioritized <- gets (.prioritizedSequences)
-  usePrioritized <- (<= (0.90 :: Double)) <$> getRandom
 
-  if not (null prioritized) && usePrioritized
-    then do
-       seqPrototype <- rElem (NE.fromList prioritized)
+  mbSeq <- if null prioritized
+           then pure Nothing
+           else do
+             (prob, seqPrototype) <- rElem (NE.fromList prioritized)
+             useIt <- (<= prob) <$> getRandom
+             pure $ if useIt then Just seqPrototype else Nothing
+
+  case mbSeq of
+    Just seqPrototype -> do
        let expandPrototype [] = return []
            expandPrototype [p] = do
                tx <- genTxFromPrototype world deployedContracts p
@@ -250,14 +256,29 @@ randseq deployedContracts = do
                return ((tx : rndTxs) ++ rest)
 
        expandedTxs <- expandPrototype seqPrototype
-       let len = length expandedTxs
+       corpusSet <- liftIO $ readIORef env.corpusRef
+       prefix <- if Set.null corpusSet
+                 then pure []
+                 else do
+                   idx <- getRandomR (0, Set.size corpusSet - 1)
+                   let (_, cTxs) = Set.elemAt idx corpusSet
+                   let middleLen = length expandedTxs
+                   let maxPrefix = seqLen - middleLen
+                   if maxPrefix <= 0
+                     then pure []
+                     else do
+                       k <- getRandomR (0, min (length cTxs) maxPrefix)
+                       pure (take k cTxs)
+
+       let combined = prefix ++ expandedTxs
+       let len = length combined
        if len < seqLen
          then do
            paddingTxs <- replicateM (seqLen - len) (genTx world deployedContracts)
-           pure (expandedTxs ++ paddingTxs)
+           pure (combined ++ paddingTxs)
          else
-           pure (take seqLen expandedTxs)
-    else do
+           pure (take seqLen combined)
+    Nothing -> do
        -- Generate new random transactions
        randTxs <- replicateM seqLen (genTx world deployedContracts)
        -- Generate a random mutator
