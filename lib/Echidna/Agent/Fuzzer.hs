@@ -10,7 +10,7 @@ import Control.Concurrent.STM (atomically, tryReadTChan, dupTChan, putTMVar)
 import Control.Monad (replicateM, void, forM_, when)
 import Control.Monad.Reader (runReaderT, liftIO, asks, MonadReader, ask)
 import Control.Monad.State.Strict (runStateT, get, gets, modify', MonadState)
-import Control.Monad.Random.Strict (evalRandT, MonadRandom, RandT, getRandom)
+import Control.Monad.Random.Strict (evalRandT, MonadRandom, RandT, getRandom, getRandomR)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class (MonadIO)
@@ -238,14 +238,25 @@ randseq deployedContracts = do
   if not (null prioritized) && usePrioritized
     then do
        seqPrototype <- rElem (NE.fromList prioritized)
-       prototypeTxs <- mapM (genTxFromPrototype world deployedContracts) seqPrototype
-       let len = length seqPrototype
+       let expandPrototype [] = return []
+           expandPrototype [p] = do
+               tx <- genTxFromPrototype world deployedContracts p
+               return [tx]
+           expandPrototype (p:ps) = do
+               tx <- genTxFromPrototype world deployedContracts p
+               n <- getRandomR (0, 3)
+               rndTxs <- replicateM n (genTx world deployedContracts)
+               rest <- expandPrototype ps
+               return ((tx : rndTxs) ++ rest)
+
+       expandedTxs <- expandPrototype seqPrototype
+       let len = length expandedTxs
        if len < seqLen
          then do
            paddingTxs <- replicateM (seqLen - len) (genTx world deployedContracts)
-           pure (prototypeTxs ++ paddingTxs)
+           pure (expandedTxs ++ paddingTxs)
          else
-           pure prototypeTxs
+           pure (take seqLen expandedTxs)
     else do
        -- Generate new random transactions
        randTxs <- replicateM seqLen (genTx world deployedContracts)
