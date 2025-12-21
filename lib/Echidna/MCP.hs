@@ -7,9 +7,10 @@ import Control.Concurrent (forkIO)
 import Control.Monad (forever, unless)
 import Control.Concurrent.STM
 import Data.IORef (readIORef, modifyIORef', newIORef, IORef, atomicModifyIORef')
-import Data.List (find, isPrefixOf, sort, intercalate)
+import Data.List (find, isPrefixOf, isSuffixOf, sort, intercalate)
 import qualified Data.Maybe
 import qualified Data.Set as Set
+import qualified Data.Vector as Vector
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
 import Data.Time (UTCTime, getCurrentTime, diffUTCTime)
@@ -17,13 +18,13 @@ import Text.Printf (printf)
 import qualified Data.Map as Map
 import Text.Read (readMaybe)
 import System.Directory (getCurrentDirectory)
-import Data.Char (isSpace)
+import Data.Char (isSpace, toLower)
 
 import MCP.Server
 import EVM.Dapp (DappInfo(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Types (Addr)
-import EVM.ABI (AbiValue(..))
+import EVM.ABI (AbiValue(..), AbiType(..), abiValueType)
 import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Coverage (CoverageFileType(..), mergeCoverageMaps, coverageStats)
@@ -105,12 +106,49 @@ splitOn c s = case break (== c) s of
                                            [] -> []
                                            (_:r) -> splitOn c r
 
+splitArgs :: String -> [String]
+splitArgs s = go s 0 ""
+  where
+    go :: String -> Int -> String -> [String]
+    go [] _ current = [reverse current]
+    go (c:cs) level current
+      | c == '[' = go cs (level + 1) (c:current)
+      | c == ']' = go cs (level - 1) (c:current)
+      | c == ',' && level == 0 = reverse current : go cs level ""
+      | otherwise = go cs level (c:current)
+
+parsePrimitive :: String -> Maybe AbiValue
+parsePrimitive s =
+   let s' = trim s
+       lowerS = map toLower s'
+   in if lowerS == "true"
+      then Just (AbiBool True)
+      else if lowerS == "false"
+      then Just (AbiBool False)
+      else if "0x" `isPrefixOf` s'
+           then AbiAddress . fromIntegral <$> (readMaybe s' :: Maybe Integer)
+           else AbiUInt 256 . fromIntegral <$> (readMaybe s' :: Maybe Integer)
+
+parseArray :: String -> Maybe AbiValue
+parseArray s = do
+  let content = trim (drop 1 (take (length s - 1) s))
+  let parts = if null content then [] else splitOn ',' content
+  vals <- mapM parsePrimitive parts
+  let vec = Vector.fromList vals
+  if Vector.null vec
+    then return $ AbiArrayDynamic (AbiUIntType 256) vec
+    else do
+      let t = abiValueType (Vector.head vec)
+      if all (\v -> abiValueType v == t) vals
+        then return $ AbiArrayDynamic t vec
+        else Nothing
+
 parseArg :: String -> Maybe AbiValue
 parseArg s =
    let s' = trim s
-   in if "0x" `isPrefixOf` s'
-      then AbiAddress . fromIntegral <$> (readMaybe s' :: Maybe Integer)
-      else AbiUInt 256 . fromIntegral <$> (readMaybe s' :: Maybe Integer)
+   in if "[" `isPrefixOf` s' && "]" `isSuffixOf` s'
+      then parseArray s'
+      else parsePrimitive s'
 
 parseFuzzArg :: String -> Maybe (Maybe AbiValue)
 parseFuzzArg s =
@@ -124,7 +162,7 @@ parseFuzzCall s = do
    let (fname, rest) = break (== '(') s
    if null rest then Nothing else do
      let argsS = take (length rest - 2) (drop 1 rest) -- remove parens
-     let argParts = if all isSpace argsS then [] else splitOn ',' argsS
+     let argParts = if all isSpace argsS then [] else splitArgs argsS
      args <- mapM parseFuzzArg argParts
      return (pack fname, args)
 
@@ -136,7 +174,7 @@ parseCall s = do
    let (fname, rest) = break (== '(') s
    if null rest then Nothing else do
      let argsS = take (length rest - 2) (drop 1 rest) -- remove parens
-     let argParts = if all isSpace argsS then [] else splitOn ',' argsS
+     let argParts = if all isSpace argsS then [] else splitArgs argsS
      args <- mapM parseArg argParts
      return (fname, args)
 

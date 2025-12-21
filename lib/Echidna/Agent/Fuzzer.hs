@@ -233,7 +233,7 @@ randseq deployedContracts = do
     seqLen = env.cfg.campaignConf.seqLen
 
   prioritized <- gets (.prioritizedSequences)
-  usePrioritized <- (<= (0.25 :: Double)) <$> getRandom
+  usePrioritized <- (<= (0.90 :: Double)) <$> getRandom
 
   if not (null prioritized) && usePrioritized
     then do
