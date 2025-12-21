@@ -15,14 +15,14 @@ data AgentId = FuzzerId Int | SymbolicId | AIId
 data FuzzerCmd
   = DumpLcov
   | SolutionFound [Tx]
-  | FuzzSequence [(Text, [Maybe AbiValue])]
+  | FuzzSequence [(Text, [Maybe AbiValue])] Double
   | ClearPrioritization
   | ExecuteSequence [Tx] (Maybe (TMVar Bool))
 
 instance Show FuzzerCmd where
   show DumpLcov = "DumpLcov"
   show (SolutionFound txs) = "SolutionFound " ++ show txs
-  show (FuzzSequence s) = "FuzzSequence " ++ show s
+  show (FuzzSequence s p) = "FuzzSequence " ++ show s ++ " (" ++ show p ++ ")"
   show ClearPrioritization = "ClearPrioritization"
   show (ExecuteSequence txs _) = "ExecuteSequence " ++ show txs
 
