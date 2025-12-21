@@ -22,3 +22,31 @@ crytic-export/
 echidna.cabal
 *.swp
 profiles/
+
+# Python virtual environment (MCP test suite - T006)
+echidna_agent/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Python testing (T007, T055-T068)
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+*.cover
+.hypothesis/
+
+# MCP test artifacts
+tests/mcp/**/*.pyc
+tests/mcp/.pytest_cache/
+tests/mcp/htmlcov/
+
+# MCP command logs (Clarification #6 - created during testing)
+corpus/mcp-commands.jsonl

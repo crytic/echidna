@@ -4,9 +4,13 @@ import Control.Concurrent
 import Control.Monad.Reader (MonadReader, MonadIO, liftIO, ask)
 import Control.Monad.State.Strict(MonadState(..), gets)
 import Data.Aeson
-import Data.Text (unpack)
+import Data.IORef (atomicModifyIORef', readIORef, writeIORef)
+import Data.Sequence (Seq, (<|))
+import Data.Sequence qualified as Seq
+import Data.Text (pack, unpack)
 
 import Echidna.Types.Tx (Tx(..), TxCall(..))
+import Echidna.Types.MCP (EventEntry(..))
 import Echidna.ABI (encodeSig)
 import Echidna.Types.Campaign
 import Echidna.Types.Config (Env(..), EConfig(..))
@@ -50,6 +54,27 @@ pushCampaignEvent :: Env -> CampaignEvent -> IO ()
 pushCampaignEvent env event = do
   time <- liftIO getTimestamp
   writeChan env.eventQueue (time, event)
+  
+  -- T017: Populate EventLog ring buffer (max 2500 entries, drop-oldest)
+  let maxCapacity = 2500 :: Int
+  let (eventType, workerId) = case event of
+        WorkerEvent wid _ wEvent -> (pack (ppWorkerEvent wEvent), wid)
+        Failure msg -> (pack "Failure", -1)
+        ReproducerSaved _ -> (pack "ReproducerSaved", -1)
+        ServerLog _ -> (pack "ServerLog", -1)
+  
+  let entry = EventEntry
+        { entryTimestamp = time
+        , entryType = eventType
+        , entryWorkerId = workerId
+        , entryData = toJSON event
+        }
+  
+  atomicModifyIORef' env.eventLog $ \log ->
+    let newLog = if Seq.length log >= maxCapacity
+                 then entry <| Seq.take (maxCapacity - 1) log  -- Drop oldest
+                 else entry <| log  -- Prepend (most recent first)
+    in (newLog, ())
 
 ppCampaignEvent :: CampaignEvent -> String
 ppCampaignEvent = \case

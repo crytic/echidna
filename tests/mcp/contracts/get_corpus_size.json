@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "get_corpus_size Response Schema",
+  "type": "object",
+  "required": ["corpus_size"],
+  "properties": {
+    "corpus_size": {"type": "integer", "minimum": 0}
+  }
+}

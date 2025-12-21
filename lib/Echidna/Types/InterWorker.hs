@@ -17,6 +17,10 @@ data FuzzerCmd
   | PrioritizeFunction String
   | ClearPrioritization
   | ExecuteSequence [Tx] (Maybe (TMVar Bool))
+  | InjectTransaction Tx
+    -- ^ Inject a single transaction for execution (MCP control, US2)
+  | LogMCPCommand Text [(Text, Text)]
+    -- ^ Log an MCP command execution for reproducibility (FR-010)
 
 instance Show FuzzerCmd where
   show DumpLcov = "DumpLcov"
@@ -24,6 +28,8 @@ instance Show FuzzerCmd where
   show (PrioritizeFunction s) = "PrioritizeFunction " ++ show s
   show ClearPrioritization = "ClearPrioritization"
   show (ExecuteSequence txs _) = "ExecuteSequence " ++ show txs
+  show (InjectTransaction tx) = "InjectTransaction " ++ show tx
+  show (LogMCPCommand tool params) = "LogMCPCommand " ++ show tool
 
 -- | Symbolic specific commands
 newtype SymbolicCmd

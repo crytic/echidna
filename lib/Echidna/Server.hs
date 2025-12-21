@@ -14,7 +14,14 @@ import UnliftIO.STM (atomically, newBroadcastTChanIO, writeTChan, dupTChan, read
 import Echidna.Types.Config (Env(..))
 import Echidna.Types.Worker
 import Echidna.Worker()
+import Echidna.MCP (runMCPServer)
 
+-- | T009: Spawn MCP server on specified port
+-- Returns thread ID and starts MCP server using haskell-mcp-server
+spawnMCPServer :: Word16 -> Env -> IO ThreadId
+spawnMCPServer port env = do
+  forkIO $ runMCPServer env (fromIntegral port) env.mcpCommandLog
+  
 newtype SSE = SSE (LocalTime, CampaignEvent)
 
 instance ToJSON SSE where

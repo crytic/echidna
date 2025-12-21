@@ -39,6 +39,7 @@ import Echidna.Types.Agent (runAgent)
 import Echidna.Agent.Fuzzer (FuzzerAgent(..))
 import Echidna.Agent.Symbolic (SymbolicAgent(..))
 import Echidna.MCP (runMCPServer)
+import Echidna.Server qualified
 import Echidna.SourceAnalysis.Slither (isEmptySlitherInfo)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
@@ -204,6 +205,13 @@ ui vm dict initialCorpus cliSelectedContract = do
         Just port -> do
           liftIO $ pushCampaignEvent env (ServerLog ("MCP Server running at http://127.0.0.1:" ++ show port ++ "/mcp"))
           void $ liftIO $ forkIO $ runMCPServer env (fromIntegral port) logBuffer
+        Nothing -> pure ()
+
+      -- T013: Spawn MCP server if mcpPort is configured
+      case conf.campaignConf.mcpPort of
+        Just port -> do
+          liftIO $ pushCampaignEvent env (ServerLog ("MCP Agent Server starting on port " ++ show port))
+          void $ liftIO $ forkIO $ Echidna.Server.spawnMCPServer port env
         Nothing -> pure ()
 
       ticker <- liftIO . forkIO . forever $ do

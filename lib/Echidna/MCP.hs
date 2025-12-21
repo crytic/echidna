@@ -4,10 +4,11 @@
 module Echidna.MCP where
 
 import Control.Concurrent.STM
-import Data.IORef (readIORef, IORef)
+import Data.IORef (readIORef, writeIORef, modifyIORef', IORef)
 import Data.List (find, isPrefixOf)
 import qualified Data.Maybe
 import qualified Data.Set as Set
+import Data.Sequence qualified as Seq
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
 import Text.Printf (printf)
@@ -16,6 +17,8 @@ import Data.Foldable (toList)
 import Text.Read (readMaybe)
 import System.Directory (getCurrentDirectory)
 import Data.Char (isSpace)
+import Data.Time.LocalTime (getZonedTime, zonedTimeToLocalTime)
+import Data.Aeson (ToJSON(..), object, (.=))
 
 import MCP.Server
 import EVM.Dapp (DappInfo(..), srcMapCodePos)
@@ -30,6 +33,220 @@ import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Campaign (getNFuzzWorkers, CampaignConf(..))
 import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(..), FuzzerCmd(..))
 import Echidna.Pretty (ppTx)
+
+-- | Bus Communication Functions (T010, T012)
+
+-- | Send a command to a specific fuzzer worker via the Bus
+-- T010: Bus writer function (atomically writes to TChan, returns success)
+sendFuzzerCmd :: AgentId -> FuzzerCmd -> Bus -> IO Bool
+sendFuzzerCmd agentId cmd bus = do
+  atomically $ writeTChan bus (WrappedMessage agentId (ToFuzzer 0 cmd))
+  return True
+
+-- | Log an MCP command execution for reproducibility (FR-010, T012)
+-- Appends to mcpCommandLog with timestamp and tool name
+logMCPCommand :: Text -> [(Text, Text)] -> Text -> Env -> IO ()
+logMCPCommand toolName params result env = do
+  timestamp <- zonedTimeToLocalTime <$> getZonedTime
+  let paramStr = T.intercalate ", " [k <> "=" <> v | (k, v) <- params]
+  let logEntry = T.concat
+        [ T.pack (show timestamp)
+        , " | Tool: ", toolName
+        , " | Params: {", paramStr, "}"
+        , " | Result: ", result
+        ]
+  modifyIORef' env.mcpCommandLog (logEntry :)
+
+-- | Observability Tools (Phase 3: T015-T037)
+
+-- | T015: Read recent campaign events from EventLog ring buffer
+readLogsToolNew :: Env -> IO String
+readLogsToolNew env = do
+  eventLog <- readIORef env.eventLog
+  let events = Seq.take 100 eventLog  -- Last 100 events (most recent first)
+  let eventList = toList events
+  let response = object
+        [ "events" .= eventList
+        , "count" .= length eventList
+        , "timestamp" .= show (zonedTimeToLocalTime <$> getZonedTime)
+        ]
+  return $ show response
+
+-- | T020: Get coverage statistics  
+showCoverageToolNew :: Env -> IO String
+showCoverageToolNew env = do
+  covMap <- mergeCoverageMaps env.dapp env.coverageRefInit env.coverageRefRuntime
+  let (totalPoints, numContracts) = Map.foldl' 
+        (\(pts, contracts) cov -> (pts + Set.size cov, contracts + 1))
+        (0, 0)
+        covMap
+  let response = object
+        [ "points" .= totalPoints
+        , "contracts" .= numContracts
+        , "bytecode" .= totalPoints  -- Approximate
+        ]
+  return $ show response
+
+-- | T024: Export coverage in LCOV format (in-memory, no disk write)
+dumpLcovToolNew :: Env -> IO String
+dumpLcovToolNew env = do
+  let contracts = Map.elems env.dapp.solcByName
+  dir <- maybe getCurrentDirectory pure env.cfg.campaignConf.corpusDir
+  -- Note: saveLcovHook writes to disk, but for MCP we return in-memory content
+  -- For now, return a placeholder. Full implementation would require refactoring saveLcovHook
+  let response = object
+        [ "format" .= ("lcov" :: Text)
+        , "content" .= ("<LCOV data would be here - needs refactoring saveLcovHook>" :: Text)
+        ]
+  return $ show response
+
+-- | T027: Get corpus size (count only)
+getCorpusSizeToolNew :: Env -> IO String
+getCorpusSizeToolNew env = do
+  corpus <- readIORef env.corpusRef
+  let response = object [ "size" .= Set.size corpus ]
+  return $ show response
+
+-- | T030: Inspect corpus transactions with pagination
+inspectCorpusTransactionsToolNew :: Int -> Int -> Env -> IO String
+inspectCorpusTransactionsToolNew page pageSize env = do
+  corpus <- readIORef env.corpusRef
+  let corpusList = Set.toList corpus
+      total = length corpusList
+      startIdx = page * pageSize
+      pageItems = take pageSize $ drop startIdx corpusList
+      
+      formatSeq (idx, (_, txs)) = object
+        [ "index" .= idx
+        , "sequence_length" .= length txs
+        , "coverage_delta" .= (0 :: Int)  -- Placeholder
+        , "sample_calls" .= map formatTx (take 3 txs)
+        ]
+      
+      formatTx tx = case tx.call of
+        SolCall (fname, args) -> object ["function" .= fname, "args" .= show args]
+        _ -> object ["function" .= ("constructor" :: Text)]
+  
+  let response = object
+        [ "transactions" .= map formatSeq (zip [startIdx..] pageItems)
+        , "total" .= total
+        , "page" .= page
+        ]
+  return $ show response
+
+-- | T034: Find transactions in corpus by function signature
+findTransactionInCorpusToolNew :: Text -> Env -> IO String
+findTransactionInCorpusToolNew funcSig env = do
+  corpus <- readIORef env.corpusRef
+  let corpusList = Set.toList corpus
+      
+      matchesSig tx = case tx.call of
+        SolCall (fname, _) -> T.toLower funcSig `T.isInfixOf` T.toLower fname
+        _ -> False
+      
+      matchingSeqs = filter (\(_, txs) -> any matchesSig txs) corpusList
+      results = take 10 matchingSeqs  -- Limit to 10 results
+      
+      formatMatch (idx, (_, txs)) = object
+        [ "index" .= idx
+        , "sequence" .= map formatTx txs
+        ]
+      
+      formatTx tx = case tx.call of
+        SolCall (fname, args) -> object ["function" .= fname, "args" .= show args]
+        _ -> object ["function" .= ("constructor" :: Text)]
+  
+  let response = object
+        [ "found" .= not (null results)
+        , "transactions" .= map formatMatch (zip [(0 :: Int)..] results)
+        ]
+  return $ show response
+
+-- | Control Tools (Phase 4: T038-T054)
+
+-- | T038-T042: Inject transaction sequence
+injectTransactionToolNew :: [Text] -> Env -> IO String
+injectTransactionToolNew txStrings env = do
+  let parseTxString txStr = do
+        let str = unpack txStr
+        case parseCall str of
+          Just (fname, args) -> 
+            Just $ Tx (SolCall (pack fname, args)) 0x1000 0x2000 1000000 0 0 (0,0)
+          Nothing -> Nothing
+  
+  let txs = Data.Maybe.mapMaybe parseTxString txStrings
+  
+  if null txs
+    then return $ show $ object 
+      [ "injected" .= False
+      , "transaction_count" .= (0 :: Int)
+      , "error" .= ("Failed to parse transactions" :: Text)
+      ]
+    else do
+      -- T040: Send via Bus using InjectTransaction for each transaction
+      let nWorkers = getNFuzzWorkers env.cfg.campaignConf
+      mapM_ (\tx -> atomically $ writeTChan env.bus (WrappedMessage AIId (ToFuzzer 0 (InjectTransaction tx)))) txs
+      
+      -- T041: Log the injection
+      let sampleSig = case head txs of
+            Tx (SolCall (fname, _)) _ _ _ _ _ _ -> fname
+            _ -> "unknown"
+      logMCPCommand "inject_transaction" 
+        [("tx_count", pack $ show $ length txs), ("sample_sig", sampleSig)]
+        "injected"
+        env
+      
+      -- T042: Return response
+      let response = object
+            [ "injected" .= True
+            , "transaction_count" .= length txs
+            , "worker_id" .= (0 :: Int)
+            ]
+      return $ show response
+
+-- | T044-T048: Prioritize function
+prioritizeFunctionToolNew :: Text -> Env -> IO String
+prioritizeFunctionToolNew funcSig env = do
+  let nWorkers = getNFuzzWorkers env.cfg.campaignConf
+  
+  -- T045: Send PrioritizeFunction to all workers
+  mapM_ (\i -> atomically $ writeTChan env.bus 
+    (WrappedMessage AIId (ToFuzzer i (PrioritizeFunction (unpack funcSig))))) 
+    [0 .. nWorkers - 1]
+  
+  -- T047: Log the prioritization
+  logMCPCommand "prioritize_function" 
+    [("function", funcSig)]
+    "priority_set"
+    env
+  
+  -- T048: Return response
+  let response = object
+        [ "prioritized" .= True
+        , "function_signature" .= funcSig
+        , "worker_ids" .= [0 .. nWorkers - 1]
+        ]
+  return $ show response
+
+-- | T050-T053: Clear function priorities
+clearPrioritiesToolNew :: Env -> IO String
+clearPrioritiesToolNew env = do
+  let nWorkers = getNFuzzWorkers env.cfg.campaignConf
+  
+  -- T051: Send ClearPrioritization to all workers
+  mapM_ (\i -> atomically $ writeTChan env.bus 
+    (WrappedMessage AIId (ToFuzzer i ClearPrioritization))) 
+    [0 .. nWorkers - 1]
+  
+  -- T052: Log the clearing
+  logMCPCommand "clear_priorities" [] "cleared" env
+  
+  -- T053: Return response
+  let response = object
+        [ "cleared" .= True
+        , "worker_ids" .= [0 .. nWorkers - 1]
+        ]
+  return $ show response
 
 -- | MCP Tool Definition
 -- Simulates the definition of a tool exposed by an MCP server.

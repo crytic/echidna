@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "inspect_corpus_transactions Response Schema",
+  "type": "object",
+  "required": ["transactions", "total", "offset", "limit"],
+  "properties": {
+    "transactions": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "total": {"type": "integer", "minimum": 0},
+    "offset": {"type": "integer", "minimum": 0},
+    "limit": {"type": "integer", "minimum": 1}
+  }
+}

@@ -214,6 +214,16 @@ fuzzerLoop callback vm testLimit bus = do
                 Just var -> atomically $ putTMVar var newCov
                 Nothing -> pure ()
              pure ()
+       -- T011: Handle InjectTransaction (MCP control command, US2)
+       Just (WrappedMessage _ (ToFuzzer tid (InjectTransaction tx))) -> do
+          workerId <- gets (.workerId)
+          when (tid == workerId) $ do
+             (_, _newCov) <- callseq vm [tx]
+             pure ()
+       -- T011: Handle LogMCPCommand (reproducibility logging, FR-010)
+       Just (WrappedMessage _ (ToFuzzer _tid (LogMCPCommand _toolName _params))) -> do
+          -- Log command execution (handled by MCP server directly, worker just acknowledges)
+          pure ()
        _ -> pure ()
 
 -- | Generate a new sequences of transactions, either using the corpus or with
