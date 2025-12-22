@@ -10,7 +10,7 @@ import Control.Concurrent.STM (atomically, tryReadTChan, dupTChan, putTMVar)
 import Control.Monad (replicateM, void, forM_, when)
 import Control.Monad.Reader (runReaderT, liftIO, asks, MonadReader, ask)
 import Control.Monad.State.Strict (runStateT, get, gets, modify', MonadState)
-import Control.Monad.Random.Strict (evalRandT, MonadRandom, RandT)
+import Control.Monad.Random.Strict (evalRandT, MonadRandom, RandT, getRandom, getRandomR)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class (MonadIO)
@@ -18,6 +18,7 @@ import System.Random (mkStdGen)
 import Data.IORef (IORef, writeIORef, readIORef, atomicModifyIORef')
 import Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import System.Directory (getCurrentDirectory)
 
 import Echidna.Output.Source (saveLcovHook)
@@ -29,7 +30,9 @@ import Echidna.ABI (GenDict(..))
 import Echidna.Execution (replayCorpus, callseq, updateTests)
 import Echidna.Mutator.Corpus (getCorpusMutation, seqMutatorsStateless, seqMutatorsStateful, fromConsts)
 import Echidna.Shrink (shrinkTest)
-import Echidna.Transaction (genTx)
+import Echidna.Transaction (genTx, genTxFromPrototype)
+import Echidna.Types.Random (rElem)
+import qualified Data.List.NonEmpty as NE
 import Echidna.Types.Agent
 import Echidna.Types.Campaign (WorkerState(..), CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
@@ -77,7 +80,7 @@ instance Agent FuzzerAgent where
           , ncalls = 0
           , totalGas = 0
           , runningThreads = []
-          , prioritizedFunctions = []
+          , prioritizedSequences = []
           }
 
     -- Callback to update the IORef with the current state
@@ -167,7 +170,7 @@ fuzzerLoop callback vm testLimit bus = do
        | otherwise ->
          callback >> pure TestLimitReached
 
-  fuzz = randseq vm.env.contracts >>= fmap fst . callseq vm
+  fuzz = randseq vm.env.contracts >>= fmap fst . (\txs -> callseq vm txs False)
 
   shrink = do
     wid <- gets (.workerId)
@@ -196,34 +199,24 @@ fuzzerLoop callback vm testLimit bus = do
                void $ saveLcovHook env dir env.sourceCache contracts
                putStrLn $ "Fuzzer " ++ show workerId ++ ": dumped LCOV coverage."
             pure ()
-       Just (WrappedMessage _ (ToFuzzer tid (PrioritizeFunction funcName))) -> do
+       Just (WrappedMessage _ (ToFuzzer tid (FuzzSequence txs prob))) -> do
           workerId <- gets (.workerId)
           when (tid == workerId) $ do
-             modify' $ \s -> s { prioritizedFunctions = funcName : s.prioritizedFunctions }
+             modify' $ \s -> s { prioritizedSequences = (prob, txs) : s.prioritizedSequences }
              pure ()
        Just (WrappedMessage _ (ToFuzzer tid ClearPrioritization)) -> do
           workerId <- gets (.workerId)
           when (tid == workerId) $ do
-             modify' $ \s -> s { prioritizedFunctions = [] }
+             modify' $ \s -> s { prioritizedSequences = [] }
              pure ()
        Just (WrappedMessage _ (ToFuzzer tid (ExecuteSequence txs replyVar))) -> do
           workerId <- gets (.workerId)
           when (tid == workerId) $ do
-             (_, newCov) <- callseq vm txs
+             (_, newCov) <- callseq vm txs False
              liftIO $ case replyVar of
                 Just var -> atomically $ putTMVar var newCov
                 Nothing -> pure ()
              pure ()
-       -- T011: Handle InjectTransaction (MCP control command, US2)
-       Just (WrappedMessage _ (ToFuzzer tid (InjectTransaction tx))) -> do
-          workerId <- gets (.workerId)
-          when (tid == workerId) $ do
-             (_, _newCov) <- callseq vm [tx]
-             pure ()
-       -- T011: Handle LogMCPCommand (reproducibility logging, FR-010)
-       Just (WrappedMessage _ (ToFuzzer _tid (LogMCPCommand _toolName _params))) -> do
-          -- Log command execution (handled by MCP server directly, worker just acknowledges)
-          pure ()
        _ -> pure ()
 
 -- | Generate a new sequences of transactions, either using the corpus or with
@@ -240,14 +233,60 @@ randseq deployedContracts = do
     mutConsts = env.cfg.campaignConf.mutConsts
     seqLen = env.cfg.campaignConf.seqLen
 
-  -- Generate new random transactions
-  randTxs <- replicateM seqLen (genTx world deployedContracts)
-  -- Generate a random mutator
-  cmut <- if seqLen == 1 then seqMutatorsStateless (fromConsts mutConsts)
-                         else seqMutatorsStateful (fromConsts mutConsts)
-  -- Fetch the mutator
-  let mut = getCorpusMutation cmut
-  corpus <- liftIO $ readIORef env.corpusRef
-  if null corpus
-    then pure randTxs -- Use the generated random transactions
-    else mut seqLen corpus randTxs -- Apply the mutator
+  prioritized <- gets (.prioritizedSequences)
+
+  mbSeq <- if null prioritized
+           then pure Nothing
+           else do
+             (prob, seqPrototype) <- rElem (NE.fromList prioritized)
+             useIt <- (<= prob) <$> getRandom
+             pure $ if useIt then Just seqPrototype else Nothing
+
+  case mbSeq of
+    Just seqPrototype -> do
+       let expandPrototype [] = return []
+           expandPrototype [p] = do
+               tx <- genTxFromPrototype world deployedContracts p
+               return [tx]
+           expandPrototype (p:ps) = do
+               tx <- genTxFromPrototype world deployedContracts p
+               n <- getRandomR (0, 3)
+               rndTxs <- replicateM n (genTx world deployedContracts)
+               rest <- expandPrototype ps
+               return ((tx : rndTxs) ++ rest)
+
+       expandedTxs <- expandPrototype seqPrototype
+       corpusSet <- liftIO $ readIORef env.corpusRef
+       prefix <- if Set.null corpusSet
+                 then pure []
+                 else do
+                   idx <- getRandomR (0, Set.size corpusSet - 1)
+                   let (_, cTxs) = Set.elemAt idx corpusSet
+                   let middleLen = length expandedTxs
+                   let maxPrefix = seqLen - middleLen
+                   if maxPrefix <= 0
+                     then pure []
+                     else do
+                       k <- getRandomR (0, min (length cTxs) maxPrefix)
+                       pure (take k cTxs)
+
+       let combined = prefix ++ expandedTxs
+       let len = length combined
+       if len < seqLen
+         then do
+           paddingTxs <- replicateM (seqLen - len) (genTx world deployedContracts)
+           pure (combined ++ paddingTxs)
+         else
+           pure (take seqLen combined)
+    Nothing -> do
+       -- Generate new random transactions
+       randTxs <- replicateM seqLen (genTx world deployedContracts)
+       -- Generate a random mutator
+       cmut <- if seqLen == 1 then seqMutatorsStateless (fromConsts mutConsts)
+                              else seqMutatorsStateful (fromConsts mutConsts)
+       -- Fetch the mutator
+       let mut = getCorpusMutation cmut
+       corpus <- liftIO $ readIORef env.corpusRef
+       if null corpus
+         then pure randTxs -- Use the generated random transactions
+         else mut seqLen corpus randTxs -- Apply the mutator

@@ -6,6 +6,7 @@ import Data.Word (Word8, Word16)
 import GHC.Conc (numCapabilities)
 
 import EVM.Solvers (Solver(..))
+import EVM.ABI (AbiValue)
 
 import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
@@ -88,8 +89,8 @@ data WorkerState = WorkerState
   , runningThreads :: [ThreadId]
     -- ^ Extra threads currently being run,
     --   aside from the main worker thread
-  , prioritizedFunctions :: ![String]
-    -- ^ Functions to prioritize during fuzzing
+  , prioritizedSequences :: ![(Double, [(Text, [Maybe AbiValue])])]
+    -- ^ Sequences of functions to prioritize during fuzzing
   }
 
 initialWorkerState :: WorkerState
@@ -101,7 +102,7 @@ initialWorkerState =
               , ncalls = 0
               , totalGas = 0
               , runningThreads = []
-              , prioritizedFunctions = []
+              , prioritizedSequences = []
               }
 
 defaultTestLimit :: Int

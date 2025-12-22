@@ -3,6 +3,7 @@ module Echidna.Types.InterWorker where
 import Control.Concurrent.STM
 import Data.Text (Text)
 
+import EVM.ABI (AbiValue)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Test (EchidnaTest)
 
@@ -14,7 +15,8 @@ data AgentId = FuzzerId Int | SymbolicId | AIId
 data FuzzerCmd
   = DumpLcov
   | SolutionFound [Tx]
-  | PrioritizeFunction String
+  | FuzzSequence [(Text, [Maybe AbiValue])] Double
+    -- ^ Prioritize a sequence of function calls (upstream version)
   | ClearPrioritization
   | ExecuteSequence [Tx] (Maybe (TMVar Bool))
   | InjectTransaction Tx
@@ -25,7 +27,7 @@ data FuzzerCmd
 instance Show FuzzerCmd where
   show DumpLcov = "DumpLcov"
   show (SolutionFound txs) = "SolutionFound " ++ show txs
-  show (PrioritizeFunction s) = "PrioritizeFunction " ++ show s
+  show (FuzzSequence s p) = "FuzzSequence " ++ show s ++ " (" ++ show p ++ ")"
   show ClearPrioritization = "ClearPrioritization"
   show (ExecuteSequence txs _) = "ExecuteSequence " ++ show txs
   show (InjectTransaction tx) = "InjectTransaction " ++ show tx
@@ -45,7 +47,7 @@ data Message
   deriving (Show)
 
 data BroadcastMsg
-  = NewCoverageInfo Int [Tx] -- points, transactions
+  = NewCoverageInfo Int [Tx] Bool -- points, transactions, isReplaying
   | FoundBug EchidnaTest
   | StrategyUpdate Text
   | WorkerStopped AgentId

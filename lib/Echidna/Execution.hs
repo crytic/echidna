@@ -59,7 +59,7 @@ replayCorpus vm txSeqs =
             List.filter (\case Tx { call = NoCall } -> False; _ -> True) txSeq
     case maybeFaultyTx of
       Nothing -> do
-        _ <- callseq vm txSeq
+        _ <- callseq vm txSeq True
         pushWorkerEvent (TxSequenceReplayed file i (length txSeqs))
       Just faultyTx ->
         pushWorkerEvent (TxSequenceReplayFailed file faultyTx)
@@ -71,8 +71,9 @@ callseq
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM Concrete
   -> [Tx]
+  -> Bool
   -> m (VM Concrete, Bool)
-callseq vm txSeq = do
+callseq vm txSeq isReplaying = do
   env <- ask
   -- First, we figure out whether we need to execute with or without coverage
   -- optimization and gas info, and pick our execution function appropriately
@@ -105,7 +106,7 @@ callseq vm txSeq = do
 
     -- Broadcast new coverage to other agents (e.g. Symbolic)
     workerId <- gets (.workerId)
-    liftIO $ atomically $ writeTChan env.bus (WrappedMessage (FuzzerId workerId) (Broadcast (NewCoverageInfo points (fst <$> results))))
+    liftIO $ atomically $ writeTChan env.bus (WrappedMessage (FuzzerId workerId) (Broadcast (NewCoverageInfo points (fst <$> results) isReplaying)))
 
   modify' $ \workerState ->
 

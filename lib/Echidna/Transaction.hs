@@ -3,9 +3,9 @@
 
 module Echidna.Transaction where
 
-import Control.Monad (join, when)
+import Control.Monad (join, when, zipWithM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Random.Strict (MonadRandom, getRandom, getRandomR, uniform)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader (MonadReader, ask)
 import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Data.ByteString qualified as BS
@@ -14,13 +14,13 @@ import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import qualified Data.Text as T
 import Data.Vector qualified as V
 import Optics.Core
 import Optics.State.Operators
 
+import Data.Text (Text)
 import EVM (ceilDiv, initialContract, loadContract, resetState)
-import EVM.ABI (abiValueType)
+import EVM.ABI (abiValueType, AbiValue)
 import EVM.FeeSchedule (FeeSchedule(..))
 import EVM.Transaction (setupTx)
 import EVM.Types hiding (Env, Gas, VMOpts(timestamp, gasprice))
@@ -67,29 +67,68 @@ genTx world deployedContracts = do
   env <- ask
   let txConf = env.cfg.txConf
   genDict <- gets (.genDict)
-  prioritized <- gets (.prioritizedFunctions)
-  let prioritizedTxt = map T.pack prioritized
   sigMap <- getSignatures world.highSignatureMap world.lowSignatureMap
   sender <- rElem' world.senders
   contractAList <- liftIO $ mapM (toContractA env sigMap) (toList deployedContracts)
   let allContracts = catMaybes contractAList
-  (dstAddr, dstAbis) <- if null prioritizedTxt
-    then rElem' $ Set.fromList allContracts
-    else do
-      let isPrioritized n = any (`T.isInfixOf` n) prioritizedTxt
-      let prioritizedContracts = filter (\(_, sigs) -> any (\(n,_) -> isPrioritized n) sigs) allContracts
-      usePrioritized <- (<= (0.9 :: Double)) <$> getRandom
-      if usePrioritized && not (null prioritizedContracts)
-        then do
-           (addr, sigs) <- rElem' $ Set.fromList prioritizedContracts
-           -- Filter sigs to only prioritized ones
-           let pSigs = NE.filter (\(n, _) -> isPrioritized n) sigs
-           case NE.nonEmpty pSigs of
-             Just pSigsNE -> pure (addr, pSigsNE)
-             Nothing -> pure (addr, sigs) -- Should not happen
-        else rElem' $ Set.fromList allContracts
 
-  solCall <- genInteractionsM genDict dstAbis
+  (addr, sigs) <- rElem' $ Set.fromList allContracts
+  solCall <- genInteractionsM genDict sigs
+
+  value <- genValue txConf.maxValue genDict.dictValues world.payableSigs solCall
+  ts <- (,) <$> genDelay txConf.maxTimeDelay genDict.dictValues
+            <*> genDelay txConf.maxBlockDelay genDict.dictValues
+  pure $ Tx { call = SolCall solCall
+            , src = sender
+            , dst = addr
+            , gas = txConf.txGas
+            , gasprice = txConf.maxGasprice
+            , value = value
+            , delay = level ts
+            }
+  where
+    toContractA :: Env -> SignatureMap -> (Expr EAddr, Contract) -> IO (Maybe ContractA)
+    toContractA env sigMap (addr, c) =
+      fmap (forceAddr addr,) . snd <$> lookupUsingCodehash env.codehashMap c env.dapp sigMap
+
+genTxFromPrototype
+  :: (MonadIO m, MonadRandom m, MonadState WorkerState m, MonadReader Env m)
+  => World
+  -> Map (Expr EAddr) Contract
+  -> (Text, [Maybe AbiValue])
+  -> m Tx
+genTxFromPrototype world deployedContracts (pName, pArgs) = do
+  env <- ask
+  let txConf = env.cfg.txConf
+  genDict <- gets (.genDict)
+  sigMap <- getSignatures world.highSignatureMap world.lowSignatureMap
+  sender <- rElem' world.senders
+  contractAList <- liftIO $ mapM (toContractA env sigMap) (toList deployedContracts)
+  let allContracts = catMaybes contractAList
+
+  -- Find contracts containing this function with matching arity
+  let isMatch (_, sigs) = any (\(n, ts) -> n == pName && length ts == length pArgs) sigs
+      matchingContracts = filter isMatch allContracts
+
+  (dstAddr, solCall) <- if null matchingContracts
+    then do
+       -- Fallback if not found: random tx
+       (addr, sigs) <- rElem' $ Set.fromList allContracts
+       call <- genInteractionsM genDict sigs
+       pure (addr, call)
+    else do
+       (addr, sigs) <- rElem' $ Set.fromList matchingContracts
+       -- Pick the matching signature
+       let matchingSigs = NE.filter (\(n, ts) -> n == pName && length ts == length pArgs) sigs
+       (name, types) <- rElem (NE.fromList matchingSigs)
+
+       -- Generate arguments
+       let genArg (Just val) _ = pure val
+           genArg Nothing t = genAbiValueM' genDict name 0 t
+
+       vals <- zipWithM genArg pArgs types
+       pure (addr, (name, vals))
+
   value <- genValue txConf.maxValue genDict.dictValues world.payableSigs solCall
   ts <- (,) <$> genDelay txConf.maxTimeDelay genDict.dictValues
             <*> genDelay txConf.maxBlockDelay genDict.dictValues

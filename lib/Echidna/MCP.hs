@@ -3,250 +3,44 @@
 
 module Echidna.MCP where
 
+import Control.Concurrent (forkIO)
+import Control.Monad (forever, unless)
 import Control.Concurrent.STM
-import Data.IORef (readIORef, writeIORef, modifyIORef', IORef)
-import Data.List (find, isPrefixOf)
+import Data.IORef (readIORef, modifyIORef', newIORef, IORef, atomicModifyIORef')
+import Data.List (find, isPrefixOf, isSuffixOf, sort, intercalate)
 import qualified Data.Maybe
 import qualified Data.Set as Set
-import Data.Sequence qualified as Seq
+import qualified Data.Vector as Vector
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
+import Data.Time (UTCTime, getCurrentTime, diffUTCTime)
 import Text.Printf (printf)
 import qualified Data.Map as Map
-import Data.Foldable (toList)
 import Text.Read (readMaybe)
 import System.Directory (getCurrentDirectory)
-import Data.Char (isSpace)
-import Data.Time.LocalTime (getZonedTime, zonedTimeToLocalTime)
-import Data.Aeson (ToJSON(..), object, (.=))
+import Data.Char (isSpace, toLower)
 
 import MCP.Server
-import EVM.Dapp (DappInfo(..), srcMapCodePos)
-import EVM.Solidity (SolcContract(..))
+import EVM.Dapp (DappInfo(..))
+import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Types (Addr)
-import EVM.ABI (AbiValue(..))
+import EVM.ABI (AbiValue(..), AbiType(..), abiValueType)
+import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx(..), TxCall(..))
-import Echidna.Types.Coverage (CoverageFileType(..), mergeCoverageMaps)
+import Echidna.Types.Coverage (CoverageFileType(..), mergeCoverageMaps, coverageStats)
 import Echidna.Output.Source (ppCoveredCode, saveLcovHook)
+import Echidna.Output.Corpus (loadTxs)
 
 import Echidna.Types.Config (Env(..), EConfig(..))
-import Echidna.Types.Campaign (getNFuzzWorkers, CampaignConf(..))
-import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(..), FuzzerCmd(..))
-import Echidna.Pretty (ppTx)
+import Echidna.Types.World (World(..))
+import Echidna.Types.Campaign (getNFuzzWorkers, CampaignConf(..), WorkerState(..))
+import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(..), FuzzerCmd(..), BroadcastMsg(..))
 
--- | Bus Communication Functions (T010, T012)
-
--- | Send a command to a specific fuzzer worker via the Bus
--- T010: Bus writer function (atomically writes to TChan, returns success)
-sendFuzzerCmd :: AgentId -> FuzzerCmd -> Bus -> IO Bool
-sendFuzzerCmd agentId cmd bus = do
-  atomically $ writeTChan bus (WrappedMessage agentId (ToFuzzer 0 cmd))
-  return True
-
--- | Log an MCP command execution for reproducibility (FR-010, T012)
--- Appends to mcpCommandLog with timestamp and tool name
-logMCPCommand :: Text -> [(Text, Text)] -> Text -> Env -> IO ()
-logMCPCommand toolName params result env = do
-  timestamp <- zonedTimeToLocalTime <$> getZonedTime
-  let paramStr = T.intercalate ", " [k <> "=" <> v | (k, v) <- params]
-  let logEntry = T.concat
-        [ T.pack (show timestamp)
-        , " | Tool: ", toolName
-        , " | Params: {", paramStr, "}"
-        , " | Result: ", result
-        ]
-  modifyIORef' env.mcpCommandLog (logEntry :)
-
--- | Observability Tools (Phase 3: T015-T037)
-
--- | T015: Read recent campaign events from EventLog ring buffer
-readLogsToolNew :: Env -> IO String
-readLogsToolNew env = do
-  eventLog <- readIORef env.eventLog
-  let events = Seq.take 100 eventLog  -- Last 100 events (most recent first)
-  let eventList = toList events
-  let response = object
-        [ "events" .= eventList
-        , "count" .= length eventList
-        , "timestamp" .= show (zonedTimeToLocalTime <$> getZonedTime)
-        ]
-  return $ show response
-
--- | T020: Get coverage statistics  
-showCoverageToolNew :: Env -> IO String
-showCoverageToolNew env = do
-  covMap <- mergeCoverageMaps env.dapp env.coverageRefInit env.coverageRefRuntime
-  let (totalPoints, numContracts) = Map.foldl' 
-        (\(pts, contracts) cov -> (pts + Set.size cov, contracts + 1))
-        (0, 0)
-        covMap
-  let response = object
-        [ "points" .= totalPoints
-        , "contracts" .= numContracts
-        , "bytecode" .= totalPoints  -- Approximate
-        ]
-  return $ show response
-
--- | T024: Export coverage in LCOV format (in-memory, no disk write)
-dumpLcovToolNew :: Env -> IO String
-dumpLcovToolNew env = do
-  let contracts = Map.elems env.dapp.solcByName
-  dir <- maybe getCurrentDirectory pure env.cfg.campaignConf.corpusDir
-  -- Note: saveLcovHook writes to disk, but for MCP we return in-memory content
-  -- For now, return a placeholder. Full implementation would require refactoring saveLcovHook
-  let response = object
-        [ "format" .= ("lcov" :: Text)
-        , "content" .= ("<LCOV data would be here - needs refactoring saveLcovHook>" :: Text)
-        ]
-  return $ show response
-
--- | T027: Get corpus size (count only)
-getCorpusSizeToolNew :: Env -> IO String
-getCorpusSizeToolNew env = do
-  corpus <- readIORef env.corpusRef
-  let response = object [ "size" .= Set.size corpus ]
-  return $ show response
-
--- | T030: Inspect corpus transactions with pagination
-inspectCorpusTransactionsToolNew :: Int -> Int -> Env -> IO String
-inspectCorpusTransactionsToolNew page pageSize env = do
-  corpus <- readIORef env.corpusRef
-  let corpusList = Set.toList corpus
-      total = length corpusList
-      startIdx = page * pageSize
-      pageItems = take pageSize $ drop startIdx corpusList
-      
-      formatSeq (idx, (_, txs)) = object
-        [ "index" .= idx
-        , "sequence_length" .= length txs
-        , "coverage_delta" .= (0 :: Int)  -- Placeholder
-        , "sample_calls" .= map formatTx (take 3 txs)
-        ]
-      
-      formatTx tx = case tx.call of
-        SolCall (fname, args) -> object ["function" .= fname, "args" .= show args]
-        _ -> object ["function" .= ("constructor" :: Text)]
-  
-  let response = object
-        [ "transactions" .= map formatSeq (zip [startIdx..] pageItems)
-        , "total" .= total
-        , "page" .= page
-        ]
-  return $ show response
-
--- | T034: Find transactions in corpus by function signature
-findTransactionInCorpusToolNew :: Text -> Env -> IO String
-findTransactionInCorpusToolNew funcSig env = do
-  corpus <- readIORef env.corpusRef
-  let corpusList = Set.toList corpus
-      
-      matchesSig tx = case tx.call of
-        SolCall (fname, _) -> T.toLower funcSig `T.isInfixOf` T.toLower fname
-        _ -> False
-      
-      matchingSeqs = filter (\(_, txs) -> any matchesSig txs) corpusList
-      results = take 10 matchingSeqs  -- Limit to 10 results
-      
-      formatMatch (idx, (_, txs)) = object
-        [ "index" .= idx
-        , "sequence" .= map formatTx txs
-        ]
-      
-      formatTx tx = case tx.call of
-        SolCall (fname, args) -> object ["function" .= fname, "args" .= show args]
-        _ -> object ["function" .= ("constructor" :: Text)]
-  
-  let response = object
-        [ "found" .= not (null results)
-        , "transactions" .= map formatMatch (zip [(0 :: Int)..] results)
-        ]
-  return $ show response
-
--- | Control Tools (Phase 4: T038-T054)
-
--- | T038-T042: Inject transaction sequence
-injectTransactionToolNew :: [Text] -> Env -> IO String
-injectTransactionToolNew txStrings env = do
-  let parseTxString txStr = do
-        let str = unpack txStr
-        case parseCall str of
-          Just (fname, args) -> 
-            Just $ Tx (SolCall (pack fname, args)) 0x1000 0x2000 1000000 0 0 (0,0)
-          Nothing -> Nothing
-  
-  let txs = Data.Maybe.mapMaybe parseTxString txStrings
-  
-  if null txs
-    then return $ show $ object 
-      [ "injected" .= False
-      , "transaction_count" .= (0 :: Int)
-      , "error" .= ("Failed to parse transactions" :: Text)
-      ]
-    else do
-      -- T040: Send via Bus using InjectTransaction for each transaction
-      let nWorkers = getNFuzzWorkers env.cfg.campaignConf
-      mapM_ (\tx -> atomically $ writeTChan env.bus (WrappedMessage AIId (ToFuzzer 0 (InjectTransaction tx)))) txs
-      
-      -- T041: Log the injection
-      let sampleSig = case head txs of
-            Tx (SolCall (fname, _)) _ _ _ _ _ _ -> fname
-            _ -> "unknown"
-      logMCPCommand "inject_transaction" 
-        [("tx_count", pack $ show $ length txs), ("sample_sig", sampleSig)]
-        "injected"
-        env
-      
-      -- T042: Return response
-      let response = object
-            [ "injected" .= True
-            , "transaction_count" .= length txs
-            , "worker_id" .= (0 :: Int)
-            ]
-      return $ show response
-
--- | T044-T048: Prioritize function
-prioritizeFunctionToolNew :: Text -> Env -> IO String
-prioritizeFunctionToolNew funcSig env = do
-  let nWorkers = getNFuzzWorkers env.cfg.campaignConf
-  
-  -- T045: Send PrioritizeFunction to all workers
-  mapM_ (\i -> atomically $ writeTChan env.bus 
-    (WrappedMessage AIId (ToFuzzer i (PrioritizeFunction (unpack funcSig))))) 
-    [0 .. nWorkers - 1]
-  
-  -- T047: Log the prioritization
-  logMCPCommand "prioritize_function" 
-    [("function", funcSig)]
-    "priority_set"
-    env
-  
-  -- T048: Return response
-  let response = object
-        [ "prioritized" .= True
-        , "function_signature" .= funcSig
-        , "worker_ids" .= [0 .. nWorkers - 1]
-        ]
-  return $ show response
-
--- | T050-T053: Clear function priorities
-clearPrioritiesToolNew :: Env -> IO String
-clearPrioritiesToolNew env = do
-  let nWorkers = getNFuzzWorkers env.cfg.campaignConf
-  
-  -- T051: Send ClearPrioritization to all workers
-  mapM_ (\i -> atomically $ writeTChan env.bus 
-    (WrappedMessage AIId (ToFuzzer i ClearPrioritization))) 
-    [0 .. nWorkers - 1]
-  
-  -- T052: Log the clearing
-  logMCPCommand "clear_priorities" [] "cleared" env
-  
-  -- T053: Return response
-  let response = object
-        [ "cleared" .= True
-        , "worker_ids" .= [0 .. nWorkers - 1]
-        ]
-  return $ show response
+-- | Status state to track coverage info
+data StatusState = StatusState
+  { lastCoverageTime :: Maybe UTCTime
+  , coveredFunctions :: [Text]
+  }
 
 -- | MCP Tool Definition
 -- Simulates the definition of a tool exposed by an MCP server.
@@ -258,33 +52,47 @@ data Tool = Tool
   , execute :: ToolExecution
   }
 
--- | Implementation of read_corpus tool
-readCorpusTool :: ToolExecution
-readCorpusTool _ env _ _ = do
-  c <- readIORef env.corpusRef
-  return $ printf "Corpus Size: %d" (Set.size c)
+-- | Helper to get function name from Tx
+getFunctionName :: Tx -> Text
+getFunctionName tx = case tx.call of
+  SolCall (name, _) -> name
+  _ -> "unknown"
 
--- | Implementation of inspect_corpus_transactions tool
-inspectCorpusTransactionsTool :: ToolExecution
-inspectCorpusTransactionsTool args env _ _ = do
-  let page = case lookup "page" args of
-               Just p -> Data.Maybe.fromMaybe 1 (readMaybe (unpack p))
-               Nothing -> 1
-      pageSize = 5
+-- | Implementation of status tool
+statusTool :: [IORef WorkerState] -> IORef StatusState -> ToolExecution
+statusTool workerRefs statusRef _ env _ _ = do
   c <- readIORef env.corpusRef
-  let corpusList = Set.toList c
-      startIndex = (page - 1) * pageSize
-      pageItems = take pageSize $ drop startIndex corpusList
-      
-      ppSequence (i, txs) = 
-        printf "Sequence (value: %d):\n%s" i (unlines $ map (ppTx Map.empty) txs)
+  st <- readIORef statusRef
+  now <- getCurrentTime
 
-  return $ if null pageItems 
-           then "No more transactions found."
-           else intercalate "\n" (map ppSequence pageItems)
-    where
-      intercalate _ [] = ""
-      intercalate sep (x:xs) = x ++ sep ++ intercalate sep xs
+  -- Iterations
+  workers <- mapM readIORef workerRefs
+  let iterations = sum $ map (.ncalls) workers
+  let maxIterations = env.cfg.campaignConf.testLimit
+
+  -- Coverage
+  (covPoints, _) <- coverageStats env.coverageRefInit env.coverageRefRuntime
+
+  -- Tests
+  tests <- mapM readIORef env.testRefs
+  let failedCount = length $ filter didFail tests
+  let totalCount = length tests
+
+  -- Optimization values
+  let optTests = filter isOptimizationTest tests
+      optValues = map (\(EchidnaTest {testType = ty, value = val}) -> printf "%s: %s" (show ty) (show val)) optTests
+      optStr = if null optValues then "None" else intercalate ", " optValues
+
+  let timeStr = case st.lastCoverageTime of
+                  Nothing -> "Never"
+                  Just t -> show (round (diffUTCTime now t) :: Integer)
+
+      funcs = if null st.coveredFunctions
+              then "None"
+              else unpack $ T.intercalate "\n- " st.coveredFunctions
+
+  return $ printf "Corpus Size: %d\nIterations: %d/%d\nCoverage: %d\nTests: %d/%d\nOptimization Values: %s\nTime since last coverage: %s\nLast 10 covered functions:\n- %s"
+                  (Set.size c) iterations maxIterations covPoints failedCount totalCount optStr timeStr funcs
 
 -- | Helper functions for inject_transaction
 trim :: String -> String
@@ -298,19 +106,75 @@ splitOn c s = case break (== c) s of
                                            [] -> []
                                            (_:r) -> splitOn c r
 
-parseArg :: String -> Maybe AbiValue
-parseArg s = 
+splitArgs :: String -> [String]
+splitArgs s = go s 0 ""
+  where
+    go :: String -> Int -> String -> [String]
+    go [] _ current = [reverse current]
+    go (c:cs) level current
+      | c == '[' = go cs (level + 1) (c:current)
+      | c == ']' = go cs (level - 1) (c:current)
+      | c == ',' && level == 0 = reverse current : go cs level ""
+      | otherwise = go cs level (c:current)
+
+parsePrimitive :: String -> Maybe AbiValue
+parsePrimitive s =
    let s' = trim s
-   in if "0x" `isPrefixOf` s'
-      then AbiAddress . fromIntegral <$> (readMaybe s' :: Maybe Integer)
-      else AbiUInt 256 . fromIntegral <$> (readMaybe s' :: Maybe Integer)
+       lowerS = map toLower s'
+   in if lowerS == "true"
+      then Just (AbiBool True)
+      else if lowerS == "false"
+      then Just (AbiBool False)
+      else if "0x" `isPrefixOf` s'
+           then AbiAddress . fromIntegral <$> (readMaybe s' :: Maybe Integer)
+           else AbiUInt 256 . fromIntegral <$> (readMaybe s' :: Maybe Integer)
+
+parseArray :: String -> Maybe AbiValue
+parseArray s = do
+  let content = trim (drop 1 (take (length s - 1) s))
+  let parts = if null content then [] else splitOn ',' content
+  vals <- mapM parsePrimitive parts
+  let vec = Vector.fromList vals
+  if Vector.null vec
+    then return $ AbiArrayDynamic (AbiUIntType 256) vec
+    else do
+      let t = abiValueType (Vector.head vec)
+      if all (\v -> abiValueType v == t) vals
+        then return $ AbiArrayDynamic t vec
+        else Nothing
+
+parseArg :: String -> Maybe AbiValue
+parseArg s =
+   let s' = trim s
+   in if "[" `isPrefixOf` s' && "]" `isSuffixOf` s'
+      then parseArray s'
+      else parsePrimitive s'
+
+parseFuzzArg :: String -> Maybe (Maybe AbiValue)
+parseFuzzArg s =
+   let s' = trim s
+   in if s' == "?"
+      then Just Nothing
+      else Just <$> parseArg s'
+
+parseFuzzCall :: String -> Maybe (Text, [Maybe AbiValue])
+parseFuzzCall s = do
+   let (fname, rest) = break (== '(') s
+   if null rest then Nothing else do
+     let argsS = take (length rest - 2) (drop 1 rest) -- remove parens
+     let argParts = if all isSpace argsS then [] else splitArgs argsS
+     args <- mapM parseFuzzArg argParts
+     return (pack fname, args)
+
+parseFuzzSequence :: String -> Maybe [(Text, [Maybe AbiValue])]
+parseFuzzSequence s = mapM (parseFuzzCall . trim) (splitOn ';' s)
 
 parseCall :: String -> Maybe (String, [AbiValue])
 parseCall s = do
    let (fname, rest) = break (== '(') s
    if null rest then Nothing else do
      let argsS = take (length rest - 2) (drop 1 rest) -- remove parens
-     let argParts = if all isSpace argsS then [] else splitOn ',' argsS
+     let argParts = if all isSpace argsS then [] else splitArgs argsS
      args <- mapM parseArg argParts
      return (fname, args)
 
@@ -334,44 +198,33 @@ parseTx ctx s = do
                Nothing -> (0x1000, 0x2000)
          return $ Tx (SolCall (pack fname, args)) src dst 1000000 0 0 (0,0)
 
--- | Implementation of inject_transaction tool
-injectTransactionTool :: ToolExecution
-injectTransactionTool args env bus _ = do
-  let idx = case lookup "sequence_index" args of
-              Just i -> Data.Maybe.fromMaybe 0 (readMaybe (unpack i))
-              Nothing -> 0
-      pos = case lookup "position" args of
-              Just p -> Data.Maybe.fromMaybe 0 (readMaybe (unpack p))
-              Nothing -> 0
-      txStr = maybe "" unpack (lookup "transaction" args)
-  
-  c <- readIORef env.corpusRef
-  let corpusList = Set.toList c
-  
-  if idx < 0 || idx >= length corpusList
-    then return "Error: Invalid sequence index."
+-- | Implementation of reload_corpus tool
+reloadCorpusTool :: ToolExecution
+reloadCorpusTool _ env _ _ = do
+  dir <- maybe getCurrentDirectory pure env.cfg.campaignConf.corpusDir
+  loadedSeqs <- loadTxs dir -- returns [(FilePath, [Tx])]
+
+  if null loadedSeqs
+    then return "No transaction sequences found in corpus directory."
     else do
-      let (_, originalSeq) = corpusList !! idx
-      if pos < 0 || pos > length originalSeq
-        then return "Error: Invalid position."
+      currentCorpus <- readIORef env.corpusRef
+      let existingTxs = Set.map snd currentCorpus
+
+      let newSeqs = map snd loadedSeqs
+      let uniqueNewSeqs = filter (`Set.notMember` existingTxs) newSeqs
+
+      if null uniqueNewSeqs
+        then return "No NEW transaction sequences found in corpus directory."
         else do
-          let contextTx = case originalSeq of
-                            [] -> Nothing
-                            (x:xs) -> Just (if pos > 0 && pos <= length (x:xs) 
-                                            then (x:xs) !! (pos - 1) 
-                                            else x)
-          case parseTx contextTx txStr of
-            Nothing -> return "Error: Failed to parse transaction string."
-            Just newTx -> do
-               let newSeq = take pos originalSeq ++ [newTx]
-               replyVar <- newEmptyTMVarIO
-               atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer 0 (ExecuteSequence newSeq (Just replyVar))))
-               
-               -- Wait for reply
-               found <- atomically $ takeTMVar replyVar
-               if found
-                 then return "Transaction injected and NEW coverage found!"
-                 else return "Transaction injected but NO new coverage found."
+             let maxId = if Set.null currentCorpus
+                         then 0
+                         else fst (Set.findMax currentCorpus)
+
+             let indexedNewSeqs = zip [maxId + 1 ..] uniqueNewSeqs
+             let newCorpus = Set.union currentCorpus (Set.fromList indexedNewSeqs)
+
+             atomicModifyIORef' env.corpusRef $ const (newCorpus, ())
+             return $ printf "Reloaded %d new transaction sequences from %s" (length uniqueNewSeqs) dir
 
 -- | Implementation of dump_lcov tool
 dumpLcovTool :: ToolExecution
@@ -381,15 +234,42 @@ dumpLcovTool _ env _ _ = do
   filename <- saveLcovHook env dir env.sourceCache contracts
   return $ "Dumped LCOV coverage to " ++ filename
 
--- | Implementation of prioritize_function tool
-prioritizeFunctionTool :: ToolExecution
-prioritizeFunctionTool args env bus _ = do
-  let msg = Data.Maybe.fromMaybe "" (lookup "function" args)
-  let nWorkers = getNFuzzWorkers env.cfg.campaignConf
-  mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (PrioritizeFunction (unpack msg))))) [0 .. nWorkers - 1]
-  return $ printf "Requested prioritization of function '%s' on %d fuzzers" (unpack msg) nWorkers
+-- | Implementation of inject_fuzz_transactions tool
+fuzzTransactionTool :: ToolExecution
+fuzzTransactionTool args env bus _ = do
+  let txStr = Data.Maybe.fromMaybe "" (lookup "transactions" args)
+  case parseFuzzSequence (unpack txStr) of
+    Nothing -> return "Error: Failed to parse transaction sequence string."
+    Just seqPrototype -> do
+      -- Validate function names and argument counts
+      let dapp = env.dapp
+          methods = Map.elems dapp.abiMap
 
--- | Implementation of clear_priorities tool
+          methodsByName = Map.fromListWith (++) [(m.name, [m]) | m <- methods]
+
+          validateCall (name, callArgs) =
+            case Map.lookup name methodsByName of
+              Nothing -> Just $ printf "Function '%s' not found." (unpack name)
+              Just ms ->
+                if any (\m -> length m.inputs == length callArgs) ms
+                then Nothing
+                else Just $ printf "Function '%s' found but with different argument count. Expected: %s, Got: %d" (unpack name) (show $ map (length . (.inputs)) ms) (length callArgs)
+
+          errors = Data.Maybe.mapMaybe validateCall seqPrototype
+
+      if not (null errors)
+        then return $ "Error:\n" ++ unlines errors
+        else do
+          let nWorkers = getNFuzzWorkers env.cfg.campaignConf
+              calcProb i
+                | i == 0 = 0.0
+                | nWorkers <= 2 = 0.2
+                | otherwise = 0.2 + fromIntegral (i - 1) * (0.7 / fromIntegral (nWorkers - 2))
+
+          mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (FuzzSequence seqPrototype (calcProb i))))) [0 .. nWorkers - 1]
+          return $ printf "Requested fuzzing of transaction sequence '%s' on %d fuzzers" (unpack txStr) nWorkers
+
+-- | Implementation of clear_fuzz_priorities tool
 clearPrioritiesTool :: ToolExecution
 clearPrioritiesTool _ env bus _ = do
   let nWorkers = getNFuzzWorkers env.cfg.campaignConf
@@ -400,7 +280,32 @@ clearPrioritiesTool _ env bus _ = do
 readLogsTool :: ToolExecution
 readLogsTool _ _ _ logsRef = do
   logs <- readIORef logsRef
-  return $ unpack $ T.unlines $ reverse logs
+  -- Get last 100 logs
+  -- logs is [Newest, ..., Oldest]
+  -- We want to take the 100 newest, and show them in chronological order
+  let logsToShow = reverse $ take 100 logs
+  return $ unpack $ T.unlines logsToShow
+
+-- | Implementation of target tool
+targetTool :: ToolExecution
+targetTool _ env _ _ = do
+  let contracts = env.dapp.solcByName
+      world = env.world
+
+      -- Helper to check if a contract is a target
+      isTarget :: SolcContract -> Bool
+      isTarget c = c.runtimeCodehash `Map.member` world.highSignatureMap
+
+      -- Find candidates
+      candidates = filter (isTarget . snd) (Map.toList contracts)
+
+  case candidates of
+    [] -> return "Error: No target contract found."
+    ((name, contract):_) -> do
+      let signatures = map (.methodSignature) (Map.elems contract.abiMap)
+          sortedSigs = sort signatures
+      return $ printf "Contract: %s\nFunctions:\n- %s" (unpack name) (unpack $ T.intercalate "\n- " sortedSigs)
+
 
 -- | Implementation of show_coverage tool
 showCoverageTool :: ToolExecution
@@ -413,19 +318,12 @@ showCoverageTool args env _ _ = do
        let matches = Map.filterWithKey (\k _ -> k == contractName || (":" <> contractName) `T.isSuffixOf` k) dapp.solcByName
        case Map.toList matches of
          [] -> return $ printf "Error: Contract '%s' not found" (unpack contractName)
-         [(_, solc)] -> do
+         [(k, solc)] -> do
             covMap <- mergeCoverageMaps dapp env.coverageRefInit env.coverageRefRuntime
             let sc = env.sourceCache
 
-            -- Identify relevant files from the requested contract's source maps
-            -- This ensures we include all files that define the contract and its dependencies,
-            -- even if they are not directly covered or if coverage is recorded against a child contract.
-            let getContractFiles c =
-                    let srcMaps = toList c.runtimeSrcmap ++ toList c.creationSrcmap
-                        resolve srcMap = fst <$> srcMapCodePos sc srcMap
-                    in Set.fromList $ Data.Maybe.mapMaybe resolve srcMaps
-
-            let relevantFiles = getContractFiles solc
+            -- Identify relevant files: only the file defining the contract
+            let relevantFiles = Set.singleton $ unpack $ T.dropEnd 1 $ fst $ T.breakOnEnd ":" k
 
             -- Use all active contracts to generate coverage
             -- This allows showing coverage for a parent contract (e.g. EchidnaTest)
@@ -454,21 +352,42 @@ showCoverageTool args env _ _ = do
          candidates -> return $ printf "Error: Ambiguous contract name '%s'. Found: %s" (unpack contractName) (unpack $ T.intercalate ", " $ map fst candidates)
 
 -- | Registry of available tools
-availableTools :: [Tool]
-availableTools =
-  [ Tool "read_corpus" "Read the current corpus size" readCorpusTool
-  , Tool "inspect_corpus_transactions" "Browse the corpus transactions" inspectCorpusTransactionsTool
-  , Tool "inject_transaction" "Inject a transaction into a sequence and execute it" injectTransactionTool
+availableTools :: [IORef WorkerState] -> IORef StatusState -> [Tool]
+availableTools workerRefs statusRef =
+  [ Tool "status" "Show fuzzing campaign status" (statusTool workerRefs statusRef)
+  , Tool "target" "Show the name and the ABI of the target contract" targetTool
+  , Tool "reload_corpus" "Reload the transactions from the corpus, but without replay them" reloadCorpusTool
   , Tool "dump_lcov" "Dump coverage in LCOV format" dumpLcovTool
-  , Tool "prioritize_function" "Prioritize a function for fuzzing" prioritizeFunctionTool
-  , Tool "clear_priorities" "Clear the function prioritization list" clearPrioritiesTool
-  , Tool "read_logs" "Read the last 100 log messages" readLogsTool
+  , Tool "inject_fuzz_transactions" "Inject a sequence of transaction to fuzz with optional concrete arguments" fuzzTransactionTool
+  , Tool "clear_fuzz_priorities" "Clear the function prioritization list used in fuzzing" clearPrioritiesTool
+  --, Tool "read_logs" "Read the last 100 log messages" readLogsTool
   , Tool "show_coverage" "Show coverage report for a particular contract" showCoverageTool
   ]
 
 -- | Run the MCP Server
-runMCPServer :: Env -> Int -> IORef [Text] -> IO ()
-runMCPServer env port logsRef = do
+runMCPServer :: Env -> [IORef WorkerState] -> Int -> IORef [Text] -> IO ()
+runMCPServer env workerRefs port logsRef = do
+    statusRef <- newIORef (StatusState Nothing [])
+
+    -- Spawn listener for coverage events
+    myBus <- atomically $ dupTChan env.bus
+    _ <- forkIO $ forever $ do
+      msg <- atomically $ readTChan myBus
+      case msg of
+        WrappedMessage _ (Broadcast (NewCoverageInfo _ txs isReplaying)) -> do
+           unless isReplaying $ do
+               now <- getCurrentTime
+               let funcNames = map getFunctionName txs
+                   lastFunc = if null funcNames then "unknown" else last funcNames
+
+               modifyIORef' statusRef $ \st -> st
+                 { lastCoverageTime = Just now
+                 , coveredFunctions = take 10 (lastFunc : st.coveredFunctions)
+                 }
+        _ -> return ()
+
+    let toolsList = availableTools workerRefs statusRef
+
     let httpConfig = HttpConfig
             { httpPort = port
             , httpHost = "127.0.0.1"
@@ -479,7 +398,7 @@ runMCPServer env port logsRef = do
     let serverInfo = McpServerInfo
             { serverName = "Echidna MCP Server"
             , serverVersion = "1.0.0"
-            , serverInstructions = "Echidna Agent Interface. Available tools: read_corpus, inspect_corpus_transactions, dump_lcov, prioritize_function, clear_priorities, read_logs, show_coverage"
+            , serverInstructions = "Echidna Agent Interface. Available tools: status, target, reload_corpus, dump_lcov, inject_fuzz_transactions, clear_fuzz_priorities, show_coverage"
             }
 
     let mkToolDefinition :: Tool -> ToolDefinition
@@ -487,27 +406,19 @@ runMCPServer env port logsRef = do
             { toolDefinitionName = pack t.toolName
             , toolDefinitionDescription = pack t.toolDescription
             , toolDefinitionInputSchema = case t.toolName of
-                "inspect_corpus_transactions" -> InputSchemaDefinitionObject
-                    { properties = [("page", InputSchemaDefinitionProperty "string" "The page number (default 1)")]
-                    , required = ["page"]
-                    }
-                "inject_transaction" -> InputSchemaDefinitionObject
-                    { properties = 
-                        [ ("sequence_index", InputSchemaDefinitionProperty "string" "The index of the sequence in the corpus")
-                        , ("position", InputSchemaDefinitionProperty "string" "The position to insert the transaction at")
-                        , ("transaction", InputSchemaDefinitionProperty "string" "The transaction string (e.g. 'func(arg1, arg2)')")
-                        ]
-                    , required = ["sequence_index", "position", "transaction"]
-                    }
                 "dump_lcov" -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
                     }
-                "prioritize_function" -> InputSchemaDefinitionObject
-                    { properties = [("function", InputSchemaDefinitionProperty "string" "The name of the function to prioritize")]
-                    , required = ["function"]
+                "target" -> InputSchemaDefinitionObject
+                    { properties = []
+                    , required = []
                     }
-                "clear_priorities" -> InputSchemaDefinitionObject
+                "inject_fuzz_transactions" -> InputSchemaDefinitionObject
+                    { properties = [("transactions", InputSchemaDefinitionProperty "string" "The transaction sequence string separated by ';' (e.g. 'func1();func2(arg1, ?)')")]
+                    , required = ["transactions"]
+                    }
+                "clear_fuzz_priorities" -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
                     }
@@ -515,7 +426,15 @@ runMCPServer env port logsRef = do
                     { properties = [("contract", InputSchemaDefinitionProperty "string" "The name of the contract")]
                     , required = ["contract"]
                     }
-                "read_logs" -> InputSchemaDefinitionObject
+                --"read_logs" -> InputSchemaDefinitionObject
+                --    { properties = []
+                --    , required = []
+                --    }
+                "status" -> InputSchemaDefinitionObject
+                    { properties = []
+                    , required = []
+                    }
+                "reload_corpus" -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
                     }
@@ -527,11 +446,11 @@ runMCPServer env port logsRef = do
             , toolDefinitionMeta = Nothing
             }
 
-    let toolDefs = map mkToolDefinition availableTools
+    let toolDefs = map mkToolDefinition toolsList
 
     let handleToolCall :: ToolName -> [(ArgumentName, ArgumentValue)] -> IO (Either Error Content)
         handleToolCall name args = do
-            case find (\t -> pack t.toolName == name) availableTools of
+            case find (\t -> pack t.toolName == name) toolsList of
                 Nothing -> return $ Left $ UnknownTool name
                 Just tool -> do
                     result <- tool.execute args env env.bus logsRef
