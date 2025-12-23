@@ -59,6 +59,7 @@ library:
     - html-entities
     - http-conduit
     - ListLike
+    - mcp-server
     - mustache
     - optics
     - optics-core
@@ -68,6 +69,7 @@ library:
     - semver
     - signal
     - split
+    - stm
     - strip-ansi-escape
     - time
     - unliftio
@@ -123,6 +125,7 @@ tests:
       - process
       - semver
       - split
+      - stm
       - tasty
       - tasty-hunit
       - tasty-quickcheck
