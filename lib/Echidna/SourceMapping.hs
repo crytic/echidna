@@ -1,6 +1,7 @@
 module Echidna.SourceMapping where
 
 import Control.Applicative ((<|>))
+import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.IORef (IORef, readIORef, atomicModifyIORef')
@@ -9,6 +10,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Vector qualified as V
+import Data.Word (Word16)
 
 import EVM.Dapp (DappInfo(..), findSrc)
 import EVM.Expr (maybeLitByteSimp)
@@ -88,12 +90,57 @@ findSrcByMetadata contr dapp = find compareMetadata (snd <$> Map.elems dapp.solc
 findSrcForReal :: DappInfo -> Contract -> Maybe SolcContract
 findSrcForReal dapp contr = findSrc contr dapp <|> findSrcByMetadata contr dapp
 
+-- | Find the position of CBOR length indicator after a metadata prefix.
+-- The length indicator is 2 bytes that encode the distance from prefix start to that position.
+-- Returns the position of the length indicator (not including the 2 bytes themselves).
+findCBORLength :: ByteString -> Int -> Maybe Int
+findCBORLength metadata prefixPos = go (prefixPos + 1)
+  where
+    go currentPos
+      | currentPos + 2 > BS.length metadata = Nothing
+      | otherwise = case readWord16BE metadata currentPos of
+          Nothing -> Nothing
+          Just lengthValue ->
+            let distanceFromPrefix = currentPos - prefixPos
+            in if fromIntegral lengthValue == distanceFromPrefix
+               then Just currentPos
+               else go (currentPos + 1)
+    -- | Read 2 bytes at given position as big-endian Word16
+    readWord16BE :: ByteString -> Int -> Maybe Word16
+    readWord16BE bs pos
+      | pos + 1 < BS.length bs =
+          let b1 = fromIntegral (BS.index bs pos) :: Word16
+              b2 = fromIntegral (BS.index bs (pos + 1)) :: Word16
+          in Just $ (b1 `shiftL` 8) .|. b2
+      | otherwise = Nothing
+
+-- | Find the last occurrence of any of the given prefixes in the bytecode
+findLastPrefix :: ByteString -> [ByteString] -> Maybe (ByteString, ByteString)
+findLastPrefix bs prefixes =
+  let findAll prefix = go 0
+        where
+          go offset = case BS.breakSubstring prefix (BS.drop offset bs) of
+            (_, rest) | BS.null rest -> Nothing
+            (before, rest) ->
+              let pos = offset + BS.length before
+                  candidate = (pos, (BS.take pos bs, rest))
+              in case go (pos + 1) of
+                Nothing -> Just candidate
+                Just laterMatch -> Just laterMatch
+      allMatches = mapMaybe findAll prefixes
+  in if null allMatches
+     then Nothing
+     else Just $ snd $ maximum allMatches  -- maximum by position
+
 getBytecodeMetadata :: ByteString -> ByteString
 getBytecodeMetadata bs =
-  let stripCandidates = flip BS.breakSubstring bs <$> knownBzzrPrefixes in
-    case find ((/= mempty) . snd) stripCandidates of
-      Nothing     -> bs -- if no metadata is found, return the complete bytecode
-      Just (_, m) -> m
+  case findLastPrefix bs knownBzzrPrefixes of
+    Nothing -> bs -- if no metadata is found, return the complete bytecode
+    Just (before, fromPrefix) ->
+      let prefixPos = BS.length before
+      in case findCBORLength bs prefixPos of
+        Nothing -> bs -- if no valid CBOR length found, return full bytecode as fallback
+        Just lengthPos -> BS.take (lengthPos + 2 - prefixPos) fromPrefix
 
 knownBzzrPrefixes :: [ByteString]
 knownBzzrPrefixes =
