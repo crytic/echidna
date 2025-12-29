@@ -65,3 +65,6 @@ MCP_IMPLEMENTATION_STATUS.md
 PR_FILES_REVIEW.md
 prepare-pr.sh
 cleanup-history.sh
+
+# Speckit files (use stash to restore - see .speckit-instructions.md)
+.speckit-instructions.md
