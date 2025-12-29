@@ -13,12 +13,16 @@ This guide shows you how to test the Echidna MCP server and integrate it with AI
 source ~/.zshrc
 
 # Navigate to project
-cd /Users/daniel.a.tradito/Development/Audit/echidna-mcp
+cd PATH_TO_YOUR_ECHIDNA_MCP
 
 # Start Echidna with MCP server (background)
+# IMPORTANT: Use --format text to disable interactive UI (required for MCP)
 ~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol \
+  --contract EchidnaMCPTest \
   --server 8080 \
-  --test-limit 1000000 &
+  --test-mode property \
+  --test-limit 1000000 \
+  --format text &
 
 # Wait for startup
 sleep 5
@@ -315,6 +319,7 @@ You should see:
 1. **Wrong endpoint**: Use `/mcp` path → `http://localhost:8080/mcp`
 2. **Test limit reached**: Echidna exits when fuzzing completes
 3. **Correct flag**: Use `--server 8080` to enable MCP server
+4. **Interactive UI blocking**: Add `--format text` to disable TUI (required for MCP)
 
 ### Command log not created?
 
