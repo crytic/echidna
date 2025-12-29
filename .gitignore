@@ -22,3 +22,21 @@ crytic-export/
 echidna.cabal
 *.swp
 profiles/
+
+# MCP server test logs (temporary artifacts)
+echidna-*.log
+
+# External C++ dependencies (build artifacts)
+libff/
+
+# Internal planning and status documents
+MCP_IMPLEMENTATION_STATUS.md
+*_REPORT.md
+*_SUMMARY.md
+*_ANALYSIS.md
+PR_FILES_REVIEW.md
+prepare-pr.sh
+cleanup-history.sh
+
+# Speckit files (use stash to restore - see .speckit-instructions.md)
+.speckit-instructions.md
