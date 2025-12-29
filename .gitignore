@@ -50,3 +50,9 @@ tests/mcp/htmlcov/
 
 # MCP command logs (Clarification #6 - created during testing)
 corpus/mcp-commands.jsonl
+
+# MCP server test logs
+echidna-*.log
+
+# External C++ dependencies
+libff/
