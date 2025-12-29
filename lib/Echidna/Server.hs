@@ -20,7 +20,9 @@ import Echidna.MCP (runMCPServer)
 -- Returns thread ID and starts MCP server using haskell-mcp-server
 spawnMCPServer :: Word16 -> Env -> IO ThreadId
 spawnMCPServer port env = do
-  forkIO $ runMCPServer env (fromIntegral port) env.mcpCommandLog
+  -- TODO: Pass actual workerRefs from campaign initialization
+  -- For now use empty list - status tool will show 0 workers
+  forkIO $ runMCPServer env [] (fromIntegral port) env.mcpCommandLog
   
 newtype SSE = SSE (LocalTime, CampaignEvent)
 

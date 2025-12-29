@@ -43,27 +43,31 @@ echidna MyContract.sol --test-mode property \
 
 ```bash
 # List available tools
-curl http://localhost:8080/mcp/tools
+curl http://localhost:8080/mcp
 
-# Read last 10 events
-curl -X POST http://localhost:8080/mcp/tools/read_logs \
+# Get campaign status (replaces read_logs)
+curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
-  -d '{"count": 10}'
+  -d '{"tool": "status", "args": {}}'
+
+# Get target contract info
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"tool": "target", "args": {}}'
 ```
 
-**Expected output**:
-```json
-{
-  "events": [
-    {
-      "timestamp": "2025-12-20T10:30:45",
-      "eventType": "TransactionExecuted",
-      "workerId": 2,
-      "data": {"function": "transfer(address,uint256)", "gasUsed": 21000}
-    }
-  ],
-  "totalCount": 523
-}
+**Expected status output**:
+```
+Corpus Size: 50
+Iterations: 1234/50000
+Coverage: 156
+Tests: 0/3
+Optimization Values: None
+Time since last coverage: 12
+Last 10 covered functions:
+- transfer(address,uint256)
+- approve(address,uint256)
+- balanceOf(address)
 ```
 
 ---
@@ -82,22 +86,22 @@ pip install langchain langgraph httpx pytest
 ### Example Agent Script
 
 ```python
-# tests/mcp/scripts/coverage_monitor.py
+# tests/mcp/scripts/status_monitor.py
 import httpx
 import time
 from langchain.tools import tool
 
 @tool
-def read_echidna_logs(count: int = 100) -> dict:
-    """Read campaign event logs from Echidna MCP server."""
+def get_echidna_status() -> str:
+    """Get real-time fuzzing campaign status from Echidna."""
     response = httpx.post(
-        "http://localhost:8080/mcp/tools/read_logs",
-        json={"count": count}
+        "http://localhost:8080/mcp",
+        json={"method": "tools/call", "params": {"name": "status", "arguments": {}}}
     )
-    return response.json()
+    return response.json()["content"][0]["text"]
 
 @tool
-def get_coverage() -> dict:
+def get_coverage(contract_name: str) -> str:
     """Get current code coverage statistics."""
     response = httpx.post(
         "http://localhost:8080/mcp/tools/show_coverage"

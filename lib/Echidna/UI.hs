@@ -113,7 +113,7 @@ ui vm dict initialCorpus cliSelectedContract = do
 
       uiEventsForwarderStopVar <- spawnListener forwardEvent
 
-      case conf.campaignConf.serverPort of
+      case conf.campaignConf.mcpPort of
         Just port -> do
           liftIO $ pushCampaignEvent env (ServerLog ("MCP Server running at http://127.0.0.1:" ++ show port ++ "/mcp"))
           void $ liftIO $ forkIO $ runMCPServer env (map snd workers) (fromIntegral port) logBuffer
@@ -214,7 +214,7 @@ ui vm dict initialCorpus cliSelectedContract = do
             hFlush stdout
             liftIO $ atomicModifyIORef' logBuffer (\logs -> (pack statusMsg : logs, ()))
 
-      case conf.campaignConf.serverPort of
+      case conf.campaignConf.mcpPort of
         Just port -> do
           liftIO $ pushCampaignEvent env (ServerLog ("MCP Server running at http://127.0.0.1:" ++ show port ++ "/mcp"))
           void $ liftIO $ forkIO $ runMCPServer env (map snd workers) (fromIntegral port) logBuffer

@@ -40,6 +40,24 @@ instance ToJSON WorkerEvent where
       object [ "file" .= file, "tx" .= tx ]
     WorkerStopped reason -> object [ "reason" .= show reason ]
 
+instance ToJSON WorkerType where
+  toJSON FuzzWorker = toJSON ("fuzz" :: String)
+  toJSON SymbolicWorker = toJSON ("symbolic" :: String)
+
+instance ToJSON CampaignEvent where
+  toJSON (WorkerEvent wid wtype event) = object 
+    ["event_type" .= pack "worker_event"
+    , "worker_id" .= wid
+    , "worker_type" .= toJSON wtype
+    , "event" .= toJSON event
+    ]
+  toJSON (Failure msg) = object 
+    ["event_type" .= pack "failure", "message" .= pack msg]
+  toJSON (ReproducerSaved filename) = object 
+    ["event_type" .= pack "reproducer_saved", "filename" .= pack filename]
+  toJSON (ServerLog msg) = object 
+    ["event_type" .= pack "server_log", "message" .= pack msg]
+
 pushWorkerEvent
   :: (MonadReader Env m, MonadState WorkerState m, MonadIO m)
   => WorkerEvent

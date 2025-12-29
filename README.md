@@ -402,6 +402,121 @@ We can also use Echidna to reproduce research examples from smart contract fuzzi
 
 If you are using Echidna for academic work, consider applying to the [Crytic $10k Research Prize](https://blog.trailofbits.com/2019/11/13/announcing-the-crytic-10k-research-prize/).
 
+## Agent Integration
+
+Echidna supports AI agent control via the Model Context Protocol (MCP), enabling automated fuzzing campaigns and intelligent test prioritization.
+
+### Quick Start
+
+Launch Echidna with the MCP server enabled:
+
+```sh
+$ echidna contract.sol --mcp-port 8080
+```
+
+The MCP server provides 7 tools for observability and control:
+
+**Observability Tools (Read-only)**:
+- `status` - View campaign status (corpus size, iterations, coverage, test results)
+- `show_coverage` - Get per-contract coverage reports with source annotations
+- `dump_lcov` - Export coverage in LCOV format
+- `target` - Show target contract ABI
+- `reload_corpus` - Refresh corpus from disk
+
+**Control Tools (Write operations)**:
+- `inject_fuzz_transactions` - Inject transaction sequences into the fuzzer
+- `clear_fuzz_priorities` - Reset function prioritization
+
+### Server Lifecycle
+
+The MCP server runs **during the fuzzing campaign only**. It starts when you provide the `--mcp-port` flag and stops when the campaign finishes (test limit reached or all tests pass/fail).
+
+**For agent integration scenarios**, use `--test-limit 0` (unlimited) to keep the server running until you manually stop Echidna:
+
+```sh
+$ echidna contract.sol --mcp-port 8080 --test-limit 0
+```
+
+**Important**: The MCP server uses JSON-RPC 2.0 protocol, not REST endpoints. Requests must follow this format:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "status",
+    "arguments": {}
+  }
+}
+```
+
+### Example: Python Agent
+
+```python
+import httpx
+
+# Connect to MCP server
+BASE_URL = "http://localhost:8080"
+
+def call_mcp_tool(tool_name: str, arguments: dict = None):
+    """Call an MCP tool using JSON-RPC 2.0 protocol."""
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": tool_name,
+            "arguments": arguments or {}
+        }
+    }
+    response = httpx.post(BASE_URL, json=payload, timeout=10.0)
+    return response.json()
+
+# Get campaign status
+status = call_mcp_tool("status")
+print(f"Corpus size: {status['result']['corpusSize']}")
+print(f"Coverage: {status['result']['coverage']}")
+
+# Inject a transaction sequence
+result = call_mcp_tool("inject_fuzz_transactions", {
+    "transactions": "transfer(0x1234567890123456789012345678901234567890, 100)\nmint(1000)"
+})
+print(f"Injected: {result['result']['message']}")
+```
+
+### Reproducibility
+
+All control commands are logged to `{corpus-dir}/mcp-commands.jsonl` for campaign reproducibility. Each entry includes:
+- Timestamp (ISO 8601)
+- Tool name
+- Parameters
+- Result (success/error)
+
+See the [MCP integration guide](specs/001-mcp-agent-commands/quickstart.md) for detailed documentation and LangGraph agent examples.
+
+### Testing the MCP Server
+
+A comprehensive test client is provided in `test-mcp-client.py`:
+
+```sh
+# Start Echidna with high test limit (note: --test-limit 0 means "run 0 tests", not unlimited)
+$ echidna tests/mcp/contracts/EchidnaMCPTest.sol --mcp-port 8080 --test-limit 1000000 &
+
+# Wait for server startup
+$ sleep 5
+
+# Activate the Python virtual environment (echidna-mcp)
+$ source .venv/bin/activate  # Or: uv venv .venv && source .venv/bin/activate
+
+# Run the test client (httpx installed in venv)
+$ python test-mcp-client.py
+```
+
+The test client verifies all 7 MCP tools and validates command logging functionality.
+
+**Note**: The MCP server listens at `http://localhost:8080/mcp` (not just `http://localhost:8080`).
+
 ## Getting help
 
 Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://slack.empirehacking.nyc/) for help using or extending Echidna.

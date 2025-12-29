@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Dump LCOV Tool Response",
+  "description": "Coverage export in LCOV format",
+  "type": "object",
+  "properties": {
+    "response": {
+      "type": "string",
+      "description": "Message indicating LCOV file location",
+      "pattern": "^Dumped LCOV coverage to .+\\.lcov$",
+      "example": "Dumped LCOV coverage to /path/to/corpus/coverage.lcov"
+    }
+  },
+  "required": ["response"]
+}
