@@ -24,7 +24,7 @@ source ../.venv/bin/activate
 ```bash
 # Start Echidna first
 cd ..
-~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol --mcp-port 8080 --test-limit 1000000 &
+~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol --server 8080 --test-limit 1000000 &
 
 # Run agent
 source .venv/bin/activate
@@ -58,7 +58,7 @@ export ANTHROPIC_API_KEY=your_key_here
 ```bash
 # Start Echidna first
 cd ..
-~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol --mcp-port 8080 --test-limit 1000000 &
+~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol --server 8080 --test-limit 1000000 &
 
 # Run agent
 python examples/langgraph_agent.py
@@ -79,7 +79,7 @@ python examples/langgraph_agent.py
 ```bash
 # Terminal 1: Start Echidna
 cd /Users/daniel.a.tradito/Development/Audit/echidna-mcp
-~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol --mcp-port 8080 --test-limit 1000000 &
+~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol --server 8080 --test-limit 1000000 &
 
 # Terminal 2: Run simple agent
 source .venv/bin/activate

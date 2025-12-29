@@ -17,7 +17,7 @@ cd /Users/daniel.a.tradito/Development/Audit/echidna-mcp
 
 # Start Echidna with MCP server (background)
 ~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol \
-  --mcp-port 8080 \
+  --server 8080 \
   --test-limit 1000000 &
 
 # Wait for startup
@@ -213,7 +213,7 @@ mkdir -p corpus
 
 # Start Echidna with corpus dir
 ~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol \
-  --mcp-port 8080 \
+  --server 8080 \
   --corpus-dir ./corpus \
   --test-limit 1000000 &
 
@@ -314,7 +314,7 @@ You should see:
 **Common issues:**
 1. **Wrong endpoint**: Use `/mcp` path → `http://localhost:8080/mcp`
 2. **Test limit reached**: Echidna exits when fuzzing completes
-3. **Wrong flag**: Use `--mcp-port` not `--server`
+3. **Correct flag**: Use `--server 8080` to enable MCP server
 
 ### Command log not created?
 

@@ -34,7 +34,7 @@ def call_mcp_tool(tool_name: str, arguments: dict = None) -> dict:
         return response.json()
     except httpx.ConnectError:
         print(f"❌ Cannot connect to MCP server on port {MCP_PORT}")
-        print(f"   Make sure Echidna is running with --mcp-port {MCP_PORT}")
+        print(f"   Make sure Echidna is running with --server {MCP_PORT}")
         sys.exit(1)
     except Exception as e:
         print(f"❌ Error calling {tool_name}: {e}")

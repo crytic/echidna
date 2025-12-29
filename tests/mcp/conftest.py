@@ -148,7 +148,7 @@ def echidna_campaign_running(request):
     cmd = [
         'echidna-test',
         contract_path,
-        '--mcp-port', str(port),
+        '--server', str(port),
         '--test-mode', 'assertion',
         '--test-limit', '1000'
     ]

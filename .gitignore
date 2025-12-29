@@ -29,14 +29,6 @@ echidna-*.log
 # External C++ dependencies (build artifacts)
 libff/
 
-# Internal planning and status documents
-MCP_IMPLEMENTATION_STATUS.md
-*_REPORT.md
-*_SUMMARY.md
-*_ANALYSIS.md
-PR_FILES_REVIEW.md
-prepare-pr.sh
-cleanup-history.sh
-
-# Speckit files (use stash to restore - see .speckit-instructions.md)
-.speckit-instructions.md
+# Python cache files
+**/__pycache__/
+**/*.pyc

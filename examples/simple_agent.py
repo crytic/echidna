@@ -196,7 +196,7 @@ def main():
     status = agent.get_status()
     if not status:
         print("❌ Cannot connect to Echidna MCP server")
-        print("   Make sure Echidna is running with --mcp-port 8080")
+        print("   Make sure Echidna is running with --server 8080")
         sys.exit(1)
     
     print("✅ Connected to Echidna MCP server")
