@@ -19,6 +19,7 @@ import Data.IORef (IORef, writeIORef, readIORef, atomicModifyIORef')
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import Data.Text (Text)
 import System.Directory (getCurrentDirectory)
 
 import Echidna.Output.Source (saveLcovHook)
@@ -26,6 +27,7 @@ import EVM.Dapp (DappInfo(..))
 import EVM.Types (VM(..), VMType(Concrete), Expr(..), EType(..), Contract)
 import qualified EVM.Types as EVM
 
+import EVM.ABI (AbiValue)
 import Echidna.ABI (GenDict(..))
 import Echidna.Execution (replayCorpus, callseq, updateTests)
 import Echidna.Mutator.Corpus (getCorpusMutation, seqMutatorsStateless, seqMutatorsStateful, fromConsts)
@@ -226,30 +228,41 @@ randseq
   => Map (Expr 'EAddr) Contract
   -> m [Tx]
 randseq deployedContracts = do
-  env <- ask
-  let world = env.world
-
-  let
-    mutConsts = env.cfg.campaignConf.mutConsts
-    seqLen = env.cfg.campaignConf.seqLen
-
+  -- 1. Check for prioritized sequences injected via tools
   prioritized <- gets (.prioritizedSequences)
 
   mbSeq <- if null prioritized
            then pure Nothing
            else do
+             -- Select a prioritized sequence based on probability
              (prob, seqPrototype) <- rElem (NE.fromList prioritized)
              useIt <- (<= prob) <$> getRandom
              pure $ if useIt then Just seqPrototype else Nothing
 
   case mbSeq of
-    Just seqPrototype -> do
+    Just seqPrototype -> genPrioritizedSeq deployedContracts seqPrototype
+    Nothing -> genStandardSeq deployedContracts
+
+-- | Generate a sequence of transactions based on a prioritized prototype
+genPrioritizedSeq
+  :: (MonadRandom m, MonadReader Env m, MonadState WorkerState m, MonadIO m)
+  => Map (Expr 'EAddr) Contract
+  -> [(Text, [Maybe AbiValue])]
+  -> m [Tx]
+genPrioritizedSeq deployedContracts seqPrototype = do
+       env <- ask
+       let world = env.world
+           seqLen = env.cfg.campaignConf.seqLen
+
+       -- 2. If a prioritized sequence is selected:
+       -- Expand the prototype into concrete transactions
        let expandPrototype [] = return []
            expandPrototype [p] = do
                tx <- genTxFromPrototype world deployedContracts p
                return [tx]
            expandPrototype (p:ps) = do
                tx <- genTxFromPrototype world deployedContracts p
+               -- Insert random transactions between prototype transactions to increase fuzzing diversity
                n <- getRandomR (0, 3)
                rndTxs <- replicateM n (genTx world deployedContracts)
                rest <- expandPrototype ps
@@ -257,9 +270,14 @@ randseq deployedContracts = do
 
        expandedTxs <- expandPrototype seqPrototype
        corpusSet <- liftIO $ readIORef env.corpusRef
-       prefix <- if Set.null corpusSet
+       wid <- gets (.workerId)
+
+       -- Select a prefix from the existing corpus
+       -- Special handling for worker 0: always use empty prefix (position 0)
+       prefix <- if Set.null corpusSet || wid == 0
                  then pure []
                  else do
+                   -- Pick a random sequence from corpus
                    idx <- getRandomR (0, Set.size corpusSet - 1)
                    let (_, cTxs) = Set.elemAt idx corpusSet
                    let middleLen = length expandedTxs
@@ -267,18 +285,33 @@ randseq deployedContracts = do
                    if maxPrefix <= 0
                      then pure []
                      else do
+                       -- Take a random prefix length
                        k <- getRandomR (0, min (length cTxs) maxPrefix)
                        pure (take k cTxs)
 
        let combined = prefix ++ expandedTxs
        let len = length combined
+
+       -- Pad with random transactions if sequence is too short
        if len < seqLen
          then do
            paddingTxs <- replicateM (seqLen - len) (genTx world deployedContracts)
            pure (combined ++ paddingTxs)
          else
            pure (take seqLen combined)
-    Nothing -> do
+
+-- | Generate a sequence of transactions using standard fuzzing techniques
+genStandardSeq
+  :: (MonadRandom m, MonadReader Env m, MonadState WorkerState m, MonadIO m)
+  => Map (Expr 'EAddr) Contract
+  -> m [Tx]
+genStandardSeq deployedContracts = do
+       env <- ask
+       let world = env.world
+           mutConsts = env.cfg.campaignConf.mutConsts
+           seqLen = env.cfg.campaignConf.seqLen
+
+       -- 3. Standard fuzzing behavior (no prioritized sequence selected)
        -- Generate new random transactions
        randTxs <- replicateM seqLen (genTx world deployedContracts)
        -- Generate a random mutator

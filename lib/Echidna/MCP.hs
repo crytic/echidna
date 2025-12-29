@@ -267,8 +267,11 @@ fuzzTransactionTool args env bus logsRef = do
         else do
           let nWorkers = getNFuzzWorkers env.cfg.campaignConf
               calcProb i
-                | i == 0 = 0.0
+                -- Worker 0 always injects transactions at position 0 with a probability of 90%
+                | i == 0 = 0.9
+                -- For small campaigns (<= 2 workers), all workers share a low probability (20%)
                 | nWorkers <= 2 = 0.2
+                -- For larger campaigns, scale probability linearly from 20% to 90% for other workers
                 | otherwise = 0.2 + fromIntegral (i - 1) * (0.7 / fromIntegral (nWorkers - 2))
 
           mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (FuzzSequence seqPrototype (calcProb i))))) [0 .. nWorkers - 1]
