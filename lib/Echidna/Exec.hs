@@ -160,7 +160,7 @@ execTxWith executeTx tx = do
         let process = (P.proc cmd args) { P.env = Just mergedEnv }
         (_, stdout, _) <- liftIO $ P.readCreateProcessWithExitCode process ""
         let encodedResponse = encodeAbiValue $
-              AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.pack $ stdout])
+              AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.strip . T.pack $ stdout])
         fromEVM (continuation encodedResponse)
         runFully
 
