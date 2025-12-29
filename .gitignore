@@ -56,3 +56,12 @@ echidna-*.log
 
 # External C++ dependencies
 libff/
+
+# Internal planning and status documents
+MCP_IMPLEMENTATION_STATUS.md
+*_REPORT.md
+*_SUMMARY.md
+*_ANALYSIS.md
+PR_FILES_REVIEW.md
+prepare-pr.sh
+cleanup-history.sh
