@@ -131,7 +131,7 @@ python examples/langgraph_agent.py
 ```
 
 **What it does:**
-- Uses Claude (or your preferred AI model)to analyze coverage reports
+- Uses Claude (or your preferred AI model) to analyze coverage reports
 - Generates intelligent transaction sequences
 - Makes autonomous decisions about fuzzing strategy
 - Learns from fuzzing results
