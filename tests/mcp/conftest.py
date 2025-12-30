@@ -12,6 +12,7 @@ import json
 import subprocess
 import time
 import os
+import socket
 from typing import Dict, Any, Optional
 
 
@@ -122,12 +123,13 @@ MCP_DEFAULT_PORT = 8080
 
 
 @pytest.fixture
-def echidna_campaign_running(request):
+def echidna_campaign_running(request, tmp_path):
     """
     Pytest fixture that spawns an Echidna campaign with MCP server.
     
     Args:
         request: pytest fixture request (can provide 'contract_path' marker)
+        tmp_path: pytest fixture for temporary directory
     
     Yields:
         dict with keys: 'port' (int), 'process' (subprocess.Popen)
@@ -140,7 +142,7 @@ def echidna_campaign_running(request):
     """
     # Get contract path from marker or use default
     marker = request.node.get_closest_marker('contract_path')
-    contract_path = marker.args[0] if marker else 'tests/mcp/contracts/SimpleToken.sol'
+    contract_path = marker.args[0] if marker else 'tests/mcp/contracts/EchidnaMCPTest.sol'
     
     port = MCP_DEFAULT_PORT
     
@@ -150,34 +152,56 @@ def echidna_campaign_running(request):
         contract_path,
         '--server', str(port),
         '--test-mode', 'assertion',
-        '--test-limit', '1000',
+        '--test-limit', '1000000000',
         '--format', 'text'  # Required to avoid TUI blocking
     ]
+
+    # Check for contract_name marker
+    name_marker = request.node.get_closest_marker('contract_name')
+    if name_marker:
+        cmd.extend(['--contract', name_marker.args[0]])
+    elif 'EchidnaMCPTest.sol' in contract_path:
+        cmd.extend(['--contract', 'EchidnaMCPTest'])
+
+    # Check for use_tmp_corpus marker
+    if request.node.get_closest_marker('use_tmp_corpus'):
+        corpus_dir = tmp_path / "corpus"
+        corpus_dir.mkdir(exist_ok=True)
+        cmd.extend(['--corpus-dir', str(corpus_dir)])
     
+    # Ensure we use the locally built echidna
+    env = os.environ.copy()
+    home = os.path.expanduser("~")
+    local_bin = os.path.join(home, ".local", "bin")
+    env["PATH"] = f"{local_bin}:{env.get('PATH', '')}"
+
     # Start Echidna
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
+        env=env
     )
     
     # Wait for server to be ready (max 10 seconds)
     start_time = time.time()
     server_ready = False
-    
+
     while time.time() - start_time < 10:
         try:
-            response = httpx.get(f'http://localhost:{port}/health', timeout=1.0)
-            if response.status_code == 200:
+            # Try to connect to the TCP port
+            with socket.create_connection(("localhost", port), timeout=1.0):
                 server_ready = True
                 break
-        except (httpx.ConnectError, httpx.TimeoutException):
+        except (OSError, ConnectionRefusedError):
             time.sleep(0.5)
-    
+
     if not server_ready:
         process.terminate()
-        process.wait(timeout=5)
+        stdout, stderr = process.communicate(timeout=5)
+        print(f"Echidna stdout:\n{stdout}")
+        print(f"Echidna stderr:\n{stderr}")
         raise RuntimeError(f'Echidna MCP server did not start within 10 seconds')
     
     # Yield to test
@@ -189,7 +213,9 @@ def echidna_campaign_running(request):
     # Cleanup
     process.terminate()
     try:
-        process.wait(timeout=5)
+        stdout, stderr = process.communicate(timeout=5)
+        print(f"Echidna stdout:\n{stdout}")
+        print(f"Echidna stderr:\n{stderr}")
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait()

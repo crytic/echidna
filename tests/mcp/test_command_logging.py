@@ -8,8 +8,10 @@ from pathlib import Path
 import pytest
 
 
-def test_inject_transaction_logged(mcp_client, tmp_corpus_dir):
+@pytest.mark.use_tmp_corpus
+def test_inject_transaction_logged(mcp_client, echidna_campaign_running, tmp_path):
     """Verify control commands logged to mcp-commands.jsonl (FR-010)"""
+    tmp_corpus_dir = tmp_path / "corpus"
     
     # Execute control command
     result = mcp_client.call_tool("inject_fuzz_transactions", {
@@ -45,8 +47,10 @@ def test_inject_transaction_logged(mcp_client, tmp_corpus_dir):
     assert entry["timestamp"], "Empty timestamp"
 
 
-def test_clear_priorities_logged(mcp_client, tmp_corpus_dir):
+@pytest.mark.use_tmp_corpus
+def test_clear_priorities_logged(mcp_client, echidna_campaign_running, tmp_path):
     """Verify clear priorities logged (FR-010)"""
+    tmp_corpus_dir = tmp_path / "corpus"
     
     result = mcp_client.call_tool("clear_fuzz_priorities", {})
     response_text = str(result.get("content", [{}])[0].get("text", ""))
@@ -65,11 +69,13 @@ def test_clear_priorities_logged(mcp_client, tmp_corpus_dir):
         "clear_fuzz_priorities not logged"
 
 
-def test_observability_tools_not_logged(mcp_client, tmp_corpus_dir):
+@pytest.mark.use_tmp_corpus
+def test_observability_tools_not_logged(mcp_client, echidna_campaign_running, tmp_path):
     """Verify observability tools (status, show_coverage) NOT logged (FR-010)
     
     Only control commands should be logged for reproducibility.
     """
+    tmp_corpus_dir = tmp_path / "corpus"
     
     # Call observability tools
     try:
@@ -101,8 +107,10 @@ def test_observability_tools_not_logged(mcp_client, tmp_corpus_dir):
                 "Observability tool 'show_coverage' should not be logged"
 
 
-def test_multiple_commands_logged_in_order(mcp_client, tmp_corpus_dir):
+@pytest.mark.use_tmp_corpus
+def test_multiple_commands_logged_in_order(mcp_client, echidna_campaign_running, tmp_path):
     """Verify multiple commands are logged in chronological order"""
+    tmp_corpus_dir = tmp_path / "corpus"
     
     # Execute multiple commands
     commands = [
@@ -136,24 +144,3 @@ def test_multiple_commands_logged_in_order(mcp_client, tmp_corpus_dir):
     for ts in timestamps:
         assert ts, "Empty timestamp found"
 
-
-@pytest.fixture
-def tmp_corpus_dir(tmp_path):
-    """Provide temporary corpus directory for testing"""
-    corpus_dir = tmp_path / "corpus"
-    corpus_dir.mkdir()
-    return corpus_dir
-
-
-# MCP client fixture provided by conftest.py
-    class MockMCPClient:
-        def call(self, tool_name, args):
-            # Mock implementation - returns success for now
-            if "inject" in tool_name:
-                return "Requested fuzzing of transaction sequence"
-            elif "clear" in tool_name:
-                return "Requested clearing priorities"
-            else:
-                return "OK"
-    
-    return MockMCPClient()
