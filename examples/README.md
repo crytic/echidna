@@ -78,7 +78,7 @@ python examples/langgraph_agent.py
 
 ```bash
 # Terminal 1: Start Echidna
-cd /Users/daniel.a.tradito/Development/Audit/echidna-mcp
+cd PATH_TO_YOUR_ECHIDNA_MCP
 ~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol --server 8080 --test-limit 1000000 &
 
 # Terminal 2: Run simple agent
@@ -185,8 +185,6 @@ class MyEchidnaAgent:
 ## Resources
 
 - [AGENT_TESTING_GUIDE.md](../AGENT_TESTING_GUIDE.md) - Comprehensive testing guide
-- [quickstart.md](../specs/001-mcp-agent-commands/quickstart.md) - MCP integration guide
-- [MCP_VALIDATION_SUMMARY.md](../MCP_VALIDATION_SUMMARY.md) - Validation results
 - [test-mcp-client.py](../test-mcp-client.py) - Reference implementation
 
 ---
