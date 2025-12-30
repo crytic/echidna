@@ -3,6 +3,8 @@ Read Logs Tool Tests
 Feature: 001-mcp-agent-commands
 Phase 5, Task T058
 
+NOTE: The read_logs tool is currently commented out in upstream (lib/Echidna/MCP.hs).
+These tests are preserved for when the tool is re-enabled.
 Tests for read_logs MCP tool.
 """
 
@@ -11,6 +13,7 @@ import time
 from tests.mcp.scripts.mcp_client_wrapper import MCPClientV2
 
 
+@pytest.mark.skip(reason="read_logs tool is commented out in upstream")
 def test_read_logs_initial(mcp_client):
     """Test that logs exist on fresh campaign."""
     result = mcp_client.call_tool("read_logs", {"max_count": 10})
@@ -21,6 +24,7 @@ def test_read_logs_initial(mcp_client):
     assert result["count"] >= 0
 
 
+@pytest.mark.skip(reason="read_logs tool is commented out in upstream")
 def test_read_logs_pagination(mcp_client):
     """Test that pagination parameters work correctly."""
     # Get first batch
@@ -39,6 +43,7 @@ def test_read_logs_pagination(mcp_client):
     assert isinstance(result2["events"], list)
 
 
+@pytest.mark.skip(reason="read_logs tool is commented out in upstream")
 @pytest.mark.timeout(1)  # 1 second max
 def test_read_logs_response_time(mcp_client):
     """Test that read_logs responds within 100ms (p95 < 150ms)."""

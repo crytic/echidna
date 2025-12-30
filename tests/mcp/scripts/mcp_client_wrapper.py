@@ -14,7 +14,8 @@ class MCPClientV2:
     """
     Enhanced MCP client with convenience methods for each tool.
     
-    Wraps httpx and provides typed methods for all 9 MCP tools.
+    Wraps httpx and provides typed methods for all 7 active MCP tools.
+    Note: read_logs tool exists but is currently commented out in upstream.
     """
     
     def __init__(self, base_url: str = "http://localhost:8080"):
@@ -45,118 +46,82 @@ class MCPClientV2:
     
     # Observability Tools
     
-    def call_read_logs(self, max_count: int = 100, since_timestamp: Optional[int] = None) -> Dict[str, Any]:
+    def call_status(self) -> Dict[str, Any]:
         """
-        Read event logs from Echidna campaign.
+        Get fuzzing campaign status and metrics.
+        
+        Returns:
+            Campaign status including corpus size, iterations, coverage, etc.
+        """
+        return self._call_tool("status", {})
+    
+    def call_show_coverage(self, contract: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get code coverage report for a specific contract.
         
         Args:
-            max_count: Maximum number of events to return
-            since_timestamp: Optional Unix timestamp to filter events
+            contract: Contract name to show coverage for (optional)
             
         Returns:
-            {"events": [...], "count": int, "timestamp": int}
+            Coverage report with annotated source code
         """
-        params = {"max_count": max_count}
-        if since_timestamp:
-            params["since_timestamp"] = since_timestamp
-        return self._call_tool("read_logs", params)
+        params = {}
+        if contract:
+            params["contract"] = contract
+        return self._call_tool("show_coverage", params)
     
-    def call_show_coverage(self) -> Dict[str, Any]:
+    def call_target(self) -> Dict[str, Any]:
         """
-        Get current code coverage statistics.
+        Get target contract name and ABI.
         
         Returns:
-            {"coverage_points": int, "contracts": [...], "timestamp": int}
+            Target contract information with ABI
         """
-        return self._call_tool("show_coverage", {})
+        return self._call_tool("target", {})
     
     def call_dump_lcov(self) -> Dict[str, Any]:
         """
         Dump coverage in LCOV format.
         
         Returns:
-            {"lcov": str, "contracts": int}
+            LCOV formatted coverage data
         """
         return self._call_tool("dump_lcov", {})
     
-    def call_get_corpus_size(self) -> Dict[str, Any]:
+    def call_reload_corpus(self) -> Dict[str, Any]:
         """
-        Get current corpus size.
+        Reload corpus from disk without replaying transactions.
         
         Returns:
-            {"corpus_size": int}
+            Status of corpus reload operation
         """
-        return self._call_tool("get_corpus_size", {})
-    
-    def call_inspect_corpus(self, offset: int = 0, limit: int = 10) -> Dict[str, Any]:
-        """
-        Inspect transactions in corpus with pagination.
-        
-        Args:
-            offset: Starting index
-            limit: Maximum number of transactions to return
-            
-        Returns:
-            {"transactions": [...], "total": int, "offset": int, "limit": int}
-        """
-        return self._call_tool("inspect_corpus_transactions", {
-            "offset": offset,
-            "limit": limit
-        })
-    
-    def call_find_transaction(self, search_query: str) -> Dict[str, Any]:
-        """
-        Search for transactions in corpus.
-        
-        Args:
-            search_query: Function signature or substring to search for
-            
-        Returns:
-            {"matches": [...], "count": int}
-        """
-        return self._call_tool("find_transaction_in_corpus", {
-            "search_query": search_query
-        })
+        return self._call_tool("reload_corpus", {})
     
     # Control Tools
     
-    def call_inject_transaction(self, transactions: List[str]) -> Dict[str, Any]:
+    def call_inject_fuzz_transactions(self, transactions: str) -> Dict[str, Any]:
         """
-        Inject custom transactions into fuzzing campaign.
+        Inject transaction sequence to prioritize during fuzzing.
         
         Args:
-            transactions: List of Solidity-like function call strings
-                         e.g., ["transfer(0x123..., 100)", "approve(0x456..., 50)"]
+            transactions: Newline-separated transaction sequence
+                         e.g., "transfer(0x123..., 100)\\nmint(1000, 0x456...)"
             
         Returns:
-            {"injected": bool, "transaction_count": int, "worker_id": int}
+            Status of injection operation
         """
-        return self._call_tool("inject_transaction", {
+        return self._call_tool("inject_fuzz_transactions", {
             "transactions": transactions
         })
     
-    def call_prioritize_function(self, function_signature: str) -> Dict[str, Any]:
-        """
-        Set priority for a specific function signature.
-        
-        Args:
-            function_signature: Function signature to prioritize (e.g., "balanceOf(address)")
-            
-        Returns:
-            {"prioritized": bool, "function_signature": str, "worker_ids": [int]}
-        """
-        return self._call_tool("prioritize_function", {
-            "function_signature": function_signature
-        })
-    
-    def call_clear_priorities(self) -> Dict[str, Any]:
+    def call_clear_fuzz_priorities(self) -> Dict[str, Any]:
         """
         Clear all function prioritization.
         
         Returns:
-            {"cleared": bool, "worker_ids": [int]}
+            Status of clear operation
         """
-        return self._call_tool("clear_priorities", {})
+        return self._call_tool("clear_fuzz_priorities", {})
     
     def list_tools(self) -> Dict[str, Any]:
         """

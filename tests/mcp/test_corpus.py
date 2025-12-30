@@ -3,13 +3,19 @@ Corpus Tool Tests
 Feature: 001-mcp-agent-commands
 Phase 5, Task T060
 
-Tests for corpus inspection MCP tools.
+NOTE: These tests are for corpus inspection tools (get_corpus_size, inspect_corpus_transactions,
+find_transaction_in_corpus) which do not exist in the upstream implementation.
+The upstream only provides: status, target, reload_corpus, dump_lcov, inject_fuzz_transactions,
+clear_fuzz_priorities, show_coverage.
+
+These tests are preserved for reference but skipped.
 """
 
 import pytest
 import time
 
 
+@pytest.mark.skip(reason="get_corpus_size tool does not exist in upstream")
 def test_get_corpus_size(mcp_client, echidna_campaign_running):
     """Test that corpus size > 0 after campaign runs."""
     # Wait for campaign to generate some corpus
@@ -24,6 +30,7 @@ def test_get_corpus_size(mcp_client, echidna_campaign_running):
     print(f"Corpus size after 3s: {result['corpus_size']}")
 
 
+@pytest.mark.skip(reason="Tool does not exist in upstream")
 def test_inspect_corpus_pagination(mcp_client, echidna_campaign_running):
     """Test that pagination parameters work correctly."""
     # Wait for corpus to populate
@@ -59,6 +66,7 @@ def test_inspect_corpus_pagination(mcp_client, echidna_campaign_running):
             "Different pages should return different transactions"
 
 
+@pytest.mark.skip(reason="Tool does not exist in upstream")
 def test_find_transaction_in_corpus(mcp_client):
     """Test finding a transaction by signature."""
     # First inject a known transaction
@@ -81,6 +89,7 @@ def test_find_transaction_in_corpus(mcp_client):
     assert "count" in search_result
 
 
+@pytest.mark.skip(reason="Tool does not exist in upstream")
 def test_inspect_corpus_empty_params(mcp_client):
     """Test inspect_corpus with default parameters."""
     result = mcp_client.call_tool("inspect_corpus_transactions", {})
@@ -90,6 +99,7 @@ def test_inspect_corpus_empty_params(mcp_client):
     assert isinstance(result["transactions"], list)
 
 
+@pytest.mark.skip(reason="Tool does not exist in upstream")
 def test_find_transaction_case_insensitive(mcp_client):
     """Test that search is case-insensitive."""
     # Search with lowercase

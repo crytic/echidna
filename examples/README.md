@@ -132,13 +132,13 @@ class MyEchidnaAgent:
 
 ### Available Tools
 
-1. **status** - Get fuzzing metrics
-2. **show_coverage** - Get coverage report
-3. **target** - Get contract ABI
-4. **inject_fuzz_transactions** - Queue transactions
-5. **clear_fuzz_priorities** - Reset priorities
-6. **get_corpus** - Get current corpus
-7. **set_priority** - Set function priority
+1. **status** - Get fuzzing campaign status and metrics
+2. **show_coverage** - Get coverage report for contracts
+3. **target** - Get target contract name and ABI
+4. **inject_fuzz_transactions** - Inject transaction sequences to prioritize
+5. **clear_fuzz_priorities** - Clear all function priorities
+6. **reload_corpus** - Reload corpus from disk
+7. **dump_lcov** - Export coverage in LCOV format
 
 ### Strategy Ideas
 
