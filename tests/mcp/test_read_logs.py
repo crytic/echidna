@@ -45,6 +45,8 @@ def test_read_logs_pagination(mcp_client):
 
 @pytest.mark.skip(reason="read_logs tool is commented out in upstream")
 @pytest.mark.timeout(1)  # 1 second max
+# The test uses 'pytest.mark.timeout(1)' decorator which gives only 1 second for running 10 iterations of the tool call plus computing mean and p95 times. Since each call is expected to take up to 150ms, 10 calls could legitimately take 1.5 seconds. The timeout should be increased to at least 2-3 seconds to avoid false failures.
+
 def test_read_logs_response_time(mcp_client):
     """Test that read_logs responds within 100ms (p95 < 150ms)."""
     times = []
@@ -65,6 +67,7 @@ def test_read_logs_response_time(mcp_client):
     assert p95_time < 150, f"P95 response time {p95_time:.2f}ms exceeds 150ms"
 
 
+@pytest.mark.skip(reason="read_logs tool is commented out in upstream")
 def test_read_logs_empty_params(mcp_client):
     """Test read_logs with empty parameters (should use defaults)."""
     result = mcp_client.call_tool("read_logs", {})

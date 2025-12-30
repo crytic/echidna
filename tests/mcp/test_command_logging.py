@@ -12,11 +12,13 @@ def test_inject_transaction_logged(mcp_client, tmp_corpus_dir):
     """Verify control commands logged to mcp-commands.jsonl (FR-010)"""
     
     # Execute control command
-    response = mcp_client.call("inject_fuzz_transactions", {
+    result = mcp_client.call_tool("inject_fuzz_transactions", {
         "transactions": "transfer(0x1234567890123456789012345678901234567890, 100)"
     })
-    assert "success" in response.lower() or "requested" in response.lower(), \
-        f"Unexpected response: {response}"
+    # Result is MCP response with 'content' field
+    response_text = str(result.get("content", [{}])[0].get("text", ""))
+    assert "requested" in response_text.lower() or "fuzzing" in response_text.lower(), \
+        f"Unexpected response: {result}"
     
     # Wait for log flush (flushes every 10 seconds)
     time.sleep(12)
@@ -46,9 +48,10 @@ def test_inject_transaction_logged(mcp_client, tmp_corpus_dir):
 def test_clear_priorities_logged(mcp_client, tmp_corpus_dir):
     """Verify clear priorities logged (FR-010)"""
     
-    response = mcp_client.call("clear_fuzz_priorities", {})
-    assert "success" in response.lower() or "requested" in response.lower() or "cleared" in response.lower(), \
-        f"Unexpected response: {response}"
+    result = mcp_client.call_tool("clear_fuzz_priorities", {})
+    response_text = str(result.get("content", [{}])[0].get("text", ""))
+    assert "requested" in response_text.lower() or "clearing" in response_text.lower(), \
+        f"Unexpected response: {result}"
     
     time.sleep(12)
     
@@ -70,13 +73,13 @@ def test_observability_tools_not_logged(mcp_client, tmp_corpus_dir):
     
     # Call observability tools
     try:
-        mcp_client.call("status", {})
+        mcp_client.call_tool("status", {})
     except Exception as e:
         # Tool might not be fully implemented yet
         pass
     
     try:
-        mcp_client.call("show_coverage", {"contract": "TestContract"})
+        mcp_client.call_tool("show_coverage", {})
     except Exception as e:
         # Tool might not be fully implemented yet
         pass
@@ -109,8 +112,8 @@ def test_multiple_commands_logged_in_order(mcp_client, tmp_corpus_dir):
     ]
     
     for tool, args in commands:
-        response = mcp_client.call(tool, args)
-        assert response  # Should get some response
+        result = mcp_client.call_tool(tool, args)
+        assert result  # Should get some response
         time.sleep(1)  # Small delay between commands
     
     # Wait for flush
@@ -142,12 +145,7 @@ def tmp_corpus_dir(tmp_path):
     return corpus_dir
 
 
-@pytest.fixture
-def mcp_client():
-    """Mock MCP client for testing
-    
-    TODO: Replace with actual MCP client once conftest.py is implemented
-    """
+# MCP client fixture provided by conftest.py
     class MockMCPClient:
         def call(self, tool_name, args):
             # Mock implementation - returns success for now

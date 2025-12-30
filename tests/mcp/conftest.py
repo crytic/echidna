@@ -144,13 +144,14 @@ def echidna_campaign_running(request):
     
     port = MCP_DEFAULT_PORT
     
-    # Build command
+    # Build command - use 'echidna' binary (not 'echidna-test')
     cmd = [
-        'echidna-test',
+        'echidna',
         contract_path,
         '--server', str(port),
         '--test-mode', 'assertion',
-        '--test-limit', '1000'
+        '--test-limit', '1000',
+        '--format', 'text'  # Required to avoid TUI blocking
     ]
     
     # Start Echidna

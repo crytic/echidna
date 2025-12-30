@@ -3,7 +3,7 @@ Integration Workflow Tests
 Feature: 001-mcp-agent-commands
 Phase 5, Task T063
 
-Multi-step agent workflow tests.
+Multi-step agent workflow tests using upstream's 7 tools.
 """
 
 import pytest
@@ -17,106 +17,76 @@ def test_agent_workflow_observe_then_inject(mcp_client):
     Test agent workflow: observe → inject → observe again.
     
     Simulates an agent that:
-    1. Reads logs to understand current state
+    1. Checks status to understand current state
     2. Injects a targeted transaction
-    3. Reads logs again to verify injection
+    3. Checks status again to verify progress
     """
     # Step 1: Observe initial state
-    logs1 = mcp_client.call_tool("read_logs", {"max_count": 10})
-    initial_count = logs1["count"]
+    status1 = mcp_client.call_tool("status", {})
+    status1_text = status1["content"][0]["text"]
     
-    print(f"Initial event count: {initial_count}")
+    print(f"Initial status: {status1_text[:100]}...")
     
     # Step 2: Inject transaction
-    inject_result = mcp_client.call_tool("inject_transaction", {
-        "transactions": ["transfer(0x1234567890123456789012345678901234567890, 999)"]
+    inject_result = mcp_client.call_tool("inject_fuzz_transactions", {
+        "transactions": "transfer(0x1234567890123456789012345678901234567890, 999)"
     })
     
-    assert inject_result["injected"] is True
+    response_text = inject_result["content"][0]["text"]
+    assert "requested" in response_text.lower() or "fuzzing" in response_text.lower()
     
     # Step 3: Wait and observe again
     time.sleep(2)
     
-    logs2 = mcp_client.call_tool("read_logs", {"max_count": 20})
-    updated_count = logs2["count"]
+    status2 = mcp_client.call_tool("status", {})
+    status2_text = status2["content"][0]["text"]
     
-    print(f"Updated event count: {updated_count}")
+    print(f"Updated status: {status2_text[:100]}...")
     
-    # Events should have been logged
-    assert updated_count >= initial_count
+    # Status should be returned successfully
+    assert status2_text
 
 
-def test_agent_workflow_prioritize_and_monitor(mcp_client, echidna_campaign_running):
+def test_agent_workflow_coverage_analysis(mcp_client):
     """
-    Test agent workflow: prioritize → get corpus → find transactions.
+    Test agent workflow: check coverage → analyze → inject.
     
     Simulates an agent that:
-    1. Prioritizes a function
-    2. Gets corpus size
-    3. Finds transactions with that function
+    1. Gets target contract info
+    2. Checks current coverage
+    3. Injects transactions to increase coverage
     """
-    # Step 1: Prioritize
-    prioritize_result = mcp_client.call_tool("prioritize_function", {
-        "function_signature": "balanceOf(address)"
-    })
+    # Step 1: Get target info
+    target = mcp_client.call_tool("target", {})
+    target_text = target["content"][0]["text"]
     
-    assert prioritize_result["prioritized"] is True
+    print(f"Target: {target_text[:100]}...")
     
-    # Step 2: Wait for fuzzing
-    time.sleep(3)
-    
-    # Step 3: Get corpus size
-    corpus_result = mcp_client.call_tool("get_corpus_size", {})
-    corpus_size = corpus_result["corpus_size"]
-    
-    print(f"Corpus size: {corpus_size}")
-    
-    # Step 4: Find transactions
-    search_result = mcp_client.call_tool("find_transaction_in_corpus", {
-        "search_query": "balanceOf"
-    })
-    
-    assert "matches" in search_result
-    print(f"Found {search_result['count']} balanceOf transactions")
-
-
-def test_agent_workflow_coverage_driven_injection(mcp_client, echidna_campaign_running):
-    """
-    Test agent workflow: check coverage → inject → verify coverage increase.
-    
-    Simulates an agent that:
-    1. Checks current coverage
-    2. Injects transactions to increase coverage
-    3. Verifies coverage increased
-    """
-    # Step 1: Get initial coverage
+    # Step 2: Get current coverage
     coverage1 = mcp_client.call_tool("show_coverage", {})
-    initial_points = coverage1["coverage_points"]
+    coverage1_text = coverage1["content"][0]["text"]
     
-    print(f"Initial coverage: {initial_points} points")
+    print(f"Initial coverage (first 200 chars): {coverage1_text[:200]}...")
     
-    # Step 2: Inject diverse transactions
-    inject_result = mcp_client.call_tool("inject_transaction", {
-        "transactions": [
-            "transfer(0x1111111111111111111111111111111111111111, 100)",
-            "approve(0x2222222222222222222222222222222222222222, 200)",
-            "transferFrom(0x3333333333333333333333333333333333333333, 0x4444444444444444444444444444444444444444, 50)"
-        ]
+    # Step 3: Inject diverse transactions
+    inject_result = mcp_client.call_tool("inject_fuzz_transactions", {
+        "transactions": "transfer(0x1111111111111111111111111111111111111111, 100)\\napprove(0x2222222222222222222222222222222222222222, 200)"
     })
     
-    assert inject_result["injected"] is True
+    response_text = inject_result["content"][0]["text"]
+    assert "requested" in response_text.lower()
     
-    # Step 3: Wait for execution
-    time.sleep(3)
+    # Step 4: Wait for execution
+    time.sleep(2)
     
-    # Step 4: Check coverage again
+    # Step 5: Check coverage again
     coverage2 = mcp_client.call_tool("show_coverage", {})
-    updated_points = coverage2["coverage_points"]
+    coverage2_text = coverage2["content"][0]["text"]
     
-    print(f"Updated coverage: {updated_points} points")
+    print(f"Updated coverage (first 200 chars): {coverage2_text[:200]}...")
     
-    # Coverage should not decrease
-    assert updated_points >= initial_points
+    # Coverage text should be returned
+    assert coverage2_text
 
 
 @pytest.mark.asyncio
@@ -143,11 +113,11 @@ async def test_concurrent_tool_calls():
             response = await client.post(f"{base_url}/mcp", json=payload)
             return response.json()
         
-        # Call 3 tools concurrently
+        # Call 3 observability tools concurrently
         tasks = [
-            call_tool("read_logs", {"max_count": 10}),
+            call_tool("status", {}),
             call_tool("show_coverage", {}),
-            call_tool("get_corpus_size", {})
+            call_tool("target", {})
         ]
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -158,46 +128,50 @@ async def test_concurrent_tool_calls():
             assert "result" in result or "error" not in result
 
 
-def test_agent_workflow_full_cycle(mcp_client, echidna_campaign_running):
+def test_agent_workflow_full_cycle(mcp_client):
     """
     Test complete agent workflow combining all capabilities.
     
     Simulates a sophisticated agent that:
-    1. Observes initial state (logs + coverage)
-    2. Prioritizes interesting functions
+    1. Observes initial state (status + coverage)
+    2. Gets target contract info
     3. Injects targeted transactions
     4. Monitors results
-    5. Clears priorities and repeats
+    5. Clears priorities and exports coverage
     """
     # Phase 1: Initial observation
-    logs = mcp_client.call_tool("read_logs", {"max_count": 20})
-    coverage = mcp_client.call_tool("show_coverage", {})
+    status1 = mcp_client.call_tool("status", {})
+    coverage1 = mcp_client.call_tool("show_coverage", {})
+    target = mcp_client.call_tool("target", {})
     
-    print(f"Initial state: {logs['count']} events, {coverage['coverage_points']} coverage points")
+    status_text = status1["content"][0]["text"]
+    print(f"Initial status: {status_text[:100]}...")
     
-    # Phase 2: Prioritize
-    mcp_client.call_tool("prioritize_function", {
-        "function_signature": "transfer(address,uint256)"
+    # Phase 2: Inject targeted transactions
+    inject_result = mcp_client.call_tool("inject_fuzz_transactions", {
+        "transactions": "transfer(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, 42)"
     })
     
-    # Phase 3: Inject
-    mcp_client.call_tool("inject_transaction", {
-        "transactions": ["transfer(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, 42)"]
-    })
+    response_text = inject_result["content"][0]["text"]
+    assert "requested" in response_text.lower()
     
-    # Phase 4: Wait and monitor
+    # Phase 3: Wait and monitor
     time.sleep(2)
     
-    corpus_size = mcp_client.call_tool("get_corpus_size", {})
-    search_result = mcp_client.call_tool("find_transaction_in_corpus", {
-        "search_query": "transfer"
-    })
+    status2 = mcp_client.call_tool("status", {})
+    status2_text = status2["content"][0]["text"]
     
-    print(f"After injection: corpus size {corpus_size['corpus_size']}, {search_result['count']} transfers")
+    print(f"After injection: {status2_text[:100]}...")
     
-    # Phase 5: Clear priorities
-    clear_result = mcp_client.call_tool("clear_priorities", {})
-    assert clear_result["cleared"] is True
+    # Phase 4: Clear priorities and export coverage
+    clear_result = mcp_client.call_tool("clear_fuzz_priorities", {})
+    clear_text = clear_result["content"][0]["text"]
+    assert "requested" in clear_text.lower() or "clearing" in clear_text.lower()
     
-    # Workflow completed successfully if we got here
-    assert True
+    # Export coverage in LCOV format
+    lcov_result = mcp_client.call_tool("dump_lcov", {})
+    lcov_data = lcov_result["content"][0]["text"]
+    assert isinstance(lcov_data, str)  # LCOV data is a string
+    
+    # Workflow completed successfully
+    print("✅ Full cycle test completed")
