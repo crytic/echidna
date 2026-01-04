@@ -22,11 +22,20 @@ import Echidna.Onchain.Types (SourceData(..))
 
 -- | Base URL for Sourcify API
 sourcifyBaseUrl :: String
-sourcifyBaseUrl = "https://sourcify.dev"
+sourcifyBaseUrl = "https://sourcify.dev/server"
+
+-- | Source file structure from Sourcify API
+data SourceFile = SourceFile
+  { content :: Text
+  } deriving (Show, Generic)
+
+instance FromJSON SourceFile where
+  parseJSON = withObject "SourceFile" $ \v -> SourceFile
+    <$> v .: "content"
 
 -- | Sourcify API response structure
 data SourcifyResponse = SourcifyResponse
-  { sources :: Map Text Text
+  { sources :: Map Text SourceFile
   , runtimeBytecode :: Maybe BytecodeMeta
   , creationBytecode :: Maybe BytecodeMeta
   , abi :: Maybe [Value]
@@ -110,7 +119,7 @@ parseSourcifyResponse = parseEither $ \obj -> do
         Nothing -> Nothing
 
   pure $ SourceData
-    { sourceFiles = srcResp.sources
+    { sourceFiles = Map.map (.content) srcResp.sources
     , runtimeSrcMap = runtimeSrcMap'
     , creationSrcMap = creationSrcMap'
     , contractName = contractName'
