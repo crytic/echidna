@@ -1,5 +1,5 @@
 {-|
-Module: Sourcify
+Module: Echidna.Onchain.Sourcify
 Description: Fetch verified contract source code from Sourcify
 
 This module provides functions to fetch verified contract source code,
@@ -11,15 +11,9 @@ richer metadata than Etherscan including:
 - Source maps in JSON (no HTML scraping)
 - Immutable references
 - Storage layout
-
-This is designed to work as the primary source for contract metadata,
-with Etherscan as a fallback.
 -}
-module Sourcify
-  ( SourceData(..)
-  , fetchContractSource
-  , fetchContractSourceFromSourcify
-  , fetchContractSourceFromEtherscan
+module Echidna.Onchain.Sourcify
+  ( fetchContractSource
   )
 where
 
@@ -39,17 +33,7 @@ import Network.HTTP.Types.Status (statusCode)
 import EVM.Solidity (Reference(..))
 import EVM.Types (Addr, W256)
 
-import Etherscan qualified
-
--- | Unified source data structure that works for both Sourcify and Etherscan
-data SourceData = SourceData
-  { sourceFiles :: Map Text Text           -- ^ filepath -> content
-  , runtimeSrcMap :: Maybe Text            -- ^ Runtime source map string
-  , creationSrcMap :: Maybe Text           -- ^ Creation source map string
-  , contractName :: Text
-  , abi :: Maybe [Value]                   -- ^ ABI JSON array
-  , immutableRefs :: Maybe (Map W256 [Reference])
-  } deriving Show
+import Echidna.Onchain.Types (SourceData(..))
 
 -- | Sourcify API response structure
 data SourcifyResponse = SourcifyResponse
@@ -78,33 +62,12 @@ instance FromJSON BytecodeMeta where
     <$> v .:? "sourceMap"
     <*> v .:? "immutableReferences"
 
--- | Fetch contract source with automatic fallback from Sourcify to Etherscan
-fetchContractSource
-  :: Maybe W256       -- ^ chainId
-  -> Maybe Text       -- ^ etherscanApiKey
-  -> String          -- ^ explorerUrl
-  -> Addr            -- ^ contract address
-  -> IO (Maybe SourceData)
-fetchContractSource maybeChainId etherscanApiKey explorerUrl addr = do
-  -- Try Sourcify first if we have a chain ID
-  sourcifyResult <- case maybeChainId of
-    Just chainId -> fetchContractSourceFromSourcify chainId addr
-    Nothing -> do
-      putStrLn "No chain ID available, skipping Sourcify"
-      pure Nothing
-
-  case sourcifyResult of
-    Just sd -> pure (Just sd)
-    Nothing ->
-      -- Fallback to Etherscan
-      fetchContractSourceFromEtherscan maybeChainId etherscanApiKey explorerUrl addr
-
 -- | Fetch contract source from Sourcify (always uses https://sourcify.dev)
-fetchContractSourceFromSourcify
+fetchContractSource
   :: W256   -- ^ chainId
   -> Addr   -- ^ address
   -> IO (Maybe SourceData)
-fetchContractSourceFromSourcify chainId addr = do
+fetchContractSource chainId addr = do
   let baseUrl = "https://sourcify.dev"
       reqUrl = baseUrl <> "/v2/contract/"
                       <> show (fromIntegral chainId :: Integer)
@@ -185,49 +148,3 @@ parseSourcifyResponse = parseEither $ \obj -> do
     -- Convert Text to W256 (immutable references keys are numeric strings)
     textToW256 :: Text -> W256
     textToW256 t = read (T.unpack t)
-
--- | Fetch contract source from Etherscan and convert to SourceData format
-fetchContractSourceFromEtherscan
-  :: Maybe W256  -- ^ chainId
-  -> Maybe Text  -- ^ apiKey
-  -> String     -- ^ explorerUrl
-  -> Addr       -- ^ address
-  -> IO (Maybe SourceData)
-fetchContractSourceFromEtherscan maybeChainId maybeApiKey explorerUrl addr = do
-  case maybeApiKey of
-    Nothing -> do
-      putStrLn "No Etherscan API key available"
-      pure Nothing
-    Just _ -> do
-      putStr "Trying Etherscan... "
-
-      -- Fetch source code
-      srcRet <- Etherscan.fetchContractSource maybeChainId maybeApiKey addr
-
-      -- Fetch source map
-      srcmapRet <- Etherscan.fetchContractSourceMap explorerUrl addr
-
-      case (srcRet, srcmapRet) of
-        (Just src, Just (srcMapText, _)) -> do
-          putStrLn "Success!"
-          pure $ Just $ SourceData
-            { sourceFiles = Map.singleton (src.name <> ".sol") (T.pack src.code)
-            , runtimeSrcMap = Just srcMapText  -- Etherscan scraped map
-            , creationSrcMap = Nothing         -- Not available from Etherscan
-            , contractName = src.name
-            , abi = Nothing                    -- Not available from Etherscan
-            , immutableRefs = Nothing          -- Not available from Etherscan
-            }
-        (Just src, Nothing) -> do
-          putStrLn "Success (no source map available)"
-          pure $ Just $ SourceData
-            { sourceFiles = Map.singleton (src.name <> ".sol") (T.pack src.code)
-            , runtimeSrcMap = Nothing
-            , creationSrcMap = Nothing
-            , contractName = src.name
-            , abi = Nothing
-            , immutableRefs = Nothing
-            }
-        _ -> do
-          putStrLn "Failed!"
-          pure Nothing

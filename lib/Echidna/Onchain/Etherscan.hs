@@ -1,8 +1,9 @@
-module Etherscan
+module Echidna.Onchain.Etherscan
   ( SourceCode(..)
-  , getBlockExplorerUrl
   , fetchContractSource
   , fetchContractSourceMap
+  , fetchContractSourceData
+  , getBlockExplorerUrl
   )
 where
 
@@ -25,6 +26,8 @@ import Text.XML.Cursor (attributeIs, content, element, fromDocument, ($//), (&//
 
 import EVM.Solidity (makeSrcMaps, SrcMap)
 import EVM.Types (Addr, W256)
+
+import Echidna.Onchain.Types (SourceData(..))
 
 data SourceCode = SourceCode
   { name :: Text
@@ -158,3 +161,43 @@ safeMakeSrcMaps :: T.Text -> IO (Maybe (Seq SrcMap))
 safeMakeSrcMaps x =
   -- $! forces the exception to happen right here so we can catch it
   catch (pure $! makeSrcMaps x) (\(_ :: SomeException) -> pure Nothing)
+
+-- | Unified interface for fetching contract source data from Etherscan
+-- Returns Nothing if no API key is provided
+fetchContractSourceData
+  :: Maybe W256  -- ^ chainId (optional, defaults to mainnet)
+  -> Maybe Text  -- ^ Etherscan API key (returns Nothing if not provided)
+  -> String      -- ^ Block explorer URL (for HTML scraping)
+  -> Addr        -- ^ contract address
+  -> IO (Maybe SourceData)
+fetchContractSourceData maybeChainId maybeApiKey explorerUrl addr = do
+  case maybeApiKey of
+    Nothing -> pure Nothing
+    Just _ -> do
+      -- Fetch source code using existing function
+      srcRet <- fetchContractSource maybeChainId maybeApiKey addr
+
+      -- Fetch source map using existing function
+      srcmapRet <- fetchContractSourceMap explorerUrl addr
+
+      -- Convert to SourceData format
+      case (srcRet, srcmapRet) of
+        (Just src, Just (srcMapText, _)) -> do
+          pure $ Just $ SourceData
+            { sourceFiles = Map.singleton (src.name <> ".sol") (T.pack src.code)
+            , runtimeSrcMap = Just srcMapText
+            , creationSrcMap = Nothing
+            , contractName = src.name
+            , abi = Nothing
+            , immutableRefs = Nothing
+            }
+        (Just src, Nothing) -> do
+          pure $ Just $ SourceData
+            { sourceFiles = Map.singleton (src.name <> ".sol") (T.pack src.code)
+            , runtimeSrcMap = Nothing
+            , creationSrcMap = Nothing
+            , contractName = src.name
+            , abi = Nothing
+            , immutableRefs = Nothing
+            }
+        _ -> pure Nothing
