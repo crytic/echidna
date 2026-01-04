@@ -12,10 +12,10 @@ import EVM.Types (W256)
 
 -- | Unified source data structure for contract source fetching
 data SourceData = SourceData
-  { sourceFiles :: Map Text Text           -- ^ filepath -> content
-  , runtimeSrcMap :: Maybe Text            -- ^ Runtime source map string
-  , creationSrcMap :: Maybe Text           -- ^ Creation source map string
-  , contractName :: Text
-  , abi :: Maybe [Value]                   -- ^ ABI JSON array
-  , immutableRefs :: Maybe (Map W256 [Reference])
+  { sourceFiles :: Map Text Text                  -- filepath -> content
+  , runtimeSrcMap :: Maybe Text                   -- Runtime source map string
+  , creationSrcMap :: Maybe Text                  -- Creation source map string
+  , contractName :: Text                          -- Contract name
+  , abi :: Maybe [Value]                          -- Contract ABI (TODO: process it)
+  , immutableRefs :: Maybe (Map W256 [Reference]) -- Immutable references
   } deriving Show

@@ -25,7 +25,7 @@ sourcifyBaseUrl :: String
 sourcifyBaseUrl = "https://sourcify.dev/server"
 
 -- | Source file structure from Sourcify API
-data SourceFile = SourceFile
+newtype SourceFile = SourceFile
   { content :: Text
   } deriving (Show, Generic)
 
@@ -39,7 +39,7 @@ data SourcifyResponse = SourcifyResponse
   , runtimeBytecode :: Maybe BytecodeMeta
   , creationBytecode :: Maybe BytecodeMeta
   , abi :: Maybe [Value]
-  , metadata :: Maybe Value                -- ^ Full metadata (contains contract name)
+  , metadata :: Maybe Value
   } deriving (Show, Generic)
 
 instance FromJSON SourcifyResponse where
@@ -60,7 +60,7 @@ instance FromJSON BytecodeMeta where
     <$> v .:? "sourceMap"
     <*> v .:? "immutableReferences"
 
--- | Fetch contract source from Sourcify (always uses https://sourcify.dev)
+-- | Fetch contract source from Sourcify
 fetchContractSource
   :: W256   -- ^ chainId
   -> Addr   -- ^ address
@@ -70,7 +70,6 @@ fetchContractSource chainId addr = do
                       <> show (fromIntegral chainId :: Integer)
                       <> "/" <> show addr
                       <> "?fields=all"
-
   catch
     (do
       req <- parseRequest reqUrl
@@ -105,10 +104,8 @@ parseSourcifyResponse = parseEither $ \obj -> do
         _ -> mzero
     _ -> mzero
 
-  -- Extract runtime source map
+  -- Extract runtime and creation source maps
   let runtimeSrcMap' = srcResp.runtimeBytecode >>= (.sourceMap)
-
-  -- Extract creation source map
   let creationSrcMap' = srcResp.creationBytecode >>= (.sourceMap)
 
   -- Extract immutable references and convert keys from Text to W256

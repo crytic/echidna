@@ -16,7 +16,7 @@ import Control.Monad (when, forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as UTF8
 import Data.Map qualified as Map
-import Data.Maybe (isJust, isNothing, fromJust, fromMaybe)
+import Data.Maybe (isJust, fromJust, fromMaybe)
 import Data.Sequence (Seq)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -104,23 +104,21 @@ externalSolcContract env explorerUrl addr c = do
     Just sd -> do
       putStrLn "Success!"
       pure (Just sd)
-    Nothing -> case env.cfg.etherscanApiKey of
-      Nothing -> do
-        when (isNothing env.chainId) $
-          putStrLn "No source available (no chain ID or Etherscan API key)"
-        when (isJust env.chainId) $
+    Nothing -> do
+      putStrLn "Failed!"
+      case env.cfg.etherscanApiKey of
+        Nothing -> do
           putStrLn "Skipping Etherscan (no API key configured)"
-        pure Nothing
-      Just _ -> do
-        putStr $ "Fetching source for " <> show addr <> " from Etherscan... "
-        result <- Etherscan.fetchContractSourceData
-          env.chainId
-          env.cfg.etherscanApiKey
-          explorerUrl
-          addr
-        when (isJust result) $ putStrLn "Success!"
-        when (isNothing result) $ putStrLn "Failed!"
-        pure result
+          pure Nothing
+        Just _ -> do
+          putStr $ "Fetching source for " <> show addr <> " from Etherscan... "
+          result <- Etherscan.fetchContractSourceData
+            env.chainId
+            env.cfg.etherscanApiKey
+            explorerUrl
+            addr
+          maybe (putStrLn "Failed!") (const $ putStrLn "Success!") result
+          pure result
 
   -- Convert to SolcContract
   case sourceData of

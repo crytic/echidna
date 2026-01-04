@@ -132,9 +132,8 @@ getBlockExplorerUrl maybeChainId = do
     Just url -> pure $ T.unpack url
 
 -- | Unfortunately, Etherscan doesn't expose source maps in the JSON API.
--- This function scrapes it from the HTML. Return a tuple where the first element
--- is raw srcmap in text format and the second element is a parsed map.
-fetchContractSourceMap :: String -> Addr -> IO (Maybe (Text, Seq SrcMap))
+-- This function scrapes it from the HTML. Return the raw srcmap in text format
+fetchContractSourceMap :: String -> Addr -> IO (Maybe Text)
 fetchContractSourceMap baseUrl addr = do
   -- Scrape HTML from block explorer
   url <- parseRequest $ baseUrl <> "/address/" <> show addr
@@ -150,7 +149,7 @@ fetchContractSourceMap baseUrl addr = do
   -- combine with raw srcmap to return so it is easier to cache
   case catMaybes $ zipWith (\x -> fmap (x,)) candidates parsedCandidates of
     [] -> pure Nothing
-    srcmap:_ -> pure (Just srcmap)
+    srcmap:_ -> pure (Just $ fst srcmap)
 
 -- | Calling makeSrcMaps on arbitrary input is unsafe as it could crash
 -- | Wrap it so it doesn't crash, TODO: fix in hevm
@@ -167,34 +166,17 @@ fetchContractSourceData
   -> String      -- ^ Block explorer URL (for HTML scraping)
   -> Addr        -- ^ contract address
   -> IO (Maybe SourceData)
+fetchContractSourceData _ Nothing _ _ = pure Nothing
 fetchContractSourceData maybeChainId maybeApiKey explorerUrl addr = do
-  case maybeApiKey of
-    Nothing -> pure Nothing
-    Just _ -> do
-      -- Fetch source code using existing function
-      srcRet <- fetchContractSource maybeChainId maybeApiKey addr
-
-      -- Fetch source map using existing function
-      srcmapRet <- fetchContractSourceMap explorerUrl addr
-
-      -- Convert to SourceData format
-      case (srcRet, srcmapRet) of
-        (Just src, Just (srcMapText, _)) -> do
-          pure $ Just $ SourceData
-            { sourceFiles = Map.singleton (src.name <> ".sol") (T.pack src.code)
-            , runtimeSrcMap = Just srcMapText
-            , creationSrcMap = Nothing
-            , contractName = src.name
-            , abi = Nothing
-            , immutableRefs = Nothing
-            }
-        (Just src, Nothing) -> do
-          pure $ Just $ SourceData
-            { sourceFiles = Map.singleton (src.name <> ".sol") (T.pack src.code)
-            , runtimeSrcMap = Nothing
-            , creationSrcMap = Nothing
-            , contractName = src.name
-            , abi = Nothing
-            , immutableRefs = Nothing
-            }
-        _ -> pure Nothing
+  srcRet <- fetchContractSource maybeChainId maybeApiKey addr
+  srcmapRet <- fetchContractSourceMap explorerUrl addr
+  pure $ do
+    src <- srcRet
+    Just $ SourceData
+      { sourceFiles = Map.singleton (src.name <> ".sol") (T.pack src.code)
+      , runtimeSrcMap = srcmapRet
+      , creationSrcMap = Nothing
+      , contractName = src.name
+      , abi = Nothing
+      , immutableRefs = Nothing
+      }
