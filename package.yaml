@@ -58,6 +58,7 @@ library:
     - html-conduit
     - html-entities
     - http-conduit
+    - http-types
     - ListLike
     - mustache
     - optics

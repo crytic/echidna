@@ -11,18 +11,20 @@ module Echidna.Onchain
 where
 
 import Control.Concurrent.MVar (readMVar)
-import Control.Exception (catch)
+import Control.Exception (catch, SomeException)
 import Control.Monad (when, forM_)
+import Data.Sequence (Seq)
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as UTF8
 import Data.Map qualified as Map
-import Data.Maybe (isJust, fromJust)
+import Data.Maybe (isJust, fromJust, fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Vector qualified as Vector
 import Data.Word (Word64)
 import Etherscan qualified
 import Network.HTTP.Simple (HttpException)
+import Sourcify qualified
 import Network.Wreq.Session qualified as Session
 import Optics (view)
 import System.Environment (lookupEnv)
@@ -32,7 +34,7 @@ import Text.Read (readMaybe)
 import EVM (bytecode)
 import EVM.Effects (defaultConfig)
 import EVM.Fetch qualified
-import EVM.Solidity (SourceCache(..), SolcContract (..))
+import EVM.Solidity (SourceCache(..), SolcContract(..), SrcMap, makeSrcMaps)
 import EVM.Types hiding (Env)
 
 import Echidna.Output.Source (saveCoverages)
@@ -87,42 +89,75 @@ safeFetchSlotFrom session rpcBlock rpcUrl addr slot =
 -- code fetched from the outside
 externalSolcContract :: Env -> String -> Addr -> Contract -> IO (Maybe (SourceCache, SolcContract))
 externalSolcContract env explorerUrl addr c = do
-  case env.cfg.etherscanApiKey of
-    Nothing -> pure Nothing
-    Just _ -> do
-      let runtimeCode = forceBuf $ fromJust $ view bytecode c
-      putStr $ "Fetching Solidity source for contract at address " <> show addr <> "... "
-      srcRet <- Etherscan.fetchContractSource env.chainId env.cfg.etherscanApiKey addr
-      putStrLn $ if isJust srcRet then "Success!" else "Error!"
-      putStr $ "Fetching Solidity source map for contract at address " <> show addr <> "... "
-      srcmapRet <- Etherscan.fetchContractSourceMap explorerUrl addr
-      putStrLn $ if isJust srcmapRet then "Success!" else "Error!"
-      pure $ do
-        src <- srcRet
-        (_, srcmap) <- srcmapRet
-        let
-          files = Map.singleton 0 (show addr, UTF8.fromString src.code)
-          sourceCache = SourceCache
-            { files
-            , lines = Vector.fromList . BS.split 0xa . snd <$> files
-            , asts = mempty
-            }
-          solcContract = SolcContract
-            { runtimeCode = runtimeCode
-            , creationCode = mempty
-            , runtimeCodehash = keccak' runtimeCode
-            , creationCodehash = keccak' mempty
-            , runtimeSrcmap = mempty
-            , creationSrcmap = srcmap
-            , contractName = src.name
-            , constructorInputs = [] -- error "TODO: mkConstructor abis TODO"
-            , abiMap = mempty -- error "TODO: mkAbiMap abis"
-            , eventMap = mempty -- error "TODO: mkEventMap abis"
-            , errorMap = mempty -- error "TODO: mkErrorMap abis"
-            , storageLayout = Nothing
-            , immutableReferences = mempty
-            }
-        pure (sourceCache, solcContract)
+  let runtimeCode = forceBuf $ fromJust $ view bytecode c
+
+  putStr $ "Fetching Solidity source for contract at address " <> show addr <> "... "
+
+  -- Try Sourcify first, then Etherscan as fallback
+  srcData <- Sourcify.fetchContractSource
+               env.chainId
+               env.cfg.etherscanApiKey
+               explorerUrl
+               addr
+
+  case srcData of
+    Just sd -> do
+      putStrLn "Success!"
+      buildSolcContract runtimeCode sd
+    Nothing -> do
+      putStrLn "Failed!"
+      pure Nothing
+
+-- | Build SolcContract and SourceCache from SourceData
+buildSolcContract :: BS.ByteString -> Sourcify.SourceData -> IO (Maybe (SourceCache, SolcContract))
+buildSolcContract runtimeCode sd = do
+  -- Build SourceCache from multiple source files
+  let sourcesList = Map.toList sd.sourceFiles
+      filesMap = Map.fromList $ zip [0..]
+        (fmap (\(path, content) -> (Text.unpack path, UTF8.fromString $ Text.unpack content)) sourcesList)
+      sourceCache = SourceCache
+        { files = filesMap
+        , lines = Vector.fromList . BS.split 0xa . snd <$> filesMap
+        , asts = mempty
+        }
+
+  -- Parse source maps safely
+  runtimeSrcmap <- case sd.runtimeSrcMap of
+    Just sm -> makeSrcMapsSafe sm
+    Nothing -> pure mempty
+
+  creationSrcmap <- case sd.creationSrcMap of
+    Just sm -> makeSrcMapsSafe sm
+    Nothing -> pure mempty
+
+  -- Build ABI maps
+  -- TODO: Need mkAbiMap, mkEventMap, mkErrorMap to be exported from hevm
+  -- For now, we keep them as mempty but at least we have the ABI data available
+  let (abiMap', eventMap', errorMap') = (mempty, mempty, mempty)
+
+  let solcContract = SolcContract
+        { runtimeCode = runtimeCode
+        , creationCode = mempty
+        , runtimeCodehash = keccak' runtimeCode
+        , creationCodehash = keccak' mempty
+        , runtimeSrcmap = runtimeSrcmap
+        , creationSrcmap = creationSrcmap
+        , contractName = sd.contractName
+        , constructorInputs = []
+        , abiMap = abiMap'
+        , eventMap = eventMap'
+        , errorMap = errorMap'
+        , storageLayout = Nothing
+        , immutableReferences = fromMaybe mempty sd.immutableRefs
+        }
+
+  pure $ Just (sourceCache, solcContract)
+
+-- | Safe wrapper for makeSrcMaps to prevent crashes
+makeSrcMapsSafe :: Text.Text -> IO (Seq SrcMap)
+makeSrcMapsSafe txt =
+  catch (pure $ fromMaybe mempty $! makeSrcMaps txt)
+        (\(_ :: SomeException) -> pure mempty)
 
 
 saveCoverageReport :: Env -> Int -> IO ()
