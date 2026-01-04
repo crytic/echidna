@@ -1,8 +1,5 @@
 module Echidna.Onchain.Etherscan
-  ( SourceCode(..)
-  , fetchContractSource
-  , fetchContractSourceMap
-  , fetchContractSourceData
+  ( fetchContractSourceData
   , getBlockExplorerUrl
   )
 where

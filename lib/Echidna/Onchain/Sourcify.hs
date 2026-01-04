@@ -1,17 +1,3 @@
-{-|
-Module: Echidna.Onchain.Sourcify
-Description: Fetch verified contract source code from Sourcify
-
-This module provides functions to fetch verified contract source code,
-ABIs, and metadata from Sourcify (sourcify.dev). Sourcify provides
-richer metadata than Etherscan including:
-
-- Multiple source files
-- Full ABI (functions, events, errors)
-- Source maps in JSON (no HTML scraping)
-- Immutable references
-- Storage layout
--}
 module Echidna.Onchain.Sourcify
   ( fetchContractSource
   )
@@ -27,13 +13,16 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Generics (Generic)
-import Network.HTTP.Simple (httpJSON, parseRequest, getResponseBody, getResponseStatus)
-import Network.HTTP.Types.Status (statusCode)
+import Network.HTTP.Simple (httpJSON, parseRequest, getResponseBody, getResponseStatusCode)
 
 import EVM.Solidity (Reference(..))
 import EVM.Types (Addr, W256)
 
 import Echidna.Onchain.Types (SourceData(..))
+
+-- | Base URL for Sourcify API
+sourcifyBaseUrl :: String
+sourcifyBaseUrl = "https://sourcify.dev"
 
 -- | Sourcify API response structure
 data SourcifyResponse = SourcifyResponse
@@ -68,39 +57,23 @@ fetchContractSource
   -> Addr   -- ^ address
   -> IO (Maybe SourceData)
 fetchContractSource chainId addr = do
-  let baseUrl = "https://sourcify.dev"
-      reqUrl = baseUrl <> "/v2/contract/"
+  let reqUrl = sourcifyBaseUrl <> "/v2/contract/"
                       <> show (fromIntegral chainId :: Integer)
                       <> "/" <> show addr
                       <> "?fields=all"
-
-  putStr $ "Trying Sourcify... "
 
   catch
     (do
       req <- parseRequest reqUrl
       resp <- httpJSON req
-      let status = statusCode $ getResponseStatus resp
+      let status = getResponseStatusCode resp
       case status of
-        200 -> do
-          case parseSourcifyResponse (getResponseBody resp) of
-            Right srcData -> do
-              putStrLn "Success!"
-              pure $ Just srcData
-            Left err -> do
-              putStrLn $ "Parse error: " <> err
-              pure Nothing
-        404 -> do
-          putStrLn "Not verified on Sourcify"
-          pure Nothing
-        _ -> do
-          putStrLn $ "HTTP error: " <> show status
-          pure Nothing
+        200 -> case parseSourcifyResponse (getResponseBody resp) of
+          Right srcData -> pure $ Just srcData
+          Left _ -> pure Nothing
+        _ -> pure Nothing
     )
-    (\(e :: SomeException) -> do
-      putStrLn $ "Network error: " <> show e
-      pure Nothing
-    )
+    (\(_ :: SomeException) -> pure Nothing)
 
 -- | Parse Sourcify JSON response into SourceData
 parseSourcifyResponse :: Value -> Either String SourceData
@@ -145,6 +118,5 @@ parseSourcifyResponse = parseEither $ \obj -> do
     , immutableRefs = immutableRefs'
     }
   where
-    -- Convert Text to W256 (immutable references keys are numeric strings)
     textToW256 :: Text -> W256
     textToW256 t = read (T.unpack t)

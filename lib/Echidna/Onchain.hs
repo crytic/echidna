@@ -1,6 +1,5 @@
 module Echidna.Onchain
-  ( SourceData(..)
-  , etherscanApiKey
+  ( etherscanApiKey
   , fetchChainIdFrom
   , rpcBlockEnv
   , rpcUrlEnv
@@ -17,7 +16,7 @@ import Control.Monad (when, forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as UTF8
 import Data.Map qualified as Map
-import Data.Maybe (isJust, fromJust, fromMaybe)
+import Data.Maybe (isJust, isNothing, fromJust, fromMaybe)
 import Data.Sequence (Seq)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -93,38 +92,40 @@ externalSolcContract :: Env -> String -> Addr -> Contract -> IO (Maybe (SourceCa
 externalSolcContract env explorerUrl addr c = do
   let runtimeCode = forceBuf $ fromJust $ view bytecode c
 
-  putStr $ "Fetching Solidity source for contract at address " <> show addr <> "... "
-
   -- Try Sourcify first (if chainId available)
   sourcifyResult <- case env.chainId of
-    Just chainId -> Sourcify.fetchContractSource chainId addr
-    Nothing -> do
-      putStrLn "No chain ID, skipping Sourcify"
-      pure Nothing
+    Just chainId -> do
+      putStr $ "Fetching source for " <> show addr <> " from Sourcify... "
+      Sourcify.fetchContractSource chainId addr
+    Nothing -> pure Nothing
 
   -- If Sourcify fails, try Etherscan (only if API key exists)
   sourceData <- case sourcifyResult of
     Just sd -> do
-      putStrLn "Success! (from Sourcify)"
+      putStrLn "Success!"
       pure (Just sd)
     Nothing -> case env.cfg.etherscanApiKey of
       Nothing -> do
-        putStrLn "Failed! (No Etherscan API key configured)"
+        when (isNothing env.chainId) $
+          putStrLn "No source available (no chain ID or Etherscan API key)"
+        when (isJust env.chainId) $
+          putStrLn "Skipping Etherscan (no API key configured)"
         pure Nothing
       Just _ -> do
-        putStrLn "Sourcify failed, trying Etherscan..."
-        Etherscan.fetchContractSourceData
+        putStr $ "Fetching source for " <> show addr <> " from Etherscan... "
+        result <- Etherscan.fetchContractSourceData
           env.chainId
           env.cfg.etherscanApiKey
           explorerUrl
           addr
+        when (isJust result) $ putStrLn "Success!"
+        when (isNothing result) $ putStrLn "Failed!"
+        pure result
 
   -- Convert to SolcContract
   case sourceData of
     Just sd -> buildSolcContract runtimeCode sd
-    Nothing -> do
-      putStrLn "Failed to fetch source code!"
-      pure Nothing
+    Nothing -> pure Nothing
 
 -- | Build SolcContract and SourceCache from SourceData
 buildSolcContract :: BS.ByteString -> SourceData -> IO (Maybe (SourceCache, SolcContract))
