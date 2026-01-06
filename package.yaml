@@ -19,6 +19,7 @@ ghc-options:
 dependencies:
   - aeson
   - base
+  - base16-bytestring
   - containers
   - directory
   - hevm

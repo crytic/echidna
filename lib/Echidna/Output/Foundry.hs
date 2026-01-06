@@ -8,9 +8,10 @@ import Data.Aeson (Value(..), object, (.=))
 import Data.List (elemIndex, nub)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text, unpack)
-import Data.Text.Encoding (decodeUtf8)
 import Data.Text.Lazy (fromStrict)
-import Data.Vector as V hiding ((++), map, zipWith, elemIndex, mapMaybe)
+import qualified Data.ByteString.Base16 as B16
+import qualified Data.ByteString.Char8 as C8
+import Data.Vector as V hiding ((++), map, zipWith, elemIndex, mapMaybe, concatMap, length)
 import Numeric (showHex)
 import qualified Data.Text.Lazy as TL
 import Text.Mustache (Template, substituteValue, toMustache)
@@ -91,7 +92,7 @@ abiValueToString (AbiUInt _ w) = show w
 abiValueToString (AbiInt _ w) = show w
 abiValueToString (AbiAddress a) = "address(0x" ++ showHex (fromIntegral a :: W256) "" ++ ")"
 abiValueToString (AbiBool b) = if b then "true" else "false"
-abiValueToString (AbiBytes _ bs) = "hex\"" ++ unpack (decodeUtf8 bs) ++ "\""
+abiValueToString (AbiBytes _ bs) = "hex\"" ++ C8.unpack (B16.encode bs) ++ "\""
 abiValueToString (AbiString s) = show s
 abiValueToString (AbiTuple vs) = "(" ++ foundryArgs (map abiValueToString (V.toList vs)) ++ ")"
 abiValueToString _ = ""
