@@ -13,12 +13,11 @@ import System.Exit (ExitCode(..))
 import System.FilePath ((</>))
 import System.Process (readProcessWithExitCode)
 
-import Common (testConfig, runContract)
+import Common (runContract)
+import Echidna.Config (parseConfig)
 import Echidna.Output.Foundry (foundryTest)
-import Echidna.Types.Campaign (CampaignConf(..))
-import Echidna.Types.Config (Env(..), EConfig(..))
-import Echidna.Types.Solidity (SolConf(..))
-import Echidna.Types.Test (EchidnaTest(..), TestType(..), TestValue(..), TestState(..))
+import Echidna.Types.Config (Env(..), EConfigWithUsage(..))
+import Echidna.Types.Test (EchidnaTest(..), TestType(..), TestValue(..), TestState(..), didFail, isAssertionTest)
 import Echidna.Types.Worker (WorkerType(..))
 
 foundryTestGenTests :: TestTree
@@ -112,7 +111,7 @@ testForgeCompilation = requireForge $ withTempDir "echidna-forge-compilation-tes
   if code /= ExitSuccess
     then assertFailure $ "forge init failed: " ++ err
     else do
-      copyFile "foundry/FoundryTestTarget.sol" (tmpDir </> "src" </> "FoundryTestTarget.sol")
+      copyFile ("foundry" </> "FoundryTestTarget.sol") (tmpDir </> "src" </> "FoundryTestTarget.sol")
       
       -- Simulate user action: Replace the target contract with the actual
       -- contract instance and import it (add contract import after the
@@ -132,16 +131,14 @@ testForgeCompilation = requireForge $ withTempDir "echidna-forge-compilation-tes
 -- and verify forge reproduces the bug.
 testStatelessBug :: IO ()
 testStatelessBug = requireForge $ do
-  -- Configure for assertion mode with fixed seed for deterministic results.
-  -- The bug is trivial and should always be found, but a fixed seed ensures
-  -- the test is reproducible in CI.
-  let cfg = testConfig 
-        { solConf = testConfig.solConf { testMode = "assertion" }
-        , campaignConf = testConfig.campaignConf { seed = Just 1234 }
-        }
+  -- Load config from YAML (assertion mode with fixed seed for deterministic
+  -- results). The bug is trivial and should always be found, but a fixed seed
+  -- ensures the test is reproducible in CI.
+  parsed <- parseConfig ("foundry" </> "StatelessBug.yaml")
+  let cfg = parsed.econfig
   
   -- Run Echidna to find the bug.
-  (env, _) <- runContract "foundry/StatelessBug.sol" 
+  (env, _) <- runContract ("foundry" </> "StatelessBug.sol") 
                           (Just "StatelessBuggy") 
                           cfg
                           FuzzWorker
@@ -169,7 +166,7 @@ testStatelessBug = requireForge $ do
           then assertFailure $ "forge init failed: " ++ err
           else do
             -- Copy contract and add imports to test.
-            copyFile "foundry/StatelessBug.sol" (tmpDir </> "src" </> "StatelessBuggy.sol")
+            copyFile ("foundry" </> "StatelessBug.sol") (tmpDir </> "src" </> "StatelessBuggy.sol")
             
             writeFile (tmpDir </> "test" </> "Generated.t.sol") testWithImport
           
