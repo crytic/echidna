@@ -24,6 +24,10 @@ foundryTestGenTests :: TestTree
 foundryTestGenTests = testGroup "Foundry test generation"
   [ testCase "compiles with forge" testForgeCompilation
   , testCase "stateless bug reproduction" testStatelessBug
+  , testCase "foundry assertTrue detection" testFoundryAssertTrueConcrete
+  , testCase "foundry assertFalse detection" testFoundryAssertFalseConcrete
+  , testCase "foundry assertEq detection" testFoundryAssertEqConcrete
+  , testCase "foundry assertNotEq detection" testFoundryAssertNotEqConcrete
   ]
 
 -- ============================================================================
@@ -87,6 +91,67 @@ mkMinimalTest = EchidnaTest
   , vm = Nothing
   , workerId = Nothing
   }
+
+-- | Helper to test a Foundry assertX function using concrete execution.
+-- Runs Echidna on a contract, generates a Foundry test, and verifies forge
+-- reproduces the bug.
+testFoundryAssertConcrete :: String -> String -> IO ()
+testFoundryAssertConcrete contractName assertType = requireForge $ do
+  -- Load config from YAML (dapptest mode with fixed seed for deterministic results).
+  parsed <- parseConfig ("foundry" </> "FoundryAsserts.yaml")
+  let cfg = parsed.econfig
+  
+  -- Run Echidna to find the assertion failure.
+  (env, _) <- runContract ("foundry" </> "FoundryAsserts.sol") 
+                          (Just $ pack contractName) 
+                          cfg
+                          FuzzWorker
+  
+  -- Get test results.
+  tests <- traverse readIORef env.testRefs
+  
+  -- Find the failed assertion test.
+  let failedTests = filter (\t -> isAssertionTest t && didFail t) tests
+  case failedTests of
+    [] -> assertFailure $ "Echidna should find " ++ assertType ++ " failure in " ++ contractName
+    (failedTest:_) -> do
+      -- Verify we have a reproducer.
+      assertBool "Failed test should have reproducer" 
+        (not $ null failedTest.reproducer)
+      
+      -- Generate Foundry test.
+      let generatedTest = foundryTest (Just $ pack contractName) failedTest
+          testWithImport = addContractImport "FoundryAsserts" generatedTest
+      
+      -- Setup forge project and run test.
+      withTempDir ("echidna-forge-" ++ assertType ++ "-test") $ \tmpDir -> do
+        (code, _, err) <- readProcessWithExitCode "forge" ["init", tmpDir] ""
+        if code /= ExitSuccess
+          then assertFailure $ "forge init failed: " ++ err
+          else do
+            -- Copy contract and add imports to test.
+            copyFile ("foundry" </> "FoundryAsserts.sol") (tmpDir </> "src" </> "FoundryAsserts.sol")
+            
+            writeFile (tmpDir </> "test" </> "Echidna.t.sol") testWithImport
+          
+            -- Build.
+            (buildCode, _, buildErr) <- readProcessWithExitCode "forge" 
+              ["build", "--root", tmpDir] ""
+            
+            if buildCode /= ExitSuccess
+              then assertFailure $ "forge build failed: " ++ buildErr
+              else do
+                -- Run test - should FAIL (reproducing the assertion bug).
+                (testCode, testOut, testErr) <- readProcessWithExitCode "forge" 
+                  ["test", "--root", tmpDir, "--match-test", "test_replay"] ""
+                
+                -- Verify forge reproduced the assertion failure.
+                assertBool ("forge test should fail (reproducing " ++ assertType ++ " failure)") 
+                  (testCode /= ExitSuccess)
+                
+                let output = testOut ++ testErr
+                assertBool "output should mention assertion or test failure" 
+                  ("assert" `isInfixOf` output || "FAIL" `isInfixOf` output)
 
 -- ============================================================================
 -- Tests
@@ -179,3 +244,19 @@ testStatelessBug = requireForge $ do
                 let output = testOut ++ testErr
                 assertBool "output should mention assertion failure" 
                   ("assert" `isInfixOf` output || "Panic" `isInfixOf` output)
+
+-- | Test Foundry's assertTrue detection.
+testFoundryAssertTrueConcrete :: IO ()
+testFoundryAssertTrueConcrete = testFoundryAssertConcrete "AssertTrueTest" "assertTrue"
+
+-- | Test Foundry's assertFalse detection.
+testFoundryAssertFalseConcrete :: IO ()
+testFoundryAssertFalseConcrete = testFoundryAssertConcrete "AssertFalseTest" "assertFalse"
+
+-- | Test Foundry's assertEq detection.
+testFoundryAssertEqConcrete :: IO ()
+testFoundryAssertEqConcrete = testFoundryAssertConcrete "AssertEqTest" "assertEq"
+
+-- | Test Foundry's assertNotEq detection.
+testFoundryAssertNotEqConcrete :: IO ()
+testFoundryAssertNotEqConcrete = testFoundryAssertConcrete "AssertNotEqTest" "assertNotEq"
