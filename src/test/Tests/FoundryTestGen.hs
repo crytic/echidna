@@ -88,15 +88,6 @@ mkMinimalTest = EchidnaTest
   , workerId = Nothing
   }
 
--- | Check if a test is a failed assertion.
-isFailedAssertion :: EchidnaTest -> Bool
-isFailedAssertion test = case test.testType of
-  AssertionTest {} -> case test.state of
-    Large _ -> True
-    _       -> False
-  _ -> False
-
-
 -- ============================================================================
 -- Tests
 -- ============================================================================
@@ -147,7 +138,7 @@ testStatelessBug = requireForge $ do
   tests <- traverse readIORef env.testRefs
   
   -- Find the failed assertion test.
-  let failedTests = filter isFailedAssertion tests
+  let failedTests = filter (\t -> isAssertionTest t && didFail t) tests
   case failedTests of
     [] -> assertFailure "Echidna should find assertion failure in StatelessBug.sol"
     (failedTest:_) -> do
