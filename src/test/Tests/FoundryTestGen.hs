@@ -24,10 +24,18 @@ foundryTestGenTests :: TestTree
 foundryTestGenTests = testGroup "Foundry test generation"
   [ testCase "compiles with forge" testForgeCompilation
   , testCase "stateless bug reproduction" testStatelessBug
-  , testCase "foundry assertTrue detection" testFoundryAssertTrueConcrete
-  , testCase "foundry assertFalse detection" testFoundryAssertFalseConcrete
-  , testCase "foundry assertEq detection" testFoundryAssertEqConcrete
-  , testCase "foundry assertNotEq detection" testFoundryAssertNotEqConcrete
+  , testGroup "Concrete execution (fuzzing)"
+      [ testCase "concrete foundry assertTrue detection" testFoundryAssertTrueConcrete
+      , testCase "concrete foundry assertFalse detection" testFoundryAssertFalseConcrete
+      , testCase "concrete foundry assertEq detection" testFoundryAssertEqConcrete
+      , testCase "concrete foundry assertNotEq detection" testFoundryAssertNotEqConcrete
+      ]
+  , testGroup "Symbolic execution (SMT solving)"
+      [ testCase "symbolic foundry assertTrue detection" testFoundryAssertTrueSymbolic
+      , testCase "symbolic foundry assertFalse detection" testFoundryAssertFalseSymbolic
+      , testCase "symbolic foundry assertEq detection" testFoundryAssertEqSymbolic
+      , testCase "symbolic foundry assertNotEq detection" testFoundryAssertNotEqSymbolic
+      ]
   ]
 
 -- ============================================================================
@@ -41,7 +49,15 @@ requireForge :: IO () -> IO ()
 requireForge action = do
   forgeExe <- findExecutable "forge"
   case forgeExe of
-    Nothing -> assertFailure "forge not found"
+    Nothing -> assertFailure "forge not found. Install from https://getfoundry.sh"
+    Just _ -> action
+
+-- | Run an IO action that requires z3, failing if z3 is not found.
+requireZ3 :: IO () -> IO ()
+requireZ3 action = do
+  z3Exe <- findExecutable "z3"
+  case z3Exe of
+    Nothing -> assertFailure "z3 not found. Install from https://github.com/Z3Prover/z3/releases"
     Just _ -> action
 
 -- | Run an IO action with a temporary directory, cleaning up before and after.
@@ -92,28 +108,32 @@ mkMinimalTest = EchidnaTest
   , workerId = Nothing
   }
 
--- | Helper to test a Foundry assertX function using concrete execution.
+-- | Helper to test a Foundry assertX function with a specific execution
+-- strategy.
 -- Runs Echidna on a contract, generates a Foundry test, and verifies forge
--- reproduces the bug.
-testFoundryAssertConcrete :: String -> String -> IO ()
-testFoundryAssertConcrete contractName assertType = requireForge $ do
-  -- Load config from YAML (dapptest mode with fixed seed for deterministic results).
-  parsed <- parseConfig ("foundry" </> "FoundryAsserts.yaml")
+-- reproduces the assertion failure.
+testFoundryAssert :: String -> String -> WorkerType -> String -> IO ()
+testFoundryAssert contractName assertType workerType configFile = requireForge $ do
+  -- Load config from YAML.
+  parsed <- parseConfig ("foundry" </> configFile)
   let cfg = parsed.econfig
   
   -- Run Echidna to find the assertion failure.
   (env, _) <- runContract ("foundry" </> "FoundryAsserts.sol") 
                           (Just $ pack contractName) 
                           cfg
-                          FuzzWorker
+                          workerType
   
   -- Get test results.
   tests <- traverse readIORef env.testRefs
   
   -- Find the failed assertion test.
   let failedTests = filter (\t -> isAssertionTest t && didFail t) tests
+      workerDesc = case workerType of
+        SymbolicWorker -> "Symbolic execution"
+        _ -> "Echidna"
   case failedTests of
-    [] -> assertFailure $ "Echidna should find " ++ assertType ++ " failure in " ++ contractName
+    [] -> assertFailure $ workerDesc ++ " should find " ++ assertType ++ " failure in " ++ contractName
     (failedTest:_) -> do
       -- Verify we have a reproducer.
       assertBool "Failed test should have reproducer" 
@@ -124,7 +144,10 @@ testFoundryAssertConcrete contractName assertType = requireForge $ do
           testWithImport = addContractImport "FoundryAsserts" generatedTest
       
       -- Setup forge project and run test.
-      withTempDir ("echidna-forge-" ++ assertType ++ "-test") $ \tmpDir -> do
+      let dirSuffix = case workerType of
+            SymbolicWorker -> "symbolic-" ++ assertType
+            FuzzWorker -> "concrete-" ++ assertType
+      withTempDir ("echidna-forge-" ++ dirSuffix ++ "-test") $ \tmpDir -> do
         (code, _, err) <- readProcessWithExitCode "forge" ["init", tmpDir] ""
         if code /= ExitSuccess
           then assertFailure $ "forge init failed: " ++ err
@@ -153,8 +176,24 @@ testFoundryAssertConcrete contractName assertType = requireForge $ do
                 assertBool "output should mention assertion or test failure" 
                   ("assert" `isInfixOf` output || "FAIL" `isInfixOf` output)
 
+-- | Helper to test a Foundry assertX function using concrete execution
+-- (fuzzing).
+testFoundryAssertConcrete :: String -> String -> IO ()
+testFoundryAssertConcrete contractName assertType = 
+  testFoundryAssert contractName assertType FuzzWorker "FoundryAsserts.yaml"
+
+-- | Helper to test a Foundry assertX function using symbolic execution (SMT
+-- solving).
+testFoundryAssertSymbolic :: String -> String -> IO ()
+testFoundryAssertSymbolic contractName assertType = requireZ3 $ 
+  testFoundryAssert contractName assertType SymbolicWorker "FoundryAssertsSymbolic.yaml"
+
 -- ============================================================================
 -- Tests
+-- ============================================================================
+
+-- ============================================================================
+-- Concrete Tests
 -- ============================================================================
 
 -- | Verify generated test compiles with forge.
@@ -260,3 +299,27 @@ testFoundryAssertEqConcrete = testFoundryAssertConcrete "AssertEqTest" "assertEq
 -- | Test Foundry's assertNotEq detection.
 testFoundryAssertNotEqConcrete :: IO ()
 testFoundryAssertNotEqConcrete = testFoundryAssertConcrete "AssertNotEqTest" "assertNotEq"
+
+-- ============================================================================
+-- Symbolic Execution Tests
+-- ============================================================================
+
+-- | Test Foundry's assertTrue detection with symbolic execution.
+-- Uses the same AssertTrueTest contract as concrete tests, but with symbolic execution.
+testFoundryAssertTrueSymbolic :: IO ()
+testFoundryAssertTrueSymbolic = testFoundryAssertSymbolic "AssertTrueTest" "assertTrue"
+
+-- | Test Foundry's assertEq detection with symbolic execution.
+-- Uses the same AssertEqTest contract as concrete tests, but with symbolic execution.
+testFoundryAssertEqSymbolic :: IO ()
+testFoundryAssertEqSymbolic = testFoundryAssertSymbolic "AssertEqTest" "assertEq"
+
+-- | Test Foundry's assertFalse detection with symbolic execution.
+-- Uses the same AssertFalseTest contract as concrete tests, but with symbolic execution.
+testFoundryAssertFalseSymbolic :: IO ()
+testFoundryAssertFalseSymbolic = testFoundryAssertSymbolic "AssertFalseTest" "assertFalse"
+
+-- | Test Foundry's assertNotEq detection with symbolic execution.
+-- Uses the same AssertNotEqTest contract as concrete tests, but with symbolic execution.
+testFoundryAssertNotEqSymbolic :: IO ()
+testFoundryAssertNotEqSymbolic = testFoundryAssertSymbolic "AssertNotEqTest" "assertNotEq"
