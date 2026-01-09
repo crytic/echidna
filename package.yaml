@@ -119,6 +119,7 @@ tests:
       - data-dword
       - echidna
       - exceptions
+      - filepath
       - optics-core
       - process
       - semver
