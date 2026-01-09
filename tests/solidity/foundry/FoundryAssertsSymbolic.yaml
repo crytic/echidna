@@ -2,6 +2,6 @@ testMode: dapptest
 seed: 1234
 cryticArgs: ["--solc-remaps", "forge-std/=foundry/forge-std/src/"]
 symExec: true
-symExecSMTSolver: z3
+symExecSMTSolver: bitwuzla
 workers: 0
 seqLen: 1
