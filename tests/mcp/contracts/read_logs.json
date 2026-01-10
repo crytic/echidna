@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "read_logs Response Schema",
+  "type": "object",
+  "required": ["events", "count", "timestamp"],
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["timestamp", "type", "worker_id", "data"],
+        "properties": {
+          "timestamp": {"type": "integer"},
+          "type": {"type": "string"},
+          "worker_id": {"type": "integer"},
+          "data": {"type": "object"}
+        }
+      }
+    },
+    "count": {"type": "integer", "minimum": 0},
+    "timestamp": {"type": "integer"}
+  }
+}

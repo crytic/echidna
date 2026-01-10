@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "show_coverage Response Schema",
+  "type": "object",
+  "required": ["coverage_points", "contracts", "timestamp"],
+  "properties": {
+    "coverage_points": {"type": "integer", "minimum": 0},
+    "contracts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "coverage": {"type": "number"}
+        }
+      }
+    },
+    "timestamp": {"type": "integer"}
+  }
+}

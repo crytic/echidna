@@ -4,7 +4,7 @@
 module Echidna.MCP where
 
 import Control.Concurrent (forkIO)
-import Control.Monad (forever, unless)
+import Control.Monad (forever, unless, when)
 import Control.Concurrent.STM
 import Data.IORef (readIORef, modifyIORef', newIORef, IORef, atomicModifyIORef')
 import Data.List (find, isPrefixOf, isSuffixOf, sort, intercalate)
@@ -19,6 +19,10 @@ import qualified Data.Map as Map
 import Text.Read (readMaybe)
 import System.Directory (getCurrentDirectory)
 import Data.Char (isSpace, toLower)
+import Data.Aeson (encode, object, (.=))
+import qualified Data.ByteString.Lazy.Char8 as BSL
+import System.FilePath ((</>))
+import System.IO (withFile, IOMode(AppendMode))
 
 import MCP.Server
 import EVM.Dapp (DappInfo(..))
@@ -453,6 +457,19 @@ runMCPServer env workerRefs port logsRef = do
 
     let handleToolCall :: ToolName -> [(ArgumentName, ArgumentValue)] -> IO (Either Error Content)
         handleToolCall name args = do
+            -- Log control commands
+            when (name `elem` ["inject_fuzz_transactions", "clear_fuzz_priorities"]) $ do
+                dir <- maybe getCurrentDirectory pure env.cfg.campaignConf.corpusDir
+                let logFile = dir </> "mcp-commands.jsonl"
+                now <- getCurrentTime
+                let logEntry = object
+                        [ "timestamp" .= show now
+                        , "command" .= name
+                        , "args" .= Map.fromList args
+                        ]
+                withFile logFile AppendMode $ \h -> do
+                    BSL.hPutStrLn h (encode logEntry)
+
             case find (\t -> pack t.toolName == name) toolsList of
                 Nothing -> return $ Left $ UnknownTool name
                 Just tool -> do
