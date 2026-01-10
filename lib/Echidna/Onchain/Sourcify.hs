@@ -8,6 +8,7 @@ import Control.Monad (mzero)
 import Data.Aeson
 import Data.Aeson.KeyMap qualified as KM
 import Data.Aeson.Types (parseEither, Parser)
+import Data.List (intercalate)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -23,6 +24,18 @@ import Echidna.Onchain.Types (SourceData(..))
 -- | Base URL for Sourcify API
 sourcifyBaseUrl :: String
 sourcifyBaseUrl = "https://sourcify.dev/server"
+
+-- | Set of fields to fetch from Sourcify
+sourcifyFields :: String
+sourcifyFields = intercalate ","
+  [ "sources"
+  , "creationBytecode.sourceMap"
+  , "runtimeBytecode.sourceMap"
+  , "runtimeBytecode.immutableReferences"
+  , "metadata"
+  -- unused right now
+  --, "abi"
+  ]
 
 -- | Source file structure from Sourcify API
 newtype SourceFile = SourceFile
@@ -69,7 +82,7 @@ fetchContractSource chainId addr = do
   let reqUrl = sourcifyBaseUrl <> "/v2/contract/"
                       <> show (fromIntegral chainId :: Integer)
                       <> "/" <> show addr
-                      <> "?fields=all"
+                      <> "?fields=" <> sourcifyFields
   catch
     (do
       req <- parseRequest reqUrl
