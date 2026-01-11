@@ -1,8 +1,6 @@
-module Etherscan
-  ( SourceCode(..)
+module Echidna.Onchain.Etherscan
+  ( fetchContractSourceData
   , getBlockExplorerUrl
-  , fetchContractSource
-  , fetchContractSourceMap
   )
 where
 
@@ -25,6 +23,8 @@ import Text.XML.Cursor (attributeIs, content, element, fromDocument, ($//), (&//
 
 import EVM.Solidity (makeSrcMaps, SrcMap)
 import EVM.Types (Addr, W256)
+
+import Echidna.Onchain.Types (SourceData(..))
 
 data SourceCode = SourceCode
   { name :: Text
@@ -132,9 +132,8 @@ getBlockExplorerUrl maybeChainId = do
     Just url -> pure $ T.unpack url
 
 -- | Unfortunately, Etherscan doesn't expose source maps in the JSON API.
--- This function scrapes it from the HTML. Return a tuple where the first element
--- is raw srcmap in text format and the second element is a parsed map.
-fetchContractSourceMap :: String -> Addr -> IO (Maybe (Text, Seq SrcMap))
+-- This function scrapes it from the HTML. Return the raw srcmap in text format
+fetchContractSourceMap :: String -> Addr -> IO (Maybe Text)
 fetchContractSourceMap baseUrl addr = do
   -- Scrape HTML from block explorer
   url <- parseRequest $ baseUrl <> "/address/" <> show addr
@@ -150,7 +149,7 @@ fetchContractSourceMap baseUrl addr = do
   -- combine with raw srcmap to return so it is easier to cache
   case catMaybes $ zipWith (\x -> fmap (x,)) candidates parsedCandidates of
     [] -> pure Nothing
-    srcmap:_ -> pure (Just srcmap)
+    srcmap:_ -> pure (Just $ fst srcmap)
 
 -- | Calling makeSrcMaps on arbitrary input is unsafe as it could crash
 -- | Wrap it so it doesn't crash, TODO: fix in hevm
@@ -158,3 +157,26 @@ safeMakeSrcMaps :: T.Text -> IO (Maybe (Seq SrcMap))
 safeMakeSrcMaps x =
   -- $! forces the exception to happen right here so we can catch it
   catch (pure $! makeSrcMaps x) (\(_ :: SomeException) -> pure Nothing)
+
+-- | Unified interface for fetching contract source data from Etherscan
+-- Returns Nothing if no API key is provided
+fetchContractSourceData
+  :: Maybe W256  -- ^ chainId (optional, defaults to mainnet)
+  -> Maybe Text  -- ^ Etherscan API key (returns Nothing if not provided)
+  -> String      -- ^ Block explorer URL (for HTML scraping)
+  -> Addr        -- ^ contract address
+  -> IO (Maybe SourceData)
+fetchContractSourceData _ Nothing _ _ = pure Nothing
+fetchContractSourceData maybeChainId maybeApiKey explorerUrl addr = do
+  srcRet <- fetchContractSource maybeChainId maybeApiKey addr
+  srcmapRet <- fetchContractSourceMap explorerUrl addr
+  pure $ do
+    src <- srcRet
+    Just $ SourceData
+      { sourceFiles = Map.singleton (src.name <> ".sol") (T.pack src.code)
+      , runtimeSrcMap = srcmapRet
+      , creationSrcMap = Nothing
+      , contractName = src.name
+      , abi = Nothing
+      , immutableRefs = Nothing
+      }
