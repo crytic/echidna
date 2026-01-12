@@ -47,9 +47,114 @@ foundryTestGenTests = testGroup "Foundry test generation"
               [ ("should be detected", solved "test_assert_not_eq")
               ]
           ]
+      , testGroup "assertEqDecimal"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertEqDecimalTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_eq_decimal")
+              ]
+          ]
+      , testGroup "assertNotEqDecimal"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertNotEqDecimalTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_not_eq_decimal")
+              ]
+          ]
+      , testGroup "assertLt"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertLtTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_lt")
+              ]
+          ]
+      , testGroup "assertGt"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertGtTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_gt")
+              ]
+          ]
+      , testGroup "assertLtDecimal"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertLtDecimalTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_lt_decimal")
+              ]
+          ]
+      , testGroup "assertGtDecimal"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertGtDecimalTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_gt_decimal")
+              ]
+          ]
+      , testGroup "assertLe"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertLeTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_le")
+              ]
+          ]
+      , testGroup "assertGe"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertGeTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_ge")
+              ]
+          ]
+      , testGroup "assertLeDecimal"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertLeDecimalTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_le_decimal")
+              ]
+          ]
+      , testGroup "assertGeDecimal"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertGeDecimalTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_ge_decimal")
+              ]
+          ]
+      , testGroup "assertApproxEqAbs"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertApproxEqAbsTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_approx_eq_abs")
+              ]
+          ]
+      , testGroup "assertApproxEqAbsDecimal"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertApproxEqAbsDecimalTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_approx_eq_abs_decimal")
+              ]
+          ]
+      , testGroup "assertApproxEqRel"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertApproxEqRelTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_approx_eq_rel")
+              ]
+          ]
+      , testGroup "assertApproxEqRelDecimal"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertApproxEqRelDecimalTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected", solved "test_assert_approx_eq_rel_decimal")
+              ]
+          ]
       , testGroup "stateless bug"
           [ testContract "foundry/StatelessBug.sol" (Just "foundry/StatelessBug.yaml")
               [ ("should be detected", solved "checkValue")
+              ]
+          ]
+      , testGroup "revert"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "RevertTest") Nothing (Just "foundry/FoundryAsserts.yaml")
+              True FuzzWorker
+              [ ("should be detected as failure", solved "test_revert_is_failure")
               ]
           ]
       ]
@@ -82,6 +187,42 @@ foundryTestGenTests = testGroup "Foundry test generation"
               [ ("should be detected", solved "test_assert_not_eq")
               ]
           ]
+      , testGroup "assertLt"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertLtTest") Nothing (Just "foundry/FoundryAssertsSymbolic.yaml")
+              True SymbolicWorker
+              [ ("should be detected", solved "test_assert_lt")
+              ]
+          ]
+      , testGroup "assertGt"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertGtTest") Nothing (Just "foundry/FoundryAssertsSymbolic.yaml")
+              True SymbolicWorker
+              [ ("should be detected", solved "test_assert_gt")
+              ]
+          ]
+      , testGroup "assertLe"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertLeTest") Nothing (Just "foundry/FoundryAssertsSymbolic.yaml")
+              True SymbolicWorker
+              [ ("should be detected", solved "test_assert_le")
+              ]
+          ]
+      , testGroup "assertGe"
+          [ testContract' "foundry/FoundryAsserts.sol"
+              (Just "AssertGeTest") Nothing (Just "foundry/FoundryAssertsSymbolic.yaml")
+              True SymbolicWorker
+              [ ("should be detected", solved "test_assert_ge")
+              ]
+          ]
+      -- Note: The following assertions are NOT supported in symbolic execution
+      -- mode because hevm's symbolic execution engine doesn't recognize the
+      -- following cheatcodes:
+      -- - assertEqDecimal, assertNotEqDecimal
+      -- - assertLtDecimal, assertGtDecimal, assertLeDecimal, assertGeDecimal
+      -- - assertApproxEqAbs, assertApproxEqAbsDecimal
+      -- - assertApproxEqRel, assertApproxEqRelDecimal
+      -- These are only tested in concrete (fuzzing) mode above.
       ]
   ]
 
