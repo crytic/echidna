@@ -20,6 +20,10 @@ cabal.project.local
 .HTF/
 crytic-export/
 echidna.cabal
+echidna_agent/
+corpus/
+.github/
+.specify/
 *.swp
 profiles/
 
