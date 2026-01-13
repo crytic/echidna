@@ -25,6 +25,8 @@ jobs:
             container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.8.4\", \"options\": \"--user 1001\"}"
           - os: macos-15-intel # x86_64 macOS
             shell: bash
+          - os: macos-latest-xlarge
+            shell: bash
           - os: windows-latest
             shell: msys2 {0}
 
@@ -35,7 +37,7 @@ jobs:
     steps:
       - name: Get Packages (macOS)
         if: runner.os == 'macOS'
-        run: brew install automake
+        run: brew install autoconf automake libtool
 
       - name: Get Packages (Windows)
         uses: msys2/setup-msys2@v2
@@ -61,7 +63,7 @@ jobs:
             openssl:p
 
       - name: Install Stack
-        uses: haskell-actions/setup@v2
+        uses: haskell-actions/setup@v2.6.0
         id: stack
         if: matrix.container == ''
         with:
@@ -86,6 +88,8 @@ jobs:
           mkdir -p "$STACK_ROOT"
           { echo "extra-include-dirs:";
             echo "- $HOME/.local/include";
+            echo "$EXTRA_INCLUDE_WIN";
+            echo "$EXTRA_INCLUDE_MAC_AARCH64";
             echo;
             echo "extra-lib-dirs:";
             if [ ! "$GHC_MINGW_PATH" = "" ]; then
@@ -94,6 +98,8 @@ jobs:
               echo "- D:/a/_temp/msys64/clang64/lib";
             fi;
             echo "- $HOME/.local/lib";
+            echo "$EXTRA_LIB_WIN";
+            echo "$EXTRA_LIB_MAC_AARCH64";
             echo;
             echo "ghc-options:";
             echo '  "$locals": -Werror'
@@ -108,6 +114,8 @@ jobs:
         env:
           STACK_ROOT: ${{ steps.stack.outputs.stack-root || '/etc/stack' }}
           REPLACE_LINKER_WIN: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
+          EXTRA_INCLUDE_MAC_AARCH64: ${{ (runner.os == 'macOS' && runner.arch == 'ARM64' && '- /opt/homebrew/include') || '' }}
+          EXTRA_LIB_MAC_AARCH64: ${{ (runner.os == 'macOS' && runner.arch == 'ARM64' && '- /opt/homebrew/lib') || '' }}
           SKIP_MSYS: ${{ (runner.os == 'Windows' && 'true') || 'false' }}
           GHC_BIN_PATH: ${{ steps.stack.outputs.ghc-path }}
           GHC_VERSION: ${{ steps.stack.outputs.ghc-version }}
@@ -136,7 +144,7 @@ jobs:
           path: |
             ~/.local
             D:\a\_temp\msys64\home\runneradmin\.local
-          key: ${{ runner.os }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-local-${{ env.CACHE_VERSION }}-${{ hashFiles('.github/scripts/install-*') }}
 
       - name: Configure static build flags
         run: |
@@ -152,7 +160,7 @@ jobs:
             !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar
             !${{ steps.stack.outputs.stack-root || '~/.stack' }}/pantry/hackage/*.tar.gz
             !${{ steps.stack.outputs.stack-root || '~/.stack' }}/config.yaml
-          key: ${{ runner.os }}-stack-${{ env.CACHE_VERSION }}-${{ hashFiles('package.yaml', 'stack.yaml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-stack-${{ env.CACHE_VERSION }}-${{ hashFiles('package.yaml', 'stack.yaml') }}
 
       - name: Build Libraries
         run: |
@@ -187,10 +195,36 @@ jobs:
         if: runner.os == 'Windows'
         run: GZIP=-9 tar -czf echidna.tar.gz -C $APPDATA/local/bin/ echidna.exe
 
+      - name: Generate artifact name
+        id: artifact-name
+        run: |
+          case "$OS-$ARCH" in
+            macOS-ARM64)
+              NAME="aarch64-macos"
+            ;;
+            macOS-X64)
+              NAME="x86_64-macos"
+            ;;
+            Windows-X64)
+              NAME="x86_64-windows"
+            ;;
+            Linux-X64)
+              NAME="x86_64-linux"
+            ;;
+            *)
+              echo "Unknown os-arch combo: ${OS}-${ARCH}"
+              exit 1
+            ;;
+          esac
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+        env:
+          OS: ${{ runner.os }}
+          ARCH: ${{ runner.arch }}
+
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
-          name: echidna-${{ runner.os }}
+          name: echidna-${{ steps.artifact-name.outputs.name }}
           path: echidna.tar.gz
 
       - name: Build and copy test suite
