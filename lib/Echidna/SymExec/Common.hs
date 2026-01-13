@@ -1,3 +1,5 @@
+{-# LANGUAGE GADTs #-}
+
 module Echidna.SymExec.Common where
 
 import Control.Monad.IO.Unlift (MonadUnliftIO, liftIO)
@@ -11,7 +13,6 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified as T
-import Data.List (foldl')
 import Optics.Core ((.~), (%), (%~))
 
 import EVM (loadContract, resetState, symbolify)
@@ -36,17 +37,18 @@ panicMsg :: Word256 -> ByteString
 panicMsg err = selector "Panic(uint256)" <> encodeAbiValue (AbiUInt 256 err)
 
 checkAssertions :: [Word256] -> Postcondition
-checkAssertions errs _ = \case
-  Failure _ _ (UnrecognizedOpcode 0xfe)  -> PBool False
-  Failure _ _ (Revert msg) -> case msg of
-    ConcreteBuf b ->
-      -- NOTE: assertTrue/assertFalse does not have the double colon after "assertion failed"
-      let assertFail = (selector "Error(string)" `BS.isPrefixOf` b) &&
-            ("assertion failed" `BS.isPrefixOf` (BS.drop txtOffset b))
-      in if assertFail || b == panicMsg 0x01 then PBool False
-      else PBool True
-    _ -> error "Non-concrete revert message in assertion check"
-  _ -> PBool True
+checkAssertions _ _ vmres =
+  case vmres of
+    Failure _ _ (UnrecognizedOpcode 0xfe) -> PBool False
+    Failure _ _ (Revert msg) -> case msg of
+      ConcreteBuf b ->
+        -- NOTE: assertTrue/assertFalse does not have the double colon after "assertion failed"
+        let assertFail = (selector "Error(string)" `BS.isPrefixOf` b) &&
+              ("assertion failed" `BS.isPrefixOf` BS.drop txtOffset b)
+        in if assertFail || b == panicMsg 0x01 then PBool False
+        else PBool True
+      _ -> error "Non-concrete revert message in assertion check"
+    _ -> PBool True
   where
     txtOffset = 4+32+32 -- selector + offset + length
 
