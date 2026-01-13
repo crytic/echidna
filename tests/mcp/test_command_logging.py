@@ -4,7 +4,6 @@ Tests reproducibility via mcp-commands.jsonl file
 """
 import json
 import time
-from pathlib import Path
 import pytest
 
 

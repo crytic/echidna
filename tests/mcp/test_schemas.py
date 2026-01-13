@@ -7,7 +7,6 @@ Tests validating MCP tool responses against JSON schemas.
 Updated to match upstream's 7 active tools.
 """
 
-import pytest
 from tests.mcp.scripts.schema_validator import validate_response
 
 

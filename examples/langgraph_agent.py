@@ -13,11 +13,9 @@ Requirements:
 """
 
 import httpx
-import json
-from typing import TypedDict, Annotated, List
+from typing import TypedDict, List
 from langchain_anthropic import ChatAnthropic
 from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolNode
 
 
 # State definition

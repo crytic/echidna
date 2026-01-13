@@ -8,12 +8,11 @@ Provides pytest fixtures for MCP integration testing.
 
 import pytest
 import httpx
-import json
 import subprocess
 import time
 import os
 import socket
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 class MCPClient:

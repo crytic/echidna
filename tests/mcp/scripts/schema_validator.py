@@ -9,7 +9,7 @@ Provides schema validation for MCP tool responses.
 import json
 from pathlib import Path
 from typing import Dict, Any
-from jsonschema import validate, ValidationError
+from jsonschema import validate
 
 
 # Schema directory

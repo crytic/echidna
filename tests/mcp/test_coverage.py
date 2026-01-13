@@ -6,9 +6,7 @@ Phase 5, Task T059
 Tests for show_coverage and dump_lcov MCP tools using upstream implementation.
 """
 
-import pytest
 import time
-import re
 
 
 def test_show_coverage_returns_data(mcp_client):
