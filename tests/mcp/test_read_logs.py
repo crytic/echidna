@@ -10,7 +10,6 @@ Tests for read_logs MCP tool.
 
 import pytest
 import time
-from tests.mcp.scripts.mcp_client_wrapper import MCPClientV2
 
 
 @pytest.mark.skip(reason="read_logs tool is commented out in upstream")
