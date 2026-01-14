@@ -2,7 +2,7 @@ module Tests.Assertion (assertionTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract, testContract', testContractV, solcV, solved, solvedUsing, passed)
+import Common (testContract, testContract', testContractV, solcV, solved, solvedUsing, passed, gasConsumedGt)
 import Echidna.Types.Worker (WorkerType(..))
 
 assertionTests :: TestTree
@@ -40,5 +40,26 @@ assertionTests = testGroup "Assertion-based Integration Testing"
 
     , testContract' "assert/fullmath.sol" (Just "FullMathEchidnaTest") (Just (\v -> v == solcV (0,7,5))) (Just "assert/config.yaml") False FuzzWorker
       [ ("checkMulDivRoundingUp failed", solved "checkMulDivRoundingUp") ]
+
+    -- Gas accounting tests for reverting transactions
+    , testContract "assert/gas_assert.sol" (Just "assert/config.yaml")
+      [ ("test_assert passed", solved "test_assert")
+      , ("gas was consumed", gasConsumedGt 24000)
+      ]
+
+    , testContract "assert/gas_require.sol" (Just "assert/config.yaml")
+      [ ("test_require passed", solvedUsing "test_require" "AssertionFailed(..)")
+      , ("gas was consumed", gasConsumedGt 24000)
+      ]
+
+    , testContract "assert/gas_event.sol" (Just "assert/config.yaml")
+      [ ("test_event passed", solvedUsing "test_event" "AssertionFailed(..)")
+      , ("gas was consumed", gasConsumedGt 24000)
+      ]
+
+    , testContract "assert/gas_revert.sol" (Just "assert/config.yaml")
+      [ ("test_revert passed", solvedUsing "test_revert" "AssertionFailed(..)")
+      , ("gas was consumed", gasConsumedGt 24000)
+      ]
 
   ]

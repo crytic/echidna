@@ -3,8 +3,8 @@ module Echidna.Types.Coverage where
 import Control.Monad ((>=>))
 import Data.Aeson (ToJSON(toJSON), FromJSON(parseJSON), withText)
 import Data.Bits (testBit)
+import Data.Foldable (foldl', length, sum)
 import Data.IORef (IORef, readIORef)
-import Data.List (foldl')
 import Data.Map qualified as Map
 import Data.Map.Strict (Map)
 import Data.Set qualified as Set
@@ -13,6 +13,7 @@ import Data.Vector.Unboxed qualified as V
 import Data.Vector.Unboxed.Mutable (IOVector)
 import Data.Vector.Unboxed.Mutable qualified as VM
 import Data.Word (Word64)
+import Prelude hiding (Foldable(..))
 
 import EVM.Dapp (DappInfo(..))
 import EVM.Solidity (SolcContract(..))
