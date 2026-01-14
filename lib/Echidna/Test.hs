@@ -215,7 +215,7 @@ checkStatefulAssertion vm sig addr = do
     -- Whether the last transaction executed opcode 0xfe, meaning an assertion failure.
     isAssertionFailure = case vm.result of
       Just (VMFailure (UnrecognizedOpcode 0xfe)) -> True
-      Just (VMFailure (Revert (ConcreteBuf msg))) -> ("assertion failed" `BS.isPrefixOf` (BS.drop txtOffset msg))
+      Just (VMFailure (Revert (ConcreteBuf msg))) -> "assertion failed" `BS.isPrefixOf` BS.drop txtOffset msg
       _ -> False
     txtOffset = 4+32+32 -- selector + offset + length
     -- Test always passes if it doesn't target the last executed contract and function.
