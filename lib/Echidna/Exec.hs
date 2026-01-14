@@ -160,7 +160,7 @@ execTxWith executeTx tx = do
         let process = (P.proc cmd args) { P.env = Just mergedEnv }
         (_, stdout, _) <- liftIO $ P.readCreateProcessWithExitCode process ""
         let encodedResponse = encodeAbiValue $
-              AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.pack $ stdout])
+              AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.strip . T.pack $ stdout])
         fromEVM (continuation encodedResponse)
         runFully
 
@@ -180,6 +180,7 @@ execTxWith executeTx tx = do
       codeContractBeforeVMReset <- gets (.state.codeContract)
       calldataBeforeVMReset <- gets (.state.calldata)
       callvalueBeforeVMReset <- gets (.state.callvalue)
+      burnedGas <- gets (.burned)
       -- If a transaction reverts reset VM to state before the transaction.
       put vmBeforeTx
       -- Undo reset of some of the VM state.
@@ -190,6 +191,7 @@ execTxWith executeTx tx = do
       #state % #callvalue .= callvalueBeforeVMReset
       #traces .= tracesBeforeVMReset
       #state % #codeContract .= codeContractBeforeVMReset
+      #burned .= burnedGas
     (VMFailure x, _) -> do
       dapp <- asks (.dapp)
       vm <- get

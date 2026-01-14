@@ -19,6 +19,7 @@ module Common
   , overrideQuiet
   , loadSolTests
   , checkCoverageUsesCorpusDir
+  , gasConsumedGt
   ) where
 
 import Control.Monad (forM_)
@@ -248,6 +249,11 @@ countCorpus :: Int -> (Env, WorkerState) -> IO Bool
 countCorpus n (env, _) = do
   corpus <- readIORef env.corpusRef
   pure $ length corpus == n
+
+-- | Check that gas consumed is greater than a specified threshold.
+-- Useful for verifying gas accounting works correctly
+gasConsumedGt :: Int -> (Env, WorkerState) -> IO Bool
+gasConsumedGt minGas (_, workerState) = pure $ workerState.totalGas > minGas
 
 -- | Check that coverage falls back to corpus directory when coverageDir is not set.
 checkCoverageUsesCorpusDir :: FilePath -> (Env, WorkerState) -> IO Bool

@@ -21,7 +21,14 @@
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [solc-pkgs.overlay foundry.overlay];
+          overlays = [
+            solc-pkgs.overlay
+            foundry.overlay
+            (final: prev: {
+              # build with GHC 9.8
+              haskellPackages = prev.haskell.packages.ghc98;
+            })
+          ];
         };
 
         # prefer musl on Linux, static glibc + threading does not work properly
@@ -48,14 +55,15 @@
           # darwin provides these
           (zlib.override { static = true; shared = false; })
           (libffi.overrideAttrs (_: { dontDisableStatic = true; }))
+          (lib.getLib numactl)
         ];
 
         hevm = pkgs: pkgs.lib.pipe 
           (pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
-            owner = "ethereum";
+            owner = "argotorg";
             repo = "hevm";
-            rev = "9ba5e52fc7ec7ae6f7f3a25d5ee426625d2aa9d3";
-            sha256 = "sha256-5ZWsXtmZsMw2el4cuR9T+qrySTra6Lcaty/RrLOQ2hU=";
+            rev = "release/0.57.0";
+            sha256 = "sha256-Fn/u6u5euZ+khabqdOw7N29le29XCnxbOdSZOit+XXk=";
           }) { secp256k1 = pkgs.secp256k1; })
           ([
             pkgs.haskell.lib.compose.dontCheck

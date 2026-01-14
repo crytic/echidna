@@ -4,6 +4,7 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertFailure)
 
 import Control.Exception (catch, SomeException)
+import Data.List (isInfixOf)
 import Data.Text (pack, unpack, replace)
 import qualified Data.Text.Lazy as TL
 import System.Directory (getTemporaryDirectory, removePathForcibly, findExecutable, copyFile)
@@ -11,6 +12,8 @@ import System.Exit (ExitCode(..))
 import System.Process (readProcessWithExitCode)
 
 import Common (testContract, testContract', solved)
+import EVM.ABI (AbiValue(..))
+import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Output.Foundry (foundryTest)
 import Echidna.Types.Test (EchidnaTest(..), TestType(..), TestValue(..), TestState(..))
 import Echidna.Types.Worker (WorkerType(FuzzWorker, SymbolicWorker))
@@ -18,6 +21,7 @@ import Echidna.Types.Worker (WorkerType(FuzzWorker, SymbolicWorker))
 foundryTestGenTests :: TestTree
 foundryTestGenTests = testGroup "Foundry test generation"
   [ testCase "compiles with forge" testForgeCompilation
+  , testCase "correctly encodes bytes1" testBytes1Encoding
   , testGroup "Concrete execution (fuzzing)"
       [ testGroup "assertTrue"
           [ testContract' "foundry/FoundryAsserts.sol"
@@ -282,3 +286,22 @@ mkMinimalTest = EchidnaTest
   , vm = Nothing
   , workerId = Nothing
   }
+
+testBytes1Encoding :: IO ()
+testBytes1Encoding = do
+  let
+    -- This reproducer failed to be encoded as a string in the past.
+    reproducerTx = Tx
+      { call = SolCall ("f", [AbiBytes 1 "\x92"])
+      , src = 0
+      , dst = 0
+      , value = 0
+      , gas = 0
+      , gasprice = 0
+      , delay = (0, 0)
+      }
+    test = mkMinimalTest { reproducer = [reproducerTx] }
+    generated = TL.unpack $ foundryTest (Just "FoundryTestTarget") test
+  if "hex\"92\"" `isInfixOf` generated
+    then pure ()
+    else assertFailure $ "bytes1 not correctly encoded: " ++ generated
