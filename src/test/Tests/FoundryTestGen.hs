@@ -13,11 +13,13 @@ import System.Process (readProcessWithExitCode)
 import Common (testContract, testContract', solved)
 import Echidna.Output.Foundry (foundryTest)
 import Echidna.Types.Test (EchidnaTest(..), TestType(..), TestValue(..), TestState(..))
+import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerType(FuzzWorker, SymbolicWorker))
 
 foundryTestGenTests :: TestTree
 foundryTestGenTests = testGroup "Foundry test generation"
   [ testCase "compiles with forge" testForgeCompilation
+  , testCase "fallback function syntax" testFallbackSyntax
   , testGroup "Concrete execution (fuzzing)"
       [ testGroup "assertTrue"
           [ testContract' "foundry/FoundryAsserts.sol"
@@ -227,17 +229,32 @@ foundryTestGenTests = testGroup "Foundry test generation"
   ]
 
 -- | Verify generated test compiles with forge.
+testForgeCompilation :: IO ()
+testForgeCompilation =
+  testForgeCompiles "forge-compilation-test" "FoundryTestTarget" mkMinimalTest "Generated.t.sol"
+
+-- | Test that generated test with fallback function call compiles with forge.
+testFallbackSyntax :: IO ()
+testFallbackSyntax =
+  let fallbackTest = mkMinimalTest
+        { reproducer = [Tx (SolCall ("", [])) 0 0 0 0 0 (0, 0)] }
+  in testForgeCompiles "forge-fallback-test" "FallbackTest" fallbackTest "FallbackGenerated.t.sol"
+
+-- | Helper function to test that generated Foundry code compiles with forge.
+-- Takes a test description, contract name, test data, and output file name.
 -- We use temp directories because we need to test the full forge workflow:
 -- forge init (for dependencies) + our generated test + forge build.
-testForgeCompilation :: IO ()
-testForgeCompilation = do
+testForgeCompiles :: String -> String -> EchidnaTest -> String -> IO ()
+testForgeCompiles tmpDirSuffix contractName testData outputFile = do
   forgeExe <- findExecutable "forge"
   case forgeExe of
     Nothing ->
       assertFailure "forge not found"
     Just _ -> do
       tmpBase <- getTemporaryDirectory
-      let tmpDir = tmpBase ++ "/echidna-forge-test"
+      let tmpDir = tmpBase ++ "/echidna-" ++ tmpDirSuffix
+          contractFile = contractName ++ ".sol"
+          contractPath = "foundry/" ++ contractFile
 
       catch (removePathForcibly tmpDir) (\(_ :: SomeException) -> pure ())
 
@@ -246,19 +263,17 @@ testForgeCompilation = do
       if code /= ExitSuccess
         then assertFailure $ "forge init failed: " ++ err
         else do
-          copyFile "foundry/FoundryTestTarget.sol" (tmpDir ++ "/src/FoundryTestTarget.sol")
+          copyFile contractPath (tmpDir ++ "/src/" ++ contractFile)
 
-          -- Simulate user action: Replace the target contract with the actual
-          -- contract instance and import it (add contract import after the
-          -- forge-std one).
-          let generated = TL.unpack $ foundryTest (Just "FoundryTestTarget") mkMinimalTest
+          -- Generate test and add contract import after forge-std import
+          let generated = TL.unpack $ foundryTest (Just (pack contractName)) testData
               forgeStdImport = pack "import \"forge-std/Test.sol\";"
-              contractImport = pack "import \"../src/FoundryTestTarget.sol\";"
+              contractImport = pack $ "import \"../src/" ++ contractFile ++ "\";"
               testWithImport = unpack $ replace forgeStdImport
                                                (forgeStdImport <> "\n" <> contractImport)
                                                (pack generated)
 
-          writeFile (tmpDir ++ "/test/Generated.t.sol") testWithImport
+          writeFile (tmpDir ++ "/test/" ++ outputFile) testWithImport
 
           (buildCode, _, buildErr) <- readProcessWithExitCode "forge" ["build", "--root", tmpDir] ""
 
