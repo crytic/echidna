@@ -5,6 +5,7 @@
 module Echidna.Output.Foundry (foundryTest) where
 
 import Data.Aeson (Value(..), object, (.=))
+import Data.ByteString.Base16 qualified as BS16 (encode)
 import Data.List (elemIndex, nub)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text, unpack)
@@ -94,7 +95,7 @@ abiValueToString (AbiUInt _ w) = show w
 abiValueToString (AbiInt _ w) = show w
 abiValueToString (AbiAddress a) = "address(0x" ++ showHex (fromIntegral a :: W256) "" ++ ")"
 abiValueToString (AbiBool b) = if b then "true" else "false"
-abiValueToString (AbiBytes _ bs) = "hex\"" ++ unpack (decodeUtf8 bs) ++ "\""
+abiValueToString (AbiBytes _ bs) = "hex\"" ++ unpack (decodeUtf8 (BS16.encode bs)) ++ "\""
 abiValueToString (AbiString s) = show s
 abiValueToString (AbiTuple vs) = "(" ++ foundryArgs (map abiValueToString (V.toList vs)) ++ ")"
 abiValueToString _ = ""

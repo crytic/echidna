@@ -4,6 +4,7 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertFailure)
 
 import Control.Exception (catch, SomeException)
+import Data.ByteString qualified as BS
 import Data.Text (pack, unpack, replace)
 import qualified Data.Text.Lazy as TL
 import System.Directory (getTemporaryDirectory, removePathForcibly, findExecutable, copyFile)
@@ -15,11 +16,13 @@ import Echidna.Output.Foundry (foundryTest)
 import Echidna.Types.Test (EchidnaTest(..), TestType(..), TestValue(..), TestState(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerType(FuzzWorker, SymbolicWorker))
+import EVM.ABI (AbiValue(..))
 
 foundryTestGenTests :: TestTree
 foundryTestGenTests = testGroup "Foundry test generation"
   [ testCase "compiles with forge" testForgeCompilation
   , testCase "fallback function syntax" testFallbackSyntax
+  , testCase "null bytes in arguments" testNullBytes
   , testGroup "Concrete execution (fuzzing)"
       [ testGroup "assertTrue"
           [ testContract' "foundry/FoundryAsserts.sol"
@@ -239,6 +242,15 @@ testFallbackSyntax =
   let fallbackTest = mkMinimalTest
         { reproducer = [Tx (SolCall ("", [])) 0 0 0 0 0 (0, 0)] }
   in testForgeCompiles "forge-fallback-test" "FallbackTest" fallbackTest "FallbackGenerated.t.sol"
+
+-- | Test that generated test with null bytes in arguments compiles with forge.
+testNullBytes :: IO ()
+testNullBytes =
+  let nullByteData = BS.pack [0x00, 0x01, 0x00, 0x02, 0x00, 0x00, 0x03]  -- Mix of null and non-null bytes
+      nullByteArg = AbiBytes 32 (nullByteData <> BS.replicate (32 - BS.length nullByteData) 0)
+      nullByteTest = mkMinimalTest
+        { reproducer = [Tx (SolCall ("checkBytes", [nullByteArg])) 0 0 0 0 0 (0, 0)] }
+  in testForgeCompiles "forge-nullbyte-test" "NullByteTest" nullByteTest "NullByteGenerated.t.sol"
 
 -- | Helper function to test that generated Foundry code compiles with forge.
 -- Takes a test description, contract name, test data, and output file name.
