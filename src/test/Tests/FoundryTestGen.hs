@@ -14,12 +14,10 @@ import System.Process (readProcessWithExitCode)
 
 import Common (testContract, testContract', solved)
 import EVM.ABI (AbiValue(..))
-import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Output.Foundry (foundryTest)
 import Echidna.Types.Test (EchidnaTest(..), TestType(..), TestValue(..), TestState(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerType(FuzzWorker, SymbolicWorker))
-import EVM.ABI (AbiValue(..))
 
 foundryTestGenTests :: TestTree
 foundryTestGenTests = testGroup "Foundry test generation"

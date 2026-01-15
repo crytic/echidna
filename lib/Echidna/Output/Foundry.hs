@@ -5,7 +5,6 @@
 module Echidna.Output.Foundry (foundryTest) where
 
 import Data.Aeson (Value(..), object, (.=))
-import Data.ByteString.Base16 qualified as BS16 (encode)
 import Data.List (elemIndex, nub)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text, unpack)
