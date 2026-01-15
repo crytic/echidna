@@ -4,9 +4,7 @@ module Echidna.Onchain.Sourcify
 where
 
 import Control.Exception (catch, SomeException)
-import Control.Monad (mzero)
 import Data.Aeson
-import Data.Aeson.KeyMap qualified as KM
 import Data.Aeson.Types (parseEither, Parser)
 import Data.List (intercalate)
 import Data.Map.Strict (Map)
@@ -32,7 +30,7 @@ sourcifyFields = intercalate ","
   , "creationBytecode.sourceMap"
   , "runtimeBytecode.sourceMap"
   , "runtimeBytecode.immutableReferences"
-  , "metadata"
+  , "compilation.name"
   -- unused right now
   --, "abi"
   ]
@@ -52,7 +50,7 @@ data SourcifyResponse = SourcifyResponse
   , runtimeBytecode :: Maybe BytecodeMeta
   , creationBytecode :: Maybe BytecodeMeta
   , abi :: Maybe [Value]
-  , metadata :: Maybe Value
+  , compilation :: Compilation
   } deriving (Show, Generic)
 
 instance FromJSON SourcifyResponse where
@@ -61,7 +59,7 @@ instance FromJSON SourcifyResponse where
     <*> v .:? "runtimeBytecode"
     <*> v .:? "creationBytecode"
     <*> v .:? "abi"
-    <*> v .:? "metadata"
+    <*> v .: "compilation"
 
 data BytecodeMeta = BytecodeMeta
   { sourceMap :: Maybe Text
@@ -72,6 +70,14 @@ instance FromJSON BytecodeMeta where
   parseJSON = withObject "BytecodeMeta" $ \v -> BytecodeMeta
     <$> v .:? "sourceMap"
     <*> v .:? "immutableReferences"
+
+newtype Compilation = Compilation
+  { name :: Text
+  } deriving (Show, Generic)
+
+instance FromJSON Compilation where
+  parseJSON = withObject "Compilation" $ \v -> Compilation
+    <$> v .: "name"
 
 -- | Fetch contract source from Sourcify
 fetchContractSource
@@ -101,21 +107,8 @@ parseSourcifyResponse :: Value -> Either String SourceData
 parseSourcifyResponse = parseEither $ \obj -> do
   srcResp <- parseJSON obj :: Parser SourcifyResponse
 
-  -- Extract contract name from metadata
-  contractName' <- case srcResp.metadata of
-    Just (Object metaObj) -> do
-      settings <- metaObj .: "settings"
-      compilationTarget <- settings .: "compilationTarget"
-      case compilationTarget of
-        Object target -> do
-          -- compilationTarget is {"Contract.sol": "ContractName"}
-          -- We want the value (contract name)
-          case KM.elems target of
-            [] -> mzero
-            (String name:_) -> pure name
-            _ -> mzero
-        _ -> mzero
-    _ -> mzero
+  -- Extract contract name from compilation.name
+  let contractName' = srcResp.compilation.name
 
   -- Extract runtime and creation source maps
   let runtimeSrcMap' = srcResp.runtimeBytecode >>= (.sourceMap)
