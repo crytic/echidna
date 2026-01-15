@@ -116,7 +116,8 @@ main = withUtf8 $ withCP65001 $ do
       -- as it orders the runs chronologically.
       runId <- fromIntegral . systemSeconds <$> getSystemTime
 
-      when (isJust env.cfg.rpcUrl) $ Onchain.saveCoverageReport env runId
+      when (isJust env.cfg.rpcUrl && not env.cfg.disableOnchainSources) $
+        Onchain.saveCoverageReport env runId
 
       -- save source coverage reports
       let contracts = Map.elems env.dapp.solcByName
@@ -152,6 +153,7 @@ data Options = Options
   , cliSymExecTargets   :: [Text]
   , cliSymExecTimeout   :: Maybe Int
   , cliSymExecNSolvers  :: Maybe Int
+  , cliDisableOnchainSources :: Bool
   }
 
 optsParser :: ParserInfo Options
@@ -244,6 +246,8 @@ options = Options . NE.fromList
   <*> optional (option auto $ long "sym-exec-n-solvers"
     <> metavar "INTEGER"
     <> help ("Number of symbolic execution solvers to run in parallel for each task (assuming sym-exec is enabled). Default is " ++ show defaultSymExecNWorkers))
+  <*> switch (long "disable-onchain-sources"
+    <> help "Disable on-chain coverage reports and fetching of sources from Sourcify and Etherscan.")
 
 versionOption :: Parser (a -> a)
 versionOption = infoOption
@@ -262,6 +266,7 @@ overrideConfig config Options{..} = do
            , rpcUrl = cliRpcUrl <|> envRpcUrl <|> config.rpcUrl
            , rpcBlock = cliRpcBlock <|> envRpcBlock <|> config.rpcBlock
            , etherscanApiKey = envEtherscanApiKey <|> config.etherscanApiKey
+           , disableOnchainSources = cliDisableOnchainSources || config.disableOnchainSources
            }
            & overrideFormat
   where
