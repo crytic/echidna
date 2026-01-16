@@ -351,7 +351,7 @@ showCoverageTool args env _ _ = do
                       keepSection [] = []
                   in T.unlines $ concatMap keepSection sections
 
-            return $ "```\n" ++ (unpack $ filterReport fullReport) ++ "\n```" 
+            return $ "```\n" ++ unpack (filterReport fullReport) ++ "\n```"
          candidates -> return $ printf "Error: Ambiguous contract name '%s'. Found: %s" (unpack contractName) (unpack $ T.intercalate ", " $ map fst candidates)
 
 -- | Registry of available tools
