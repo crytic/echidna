@@ -52,6 +52,7 @@ data EConfig = EConfig
   , rpcBlock :: Maybe Word64
   , etherscanApiKey :: Maybe Text
   , projectName :: Maybe Text
+  , disableOnchainSources :: Bool
   }
 
 instance Read OutputFormat where
