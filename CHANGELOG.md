@@ -1,6 +1,32 @@
 ## Unreleased
-* Dropped Etheno support (#1402)
+
+## 2.3.1
+
+* Fixes for Foundry reproducer test generation (#1484, #1514)
+* Fix SSE getting stuck at the end of execution (#1493)
+* Fix gas underreporting on reverted transactions (#1503)
+* Onchain coverage improvements with Sourcify support as an alternative to Etherscan (#1504, #1511)
+* New `disableOnchainSources` option and `--disable-onchain-sources` CLI flag
+* FFI support now handles commands that output an extra newline (#1507)
+* Updated hevm to `release/0.57.0` (#1515)
+* Newer nixpkgs and compilation fixes for GHC 9.10 (#1500, #1501)
+
+## 2.3.0
+
+* Symbolic execution integration with fuzzing: verification mode for stateless functions and symExec mode combining fuzzing with symbolic execution (#1394)
+* Support for Bitwuzla, cvc5, and Z3 solvers (#1421, #1425)
+* Foundry test generation for discovered bugs (standalone reproducers for failed assertions) (#1437)
+* Improved HTML coverage reporting (#1415) with configurable `coverageDir` option (#1428)
+* Enhanced failure diagnostics: all events from all transactions in the sequence are now displayed (#1475)
+* Deployment errors now show full execution trace (#1466)
+* Shrinking status logged during minimization (#1454)
+* Dictionary extraction from tuple elements (#1406)
+* Enhanced callback encoding for multicall-style interactions (#1444)
+* Docker image now includes Foundry, Z3, and Bitwuzla (#1422, #1469)
+* `rtsopts` enabled on release builds (#1457)
+* Dropped Etheno support and `initialize` configuration (#1402)
 * Dropped `estimateGas` support and auxiliary code (#1403)
+* Dropped `symExecConcolic` option (#1394)
 
 ## 2.2.7
 
