@@ -1,7 +1,12 @@
+{-# LANGUAGE GADTs #-}
+
 module Echidna.SymExec.Common where
 
 import Control.Monad.IO.Unlift (MonadUnliftIO, liftIO)
 import Control.Monad.State.Strict (execState, runStateT)
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
+import Data.DoubleWord (Word256)
 import Data.Function ((&))
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
@@ -11,21 +16,41 @@ import Data.Text qualified as T
 import Optics.Core ((.~), (%), (%~))
 
 import EVM (loadContract, resetState, symbolify)
-import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..))
+import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..), selector, encodeAbiValue, AbiValue(..))
 import EVM.Effects (TTY, ReadConfig)
 import EVM.Expr qualified
 import EVM.Fetch qualified as Fetch
 import EVM.Format (formatPartialDetailed)
 import EVM.Solidity (SolcContract(..), SourceCache(..), Method(..), WarningData(..))
 import EVM.Solvers (SolverGroup)
-import EVM.SymExec (mkCalldata, verifyInputsWithHandler, VeriOpts(..), checkAssertions, subModel, defaultSymbolicValues)
-import EVM.Types (Addr, VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit, isQed)
+import EVM.SymExec (mkCalldata, verifyInputsWithHandler, VeriOpts(..), subModel, defaultSymbolicValues, Postcondition)
+import EVM.Types (Addr, VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit, isQed, EvmError(..))
 import qualified EVM.Types (VM(..))
 
 import Echidna.Types (fromEVM)
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..), maxGasPerBlock)
+
+panicMsg :: Word256 -> ByteString
+panicMsg err = selector "Panic(uint256)" <> encodeAbiValue (AbiUInt 256 err)
+
+checkAssertions :: [Word256] -> Postcondition
+checkAssertions _ _ vmres =
+  case vmres of
+    Failure _ _ _ -> PBool False
+    {-Failure _ _ (Revert msg) -> case msg of
+      ConcreteBuf b ->
+        -- NOTE: assertTrue/assertFalse does not have the double colon after "assertion failed"
+        let assertFail = (selector "Error(string)" `BS.isPrefixOf` b) &&
+              ("assertion failed" `BS.isPrefixOf` BS.drop txtOffset b)
+        in if assertFail || b == panicMsg 0x01 then PBool False
+        else PBool True
+      _ -> error "Non-concrete revert message in assertion check"
+    -}
+    _ -> PBool True
+  where
+    txtOffset = 4+32+32 -- selector + offset + length
 
 type PartialsLogs = [T.Text]
 
@@ -137,7 +162,7 @@ exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpc
   let
     vm' = vmReset & execState (loadContract (LitAddr dst))
                   & #tx % #isCreate .~ False
-                  & #state % #callvalue .~ TxValue
+                  & #state % #callvalue .~ (Lit 0) --TxValue
                   & #state % #caller .~ SymAddr "caller"
                   & #state % #calldata .~ cd
 
@@ -151,5 +176,5 @@ exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpc
   (models, partials) <- verifyInputsWithHandler solvers veriOpts fetcher vm'' (checkAssertions [0x1]) Nothing
   let results = filter (\(r, _) -> not (isQed r)) models & map fst
   let warnData = Just $ WarningData contract sources vm'
-  --liftIO $ mapM_ TIO.putStrLn partials
+  liftIO $ mapM_ (putStrLn . show) partials
   return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (formatPartialDetailed warnData . fst) partials)
