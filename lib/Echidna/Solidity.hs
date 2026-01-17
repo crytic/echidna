@@ -149,7 +149,7 @@ filterMethods contractName (Blacklist ig) ms =
 -- | Filter methods with arguments, used for dapptest mode
 filterMethodsWithArgs :: NonEmpty SolSignature -> NonEmpty SolSignature
 filterMethodsWithArgs ms =
-  case NE.filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ms of
+  case NE.filter (\(n, xs) -> T.isPrefixOf "test" n && (T.isPrefixOf "invariant_" n || not (null xs))) ms of
     [] -> error "No dapptest tests found"
     fs -> NE.fromList fs
 
@@ -228,7 +228,7 @@ loadSpecified env mainContract cs = do
               else pure vm3
 
     case vm4.result of
-      Just (VMFailure _) -> throwM SetUpCallFailed
+      Just (VMFailure _) -> throwM $ SetUpCallFailed $ showTraceTree env.dapp vm4
       _ -> pure vm4
 
   where

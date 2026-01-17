@@ -38,8 +38,8 @@ panicMsg err = selector "Panic(uint256)" <> encodeAbiValue (AbiUInt 256 err)
 checkAssertions :: [Word256] -> Postcondition
 checkAssertions _ _ vmres =
   case vmres of
-    Failure _ _ (UnrecognizedOpcode 0xfe) -> PBool False
-    Failure _ _ (Revert msg) -> case msg of
+    Failure _ _ _ -> PBool False
+    {-Failure _ _ (Revert msg) -> case msg of
       ConcreteBuf b ->
         -- NOTE: assertTrue/assertFalse does not have the double colon after "assertion failed"
         let assertFail = (selector "Error(string)" `BS.isPrefixOf` b) &&
@@ -47,6 +47,7 @@ checkAssertions _ _ vmres =
         in if assertFail || b == panicMsg 0x01 then PBool False
         else PBool True
       _ -> error "Non-concrete revert message in assertion check"
+    -}
     _ -> PBool True
   where
     txtOffset = 4+32+32 -- selector + offset + length
@@ -161,7 +162,7 @@ exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpc
   let
     vm' = vmReset & execState (loadContract (LitAddr dst))
                   & #tx % #isCreate .~ False
-                  & #state % #callvalue .~ TxValue
+                  & #state % #callvalue .~ (Lit 0) --TxValue
                   & #state % #caller .~ SymAddr "caller"
                   & #state % #calldata .~ cd
 
@@ -175,5 +176,5 @@ exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpc
   (models, partials) <- verifyInputsWithHandler solvers veriOpts fetcher vm'' (checkAssertions [0x1]) Nothing
   let results = filter (\(r, _) -> not (isQed r)) models & map fst
   let warnData = Just $ WarningData contract sources vm'
-  --liftIO $ mapM_ TIO.putStrLn partials
+  liftIO $ mapM_ (putStrLn . show) partials
   return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (formatPartialDetailed warnData . fst) partials)

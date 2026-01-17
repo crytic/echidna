@@ -56,6 +56,7 @@ verifyMethod method contract vm = do
     askSmtIters = conf.campaignConf.symExecAskSMTIters
     rpcInfo = RpcInfo (rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock))
     defaultSender = fromJust $ Set.lookupMin conf.solConf.sender <|> Just 0
+    --testMode = conf.campaignConf.testMode
 
   threadIdChan <- liftIO newEmptyMVar
   doneChan <- liftIO newEmptyMVar
