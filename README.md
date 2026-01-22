@@ -56,9 +56,9 @@ Echidna should find a call sequence that falsifies `echidna_sometimesfalse` and 
 
 ### Collecting and visualizing coverage
 
-After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain two entries: (1) a directory named `coverage` with JSON files that can be replayed by Echidna and (2) a plain-text file named `covered.txt`, a copy of the source code with coverage annotations.
+After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain two entries: (1) a directory named `coverage` with JSON files that can be replayed by Echidna and a set of human-readable documens to visualize coverage.
 
-If you run `tests/solidity/basic/flags.sol` example, Echidna will save a few files serialized transactions in the `coverage` directory and a `covered.$(date +%s).txt` file with the following lines:
+For instance, if you run `tests/solidity/basic/flags.sol` example, Echidna will save a few files serialized transactions in the `coverage` directory and a `covered.$(date +%s).txt` file with the following lines:
 
 ```text
 *r  |  function set0(int val) public returns (bool){
@@ -78,6 +78,10 @@ Our tool signals each execution trace in the corpus with the following "line mar
 * `r` if an execution ended with a REVERT
 * `o` if an execution ended with an out-of-gas error
 * `e` if an execution ended with any other error (zero division, assertion failure, etc)
+
+The same information is available in an html file (`covered.$(date +%s).html`) for improved navigation. Finally, we support for lcov output for visualizing coverage. To generate an html file with the complete set of tested contracts, you need to use [`genhtml`](https://manpages.ubuntu.com/manpages/xenial/man1/genhtml.1.html):
+
+<a href="https://github.com/crytic/echidna/assets/31542053/d0203d8f-2aea-405a-8bdd-5f12897a5cfb"><img src="https://github.com/crytic/echidna/assets/31542053/d0203d8f-2aea-405a-8bdd-5f12897a5cfb" width="450"/></a>
 
 ### Support for smart contract build systems
 
