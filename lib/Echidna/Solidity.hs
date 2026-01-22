@@ -41,7 +41,7 @@ import Echidna.ABI
 import Echidna.Deploy (deployContracts, deployBytecodes)
 import Echidna.Exec (execTx, execTxWithCov, initialVM)
 import Echidna.SourceAnalysis.Slither
-import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
+import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode, isBenchmarkMode)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
@@ -153,11 +153,16 @@ filterMethodsWithArgs ms =
     [] -> error "No dapptest tests found"
     fs -> NE.fromList fs
 
+fullAbiOf :: SolcContract -> NonEmpty SolSignature
+fullAbiOf solcContract =
+  fallback :|
+    (Map.elems solcContract.abiMap <&> \method -> (method.name, snd <$> method.inputs))
+
 abiOf :: Text -> SolcContract -> NonEmpty SolSignature
 abiOf pref solcContract =
   fallback :|
     filter (not . isPrefixOf pref . fst)
-           (Map.elems solcContract.abiMap <&> \method -> (method.name, snd <$> method.inputs))
+           (NE.tail $ fullAbiOf solcContract)
 
 -- | Given an optional contract name and a list of 'SolcContract's, try to load the specified
 -- contract, or, if not provided, the first contract in the list, into a 'VM' usable for Echidna
@@ -259,17 +264,20 @@ mkSignatureMap
 mkSignatureMap solConf mainContract contracts = do
   let
     -- Filter ABI according to the config options
-    fabiOfc = if isDapptestMode solConf.testMode
-                then NE.toList $ filterMethodsWithArgs (abiOf solConf.prefix mainContract)
-                else filterMethods mainContract.contractName solConf.methodFilter $
-                       abiOf solConf.prefix mainContract
+    fabiOfc
+      | isDapptestMode solConf.testMode = NE.toList $ filterMethodsWithArgs (abiOf solConf.prefix mainContract)
+      | isBenchmarkMode solConf.testMode = NE.toList $ fullAbiOf mainContract
+      | otherwise = filterMethods mainContract.contractName solConf.methodFilter $
+                         abiOf solConf.prefix mainContract
     -- Construct ABI mapping for World
     abiMapping =
       if solConf.allContracts then
         Map.fromList $ mapMaybe (\contract ->
-            let filtered = filterMethods contract.contractName
-                                         solConf.methodFilter
-                                         (abiOf solConf.prefix contract)
+            let filtered = if isBenchmarkMode solConf.testMode
+                             then NE.toList $ fullAbiOf contract
+                             else filterMethods contract.contractName
+                                                solConf.methodFilter
+                                                (abiOf solConf.prefix contract)
             in (contract.runtimeCodehash,) <$> NE.nonEmpty filtered)
           contracts
       else
