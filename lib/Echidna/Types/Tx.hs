@@ -7,7 +7,7 @@
 module Echidna.Types.Tx where
 
 import Control.Applicative ((<|>))
-import Control.DeepSeq (NFData)
+import Control.DeepSeq (NFData(..))
 import Data.Aeson (FromJSON, ToJSON, parseJSON, toJSON, object, withObject, (.=), (.:))
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.Aeson.Types (Parser)
@@ -76,6 +76,8 @@ deriving instance Hashable AbiValue
 deriving instance Hashable AbiType
 deriving anyclass instance Hashable Addr
 deriving anyclass instance Hashable W256
+instance Hashable FunctionSelector where
+  hashWithSalt s = hashWithSalt s . (.unFunctionSelector)
 
 deriving instance NFData Tx
 deriving instance NFData TxCall
@@ -88,6 +90,8 @@ deriving instance NFData Word160
 deriving instance NFData AbiType
 deriving anyclass instance NFData Addr
 deriving anyclass instance NFData W256
+instance NFData FunctionSelector where
+  rnf (FunctionSelector w) = rnf w
 
 instance ToJSON Tx where
   toJSON Tx{..} = object
