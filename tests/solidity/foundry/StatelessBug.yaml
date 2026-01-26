@@ -1,2 +1,3 @@
 testMode: assertion
 seed: 1234
+disableSlither: true
