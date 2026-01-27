@@ -17,7 +17,7 @@ import EVM.Dapp (DappInfo(..))
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Fetch (RpcInfo(..))
 import EVM.Solidity (SolcContract(..), Method(..))
-import EVM.Solvers (withSolvers)
+import EVM.Solvers (defMemLimit, withSolvers)
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
 import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
@@ -68,7 +68,7 @@ verifyMethod method contract vm = do
   session <- asks (.fetchSession)
   pushWorkerEvent $ SymExecLog ("Verifying " <> (show method.name))
 
-  liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) 1 timeoutSMT $ \solvers -> do
+  liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
       (res, partials) <- exploreMethod method contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan (res, partials)
