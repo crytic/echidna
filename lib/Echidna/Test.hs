@@ -84,10 +84,11 @@ createTests
   :: TestMode
   -> Bool
   -> [Text]
+  -> Int
   -> Addr
   -> [SolSignature]
   -> [EchidnaTest]
-createTests m td ts r ss = case m of
+createTests m td ts len r ss = case m of
   "exploration" ->
     [createTest Exploration]
   "overflow" ->
@@ -100,8 +101,12 @@ createTests m td ts r ss = case m of
     map (\s -> createTest (AssertionTest False s r))
         (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
   "foundry" ->
-    map (\s -> createTest (AssertionTest True s r))
-        (filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ss)
+    if (len == 1) then
+      map (\s -> createTest (AssertionTest True s r))
+        (filter (\(n, xs) -> T.isPrefixOf "test" n && not (null xs)) ss)
+    else 
+      map (\s -> createTest (AssertionTest True s r))
+          (filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ss)
   _ -> error validateTestModeError
   ++ (if td then [sdt, sdat] else [])
   where
@@ -244,7 +249,7 @@ checkDapptestAssertion vm sig addr = do
                     (forceBuf vm.state.calldata)
     isAssertionFailure = case vm.result of
       Just (VMFailure (Revert (ConcreteBuf bs))) ->
-        not $ BS.isSuffixOf assumeMagicReturnCode bs
+        (T.isPrefixOf "invariant_" $ fst sig) && (not $ BS.isSuffixOf assumeMagicReturnCode bs)
       Just (VMFailure _) -> True
       _ -> False
     isCorrectAddr = LitAddr addr == vm.state.codeContract
