@@ -1,7 +1,7 @@
 module Tests.FoundryTestGen (foundryTestGenTests) where
 
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (testCase, assertFailure)
+import Test.Tasty.HUnit (assertBool, assertFailure, testCase)
 
 import Control.Exception (catch, SomeException)
 import Data.ByteString qualified as BS
@@ -22,7 +22,6 @@ import Echidna.Output.Foundry (foundryTest)
 import Echidna.Types.Test (EchidnaTest(..), TestType(..), TestValue(..), TestState(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerType(FuzzWorker, SymbolicWorker))
-import Test.Tasty.HUnit (assertBool)
 
 foundryTestGenTests :: TestTree
 foundryTestGenTests = testGroup "Foundry test generation"
@@ -282,9 +281,7 @@ solcSupportsForgeStd = unsafePerformIO $ do
     Nothing -> pure False
     Just _ -> do
       (code, out, _) <- readProcessWithExitCode "solc" ["--version"] ""
-      pure $ if code == ExitSuccess
-               then maybe False (>= (0, 8, 13)) (parseSolcVersion out)
-               else False
+      pure $ code == ExitSuccess && maybe False (>= (0, 8, 13)) (parseSolcVersion out)
   where
     parseSolcVersion :: String -> Maybe (Int, Int, Int)
     parseSolcVersion output =
