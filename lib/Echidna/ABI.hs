@@ -77,7 +77,7 @@ ppAbiValue labels = \case
   AbiArrayDynamic _ v -> "[" <> commaSeparated v <> "]"
   AbiArray _ _ v      -> "[" <> commaSeparated v <> "]"
   AbiTuple v          -> "(" <> commaSeparated v <> ")"
-  AbiFunction v       -> show v
+  AbiFunction a sel   -> show a <> ":" <> show sel
   where
     commaSeparated v = intercalate ", " $ ppAbiValue labels <$> toList v
 
@@ -289,7 +289,7 @@ shrinkAbiValue = \case
     \case 0 -> AbiArrayDynamic t <$> traverse shrinkAbiValue l
           _ -> AbiArrayDynamic t <$> shrinkV l
   AbiTuple v          -> AbiTuple <$> traverse shrinkAbiValue' v
-  AbiFunction v       -> pure $ AbiFunction v
+  AbiFunction a sel   -> pure $ AbiFunction a sel
   where shrinkAbiValue' x = liftM3 bool (pure x) (shrinkAbiValue x) getRandom
 
 -- | Given a 'SolCall', generate a random \"smaller\" (simpler) call.
@@ -344,7 +344,7 @@ mutateAbiValue = \case
 
   AbiArrayDynamic t l -> AbiArrayDynamic t <$> mutateLL Nothing mempty l
   AbiTuple v -> AbiTuple <$> traverse mutateAbiValue v
-  AbiFunction v -> pure $ AbiFunction v
+  AbiFunction a sel -> pure $ AbiFunction a sel
 
 -- | Given a 'SolCall', generate a random \"similar\" call with the same 'SolSignature'.
 -- Note that this function will mutate a *single* argument (if any)
@@ -416,8 +416,8 @@ genAbiValueM' genDict funcName depth t =
                                  >>= flip V.replicateM (genAbiValueM' genDict funcName (depth + 1) t')
         AbiArrayType n t'      -> AbiArray n t' <$> V.replicateM n (genAbiValueM' genDict funcName (depth + 1) t')
         AbiTupleType v        -> AbiTuple <$> traverse (genAbiValueM' genDict funcName (depth + 1)) v
-        AbiFunctionType       -> liftM2 (\n -> AbiString . BS.pack . take n)
-                                        (getRandomR (1, 32)) getRandoms
+        AbiFunctionType       -> AbiFunction <$> rElem (NE.fromList pregenAdds)
+                                             <*> (FunctionSelector <$> getRandom)
   in genWithDict genDict genDict.constants go t
 
 -- | Given a 'SolSignature', generate a random 'SolCall' with that signature,
