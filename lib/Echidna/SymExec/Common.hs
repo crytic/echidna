@@ -173,5 +173,5 @@ exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpc
   (models, partials) <- verifyInputsWithHandler solvers veriOpts fetcher vm'' (checkAssertions [0x1]) Nothing
   let results = filter (\(r, _) -> not (isQed r)) models & map fst
   let warnData = Just $ WarningData contract sources vm'
-  liftIO $ mapM_ print partials
+  --liftIO $ mapM_ print partials
   return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (formatPartialDetailed warnData . fst) partials)
