@@ -14,7 +14,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Process (readProcessWithExitCode)
 import Text.Read (readMaybe)
 
-import Common (testContract, testContract', solved)
+import Common (solved, testContract, testContractNamed)
 import Echidna.Types.Config (Env)
 import Echidna.Types.Campaign (WorkerState)
 import EVM.ABI (AbiValue(..))
@@ -30,92 +30,110 @@ foundryTestGenTests = testGroup "Foundry test generation"
   , testCase "fallback function syntax" testFallbackSyntax
   , testCase "null bytes in arguments" testNullBytes
   , testGroup "Concrete execution (fuzzing)"
-      [ testForgeStd "foundry/FoundryAsserts.sol"
+      [ testForgeStd "solves assertTrue"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertTrueTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertTrue should be detected concrete", solved "test_assert_true")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertFalse"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertFalseTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertFalse should be detected concrete", solved "test_assert_false")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertEq"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertEqTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertEq should be detected concrete", solved "test_assert_eq")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertNotEq"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertNotEqTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertNotEq should be detected concrete", solved "test_assert_not_eq")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertEqDecimal"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertEqDecimalTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertEqDecimal should be detected concrete", solved "test_assert_eq_decimal")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertNotEqDecimal"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertNotEqDecimalTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertNotEqDecimal should be detected concrete", solved "test_assert_not_eq_decimal")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertLt"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertLtTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertLt should be detected concrete", solved "test_assert_lt")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertGt"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertGtTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertGt should be detected concrete", solved "test_assert_gt")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertLtDecimal"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertLtDecimalTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertLtDecimal should be detected concrete", solved "test_assert_lt_decimal")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertGtDecimal"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertGtDecimalTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertGtDecimal should be detected concrete", solved "test_assert_gt_decimal")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertLe"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertLeTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertLe should be detected concrete", solved "test_assert_le")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertGe"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertGeTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertGe should be detected concrete", solved "test_assert_ge")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertLeDecimal"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertLeDecimalTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertLeDecimal should be detected concrete", solved "test_assert_le_decimal")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertGeDecimal"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertGeDecimalTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertGeDecimal should be detected concrete", solved "test_assert_ge_decimal")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertApproxEqAbs"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertApproxEqAbsTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertApproxEqAbs should be detected concrete", solved "test_assert_approx_eq_abs")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertApproxEqAbsDecimal"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertApproxEqAbsDecimalTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertApproxEqAbsDecimal should be detected concrete", solved "test_assert_approx_eq_abs_decimal")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertApproxEqRel"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertApproxEqRelTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertApproxEqRel should be detected concrete", solved "test_assert_approx_eq_rel")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertApproxEqRelDecimal"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertApproxEqRelDecimalTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("assertApproxEqRelDecimal should be detected concrete", solved "test_assert_approx_eq_rel_decimal")
@@ -123,49 +141,58 @@ foundryTestGenTests = testGroup "Foundry test generation"
       , testContract "foundry/StatelessBug.sol" (Just "foundry/StatelessBug.yaml")
           [ ("stateless bug should be detected concrete", solved "checkValue")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves revert"
+          "foundry/FoundryAsserts.sol"
           (Just "RevertTest") (Just "foundry/FoundryAsserts.yaml")
           FuzzWorker
           [ ("revert should be detected as failure concrete", solved "test_revert_is_failure")
           ]
       ]
   , testGroup "Symbolic execution (SMT solving)"
-      [ testForgeStd "foundry/FoundryAsserts.sol"
+      [ testForgeStd "solves assertTrue"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertTrueTest") (Just "foundry/FoundryAssertsSymbolic.yaml")
           SymbolicWorker
           [ ("assertTrue should be detected symbolic", solved "test_assert_true")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertFalse"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertFalseTest") (Just "foundry/FoundryAssertsSymbolic.yaml")
           SymbolicWorker
           [ ("assertFalse should be detected symbolic", solved "test_assert_false")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertEq"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertEqTest") (Just "foundry/FoundryAssertsSymbolic.yaml")
           SymbolicWorker
           [ ("assertEq should be detected symbolic", solved "test_assert_eq")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertNotEq"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertNotEqTest") (Just "foundry/FoundryAssertsSymbolic.yaml")
           SymbolicWorker
           [ ("assertNotEq should be detected symbolic", solved "test_assert_not_eq")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertLt"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertLtTest") (Just "foundry/FoundryAssertsSymbolic.yaml")
           SymbolicWorker
           [ ("assertLt should be detected symbolic", solved "test_assert_lt")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertGt"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertGtTest") (Just "foundry/FoundryAssertsSymbolic.yaml")
           SymbolicWorker
           [ ("assertGt should be detected symbolic", solved "test_assert_gt")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertLe"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertLeTest") (Just "foundry/FoundryAssertsSymbolic.yaml")
           SymbolicWorker
           [ ("assertLe should be detected symbolic", solved "test_assert_le")
           ]
-      , testForgeStd "foundry/FoundryAsserts.sol"
+      , testForgeStd "solves assertGe"
+          "foundry/FoundryAsserts.sol"
           (Just "AssertGeTest") (Just "foundry/FoundryAssertsSymbolic.yaml")
           SymbolicWorker
           [ ("assertGe should be detected symbolic", solved "test_assert_ge")
@@ -264,12 +291,12 @@ testBytes1Encoding = do
     then pure ()
     else assertFailure $ "bytes1 not correctly encoded: " ++ generated
 
--- | Wrapper for testContract' that skips if solc < 0.8.13
-testForgeStd :: FilePath -> Maybe String -> Maybe FilePath -> WorkerType -> [(String, (Env, WorkerState) -> IO Bool)] -> TestTree
-testForgeStd fp contract config workerType checks =
+-- | Wrapper for testContractNamed that skips if solc < 0.8.13.
+testForgeStd :: String -> FilePath -> Maybe String -> Maybe FilePath -> WorkerType -> [(String, (Env, WorkerState) -> IO Bool)] -> TestTree
+testForgeStd name fp contract config workerType checks =
   if solcSupportsForgeStd
-    then testContract' fp (pack <$> contract) Nothing config True workerType checks
-    else testCase fp $ assertBool "skip (solc < 0.8.13, forge-std requires >= 0.8.13)" True
+    then testContractNamed name fp (pack <$> contract) Nothing config True workerType checks
+    else testCase name $ assertBool "skip (solc < 0.8.13, forge-std requires >= 0.8.13)" True
 
 -- | Check if solc >= 0.8.13 (required for forge-std). Computed once on module
 -- load. This is used to skip tests that require forge-std if solc is too old.
