@@ -249,8 +249,8 @@ checkDapptestAssertion vm sig addr = do
                     (forceBuf vm.state.calldata)
     isAssertionFailure = case vm.result of
       Just (VMFailure (Revert (ConcreteBuf bs))) ->
-        (T.isPrefixOf "test" $ fst sig) && (not $ BS.isSuffixOf assumeMagicReturnCode bs) ||
-        (T.isPrefixOf "invariant_" $ fst sig) && (not $ BS.isSuffixOf assumeMagicReturnCode bs)
+        T.isPrefixOf "test" (fst sig) && not (BS.isSuffixOf assumeMagicReturnCode bs) ||
+        T.isPrefixOf "invariant_" (fst sig) && not (BS.isSuffixOf assumeMagicReturnCode bs)
       Just (VMFailure _) -> True
       _ -> False
     isCorrectAddr = LitAddr addr == vm.state.codeContract
