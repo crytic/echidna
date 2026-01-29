@@ -101,10 +101,10 @@ createTests m td ts len r ss = case m of
     map (\s -> createTest (AssertionTest False s r))
         (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
   "foundry" ->
-    if (len == 1) then
+    if len == 1 then
       map (\s -> createTest (AssertionTest True s r))
         (filter (\(n, xs) -> T.isPrefixOf "test" n && not (null xs)) ss)
-    else 
+    else
       map (\s -> createTest (AssertionTest True s r))
           (filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ss)
   _ -> error validateTestModeError
@@ -249,7 +249,8 @@ checkDapptestAssertion vm sig addr = do
                     (forceBuf vm.state.calldata)
     isAssertionFailure = case vm.result of
       Just (VMFailure (Revert (ConcreteBuf bs))) ->
-        not $ BS.isSuffixOf assumeMagicReturnCode bs
+        (T.isPrefixOf "test" $ fst sig) && (not $ BS.isSuffixOf assumeMagicReturnCode bs) ||
+        (T.isPrefixOf "invariant_" $ fst sig) && (not $ BS.isSuffixOf assumeMagicReturnCode bs)
       Just (VMFailure _) -> True
       _ -> False
     isCorrectAddr = LitAddr addr == vm.state.codeContract
