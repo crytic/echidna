@@ -147,6 +147,12 @@ foundryTestGenTests = testGroup "Foundry test generation"
           FuzzWorker
           [ ("revert should be detected as failure concrete", solved "test_revert_is_failure")
           ]
+      , testForgeStd "solves invariant"
+          "foundry/FoundryAsserts.sol"
+          (Just "InvariantTest") (Just "foundry/FoundryInvariant.yaml")
+          FuzzWorker
+          [ ("invariant should be detected with seqLen > 1", solved "invariant_counter_below_limit")
+          ]
       ]
   , testGroup "Symbolic execution (SMT solving)"
       [ testForgeStd "solves assertTrue"
@@ -313,7 +319,7 @@ solcSupportsForgeStd = unsafePerformIO $ do
     parseSolcVersion :: String -> Maybe (Int, Int, Int)
     parseSolcVersion output =
       case filter ("Version:" `isPrefixOf`) (lines output) of
-        (line:_) -> 
+        (line:_) ->
           let versionPart = dropWhile (/= ':') line
               version = takeWhile (/= '+') $ drop 2 versionPart
               parts = words version
@@ -321,12 +327,12 @@ solcSupportsForgeStd = unsafePerformIO $ do
                (v:_) -> parseVersion v
                _ -> Nothing
         _ -> Nothing
-    
+
     parseVersion :: String -> Maybe (Int, Int, Int)
     parseVersion v = case map readMaybe (splitOn '.' v) of
       [Just major, Just minor, Just patch] -> Just (major, minor, patch)
       _ -> Nothing
-    
+
     splitOn :: Char -> String -> [String]
     splitOn c s = case break (== c) s of
       (a, _:b) -> a : splitOn c b
