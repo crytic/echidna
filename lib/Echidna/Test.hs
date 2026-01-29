@@ -52,7 +52,7 @@ createTest m = EchidnaTest Open m v [] Stop Nothing Nothing
 
 validateTestModeError :: String
 validateTestModeError =
-  "Invalid test mode (should be property, assertion, dapptest, optimization, overflow or exploration)"
+  "Invalid test mode (should be property, assertion, foundry, optimization, overflow or exploration)"
 
 validateTestMode :: String -> TestMode
 validateTestMode s = case s of
@@ -249,7 +249,7 @@ checkDapptestAssertion vm sig addr = do
                     (forceBuf vm.state.calldata)
     isAssertionFailure = case vm.result of
       Just (VMFailure (Revert (ConcreteBuf bs))) ->
-        (T.isPrefixOf "invariant_" $ fst sig) && (not $ BS.isSuffixOf assumeMagicReturnCode bs)
+        not $ BS.isSuffixOf assumeMagicReturnCode bs
       Just (VMFailure _) -> True
       _ -> False
     isCorrectAddr = LitAddr addr == vm.state.codeContract
