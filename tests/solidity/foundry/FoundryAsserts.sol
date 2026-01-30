@@ -146,7 +146,7 @@ contract InvariantTest is Test {
 
     // Invariant that can be violated when counter > 100
     function invariant_counter_below_limit() public view {
-        assertTrue(counter <= 100);
+        assertTrue(counter <= 5);
     }
 }
 
