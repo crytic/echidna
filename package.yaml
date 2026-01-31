@@ -116,6 +116,7 @@ tests:
     main: Spec.hs
     source-dirs: src/test
     dependencies:
+      - bytestring
       - data-dword
       - echidna
       - exceptions

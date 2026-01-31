@@ -149,7 +149,7 @@ filterMethods contractName (Blacklist ig) ms =
 -- | Filter methods with arguments, used for dapptest mode
 filterMethodsWithArgs :: NonEmpty SolSignature -> NonEmpty SolSignature
 filterMethodsWithArgs ms =
-  case NE.filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ms of
+  case NE.filter (\(n, xs) -> T.isPrefixOf "test" n || (T.isPrefixOf "invariant_" n || not (null xs))) ms of
     [] -> error "No dapptest tests found"
     fs -> NE.fromList fs
 
@@ -223,16 +223,17 @@ loadSpecified env mainContract cs = do
                                            solConf.contractAddr
                                            unlimitedGasPerBlock
                                            (0, 0)
-    vm4 <- if isDapptestMode solConf.testMode && setUpFunction `elem` abi
+    vm4 <- if is_testFunction `elem` abi && setUpFunction `elem` abi
               then snd <$> transaction
               else pure vm3
 
     case vm4.result of
-      Just (VMFailure _) -> throwM SetUpCallFailed
+      Just (VMFailure _) -> throwM $ SetUpCallFailed $ showTraceTree env.dapp vm4
       _ -> pure vm4
 
   where
     setUpFunction = ("setUp", [])
+    is_testFunction = ("IS_TEST", [])
 
 
 selectMainContract
@@ -284,9 +285,10 @@ mkSignatureMap solConf mainContract contracts = do
 
 mkTests
   :: SolConf
+  -> CampaignConf
   -> SolcContract
   -> IO [EchidnaTest]
-mkTests solConf mainContract = do
+mkTests solConf campaignConf mainContract = do
   let
     -- generate the complete abi mapping
     abi = Map.elems mainContract.abiMap <&> \method -> (method.name, snd <$> method.inputs)
@@ -309,6 +311,7 @@ mkTests solConf mainContract = do
   pure $ createTests solConf.testMode
                      solConf.testDestruction
                      testNames
+                     campaignConf.seqLen
                      solConf.contractAddr
                      neFuns
 

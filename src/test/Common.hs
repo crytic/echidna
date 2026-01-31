@@ -5,6 +5,7 @@ module Common
   , testContractV
   , solcV
   , testContract'
+  , testContractNamed
   , checkConstructorConditions
   , optimized
   , solnFor
@@ -126,7 +127,19 @@ testContract'
   -> WorkerType
   -> [(String, (Env, WorkerState) -> IO Bool)]
   -> TestTree
-testContract' fp n v configPath s workerType expectations = testCase fp $ withSolcVersion v $ do
+testContract' fp = testContractNamed fp fp
+
+testContractNamed
+  :: String
+  -> FilePath
+  -> Maybe ContractName
+  -> Maybe SolcVersionComp
+  -> Maybe FilePath
+  -> Bool
+  -> WorkerType
+  -> [(String, (Env, WorkerState) -> IO Bool)]
+  -> TestTree
+testContractNamed name fp n v configPath s workerType expectations = testCase name $ withSolcVersion v $ do
   c <- case configPath of
     Just path -> do
       parsed <- parseConfig path
@@ -155,7 +168,7 @@ loadSolTests cfg buildOutput name = do
       eventMap = Map.unions $ map (.eventMap) contracts
       world = World solConf.sender mempty Nothing [] [] eventMap
   mainContract <- selectMainContract solConf name contracts
-  echidnaTests <- mkTests solConf mainContract
+  echidnaTests <- mkTests solConf cfg.campaignConf mainContract
   env <- mkEnv cfg buildOutput echidnaTests world Nothing
   vm <- loadSpecified env mainContract contracts
   pure (vm, env, echidnaTests)
