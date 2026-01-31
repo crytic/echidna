@@ -3,6 +3,7 @@
 module Echidna.SourceAnalysis.Slither where
 
 import Control.Applicative ((<|>))
+import Control.Monad (unless)
 import Data.Aeson ((.:), (.:?), (.!=), eitherDecode, parseJSON, withEmbeddedJSON, withObject)
 import Data.Aeson.Types (FromJSON, Parser, Value(String))
 import Data.ByteString.Base16 qualified as BS16 (decode)
@@ -147,16 +148,18 @@ instance FromJSON SlitherInfo where
 runSlither :: FilePath -> SolConf -> IO SlitherInfo
 runSlither fp solConf = if solConf.disableSlither
   then do
-    hPutStrLn stderr $
-        "WARNING: Slither was explicitly disabled. Echidna uses Slither (https://github.com/crytic/slither)"
-        <> " to perform source analysis, which makes fuzzing more effective. You should enable it."
+    unless solConf.quiet $
+      hPutStrLn stderr
+        ( "WARNING: Slither was explicitly disabled. Echidna uses Slither (https://github.com/crytic/slither)"
+        <> " to perform source analysis, which makes fuzzing more effective. You should enable it." )
     pure emptySlitherInfo
   else findExecutable "slither" >>= \case
     Nothing -> do
-      hPutStrLn stderr $
-        "WARNING: slither not found. Echidna uses Slither (https://github.com/crytic/slither)"
-        <> " to perform source analysis, which makes fuzzing more effective. You should install it with"
-        <> " 'pip3 install slither-analyzer --user'"
+      unless solConf.quiet $
+        hPutStrLn stderr
+          ( "WARNING: slither not found. Echidna uses Slither (https://github.com/crytic/slither)"
+          <> " to perform source analysis, which makes fuzzing more effective. You should install it with"
+          <> " 'pip3 install slither-analyzer --user'" )
       pure emptySlitherInfo
     Just path -> do
       let args = ["--ignore-compile", "--print", "echidna", "--json", "-"]

@@ -136,6 +136,20 @@ contract AssertApproxEqRelDecimalTest is Test {
     }
 }
 
+contract InvariantTest is Test {
+    uint256 public counter;
+
+    // State-mutating function called during sequences
+    function increase(uint256 x) public {
+        counter += x;
+    }
+
+    // Invariant that can be violated when counter > 100
+    function invariant_counter_below_limit() public view {
+        assertTrue(counter <= 5);
+    }
+}
+
 contract RevertTest is Test {
     // Explicit reverts should be detected as test failures
     function test_revert_is_failure(uint256 x) public pure {
