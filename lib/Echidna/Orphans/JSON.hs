@@ -15,6 +15,7 @@ import Prelude hiding (Word, fail)
 import Text.Read (readMaybe)
 
 import EVM.ABI (AbiValue, AbiType)
+import EVM.Types (FunctionSelector)
 
 readT :: Read a => Text -> Maybe a
 readT = readMaybe . unpack
@@ -36,6 +37,12 @@ instance ToJSON ByteString where
 
 instance FromJSON ByteString where
   parseJSON = withText "ByteString" $ maybe (fail "could not parse ByteString") pure . readT
+
+instance ToJSON FunctionSelector where
+  toJSON = toJSON . show
+
+instance FromJSON FunctionSelector where
+  parseJSON = withText "FunctionSelector" $ maybe (fail "could not parse FunctionSelector") pure . readT
 
 $(deriveJSON defaultOptions ''AbiType)
 $(deriveJSON defaultOptions ''AbiValue)
