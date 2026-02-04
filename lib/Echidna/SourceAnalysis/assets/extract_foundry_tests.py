@@ -213,13 +213,15 @@ def extract_calls_from_function(func: Function, target_contract: Optional[str] =
 
 
 def convert_to_echidna_tx(call: Dict[str, Any], sender: str = DEFAULT_SENDER,
-                          contract_addresses: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+                          contract_addresses: Optional[Dict[str, str]] = None,
+                          default_contract_addr: str = DEFAULT_CONTRACT_ADDR) -> Dict[str, Any]:
     """Convert extracted call info to Echidna Tx JSON format.
 
     Args:
         call: The call info dict with function, args, value, contract
         sender: The sender address
         contract_addresses: Optional mapping of contract names to addresses
+        default_contract_addr: Default contract address if not in mapping
     """
     # Determine destination address
     contract_name = call.get("contract")
@@ -227,7 +229,7 @@ def convert_to_echidna_tx(call: Dict[str, Any], sender: str = DEFAULT_SENDER,
         dst = contract_addresses[contract_name]
     else:
         # Default to the main contract address
-        dst = DEFAULT_CONTRACT_ADDR
+        dst = default_contract_addr
 
     return {
         "call": {
@@ -245,13 +247,17 @@ def convert_to_echidna_tx(call: Dict[str, Any], sender: str = DEFAULT_SENDER,
     }
 
 
-def process_contract(slither: Slither, target_contract: Optional[str] = None) -> Dict[str, Any]:
+def process_contract(slither: Slither, target_contract: Optional[str] = None,
+                     sender: str = DEFAULT_SENDER,
+                     contract_addr: str = DEFAULT_CONTRACT_ADDR) -> Dict[str, Any]:
     """Process all contracts and extract test sequences.
 
     Args:
         slither: The Slither analysis object
         target_contract: If specified, only extract calls to this contract type.
                         This should typically be the main contract under test.
+        sender: The sender address for transactions
+        contract_addr: The target contract address
     """
     result = {
         "sequences": [],
@@ -281,8 +287,12 @@ def process_contract(slither: Slither, target_contract: Optional[str] = None) ->
                     contracts_called.add(call["contract"])
 
             if calls:
-                # Convert to Echidna format
-                transactions = [convert_to_echidna_tx(call) for call in calls]
+                # Convert to Echidna format, passing sender and contract address
+                contract_addresses = {target_contract: contract_addr} if target_contract else None
+                transactions = [
+                    convert_to_echidna_tx(call, sender, contract_addresses, contract_addr)
+                    for call in calls
+                ]
 
                 result["sequences"].append({
                     "source": f"{contract.name}.{func.name}",
@@ -302,6 +312,10 @@ def main():
                        help="Additional arguments for crytic-compile")
     parser.add_argument("--target-contract", type=str, default=None,
                        help="Only extract calls to this contract type (e.g., 'MyContract')")
+    parser.add_argument("--sender", type=str, default=DEFAULT_SENDER,
+                       help="Sender address (default: 0x10000)")
+    parser.add_argument("--contract-addr", type=str, default=DEFAULT_CONTRACT_ADDR,
+                       help="Target contract address (default: 0x00a329c0648769a73afac7f9381e08fb43dbea72)")
 
     args = parser.parse_args()
 
@@ -314,7 +328,12 @@ def main():
         slither = Slither(args.filepath, **slither_args)
 
         # Process and extract sequences
-        result = process_contract(slither, args.target_contract)
+        result = process_contract(
+            slither,
+            args.target_contract,
+            args.sender,
+            args.contract_addr
+        )
 
         # Log which contracts were found
         if result["contractsFound"]:

@@ -4,9 +4,12 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool, assertEqual, assertFailure)
 
 import Data.List (find, isInfixOf)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import System.Directory (findExecutable)
+
+import EVM.Types (Addr)
 
 import Echidna.SourceAnalysis.FoundryTests
   ( extractFoundryTests
@@ -27,11 +30,29 @@ prefillCorpusTests = testGroup "Prefill corpus from Foundry tests"
   , testCase "extracts increment sequence" testIncrementSequence
   , testCase "extracts set_multiple_values with args" testSetMultipleValuesArgs
   , testCase "converts to corpus format" testCorpusConversion
+  , testCase "uses custom sender address" testCustomSenderAddress
+  , testCase "uses custom contract address" testCustomContractAddress
   ]
 
--- | Get the SolConf with prefillCorpus enabled
+-- | Custom addresses for testing
+customSenderAddr :: Addr
+customSenderAddr = 0xdeadbeef
+
+customContractAddr :: Addr
+customContractAddr = 0xcafebabe
+
+-- | Get the SolConf with prefillCorpus enabled and default addresses
 testSolConf :: SolConf
 testSolConf = defaultConfig.solConf { prefillCorpus = True, quiet = True }
+
+-- | Get the SolConf with custom addresses
+testSolConfWithCustomAddrs :: SolConf
+testSolConfWithCustomAddrs = defaultConfig.solConf
+  { prefillCorpus = True
+  , quiet = True
+  , sender = Set.singleton customSenderAddr
+  , contractAddr = customContractAddr
+  }
 
 -- | Path to the test contract (relative to tests/solidity)
 testContractPath :: FilePath
@@ -43,11 +64,15 @@ targetContract = Just "Counter"
 
 -- | Helper to run extraction and check for python/slither availability
 runExtraction :: IO (Maybe FoundryTestInfo)
-runExtraction = do
+runExtraction = runExtractionWith testSolConf
+
+-- | Helper to run extraction with a specific SolConf
+runExtractionWith :: SolConf -> IO (Maybe FoundryTestInfo)
+runExtractionWith solConf = do
   pythonExe <- findExecutable "python3"
   case pythonExe of
     Nothing -> pure Nothing
-    Just _ -> Just <$> extractFoundryTests testContractPath testSolConf targetContract
+    Just _ -> Just <$> extractFoundryTests testContractPath solConf targetContract
 
 -- | Test that we extract the expected number of sequences (7 test functions)
 testExtractSequenceCount :: IO ()
@@ -136,3 +161,35 @@ getCallName :: Tx -> String
 getCallName tx = case tx.call of
   SolCall (name, _) -> T.unpack name
   _ -> "<unknown>"
+
+-- | Test that custom sender address is used in extracted transactions
+testCustomSenderAddress :: IO ()
+testCustomSenderAddress = do
+  result <- runExtractionWith testSolConfWithCustomAddrs
+  case result of
+    Nothing -> assertBool "python3 not available, skipping" True
+    Just info -> do
+      -- Get first transaction from first sequence
+      case info.sequences of
+        [] -> assertFailure "No sequences extracted"
+        (seq':_) -> case seq'.transactions of
+          [] -> assertFailure "No transactions in sequence"
+          (tx:_) -> do
+            assertEqual "Sender should be custom address"
+              customSenderAddr tx.src
+
+-- | Test that custom contract address is used in extracted transactions
+testCustomContractAddress :: IO ()
+testCustomContractAddress = do
+  result <- runExtractionWith testSolConfWithCustomAddrs
+  case result of
+    Nothing -> assertBool "python3 not available, skipping" True
+    Just info -> do
+      -- Get first transaction from first sequence
+      case info.sequences of
+        [] -> assertFailure "No sequences extracted"
+        (seq':_) -> case seq'.transactions of
+          [] -> assertFailure "No transactions in sequence"
+          (tx:_) -> do
+            assertEqual "Destination should be custom contract address"
+              customContractAddr tx.dst

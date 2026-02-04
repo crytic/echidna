@@ -9,6 +9,7 @@ import Data.Aeson.Types (FromJSON(..))
 import Data.ByteString.Lazy.Char8 qualified as BSL
 import Data.List (find, sortOn)
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Language.Haskell.TH (runIO)
@@ -20,6 +21,8 @@ import System.Exit (ExitCode(..))
 import System.FilePath ((</>), takeDirectory, takeExtension)
 import System.IO (hPutStrLn, stderr)
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
+
+import EVM.Types (Addr)
 
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
@@ -50,6 +53,10 @@ instance FromJSON FoundryTestSequence where
 -- | Empty result when extraction is disabled or fails
 emptyFoundryTestInfo :: FoundryTestInfo
 emptyFoundryTestInfo = FoundryTestInfo []
+
+-- | Format an address for passing to the Python script
+formatAddr :: Addr -> String
+formatAddr = show
 
 -- | Name of the extraction script
 scriptName :: String
@@ -152,11 +159,19 @@ extractFoundryTests fp solConf targetContract
         testPath <- findTestPath fp
         let args = [scriptPath, testPath]
                    ++ targetContractArgs
+                   ++ senderArgs
+                   ++ contractAddrArgs
                    ++ cryticArgsForScript
             -- Pass target contract to filter calls
             targetContractArgs = case targetContract of
               Just name -> ["--target-contract", T.unpack name]
               Nothing -> []
+            -- Use the first sender address, or deployer as fallback
+            senderAddr = case Set.lookupMin solConf.sender of
+              Just addr -> addr
+              Nothing -> solConf.deployer
+            senderArgs = ["--sender", formatAddr senderAddr]
+            contractAddrArgs = ["--contract-addr", formatAddr solConf.contractAddr]
             cryticArgsForScript = if null solConf.cryticArgs
               then []
               else "--crytic-args" : solConf.cryticArgs
