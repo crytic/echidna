@@ -3,6 +3,7 @@
 
 module Echidna.SourceAnalysis.FoundryTests where
 
+import Control.Monad (when)
 import Data.Aeson ((.:), (.:?), (.!=), eitherDecode, withObject)
 import Data.Aeson.Types (FromJSON(..))
 import Data.ByteString.Lazy.Char8 qualified as BSL
@@ -25,7 +26,7 @@ import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Utility (measureIO)
 
 -- | Result of extracting transaction sequences from Foundry tests
-data FoundryTestInfo = FoundryTestInfo
+newtype FoundryTestInfo = FoundryTestInfo
   { sequences :: [FoundryTestSequence]
   } deriving (Show)
 
@@ -158,7 +159,7 @@ extractFoundryTests fp solConf targetContract
               Nothing -> []
             cryticArgsForScript = if null solConf.cryticArgs
               then []
-              else ["--crytic-args"] ++ solConf.cryticArgs
+              else "--crytic-args" : solConf.cryticArgs
         (exitCode, out, err) <- measureIO solConf.quiet
           ("Extracting Foundry test sequences from `" <> testPath <> "`") $
           readCreateProcessWithExitCode (proc pythonPath args) {std_err = Inherit} ""
@@ -168,13 +169,11 @@ extractFoundryTests fp solConf targetContract
               Right info -> do
                 let numSeqs = length info.sequences
                     numTxs = sum $ map (\s -> length s.transactions) info.sequences
-                if numSeqs > 0
-                  then do
-                    hPutStrLn stderr $
-                      "Extracted " <> show numSeqs <> " test sequences with "
-                      <> show numTxs <> " transactions for corpus prefill."
-                    hPutStrLn stderr $ formatExtractedCorpus targetContract info
-                  else pure ()
+                when (numSeqs > 0) $ do
+                  hPutStrLn stderr $
+                    "Extracted " <> show numSeqs <> " test sequences with "
+                    <> show numTxs <> " transactions for corpus prefill."
+                  hPutStrLn stderr $ formatExtractedCorpus targetContract info
                 pure info
               Left msg -> do
                 hPutStrLn stderr $
@@ -202,12 +201,12 @@ formatExtractedCorpus targetContract info =
   let grouped = groupByContract info.sequences
       contractName = maybe "Target" T.unpack targetContract
   in unlines $
-       ["Extracted corpus for " <> contractName <> ":"]
-       ++ concatMap formatContract (sortOn fst $ Map.toList grouped)
+       ("Extracted corpus for " <> contractName <> ":")
+       : concatMap formatContract (sortOn fst $ Map.toList grouped)
   where
     -- Group sequences by their test contract name
     groupByContract :: [FoundryTestSequence] -> Map.Map String [(String, [String])]
-    groupByContract seqs = foldr insertSeq Map.empty seqs
+    groupByContract = foldr insertSeq Map.empty
 
     insertSeq seq' m =
       let (contract, func) = splitSource seq'.source
@@ -229,10 +228,10 @@ formatExtractedCorpus targetContract info =
     -- Format a contract's test functions
     formatContract :: (String, [(String, [String])]) -> [String]
     formatContract (contract, funcs) =
-      ["  Contract: " <> contract]
-      ++ concatMap formatFunc (sortOn fst funcs)
+      ("  Contract: " <> contract)
+      : concatMap formatFunc (sortOn fst funcs)
 
     formatFunc :: (String, [String]) -> [String]
     formatFunc (func, calls) =
-      ["    Function: " <> func]
-      ++ map ("      - " <>) calls
+      ("    Function: " <> func)
+      : map ("      - " <>) calls

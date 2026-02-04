@@ -128,8 +128,8 @@ testCorpusConversion = do
       let corpus = foundryTestsToCorpus info
       assertEqual "Corpus should have 7 entries" 7 (length corpus)
       -- Check that all entries have non-empty transaction lists
-      let allNonEmpty = all (not . null . snd) corpus
-      assertBool "All corpus entries should have transactions" allNonEmpty
+      assertBool "All corpus entries should have transactions" $
+        not (any (null . snd) corpus)
 
 -- | Helper to get the function name from a Tx
 getCallName :: Tx -> String
