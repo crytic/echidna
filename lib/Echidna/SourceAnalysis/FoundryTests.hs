@@ -15,10 +15,10 @@ import Data.Text qualified as T
 import Language.Haskell.TH (runIO)
 import Language.Haskell.TH.Syntax (liftString)
 import System.Directory (doesFileExist, doesDirectoryExist, findExecutable,
-                         getTemporaryDirectory, listDirectory)
+                         getTemporaryDirectory)
 import System.Environment (getExecutablePath, lookupEnv)
 import System.Exit (ExitCode(..))
-import System.FilePath ((</>), takeDirectory, takeExtension)
+import System.FilePath ((</>), takeDirectory)
 import System.IO (hPutStrLn, stderr)
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 
