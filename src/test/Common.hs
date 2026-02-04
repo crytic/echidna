@@ -155,7 +155,7 @@ loadSolTests cfg buildOutput name = do
       eventMap = Map.unions $ map (.eventMap) contracts
       world = World solConf.sender mempty Nothing [] [] eventMap
   mainContract <- selectMainContract solConf name contracts
-  echidnaTests <- mkTests solConf cfg.campaignConf mainContract
+  echidnaTests <- mkTests solConf mainContract
   env <- mkEnv cfg buildOutput echidnaTests world Nothing
   vm <- loadSpecified env mainContract contracts
   pure (vm, env, echidnaTests)
