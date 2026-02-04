@@ -67,7 +67,7 @@ main = withUtf8 $ withCP65001 $ do
   seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
   (vm, env, dict) <- prepareContract cfg cliFilePath buildOutput cliSelectedContract seed
 
-  initialCorpus <- loadInitialCorpus env
+  initialCorpus <- loadInitialCorpus env cliFilePath cliSelectedContract
   -- start ui and run tests
   _campaign <- runReaderT (ui vm dict initialCorpus cliSelectedContract) env
 
@@ -154,6 +154,7 @@ data Options = Options
   , cliSymExecTimeout   :: Maybe Int
   , cliSymExecNSolvers  :: Maybe Int
   , cliDisableOnchainSources :: Bool
+  , cliPrefillCorpus :: Bool
   }
 
 optsParser :: ParserInfo Options
@@ -248,6 +249,8 @@ options = Options . NE.fromList
     <> help ("Number of symbolic execution solvers to run in parallel for each task (assuming sym-exec is enabled). Default is " ++ show defaultSymExecNWorkers))
   <*> switch (long "disable-onchain-sources"
     <> help "Disable on-chain coverage reports and fetching of sources from Sourcify and Etherscan.")
+  <*> switch (long "prefill-corpus"
+    <> help "Extract transaction sequences from Foundry tests to prefill the corpus.")
 
 versionOption :: Parser (a -> a)
 versionOption = infoOption
@@ -306,6 +309,7 @@ overrideConfig config Options{..} = do
       , contractAddr = fromMaybe solConf.contractAddr cliContractAddr
       , testMode = maybe solConf.testMode validateTestMode cliTestMode
       , allContracts = cliAllContracts || solConf.allContracts
+      , prefillCorpus = cliPrefillCorpus || solConf.prefillCorpus
       }
 
 printProjectName :: Maybe Text -> IO ()
