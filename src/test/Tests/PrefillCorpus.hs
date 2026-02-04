@@ -32,6 +32,7 @@ prefillCorpusTests = testGroup "Prefill corpus from Foundry tests"
   , testCase "converts to corpus format" testCorpusConversion
   , testCase "uses custom sender address" testCustomSenderAddress
   , testCase "uses custom contract address" testCustomContractAddress
+  , testCase "follows library calls" testLibraryCalls
   ]
 
 -- | Custom addresses for testing
@@ -74,16 +75,16 @@ runExtractionWith solConf = do
     Nothing -> pure Nothing
     Just _ -> Just <$> extractFoundryTests testContractPath solConf targetContract
 
--- | Test that we extract the expected number of sequences (7 test functions)
+-- | Test that we extract the expected number of sequences (9 test functions)
 testExtractSequenceCount :: IO ()
 testExtractSequenceCount = do
   result <- runExtraction
   case result of
     Nothing -> assertBool "python3 not available, skipping" True
-    Just info -> assertEqual "Expected 7 test sequences" 7 (length info.sequences)
+    Just info -> assertEqual "Expected 9 test sequences" 9 (length info.sequences)
 
 -- | Test that we extract the expected total number of transactions
--- 3 + 3 + 3 + 3 + 4 + 1 + 4 = 21 (view/pure filtered)
+-- 3 + 3 + 3 + 3 + 4 + 1 + 4 + 2 + 2 = 25 (view/pure filtered, library calls followed)
 testExtractTransactionCount :: IO ()
 testExtractTransactionCount = do
   result <- runExtraction
@@ -91,7 +92,7 @@ testExtractTransactionCount = do
     Nothing -> assertBool "python3 not available, skipping" True
     Just info -> do
       let totalTxs = sum $ map (\s -> length s.transactions) info.sequences
-      assertEqual "Expected 21 transactions (view/pure filtered)" 21 totalTxs
+      assertEqual "Expected 25 transactions (view/pure filtered, library calls followed)" 25 totalTxs
 
 -- | Test that view/pure functions are filtered out
 -- test_with_view_and_pure_calls should have 4 calls, not 6
@@ -151,7 +152,7 @@ testCorpusConversion = do
     Nothing -> assertBool "python3 not available, skipping" True
     Just info -> do
       let corpus = foundryTestsToCorpus info
-      assertEqual "Corpus should have 7 entries" 7 (length corpus)
+      assertEqual "Corpus should have 9 entries" 9 (length corpus)
       -- Check that all entries have non-empty transaction lists
       assertBool "All corpus entries should have transactions" $
         not (any (null . snd) corpus)
@@ -193,3 +194,31 @@ testCustomContractAddress = do
           (tx:_) -> do
             assertEqual "Destination should be custom contract address"
               customContractAddr tx.dst
+
+-- | Test that library calls are followed and underlying calls extracted
+testLibraryCalls :: IO ()
+testLibraryCalls = do
+  result <- runExtraction
+  case result of
+    Nothing -> assertBool "python3 not available, skipping" True
+    Just info -> do
+      -- Test doubleIncrement library call
+      let doubleIncSeq = find (\s -> "test_library_double_increment" `isInfixOf` s.source) info.sequences
+      case doubleIncSeq of
+        Nothing -> assertFailure "Could not find test_library_double_increment"
+        Just seq' -> do
+          assertEqual "Expected 2 calls from library doubleIncrement" 2 (length seq'.transactions)
+          let allIncrement = all ((== "increment") . getCallName) seq'.transactions
+          assertBool "All calls should be increment (from library)" allIncrement
+
+      -- Test setAndIncrement library call
+      let setAndIncSeq = find (\s -> "test_library_set_and_increment" `isInfixOf` s.source) info.sequences
+      case setAndIncSeq of
+        Nothing -> assertFailure "Could not find test_library_set_and_increment"
+        Just seq' -> do
+          assertEqual "Expected 2 calls from library setAndIncrement" 2 (length seq'.transactions)
+          case map getCallName seq'.transactions of
+            (first:second:_) -> do
+              assertEqual "First call should be setValue" "setValue" first
+              assertEqual "Second call should be increment" "increment" second
+            _ -> assertFailure "Expected at least 2 calls"

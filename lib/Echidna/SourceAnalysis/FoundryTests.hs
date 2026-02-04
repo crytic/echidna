@@ -105,34 +105,24 @@ findExistingFile paths = do
   results <- traverse (\p -> doesFileExist p >>= \exists -> pure (p, exists)) paths
   pure $ fst <$> find snd results
 
--- | Find test files in a Foundry project
--- Returns the test directory if it exists and contains .sol files,
--- otherwise returns the original file path
-findTestPath :: FilePath -> IO FilePath
-findTestPath fp = do
-  let projectDir = takeDirectory fp
-      testDir = projectDir </> "test"
-      -- Also check parent directory in case fp is in src/
-      parentTestDir = takeDirectory projectDir </> "test"
+-- | Find the test directory in a Foundry project
+-- Slither needs the test directory to find test functions,
+-- and it will resolve imports (like ../src/Contract.sol) from there
+findTestDir :: FilePath -> IO FilePath
+findTestDir fp = do
+  let dir = takeDirectory fp
+      testDir = dir </> "test"
+      parentTestDir = takeDirectory dir </> "test"
   -- Check if test/ directory exists relative to the file
   testDirExists <- doesDirectoryExist testDir
-  if testDirExists then do
-    testFiles <- listDirectory testDir
-    let solFiles = filter (\f -> takeExtension f == ".sol") testFiles
-    if not (null solFiles)
-      then pure testDir
-      else checkParentDir parentTestDir fp
-  else checkParentDir parentTestDir fp
-  where
-    checkParentDir dir origPath = do
-      exists <- doesDirectoryExist dir
-      if exists then do
-        testFiles <- listDirectory dir
-        let solFiles = filter (\f -> takeExtension f == ".sol") testFiles
-        if not (null solFiles)
-          then pure dir
-          else pure origPath
-      else pure origPath
+  if testDirExists
+    then pure testDir
+    else do
+      -- Check parent directory (if fp is in src/)
+      parentTestExists <- doesDirectoryExist parentTestDir
+      if parentTestExists
+        then pure parentTestDir
+        else pure dir  -- Fallback to original directory
 
 -- | Embedded Python script for extracting Foundry test sequences
 -- The script is embedded at compile time from the assets directory
@@ -155,9 +145,9 @@ extractFoundryTests fp solConf targetContract
         pure emptyFoundryTestInfo
       Just pythonPath -> do
         scriptPath <- getOrCreateScript
-        -- Find test files (look for test/ directory in Foundry projects)
-        testPath <- findTestPath fp
-        let args = [scriptPath, testPath]
+        -- Find test directory so Slither can analyze test functions
+        testDir <- findTestDir fp
+        let args = [scriptPath, testDir]
                    ++ targetContractArgs
                    ++ senderArgs
                    ++ contractAddrArgs
@@ -176,7 +166,7 @@ extractFoundryTests fp solConf targetContract
               then []
               else "--crytic-args" : solConf.cryticArgs
         (exitCode, out, err) <- measureIO solConf.quiet
-          ("Extracting Foundry test sequences from `" <> testPath <> "`") $
+          ("Extracting Foundry test sequences from `" <> testDir <> "`") $
           readCreateProcessWithExitCode (proc pythonPath args) {std_err = Inherit} ""
         case exitCode of
           ExitSuccess ->
