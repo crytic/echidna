@@ -105,10 +105,72 @@ def extract_constant_value(arg, arg_mapping: Optional[Dict] = None) -> Tuple[Opt
             type_str = infer_type_from_value(value)
         return value, type_str
 
-    if arg_mapping and arg in arg_mapping:
-        return arg_mapping[arg]
+    # Check arg_mapping for TMP variables and parameters
+    if arg_mapping:
+        # Try direct lookup
+        if arg in arg_mapping:
+            return arg_mapping[arg]
+        # Try by string name (for TMP variables)
+        arg_name = str(arg)
+        if arg_name in arg_mapping:
+            return arg_mapping[arg_name]
+
+    # Try to get type from the argument for default value generation
+    arg_type = getattr(arg, 'type', None)
+    if arg_type:
+        type_str = str(arg_type)
+        # Return a default/placeholder value based on type
+        if 'address' in type_str:
+            return 0, 'address'
+        elif 'uint' in type_str or 'int' in type_str:
+            return 0, type_str
+        elif 'bool' in type_str:
+            return False, 'bool'
+        elif 'bytes' in type_str:
+            return b'', type_str
 
     return None, None
+
+
+def build_tmp_value_map(nodes) -> Dict:
+    """Build a mapping from TMP variables to their values by analyzing IR operations."""
+    from slither.slithir.operations import TypeConversion, Assignment
+
+    value_map = {}
+
+    for node in nodes:
+        try:
+            for ir in node.irs:
+                # Handle TypeConversion: TMP_X = CONVERT value to type
+                if isinstance(ir, TypeConversion):
+                    if hasattr(ir, 'lvalue') and hasattr(ir, 'variable'):
+                        inner_var = ir.variable
+                        # Get the value being converted
+                        if isinstance(inner_var, Constant):
+                            value = inner_var.value
+                        elif hasattr(inner_var, 'value'):
+                            value = inner_var.value
+                        else:
+                            continue
+
+                        type_str = str(ir.type) if hasattr(ir, 'type') and ir.type else None
+                        lvalue_name = str(ir.lvalue)
+                        value_map[lvalue_name] = (value, type_str)
+                        value_map[ir.lvalue] = (value, type_str)
+
+                # Handle Assignment: TMP_X = constant
+                elif isinstance(ir, Assignment):
+                    if hasattr(ir, 'lvalue') and hasattr(ir, 'rvalue'):
+                        rvalue = ir.rvalue
+                        if isinstance(rvalue, Constant):
+                            type_str = str(rvalue.type) if hasattr(rvalue, 'type') and rvalue.type else None
+                            lvalue_name = str(ir.lvalue)
+                            value_map[lvalue_name] = (rvalue.value, type_str)
+                            value_map[ir.lvalue] = (rvalue.value, type_str)
+        except Exception:
+            continue
+
+    return value_map
 
 
 def infer_type_from_value(value: Any) -> str:
@@ -159,8 +221,24 @@ def get_contract_name_from_destination(ir) -> Optional[str]:
     return None
 
 
+def get_contract_function_signatures(contract) -> set:
+    """Get the set of function signatures for a contract."""
+    signatures = set()
+    for func in contract.functions:
+        if func.is_constructor or func.is_fallback or func.is_receive:
+            continue
+        if func.visibility in ('external', 'public'):
+            signatures.add(func.full_name)
+    return signatures
+
+
 def get_contract_inheritance_chain(slither: Slither, contract_name: str) -> set:
-    """Get all contracts in the inheritance chain of a contract."""
+    """Get all contracts in the inheritance chain of a contract, plus compatible siblings.
+
+    Only includes sibling contracts whose public/external functions are a subset of
+    the target contract's functions. This ensures extracted sequences will have
+    functions that actually exist on the target.
+    """
     result = {contract_name}
 
     target = None
@@ -172,8 +250,37 @@ def get_contract_inheritance_chain(slither: Slither, contract_name: str) -> set:
     if target is None:
         return result
 
+    # Get target's function signatures
+    target_funcs = get_contract_function_signatures(target)
+
+    # Add parents
+    target_parents = set()
     for parent in target.inheritance:
         result.add(parent.name)
+        target_parents.add(parent.name)
+
+    # Add compatible siblings (contracts that share a parent AND have compatible interface)
+    if target_parents:
+        for contract in slither.contracts:
+            if contract.name == contract_name:
+                continue
+            if contract.is_interface or contract.is_library:
+                continue
+
+            # Check if contract shares a parent with target
+            shares_parent = False
+            for parent in contract.inheritance:
+                if parent.name in target_parents:
+                    shares_parent = True
+                    break
+
+            if not shares_parent:
+                continue
+
+            # Check interface compatibility: sibling's functions should be subset of target's
+            sibling_funcs = get_contract_function_signatures(contract)
+            if sibling_funcs and sibling_funcs.issubset(target_funcs):
+                result.add(contract.name)
 
     return result
 
@@ -201,11 +308,36 @@ def build_arg_mapping(ir, called_func, current_mapping: Dict) -> Dict:
 
 
 def extract_call_arguments(ir, arg_mapping: Dict) -> List[Dict]:
-    """Extract and convert arguments from an IR call."""
+    """Extract and convert arguments from an IR call.
+
+    IMPORTANT: Always includes all arguments to maintain correct function signatures.
+    Uses default values (0 for addresses/uints, false for bools) when actual values
+    cannot be extracted.
+    """
     args = []
     if hasattr(ir, 'arguments') and ir.arguments:
         for arg in ir.arguments:
             value, type_str = extract_constant_value(arg, arg_mapping)
+
+            # If we couldn't extract a value, try to get the type and use a default
+            if value is None or type_str is None:
+                arg_type = getattr(arg, 'type', None)
+                if arg_type:
+                    type_str = str(arg_type)
+                    # Provide default values based on type
+                    if 'address' in type_str.lower() or 'Currency' in type_str:
+                        value = 0
+                        type_str = 'address'  # Currency is just a wrapped address
+                    elif 'uint' in type_str or 'int' in type_str:
+                        value = 0
+                    elif 'bool' in type_str:
+                        value = False
+                    elif 'bytes' in type_str:
+                        value = b''
+                    else:
+                        # Unknown type - skip (will cause signature mismatch but better than crash)
+                        continue
+
             if value is not None and type_str:
                 abi_val = convert_value_to_abi(value, type_str)
                 if abi_val:
@@ -415,8 +547,14 @@ def process_function_nodes(func: Function, allowed_contracts: Optional[set],
     calls = []
     nodes = getattr(func, 'nodes', [])
 
+    # Build TMP variable value map from TypeConversion/Assignment operations
+    tmp_value_map = build_tmp_value_map(nodes)
+
+    # Merge with existing arg_mapping (arg_mapping takes precedence)
+    combined_mapping = {**tmp_value_map, **arg_mapping}
+
     for node in nodes:
-        node_calls = process_single_node(node, allowed_contracts, visited, arg_mapping, include_view)
+        node_calls = process_single_node(node, allowed_contracts, visited, combined_mapping, include_view)
         calls.extend(node_calls)
 
     return calls
