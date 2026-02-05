@@ -58,7 +58,6 @@ except ImportError:
 DEFAULT_SENDER = "0x10000"
 DEFAULT_CONTRACT_ADDR = "0x00a329c0648769a73afac7f9381e08fb43dbea72"
 DEFAULT_GAS = 12500000
-CACHE_FILENAME = "echidna-prefill-cache.json"
 
 
 # =============================================================================
@@ -735,8 +734,9 @@ def load_from_cache(cache_dir: str, cache_key: str, test_files_hash: str) -> Opt
     """Load extraction results from cache if valid.
 
     Cache is invalidated when test files change (based on test_files_hash).
+    Cache key differentiates results for different extraction parameters (sender, contract_addr, etc.).
     """
-    cache_file = os.path.join(cache_dir, CACHE_FILENAME)
+    cache_file = os.path.join(cache_dir, f"echidna-prefill-{cache_key}.json")
 
     if not os.path.exists(cache_file):
         return None
@@ -758,9 +758,12 @@ def load_from_cache(cache_dir: str, cache_key: str, test_files_hash: str) -> Opt
 
 def save_to_cache(cache_dir: str, cache_key: str, test_files_hash: str,
                   result: Dict[str, Any]) -> None:
-    """Save extraction results to cache."""
+    """Save extraction results to cache.
+
+    Cache key differentiates results for different extraction parameters.
+    """
     os.makedirs(cache_dir, exist_ok=True)
-    cache_file = os.path.join(cache_dir, CACHE_FILENAME)
+    cache_file = os.path.join(cache_dir, f"echidna-prefill-{cache_key}.json")
     cache_data = {"test_files_hash": test_files_hash, "result": result}
 
     try:
@@ -815,6 +818,73 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def get_foundry_out_directory(project_root: Path) -> Optional[str]:
+    """Get the Foundry output directory from foundry.toml config."""
+    foundry_toml = project_root / "foundry.toml"
+    if not foundry_toml.exists():
+        return None
+
+    try:
+        with open(foundry_toml, 'r') as f:
+            content = f.read()
+        # Simple TOML parsing for 'out' key
+        for line in content.split('\n'):
+            line = line.strip()
+            if line.startswith('out') and '=' in line:
+                # Extract value, handling quotes
+                value = line.split('=', 1)[1].strip().strip('"\'')
+                return value
+    except (IOError, IndexError):
+        pass
+    return None
+
+
+def get_foundry_project_root(filepath: str) -> Optional[Path]:
+    """Find the Foundry project root by looking for foundry.toml."""
+    target = Path(filepath).resolve()
+
+    if target.is_dir() and (target / "foundry.toml").is_file():
+        return target
+
+    for p in target.parents:
+        if (p / "foundry.toml").is_file():
+            return p
+
+    return None
+
+
+def create_slither_instance(filepath: str, crytic_args: List[str]) -> Slither:
+    """Create a Slither instance with optimized settings.
+
+    Optimizations:
+    1. printers_to_run='echidna': Skip data dependency analysis (not needed for call extraction)
+       but keep IR generation which is required for extracting function calls
+    2. foundry_compile_all=True: Include test files when compiling (required for test extraction)
+    """
+    project_root = get_foundry_project_root(filepath)
+
+    slither_args = {
+        "disallow_partial": False,
+        # Skip data dependency analysis but keep IR generation
+        # This is a Slither optimization specifically for echidna use cases
+        "printers_to_run": "echidna",
+    }
+
+    if crytic_args:
+        slither_args["solc_args"] = " ".join(crytic_args)
+
+    # For Foundry projects, always compile with test files included
+    if project_root:
+        out_dir = get_foundry_out_directory(project_root) or "out"
+        slither_args["foundry_out_directory"] = out_dir
+        # Always include test files - required for extracting test functions
+        slither_args["foundry_compile_all"] = True
+        print("Compiling project with test files...", file=sys.stderr)
+        return Slither(str(project_root), **slither_args)
+
+    return Slither(filepath, **slither_args)
+
+
 def run_extraction(args: argparse.Namespace) -> Dict[str, Any]:
     """Run the extraction process with caching support."""
     cache_dir = determine_cache_dir(args.filepath, args.cache_dir)
@@ -830,11 +900,7 @@ def run_extraction(args: argparse.Namespace) -> Dict[str, Any]:
         result = load_from_cache(cache_dir, cache_key, test_files_hash)
 
     if result is None:
-        slither_args = {"disallow_partial": False}
-        if args.crytic_args:
-            slither_args["solc_args"] = " ".join(args.crytic_args)
-
-        slither = Slither(args.filepath, **slither_args)
+        slither = create_slither_instance(args.filepath, args.crytic_args)
         result = process_contract(
             slither, args.target_contract, args.sender,
             args.contract_addr, args.include_view

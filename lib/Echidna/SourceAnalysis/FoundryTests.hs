@@ -26,7 +26,7 @@ import EVM.Types (Addr)
 
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
-import Echidna.Utility (measureIO)
+import Echidna.Utility (measureIO) 
 
 -- | Result of extracting transaction sequences from Foundry tests
 newtype FoundryTestInfo = FoundryTestInfo
