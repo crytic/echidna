@@ -133,7 +133,13 @@ def extract_constant_value(arg, arg_mapping: Optional[Dict] = None) -> Tuple[Opt
 
 
 def build_tmp_value_map(nodes) -> Dict:
-    """Build a mapping from TMP variables to their values by analyzing IR operations."""
+    """Build a mapping from TMP variables and local variables to their values.
+
+    Handles:
+    - TypeConversion: TMP_X = CONVERT 0xABCD to address
+    - Assignment from constant: x = 123
+    - Assignment from tracked variable: sender = TMP_X (propagates value)
+    """
     from slither.slithir.operations import TypeConversion, Assignment
 
     value_map = {}
@@ -158,15 +164,26 @@ def build_tmp_value_map(nodes) -> Dict:
                         value_map[lvalue_name] = (value, type_str)
                         value_map[ir.lvalue] = (value, type_str)
 
-                # Handle Assignment: TMP_X = constant
+                # Handle Assignment
                 elif isinstance(ir, Assignment):
                     if hasattr(ir, 'lvalue') and hasattr(ir, 'rvalue'):
                         rvalue = ir.rvalue
+                        lvalue_name = str(ir.lvalue)
+
+                        # Case 1: Direct constant assignment
                         if isinstance(rvalue, Constant):
                             type_str = str(rvalue.type) if hasattr(rvalue, 'type') and rvalue.type else None
-                            lvalue_name = str(ir.lvalue)
                             value_map[lvalue_name] = (rvalue.value, type_str)
                             value_map[ir.lvalue] = (rvalue.value, type_str)
+                        else:
+                            # Case 2: Assignment from a tracked variable (e.g., sender = TMP_X)
+                            rvalue_name = str(rvalue)
+                            if rvalue_name in value_map:
+                                value_map[lvalue_name] = value_map[rvalue_name]
+                                value_map[ir.lvalue] = value_map[rvalue_name]
+                            elif rvalue in value_map:
+                                value_map[lvalue_name] = value_map[rvalue]
+                                value_map[ir.lvalue] = value_map[rvalue]
         except Exception:
             continue
 
@@ -715,7 +732,10 @@ def get_test_files_hash(test_dir: str) -> str:
 
 
 def load_from_cache(cache_dir: str, cache_key: str, test_files_hash: str) -> Optional[Dict[str, Any]]:
-    """Load extraction results from cache if valid."""
+    """Load extraction results from cache if valid.
+
+    Cache is invalidated when test files change (based on test_files_hash).
+    """
     cache_file = os.path.join(cache_dir, CACHE_FILENAME)
 
     if not os.path.exists(cache_file):
@@ -725,10 +745,11 @@ def load_from_cache(cache_dir: str, cache_key: str, test_files_hash: str) -> Opt
         with open(cache_file, 'r') as f:
             cache_data = json.load(f)
 
-        if (cache_data.get("cache_key") == cache_key and
-            cache_data.get("test_files_hash") == test_files_hash):
-            print(f"Loaded from cache: {cache_file}", file=sys.stderr)
-            return cache_data.get("result")
+        if cache_data.get("test_files_hash") != test_files_hash:
+            return None
+
+        print(f"Loaded from cache: {cache_file}", file=sys.stderr)
+        return cache_data.get("result")
     except (json.JSONDecodeError, IOError, KeyError):
         pass
 
@@ -740,7 +761,7 @@ def save_to_cache(cache_dir: str, cache_key: str, test_files_hash: str,
     """Save extraction results to cache."""
     os.makedirs(cache_dir, exist_ok=True)
     cache_file = os.path.join(cache_dir, CACHE_FILENAME)
-    cache_data = {"cache_key": cache_key, "test_files_hash": test_files_hash, "result": result}
+    cache_data = {"test_files_hash": test_files_hash, "result": result}
 
     try:
         with open(cache_file, 'w') as f:
