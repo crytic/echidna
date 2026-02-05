@@ -7,7 +7,8 @@ import Control.Monad.Reader (ReaderT(runReaderT))
 import Control.Monad.ST (stToIO)
 import Control.Monad.State (runStateT)
 import Data.Foldable (toList)
-import Data.List (find, partition, isSuffixOf, (\\))
+import Data.List (find, partition, (\\))
+import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NEE
@@ -56,9 +57,11 @@ import Echidna.Utility (measureIO)
 
 readSolcBatch :: FilePath -> IO [BuildOutput]
 readSolcBatch d = do
-  fs <- filter (".json" `Data.List.isSuffixOf`) <$> listDirectory d
+  -- Filter for .json files but exclude echidna-prefill cache files
+  fs <- filter isCompilerOutput <$> listDirectory d
   mapM parseOne fs
   where
+  isCompilerOutput f = ".json" `List.isSuffixOf` f && not ("echidna-prefill-" `List.isPrefixOf` f)
   parseOne f =
     runApp $ readSolc CombinedJSON "" (d </> f) >>= \case
       Right buildOutput -> pure buildOutput
@@ -105,7 +108,8 @@ removeJsonFiles dir =
   whenM (doesDirectoryExist dir) $ do
     files <- listDirectory dir
     forM_ files $ \file ->
-      when (".json" `Data.List.isSuffixOf` file) $ do
+      -- Remove .json files except echidna-prefill cache files
+      when (".json" `List.isSuffixOf` file && not ("echidna-prefill-" `List.isPrefixOf` file)) $ do
         let path = dir </> file
         whenM (doesFileExist path) $ removeFile path
 

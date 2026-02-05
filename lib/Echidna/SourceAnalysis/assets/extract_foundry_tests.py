@@ -709,7 +709,10 @@ def get_cache_key(filepath: str, target_contract: Optional[str], sender: str,
                   contract_addr: str, include_view: bool) -> str:
     """Generate a cache key based on the extraction parameters."""
     normalized_filepath = str(Path(filepath).resolve())
-    key_parts = [normalized_filepath, target_contract or "", sender, contract_addr, str(include_view)]
+    # Normalize addresses to lowercase for consistent cache keys
+    normalized_sender = sender.lower() if sender else ""
+    normalized_contract = contract_addr.lower() if contract_addr else ""
+    key_parts = [normalized_filepath, target_contract or "", normalized_sender, normalized_contract, str(include_view)]
     return hashlib.sha256("|".join(key_parts).encode()).hexdigest()[:16]
 
 
