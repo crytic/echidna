@@ -3,6 +3,7 @@ module Tests.PrefillCorpus (prefillCorpusTests) where
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool, assertEqual, assertFailure)
 
+import Control.Monad.Random.Strict (evalRandT, getStdGen)
 import Data.List (find, isInfixOf)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -11,11 +12,13 @@ import System.Directory (findExecutable)
 
 import EVM.Types (Addr)
 
+import Echidna.ABI (emptyDict)
 import Echidna.SourceAnalysis.FoundryTests
   ( extractFoundryTests
   , foundryTestsToCorpus
   , FoundryTestInfo(..)
   , FoundryTestSequence(..)
+  , TxWithHoles(..)
   )
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
@@ -108,7 +111,7 @@ testFilterViewPure = do
         Just seq' -> do
           assertEqual "Expected 4 calls (view/pure filtered)" 4 (length seq'.transactions)
           -- Verify the calls are: increment, setValue, setValue, decrement
-          let callNames = map getCallName seq'.transactions
+          let callNames = map getCallNameH seq'.transactions
           assertBool "Should not contain getCount (view)" $ "getCount" `notElem` callNames
           assertBool "Should not contain add (pure)" $ "add" `notElem` callNames
 
@@ -124,7 +127,7 @@ testIncrementSequence = do
         Nothing -> assertFailure "Could not find test_increment_sequence"
         Just seq' -> do
           assertEqual "Expected 3 increment calls" 3 (length seq'.transactions)
-          let allIncrement = all ((== "increment") . getCallName) seq'.transactions
+          let allIncrement = all ((== "increment") . getCallNameH) seq'.transactions
           assertBool "All calls should be increment" allIncrement
 
 -- | Test that arguments are extracted (setMultiple has constant args)
@@ -141,7 +144,7 @@ testSetMultipleValuesArgs = do
           assertEqual "Expected 3 calls" 3 (length seq'.transactions)
           -- First call should be setMultiple
           case seq'.transactions of
-            (tx:_) -> assertEqual "First call should be setMultiple" "setMultiple" (getCallName tx)
+            (txh:_) -> assertEqual "First call should be setMultiple" "setMultiple" (getCallNameH txh)
             [] -> assertFailure "No transactions found"
 
 -- | Test conversion to corpus format
@@ -151,7 +154,8 @@ testCorpusConversion = do
   case result of
     Nothing -> assertBool "python3 not available, skipping" True
     Just info -> do
-      let corpus = foundryTestsToCorpus info
+      stdGen <- getStdGen
+      corpus <- evalRandT (foundryTestsToCorpus emptyDict info) stdGen
       assertEqual "Corpus should have 9 entries" 9 (length corpus)
       -- Check that all entries have non-empty transaction lists
       assertBool "All corpus entries should have transactions" $
@@ -162,6 +166,10 @@ getCallName :: Tx -> String
 getCallName tx = case tx.call of
   SolCall (name, _) -> T.unpack name
   _ -> "<unknown>"
+
+-- | Helper to get the function name from a TxWithHoles
+getCallNameH :: TxWithHoles -> String
+getCallNameH = getCallName . (.tx)
 
 -- | Test that custom sender address is used in extracted transactions
 testCustomSenderAddress :: IO ()
@@ -175,9 +183,9 @@ testCustomSenderAddress = do
         [] -> assertFailure "No sequences extracted"
         (seq':_) -> case seq'.transactions of
           [] -> assertFailure "No transactions in sequence"
-          (tx:_) -> do
+          (txh:_) -> do
             assertEqual "Sender should be custom address"
-              customSenderAddr tx.src
+              customSenderAddr txh.tx.src
 
 -- | Test that custom contract address is used in extracted transactions
 testCustomContractAddress :: IO ()
@@ -191,9 +199,9 @@ testCustomContractAddress = do
         [] -> assertFailure "No sequences extracted"
         (seq':_) -> case seq'.transactions of
           [] -> assertFailure "No transactions in sequence"
-          (tx:_) -> do
+          (txh:_) -> do
             assertEqual "Destination should be custom contract address"
-              customContractAddr tx.dst
+              customContractAddr txh.tx.dst
 
 -- | Test that library calls are followed and underlying calls extracted
 testLibraryCalls :: IO ()
@@ -208,7 +216,7 @@ testLibraryCalls = do
         Nothing -> assertFailure "Could not find test_library_double_increment"
         Just seq' -> do
           assertEqual "Expected 2 calls from library doubleIncrement" 2 (length seq'.transactions)
-          let allIncrement = all ((== "increment") . getCallName) seq'.transactions
+          let allIncrement = all ((== "increment") . getCallNameH) seq'.transactions
           assertBool "All calls should be increment (from library)" allIncrement
 
       -- Test setAndIncrement library call
@@ -217,7 +225,7 @@ testLibraryCalls = do
         Nothing -> assertFailure "Could not find test_library_set_and_increment"
         Just seq' -> do
           assertEqual "Expected 2 calls from library setAndIncrement" 2 (length seq'.transactions)
-          case map getCallName seq'.transactions of
+          case map getCallNameH seq'.transactions of
             (first:second:_) -> do
               assertEqual "First call should be setValue" "setValue" first
               assertEqual "Second call should be increment" "increment" second

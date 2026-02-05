@@ -4,8 +4,9 @@
 module Echidna.SourceAnalysis.FoundryTests where
 
 import Control.Monad (when)
+import Control.Monad.Random.Strict (MonadRandom)
 import Data.Aeson ((.:), (.:?), (.!=), eitherDecode, withObject)
-import Data.Aeson.Types (FromJSON(..))
+import Data.Aeson.Types (FromJSON(..), Value(Object))
 import Data.ByteString.Lazy.Char8 qualified as BSL
 import Data.List (find, sortOn)
 import Data.Map.Strict qualified as Map
@@ -22,8 +23,10 @@ import System.FilePath ((</>), takeDirectory)
 import System.IO (hPutStrLn, stderr)
 import System.Process (StdStream(..), readCreateProcessWithExitCode, proc, std_err)
 
+import EVM.ABI (AbiValue, abiValueType)
 import EVM.Types (Addr)
 
+import Echidna.ABI (GenDict, genAbiValueM)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Utility (measureIO) 
@@ -35,8 +38,14 @@ newtype FoundryTestInfo = FoundryTestInfo
 
 -- | A single test sequence extracted from a Foundry test function
 data FoundryTestSequence = FoundryTestSequence
-  { source       :: String  -- ^ Source test function name (e.g., "TestContract.test_example")
-  , transactions :: [Tx]    -- ^ Extracted transaction sequence
+  { source       :: String           -- ^ Source test function name (e.g., "TestContract.test_example")
+  , transactions :: [TxWithHoles]    -- ^ Extracted transaction sequence (may contain holes)
+  } deriving (Show)
+
+-- | A transaction with optional "holes" - argument positions that need fuzzing
+data TxWithHoles = TxWithHoles
+  { tx    :: !Tx       -- ^ The transaction (with placeholder values for holes)
+  , holes :: ![Int]    -- ^ Indices into the args list that need to be fuzzed
   } deriving (Show)
 
 instance FromJSON FoundryTestInfo where
@@ -49,6 +58,37 @@ instance FromJSON FoundryTestSequence where
     source <- o .: "source"
     transactions <- o .: "transactions"
     pure FoundryTestSequence {..}
+
+instance FromJSON TxWithHoles where
+  parseJSON = withObject "TxWithHoles" $ \o -> do
+    tx <- parseJSON (Object o)  -- Parse as Tx using its FromJSON
+    holes <- o .:? "holes" .!= []
+    pure TxWithHoles {..}
+
+-- | Fill holes in a transaction with randomly generated values
+fillHoles :: MonadRandom m => GenDict -> TxWithHoles -> m Tx
+fillHoles genDict txh
+  | null txh.holes = pure txh.tx
+  | otherwise = case txh.tx.call of
+      SolCall (funcName, args) -> do
+        filledArgs <- fillArgsHoles genDict txh.holes args 0
+        pure txh.tx { call = SolCall (funcName, filledArgs) }
+      _ -> pure txh.tx
+
+-- | Fill holes in an argument list
+fillArgsHoles :: MonadRandom m => GenDict -> [Int] -> [AbiValue] -> Int -> m [AbiValue]
+fillArgsHoles _ _ [] _ = pure []
+fillArgsHoles genDict holes (arg:rest) idx
+  | idx `elem` holes = do
+      -- Generate a new value of the same type
+      newVal <- genAbiValueM genDict (abiValueType arg)
+      (newVal :) <$> fillArgsHoles genDict holes rest (idx + 1)
+  | otherwise =
+      (arg :) <$> fillArgsHoles genDict holes rest (idx + 1)
+
+-- | Fill holes in a list of transactions
+fillAllHoles :: MonadRandom m => GenDict -> [TxWithHoles] -> m [Tx]
+fillAllHoles genDict = traverse (fillHoles genDict)
 
 -- | Empty result when extraction is disabled or fails
 emptyFoundryTestInfo :: FoundryTestInfo
@@ -191,13 +231,21 @@ extractFoundryTests fp solConf targetContract
               <> err
             pure emptyFoundryTestInfo
 
--- | Convert extracted test sequences to corpus format
-foundryTestsToCorpus :: FoundryTestInfo -> [(FilePath, [Tx])]
-foundryTestsToCorpus info =
+-- | Convert extracted test sequences to corpus format (with holes)
+foundryTestsToCorpusWithHoles :: FoundryTestInfo -> [(FilePath, [TxWithHoles])]
+foundryTestsToCorpusWithHoles info =
   [ (testSeq.source, testSeq.transactions)
   | testSeq <- info.sequences
   , not (null testSeq.transactions)
   ]
+
+-- | Convert extracted test sequences to corpus format, filling holes with random values
+foundryTestsToCorpus :: MonadRandom m => GenDict -> FoundryTestInfo -> m [(FilePath, [Tx])]
+foundryTestsToCorpus genDict info = traverse fillSeq (foundryTestsToCorpusWithHoles info)
+  where
+    fillSeq (source, txsWithHoles) = do
+      txs <- fillAllHoles genDict txsWithHoles
+      pure (source, txs)
 
 -- | Format extracted sequences for display in the log
 -- Groups by contract and shows each function with its call sequence
@@ -224,10 +272,12 @@ formatExtractedCorpus targetContract info =
       (c, '.':f) -> (c, f)
       (c, _)     -> (c, "unknown")
 
-    -- Format a single Tx call
-    formatCall :: Tx -> String
-    formatCall tx = case tx.call of
-      SolCall (funcName, _args) -> T.unpack funcName
+    -- Format a single Tx call (from TxWithHoles)
+    formatCall :: TxWithHoles -> String
+    formatCall txh = case txh.tx.call of
+      SolCall (funcName, _args) ->
+        let holeInfo = if null txh.holes then "" else " [holes: " <> show txh.holes <> "]"
+        in T.unpack funcName <> holeInfo
       _                         -> "<unknown>"
 
     -- Format a contract's test functions

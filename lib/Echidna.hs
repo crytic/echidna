@@ -3,6 +3,7 @@ module Echidna where
 import Control.Concurrent (newChan)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Random.Strict (evalRandT, getStdGen)
 import Data.IORef (newIORef)
 import Data.List (find, nub)
 import Data.List.NonEmpty (NonEmpty)
@@ -118,7 +119,9 @@ loadInitialCorpus env solFiles selectedContract = do
   foundryCorpus <- if env.cfg.solConf.prefillCorpus
     then do
       info <- extractFoundryTests (NE.head solFiles) env.cfg.solConf selectedContract
-      pure $ foundryTestsToCorpus info
+      -- Fill any holes with random values using emptyDict (no dictionary lookup, just synthesis)
+      stdGen <- getStdGen
+      evalRandT (foundryTestsToCorpus emptyDict info) stdGen
     else pure []
 
   pure (existingCorpus ++ foundryCorpus)

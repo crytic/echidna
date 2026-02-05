@@ -95,7 +95,11 @@ def convert_value_to_abi(value: Any, solidity_type: str) -> Optional[Dict[str, A
 
 
 def extract_constant_value(arg, arg_mapping: Optional[Dict] = None) -> Tuple[Optional[Any], Optional[str]]:
-    """Extract a constant value and its type from a Slither IR argument."""
+    """Extract a constant value and its type from a Slither IR argument.
+
+    Returns (None, None) if the value cannot be statically determined.
+    Does NOT provide default values - that's handled by the caller which marks holes.
+    """
     if isinstance(arg, Constant):
         value = arg.value
         if hasattr(arg, 'type') and arg.type:
@@ -108,26 +112,21 @@ def extract_constant_value(arg, arg_mapping: Optional[Dict] = None) -> Tuple[Opt
     if arg_mapping:
         # Try direct lookup
         if arg in arg_mapping:
-            return arg_mapping[arg]
+            val, type_str = arg_mapping[arg]
+            # Check for hole marker
+            if val is _HOLE_MARKER:
+                return None, type_str
+            return val, type_str
         # Try by string name (for TMP variables)
         arg_name = str(arg)
         if arg_name in arg_mapping:
-            return arg_mapping[arg_name]
+            val, type_str = arg_mapping[arg_name]
+            # Check for hole marker
+            if val is _HOLE_MARKER:
+                return None, type_str
+            return val, type_str
 
-    # Try to get type from the argument for default value generation
-    arg_type = getattr(arg, 'type', None)
-    if arg_type:
-        type_str = str(arg_type)
-        # Return a default/placeholder value based on type
-        if 'address' in type_str:
-            return 0, 'address'
-        elif 'uint' in type_str or 'int' in type_str:
-            return 0, type_str
-        elif 'bool' in type_str:
-            return False, 'bool'
-        elif 'bytes' in type_str:
-            return b'', type_str
-
+    # Cannot determine value statically - caller will mark as hole
     return None, None
 
 
@@ -205,6 +204,23 @@ def infer_type_from_value(value: Any) -> str:
 # =============================================================================
 # Contract/Function Analysis Utilities
 # =============================================================================
+
+def _is_contract_type(arg_type) -> bool:
+    """Check if a type is a contract type (should be treated as address)."""
+    if arg_type is None:
+        return False
+    # UserDefinedType with a Contract indicates a contract type
+    if isinstance(arg_type, UserDefinedType):
+        if hasattr(arg_type, 'type') and hasattr(arg_type.type, 'contract_kind'):
+            return True
+    # Also check by string pattern - contract types don't have standard Solidity type names
+    type_str = str(arg_type)
+    # Not a basic type and not a known complex type pattern
+    basic_types = ['uint', 'int', 'address', 'bool', 'bytes', 'string', 'tuple', 'array']
+    if not any(bt in type_str.lower() for bt in basic_types):
+        return True
+    return False
+
 
 def is_test_function(func: Function) -> bool:
     """Check if function is a Foundry/Echidna test function."""
@@ -312,31 +328,51 @@ def is_view_or_pure(func_obj) -> bool:
 # Argument Mapping Utilities
 # =============================================================================
 
+_HOLE_MARKER = object()  # Sentinel to indicate a hole in argument mapping
+
 def build_arg_mapping(ir, called_func, current_mapping: Dict) -> Dict:
-    """Build argument mapping for a function call."""
+    """Build argument mapping for a function call.
+
+    Maps parameters to either:
+    - (value, type_str) for resolved values
+    - (_HOLE_MARKER, type_str) for values that couldn't be resolved (holes)
+    """
     new_mapping = {}
     if hasattr(ir, 'arguments') and hasattr(called_func, 'parameters'):
         for param, arg in zip(called_func.parameters, ir.arguments):
             val, type_str = extract_constant_value(arg, current_mapping)
             if val is not None:
                 new_mapping[param] = (val, type_str)
+            else:
+                # Mark as a hole - we know there's a value but can't determine it statically
+                arg_type = getattr(arg, 'type', None)
+                if arg_type:
+                    type_str = str(arg_type)
+                    new_mapping[param] = (_HOLE_MARKER, type_str)
     return new_mapping
 
 
-def extract_call_arguments(ir, arg_mapping: Dict) -> List[Dict]:
+def extract_call_arguments(ir, arg_mapping: Dict) -> Tuple[List[Dict], List[int]]:
     """Extract and convert arguments from an IR call.
 
     IMPORTANT: Always includes all arguments to maintain correct function signatures.
     Uses default values (0 for addresses/uints, false for bools) when actual values
-    cannot be extracted.
+    cannot be extracted, and marks those positions as "holes" for Echidna to fill.
+
+    Returns:
+        Tuple of (args list, holes list) where holes contains indices of arguments
+        that could not be statically resolved and need fuzzing.
     """
     args = []
+    holes = []
     if hasattr(ir, 'arguments') and ir.arguments:
         for arg in ir.arguments:
             value, type_str = extract_constant_value(arg, arg_mapping)
+            is_hole = False
 
             # If we couldn't extract a value, try to get the type and use a default
             if value is None or type_str is None:
+                is_hole = True
                 arg_type = getattr(arg, 'type', None)
                 if arg_type:
                     type_str = str(arg_type)
@@ -350,6 +386,10 @@ def extract_call_arguments(ir, arg_mapping: Dict) -> List[Dict]:
                         value = False
                     elif 'bytes' in type_str:
                         value = b''
+                    elif _is_contract_type(arg_type):
+                        # Contract types (like MockERC20) are addresses
+                        value = 0
+                        type_str = 'address'
                     else:
                         # Unknown type - skip (will cause signature mismatch but better than crash)
                         continue
@@ -358,7 +398,9 @@ def extract_call_arguments(ir, arg_mapping: Dict) -> List[Dict]:
                 abi_val = convert_value_to_abi(value, type_str)
                 if abi_val:
                     args.append(abi_val)
-    return args
+                    if is_hole:
+                        holes.append(len(args) - 1)  # Track the actual index in args
+    return args, holes
 
 
 def extract_call_value(ir, arg_mapping: Dict) -> str:
@@ -402,12 +444,13 @@ def process_high_level_call_to_target(ir, arg_mapping: Dict,
     if not func_name:
         return None
 
-    args = extract_call_arguments(ir, arg_mapping)
+    args, holes = extract_call_arguments(ir, arg_mapping)
     value = extract_call_value(ir, arg_mapping)
 
     return {
         "function": func_name,
         "args": args,
+        "holes": holes,  # Argument indices that need fuzzing
         "value": value,
         "contract": contract_name,
         "_func_obj": called_func_obj  # Used for view/pure check
@@ -501,15 +544,36 @@ def extract_call_from_call_expression(expr: CallExpression,
         return None
 
     abi_args = []
+    holes = []
     for arg_expr in expr.arguments:
         if isinstance(arg_expr, Literal):
             abi_val = convert_value_to_abi(arg_expr.value, str(arg_expr.type))
             if abi_val:
                 abi_args.append(abi_val)
+        else:
+            # Non-literal argument - create a hole with default value
+            arg_type = getattr(arg_expr, 'type', None)
+            if arg_type:
+                type_str = str(arg_type)
+                if 'address' in type_str.lower() or 'Currency' in type_str:
+                    abi_val = convert_value_to_abi(0, 'address')
+                elif 'uint' in type_str:
+                    abi_val = convert_value_to_abi(0, type_str)
+                elif 'int' in type_str:
+                    abi_val = convert_value_to_abi(0, type_str)
+                elif 'bool' in type_str:
+                    abi_val = convert_value_to_abi(False, 'bool')
+                else:
+                    abi_val = None
+
+                if abi_val:
+                    abi_args.append(abi_val)
+                    holes.append(len(abi_args) - 1)
 
     return {
         "function": called_func,
         "args": abi_args,
+        "holes": holes,
         "value": "0",
         "contract": called_contract
     }
@@ -615,7 +679,7 @@ def convert_to_echidna_tx(call: Dict[str, Any], sender: str = DEFAULT_SENDER,
     else:
         dst = default_contract_addr
 
-    return {
+    tx = {
         "call": {
             "tag": "SolCall",
             "contents": [call["function"], call["args"]]
@@ -628,6 +692,13 @@ def convert_to_echidna_tx(call: Dict[str, Any], sender: str = DEFAULT_SENDER,
         "delay": ["0", "0"],
         "_contractName": contract_name
     }
+
+    # Include holes if there are any arguments that need fuzzing
+    holes = call.get("holes", [])
+    if holes:
+        tx["holes"] = holes
+
+    return tx
 
 
 # =============================================================================
