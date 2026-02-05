@@ -853,13 +853,46 @@ def get_foundry_project_root(filepath: str) -> Optional[Path]:
     return None
 
 
+def build_info_includes_tests(project_root: Path, out_dir: str) -> bool:
+    """Check if build-info includes test files.
+
+    Returns True if any source in the build-info is from a test/ directory,
+    indicating that test files were compiled and can be analyzed.
+    """
+    build_info_dir = project_root / out_dir / "build-info"
+    if not build_info_dir.is_dir():
+        return False
+
+    json_files = list(build_info_dir.glob("*.json"))
+    if not json_files:
+        return False
+
+    for json_file in json_files:
+        try:
+            with open(json_file, 'r') as f:
+                data = json.load(f)
+
+            # Check if any source path contains 'test/' indicating test files were compiled
+            sources = data.get('input', {}).get('sources', {})
+            for source_path in sources.keys():
+                # Common test directory patterns
+                if '/test/' in source_path or source_path.startswith('test/'):
+                    return True
+
+        except (json.JSONDecodeError, IOError):
+            continue
+
+    return False
+
+
 def create_slither_instance(filepath: str, crytic_args: List[str]) -> Slither:
     """Create a Slither instance with optimized settings.
 
     Optimizations:
     1. printers_to_run='echidna': Skip data dependency analysis (not needed for call extraction)
        but keep IR generation which is required for extracting function calls
-    2. foundry_compile_all=True: Include test files when compiling (required for test extraction)
+    2. foundry_compile_all=True: Always needed for Slither to include test contracts in analysis
+    3. Uses cached build-info if it includes test files (avoids recompilation)
     """
     project_root = get_foundry_project_root(filepath)
 
@@ -873,13 +906,20 @@ def create_slither_instance(filepath: str, crytic_args: List[str]) -> Slither:
     if crytic_args:
         slither_args["solc_args"] = " ".join(crytic_args)
 
-    # For Foundry projects, always compile with test files included
+    # For Foundry projects, always need foundry_compile_all for test file analysis
     if project_root:
         out_dir = get_foundry_out_directory(project_root) or "out"
         slither_args["foundry_out_directory"] = out_dir
-        # Always include test files - required for extracting test functions
+        # Always needed for Slither to include test contracts in its analysis
         slither_args["foundry_compile_all"] = True
-        print("Compiling project with test files...", file=sys.stderr)
+
+        if build_info_includes_tests(project_root, out_dir):
+            # Build-info already has test files - Slither will use cached artifacts (fast)
+            print(f"Using cached build-info from {out_dir}/build-info", file=sys.stderr)
+        else:
+            # Build-info missing test files - Slither will need to compile (slow)
+            print("Compiling project with test files (run 'forge build --build-info src test' to speed up future runs)...", file=sys.stderr)
+
         return Slither(str(project_root), **slither_args)
 
     return Slither(filepath, **slither_args)
