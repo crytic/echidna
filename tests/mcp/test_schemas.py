@@ -58,12 +58,12 @@ def test_find_transaction_schema(mcp_client):
 
 
 def test_inject_transaction_schema(mcp_client):
-    """Validate inject_transaction response against schema."""
-    result = mcp_client.call_tool("inject_transaction", {
+    """Validate inject_fuzz_transactions response against schema."""
+    result = mcp_client.call_tool("inject_fuzz_transactions", {
         "transactions": ["transfer(0x1234567890123456789012345678901234567890, 100)"]
     })
     
-    assert validate_response(result, "inject_transaction")
+    assert validate_response(result, "inject_fuzz_transactions")
 
 
 def test_prioritize_function_schema(mcp_client):
@@ -76,7 +76,7 @@ def test_prioritize_function_schema(mcp_client):
 
 
 def test_clear_priorities_schema(mcp_client):
-    """Validate clear_priorities response against schema."""
-    result = mcp_client.call_tool("clear_priorities", {})
+    """Validate clear_fuzz_priorities response against schema."""
+    result = mcp_client.call_tool("clear_fuzz_priorities", {})
     
-    assert validate_response(result, "clear_priorities")
+    assert validate_response(result, "clear_fuzz_priorities")

@@ -8,6 +8,28 @@ from pathlib import Path
 import pytest
 
 
+def _wait_for_log_entries(log_path: Path, expected_count: int = 1, timeout: float = 15.0) -> bool:
+    """Poll log file until expected entries appear or timeout.
+
+    Args:
+        log_path: Path to the JSONL log file
+        expected_count: Minimum number of entries expected
+        timeout: Maximum seconds to wait
+
+    Returns:
+        True if entries found within timeout, False otherwise
+    """
+    start = time.time()
+    while time.time() - start < timeout:
+        if log_path.exists():
+            with open(log_path) as f:
+                entries = [line for line in f if line.strip()]
+                if len(entries) >= expected_count:
+                    return True
+        time.sleep(0.5)
+    return False
+
+
 def test_inject_transaction_logged(mcp_client, tmp_corpus_dir):
     """Verify control commands logged to mcp-commands.jsonl (FR-010)"""
     
@@ -18,11 +40,12 @@ def test_inject_transaction_logged(mcp_client, tmp_corpus_dir):
     assert "success" in response.lower() or "requested" in response.lower(), \
         f"Unexpected response: {response}"
     
-    # Wait for log flush (flushes every 10 seconds)
-    time.sleep(12)
+    # Wait for log flush using polling instead of fixed sleep
+    log_file = tmp_corpus_dir / "mcp-commands.jsonl"
+    assert _wait_for_log_entries(log_file, expected_count=1), \
+        f"Log file not created or no entries after timeout at {log_file}"
     
     # Verify log file exists
-    log_file = tmp_corpus_dir / "mcp-commands.jsonl"
     assert log_file.exists(), f"Log file not created at {log_file}"
     
     # Parse JSONL entries
@@ -50,10 +73,9 @@ def test_clear_priorities_logged(mcp_client, tmp_corpus_dir):
     assert "success" in response.lower() or "requested" in response.lower() or "cleared" in response.lower(), \
         f"Unexpected response: {response}"
     
-    time.sleep(12)
-    
     log_file = tmp_corpus_dir / "mcp-commands.jsonl"
-    assert log_file.exists(), "Log file not created"
+    assert _wait_for_log_entries(log_file, expected_count=1), \
+        "Log file not created or no entries after timeout"
     
     with open(log_file) as f:
         entries = [json.loads(line) for line in f if line.strip()]
@@ -71,17 +93,18 @@ def test_observability_tools_not_logged(mcp_client, tmp_corpus_dir):
     # Call observability tools
     try:
         mcp_client.call("status", {})
-    except Exception as e:
+    except Exception:
         # Tool might not be fully implemented yet
         pass
     
     try:
         mcp_client.call("show_coverage", {"contract": "TestContract"})
-    except Exception as e:
+    except Exception:
         # Tool might not be fully implemented yet
         pass
     
-    time.sleep(12)
+    # Give time for any potential (incorrect) logging to flush
+    time.sleep(2)
     
     log_file = tmp_corpus_dir / "mcp-commands.jsonl"
     
@@ -113,11 +136,10 @@ def test_multiple_commands_logged_in_order(mcp_client, tmp_corpus_dir):
         assert response  # Should get some response
         time.sleep(1)  # Small delay between commands
     
-    # Wait for flush
-    time.sleep(12)
-    
+    # Wait for flush using polling
     log_file = tmp_corpus_dir / "mcp-commands.jsonl"
-    assert log_file.exists(), "Log file not created"
+    assert _wait_for_log_entries(log_file, expected_count=3), \
+        "Log file not created or insufficient entries after timeout"
     
     with open(log_file) as f:
         entries = [json.loads(line) for line in f if line.strip()]

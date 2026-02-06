@@ -39,9 +39,14 @@ def test_read_logs_pagination(mcp_client):
     assert isinstance(result2["events"], list)
 
 
-@pytest.mark.timeout(1)  # 1 second max
+@pytest.mark.timeout(3)  # 3 seconds max (10 calls × up to 150ms each + overhead)
 def test_read_logs_response_time(mcp_client):
-    """Test that read_logs responds within 100ms (p95 < 150ms)."""
+    """Test that read_logs responds within 100ms mean and 150ms p95.
+
+    Performance requirements (FR-015):
+    - Mean latency: <100ms (typical case)
+    - P95 latency: <150ms (worst case for 95% of requests)
+    """
     times = []
     
     for _ in range(10):

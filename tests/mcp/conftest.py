@@ -31,7 +31,7 @@ class MCPClient:
         Call an MCP tool and return the response.
         
         Args:
-            tool_name: Name of the tool (e.g., "read_logs", "inject_transaction")
+            tool_name: Name of the tool (e.g., "read_logs", "inject_fuzz_transactions")
             parameters: Tool parameters as key-value dict
             
         Returns:
@@ -84,17 +84,59 @@ class MCPClient:
         self.client.close()
 
 
-@pytest.fixture
-def mcp_client():
+# Parameterized timeout configuration
+def pytest_addoption(parser):
+    """Add custom command-line options for MCP tests."""
+    parser.addoption(
+        "--mcp-timeout",
+        action="store",
+        default="30",
+        help="Timeout in seconds for MCP tool calls (default: 30)"
+    )
+    parser.addoption(
+        "--mcp-port",
+        action="store",
+        default="8080",
+        help="Port for MCP server connection (default: 8080)"
+    )
+
+
+@pytest.fixture(scope="session")
+def mcp_timeout(request):
     """
-    Pytest fixture providing an MCP client connected to localhost:8080.
+    Parameterized timeout for MCP tests.
+    
+    Usage:
+        pytest --mcp-timeout=60  # Use 60 second timeout
+    """
+    return int(request.config.getoption("--mcp-timeout"))
+
+
+@pytest.fixture(scope="session")
+def mcp_port(request):
+    """
+    Session-scoped MCP port configuration.
+    
+    Usage:
+        pytest --mcp-port=9090  # Use custom port
+    """
+    return int(request.config.getoption("--mcp-port"))
+
+
+@pytest.fixture
+def mcp_client(mcp_port, mcp_timeout):
+    """
+    Pytest fixture providing an MCP client connected to configured port.
+    
+    Consolidated fixture using session-scoped configuration.
     
     Usage:
         def test_read_logs(mcp_client):
-            result = mcp_client.call_tool("read_logs", {"max_count": 10})
-            assert "events" in result
+            result = mcp_client.call_tool("status", {})
+            assert "content" in result
     """
-    client = MCPClient("http://localhost:8080")
+    client = MCPClient(f"http://localhost:{mcp_port}")
+    client.client.timeout = httpx.Timeout(float(mcp_timeout))
     yield client
     client.close()
 

@@ -3,22 +3,22 @@
 # Phase 1, Task T006
 
 # LangChain Framework for AI agents
-langchain==0.3.7
-langchain-core==0.3.15
-langchain-community==0.3.5
+langchain>=0.3.7,<0.4.0
+langchain-core>=0.3.15,<0.4.0
+langchain-community>=0.3.5,<0.4.0
 
 # LangGraph for StateGraph workflows
-langgraph==0.2.45
+langgraph>=0.2.45,<0.3.0
 
 # HTTP client for MCP calls
-httpx==0.27.2
+httpx>=0.27.2,<0.28.0
 
 # Testing framework
-pytest==8.3.3
-pytest-asyncio==0.24.0
+pytest>=8.3.3,<9.0.0
+pytest-asyncio>=0.24.0,<0.25.0
 
 # JSON manipulation
-jsonschema==4.23.0
+jsonschema>=4.23.0,<5.0.0
 
 # Utilities
-python-dotenv==1.0.1
+python-dotenv>=1.0.1,<2.0.0

@@ -28,7 +28,7 @@ def test_agent_workflow_observe_then_inject(mcp_client):
     print(f"Initial event count: {initial_count}")
     
     # Step 2: Inject transaction
-    inject_result = mcp_client.call_tool("inject_transaction", {
+    inject_result = mcp_client.call_tool("inject_fuzz_transactions", {
         "transactions": ["transfer(0x1234567890123456789012345678901234567890, 999)"]
     })
     
@@ -96,7 +96,7 @@ def test_agent_workflow_coverage_driven_injection(mcp_client, echidna_campaign_r
     print(f"Initial coverage: {initial_points} points")
     
     # Step 2: Inject diverse transactions
-    inject_result = mcp_client.call_tool("inject_transaction", {
+    inject_result = mcp_client.call_tool("inject_fuzz_transactions", {
         "transactions": [
             "transfer(0x1111111111111111111111111111111111111111, 100)",
             "approve(0x2222222222222222222222222222222222222222, 200)",
@@ -155,7 +155,8 @@ async def test_concurrent_tool_calls():
         # All should succeed
         for result in results:
             assert not isinstance(result, Exception), f"Tool call failed: {result}"
-            assert "result" in result or "error" not in result
+            assert "result" in result, f"Expected 'result' key in {result}"
+            assert "error" not in result, f"Unexpected error: {result.get('error')}"
 
 
 def test_agent_workflow_full_cycle(mcp_client, echidna_campaign_running):
@@ -181,7 +182,7 @@ def test_agent_workflow_full_cycle(mcp_client, echidna_campaign_running):
     })
     
     # Phase 3: Inject
-    mcp_client.call_tool("inject_transaction", {
+    mcp_client.call_tool("inject_fuzz_transactions", {
         "transactions": ["transfer(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, 42)"]
     })
     
@@ -196,7 +197,7 @@ def test_agent_workflow_full_cycle(mcp_client, echidna_campaign_running):
     print(f"After injection: corpus size {corpus_size['corpus_size']}, {search_result['count']} transfers")
     
     # Phase 5: Clear priorities
-    clear_result = mcp_client.call_tool("clear_priorities", {})
+    clear_result = mcp_client.call_tool("clear_fuzz_priorities", {})
     assert clear_result["cleared"] is True
     
     # Workflow completed successfully if we got here

@@ -14,7 +14,7 @@ class MCPClientV2:
     """
     Enhanced MCP client with convenience methods for each tool.
     
-    Wraps httpx and provides typed methods for all 9 MCP tools.
+    Wraps httpx and provides typed methods for MCP tools.
     """
     
     def __init__(self, base_url: str = "http://localhost:8080"):
@@ -40,8 +40,11 @@ class MCPClientV2:
         
         if "error" in result:
             raise RuntimeError(f"MCP tool error: {result['error']}")
-            
-        return result.get("result", {})
+
+        if "result" not in result:
+            raise RuntimeError(f"Invalid MCP response: missing 'result' field in {result!r}")
+
+        return result["result"]
     
     # Observability Tools
     
@@ -131,7 +134,7 @@ class MCPClientV2:
         Returns:
             {"injected": bool, "transaction_count": int, "worker_id": int}
         """
-        return self._call_tool("inject_transaction", {
+        return self._call_tool("inject_fuzz_transactions", {
             "transactions": transactions
         })
     
@@ -156,7 +159,7 @@ class MCPClientV2:
         Returns:
             {"cleared": bool, "worker_ids": [int]}
         """
-        return self._call_tool("clear_priorities", {})
+        return self._call_tool("clear_fuzz_priorities", {})
     
     def list_tools(self) -> Dict[str, Any]:
         """
