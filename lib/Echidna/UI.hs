@@ -38,7 +38,7 @@ import Echidna.Output.JSON qualified
 import Echidna.Types.Agent (runAgent)
 import Echidna.Agent.Fuzzer (FuzzerAgent(..))
 import Echidna.Agent.Symbolic (SymbolicAgent(..))
-import Echidna.MCP (runMCPServer)
+import Echidna.MCP (runMCPServer, flushCommandLog)
 import Echidna.SourceAnalysis.Slither (isEmptySlitherInfo)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
@@ -113,11 +113,12 @@ ui vm dict initialCorpus cliSelectedContract = do
 
       uiEventsForwarderStopVar <- spawnListener forwardEvent
 
-      case conf.campaignConf.mcpPort of
+      -- Track MCP server thread for graceful shutdown
+      mcpServerThread <- case conf.campaignConf.mcpPort of
         Just port -> do
           liftIO $ pushCampaignEvent env (ServerLog ("MCP Server running at http://127.0.0.1:" ++ show port ++ "/mcp"))
-          void $ liftIO $ forkIO $ runMCPServer env (map snd workers) (fromIntegral port) logBuffer
-        Nothing -> pure ()
+          liftIO $ Just <$> forkIO (runMCPServer env (map snd workers) (fromIntegral port) logBuffer)
+        Nothing -> pure Nothing
 
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 200_000 -- 200 ms
@@ -173,6 +174,15 @@ ui vm dict initialCorpus cliSelectedContract = do
       -- Exited from the UI, stop the workers, not needed anymore
       stopWorkers workers
 
+      -- Graceful MCP server shutdown - kill thread and flush logs
+      case mcpServerThread of
+        Just tid -> do
+          liftIO $ killThread tid
+          liftIO $ do
+            corpusDir <- maybe (return ".") pure conf.campaignConf.corpusDir
+            flushCommandLog corpusDir logBuffer
+        Nothing -> pure ()
+
       -- wait for all events to be processed
       forM_ [uiEventsForwarderStopVar, corpusSaverStopVar] takeMVar
 
@@ -214,11 +224,12 @@ ui vm dict initialCorpus cliSelectedContract = do
             hFlush stdout
             liftIO $ atomicModifyIORef' logBuffer (\logs -> (pack statusMsg : logs, ()))
 
-      case conf.campaignConf.mcpPort of
+      -- Track MCP server thread for graceful shutdown
+      mcpServerThread <- case conf.campaignConf.mcpPort of
         Just port -> do
           liftIO $ pushCampaignEvent env (ServerLog ("MCP Server running at http://127.0.0.1:" ++ show port ++ "/mcp"))
-          void $ liftIO $ forkIO $ runMCPServer env (map snd workers) (fromIntegral port) logBuffer
-        Nothing -> pure ()
+          liftIO $ Just <$> forkIO (runMCPServer env (map snd workers) (fromIntegral port) logBuffer)
+        Nothing -> pure Nothing
 
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 3_000_000 -- 3 seconds
@@ -228,6 +239,15 @@ ui vm dict initialCorpus cliSelectedContract = do
       forM_ [uiEventsForwarderStopVar, corpusSaverStopVar] takeMVar
 
       liftIO $ killThread ticker
+
+      -- Graceful MCP server shutdown - kill thread and flush logs
+      case mcpServerThread of
+        Just tid -> do
+          liftIO $ killThread tid
+          liftIO $ do
+            corpusDir <- maybe (return ".") pure conf.campaignConf.corpusDir
+            flushCommandLog corpusDir logBuffer
+        Nothing -> pure ()
 
       -- print final status regardless of the last scheduled update
       liftIO printStatus
