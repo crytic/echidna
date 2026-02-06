@@ -3,10 +3,7 @@ Function Prioritization Tool Tests
 Feature: 001-mcp-agent-commands
 Phase 5, Task T062
 
-NOTE: These tests use old tool names 'prioritize_function' and 'clear_priorities'.
-Upstream uses 'inject_fuzz_transactions' (to inject sequences) and 'clear_fuzz_priorities'.
-The prioritize_function tool does not exist in upstream - prioritization happens via injection.
-Tests are skipped until updated to match upstream API.
+Tests for prioritize_function and clear_priorities MCP tools.
 """
 
 import pytest
@@ -14,7 +11,6 @@ import time
 from collections import Counter
 
 
-@pytest.mark.skip(reason="Tool does not exist in upstream")
 def test_prioritize_function(mcp_client, echidna_campaign_running):
     """Test setting priority for a function."""
     result = mcp_client.call_tool("prioritize_function", {
@@ -29,7 +25,6 @@ def test_prioritize_function(mcp_client, echidna_campaign_running):
     assert isinstance(result["worker_ids"], list)
 
 
-@pytest.mark.skip(reason="Tool does not exist in upstream")
 def test_clear_priorities(mcp_client):
     """Test clearing all function priorities."""
     # First set a priority
@@ -46,7 +41,6 @@ def test_clear_priorities(mcp_client):
     assert isinstance(result["worker_ids"], list)
 
 
-@pytest.mark.skip(reason="Tool does not exist in upstream")
 def test_priority_affects_call_frequency(mcp_client, echidna_campaign_running):
     """
     Test that prioritization increases call frequency.
@@ -110,7 +104,6 @@ def test_priority_affects_call_frequency(mcp_client, echidna_campaign_running):
         f"Prioritized function not called more: {initial_count} -> {updated_count}"
 
 
-@pytest.mark.skip(reason="Tool does not exist in upstream")
 def test_priority_persistence(mcp_client):
     """Test that priority persists across multiple calls."""
     function_sig = "balanceOf(address)"
@@ -132,7 +125,6 @@ def test_priority_persistence(mcp_client):
     assert result3["cleared"] is True
 
 
-@pytest.mark.skip(reason="Tool does not exist in upstream")
 def test_prioritize_multiple_functions(mcp_client):
     """Test prioritizing multiple functions sequentially."""
     functions = [
@@ -148,7 +140,6 @@ def test_prioritize_multiple_functions(mcp_client):
         assert result["prioritized"] is True
 
 
-@pytest.mark.skip(reason="Tool does not exist in upstream")
 def test_clear_after_prioritize(mcp_client, echidna_campaign_running):
     """Test that clearing priorities returns to uniform distribution."""
     # This is a basic validation - full statistical testing would need many samples
@@ -165,3 +156,4 @@ def test_clear_after_prioritize(mcp_client, echidna_campaign_running):
     assert result["cleared"] is True
     
     # After clearing, distribution should normalize (this is qualitative)
+    # Full validation in T054 integration test

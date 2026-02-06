@@ -3,16 +3,14 @@ Read Logs Tool Tests
 Feature: 001-mcp-agent-commands
 Phase 5, Task T058
 
-NOTE: The read_logs tool is currently commented out in upstream (lib/Echidna/MCP.hs).
-These tests are preserved for when the tool is re-enabled.
 Tests for read_logs MCP tool.
 """
 
 import pytest
 import time
+from tests.mcp.scripts.mcp_client_wrapper import MCPClientV2
 
 
-@pytest.mark.skip(reason="read_logs tool is commented out in upstream")
 def test_read_logs_initial(mcp_client):
     """Test that logs exist on fresh campaign."""
     result = mcp_client.call_tool("read_logs", {"max_count": 10})
@@ -23,7 +21,6 @@ def test_read_logs_initial(mcp_client):
     assert result["count"] >= 0
 
 
-@pytest.mark.skip(reason="read_logs tool is commented out in upstream")
 def test_read_logs_pagination(mcp_client):
     """Test that pagination parameters work correctly."""
     # Get first batch
@@ -42,11 +39,14 @@ def test_read_logs_pagination(mcp_client):
     assert isinstance(result2["events"], list)
 
 
-@pytest.mark.skip(reason="read_logs tool is commented out in upstream")
-@pytest.mark.timeout(3)  # 3 seconds max per test
-
+@pytest.mark.timeout(3)  # 3 seconds max (10 calls × up to 150ms each + overhead)
 def test_read_logs_response_time(mcp_client):
-    """Test that read_logs responds within 100ms (p95 < 150ms)."""
+    """Test that read_logs responds within 100ms mean and 150ms p95.
+
+    Performance requirements (FR-015):
+    - Mean latency: <100ms (typical case)
+    - P95 latency: <150ms (worst case for 95% of requests)
+    """
     times = []
     
     for _ in range(10):
@@ -65,7 +65,6 @@ def test_read_logs_response_time(mcp_client):
     assert p95_time < 150, f"P95 response time {p95_time:.2f}ms exceeds 150ms"
 
 
-@pytest.mark.skip(reason="read_logs tool is commented out in upstream")
 def test_read_logs_empty_params(mcp_client):
     """Test read_logs with empty parameters (should use defaults)."""
     result = mcp_client.call_tool("read_logs", {})

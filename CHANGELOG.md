@@ -1,4 +1,9 @@
 ## Unreleased
+* Added Model Context Protocol (MCP) server integration for AI agent control (#001-mcp-agent-commands)
+  - 7 MCP tools: status, show_coverage, dump_lcov, target, reload_corpus, inject_fuzz_transactions, clear_fuzz_priorities
+  - Command logging for reproducibility (logs to `{corpus-dir}/mcp-commands.jsonl`)
+  - HTTP server on configurable port via `--mcp-port` flag
+  - Python integration tests and agent workflow examples
 * Dropped Etheno support (#1402)
 * Dropped `estimateGas` support and auxiliary code (#1403)
 

@@ -13,16 +13,12 @@ This guide shows you how to test the Echidna MCP server and integrate it with AI
 source ~/.zshrc
 
 # Navigate to project
-cd PATH_TO_YOUR_ECHIDNA_MCP
+cd /Users/daniel.a.tradito/Development/Audit/echidna-mcp
 
 # Start Echidna with MCP server (background)
-# IMPORTANT: Use --format text to disable interactive UI (required for MCP)
 ~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol \
-  --contract EchidnaMCPTest \
-  --server 8080 \
-  --test-mode property \
-  --test-limit 1000000 \
-  --format text &
+  --mcp-port 8080 \
+  --test-limit 1000000 &
 
 # Wait for startup
 sleep 5
@@ -79,13 +75,7 @@ Connecting to: http://localhost:8080/mcp
 5️⃣  Testing 'clear_fuzz_priorities' tool...
    ✅ Success
 
-6️⃣  Testing 'reload_corpus' tool...
-   ✅ Success
-
-7️⃣  Testing 'dump_lcov' tool...
-   ✅ Success
-
-✅ Passed: 7/7
+✅ All tests passed!
 ```
 
 ---
@@ -131,65 +121,10 @@ python examples/langgraph_agent.py
 ```
 
 **What it does:**
-- Uses Claude (or your preferred AI model) to analyze coverage reports
+- Uses Claude to analyze coverage reports
 - Generates intelligent transaction sequences
 - Makes autonomous decisions about fuzzing strategy
 - Learns from fuzzing results
-
-### Example 3: VS Code + GitHub Copilot Integration
-
-Use GitHub Copilot as your AI agent directly in VS Code:
-
-**Setup:**
-
-1. **Install GitHub Copilot** in VS Code
-2. **Start Echidna with MCP server:**
-   ```bash
-   ~/.local/bin/echidna contracts/MyContract.sol \
-     --server 3000 \
-     --format text \
-     --test-limit 1000000 &
-   ```
-
-3. **Create `.vscode/mcp.json`** in your project:
-   ```json
-   {
-     "servers": {
-       "Echidna fuzzing campaign": {
-         "type": "http",
-         "url": "http://localhost:3000/mcp"
-       }
-     }
-   }
-   ```
-
-4. **Verify in VS Code:**
-   - Save the file
-   - Click "Run" next to the server name
-   - Should show: "7 tools available"
-
-**Usage:**
-
-Open VS Code Chat (`Cmd + Shift + P` → `/chat`) and prompt:
-
-```
-An Echidna fuzzing campaign is running. Using the available MCP interface:
-
-1. Check the campaign status and current coverage
-2. Identify contracts with low coverage in uncovered regions
-3. Design targeted transaction sequences to explore those paths
-4. Inject sequences using concrete + random parameters (e.g., "f(1,?,?) ; g(?,2,5)")
-5. Wait 20 seconds, then check if coverage improved
-6. Clear priorities to return to default fuzzing
-
-Focus on crafting sequences likely to trigger edge cases or invariant violations.
-```
-
-**Benefits:**
-- No code required - conversational interface
-- Copilot automatically discovers and calls MCP tools
-- AI-driven fuzzing strategy without custom scripts
-- Iterative refinement through chat
 
 ---
 
@@ -278,7 +213,7 @@ mkdir -p corpus
 
 # Start Echidna with corpus dir
 ~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol \
-  --server 8080 \
+  --mcp-port 8080 \
   --corpus-dir ./corpus \
   --test-limit 1000000 &
 
@@ -379,8 +314,7 @@ You should see:
 **Common issues:**
 1. **Wrong endpoint**: Use `/mcp` path → `http://localhost:8080/mcp`
 2. **Test limit reached**: Echidna exits when fuzzing completes
-3. **Correct flag**: Use `--server 8080` to enable MCP server
-4. **Interactive UI blocking**: Add `--format text` to disable TUI (required for MCP)
+3. **Wrong flag**: Use `--mcp-port` not `--server`
 
 ### Command log not created?
 

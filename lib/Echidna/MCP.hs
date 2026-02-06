@@ -3,9 +3,10 @@
 
 module Echidna.MCP where
 
-import Control.Concurrent (forkIO)
-import Control.Monad (forever, unless, when)
+import Control.Concurrent (forkIO, threadDelay)
+import Control.Monad (forever, unless)
 import Control.Concurrent.STM
+import Data.Aeson (object, (.=), encode)
 import Data.IORef (readIORef, modifyIORef', newIORef, IORef, atomicModifyIORef')
 import Data.List (find, isPrefixOf, isSuffixOf, sort, intercalate)
 import qualified Data.Maybe
@@ -18,11 +19,9 @@ import Text.Printf (printf)
 import qualified Data.Map as Map
 import Text.Read (readMaybe)
 import System.Directory (getCurrentDirectory)
-import Data.Char (isSpace, toLower)
-import Data.Aeson (encode, object, (.=))
-import qualified Data.ByteString.Lazy.Char8 as BSL
 import System.FilePath ((</>))
-import System.IO (withFile, IOMode(AppendMode))
+import System.IO (withFile, IOMode(..), hPutStrLn)
+import Data.Char (isSpace, toLower)
 
 import MCP.Server
 import EVM.Dapp (DappInfo(..))
@@ -240,7 +239,7 @@ dumpLcovTool _ env _ _ = do
 
 -- | Implementation of inject_fuzz_transactions tool
 fuzzTransactionTool :: ToolExecution
-fuzzTransactionTool args env bus _ = do
+fuzzTransactionTool args env bus logsRef = do
   let txStr = Data.Maybe.fromMaybe "" (lookup "transactions" args)
   case parseFuzzSequence (unpack txStr) of
     Nothing -> return "Error: Failed to parse transaction sequence string."
@@ -262,7 +261,9 @@ fuzzTransactionTool args env bus _ = do
           errors = Data.Maybe.mapMaybe validateCall seqPrototype
 
       if not (null errors)
-        then return $ "Error:\n" ++ unlines errors
+        then do
+          logMCPCommand logsRef "inject_fuzz_transactions" [("transactions", txStr), ("result", "error")]
+          return $ "Error:\n" ++ unlines errors
         else do
           let nWorkers = getNFuzzWorkers env.cfg.campaignConf
               calcProb i
@@ -274,13 +275,15 @@ fuzzTransactionTool args env bus _ = do
                 | otherwise = 0.2 + fromIntegral (i - 1) * (0.7 / fromIntegral (nWorkers - 2))
 
           mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (FuzzSequence seqPrototype (calcProb i))))) [0 .. nWorkers - 1]
+          logMCPCommand logsRef "inject_fuzz_transactions" [("transactions", txStr), ("result", "success")]
           return $ printf "Requested fuzzing of transaction sequence '%s' on %d fuzzers" (unpack txStr) nWorkers
 
 -- | Implementation of clear_fuzz_priorities tool
 clearPrioritiesTool :: ToolExecution
-clearPrioritiesTool _ env bus _ = do
+clearPrioritiesTool _ env bus logsRef = do
   let nWorkers = getNFuzzWorkers env.cfg.campaignConf
   mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i ClearPrioritization))) [0 .. nWorkers - 1]
+  logMCPCommand logsRef "clear_fuzz_priorities" [("result", "success")]
   return $ printf "Requested clearing priorities on %d fuzzers" nWorkers
 
 -- | Implementation of read_logs tool
@@ -371,10 +374,50 @@ availableTools workerRefs statusRef =
   , Tool "show_coverage" "Show coverage report for a particular contract" showCoverageTool
   ]
 
+-- | Log a control command for reproducibility (FR-010)
+logMCPCommand :: IORef [Text] -> Text -> [(Text, Text)] -> IO ()
+logMCPCommand logsRef toolName params = do
+  timestamp <- getCurrentTime
+  let paramStr = T.intercalate ", " [k <> "=" <> v | (k, v) <- params]
+  let logEntry = pack $ printf "[%s] %s(%s)" (show timestamp) (unpack toolName) (unpack paramStr)
+  modifyIORef' logsRef (logEntry :)
+
+-- | Flush command log to JSONL file (Phase 4 - FR-010, Clarification #6)
+flushCommandLog :: FilePath -> IORef [Text] -> IO ()
+flushCommandLog corpusDir logsRef = do
+  logs <- atomicModifyIORef' logsRef (\ls -> ([], ls))  -- Swap with empty list
+  unless (null logs) $ do
+    let logFile = corpusDir </> "mcp-commands.jsonl"
+    withFile logFile AppendMode $ \h ->
+      mapM_ (\entry -> do
+        -- Parse log entry format: "[timestamp] toolname(args)"
+        let entryStr = unpack entry
+        let timestampEnd = 1 + length (takeWhile (/= ']') (drop 1 entryStr))
+        let timestamp = take (timestampEnd - 1) (drop 1 entryStr)
+        let command = drop (timestampEnd + 2) entryStr
+        let json = encode $ object
+              [ "timestamp" .= timestamp
+              , "command" .= command
+              ]
+        hPutStrLn h (show json)) (reverse logs)  -- Reverse to chronological order
+
+-- | Background thread for periodic log flushing (Phase 4)
+startLogFlusher :: FilePath -> IORef [Text] -> IO ()
+startLogFlusher corpusDir logsRef = do
+  _ <- forkIO $ forever $ do
+    threadDelay (10 * 1000000)  -- 10 seconds
+    flushCommandLog corpusDir logsRef
+  return ()
+
 -- | Run the MCP Server
 runMCPServer :: Env -> [IORef WorkerState] -> Int -> IORef [Text] -> IO ()
 runMCPServer env workerRefs port logsRef = do
     statusRef <- newIORef (StatusState Nothing [])
+    
+    -- Start background log flusher (Phase 4)
+    -- Get corpus directory from config (same pattern as in Agent/Fuzzer.hs:198 and Onchain.hs:130)
+    corpusDir <- maybe getCurrentDirectory pure env.cfg.campaignConf.corpusDir
+    startLogFlusher corpusDir logsRef
 
     -- Spawn listener for coverage events
     myBus <- atomically $ dupTChan env.bus
@@ -457,19 +500,6 @@ runMCPServer env workerRefs port logsRef = do
 
     let handleToolCall :: ToolName -> [(ArgumentName, ArgumentValue)] -> IO (Either Error Content)
         handleToolCall name args = do
-            -- Log control commands
-            when (name `elem` ["inject_fuzz_transactions", "clear_fuzz_priorities"]) $ do
-                dir <- maybe getCurrentDirectory pure env.cfg.campaignConf.corpusDir
-                let logFile = dir </> "mcp-commands.jsonl"
-                now <- getCurrentTime
-                let logEntry = object
-                        [ "timestamp" .= show now
-                        , "command" .= name
-                        , "args" .= Map.fromList args
-                        ]
-                withFile logFile AppendMode $ \h -> do
-                    BSL.hPutStrLn h (encode logEntry)
-
             case find (\t -> pack t.toolName == name) toolsList of
                 Nothing -> return $ Left $ UnknownTool name
                 Just tool -> do

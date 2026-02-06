@@ -24,7 +24,7 @@ source ../.venv/bin/activate
 ```bash
 # Start Echidna first
 cd ..
-~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol --server 8080 --test-limit 1000000 &
+~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol --mcp-port 8080 --test-limit 1000000 &
 
 # Run agent
 source .venv/bin/activate
@@ -58,7 +58,7 @@ export ANTHROPIC_API_KEY=your_key_here
 ```bash
 # Start Echidna first
 cd ..
-~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol --server 8080 --test-limit 1000000 &
+~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol --mcp-port 8080 --test-limit 1000000 &
 
 # Run agent
 python examples/langgraph_agent.py
@@ -78,8 +78,8 @@ python examples/langgraph_agent.py
 
 ```bash
 # Terminal 1: Start Echidna
-cd PATH_TO_YOUR_ECHIDNA_MCP
-~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol --server 8080 --test-limit 1000000 &
+cd /Users/daniel.a.tradito/Development/Audit/echidna-mcp
+~/.local/bin/echidna tests/mcp/contracts/EchidnaMCPTest.sol --mcp-port 8080 --test-limit 1000000 &
 
 # Terminal 2: Run simple agent
 source .venv/bin/activate
@@ -132,13 +132,13 @@ class MyEchidnaAgent:
 
 ### Available Tools
 
-1. **status** - Get fuzzing campaign status and metrics
-2. **show_coverage** - Get coverage report for contracts
-3. **target** - Get target contract name and ABI
-4. **inject_fuzz_transactions** - Inject transaction sequences to prioritize
-5. **clear_fuzz_priorities** - Clear all function priorities
-6. **reload_corpus** - Reload corpus from disk
-7. **dump_lcov** - Export coverage in LCOV format
+1. **status** - Get fuzzing metrics
+2. **show_coverage** - Get coverage report
+3. **target** - Get contract ABI
+4. **inject_fuzz_transactions** - Queue transactions
+5. **clear_fuzz_priorities** - Reset priorities
+6. **get_corpus** - Get current corpus
+7. **set_priority** - Set function priority
 
 ### Strategy Ideas
 
@@ -185,6 +185,8 @@ class MyEchidnaAgent:
 ## Resources
 
 - [AGENT_TESTING_GUIDE.md](../AGENT_TESTING_GUIDE.md) - Comprehensive testing guide
+- [quickstart.md](../specs/001-mcp-agent-commands/quickstart.md) - MCP integration guide
+- [MCP_VALIDATION_SUMMARY.md](../MCP_VALIDATION_SUMMARY.md) - Validation results
 - [test-mcp-client.py](../test-mcp-client.py) - Reference implementation
 
 ---

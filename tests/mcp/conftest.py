@@ -8,11 +8,11 @@ Provides pytest fixtures for MCP integration testing.
 
 import pytest
 import httpx
+import json
 import subprocess
 import time
 import os
-import socket
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 class MCPClient:
@@ -31,7 +31,7 @@ class MCPClient:
         Call an MCP tool and return the response.
         
         Args:
-            tool_name: Name of the tool (e.g., "read_logs", "inject_transaction")
+            tool_name: Name of the tool (e.g., "read_logs", "inject_fuzz_transactions")
             parameters: Tool parameters as key-value dict
             
         Returns:
@@ -84,17 +84,59 @@ class MCPClient:
         self.client.close()
 
 
-@pytest.fixture
-def mcp_client():
+# Parameterized timeout configuration
+def pytest_addoption(parser):
+    """Add custom command-line options for MCP tests."""
+    parser.addoption(
+        "--mcp-timeout",
+        action="store",
+        default="30",
+        help="Timeout in seconds for MCP tool calls (default: 30)"
+    )
+    parser.addoption(
+        "--mcp-port",
+        action="store",
+        default="8080",
+        help="Port for MCP server connection (default: 8080)"
+    )
+
+
+@pytest.fixture(scope="session")
+def mcp_timeout(request):
     """
-    Pytest fixture providing an MCP client connected to localhost:8080.
+    Parameterized timeout for MCP tests.
+    
+    Usage:
+        pytest --mcp-timeout=60  # Use 60 second timeout
+    """
+    return int(request.config.getoption("--mcp-timeout"))
+
+
+@pytest.fixture(scope="session")
+def mcp_port(request):
+    """
+    Session-scoped MCP port configuration.
+    
+    Usage:
+        pytest --mcp-port=9090  # Use custom port
+    """
+    return int(request.config.getoption("--mcp-port"))
+
+
+@pytest.fixture
+def mcp_client(mcp_port, mcp_timeout):
+    """
+    Pytest fixture providing an MCP client connected to configured port.
+    
+    Consolidated fixture using session-scoped configuration.
     
     Usage:
         def test_read_logs(mcp_client):
-            result = mcp_client.call_tool("read_logs", {"max_count": 10})
-            assert "events" in result
+            result = mcp_client.call_tool("status", {})
+            assert "content" in result
     """
-    client = MCPClient("http://localhost:8080")
+    client = MCPClient(f"http://localhost:{mcp_port}")
+    client.client.timeout = httpx.Timeout(float(mcp_timeout))
     yield client
     client.close()
 
@@ -122,13 +164,12 @@ MCP_DEFAULT_PORT = 8080
 
 
 @pytest.fixture
-def echidna_campaign_running(request, tmp_path):
+def echidna_campaign_running(request):
     """
     Pytest fixture that spawns an Echidna campaign with MCP server.
     
     Args:
         request: pytest fixture request (can provide 'contract_path' marker)
-        tmp_path: pytest fixture for temporary directory
     
     Yields:
         dict with keys: 'port' (int), 'process' (subprocess.Popen)
@@ -141,66 +182,43 @@ def echidna_campaign_running(request, tmp_path):
     """
     # Get contract path from marker or use default
     marker = request.node.get_closest_marker('contract_path')
-    contract_path = marker.args[0] if marker else 'tests/mcp/contracts/EchidnaMCPTest.sol'
+    contract_path = marker.args[0] if marker else 'tests/mcp/contracts/SimpleToken.sol'
     
     port = MCP_DEFAULT_PORT
     
-    # Build command - use 'echidna' binary (not 'echidna-test')
+    # Build command
     cmd = [
-        'echidna',
+        'echidna-test',
         contract_path,
-        '--server', str(port),
+        '--mcp-port', str(port),
         '--test-mode', 'assertion',
-        '--test-limit', '1000000000',
-        '--format', 'text'  # Required to avoid TUI blocking
+        '--test-limit', '1000'
     ]
-
-    # Check for contract_name marker
-    name_marker = request.node.get_closest_marker('contract_name')
-    if name_marker:
-        cmd.extend(['--contract', name_marker.args[0]])
-    elif 'EchidnaMCPTest.sol' in contract_path:
-        cmd.extend(['--contract', 'EchidnaMCPTest'])
-
-    # Check for use_tmp_corpus marker
-    if request.node.get_closest_marker('use_tmp_corpus'):
-        corpus_dir = tmp_path / "corpus"
-        corpus_dir.mkdir(exist_ok=True)
-        cmd.extend(['--corpus-dir', str(corpus_dir)])
     
-    # Ensure we use the locally built echidna
-    env = os.environ.copy()
-    home = os.path.expanduser("~")
-    local_bin = os.path.join(home, ".local", "bin")
-    env["PATH"] = f"{local_bin}:{env.get('PATH', '')}"
-
     # Start Echidna
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
-        env=env
+        text=True
     )
     
     # Wait for server to be ready (max 10 seconds)
     start_time = time.time()
     server_ready = False
-
+    
     while time.time() - start_time < 10:
         try:
-            # Try to connect to the TCP port
-            with socket.create_connection(("localhost", port), timeout=1.0):
+            response = httpx.get(f'http://localhost:{port}/health', timeout=1.0)
+            if response.status_code == 200:
                 server_ready = True
                 break
-        except (OSError, ConnectionRefusedError):
+        except (httpx.ConnectError, httpx.TimeoutException):
             time.sleep(0.5)
-
+    
     if not server_ready:
         process.terminate()
-        stdout, stderr = process.communicate(timeout=5)
-        print(f"Echidna stdout:\n{stdout}")
-        print(f"Echidna stderr:\n{stderr}")
+        process.wait(timeout=5)
         raise RuntimeError(f'Echidna MCP server did not start within 10 seconds')
     
     # Yield to test
@@ -212,9 +230,7 @@ def echidna_campaign_running(request, tmp_path):
     # Cleanup
     process.terminate()
     try:
-        stdout, stderr = process.communicate(timeout=5)
-        print(f"Echidna stdout:\n{stdout}")
-        print(f"Echidna stderr:\n{stderr}")
+        process.wait(timeout=5)
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait()

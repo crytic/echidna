@@ -4,103 +4,79 @@ Feature: 001-mcp-agent-commands
 Phase 5, Task T064
 
 Tests validating MCP tool responses against JSON schemas.
-Updated to match upstream's 7 active tools.
 """
 
+import pytest
 from tests.mcp.scripts.schema_validator import validate_response
 
 
-def test_status_schema(mcp_client):
-    """Validate status response against schema."""
-    result = mcp_client.call_tool("status", {})
+def test_read_logs_schema(mcp_client):
+    """Validate read_logs response against schema."""
+    result = mcp_client.call_tool("read_logs", {"max_count": 10})
     
-    # Basic structure validation
-    assert "content" in result
-    assert isinstance(result["content"], list)
-    assert len(result["content"]) > 0
-    assert "text" in result["content"][0]
-    
-    # Status text should contain key metrics
-    status_text = result["content"][0]["text"]
-    assert "Corpus Size" in status_text or "corpus" in status_text.lower()
-
-
-def test_target_schema(mcp_client):
-    """Validate target response against schema."""
-    result = mcp_client.call_tool("target", {})
-    
-    assert "content" in result
-    assert isinstance(result["content"], list)
-    assert len(result["content"]) > 0
-    assert "text" in result["content"][0]
-    
-    # Target should contain contract info
-    target_text = result["content"][0]["text"]
-    assert "Contract" in target_text
+    assert validate_response(result, "read_logs")
 
 
 def test_show_coverage_schema(mcp_client):
     """Validate show_coverage response against schema."""
     result = mcp_client.call_tool("show_coverage", {})
     
-    assert "content" in result
-    assert isinstance(result["content"], list)
-    assert len(result["content"]) > 0
-    assert "text" in result["content"][0]
+    assert validate_response(result, "show_coverage")
 
 
 def test_dump_lcov_schema(mcp_client):
     """Validate dump_lcov response against schema."""
     result = mcp_client.call_tool("dump_lcov", {})
     
-    assert "content" in result
-    assert isinstance(result["content"], list)
-    assert len(result["content"]) > 0
-    assert "text" in result["content"][0]
+    assert validate_response(result, "dump_lcov")
+
+
+def test_get_corpus_size_schema(mcp_client):
+    """Validate get_corpus_size response against schema."""
+    result = mcp_client.call_tool("get_corpus_size", {})
     
-    # LCOV format validation (optional - LCOV can be empty)
-    lcov_data = result["content"][0]["text"]
-    assert isinstance(lcov_data, str)
+    assert validate_response(result, "get_corpus_size")
 
 
-def test_reload_corpus_schema(mcp_client):
-    """Validate reload_corpus response against schema."""
-    # reload_corpus may fail if corpus is locked - that's OK
-    try:
-        result = mcp_client.call_tool("reload_corpus", {})
-        
-        assert "content" in result
-        assert isinstance(result["content"], list)
-    except Exception as e:
-        # Server 500 or connection error is acceptable for reload_corpus
-        pass
-
-
-def test_inject_fuzz_transactions_schema(mcp_client):
-    """Validate inject_fuzz_transactions response against schema."""
-    result = mcp_client.call_tool("inject_fuzz_transactions", {
-        "transactions": "transfer(0x1234567890123456789012345678901234567890, 100)"
+def test_inspect_corpus_schema(mcp_client):
+    """Validate inspect_corpus_transactions response against schema."""
+    result = mcp_client.call_tool("inspect_corpus_transactions", {
+        "offset": 0,
+        "limit": 10
     })
     
-    assert "content" in result
-    assert isinstance(result["content"], list)
-    assert len(result["content"]) > 0
-    assert "text" in result["content"][0]
+    assert validate_response(result, "inspect_corpus_transactions")
+
+
+def test_find_transaction_schema(mcp_client):
+    """Validate find_transaction_in_corpus response against schema."""
+    result = mcp_client.call_tool("find_transaction_in_corpus", {
+        "search_query": "transfer"
+    })
     
-    # Response should confirm injection
-    response_text = result["content"][0]["text"]
-    assert "requested" in response_text.lower() or "fuzzing" in response_text.lower()
+    assert validate_response(result, "find_transaction_in_corpus")
 
 
-def test_clear_fuzz_priorities_schema(mcp_client):
+def test_inject_transaction_schema(mcp_client):
+    """Validate inject_fuzz_transactions response against schema."""
+    result = mcp_client.call_tool("inject_fuzz_transactions", {
+        "transactions": ["transfer(0x1234567890123456789012345678901234567890, 100)"]
+    })
+    
+    assert validate_response(result, "inject_fuzz_transactions")
+
+
+def test_prioritize_function_schema(mcp_client):
+    """Validate prioritize_function response against schema."""
+    result = mcp_client.call_tool("prioritize_function", {
+        "function_signature": "transfer(address,uint256)"
+    })
+    
+    assert validate_response(result, "prioritize_function")
+
+
+def test_clear_priorities_schema(mcp_client):
     """Validate clear_fuzz_priorities response against schema."""
     result = mcp_client.call_tool("clear_fuzz_priorities", {})
     
-    assert "content" in result
-    assert isinstance(result["content"], list)
-    assert len(result["content"]) > 0
-    assert "text" in result["content"][0]
-    
-    # Response should confirm clearing
-    response_text = result["content"][0]["text"]
-    assert "requested" in response_text.lower() or "clearing" in response_text.lower()
+    assert validate_response(result, "clear_fuzz_priorities")

@@ -123,6 +123,8 @@ data GenDict = GenDict
     -- ^ A set of int/uint constants for better performance
   , callbackSigs    :: ![SolSignature]
     -- ^ A list of callback signatures (for generating random callbacks)
+  , prioritizedFunctions :: !(Set Text)
+    -- ^ Functions to prioritize during fuzzing (MCP control, US2, FR-007)
   }
 
 hashMapBy
@@ -146,13 +148,15 @@ mkGenDict
   -> (Text -> Maybe AbiType) -- ^ A return value typing rule
   -> [SolSignature]
   -> GenDict
-mkGenDict mutationChance abiValues solCalls seed typingRule =
+mkGenDict mutationChance abiValues solCalls seed typingRule callbackSigs =
   GenDict mutationChance
           (hashMapBy abiValueType abiValues)
           (hashMapBy (fmap $ fmap abiValueType) solCalls)
           seed
           typingRule
           (mkDictValues abiValues)
+          callbackSigs
+          Set.empty  -- prioritizedFunctions initially empty
 
 emptyDict :: GenDict
 emptyDict = mkGenDict 0 Set.empty Set.empty 0 (const Nothing) []
@@ -433,13 +437,26 @@ genAbiCallM genDict (name, types) = do
 
 -- | Given a list of 'SolSignature's, generate a random 'SolCall' for one,
 -- possibly with a dictionary.
+-- If GenDict has prioritized functions, choose them with 90% probability.
 genInteractionsM
   :: MonadRandom m
   => GenDict
   -> NonEmpty SolSignature
   -> m SolCall
-genInteractionsM genDict solSignatures =
-  rElem solSignatures >>= genAbiCallM genDict
+genInteractionsM genDict solSignatures = do
+  -- Check if any signatures match prioritizedFunctions
+  let prioritizedSigs = NE.filter (\(fname, _) -> Set.member fname genDict.prioritizedFunctions) solSignatures
+  
+  -- With 90% probability, choose from prioritized functions if available
+  selectedSig <- case NE.nonEmpty prioritizedSigs of
+    Nothing -> rElem solSignatures  -- No prioritized functions, use uniform random
+    Just pSigs -> do
+      r <- getRandomR (0.0, 1.0 :: Double)
+      if r < 0.9
+        then rElem pSigs  -- Use prioritized function (90% probability)
+        else rElem solSignatures  -- Use any function (10% probability)
+  
+  genAbiCallM genDict selectedSig
 
 abiCalldata :: Text -> Vector AbiValue -> ByteString
 abiCalldata s xs = BSLazy.toStrict . runPut $ do

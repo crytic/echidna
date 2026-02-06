@@ -13,9 +13,11 @@ Requirements:
 """
 
 import httpx
-from typing import TypedDict, List
+import json
+from typing import TypedDict, Annotated, List
 from langchain_anthropic import ChatAnthropic
 from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import ToolNode
 
 
 # State definition
@@ -265,7 +267,7 @@ def main():
         status = agent._call_mcp_tool("status")
         if "error" in status:
             print("❌ Cannot connect to Echidna MCP server")
-            print("   Make sure Echidna is running with --server 8080")
+            print("   Make sure Echidna is running with --mcp-port 8080")
             return
         print("✅ Connected to Echidna MCP server\n")
     except Exception as e:
