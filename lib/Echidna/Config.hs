@@ -115,6 +115,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "coverageExcludes" ..!= []
         <*> v ..:? "workers"
         <*> v ..:? "server"
+        <*> v ..:? "mcpPort"
         <*> v ..:? "symExec"            ..!= False
         <*> smtSolver
         <*> v ..:? "symExecTargets"     ..!= []

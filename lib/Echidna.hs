@@ -131,10 +131,15 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   testRefs <- traverse newIORef tests
   fetchSession <- EVM.Fetch.mkSession cfg.campaignConf.corpusDir (fromIntegral <$> cfg.rpcBlock)
   contractNameCache <- newIORef mempty
+  -- MCP Integration (T008, T017)
+  mcpCommandLog <- newIORef []
+  eventLog <- newIORef mempty
+  eventLogIndex <- newIORef 0
+  let mcpServer = Nothing
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
       sourceCache = buildOutput.sources
   pure $ Env { cfg, dapp, sourceCache, codehashMap, fetchSession, contractNameCache
              , chainId, eventQueue, bus, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
-             , slitherInfo
+             , slitherInfo, mcpCommandLog, mcpServer, eventLog, eventLogIndex
              }

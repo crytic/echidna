@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "find_transaction_in_corpus Response Schema",
+  "type": "object",
+  "required": ["matches", "count"],
+  "properties": {
+    "matches": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "count": {"type": "integer", "minimum": 0}
+  }
+}

@@ -20,5 +20,19 @@ cabal.project.local
 .HTF/
 crytic-export/
 echidna.cabal
+echidna_agent/
+corpus/
+.github/
+.specify/
 *.swp
 profiles/
+
+# MCP server test logs (temporary artifacts)
+echidna-*.log
+
+# External C++ dependencies (build artifacts)
+libff/
+
+# Python cache files
+**/__pycache__/
+**/*.pyc

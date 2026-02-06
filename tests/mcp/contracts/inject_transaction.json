@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "inject_transaction Response Schema",
+  "type": "object",
+  "required": ["injected", "transaction_count", "worker_id"],
+  "properties": {
+    "injected": {"type": "boolean"},
+    "transaction_count": {"type": "integer", "minimum": 0},
+    "worker_id": {"type": "integer"}
+  }
+}

@@ -1,10 +1,12 @@
 module Echidna.Types.Config where
 
-import Control.Concurrent (Chan)
+import Control.Concurrent (Chan, ThreadId)
 import Data.Aeson.Key (Key)
 import Data.IORef (IORef)
+import Data.Sequence (Seq)
 import Data.Set (Set)
 import Echidna.Types.InterWorker (Bus)
+import Echidna.Types.MCP (EventEntry)
 import Data.Text (Text)
 import Data.Time (LocalTime)
 import Data.Word (Word64)
@@ -90,4 +92,14 @@ data Env = Env
   , contractNameCache :: IORef ContractNameCache
   , chainId :: Maybe W256
   , world :: World
+
+  -- MCP Integration (Feature 001-mcp-agent-commands)
+  , mcpCommandLog :: IORef [Text]
+    -- ^ Log of MCP command executions for reproducibility (FR-010, T008)
+  , mcpServer :: Maybe ThreadId
+    -- ^ MCP server thread ID if spawned (T008)
+  , eventLog :: IORef (Seq EventEntry)
+    -- ^ Ring buffer of campaign events (T017, max 2500 entries)
+  , eventLogIndex :: IORef Int
+    -- ^ Current insertion index for ring buffer (T017)
   }
