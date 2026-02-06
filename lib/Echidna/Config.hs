@@ -72,6 +72,7 @@ instance FromJSON EConfigWithUsage where
               <*> v ..:? "rpcBlock"
               <*> v ..:? "etherscanApiKey"
               <*> v ..:? "projectName"
+              <*> v ..:? "disableOnchainSources" ..!= False
       where
       useKey k = modify' $ Set.insert k
       x ..:? k = useKey k >> lift (x .:? k)

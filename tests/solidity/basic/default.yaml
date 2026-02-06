@@ -96,6 +96,8 @@ rpcUrl: null
 rpcBlock: null
 # Etherscan API key
 etherscanApiKey: null
+# Disable on-chain coverage reports and fetching of sources from Sourcify and Etherscan
+disableOnchainSources: false
 # number of workers. By default (unset) its value is the clamp of the number cores between 1 and 4
 workers: null
 # show all events from all the transactions, not just the last one
