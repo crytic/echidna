@@ -288,6 +288,8 @@ runSymWorker callback vm dict workerId _ name = do
     lift callback
 
     (symTxs, partials) <- liftIO $ takeMVar symTxsChan
+    liftIO $ print symTxs
+    liftIO $ print partials
     let txs = extractTxs symTxs
     let errors = extractErrors symTxs
 

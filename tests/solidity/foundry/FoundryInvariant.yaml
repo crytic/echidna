@@ -1,0 +1,4 @@
+testMode: foundry
+seed: 1234
+cryticArgs: ["--solc-remaps", "forge-std/=foundry/forge-std/src/"]
+disableSlither: true

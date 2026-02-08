@@ -58,11 +58,12 @@ prepareContract
   -> IO (VM Concrete, Env, GenDict)
 prepareContract cfg solFiles buildOutput selectedContract seed = do
   let solConf = cfg.solConf
+      campaignConf = cfg.campaignConf
       (Contracts contractMap) = buildOutput.contracts
       contracts = Map.elems contractMap
 
   mainContract <- selectMainContract solConf selectedContract contracts
-  tests <- mkTests solConf mainContract
+  tests <- mkTests solConf campaignConf mainContract
   signatureMap <- mkSignatureMap solConf mainContract contracts
 
   -- run processors
