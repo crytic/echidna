@@ -3,6 +3,7 @@ module Echidna where
 import Control.Concurrent (newChan)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Random.Strict (evalRandT, getStdGen)
 import Data.IORef (newIORef)
 import Data.List (find, nub)
 import Data.List.NonEmpty (NonEmpty)
@@ -26,6 +27,7 @@ import Echidna.ABI
 import Echidna.Onchain as Onchain
 import Echidna.Output.Corpus
 import Echidna.Solidity
+import Echidna.SourceAnalysis.FoundryTests
 import Echidna.SourceAnalysis.Slither
 import Echidna.SourceMapping (findSrcForReal)
 import Echidna.SymExec.Symbolic (forceAddr)
@@ -102,14 +104,27 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
                      nonViewPureSigs
   pure (vm, env, dict)
 
-loadInitialCorpus :: Env -> IO [(FilePath, [Tx])]
-loadInitialCorpus env = do
-  case env.cfg.campaignConf.corpusDir of
+loadInitialCorpus :: Env -> NonEmpty FilePath -> Maybe ContractName -> IO [(FilePath, [Tx])]
+loadInitialCorpus env solFiles selectedContract = do
+  -- Load existing corpus from directory
+  existingCorpus <- case env.cfg.campaignConf.corpusDir of
     Nothing -> pure []
     Just dir -> do
       ctxs1 <- loadTxs (dir </> "reproducers")
       ctxs2 <- loadTxs (dir </> "coverage")
       pure (ctxs1 ++ ctxs2)
+
+  -- Extract from Foundry tests if enabled
+  -- We pass the selected contract name to filter calls to only that contract
+  foundryCorpus <- if env.cfg.solConf.prefillCorpus
+    then do
+      info <- extractFoundryTests (NE.head solFiles) env.cfg.solConf selectedContract
+      -- Fill any holes with random values using emptyDict (no dictionary lookup, just synthesis)
+      stdGen <- getStdGen
+      evalRandT (foundryTestsToCorpus emptyDict info) stdGen
+    else pure []
+
+  pure (existingCorpus ++ foundryCorpus)
 
 instance TTY IO where
   writeOutput = liftIO . putStrLn . T.unpack

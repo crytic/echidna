@@ -141,6 +141,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "testDestruction" ..!= False
         <*> v ..:? "allowFFI"        ..!= False
         <*> fnFilter
+        <*> v ..:? "prefillCorpus"   ..!= False
         where
         mode = v ..:? "testMode" >>= \case
           Just s  -> pure $ validateTestMode s
