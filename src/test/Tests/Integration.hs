@@ -61,6 +61,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_library_call failed",            solved      "echidna_library_call")
       , ("echidna_valid_timestamp failed",         passed      "echidna_valid_timestamp")
       ]
+  , testContract' "basic/autolink.sol" (Just "TestExternalLibrary") Nothing (Just "basic/autolink.yaml") True FuzzWorker
+      [ ("echidna_library_call_works failed",      passed      "echidna_library_call_works") ]
   , testContractV "basic/fallback.sol"   (Just (< solcV (0,6,0))) Nothing
       [ ("echidna_fallback failed",                solved      "echidna_fallback") ]
   , testContract "basic/push_long.sol" (Just "basic/push_long.yaml")
