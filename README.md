@@ -185,6 +185,10 @@ corresponding issue and the status ("wont fix", "on hold", "in review", "fixed")
 
 ## Installation
 
+### Easy Installer
+
+Run `bash install.sh` in this repo or `curl -L https://raw.githubusercontent.com/crytic/echidna/master/install.sh | bash` from any command line. This script will install `pip3` and `slither` if not not already present, download the latest echidna release, save it to `$HOME/.echidna/bin/echidna` and add it to your PATH.
+
 ### Precompiled binaries
 
 Before starting, make sure Slither is [installed](https://github.com/crytic/slither) (`pip3 install slither-analyzer --user`).
