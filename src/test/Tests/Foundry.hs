@@ -7,7 +7,7 @@ import Echidna.Types.Worker (WorkerType(..))
 
 foundryTests :: TestTree
 foundryTests = testGroup "Foundry Integration Testing"
-  [ testContract' "dapptest/basic.sol" (Just "GreeterTest") (Just (\v -> v >= solcV (0,7,5))) (Just "dapptest/config.yaml") False FuzzWorker
+  [ testContract' "foundry-basic/basic.sol" (Just "GreeterTest") (Just (\v -> v >= solcV (0,7,5))) (Just "foundry-basic/config.yaml") False FuzzWorker
      [
         ("testShrinking passed", solved "testShrinking"),
         ("testFuzzFixedArray passed", solved "testFuzzFixedArray"),
