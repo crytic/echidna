@@ -253,7 +253,7 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
 
       - name: Download testsuite
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
          name: echidna-testsuite-${{ runner.os }}
 
