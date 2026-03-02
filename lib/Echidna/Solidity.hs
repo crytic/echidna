@@ -41,7 +41,7 @@ import Echidna.ABI
 import Echidna.Deploy (deployContracts, deployBytecodes)
 import Echidna.Exec (execTx, execTxWithCov, initialVM)
 import Echidna.SourceAnalysis.Slither
-import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
+import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isFoundryMode)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
@@ -146,11 +146,11 @@ filterMethods contractName (Whitelist ic) ms =
 filterMethods contractName (Blacklist ig) ms =
   NE.filter (\s -> encodeSigWithName contractName s `notElem` ig) ms
 
--- | Filter methods with arguments, used for dapptest mode
+-- | Filter methods with arguments, used for foundry mode
 filterMethodsWithArgs :: NonEmpty SolSignature -> NonEmpty SolSignature
 filterMethodsWithArgs ms =
   case NE.filter (\(n, xs) -> T.isPrefixOf "test" n || (T.isPrefixOf "invariant_" n || not (null xs))) ms of
-    [] -> error "No dapptest tests found"
+    [] -> error "No foundry tests found"
     fs -> NE.fromList fs
 
 abiOf :: Text -> SolcContract -> NonEmpty SolSignature
@@ -260,7 +260,7 @@ mkSignatureMap
 mkSignatureMap solConf mainContract contracts = do
   let
     -- Filter ABI according to the config options
-    fabiOfc = if isDapptestMode solConf.testMode
+    fabiOfc = if isFoundryMode solConf.testMode
                 then NE.toList $ filterMethodsWithArgs (abiOf solConf.prefix mainContract)
                 else filterMethods mainContract.contractName solConf.methodFilter $
                        abiOf solConf.prefix mainContract
@@ -277,7 +277,7 @@ mkSignatureMap solConf mainContract contracts = do
         case NE.nonEmpty fabiOfc of
           Just ne -> Map.singleton mainContract.runtimeCodehash ne
           Nothing -> mempty
-  when (null abiMapping && isDapptestMode solConf.testMode) $
+  when (null abiMapping && isFoundryMode solConf.testMode) $
     throwM NoTests
   when (Map.null abiMapping) $
     throwM $ InvalidMethodFilters solConf.methodFilter
@@ -293,7 +293,7 @@ mkTests solConf campaignConf mainContract = do
     -- generate the complete abi mapping
     abi = Map.elems mainContract.abiMap <&> \method -> (method.name, snd <$> method.inputs)
     (tests, funs) = partition (isPrefixOf solConf.prefix . fst) abi
-    -- Filter again for dapptest tests or assertions checking if enabled
+    -- Filter again for foundry tests or assertions checking if enabled
     neFuns = filterMethods mainContract.contractName
                            solConf.methodFilter
                            (fallback NE.:| funs)
@@ -351,7 +351,7 @@ mkWorld SolConf{sender, testMode} sigMap maybeContract slitherInfo contracts =
     payableSigs = filterResults maybeContract slitherInfo.payableFunctions
     assertSigs = filterResults maybeContract (assertFunctionList <$> slitherInfo.asserts)
     as = if isAssertionMode testMode then filterResults maybeContract (assertFunctionList <$> slitherInfo.asserts) else []
-    cs = if isDapptestMode testMode then [] else filterResults maybeContract slitherInfo.constantFunctions \\ as
+    cs = if isFoundryMode testMode then [] else filterResults maybeContract slitherInfo.constantFunctions \\ as
     (highSignatureMap, lowSignatureMap) = prepareHashMaps cs as $
       filterFallbacks slitherInfo.fallbackDefined slitherInfo.receiveDefined contracts sigMap
   in World { senders = sender

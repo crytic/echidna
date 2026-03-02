@@ -212,6 +212,26 @@ foundryTestGenTests = testGroup "Foundry test generation"
       -- - assertApproxEqRel, assertApproxEqRelDecimal
       -- These are only tested in concrete (fuzzing) mode above.
       ]
+  , testGroup "Assertion mode with Foundry assertX"
+      [ testForgeStd "solves assertTrue in assertion mode"
+          "foundry/FoundryAssertsAssertionMode.sol"
+          (Just "FoundryAssertsAssertionModeTest") (Just "foundry/FoundryAssertsAssertionMode.yaml")
+          FuzzWorker
+          [ ("assertTrue should be detected in assertion mode", solved "check_assert_true")
+          ]
+      , testForgeStd "solves assertEq in assertion mode"
+          "foundry/FoundryAssertsAssertionMode.sol"
+          (Just "FoundryAssertsAssertionModeTest") (Just "foundry/FoundryAssertsAssertionMode.yaml")
+          FuzzWorker
+          [ ("assertEq should be detected in assertion mode", solved "check_assert_eq")
+          ]
+      , testForgeStd "solves assertGt in assertion mode"
+          "foundry/FoundryAssertsAssertionMode.sol"
+          (Just "FoundryAssertsAssertionModeTest") (Just "foundry/FoundryAssertsAssertionMode.yaml")
+          FuzzWorker
+          [ ("assertGt should be detected in assertion mode", solved "check_assert_gt")
+          ]
+      ]
   ]
 
 -- | Verify generated test compiles with forge.

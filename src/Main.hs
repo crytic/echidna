@@ -193,7 +193,7 @@ options = Options . NE.fromList
     <> metavar "PATH"
     <> help "Directory to save coverage reports. Defaults to corpus-dir if not specified.")
   <*> optional (option str $ long "test-mode"
-    <> help "Test mode to use. Either 'property', 'assertion', 'dapptest', 'optimization', 'overflow' or 'exploration'" )
+    <> help "Test mode to use. Either 'property', 'assertion', 'foundry', 'optimization', 'overflow' or 'exploration'" )
   <*> switch (long "all-contracts"
     <> help "Generate calls to all deployed contracts.")
   <*> optional (option auto $ long "timeout"
