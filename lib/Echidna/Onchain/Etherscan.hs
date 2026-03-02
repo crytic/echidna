@@ -8,6 +8,7 @@ import Control.Concurrent (threadDelay)
 import Control.Exception (catch, SomeException)
 import Control.Monad
 import Data.Aeson
+import Data.ByteString.Char8 qualified as BS
 import Data.Aeson.Types (parseEither)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -28,9 +29,62 @@ import Echidna.Onchain.Types (SourceData(..))
 
 data SourceCode = SourceCode
   { name :: Text
-  , code :: String
+  , files :: Map Text Text  -- Map from filename to source code
   }
   deriving Show
+
+-- | Source file content from Etherscan multi-file JSON format.
+-- Represents { "content": "..." } objects in the sources map.
+newtype SourceContent = SourceContent
+  { content :: Text
+  } deriving (Show, Generic)
+
+instance FromJSON SourceContent
+
+-- | Wrapper for nested sources format: { "sources": { "file.sol": { "content": "..." } } }
+newtype EtherscanSources = EtherscanSources
+  { sources :: Map Text SourceContent
+  } deriving (Show, Generic)
+
+instance FromJSON EtherscanSources
+
+-- | Parse Etherscan SourceCode field which can be in three formats:
+--
+-- 1. Double braces @{{...}}@ - Multi-file contracts wrapped in extra braces
+-- 2. Single braces @{...}@ - Standard JSON object with sources
+-- 3. Plain text - Raw Solidity source code
+parseSourceCode :: Text -> String -> Map Text Text
+parseSourceCode contractName code =
+  -- Try each format in order, fall back to plain text if all fail
+  case parseDoubleBraces code <> parseAsJson code of
+    Right files -> files
+    Left _err -> plainTextFallback
+  where
+    plainTextFallback :: Map Text Text
+    plainTextFallback = Map.singleton (contractName <> ".sol") (T.pack code)
+
+    -- Format 1: {{...}} - strip outer braces and parse inner JSON
+    parseDoubleBraces :: String -> Either String (Map Text Text)
+    parseDoubleBraces ('{':rest)
+      | not (null rest) = parseAsJson (init rest)
+    parseDoubleBraces _ = Left "not double-braced format"
+
+    -- Format 2: {...} - try as nested or direct JSON
+    parseAsJson :: String -> Either String (Map Text Text)
+    parseAsJson s =
+      let bs = BS.pack s
+      in parseNestedFormat bs <> parseDirectFormat bs
+
+    -- Nested: { "sources": { "file.sol": { "content": "..." } } }
+    parseNestedFormat :: BS.ByteString -> Either String (Map Text Text)
+    parseNestedFormat bs = do
+      es <- eitherDecodeStrict bs
+      pure $ Map.map (.content) (es :: EtherscanSources).sources
+
+    -- Direct: { "file.sol": { "content": "..." } }
+    parseDirectFormat :: BS.ByteString -> Either String (Map Text Text)
+    parseDirectFormat bs =
+      Map.map (.content) <$> (eitherDecodeStrict bs :: Either String (Map Text SourceContent))
 
 data ChainInfo = ChainInfo
   { chainname :: Text
@@ -69,8 +123,12 @@ fetchContractSource chainId apiKey addr = do
               r <- obj .: "result"
               case r of
                 [Object t] -> do
-                  sc <- SourceCode <$> (t .: "ContractName")
-                                   <*> (t .: "SourceCode")
+                  contractName <- t .: "ContractName"
+                  sourceCode <- t .: "SourceCode"
+                  let sc = SourceCode
+                        { name = contractName
+                        , files = parseSourceCode contractName sourceCode
+                        }
                   pure $ Right sc
                 _ -> mzero
             "NOTOK" -> do
@@ -173,7 +231,7 @@ fetchContractSourceData maybeChainId maybeApiKey explorerUrl addr = do
   pure $ do
     src <- srcRet
     Just $ SourceData
-      { sourceFiles = Map.singleton (src.name <> ".sol") (T.pack src.code)
+      { sourceFiles = src.files
       , runtimeSrcMap = srcmapRet
       , creationSrcMap = Nothing
       , contractName = src.name
