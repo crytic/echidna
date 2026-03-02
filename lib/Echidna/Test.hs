@@ -76,9 +76,9 @@ isPropertyMode :: TestMode -> Bool
 isPropertyMode "property" = True
 isPropertyMode _          = False
 
-isDapptestMode :: TestMode -> Bool
-isDapptestMode "foundry"  = True
-isDapptestMode _           = False
+isFoundryMode :: TestMode -> Bool
+isFoundryMode "foundry"  = True
+isFoundryMode _           = False
 
 createTests
   :: TestMode
@@ -148,7 +148,7 @@ checkETest test vm = case test.testType of
   Exploration -> pure (BoolValue True, vm) -- These values are never used
   PropertyTest n a -> checkProperty vm n a
   OptimizationTest n a -> checkOptimization vm n a
-  AssertionTest dt n a -> if dt then checkDapptestAssertion vm n a
+  AssertionTest dt n a -> if dt then checkFoundryAssertion vm n a
                                 else checkStatefulAssertion vm n a
   CallTest _ f -> checkCall vm f
 
@@ -233,13 +233,13 @@ checkStatefulAssertion vm sig addr = do
 assumeMagicReturnCode :: BS.ByteString
 assumeMagicReturnCode = "FOUNDRY::ASSUME\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
 
-checkDapptestAssertion
+checkFoundryAssertion
   :: (MonadReader Env m, MonadThrow m)
   => VM Concrete
   -> SolSignature
   -> Addr
   -> m (TestValue, VM Concrete)
-checkDapptestAssertion vm sig addr = do
+checkFoundryAssertion vm sig addr = do
   let
     -- Whether the last transaction has any value
     hasValue = vm.state.callvalue /= Lit 0
