@@ -22,13 +22,13 @@ import EVM.Effects (TTY, ReadConfig)
 import EVM.Expr qualified
 import EVM.Fetch qualified as Fetch
 import EVM.Format (formatPartialDetailed)
-import EVM.Solidity (SolcContract(..), SourceCache(..), Method(..), WarningData(..))
+import EVM.Solidity (SolcContract(..), SourceCache(..), Method(..))
 import EVM.Solvers (SolverGroup)
 import EVM.SymExec (mkCalldata, verifyInputsWithHandler, VeriOpts(..), subModel, defaultSymbolicValues, Postcondition)
 import EVM.Types (Addr, VMType(..), EType(..), EvmError(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit, isQed)
 import qualified EVM.Types (VM(..))
 
-import Echidna.Test (assumeMagicReturnCode, isFoundryMode)
+import Echidna.Test (isFoundryMode)
 import Echidna.Types (fromEVM)
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (SolConf(..))
@@ -45,8 +45,7 @@ checkAssertions :: [Word256] -> Bool -> Postcondition
 checkAssertions errs isFoundry _ vmres
   | isFoundry = case vmres of
       -- vm.assume failures should not be treated as test failures
-      Failure _ _ (Revert (ConcreteBuf bs))
-        | assumeMagicReturnCode `BS.isSuffixOf` bs -> PBool True
+      Failure _ _ AssumeCheatFailed -> PBool True
       -- All other failures are test failures in foundry mode
       Failure {} -> PBool False
       _ -> PBool True
@@ -168,7 +167,7 @@ getUnknownLogs = mapMaybe (\case
 exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
   Method -> SolcContract -> SourceCache -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
 
-exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpcInfo session = do
+exploreMethod method _contract _sources vm defaultSender conf veriOpts solvers rpcInfo session = do
   calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   let
     cd = fst calldataSym
@@ -193,6 +192,5 @@ exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpc
   let foundry = isFoundryMode conf.solConf.testMode
   (models, partials) <- verifyInputsWithHandler solvers veriOpts fetcher vm'' (checkAssertions [0x1] foundry) Nothing
   let results = filter (\(r, _) -> not (isQed r)) models & map fst
-  let warnData = Just $ WarningData contract sources vm'
   --liftIO $ mapM_ print partials
-  return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (formatPartialDetailed warnData . fst) partials)
+  return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (\(p, _) -> formatPartialDetailed Nothing Map.empty p) partials)

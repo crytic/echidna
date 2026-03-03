@@ -14,7 +14,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Process (readProcessWithExitCode)
 import Text.Read (readMaybe)
 
-import Common (solved, testContract, testContractNamed)
+import Common (solved, passed, testContract, testContractNamed)
 import Echidna.Types.Config (Env)
 import Echidna.Types.Campaign (WorkerState)
 import EVM.ABI (AbiValue(..))
@@ -152,6 +152,12 @@ foundryTestGenTests = testGroup "Foundry test generation"
           (Just "InvariantTest") (Just "foundry/FoundryInvariant.yaml")
           FuzzWorker
           [ ("invariant should be detected with seqLen > 1", solved "invariant_counter_below_limit")
+          ]
+      , testForgeStd "vm.assume filters inputs"
+          "foundry/FoundryAsserts.sol"
+          (Just "AssumeTest") (Just "foundry/FoundryAsserts.yaml")
+          FuzzWorker
+          [ ("vm.assume should not be treated as test failure", passed "test_assume_filters")
           ]
       ]
   , testGroup "Symbolic execution (SMT solving)"

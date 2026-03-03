@@ -158,3 +158,13 @@ contract RevertTest is Test {
         }
     }
 }
+
+contract AssumeTest is Test {
+    // vm.assume should filter inputs without counting as a test failure.
+    // When x > 100, vm.assume(false) triggers AssumeCheatFailed which
+    // echidna should ignore. The assertion always holds for accepted inputs
+    function test_assume_filters(uint256 x) public pure {
+        vm.assume(x <= 100);
+        assertTrue(x <= 100);
+    }
+}

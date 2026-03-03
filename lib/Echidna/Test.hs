@@ -232,11 +232,6 @@ checkStatefulAssertion vm sig addr = do
     isFailure = isCorrectTarget && (eventFailure || isAssertionFailure)
   pure (BoolValue (not isFailure), vm)
 
--- | Magic return code used by hevm to signal a foundry vm.assume failure.
--- See: https://github.com/ethereum/hevm/blob/main/src/EVM.hs (search for FOUNDRY::ASSUME)
-assumeMagicReturnCode :: BS.ByteString
-assumeMagicReturnCode = "FOUNDRY::ASSUME\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
-
 checkFoundryAssertion
   :: (MonadReader Env m, MonadThrow m)
   => VM Concrete
@@ -252,9 +247,10 @@ checkFoundryAssertion vm sig addr = do
       BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty))
                     (forceBuf vm.state.calldata)
     isAssertionFailure = case vm.result of
-      Just (VMFailure (Revert (ConcreteBuf bs))) ->
-        T.isPrefixOf "test" (fst sig) && not (BS.isSuffixOf assumeMagicReturnCode bs) ||
-        T.isPrefixOf "invariant_" (fst sig) && not (BS.isSuffixOf assumeMagicReturnCode bs)
+      -- vm.assume failures should not be treated as test failures
+      Just (VMFailure AssumeCheatFailed) -> False
+      Just (VMFailure (Revert _)) ->
+        T.isPrefixOf "test" (fst sig) || T.isPrefixOf "invariant_" (fst sig)
       Just (VMFailure _) -> True
       _ -> False
     isCorrectAddr = LitAddr addr == vm.state.codeContract
