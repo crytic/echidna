@@ -146,7 +146,15 @@ filterMethods contractName (Whitelist ic) ms =
 filterMethods contractName (Blacklist ig) ms =
   NE.filter (\s -> encodeSigWithName contractName s `notElem` ig) ms
 
--- | Filter methods with arguments, used for foundry mode
+-- | Filter methods for foundry mode. Per Foundry conventions:
+-- - Functions prefixed with "test" are test functions (unit or fuzz).
+--   Fuzz tests are distinguished by having at least one parameter.
+--   See: https://book.getfoundry.sh/forge/fuzz-testing
+-- - Functions prefixed with "invariant_" are invariant tests, called in
+--   randomized sequences to verify properties that must always hold.
+--   See: https://book.getfoundry.sh/forge/invariant-testing
+-- - Other functions with arguments are kept as callable targets for
+--   invariant test campaigns.
 filterMethodsWithArgs :: NonEmpty SolSignature -> NonEmpty SolSignature
 filterMethodsWithArgs ms =
   case NE.filter (\(n, xs) -> T.isPrefixOf "test" n || (T.isPrefixOf "invariant_" n || not (null xs))) ms of
