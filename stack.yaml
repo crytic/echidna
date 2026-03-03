@@ -6,7 +6,7 @@ packages:
 
 extra-deps:
 - git: https://github.com/argotorg/hevm.git
-  commit: 9ba5e52fc7ec7ae6f7f3a25d5ee426625d2aa9d3
+  commit: 41e6d1304411749ea8c816d131991663b5dca67a
 - git: https://github.com/gustavo-grieco/haskell-mcp-server.git
   commit: 9fd60af428b96ae4bc63a133b3960ed934494189
 

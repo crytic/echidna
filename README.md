@@ -408,7 +408,7 @@ Feel free to stop by our #ethereum slack channel in [Empire Hacking](https://sla
 
 * Get started by reviewing these simple [Echidna invariants](tests/solidity/basic/flags.sol)
 
-* Considering [emailing](mailto:echidna-dev@trailofbits.com) the Echidna development team directly for more detailed questions
+* Considering [emailing](mailto:opensource@trailofbits.com) the Echidna development team directly for more detailed questions
 
 ## License
 
