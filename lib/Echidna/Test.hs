@@ -58,7 +58,7 @@ validateTestMode :: String -> TestMode
 validateTestMode s = case s of
   "property"     -> s
   "assertion"    -> s
-  "foundry"     -> s
+  "foundry"      -> s
   "exploration"  -> s
   "overflow"     -> s
   "optimization" -> s
@@ -77,8 +77,8 @@ isPropertyMode "property" = True
 isPropertyMode _          = False
 
 isFoundryMode :: TestMode -> Bool
-isFoundryMode "foundry"  = True
-isFoundryMode _           = False
+isFoundryMode "foundry" = True
+isFoundryMode _          = False
 
 createTests
   :: TestMode
@@ -88,7 +88,7 @@ createTests
   -> Addr
   -> [SolSignature]
   -> [EchidnaTest]
-createTests m td ts len r ss = case m of
+createTests m td ts seqLen r ss = case m of
   "exploration" ->
     [createTest Exploration]
   "overflow" ->
@@ -100,8 +100,10 @@ createTests m td ts len r ss = case m of
   "assertion" ->
     map (\s -> createTest (AssertionTest False s r))
         (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
+  -- In foundry mode, seqLen distinguishes fuzz tests (seqLen == 1) from
+  -- invariant tests (seqLen > 1), which determines how functions are filtered.
   "foundry" ->
-    if len == 1 then
+    if seqLen == 1 then
       map (\s -> createTest (AssertionTest True s r))
         (filter (\(n, xs) -> T.isPrefixOf "test" n && not (null xs)) ss)
     else
@@ -230,6 +232,8 @@ checkStatefulAssertion vm sig addr = do
     isFailure = isCorrectTarget && (eventFailure || isAssertionFailure)
   pure (BoolValue (not isFailure), vm)
 
+-- | Magic return code used by hevm to signal a foundry vm.assume failure.
+-- See: https://github.com/ethereum/hevm/blob/main/src/EVM.hs (search for FOUNDRY::ASSUME)
 assumeMagicReturnCode :: BS.ByteString
 assumeMagicReturnCode = "FOUNDRY::ASSUME\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
 
