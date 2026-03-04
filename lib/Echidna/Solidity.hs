@@ -41,13 +41,13 @@ import Echidna.ABI
 import Echidna.Deploy (deployContracts, deployBytecodes)
 import Echidna.Exec (execTx, execTxWithCov, initialVM)
 import Echidna.SourceAnalysis.Slither
-import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
+import Echidna.Test (createTest, createTests, isAssertionMode, isPropertyMode, isDapptestMode)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
   (ContractName, SolSignature, SignatureMap, FunctionName)
 import Echidna.Types.Solidity
-import Echidna.Types.Test (EchidnaTest(..))
+import Echidna.Types.Test (EchidnaTest(..), TestType(..))
 import Echidna.Types.Tx
   ( basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp
   , initialBlockNumber )
@@ -291,6 +291,8 @@ mkTests solConf mainContract = do
     -- generate the complete abi mapping
     abi = Map.elems mainContract.abiMap <&> \method -> (method.name, snd <$> method.inputs)
     (tests, funs) = partition (isPrefixOf solConf.prefix . fst) abi
+    -- Extract invariant_ prefixed functions (they stay in funs for fuzzing too)
+    invariants = filter (isPrefixOf "invariant_" . fst) funs
     -- Filter again for dapptest tests or assertions checking if enabled
     neFuns = filterMethods mainContract.contractName
                            solConf.methodFilter
@@ -306,11 +308,19 @@ mkTests solConf mainContract = do
     Just (t, _) -> throwM $ TestArgsFound t
     Nothing -> pure ()
 
+  case find (not . null . snd) invariants of
+    Just (t, _) -> throwM $ TestArgsFound t
+    Nothing -> pure ()
+
+  let invariantTests = map (\s -> createTest (AssertionTest False s solConf.contractAddr))
+                           invariants
+
   pure $ createTests solConf.testMode
                      solConf.testDestruction
                      testNames
                      solConf.contractAddr
                      neFuns
+         ++ invariantTests
 
 -- | Given a list of contracts and a requested contract name, pick a contract.
 -- See 'loadSpecified' for more information.

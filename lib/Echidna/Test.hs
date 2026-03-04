@@ -143,6 +143,8 @@ checkETest test vm = case test.testType of
   Exploration -> pure (BoolValue True, vm) -- These values are never used
   PropertyTest n a -> checkProperty vm n a
   OptimizationTest n a -> checkOptimization vm n a
+  AssertionTest _ n@(fname, _) a | T.isPrefixOf "invariant_" fname ->
+    checkInvariantAssertion vm n a
   AssertionTest dt n a -> if dt then checkDapptestAssertion vm n a
                                 else checkStatefulAssertion vm n a
   CallTest _ f -> checkCall vm f
@@ -174,6 +176,31 @@ runTx vm f s a = do
   g <- asks (.cfg.txConf.propGas)
   (_, vm') <- execTx vm $ basicTx f [] (s a) a g (0, 0)
   pure vm'
+
+-- | Given an invariant test (invariant_ prefix), call it after each TX
+-- and check for assertion failures / reverts.
+checkInvariantAssertion
+  :: (MonadIO m, MonadReader Env m, MonadThrow m)
+  => VM Concrete
+  -> SolSignature
+  -> Addr
+  -> m (TestValue, VM Concrete)
+checkInvariantAssertion vm (fname, _) a = do
+  case vm.result of
+    Just (VMSuccess _) -> do
+      TestConf{testSender} <- asks (.cfg.testConf)
+      dappInfo <- asks (.dapp)
+      vm' <- runTx vm fname testSender a
+      let
+        isAssertionFailure = case vm'.result of
+          Just (VMFailure (UnrecognizedOpcode 0xfe)) -> True
+          Just (VMFailure _) -> True
+          _ -> False
+        events = extractEvents False dappInfo vm'
+        eventFailure = not (null events) && (checkAssertionEvent events || checkPanicEvent "1" events)
+        isFailure = isAssertionFailure || eventFailure
+      pure (BoolValue (not isFailure), vm')
+    _ -> pure (BoolValue True, vm)
 
 --- | Extract a test value from an execution.
 getIntFromResult :: Maybe (VMResult Concrete) -> TestValue
