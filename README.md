@@ -62,7 +62,7 @@ The example above uses the default **property** mode, but Echidna supports sever
 * **`assertion`**: Detect assertion failures from `assert()` and Foundry's `assertX` helpers (`assertTrue`, `assertEq`, etc.).
 * **`foundry`**: Run Foundry-style `test`-prefixed unit tests and `invariant_`-prefixed stateful invariants.
 * **`overflow`**: Detect integer over/underflows (Solidity >= 0.8.0).
-* **`optimization`**: Maximize the return value of `echidna_opt_`-prefixed functions.
+* **`optimization`**: Maximize the return value of `echidna_`-prefixed functions that return `int256` (uses the same configurable prefix as property mode).
 * **`exploration`**: Collect coverage without checking properties.
 
 ### Collecting and visualizing coverage
