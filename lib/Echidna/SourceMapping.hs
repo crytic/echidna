@@ -5,7 +5,8 @@ import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.IORef (IORef, readIORef, atomicModifyIORef')
-import Data.List (find)
+import Data.List (find, sortBy)
+import Data.Ord (Down(..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (mapMaybe)
@@ -114,33 +115,32 @@ findCBORLength metadata prefixPos = go (prefixPos + 1)
           in Just $ (b1 `shiftL` 8) .|. b2
       | otherwise = Nothing
 
--- | Find the last occurrence of any of the given prefixes in the bytecode
-findLastPrefix :: ByteString -> [ByteString] -> Maybe (ByteString, ByteString)
-findLastPrefix bs prefixes =
-  let findAll prefix = go 0
-        where
-          go offset = case BS.breakSubstring prefix (BS.drop offset bs) of
-            (_, rest) | BS.null rest -> Nothing
-            (before, rest) ->
-              let pos = offset + BS.length before
-                  candidate = (pos, (BS.take pos bs, rest))
-              in case go (pos + 1) of
-                Nothing -> Just candidate
-                Just laterMatch -> Just laterMatch
-      allMatches = mapMaybe findAll prefixes
-  in if null allMatches
-     then Nothing
-     else Just $ snd $ maximum allMatches  -- maximum by position
+-- | Find all occurrences of any of the given prefixes in the bytecode,
+-- sorted by position descending (from end to start).
+findAllPrefixes :: ByteString -> [ByteString] -> [(Int, ByteString)]
+findAllPrefixes bs prefixes =
+  sortBy (\a b -> compare (Down (fst a)) (Down (fst b))) $ concatMap findAll prefixes
+  where
+    findAll prefix = go 0
+      where
+        go offset = case BS.breakSubstring prefix (BS.drop offset bs) of
+          (_, rest) | BS.null rest -> []
+          (before, _) ->
+            let pos = offset + BS.length before
+            in (pos, prefix) : go (pos + 1)
 
 getBytecodeMetadata :: ByteString -> ByteString
 getBytecodeMetadata bs =
-  case findLastPrefix bs knownBzzrPrefixes of
-    Nothing -> bs -- if no metadata is found, return the complete bytecode
-    Just (before, fromPrefix) ->
-      let prefixPos = BS.length before
-      in case findCBORLength bs prefixPos of
-        Nothing -> bs -- if no valid CBOR length found, return full bytecode as fallback
-        Just lengthPos -> BS.take (lengthPos + 2 - prefixPos) fromPrefix
+  case firstValid (findAllPrefixes bs knownBzzrPrefixes) of
+    Nothing -> bs -- if no valid metadata is found, return the complete bytecode
+    Just metadata -> metadata
+  where
+    firstValid [] = Nothing
+    firstValid ((pos, _prefix):rest) =
+      case findCBORLength bs pos of
+        Just lengthPos ->
+          Just $ BS.drop pos (BS.take (lengthPos + 2) bs)
+        Nothing -> firstValid rest
 
 knownBzzrPrefixes :: [ByteString]
 knownBzzrPrefixes =
