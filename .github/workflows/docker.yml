@@ -67,7 +67,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
 
       - name: Docker Build and Push (Ubuntu & NVM variant)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         id: build-ubuntu
         with:
           platforms: ${{ matrix.platform }}
