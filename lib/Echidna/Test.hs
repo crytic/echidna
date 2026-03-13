@@ -80,6 +80,10 @@ isFoundryMode :: TestMode -> Bool
 isFoundryMode "foundry" = True
 isFoundryMode _          = False
 
+isOptimizationMode :: TestMode -> Bool
+isOptimizationMode "optimization" = True
+isOptimizationMode _               = False
+
 createTests
   :: TestMode
   -> Bool
