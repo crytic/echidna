@@ -20,6 +20,7 @@ contract Greeter {
 }
 
 contract GreeterTestSetup {
+    bool public IS_TEST = true;
     Greeter greeter;
 
     function greeting() public view returns (string memory) {

@@ -1,6 +1,7 @@
 module Echidna.Solidity where
 
 import Control.Monad (when, unless, forM_)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Extra (whenM)
 import Control.Monad.Reader (ReaderT(runReaderT))
@@ -231,6 +232,11 @@ loadSpecified env mainContract cs = do
                                            solConf.contractAddr
                                            unlimitedGasPerBlock
                                            (0, 0)
+    -- Call setUp() for any contract that has IS_TEST() in its ABI, regardless of
+    -- test mode. Contracts following the Foundry/dapptools convention (IS_TEST)
+    -- expect setUp() to run even in assertion or property mode.
+    when (isFoundryMode solConf.testMode && is_testFunction `notElem` abi) $
+      liftIO $ putStrLn "Warning: running in Foundry mode but contract does not have IS_TEST(). setUp() will not be called."
     vm4 <- if is_testFunction `elem` abi && setUpFunction `elem` abi
               then snd <$> transaction
               else pure vm3
