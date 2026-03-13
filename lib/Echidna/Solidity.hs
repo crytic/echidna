@@ -1,6 +1,7 @@
 module Echidna.Solidity where
 
 import Control.Monad (when, unless, forM_)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Extra (whenM)
 import Control.Monad.Reader (ReaderT(runReaderT))
@@ -41,7 +42,7 @@ import Echidna.ABI
 import Echidna.Deploy (deployContracts, deployBytecodes)
 import Echidna.Exec (execTx, execTxWithCov, initialVM)
 import Echidna.SourceAnalysis.Slither
-import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isDapptestMode)
+import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isFoundryMode)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
@@ -146,11 +147,19 @@ filterMethods contractName (Whitelist ic) ms =
 filterMethods contractName (Blacklist ig) ms =
   NE.filter (\s -> encodeSigWithName contractName s `notElem` ig) ms
 
--- | Filter methods with arguments, used for dapptest mode
+-- | Filter methods for foundry mode. Per Foundry conventions:
+-- - Functions prefixed with "test" are test functions (unit or fuzz).
+--   Fuzz tests are distinguished by having at least one parameter.
+--   See: https://book.getfoundry.sh/forge/fuzz-testing
+-- - Functions prefixed with "invariant_" are invariant tests, called in
+--   randomized sequences to verify properties that must always hold.
+--   See: https://book.getfoundry.sh/forge/invariant-testing
+-- - Other functions with arguments are kept as callable targets for
+--   invariant test campaigns.
 filterMethodsWithArgs :: NonEmpty SolSignature -> NonEmpty SolSignature
 filterMethodsWithArgs ms =
-  case NE.filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ms of
-    [] -> error "No dapptest tests found"
+  case NE.filter (\(n, xs) -> T.isPrefixOf "test" n || (T.isPrefixOf "invariant_" n || not (null xs))) ms of
+    [] -> error "No foundry tests found"
     fs -> NE.fromList fs
 
 abiOf :: Text -> SolcContract -> NonEmpty SolSignature
@@ -223,16 +232,22 @@ loadSpecified env mainContract cs = do
                                            solConf.contractAddr
                                            unlimitedGasPerBlock
                                            (0, 0)
-    vm4 <- if isDapptestMode solConf.testMode && setUpFunction `elem` abi
+    -- Call setUp() for any contract that has IS_TEST() in its ABI, regardless of
+    -- test mode. Contracts following the Foundry/dapptools convention (IS_TEST)
+    -- expect setUp() to run even in assertion or property mode.
+    when (isFoundryMode solConf.testMode && is_testFunction `notElem` abi) $
+      liftIO $ putStrLn "Warning: running in Foundry mode but contract does not have IS_TEST(). setUp() will not be called."
+    vm4 <- if is_testFunction `elem` abi && setUpFunction `elem` abi
               then snd <$> transaction
               else pure vm3
 
     case vm4.result of
-      Just (VMFailure _) -> throwM SetUpCallFailed
+      Just (VMFailure _) -> throwM $ SetUpCallFailed $ showTraceTree env.dapp vm4
       _ -> pure vm4
 
   where
     setUpFunction = ("setUp", [])
+    is_testFunction = ("IS_TEST", [])
 
 
 selectMainContract
@@ -259,7 +274,7 @@ mkSignatureMap
 mkSignatureMap solConf mainContract contracts = do
   let
     -- Filter ABI according to the config options
-    fabiOfc = if isDapptestMode solConf.testMode
+    fabiOfc = if isFoundryMode solConf.testMode
                 then NE.toList $ filterMethodsWithArgs (abiOf solConf.prefix mainContract)
                 else filterMethods mainContract.contractName solConf.methodFilter $
                        abiOf solConf.prefix mainContract
@@ -276,7 +291,7 @@ mkSignatureMap solConf mainContract contracts = do
         case NE.nonEmpty fabiOfc of
           Just ne -> Map.singleton mainContract.runtimeCodehash ne
           Nothing -> mempty
-  when (null abiMapping && isDapptestMode solConf.testMode) $
+  when (null abiMapping && isFoundryMode solConf.testMode) $
     throwM NoTests
   when (Map.null abiMapping) $
     throwM $ InvalidMethodFilters solConf.methodFilter
@@ -284,14 +299,15 @@ mkSignatureMap solConf mainContract contracts = do
 
 mkTests
   :: SolConf
+  -> CampaignConf
   -> SolcContract
   -> IO [EchidnaTest]
-mkTests solConf mainContract = do
+mkTests solConf campaignConf mainContract = do
   let
     -- generate the complete abi mapping
     abi = Map.elems mainContract.abiMap <&> \method -> (method.name, snd <$> method.inputs)
     (tests, funs) = partition (isPrefixOf solConf.prefix . fst) abi
-    -- Filter again for dapptest tests or assertions checking if enabled
+    -- Filter again for foundry tests or assertions checking if enabled
     neFuns = filterMethods mainContract.contractName
                            solConf.methodFilter
                            (fallback NE.:| funs)
@@ -309,6 +325,7 @@ mkTests solConf mainContract = do
   pure $ createTests solConf.testMode
                      solConf.testDestruction
                      testNames
+                     campaignConf.seqLen
                      solConf.contractAddr
                      neFuns
 
@@ -348,7 +365,7 @@ mkWorld SolConf{sender, testMode} sigMap maybeContract slitherInfo contracts =
     payableSigs = filterResults maybeContract slitherInfo.payableFunctions
     assertSigs = filterResults maybeContract (assertFunctionList <$> slitherInfo.asserts)
     as = if isAssertionMode testMode then filterResults maybeContract (assertFunctionList <$> slitherInfo.asserts) else []
-    cs = if isDapptestMode testMode then [] else filterResults maybeContract slitherInfo.constantFunctions \\ as
+    cs = if isFoundryMode testMode then [] else filterResults maybeContract slitherInfo.constantFunctions \\ as
     (highSignatureMap, lowSignatureMap) = prepareHashMaps cs as $
       filterFallbacks slitherInfo.fallbackDefined slitherInfo.receiveDefined contracts sigMap
   in World { senders = sender

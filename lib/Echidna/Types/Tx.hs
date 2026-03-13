@@ -197,6 +197,7 @@ data TxResult
   | ErrorReturnDataOutOfBounds
   | ErrorNonexistentFork
   | ErrorNonexistentPrecompile
+  | ErrorAssumeCheatFailed
   deriving (Eq, Ord, Show, Enum)
 $(deriveJSON defaultOptions ''TxResult)
 
@@ -263,6 +264,7 @@ getResult = \case
   VMFailure ReturnDataOutOfBounds         -> ErrorReturnDataOutOfBounds
   VMFailure (NonexistentFork _)           -> ErrorNonexistentFork
   VMFailure (NonexistentPrecompile _)     -> ErrorNonexistentPrecompile
+  VMFailure AssumeCheatFailed             -> ErrorAssumeCheatFailed
 
 makeSingleTx :: Addr -> Addr -> W256 -> TxCall -> [Tx]
 makeSingleTx a d v (SolCall c) = [Tx (SolCall c) a d maxGasPerBlock 0 v (0, 0)]

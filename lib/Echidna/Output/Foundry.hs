@@ -76,7 +76,10 @@ foundryTx senders tx =
         prelude =
           (if time > 0 || blocks > 0 then "    _delay(" ++ show time ++ ", " ++ show blocks ++ ");\n" else "") ++
           "    _setUpActor(" ++ senderName ++ ");"
-        call = "    Target." ++ unpack name ++ "(" ++ foundryArgs (map abiValueToString args) ++ ");"
+        -- Handle fallback function (empty name).
+        call = if unpack name == ""
+          then "    address(Target).call(\"\");"
+          else "    Target." ++ unpack name ++ "(" ++ foundryArgs (map abiValueToString args) ++ ");"
       in Just $ object ["prelude" .= prelude, "call" .= call]
     _ -> Nothing
 
