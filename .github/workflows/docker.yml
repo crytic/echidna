@@ -34,7 +34,7 @@ jobs:
 
       - name: Set Docker metadata (Ubuntu & NVM variant)
         id: meta-ubuntu
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ghcr.io/${{ github.repository }}/echidna
@@ -126,7 +126,7 @@ jobs:
 
       - name: Set Docker metadata (Ubuntu & NVM variant)
         id: meta-ubuntu
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ghcr.io/${{ github.repository }}/echidna
