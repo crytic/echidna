@@ -188,7 +188,7 @@ jobs:
         run: GZIP=-9 tar -czf echidna.tar.gz -C $APPDATA/local/bin/ echidna.exe
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: echidna-${{ runner.os }}
           path: echidna.tar.gz
@@ -202,7 +202,7 @@ jobs:
 
       - name: Upload testsuite
         if: runner.os != 'macOS'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: echidna-testsuite-${{ runner.os }}
           path: echidna-testsuite*
@@ -232,11 +232,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.8'
+          python-version: '3.10'
 
       - name: Install dependencies
         shell: bash
@@ -253,7 +255,7 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
 
       - name: Download testsuite
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
          name: echidna-testsuite-${{ runner.os }}
 

@@ -1,7 +1,13 @@
+{-# LANGUAGE GADTs #-}
+
 module Echidna.SymExec.Common where
 
 import Control.Monad.IO.Unlift (MonadUnliftIO, liftIO)
 import Control.Monad.State.Strict (execState, runStateT)
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
+import Data.DoubleWord (Word256)
+import Data.List (foldl')
 import Data.Function ((&))
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
@@ -11,21 +17,55 @@ import Data.Text qualified as T
 import Optics.Core ((.~), (%), (%~))
 
 import EVM (loadContract, resetState, symbolify)
-import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..))
+import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..), selector, encodeAbiValue, AbiValue(..))
 import EVM.Effects (TTY, ReadConfig)
 import EVM.Expr qualified
 import EVM.Fetch qualified as Fetch
 import EVM.Format (formatPartialDetailed)
-import EVM.Solidity (SolcContract(..), SourceCache(..), Method(..), WarningData(..))
+import EVM.Solidity (SolcContract(..), SourceCache(..), Method(..))
 import EVM.Solvers (SolverGroup)
-import EVM.SymExec (mkCalldata, verifyInputsWithHandler, VeriOpts(..), checkAssertions, subModel, defaultSymbolicValues)
-import EVM.Types (Addr, VMType(..), EType(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit, isQed)
+import EVM.SymExec (mkCalldata, verifyInputsWithHandler, VeriOpts(..), subModel, defaultSymbolicValues, Postcondition)
+import EVM.Types (Addr, VMType(..), EType(..), EvmError(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit, isQed)
 import qualified EVM.Types (VM(..))
 
+import Echidna.Test (isFoundryMode)
 import Echidna.Types (fromEVM)
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..), maxGasPerBlock)
+
+panicMsg :: Word256 -> ByteString
+panicMsg err = selector "Panic(uint256)" <> encodeAbiValue (AbiUInt 256 err)
+
+-- | Postcondition for symbolic execution verification.
+-- In foundry mode, all reverts are failures except vm.assume failures.
+-- In assertion mode, only assertion failures (0xfe opcode, Error(string)
+-- "assertion failed", or Panic codes) are detected.
+checkAssertions :: [Word256] -> Bool -> Postcondition
+checkAssertions errs isFoundry _ vmres
+  | isFoundry = case vmres of
+      -- vm.assume failures should not be treated as test failures
+      Failure _ _ AssumeCheatFailed -> PBool True
+      -- All other failures are test failures in foundry mode
+      Failure {} -> PBool False
+      _ -> PBool True
+  | otherwise = case vmres of
+      -- Solidity assert() opcode (0xfe)
+      Failure _ _ (UnrecognizedOpcode 0xfe) -> PBool False
+      -- Concrete revert: check for "assertion failed" message or panic code
+      Failure _ _ (Revert (ConcreteBuf msg)) ->
+        -- NOTE: assertTrue/assertFalse does not have the double colon after "assertion failed"
+        let assertFail = selector "Error(string)" `BS.isPrefixOf` msg
+              && "assertion failed" `BS.isPrefixOf` BS.drop txtOffset msg
+        in PBool $ not (assertFail || msg `elem` fmap panicMsg errs)
+      -- Symbolic revert: check symbolically against panic messages
+      -- TODO: also check for Error(string) "assertion failed" in partially-symbolic
+      -- buffers, similar to hevm's symbolicFail in EVM.UnitTest
+      Failure _ _ (Revert b) ->
+        foldl' PAnd (PBool True) (fmap (PNeg . PEq b . ConcreteBuf . panicMsg) errs)
+      _ -> PBool True
+  where
+    txtOffset = 4 + 32 + 32 -- selector + offset + length
 
 type PartialsLogs = [T.Text]
 
@@ -127,7 +167,7 @@ getUnknownLogs = mapMaybe (\case
 exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
   Method -> SolcContract -> SourceCache -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
 
-exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpcInfo session = do
+exploreMethod method _contract _sources vm defaultSender conf veriOpts solvers rpcInfo session = do
   calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   let
     cd = fst calldataSym
@@ -137,7 +177,8 @@ exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpc
   let
     vm' = vmReset & execState (loadContract (LitAddr dst))
                   & #tx % #isCreate .~ False
-                  & #state % #callvalue .~ TxValue
+                  -- Foundry tests cannot accept ether, force callvalue to zero
+                  & #state % #callvalue .~ (if isFoundryMode conf.solConf.testMode then Lit 0 else TxValue)
                   & #state % #caller .~ SymAddr "caller"
                   & #state % #calldata .~ cd
 
@@ -148,8 +189,8 @@ exploreMethod method contract sources vm defaultSender conf veriOpts solvers rpc
 
   -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
   -- Doing so might mess up concolic execution.
-  (models, partials) <- verifyInputsWithHandler solvers veriOpts fetcher vm'' (checkAssertions [0x1]) Nothing
+  let foundry = isFoundryMode conf.solConf.testMode
+  (models, partials) <- verifyInputsWithHandler solvers veriOpts fetcher vm'' (checkAssertions [0x1] foundry) Nothing
   let results = filter (\(r, _) -> not (isQed r)) models & map fst
-  let warnData = Just $ WarningData contract sources vm'
-  --liftIO $ mapM_ TIO.putStrLn partials
-  return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (formatPartialDetailed warnData . fst) partials)
+  --liftIO $ mapM_ print partials
+  return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (\(p, _) -> formatPartialDetailed Nothing Map.empty p) partials)

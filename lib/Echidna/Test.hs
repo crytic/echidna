@@ -52,13 +52,13 @@ createTest m = EchidnaTest Open m v [] Stop Nothing Nothing
 
 validateTestModeError :: String
 validateTestModeError =
-  "Invalid test mode (should be property, assertion, dapptest, optimization, overflow, exploration or verify)"
+  "Invalid test mode (should be property, assertion, foundry, optimization, overflow, exploration or verification)"
 
 validateTestMode :: String -> TestMode
 validateTestMode s = case s of
   "property"     -> s
   "assertion"    -> s
-  "dapptest"     -> s
+  "foundry"      -> s
   "exploration"  -> s
   "overflow"     -> s
   "optimization" -> s
@@ -81,18 +81,19 @@ isPropertyMode :: TestMode -> Bool
 isPropertyMode "property" = True
 isPropertyMode _          = False
 
-isDapptestMode :: TestMode -> Bool
-isDapptestMode "dapptest"  = True
-isDapptestMode _           = False
+isFoundryMode :: TestMode -> Bool
+isFoundryMode "foundry" = True
+isFoundryMode _          = False
 
 createTests
   :: TestMode
   -> Bool
   -> [Text]
+  -> Int
   -> Addr
   -> [SolSignature]
   -> [EchidnaTest]
-createTests m td ts r ss = case m of
+createTests m td ts seqLen r ss = case m of
   "exploration" ->
     [createTest Exploration]
   "overflow" ->
@@ -106,9 +107,15 @@ createTests m td ts r ss = case m of
         (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
   "verification" ->
     map (\s -> createTest (AssertionTest False s r)) (filter (/= fallback) ss)
-  "dapptest" ->
-    map (\s -> createTest (AssertionTest True s r))
-        (filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ss)
+  -- In foundry mode, seqLen distinguishes fuzz tests (seqLen == 1) from
+  -- invariant tests (seqLen > 1), which determines how functions are filtered.
+  "foundry" ->
+    if seqLen == 1 then
+      map (\s -> createTest (AssertionTest True s r))
+        (filter (\(n, xs) -> T.isPrefixOf "test" n && not (null xs)) ss)
+    else
+      map (\s -> createTest (AssertionTest True s r))
+          (filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ss)
   _ -> error validateTestModeError
   ++ (if td then [sdt, sdat] else [])
   where
@@ -150,7 +157,7 @@ checkETest test vm = case test.testType of
   Exploration -> pure (BoolValue True, vm) -- These values are never used
   PropertyTest n a -> checkProperty vm n a
   OptimizationTest n a -> checkOptimization vm n a
-  AssertionTest dt n a -> if dt then checkDapptestAssertion vm n a
+  AssertionTest dt n a -> if dt then checkFoundryAssertion vm n a
                                 else checkStatefulAssertion vm n a
   CallTest _ f -> checkCall vm f
 
@@ -222,7 +229,9 @@ checkStatefulAssertion vm sig addr = do
     -- Whether the last transaction executed opcode 0xfe, meaning an assertion failure.
     isAssertionFailure = case vm.result of
       Just (VMFailure (UnrecognizedOpcode 0xfe)) -> True
+      Just (VMFailure (Revert (ConcreteBuf msg))) -> "assertion failed" `BS.isPrefixOf` BS.drop txtOffset msg
       _ -> False
+    txtOffset = 4+32+32 -- selector + offset + length
     -- Test always passes if it doesn't target the last executed contract and function.
     -- Otherwise it passes if it doesn't cause an assertion failure.
     events = extractEvents False dappInfo vm
@@ -230,16 +239,13 @@ checkStatefulAssertion vm sig addr = do
     isFailure = isCorrectTarget && (eventFailure || isAssertionFailure)
   pure (BoolValue (not isFailure), vm)
 
-assumeMagicReturnCode :: BS.ByteString
-assumeMagicReturnCode = "FOUNDRY::ASSUME\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
-
-checkDapptestAssertion
+checkFoundryAssertion
   :: (MonadReader Env m, MonadThrow m)
   => VM Concrete
   -> SolSignature
   -> Addr
   -> m (TestValue, VM Concrete)
-checkDapptestAssertion vm sig addr = do
+checkFoundryAssertion vm sig addr = do
   let
     -- Whether the last transaction has any value
     hasValue = vm.state.callvalue /= Lit 0
@@ -248,8 +254,10 @@ checkDapptestAssertion vm sig addr = do
       BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty))
                     (forceBuf vm.state.calldata)
     isAssertionFailure = case vm.result of
-      Just (VMFailure (Revert (ConcreteBuf bs))) ->
-        not $ BS.isSuffixOf assumeMagicReturnCode bs
+      -- vm.assume failures should not be treated as test failures
+      Just (VMFailure AssumeCheatFailed) -> False
+      Just (VMFailure (Revert _)) ->
+        T.isPrefixOf "test" (fst sig) || T.isPrefixOf "invariant_" (fst sig)
       Just (VMFailure _) -> True
       _ -> False
     isCorrectAddr = LitAddr addr == vm.state.codeContract

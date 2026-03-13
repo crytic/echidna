@@ -54,6 +54,17 @@ $ echidna tests/solidity/basic/flags.sol
 
 Echidna should find a call sequence that falsifies `echidna_sometimesfalse` and should be unable to find a falsifying input for `echidna_alwaystrue`.
 
+### Testing modes
+
+The example above uses the default **property** mode, but Echidna supports several testing modes, configured via `testMode` in the config file or `--test-mode` on the CLI:
+
+* **`property`** (default): Test `echidna_`-prefixed functions that return `bool`.
+* **`assertion`**: Detect assertion failures from `assert()` and Foundry's `assertX` helpers (`assertTrue`, `assertEq`, etc.).
+* **`foundry`**: Run Foundry-style `test`-prefixed unit tests and `invariant_`-prefixed stateful invariants.
+* **`overflow`**: Detect integer over/underflows (Solidity >= 0.8.0).
+* **`optimization`**: Maximize the return value of `echidna_`-prefixed functions that return `int256` (uses the same configurable prefix as property mode).
+* **`exploration`**: Collect coverage without checking properties.
+
 ### Collecting and visualizing coverage
 
 After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain two entries: (1) a directory named `coverage` with JSON files that can be replayed by Echidna and (2) a plain-text file named `covered.txt`, a copy of the source code with coverage annotations.
@@ -143,8 +154,8 @@ Transaction = {
 
 `Coverage` is a dict describing certain coverage-increasing calls. These interfaces are
 subject to change to be slightly more user-friendly at a later date. `testType`
-will either be `property` or `assertion`, and `status` always takes on either
-`fuzzing`, `shrinking`, `solved`, `passed`, or `error`.
+will be one of `property`, `assertion`, `optimization`, `exploration`, or `call`,
+and `status` always takes on either `fuzzing`, `shrinking`, `solved`, `passed`, or `error`.
 
 ### Debugging Performance Problems
 

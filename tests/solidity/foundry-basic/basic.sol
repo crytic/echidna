@@ -2,6 +2,11 @@
 pragma abicoder v2;
 pragma solidity >=0.7.5;
 
+// Minimal Vm interface (this contract doesn't use forge-std).
+interface Vm {
+    function assume(bool condition) external pure;
+}
+
 contract Greeter {
     string public greeting;
 
@@ -15,6 +20,7 @@ contract Greeter {
 }
 
 contract GreeterTestSetup {
+    bool public IS_TEST = true;
     Greeter greeter;
 
     function greeting() public view returns (string memory) {
@@ -85,7 +91,9 @@ contract GreeterTest is GreeterTestSetup {
     }
 
     function testFuzzAssume(uint256 x) public {
-        require(false, "FOUNDRY::ASSUME");
-        // unreachable
+        // keccak256("hevm cheat code") - standard hevm cheatcode address
+        // https://github.com/argotorg/hevm/blob/ed90053fa0ed69e658a75ab0ed64d467f5a5448d/src/EVM.hs#L1861
+        Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D).assume(x <= 100);
+        assert(x <= 100);
     }
 }
