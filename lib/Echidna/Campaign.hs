@@ -23,7 +23,7 @@ import Data.Map qualified as Map
 import Data.Maybe (isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text (Text, isPrefixOf, pack, unpack)
+import Data.Text (Text, pack, unpack)
 import Data.Time (LocalTime)
 import Data.Vector qualified as V
 import System.Random (mkStdGen)
@@ -247,8 +247,7 @@ runSymWorker callback vm dict workerId _ name = do
     -- Filter to only targets that have registered open tests
     testRefs <- asks (.testRefs)
     tests <- liftIO $ traverse readIORef testRefs
-    let prefix = conf.solConf.prefix
-        stateChanging = filter suitableForSymExec $ Map.elems contract.abiMap
+    let stateChanging = filter suitableForSymExec $ Map.elems contract.abiMap
         noArgTargets
           | isPropertyMode conf.solConf.testMode =
               -- Property mode: only echidna_ functions that have open property tests
