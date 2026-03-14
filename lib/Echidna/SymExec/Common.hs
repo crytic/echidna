@@ -16,7 +16,7 @@ import Data.Set qualified as Set
 import Data.Text qualified as T
 import Optics.Core ((.~), (%), (%~))
 
-import EVM (loadContract, resetState, symbolify)
+import EVM (initialContract, loadContract, resetState, symbolify)
 import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..), selector, encodeAbiValue, AbiValue(..))
 import EVM.Effects (TTY, ReadConfig)
 import EVM.Expr qualified
@@ -25,7 +25,7 @@ import EVM.Format (formatPartialDetailed)
 import EVM.Solidity (SolcContract(..), SourceCache(..), Method(..))
 import EVM.Solvers (SolverGroup)
 import EVM.SymExec (mkCalldata, verifyInputsWithHandler, VeriOpts(..), subModel, defaultSymbolicValues, Postcondition)
-import EVM.Types (Addr, VMType(..), EType(..), EvmError(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit, isQed)
+import EVM.Types (Addr, Contract(..), VMType(..), EType(..), EvmError(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit, isQed)
 import qualified EVM.Types (VM(..))
 
 import Echidna.Test (isFoundryMode)
@@ -203,3 +203,86 @@ exploreMethodWith customPost method _contract _sources vm defaultSender conf ver
   let results = filter (\(r, _) -> not (isQed r)) models & map fst
   --liftIO $ mapM_ print partials
   return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (\(p, _) -> formatPartialDetailed Nothing Map.empty p) partials)
+
+-- | Convert a symbolic contract expression (from a Success leaf) to a
+-- concrete Contract value suitable for use in a VM's env.contracts map.
+fromEContract :: Expr EContract -> Contract
+fromEContract (C code storage tStorage balance nonce) =
+  initialContract code
+    & #storage .~ storage
+    & #tStorage .~ tStorage
+    & #balance .~ balance
+    & #nonce .~ nonce
+fromEContract _ = error "fromEContract: unexpected non-C expression"
+
+-- | Two-phase symbolic execution.
+--
+-- Phase 1: Symbolically execute a state-changing method with a trivially-true
+-- postcondition (no solver calls). This collects all reachable Success leaves,
+-- each containing symbolic contract states and path constraints.
+--
+-- Phase 2: For each Success leaf and each target method, reconstruct a VM
+-- with the symbolic contract states, execute the target, and check the given
+-- postcondition. The solver finds concrete values for phase 1's symbolic
+-- variables (calldata, caller, etc.) that cause a violation.
+exploreMethodTwoPhase :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
+  Postcondition -> Method -> [Method] -> SolcContract -> SourceCache -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+
+exploreMethodTwoPhase phase2Post method targetMethods _contract _sources vm defaultSender conf veriOpts solvers rpcInfo session = do
+  -- Phase 1: Execute state-changing method symbolically
+  calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
+  let
+    cd = fst calldataSym
+    fetcher = Fetch.oracle solvers (Just session) rpcInfo
+    dst = conf.solConf.contractAddr
+  vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
+  let
+    vm' = vmReset & execState (loadContract (LitAddr dst))
+                  & #tx % #isCreate .~ False
+                  & #state % #callvalue .~ (if isFoundryMode conf.solConf.testMode then Lit 0 else TxValue)
+                  & #state % #caller .~ SymAddr "caller"
+                  & #state % #calldata .~ cd
+
+    vm'' = symbolify vm'
+        & #block %~ blockMakeSymbolic
+        & #constraints %~ (addBlockConstraints conf.txConf.maxTimeDelay conf.txConf.maxBlockDelay vm'.block)
+        & #constraints %~ (++ constraints ++ senderConstraints conf.solConf.sender)
+
+  -- Phase 1: PBool True postcondition → no solver calls, all Success paths return Qed
+  (phase1Models, phase1Partials) <- verifyInputsWithHandler solvers veriOpts fetcher vm'' (\_ _ -> PBool True) Nothing
+
+  -- Extract Success leaves with their path constraints and symbolic contract states
+  let successLeaves = [(props, contracts) | (_, Success props _ _ contracts) <- phase1Models]
+
+  -- Phase 2: For each Success leaf, check each target method
+  allResults <- concat <$> mapM (checkLeaf fetcher dst vm cd) successLeaves
+
+  let allPartialLogs = map (\(p, _) -> formatPartialDetailed Nothing Map.empty p) phase1Partials
+  return (allResults, allPartialLogs)
+
+  where
+
+  -- | Phase 2 for a single Success leaf: check all target methods
+  checkLeaf fetcher dst vm0 cd (leafConstraints, leafContracts) = do
+    let convertedContracts = Map.map fromEContract leafContracts
+    concat <$> mapM (checkTarget fetcher dst vm0 cd convertedContracts leafConstraints) targetMethods
+
+  -- | Phase 2 for a single (leaf, target) pair
+  checkTarget fetcher dst vm0 cd convertedContracts leafConstraints targetMethod = do
+    vmReset2 <- liftIO $ snd <$> runStateT (fromEVM resetState) vm0
+    let
+      targetCd = ConcreteBuf (selector targetMethod.methodSignature)
+      -- Replace contracts with phase 1's symbolic state, keeping originals as fallback
+      vm2 = vmReset2 & #env % #contracts %~ Map.union convertedContracts
+                     & execState (loadContract (LitAddr dst))
+                     & #tx % #isCreate .~ False
+                     & #state % #callvalue .~ Lit 0
+                     & #state % #caller .~ SymAddr "caller"
+                     & #state % #calldata .~ targetCd
+      -- Carry over phase 1's path constraints so the solver must satisfy both phases
+      vm2' = symbolify vm2
+          & #constraints .~ leafConstraints
+
+    (phase2Models, _) <- verifyInputsWithHandler solvers veriOpts fetcher vm2' phase2Post Nothing
+    let results2 = filter (\(r, _) -> not (isQed r)) phase2Models & map fst
+    return $ map (modelToTx dst vm0.block.timestamp vm0.block.number method conf.solConf.sender defaultSender cd) results2

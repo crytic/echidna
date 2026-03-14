@@ -23,7 +23,7 @@ import Data.Map qualified as Map
 import Data.Maybe (isJust, mapMaybe, fromJust)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text (Text, unpack)
+import Data.Text (Text, pack, unpack)
 import Data.Time (LocalTime)
 import Data.Vector qualified as V
 import System.Random (mkStdGen)
@@ -40,10 +40,10 @@ import Echidna.Exec
 import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
 import Echidna.Solidity (chooseContract)
-import Echidna.SymExec.Common (extractTxs, extractErrors)
-import Echidna.SymExec.Exploration (exploreContract, getTargetMethodFromTx, getRandomTargetMethod)
+import Echidna.SymExec.Common (extractTxs, extractErrors, suitableForSymExec)
+import Echidna.SymExec.Exploration (exploreContract, exploreContractTwoPhase, getTargetMethodFromTx, getRandomTargetMethod)
 import Echidna.SymExec.Symbolic (forceAddr)
-import Echidna.SymExec.Property (verifyMethodForProperty, isSuitableForPropertyMode)
+import Echidna.SymExec.Property (verifyMethodForProperty, verifyMethodForAssertion, isSuitableForPropertyMode, isNoArgAssertionTarget)
 import Echidna.SymExec.Verification (verifyMethod, isSuitableToVerifyMethod)
 import Echidna.Test
 import Echidna.Transaction
@@ -56,7 +56,7 @@ import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
-import Echidna.Types.Tx (TxCall(..), Tx(..))
+import Echidna.Types.Tx (TxCall(..), Tx(..), basicTx, maxGasPerBlock)
 import Echidna.Types.Worker
 import Echidna.Worker
 
@@ -235,18 +235,24 @@ runSymWorker callback vm dict workerId _ name = do
     contract <- chooseContract cs name
     failedTests <- findFailedTests
     let failedTestSignatures = map getAssertionSignature failedTests
+    -- Single-phase exploration: only methods matching assertSigs filter
     case tx of
       Nothing -> getRandomTargetMethod contract conf.campaignConf.symExecTargets failedTestSignatures >>= \case
-        Nothing -> do
-          return ()
+        Nothing -> pure ()
         Just method -> exploreAndVerify contract method vm' txsBase
       Just t -> getTargetMethodFromTx t contract failedTestSignatures >>= \case
-        Nothing -> do
-          return ()
-        Just method -> do
-          exploreAndVerify contract method vm' txsBase
+        Nothing -> pure ()
+        Just method -> exploreAndVerify contract method vm' txsBase
+    -- Two-phase exploration: any state-changing method → no-arg assertion targets
+    let noArgTargets = filter isNoArgAssertionTarget $ Map.elems contract.abiMap
+        stateChanging = filter suitableForSymExec $ Map.elems contract.abiMap
+    unless (null noArgTargets || null stateChanging) $ do
+      -- Pick a random state-changing method for two-phase
+      method <- liftIO $ rElem (NEList.fromList stateChanging)
+      exploreAndVerifyTwoPhase contract method noArgTargets vm' txsBase
 
   exploreAndVerify contract method vm' txsBase = do
+    -- Single-phase exploration (existing)
     (threadId, symTxsChan) <- exploreContract contract method vm'
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
@@ -269,6 +275,49 @@ runSymWorker callback vm dict workerId _ name = do
       pushWorkerEvent $ SymExecError "No errors but symbolic execution found valid txs breaking assertions. Something is wrong.")
     unless newCoverage (pushWorkerEvent $ SymExecLog "Symbolic execution finished with no new coverage.")
 
+  exploreAndVerifyTwoPhase contract method targets vm' txsBase = do
+    conf <- asks (.cfg)
+    let dst = conf.solConf.contractAddr
+    (threadId2, symTxsChan2) <- exploreContractTwoPhase contract method targets vm'
+    modify' (\ws -> ws { runningThreads = [threadId2] })
+    lift callback
+
+    (symTxs2, partials2) <- liftIO $ takeMVar symTxsChan2
+    let txs2 = extractTxs symTxs2
+    let errors2 = extractErrors symTxs2
+
+    modify' (\ws -> ws { runningThreads = [] })
+    lift callback
+
+    -- For each concrete tx, execute it then check assertion functions
+    forM_ txs2 $ \symTx -> do
+      (_, vmAfter) <- execTx vm' symTx
+      case vmAfter.result of
+        Just (VMSuccess _) ->
+          updateTests $ \test -> do
+            if isOpen test && isAssertionTest test then do
+              let fnName = pack (getAssertionFunctionName test)
+                  assertTx = basicTx fnName [] symTx.src dst maxGasPerBlock (0, 0)
+              (_, vmCheck) <- execTx vmAfter assertTx
+              (testValue, vmCheck') <- checkETest test vmCheck
+              case testValue of
+                BoolValue False -> do
+                  wid <- Just <$> gets (.workerId)
+                  let test' = test { Test.state = Large 0
+                                   , reproducer = txsBase <> [symTx, assertTx]
+                                   , vm = Just vmAfter
+                                   , result = getResultFromVM vmCheck'
+                                   , Test.workerId = wid
+                                   }
+                  pushWorkerEvent (TestFalsified test')
+                  pure $ Just test'
+                _ -> pure Nothing
+            else pure Nothing
+        _ -> pure ()
+
+    unless (null errors2) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) during two-phase exploration: " <> show e)) errors2
+    unless (null partials2) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during two-phase exploration: " <> unpack e)) partials2
+
   verifyMethods = do
     dapp <- asks (.dapp)
     let cs = Map.elems dapp.solcByName
@@ -277,12 +326,84 @@ runSymWorker callback vm dict workerId _ name = do
     conf <- asks (.cfg)
     if isPropertyMode conf.solConf.testMode
       then verifyMethodsProperty contract allMethods
-      else forM_ allMethods (\method -> do
-             isSuitable <- isSuitableToVerifyMethod contract method conf.campaignConf.symExecTargets
-             if isSuitable
-              then symExecMethod contract method
-              else pushWorkerEvent $ SymExecError ("Skipped verification of method " <> unpack method.methodSignature)
-            )
+      else verifyMethodsAssertion contract allMethods
+
+  -- | Assertion mode verification: single-phase for methods with args,
+  -- two-phase for no-arg assertion functions that can only fail via state.
+  verifyMethodsAssertion contract allMethods = do
+    conf <- asks (.cfg)
+    let methods = Map.elems allMethods
+        -- No-arg assertion functions: need two-phase
+        noArgAssertions = filter isNoArgAssertionTarget methods
+        -- State-changing methods with args: used as phase 1 targets
+        stateChangingMethods = filter suitableForSymExec methods
+
+    -- Single-phase for methods with args
+    forM_ allMethods $ \method -> do
+      isSuitable <- isSuitableToVerifyMethod contract method conf.campaignConf.symExecTargets
+      if isSuitable
+        then symExecMethod contract method
+        else pushWorkerEvent $ SymExecError ("Skipped verification of method " <> unpack method.methodSignature)
+
+    -- Two-phase for no-arg assertion functions
+    unless (null noArgAssertions || null stateChangingMethods) $ do
+      pushWorkerEvent $ SymExecLog ("Two-phase assertion: " <> show (length noArgAssertions) <> " no-arg target(s), " <> show (length stateChangingMethods) <> " state-changing method(s)")
+      forM_ stateChangingMethods $ \method ->
+        symExecMethodAssertion contract method noArgAssertions
+
+  -- | Two-phase assertion mode: execute a state-changing method symbolically,
+  -- then check no-arg assertion functions against the resulting states.
+  symExecMethodAssertion contract method assertionTargets = do
+    lift callback
+    (threadId, symTxsChan) <- verifyMethodForAssertion assertionTargets method contract vm
+
+    modify' (\ws -> ws { runningThreads = [threadId] })
+    lift callback
+
+    (symTxs, partials) <- liftIO $ takeMVar symTxsChan
+    let txs = extractTxs symTxs
+    let errors = extractErrors symTxs
+
+    modify' (\ws -> ws { runningThreads = [] })
+    lift callback
+
+    let methodSignature = unpack method.methodSignature
+
+    pushWorkerEvent $ SymExecLog ("Assertion two-phase: found " <> show (length txs) <> " concrete tx(es) for method " <> methodSignature)
+
+    conf <- asks (.cfg)
+    let dst = conf.solConf.contractAddr
+
+    -- For each concrete tx, execute it then explicitly call each assertion function
+    forM_ txs $ \symTx -> do
+      (_, vm') <- execTx vm symTx
+      case vm'.result of
+        Just (VMSuccess _) -> do
+          -- Re-execute each assertion function on the post-tx state,
+          -- then use checkETest which already handles all assertion patterns
+          updateTests $ \test -> do
+            if isOpen test && isAssertionTest test then do
+              let fnName = pack (getAssertionFunctionName test)
+                  assertTx = basicTx fnName [] symTx.src dst maxGasPerBlock (0, 0)
+              (_, vm'') <- execTx vm' assertTx
+              (testValue, vm''') <- checkETest test vm''
+              case testValue of
+                BoolValue False -> do
+                  wid <- Just <$> gets (.workerId)
+                  let test' = test { Test.state = Large 0
+                                   , reproducer = [symTx, assertTx]
+                                   , vm = Just vm'
+                                   , result = getResultFromVM vm'''
+                                   , Test.workerId = wid
+                                   }
+                  pushWorkerEvent (TestFalsified test')
+                  pure $ Just test'
+                _ -> pure Nothing
+            else pure Nothing
+        _ -> pure ()
+
+    unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) during assertion two-phase for method " <> methodSignature <> ": " <> show e)) errors
+    unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during assertion two-phase for method " <> methodSignature <> ": " <> unpack e)) partials
 
   -- | Property mode verification: symbolically execute each state-changing
   -- method to find concrete inputs, then check property functions against

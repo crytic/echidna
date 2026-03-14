@@ -24,7 +24,8 @@ import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
 import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 
-import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, rpcFetcher, TxOrError(..), PartialsLogs)
+import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, exploreMethodTwoPhase, checkAssertions, rpcFetcher, TxOrError(..), PartialsLogs)
+import Echidna.Test (isFoundryMode)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Random (rElem)
@@ -109,6 +110,44 @@ exploreContract contract method vm = do
       -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.
       -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
       res <- exploreMethod method contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
+      liftIO $ putMVar resultChan res
+      liftIO $ putMVar doneChan ()
+    liftIO $ putMVar threadIdChan threadId
+    liftIO $ takeMVar doneChan
+
+  threadId <- liftIO $ takeMVar threadIdChan
+  pure (threadId, resultChan)
+
+-- | Like 'exploreContract' but uses two-phase symbolic execution.
+-- Phase 1 explores the given method, phase 2 checks the given target methods
+-- (typically no-arg assertion functions) for violations.
+exploreContractTwoPhase :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m)
+  => SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+exploreContractTwoPhase contract method targetMethods vm = do
+  conf <- asks (.cfg)
+  dappInfo <- asks (.dapp)
+  let
+    isFoundry = isFoundryMode conf.solConf.testMode
+    timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
+    maxIters = Just conf.campaignConf.symExecMaxIters
+    maxExplore = Just (fromIntegral conf.campaignConf.symExecMaxExplore)
+    askSmtIters = conf.campaignConf.symExecAskSMTIters
+    rpcInfo = RpcInfo (rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock))
+    defaultSender = fromJust $ Set.lookupMin conf.solConf.sender <|> Just 0
+
+  threadIdChan <- liftIO newEmptyMVar
+  doneChan <- liftIO newEmptyMVar
+  resultChan <- liftIO newEmptyMVar
+  let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
+  let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = StackBased }
+  let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, dumpQueries = False }
+  let veriOpts = VeriOpts { iterConf = iterConfig, rpcInfo = rpcInfo }
+  let runtimeEnv = defaultEnv { config = hevmConfig }
+  session <- asks (.fetchSession)
+  pushWorkerEvent $ SymExecLog ("Two-phase exploring " <> show method.name <> " against " <> show (length targetMethods) <> " assertion target(s)")
+  liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
+    threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
+      res <- exploreMethodTwoPhase (checkAssertions [0x1] isFoundry) method targetMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan res
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
