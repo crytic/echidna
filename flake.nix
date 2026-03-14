@@ -69,8 +69,15 @@
             pkgs.haskell.lib.compose.dontCheck
           ]);
 
+        mcp-server = pkgs: pkgs.haskellPackages.callCabal2nix "mcp-server" (pkgs.fetchFromGitHub {
+          owner = "gustavo-grieco";
+          repo = "haskell-mcp-server";
+          rev = "9fd60af428b96ae4bc63a133b3960ed934494189";
+          sha256 = "sha256-lh65Gy8a43xbDDFPONOJ2UBUS1xWOW2UUx3wYFTG8Xg=";
+        }) {};
+
         echidna = pkgs: with pkgs; lib.pipe
-          (haskellPackages.callCabal2nix "echidna" ./. { hevm = hevm pkgs; })
+          (haskellPackages.callCabal2nix "echidna" ./. { hevm = hevm pkgs; mcp-server = mcp-server pkgs; })
           ([
             # FIXME: figure out solc situation, it conflicts with the one from
             # solc-select that is installed with slither, disable tests in the meantime
