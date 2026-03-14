@@ -237,8 +237,9 @@ exploreMethodTwoPhase :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
 
 exploreMethodTwoPhase phase2Post phase2Caller logTarget method targetMethods _contract _sources vm defaultSender conf veriOpts solvers rpcInfo session = do
   -- Phase 1: Execute state-changing method symbolically
-  calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
+  (calldataSym, _caveats) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   let
+    constraints = snd calldataSym
     cd = fst calldataSym
     fetcher = Fetch.oracle solvers (Just session) rpcInfo
     dst = conf.solConf.contractAddr

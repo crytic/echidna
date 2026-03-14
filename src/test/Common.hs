@@ -117,6 +117,7 @@ runContract f selectedContract cfg workerType = do
         SymbolicWorker ->
           SymbolicAgent { initialVm = vm
                         , initialDict = dict
+                        , initialCorpus = []
                         , contractName = selectedContract
                         , stateRef
                         }
@@ -141,6 +142,7 @@ runContractMultiWorker f selectedContract cfg = do
   symResult <- newEmptyMVar
   let symbolic = SymbolicAgent { initialVm = vm
                               , initialDict = dict
+                              , initialCorpus = []
                               , contractName = selectedContract
                               , stateRef = symState
                               }

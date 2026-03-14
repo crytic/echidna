@@ -40,8 +40,8 @@ runAgentWithReady onReady agent env = do
     FuzzerAgent{initialVm, initialDict, initialCorpus, testLimit} ->
       runFuzzWorker callback (liftIO onReady)
         initialVm initialDict workerId initialCorpus testLimit
-    SymbolicAgent{initialVm, initialDict, contractName} ->
-      runSymWorker callback (liftIO onReady) initialVm initialDict workerId contractName
+    SymbolicAgent{initialVm, initialDict, initialCorpus, contractName} ->
+      runSymWorker callback (liftIO onReady) initialVm initialDict workerId initialCorpus contractName
 
   -- The callback publishes as the worker goes, but not from every exit path
   -- (verification mode never runs it), so publish the final state here too.

@@ -95,8 +95,8 @@ ui vm dict initialCorpus cliSelectedContract = do
           (fromIntegral conf.campaignConf.testLimit / fromIntegral nFuzzWorkers :: Double)
 
     -- Distribute the replay corpus across the fuzz workers. The symbolic
-    -- worker does not replay it, so with no fuzz workers there is nothing to
-    -- distribute.
+    -- worker receives the whole corpus for symbolic exploration separately, so
+    -- with no fuzz workers there is nothing to distribute.
     corpusChunks
       | nFuzzWorkers == 0 = repeat []
       | otherwise = splitPlaces chunkSizes initialCorpus ++ repeat []
@@ -117,7 +117,7 @@ ui vm dict initialCorpus cliSelectedContract = do
       -- has replayed its initial corpus and subscribed to the command bus
       -- before accepting clients; a broadcast written before a worker
       -- subscribes is intentionally dropped by TChan. Symbolic workers, which
-      -- accept no commands, signal readiness immediately.
+      -- accept no commands, signal readiness after subscribing to events.
       spawnMCPServer workers readyVars =
         forM_ conf.campaignConf.serverPort $ \port ->
           void $ liftIO $ forkIO $ do
@@ -266,6 +266,7 @@ ui vm dict initialCorpus cliSelectedContract = do
           SymbolicWorker ->
             SymbolicAgent { initialVm = vm
                           , initialDict = dict
+                          , initialCorpus
                           , contractName = cliSelectedContract
                           , stateRef
                           }

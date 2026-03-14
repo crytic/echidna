@@ -4,7 +4,7 @@
 module Echidna.Worker.Symbolic (runSymWorker) where
 
 import Control.Concurrent (takeMVar)
-import Control.Monad (forM_, unless, void, when)
+import Control.Monad (forM_, replicateM, replicateM_, unless, void, when)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (evalRandT)
 import Control.Monad.Reader (MonadReader, asks, liftIO)
@@ -12,6 +12,7 @@ import Control.Monad.State.Strict (MonadIO, StateT, gets, modify', runStateT)
 import Control.Monad.Trans (lift)
 import Data.Foldable (foldlM)
 import Data.IORef (readIORef)
+import Data.List qualified as List
 import Data.List.NonEmpty qualified as NEList
 import Data.Map qualified as Map
 import Data.Text (Text, pack, unpack)
@@ -33,7 +34,6 @@ import Echidna.SymExec.Property (verifyMethodForProperty, verifyMethodForAsserti
 import Echidna.SymExec.Verification (isSuitableToVerifyMethod, verifyMethod)
 import Echidna.Test
 import Echidna.Test.State (findFailedTests, setAssertionTestState, updateTests)
-import Echidna.Transaction (getResultFromVM)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Random (rElem)
@@ -53,9 +53,10 @@ runSymWorker
   -> VM Concrete -- ^ Initial VM state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
+  -> [(FilePath, [Tx])] -- ^ Initial corpus of transactions
   -> Maybe Text -- ^ Specified contract name
   -> m (WorkerStopReason, WorkerState)
-runSymWorker callback onReady vm dict workerId name = do
+runSymWorker callback onReady vm dict workerId initialCorpus name = do
   cfg <- asks (.cfg)
   let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
   eventQueue <- asks (.eventQueue)
@@ -64,10 +65,20 @@ runSymWorker callback onReady vm dict workerId name = do
 
   flip runStateT initialState $
     flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
-      if isVerificationMode cfg.solConf.testMode || nworkers == 0 then do
+      if isVerificationMode cfg.solConf.testMode
+          || (cfg.campaignConf.workers == Just 0 && cfg.campaignConf.seqLen == 1) then do
         verifyMethods -- No arguments, everything is in this environment
         pure SymbolicVerificationDone
       else do
+        -- Run two-phase on initial corpus before listening for events
+        unless (null initialCorpus) $ do
+          pushWorkerEvent $ SymExecLog ("Two-phase on initial corpus (" <> show (length initialCorpus) <> " entries)")
+          forM_ initialCorpus $ \(_, txs) -> unless (null txs) $
+            replicateM_ cfg.campaignConf.symExecSeqSamples $ do
+              i <- rElem $ NEList.fromList [0 .. length txs]
+              let prefix = take i txs
+              vm' <- foldlM (\v tx -> snd <$> execTx v tx) vm prefix
+              symexecTx (Nothing, vm', prefix)
         lift callback
         listenerLoop listenerFunc chan nworkers
         pure SymbolicExplorationDone
@@ -114,7 +125,8 @@ runSymWorker callback onReady vm dict workerId name = do
     shrinkWorkerTests workerId vm
     shrinkLoop (n - 1)
 
-  symexecTxs onlyRandom txs = mapM_ symexecTx =<< txsToTxAndVmsSym onlyRandom txs
+  symexecTxs onlyRandom txs =
+    mapM_ symexecTx =<< txsToTxAndVmsSym onlyRandom txs
 
   -- | Turn a list of transactions into inputs for symexecTx:
   -- (list of txns we're on top of)
@@ -162,26 +174,28 @@ runSymWorker callback onReady vm dict workerId name = do
       Just t -> getTargetMethodFromTx t contract failedTestSignatures >>= \case
         Nothing -> pure ()
         Just method -> exploreAndVerify contract method vm' txsBase
-    -- Two-phase exploration: any state-changing method → no-arg targets
-    -- Filter to only targets that have registered open tests
+    -- Two-phase exploration for no-arg targets
     testRefs <- asks (.testRefs)
     tests <- liftIO $ traverse readIORef testRefs
-    let stateChanging = filter suitableForSymExec $ Map.elems contract.abiMap
+    let nSamples = conf.campaignConf.symExecSeqSamples
+        stateChanging = filter suitableForSymExec $ Map.elems contract.abiMap
         noArgTargets
           | isPropertyMode conf.solConf.testMode =
-              -- Property mode: only echidna_ functions that have open property tests
               let propNames = [n | t <- tests, isOpen t, isPropertyTest t, PropertyTest n _ <- [t.testType]]
               in filter (\m -> null m.inputs && m.name `elem` propNames) $ Map.elems contract.abiMap
           | otherwise =
-              -- Assertion mode: only no-arg functions that have open assertion tests
               let assertSigs = [getAssertionSignature t | t <- tests, isOpen t, isAssertionTest t]
               in filter (\m -> isNoArgAssertionTarget m && unpack m.methodSignature `elem` assertSigs) $ Map.elems contract.abiMap
-    unless (null noArgTargets || null stateChanging) $ do
-      method <- liftIO $ rElem (NEList.fromList stateChanging)
-      let baseLabel = txsBaseLabel txsBase
-      if isPropertyMode conf.solConf.testMode
-        then exploreAndVerifyTwoPhaseProperty contract method noArgTargets vm' txsBase baseLabel
-        else exploreAndVerifyTwoPhase contract method noArgTargets vm' txsBase baseLabel
+    unless (null noArgTargets || null stateChanging) $
+      replicateM_ nSamples $ do
+        method <- liftIO $ rElem (NEList.fromList stateChanging)
+        -- Sample ~20% of targets per iteration to avoid being too slow
+        let nTargetSamples = max 1 (length noArgTargets `div` 5)
+        sampledTargets <- List.nub <$> replicateM nTargetSamples (liftIO $ rElem (NEList.fromList noArgTargets))
+        let baseLabel = txsBaseLabel txsBase
+        if isPropertyMode conf.solConf.testMode
+          then exploreAndVerifyTwoPhaseProperty contract method sampledTargets vm' txsBase baseLabel
+          else exploreAndVerifyTwoPhase contract method sampledTargets vm' txsBase baseLabel
 
   exploreAndVerify contract method vm' txsBase = do
     -- Single-phase exploration (existing)
