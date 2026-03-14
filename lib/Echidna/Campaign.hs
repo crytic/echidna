@@ -228,6 +228,13 @@ runSymWorker callback vm dict workerId _ name = do
     pure [(Nothing, rvm, rtxs)]
 
 
+  txsBaseLabel txs = case txs of
+    [] -> "initial state"
+    _  -> show (length txs) <> "-tx sequence ending with " <> showTxCall (last txs)
+    where showTxCall t = case t.call of
+            SolCall (n, _) -> unpack n
+            _ -> "unknown"
+
   symexecTx (tx, vm', txsBase) = do
     conf <- asks (.cfg)
     dapp <- asks (.dapp)
@@ -259,9 +266,10 @@ runSymWorker callback vm dict workerId _ name = do
               in filter (\m -> isNoArgAssertionTarget m && unpack m.methodSignature `elem` assertSigs) $ Map.elems contract.abiMap
     unless (null noArgTargets || null stateChanging) $ do
       method <- liftIO $ rElem (NEList.fromList stateChanging)
+      let baseLabel = txsBaseLabel txsBase
       if isPropertyMode conf.solConf.testMode
-        then exploreAndVerifyTwoPhaseProperty contract method noArgTargets vm' txsBase
-        else exploreAndVerifyTwoPhase contract method noArgTargets vm' txsBase
+        then exploreAndVerifyTwoPhaseProperty contract method noArgTargets vm' txsBase baseLabel
+        else exploreAndVerifyTwoPhase contract method noArgTargets vm' txsBase baseLabel
 
   exploreAndVerify contract method vm' txsBase = do
     -- Single-phase exploration (existing)
@@ -287,10 +295,10 @@ runSymWorker callback vm dict workerId _ name = do
       pushWorkerEvent $ SymExecError "No errors but symbolic execution found valid txs breaking assertions. Something is wrong.")
     unless newCoverage (pushWorkerEvent $ SymExecLog "Symbolic execution finished with no new coverage.")
 
-  exploreAndVerifyTwoPhase contract method targets vm' txsBase = do
+  exploreAndVerifyTwoPhase contract method targets vm' txsBase baseLabel = do
     conf <- asks (.cfg)
     let dst = conf.solConf.contractAddr
-    (threadId2, symTxsChan2) <- exploreContractTwoPhase contract method targets vm'
+    (threadId2, symTxsChan2) <- exploreContractTwoPhase contract method targets vm' baseLabel
     modify' (\ws -> ws { runningThreads = [threadId2] })
     lift callback
 
@@ -332,8 +340,8 @@ runSymWorker callback vm dict workerId _ name = do
 
   -- | Two-phase exploration for property mode: execute a state-changing method
   -- symbolically, then check property functions against the resulting states.
-  exploreAndVerifyTwoPhaseProperty contract method targets vm' txsBase = do
-    (threadId2, symTxsChan2) <- exploreContractTwoPhaseProperty contract method targets vm'
+  exploreAndVerifyTwoPhaseProperty contract method targets vm' txsBase baseLabel = do
+    (threadId2, symTxsChan2) <- exploreContractTwoPhaseProperty contract method targets vm' baseLabel
     modify' (\ws -> ws { runningThreads = [threadId2] })
     lift callback
 

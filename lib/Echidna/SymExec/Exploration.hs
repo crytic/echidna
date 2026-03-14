@@ -8,7 +8,7 @@ import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
-import Control.Monad.State.Strict (MonadState)
+import Control.Monad.State.Strict (MonadState, gets)
 import Data.List.NonEmpty (fromList)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust)
@@ -27,14 +27,14 @@ import qualified EVM.Types (VM(..))
 import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, exploreMethodTwoPhase, checkAssertions, rpcFetcher, TxOrError(..), PartialsLogs)
 import Echidna.SymExec.Property (checkPropertyReturn)
 import Echidna.Test (isFoundryMode)
-import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
+import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..))
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
-import Echidna.Types.Worker (WorkerEvent(..))
+import Echidna.Types.Worker (WorkerType(..), WorkerEvent(..), CampaignEvent(..))
 import Echidna.Types.World (World(..))
-import Echidna.Worker (pushWorkerEvent)
+import Echidna.Worker (pushWorkerEvent, pushCampaignEvent)
 
 -- | Uses symbolic execution to find transactions which would increase coverage.
 -- Spawns a new thread; returns its thread ID as the first return value.
@@ -121,22 +121,25 @@ exploreContract contract method vm = do
 
 -- | Two-phase exploration for assertion mode.
 exploreContractTwoPhase :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m)
-  => SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
-exploreContractTwoPhase contract method targetMethods vm = do
+  => SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> String -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+exploreContractTwoPhase contract method targetMethods vm baseLabel = do
   conf <- asks (.cfg)
   let isFoundry = isFoundryMode conf.solConf.testMode
-  exploreContractTwoPhaseWith (checkAssertions [0x1] isFoundry) contract method targetMethods vm
+  exploreContractTwoPhaseWith (checkAssertions [0x1] isFoundry) contract method targetMethods vm baseLabel
 
 -- | Two-phase exploration for property mode.
 exploreContractTwoPhaseProperty :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m)
-  => SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
-exploreContractTwoPhaseProperty = exploreContractTwoPhaseWith checkPropertyReturn
+  => SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> String -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+exploreContractTwoPhaseProperty =
+  exploreContractTwoPhaseWith checkPropertyReturn
 
 -- | Two-phase exploration parameterized by postcondition.
 exploreContractTwoPhaseWith :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m)
-  => Postcondition -> SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
-exploreContractTwoPhaseWith postcondition contract method targetMethods vm = do
-  conf <- asks (.cfg)
+  => Postcondition -> SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> String -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+exploreContractTwoPhaseWith postcondition contract method targetMethods vm baseLabel = do
+  env <- ask
+  wid <- gets (.workerId)
+  let conf = env.cfg
   dappInfo <- asks (.dapp)
   let
     timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
@@ -155,11 +158,11 @@ exploreContractTwoPhaseWith postcondition contract method targetMethods vm = do
   let veriOpts = VeriOpts { iterConf = iterConfig, rpcInfo = rpcInfo }
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
-  let targetNames = unwords $ map (unpack . (.methodSignature)) targetMethods
-  pushWorkerEvent $ SymExecLog ("Two-phase exploring " <> unpack method.methodSignature <> " -> [" <> targetNames <> "]")
+  let methodSig = unpack method.methodSignature
+      logTarget target = liftIO $ pushCampaignEvent env (WorkerEvent wid SymbolicWorker (SymExecLog ("Two-phase " <> baseLabel <> ": " <> methodSig <> " -> " <> unpack target.methodSignature)))
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      res <- exploreMethodTwoPhase postcondition method targetMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
+      res <- exploreMethodTwoPhase postcondition logTarget method targetMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan res
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId

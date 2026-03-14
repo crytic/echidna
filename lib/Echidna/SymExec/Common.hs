@@ -226,9 +226,9 @@ fromEContract _ = error "fromEContract: unexpected non-C expression"
 -- postcondition. The solver finds concrete values for phase 1's symbolic
 -- variables (calldata, caller, etc.) that cause a violation.
 exploreMethodTwoPhase :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
-  Postcondition -> Method -> [Method] -> SolcContract -> SourceCache -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+  Postcondition -> (Method -> m ()) -> Method -> [Method] -> SolcContract -> SourceCache -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
 
-exploreMethodTwoPhase phase2Post method targetMethods _contract _sources vm defaultSender conf veriOpts solvers rpcInfo session = do
+exploreMethodTwoPhase phase2Post logTarget method targetMethods _contract _sources vm defaultSender conf veriOpts solvers rpcInfo session = do
   -- Phase 1: Execute state-changing method symbolically
   calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   let
@@ -269,6 +269,7 @@ exploreMethodTwoPhase phase2Post method targetMethods _contract _sources vm defa
 
   -- | Phase 2 for a single (leaf, target) pair
   checkTarget fetcher dst vm0 cd convertedContracts leafConstraints targetMethod = do
+    logTarget targetMethod
     vmReset2 <- liftIO $ snd <$> runStateT (fromEVM resetState) vm0
     let
       targetCd = ConcreteBuf (selector targetMethod.methodSignature)
