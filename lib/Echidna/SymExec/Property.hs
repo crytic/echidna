@@ -7,8 +7,8 @@ import Control.Concurrent (ThreadId, forkIO)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Reader (MonadReader, asks, runReaderT, liftIO)
-import Control.Monad.State.Strict (MonadState)
+import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
+import Control.Monad.State.Strict (MonadState, gets)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust)
 import Data.Set qualified as Set
@@ -29,11 +29,12 @@ import Echidna.SymExec.Common
   , TxOrError(..), PartialsLogs
   )
 import Echidna.Test (isFoundryMode)
-import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
+import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..))
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Worker (WorkerEvent(..))
-import Echidna.Worker (pushWorkerEvent)
+import Echidna.Types.Worker (WorkerType(..), WorkerEvent(..), CampaignEvent(..))
+import Echidna.Worker (pushWorkerEvent, pushCampaignEvent)
 
 -- | Postcondition for property mode phase 2: check if property function
 -- returned false (i.e., return value is 0).
@@ -60,7 +61,9 @@ isNoArgAssertionTarget m = null m.inputs
 verifyMethodForProperty :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m)
   => Method -> SolcContract -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 verifyMethodForProperty method contract vm = do
-  conf <- asks (.cfg)
+  env <- ask
+  wid <- gets (.workerId)
+  let conf = env.cfg
   dappInfo <- asks (.dapp)
   let
     propertyMethods = filter (\m -> Text.isPrefixOf conf.solConf.prefix m.name) $ Map.elems contract.abiMap
@@ -80,12 +83,12 @@ verifyMethodForProperty method contract vm = do
   let veriOpts = VeriOpts { iterConf = iterConfig, rpcInfo = rpcInfo }
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
-  let propertyNames = unwords $ map (Text.unpack . (.methodSignature)) propertyMethods
-  pushWorkerEvent $ SymExecLog ("Verifying property: " <> Text.unpack method.methodSignature <> " -> [" <> propertyNames <> "]")
+  let methodSig = Text.unpack method.methodSignature
+      logTarget target = liftIO $ pushCampaignEvent env (WorkerEvent wid SymbolicWorker (SymExecLog ("Verifying property: " <> methodSig <> " -> " <> Text.unpack target.methodSignature)))
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      (res, partials) <- exploreMethodTwoPhase checkPropertyReturn method propertyMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
+      (res, partials) <- exploreMethodTwoPhase checkPropertyReturn logTarget method propertyMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan (res, partials)
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
@@ -98,7 +101,9 @@ verifyMethodForProperty method contract vm = do
 verifyMethodForAssertion :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m)
   => [Method] -> Method -> SolcContract -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 verifyMethodForAssertion assertionMethods method contract vm = do
-  conf <- asks (.cfg)
+  env <- ask
+  wid <- gets (.workerId)
+  let conf = env.cfg
   dappInfo <- asks (.dapp)
   let
     isFoundry = isFoundryMode conf.solConf.testMode
@@ -118,12 +123,12 @@ verifyMethodForAssertion assertionMethods method contract vm = do
   let veriOpts = VeriOpts { iterConf = iterConfig, rpcInfo = rpcInfo }
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
-  let targetNames = unwords $ map (Text.unpack . (.methodSignature)) assertionMethods
-  pushWorkerEvent $ SymExecLog ("Verifying assertion: " <> Text.unpack method.methodSignature <> " -> [" <> targetNames <> "]")
+  let methodSig' = Text.unpack method.methodSignature
+      logTarget target = liftIO $ pushCampaignEvent env (WorkerEvent wid SymbolicWorker (SymExecLog ("Verifying assertion: " <> methodSig' <> " -> " <> Text.unpack target.methodSignature)))
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      (res, partials) <- exploreMethodTwoPhase (checkAssertions [0x1] isFoundry) method assertionMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
+      (res, partials) <- exploreMethodTwoPhase (checkAssertions [0x1] isFoundry) logTarget method assertionMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan (res, partials)
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
