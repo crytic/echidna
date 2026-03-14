@@ -48,7 +48,6 @@ import EVM.Types hiding (Env, Gas)
 
 import Echidna (mkEnv, prepareContract)
 import Echidna.Campaign (runWorker)
-import Echidna.Types.Campaign (getNFuzzWorkers)
 import Echidna.Types.Worker (WorkerType(..), WorkerEvent(..), CampaignEvent(..))
 import Echidna.Worker (pushCampaignEvent)
 import Echidna.Config (parseConfig, defaultConfig)
