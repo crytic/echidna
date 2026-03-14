@@ -23,6 +23,8 @@ data SolException
   | SolcReadFailure
   | NoContracts
   | TestArgsFound Text
+  | PropertyWithoutReturn Text
+  | OptimizationWithWrongReturn Text
   | ContractNotFound Text
   | NoBytecode Text
   | NoFuncs
@@ -43,6 +45,8 @@ instance Show SolException where
     NoContracts            -> "No contracts found in given file"
     ContractNotFound c     -> "Given contract " ++ show c ++ " not found in given file"
     TestArgsFound t        -> "Test " ++ show t ++ " has arguments, aborting"
+    PropertyWithoutReturn t -> "Property " ++ show t ++ " does not return bool. Property functions must have signature: function " ++ unpack t ++ "() public returns (bool)"
+    OptimizationWithWrongReturn t -> "Optimization " ++ show t ++ " does not return int256. Optimization functions must have signature: function " ++ unpack t ++ "() public returns (int256)"
     NoBytecode t           -> "No bytecode found for contract " ++ show t
     NoFuncs                -> "ABI is empty, are you sure your constructor is right?"
     NoTests                -> "No tests found in ABI. If you are using assert(), use --test-mode assertion"

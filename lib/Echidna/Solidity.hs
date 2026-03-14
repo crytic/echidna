@@ -42,7 +42,7 @@ import Echidna.ABI
 import Echidna.Deploy (deployContracts, deployBytecodes)
 import Echidna.Exec (execTx, execTxWithCov, initialVM)
 import Echidna.SourceAnalysis.Slither
-import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isFoundryMode)
+import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isFoundryMode, isOptimizationMode)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
@@ -321,6 +321,18 @@ mkTests solConf campaignConf mainContract = do
   case find (not . null . snd) tests of
     Just (t, _) -> throwM $ TestArgsFound t
     Nothing -> pure ()
+
+  -- Check that property functions return bool
+  when (isPropertyMode solConf.testMode) $
+    forM_ (Map.elems mainContract.abiMap) $ \method ->
+      when (solConf.prefix `T.isPrefixOf` method.name && map snd method.output /= [AbiBoolType]) $
+        throwM $ PropertyWithoutReturn method.name
+
+  -- Check that optimization functions return int256
+  when (isOptimizationMode solConf.testMode) $
+    forM_ (Map.elems mainContract.abiMap) $ \method ->
+      when (solConf.prefix `T.isPrefixOf` method.name && map snd method.output /= [AbiIntType 256]) $
+        throwM $ OptimizationWithWrongReturn method.name
 
   pure $ createTests solConf.testMode
                      solConf.testDestruction

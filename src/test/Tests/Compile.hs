@@ -9,7 +9,7 @@ import Test.Tasty.HUnit (testCase, assertBool)
 import Common (testConfig, loadSolTests)
 import Echidna.Solidity (compileContracts)
 import Echidna.Types.Config (EConfig(..))
-import Echidna.Types.Solidity (SolException(..))
+import Echidna.Types.Solidity (SolConf(..), SolException(..))
 
 compilationTests :: TestTree
 compilationTests = testGroup "Compilation and loading tests"
@@ -33,11 +33,18 @@ compilationTests = testGroup "Compilation and loading tests"
       \case DeploymentFailed _ _ -> True; _ -> False
   , loadFails "basic/eip-170.sol"  Nothing    "failed to warn on a failed deployment" $
       \case DeploymentFailed _ _ -> True; _ -> False
+  , loadFailsWith "bad/propaliased.sol" Nothing "property" "failed to warn on property without bool return" $
+      \case PropertyWithoutReturn _ -> True; _ -> False
+  , loadFailsWith "bad/optaliased.sol" Nothing "optimization" "failed to warn on optimization with wrong return" $
+      \case OptimizationWithWrongReturn _ -> True; _ -> False
   ]
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
-loadFails fp c e p = testCase fp . catch tryLoad $ assertBool e . p where
+loadFails fp c e p = loadFailsWith fp c "property" e p
+
+loadFailsWith :: FilePath -> Maybe Text -> String -> String -> (SolException -> Bool) -> TestTree
+loadFailsWith fp c mode e p = testCase fp . catch tryLoad $ assertBool e . p where
   tryLoad = do
-    let cfg = testConfig
+    let cfg = testConfig { solConf = testConfig.solConf { testMode = mode } }
     buildOutput <- compileContracts cfg.solConf (pure fp)
     void $ loadSolTests cfg buildOutput c
