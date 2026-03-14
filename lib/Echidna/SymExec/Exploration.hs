@@ -21,7 +21,7 @@ import EVM.Fetch (RpcInfo(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (defMemLimit, withSolvers)
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..), Postcondition)
-import EVM.Types (Addr, VMType(..), EType(..), Expr(..))
+import EVM.Types (VMType(..), EType(..), Expr(..))
 import qualified EVM.Types (VM(..))
 
 import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, exploreMethodTwoPhase, checkAssertions, rpcFetcher, TxOrError(..), PartialsLogs)
