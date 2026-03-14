@@ -166,8 +166,14 @@ getUnknownLogs = mapMaybe (\case
 
 exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
   Method -> SolcContract -> SourceCache -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+exploreMethod = exploreMethodWith Nothing
 
-exploreMethod method _contract _sources vm defaultSender conf veriOpts solvers rpcInfo session = do
+-- | Like 'exploreMethod' but accepts a custom postcondition. When 'Nothing',
+-- uses the default assertion-checking postcondition.
+exploreMethodWith :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
+  Maybe Postcondition -> Method -> SolcContract -> SourceCache -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+
+exploreMethodWith customPost method _contract _sources vm defaultSender conf veriOpts solvers rpcInfo session = do
   calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   let
     cd = fst calldataSym
@@ -190,7 +196,10 @@ exploreMethod method _contract _sources vm defaultSender conf veriOpts solvers r
   -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
   -- Doing so might mess up concolic execution.
   let foundry = isFoundryMode conf.solConf.testMode
-  (models, partials) <- verifyInputsWithHandler solvers veriOpts fetcher vm'' (checkAssertions [0x1] foundry) Nothing
+  let postcondition = case customPost of
+        Just p  -> p
+        Nothing -> checkAssertions [0x1] foundry
+  (models, partials) <- verifyInputsWithHandler solvers veriOpts fetcher vm'' postcondition Nothing
   let results = filter (\(r, _) -> not (isQed r)) models & map fst
   --liftIO $ mapM_ print partials
   return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (\(p, _) -> formatPartialDetailed Nothing Map.empty p) partials)

@@ -43,6 +43,7 @@ import Echidna.Solidity (chooseContract)
 import Echidna.SymExec.Common (extractTxs, extractErrors)
 import Echidna.SymExec.Exploration (exploreContract, getTargetMethodFromTx, getRandomTargetMethod)
 import Echidna.SymExec.Symbolic (forceAddr)
+import Echidna.SymExec.Property (verifyMethodForProperty, isSuitableForPropertyMode)
 import Echidna.SymExec.Verification (verifyMethod, isSuitableToVerifyMethod)
 import Echidna.Test
 import Echidna.Transaction
@@ -52,6 +53,7 @@ import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Signature (FunctionName)
+import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..))
@@ -273,12 +275,83 @@ runSymWorker callback vm dict workerId _ name = do
     contract <- chooseContract cs name
     let allMethods = contract.abiMap
     conf <- asks (.cfg)
-    forM_ allMethods (\method -> do
-           isSuitable <- isSuitableToVerifyMethod contract method conf.campaignConf.symExecTargets
-           if isSuitable
-            then symExecMethod contract method
-            else pushWorkerEvent $ SymExecError ("Skipped verification of method " <> unpack method.methodSignature)
-          )
+    if isPropertyMode conf.solConf.testMode
+      then verifyMethodsProperty contract allMethods
+      else forM_ allMethods (\method -> do
+             isSuitable <- isSuitableToVerifyMethod contract method conf.campaignConf.symExecTargets
+             if isSuitable
+              then symExecMethod contract method
+              else pushWorkerEvent $ SymExecError ("Skipped verification of method " <> unpack method.methodSignature)
+            )
+
+  -- | Property mode verification: symbolically execute each state-changing
+  -- method to find concrete inputs, then check property functions against
+  -- the resulting VM states.
+  verifyMethodsProperty contract allMethods = do
+    conf <- asks (.cfg)
+    let prefix = conf.solConf.prefix
+        targets = conf.campaignConf.symExecTargets
+        methods = Map.elems allMethods
+        stateChangingMethods = filter (\m -> isSuitableForPropertyMode m prefix targets) methods
+
+    when (null stateChangingMethods) $
+      pushWorkerEvent $ SymExecError "No suitable state-changing methods found for property verification"
+
+    forM_ stateChangingMethods $ \method ->
+      symExecMethodProperty contract method
+
+    pushWorkerEvent $ SymExecLog ("Property mode symbolic verification finished for contract " <> unpack (fromJust name))
+
+  -- | Symbolically execute a method in property mode: find concrete inputs
+  -- for all reachable paths, then check each against all property tests.
+  symExecMethodProperty contract method = do
+    lift callback
+    (threadId, symTxsChan) <- verifyMethodForProperty method contract vm
+
+    modify' (\ws -> ws { runningThreads = [threadId] })
+    lift callback
+
+    (symTxs, partials) <- liftIO $ takeMVar symTxsChan
+    let txs = extractTxs symTxs
+    let errors = extractErrors symTxs
+
+    modify' (\ws -> ws { runningThreads = [] })
+    lift callback
+
+    let methodSignature = unpack method.methodSignature
+
+    pushWorkerEvent $ SymExecLog ("Property mode: found " <> show (length txs) <> " concrete tx(es) for method " <> methodSignature <> ", " <> show (length errors) <> " error(s), " <> show (length partials) <> " partial(s)")
+
+    -- For each concrete tx from symbolic execution, execute it and check properties
+    forM_ txs $ \symTx -> do
+      (_, vm') <- execTx vm symTx
+      pushWorkerEvent $ SymExecLog ("Property mode: executed tx " <> show symTx.call)
+      case vm'.result of
+        Just (VMSuccess _) -> do
+          -- Check all open property tests against the post-transaction state
+          updateTests $ \test -> do
+            if isOpen test && isPropertyTest test then do
+              (testValue, vm'') <- checkETest test vm'
+              pushWorkerEvent $ SymExecLog ("Property mode: checked property, value = " <> show testValue)
+              case testValue of
+                BoolValue False -> do
+                  wid <- Just <$> gets (.workerId)
+                  let test' = test { Test.state = Large 0
+                                   , reproducer = [symTx]
+                                   , vm = Just vm'
+                                   , result = getResultFromVM vm''
+                                   , Test.workerId = wid
+                                   }
+                  pushWorkerEvent (TestFalsified test')
+                  pure $ Just test'
+                _ -> pure Nothing
+            else pure Nothing
+        _ -> pure ()
+
+    unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) during property verification of method " <> methodSignature <> ": " <> show e)) errors
+    unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during property verification of method " <> methodSignature <> ": " <> unpack e)) partials
+
+    pushWorkerEvent $ SymExecLog ("Property mode symbolic execution finished for method " <> methodSignature)
 
   symExecMethod contract method = do
     lift callback
