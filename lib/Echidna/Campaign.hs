@@ -20,10 +20,10 @@ import Data.List qualified as List
 import Data.List.NonEmpty qualified as NEList
 import Data.Map (Map, (\\))
 import Data.Map qualified as Map
-import Data.Maybe (isJust, mapMaybe, fromJust)
+import Data.Maybe (isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text (Text, pack, unpack)
+import Data.Text (Text, isPrefixOf, pack, unpack)
 import Data.Time (LocalTime)
 import Data.Vector qualified as V
 import System.Random (mkStdGen)
@@ -41,7 +41,7 @@ import Echidna.Mutator.Corpus
 import Echidna.Shrink (shrinkTest)
 import Echidna.Solidity (chooseContract)
 import Echidna.SymExec.Common (extractTxs, extractErrors, suitableForSymExec)
-import Echidna.SymExec.Exploration (exploreContract, exploreContractTwoPhase, getTargetMethodFromTx, getRandomTargetMethod)
+import Echidna.SymExec.Exploration (exploreContract, exploreContractTwoPhase, exploreContractTwoPhaseProperty, getTargetMethodFromTx, getRandomTargetMethod)
 import Echidna.SymExec.Symbolic (forceAddr)
 import Echidna.SymExec.Property (verifyMethodForProperty, verifyMethodForAssertion, isSuitableForPropertyMode, isNoArgAssertionTarget)
 import Echidna.SymExec.Verification (verifyMethod, isSuitableToVerifyMethod)
@@ -243,13 +243,26 @@ runSymWorker callback vm dict workerId _ name = do
       Just t -> getTargetMethodFromTx t contract failedTestSignatures >>= \case
         Nothing -> pure ()
         Just method -> exploreAndVerify contract method vm' txsBase
-    -- Two-phase exploration: any state-changing method → no-arg assertion targets
-    let noArgTargets = filter isNoArgAssertionTarget $ Map.elems contract.abiMap
+    -- Two-phase exploration: any state-changing method → no-arg targets
+    -- Filter to only targets that have registered open tests
+    testRefs <- asks (.testRefs)
+    tests <- liftIO $ traverse readIORef testRefs
+    let prefix = conf.solConf.prefix
         stateChanging = filter suitableForSymExec $ Map.elems contract.abiMap
+        noArgTargets
+          | isPropertyMode conf.solConf.testMode =
+              -- Property mode: only echidna_ functions that have open property tests
+              let propNames = [n | t <- tests, isOpen t, isPropertyTest t, PropertyTest n _ <- [t.testType]]
+              in filter (\m -> null m.inputs && m.name `elem` propNames) $ Map.elems contract.abiMap
+          | otherwise =
+              -- Assertion mode: only no-arg functions that have open assertion tests
+              let assertSigs = [getAssertionSignature t | t <- tests, isOpen t, isAssertionTest t]
+              in filter (\m -> isNoArgAssertionTarget m && unpack m.methodSignature `elem` assertSigs) $ Map.elems contract.abiMap
     unless (null noArgTargets || null stateChanging) $ do
-      -- Pick a random state-changing method for two-phase
       method <- liftIO $ rElem (NEList.fromList stateChanging)
-      exploreAndVerifyTwoPhase contract method noArgTargets vm' txsBase
+      if isPropertyMode conf.solConf.testMode
+        then exploreAndVerifyTwoPhaseProperty contract method noArgTargets vm' txsBase
+        else exploreAndVerifyTwoPhase contract method noArgTargets vm' txsBase
 
   exploreAndVerify contract method vm' txsBase = do
     -- Single-phase exploration (existing)
@@ -315,8 +328,48 @@ runSymWorker callback vm dict workerId _ name = do
             else pure Nothing
         _ -> pure ()
 
-    unless (null errors2) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) during two-phase exploration: " <> show e)) errors2
-    unless (null partials2) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during two-phase exploration: " <> unpack e)) partials2
+    unless (null errors2) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error during two-phase assertion exploration: " <> show e)) errors2
+    unless (null partials2) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial path during two-phase assertion exploration: " <> unpack e)) partials2
+
+  -- | Two-phase exploration for property mode: execute a state-changing method
+  -- symbolically, then check property functions against the resulting states.
+  exploreAndVerifyTwoPhaseProperty contract method targets vm' txsBase = do
+    (threadId2, symTxsChan2) <- exploreContractTwoPhaseProperty contract method targets vm'
+    modify' (\ws -> ws { runningThreads = [threadId2] })
+    lift callback
+
+    (symTxs2, partials2) <- liftIO $ takeMVar symTxsChan2
+    let txs2 = extractTxs symTxs2
+    let errors2 = extractErrors symTxs2
+
+    modify' (\ws -> ws { runningThreads = [] })
+    lift callback
+
+    -- For each concrete tx, execute it and check property functions
+    forM_ txs2 $ \symTx -> do
+      (_, vmAfter) <- execTx vm symTx
+      case vmAfter.result of
+        Just (VMSuccess _) ->
+          updateTests $ \test -> do
+            if isOpen test && isPropertyTest test then do
+              (testValue, vmCheck) <- checkETest test vmAfter
+              case testValue of
+                BoolValue False -> do
+                  wid <- Just <$> gets (.workerId)
+                  let test' = test { Test.state = Large 0
+                                   , reproducer = txsBase <> [symTx]
+                                   , vm = Just vmAfter
+                                   , result = getResultFromVM vmCheck
+                                   , Test.workerId = wid
+                                   }
+                  pushWorkerEvent (TestFalsified test')
+                  pure $ Just test'
+                _ -> pure Nothing
+            else pure Nothing
+        _ -> pure ()
+
+    unless (null errors2) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error during two-phase property exploration: " <> show e)) errors2
+    unless (null partials2) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial path during two-phase property exploration: " <> unpack e)) partials2
 
   verifyMethods = do
     dapp <- asks (.dapp)

@@ -24,7 +24,10 @@ import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
 import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 
+import EVM.SymExec (Postcondition)
+
 import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, exploreMethodTwoPhase, checkAssertions, rpcFetcher, TxOrError(..), PartialsLogs)
+import Echidna.SymExec.Property (checkPropertyReturn)
 import Echidna.Test (isFoundryMode)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
@@ -118,16 +121,26 @@ exploreContract contract method vm = do
   threadId <- liftIO $ takeMVar threadIdChan
   pure (threadId, resultChan)
 
--- | Like 'exploreContract' but uses two-phase symbolic execution.
--- Phase 1 explores the given method, phase 2 checks the given target methods
--- (typically no-arg assertion functions) for violations.
+-- | Two-phase exploration for assertion mode.
 exploreContractTwoPhase :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m)
   => SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 exploreContractTwoPhase contract method targetMethods vm = do
   conf <- asks (.cfg)
+  let isFoundry = isFoundryMode conf.solConf.testMode
+  exploreContractTwoPhaseWith (checkAssertions [0x1] isFoundry) contract method targetMethods vm
+
+-- | Two-phase exploration for property mode.
+exploreContractTwoPhaseProperty :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m)
+  => SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+exploreContractTwoPhaseProperty = exploreContractTwoPhaseWith checkPropertyReturn
+
+-- | Two-phase exploration parameterized by postcondition.
+exploreContractTwoPhaseWith :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m)
+  => Postcondition -> SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+exploreContractTwoPhaseWith postcondition contract method targetMethods vm = do
+  conf <- asks (.cfg)
   dappInfo <- asks (.dapp)
   let
-    isFoundry = isFoundryMode conf.solConf.testMode
     timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
     maxIters = Just conf.campaignConf.symExecMaxIters
     maxExplore = Just (fromIntegral conf.campaignConf.symExecMaxExplore)
@@ -148,7 +161,7 @@ exploreContractTwoPhase contract method targetMethods vm = do
   pushWorkerEvent $ SymExecLog ("Two-phase exploring " <> unpack method.methodSignature <> " -> [" <> targetNames <> "]")
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      res <- exploreMethodTwoPhase (checkAssertions [0x1] isFoundry) method targetMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
+      res <- exploreMethodTwoPhase postcondition method targetMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan res
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
