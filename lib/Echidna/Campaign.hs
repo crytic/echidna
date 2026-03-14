@@ -347,7 +347,8 @@ runSymWorker callback vm dict workerId _ name = do
 
     -- Two-phase for no-arg assertion functions
     unless (null noArgAssertions || null stateChangingMethods) $ do
-      pushWorkerEvent $ SymExecLog ("Two-phase assertion: " <> show (length noArgAssertions) <> " no-arg target(s), " <> show (length stateChangingMethods) <> " state-changing method(s)")
+      let targetNames = unwords $ map (unpack . (.methodSignature)) noArgAssertions
+      pushWorkerEvent $ SymExecLog ("Two-phase assertion verification for [" <> targetNames <> "]")
       forM_ stateChangingMethods $ \method ->
         symExecMethodAssertion contract method noArgAssertions
 
@@ -369,7 +370,7 @@ runSymWorker callback vm dict workerId _ name = do
 
     let methodSignature = unpack method.methodSignature
 
-    pushWorkerEvent $ SymExecLog ("Assertion two-phase: found " <> show (length txs) <> " concrete tx(es) for method " <> methodSignature)
+    pushWorkerEvent $ SymExecLog ("Assertion two-phase " <> methodSignature <> ": " <> show (length txs) <> " tx(es)")
 
     conf <- asks (.cfg)
     let dst = conf.solConf.contractAddr
@@ -421,7 +422,7 @@ runSymWorker callback vm dict workerId _ name = do
     forM_ stateChangingMethods $ \method ->
       symExecMethodProperty contract method
 
-    pushWorkerEvent $ SymExecLog ("Property mode symbolic verification finished for contract " <> unpack (fromJust name))
+    pushWorkerEvent $ SymExecLog "Property verification finished"
 
   -- | Symbolically execute a method in property mode: find concrete inputs
   -- for all reachable paths, then check each against all property tests.
@@ -441,19 +442,17 @@ runSymWorker callback vm dict workerId _ name = do
 
     let methodSignature = unpack method.methodSignature
 
-    pushWorkerEvent $ SymExecLog ("Property mode: found " <> show (length txs) <> " concrete tx(es) for method " <> methodSignature <> ", " <> show (length errors) <> " error(s), " <> show (length partials) <> " partial(s)")
+    pushWorkerEvent $ SymExecLog ("Property two-phase " <> methodSignature <> ": " <> show (length txs) <> " tx(es)")
 
     -- For each concrete tx from symbolic execution, execute it and check properties
     forM_ txs $ \symTx -> do
       (_, vm') <- execTx vm symTx
-      pushWorkerEvent $ SymExecLog ("Property mode: executed tx " <> show symTx.call)
       case vm'.result of
         Just (VMSuccess _) -> do
           -- Check all open property tests against the post-transaction state
           updateTests $ \test -> do
             if isOpen test && isPropertyTest test then do
               (testValue, vm'') <- checkETest test vm'
-              pushWorkerEvent $ SymExecLog ("Property mode: checked property, value = " <> show testValue)
               case testValue of
                 BoolValue False -> do
                   wid <- Just <$> gets (.workerId)
@@ -469,10 +468,8 @@ runSymWorker callback vm dict workerId _ name = do
             else pure Nothing
         _ -> pure ()
 
-    unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) during property verification of method " <> methodSignature <> ": " <> show e)) errors
-    unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during property verification of method " <> methodSignature <> ": " <> unpack e)) partials
-
-    pushWorkerEvent $ SymExecLog ("Property mode symbolic execution finished for method " <> methodSignature)
+    unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error during property verification of " <> methodSignature <> ": " <> show e)) errors
+    unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial path during property verification of " <> methodSignature <> ": " <> unpack e)) partials
 
   symExecMethod contract method = do
     lift callback
@@ -508,7 +505,7 @@ runSymWorker callback vm dict workerId _ name = do
         else
           pure $ Just test
 
-    pushWorkerEvent $ SymExecLog ("Symbolic execution finished verifying contract " <> unpack (fromJust name) <> " using a single symbolic transaction.")
+    pushWorkerEvent $ SymExecLog "Assertion verification finished"
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once

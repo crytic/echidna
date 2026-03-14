@@ -103,7 +103,7 @@ exploreContract contract method vm = do
   let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
-  pushWorkerEvent $ SymExecLog ("Exploring " <> (show method.name))
+  pushWorkerEvent $ SymExecLog ("Exploring " <> unpack method.methodSignature)
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
       -- For now, we will be exploring a single method at a time.
@@ -144,7 +144,8 @@ exploreContractTwoPhase contract method targetMethods vm = do
   let veriOpts = VeriOpts { iterConf = iterConfig, rpcInfo = rpcInfo }
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
-  pushWorkerEvent $ SymExecLog ("Two-phase exploring " <> show method.name <> " against " <> show (length targetMethods) <> " assertion target(s)")
+  let targetNames = unwords $ map (unpack . (.methodSignature)) targetMethods
+  pushWorkerEvent $ SymExecLog ("Two-phase exploring " <> unpack method.methodSignature <> " -> [" <> targetNames <> "]")
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
       res <- exploreMethodTwoPhase (checkAssertions [0x1] isFoundry) method targetMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
