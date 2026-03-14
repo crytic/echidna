@@ -80,7 +80,8 @@ verifyMethodForProperty method contract vm = do
   let veriOpts = VeriOpts { iterConf = iterConfig, rpcInfo = rpcInfo }
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
-  pushWorkerEvent $ SymExecLog ("Two-phase property verification: " <> show method.name)
+  let propertyNames = unwords $ map (Text.unpack . (.methodSignature)) propertyMethods
+  pushWorkerEvent $ SymExecLog ("Verifying property: " <> Text.unpack method.methodSignature <> " -> [" <> propertyNames <> "]")
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
@@ -117,7 +118,8 @@ verifyMethodForAssertion assertionMethods method contract vm = do
   let veriOpts = VeriOpts { iterConf = iterConfig, rpcInfo = rpcInfo }
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
-  pushWorkerEvent $ SymExecLog ("Two-phase assertion verification: " <> show method.name)
+  let targetNames = unwords $ map (Text.unpack . (.methodSignature)) assertionMethods
+  pushWorkerEvent $ SymExecLog ("Verifying assertion: " <> Text.unpack method.methodSignature <> " -> [" <> targetNames <> "]")
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
