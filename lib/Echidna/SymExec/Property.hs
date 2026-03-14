@@ -32,7 +32,6 @@ import Echidna.Test (isFoundryMode)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..))
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Solidity (SolConf(..))
-import Echidna.Types.Worker (WorkerEvent(..))
 import Echidna.Types.Worker (WorkerType(..), WorkerEvent(..), CampaignEvent(..))
 import Echidna.Worker (pushWorkerEvent, pushCampaignEvent)
 
