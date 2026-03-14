@@ -226,9 +226,9 @@ fromEContract _ = error "fromEContract: unexpected non-C expression"
 -- postcondition. The solver finds concrete values for phase 1's symbolic
 -- variables (calldata, caller, etc.) that cause a violation.
 exploreMethodTwoPhase :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
-  Postcondition -> (Method -> m ()) -> Method -> [Method] -> SolcContract -> SourceCache -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+  Postcondition -> Expr EAddr -> (Method -> m ()) -> Method -> [Method] -> SolcContract -> SourceCache -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
 
-exploreMethodTwoPhase phase2Post logTarget method targetMethods _contract _sources vm defaultSender conf veriOpts solvers rpcInfo session = do
+exploreMethodTwoPhase phase2Post phase2Caller logTarget method targetMethods _contract _sources vm defaultSender conf veriOpts solvers rpcInfo session = do
   -- Phase 1: Execute state-changing method symbolically
   calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   let
@@ -278,11 +278,15 @@ exploreMethodTwoPhase phase2Post logTarget method targetMethods _contract _sourc
                      & execState (loadContract (LitAddr dst))
                      & #tx % #isCreate .~ False
                      & #state % #callvalue .~ Lit 0
-                     & #state % #caller .~ SymAddr "caller"
+                     & #state % #caller .~ phase2Caller
                      & #state % #calldata .~ targetCd
       -- Carry over phase 1's path constraints so the solver must satisfy both phases
+      -- Reset exploration state so phase 2 gets fresh budget
       vm2' = symbolify vm2
           & #constraints .~ leafConstraints
+          & #iterations .~ mempty
+          & #pathsVisited .~ mempty
+          & #exploreDepth .~ 0
 
     (phase2Models, _) <- verifyInputsWithHandler solvers veriOpts fetcher vm2' phase2Post Nothing
     let results2 = filter (\(r, _) -> not (isQed r)) phase2Models & map fst

@@ -21,7 +21,7 @@ import EVM.Fetch (RpcInfo(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (defMemLimit, withSolvers)
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..), Postcondition)
-import EVM.Types (VMType(..))
+import EVM.Types (Addr, VMType(..), EType(..), Expr(..))
 import qualified EVM.Types (VM(..))
 
 import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, exploreMethodTwoPhase, checkAssertions, rpcFetcher, TxOrError(..), PartialsLogs)
@@ -29,6 +29,7 @@ import Echidna.SymExec.Property (checkPropertyReturn)
 import Echidna.Test (isFoundryMode)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..))
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
+import Echidna.Types.Test (TestConf(..))
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
@@ -119,24 +120,27 @@ exploreContract contract method vm = do
   threadId <- liftIO $ takeMVar threadIdChan
   pure (threadId, resultChan)
 
--- | Two-phase exploration for assertion mode.
+-- | Two-phase exploration for assertion mode (symbolic caller).
 exploreContractTwoPhase :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m)
   => SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> String -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 exploreContractTwoPhase contract method targetMethods vm baseLabel = do
   conf <- asks (.cfg)
   let isFoundry = isFoundryMode conf.solConf.testMode
-  exploreContractTwoPhaseWith (checkAssertions [0x1] isFoundry) contract method targetMethods vm baseLabel
+  exploreContractTwoPhaseWith (checkAssertions [0x1] isFoundry) (SymAddr "caller") contract method targetMethods vm baseLabel
 
--- | Two-phase exploration for property mode.
+-- | Two-phase exploration for property mode (concrete test sender).
 exploreContractTwoPhaseProperty :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m)
   => SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> String -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
-exploreContractTwoPhaseProperty =
-  exploreContractTwoPhaseWith checkPropertyReturn
+exploreContractTwoPhaseProperty contract method targetMethods vm baseLabel = do
+  conf <- asks (.cfg)
+  let dst = conf.solConf.contractAddr
+      propertySender = LitAddr (conf.testConf.testSender dst)
+  exploreContractTwoPhaseWith checkPropertyReturn propertySender contract method targetMethods vm baseLabel
 
--- | Two-phase exploration parameterized by postcondition.
+-- | Two-phase exploration parameterized by postcondition and phase 2 caller.
 exploreContractTwoPhaseWith :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m)
-  => Postcondition -> SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> String -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
-exploreContractTwoPhaseWith postcondition contract method targetMethods vm baseLabel = do
+  => Postcondition -> Expr EAddr -> SolcContract -> Method -> [Method] -> EVM.Types.VM Concrete -> String -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+exploreContractTwoPhaseWith postcondition phase2Caller contract method targetMethods vm baseLabel = do
   env <- ask
   wid <- gets (.workerId)
   let conf = env.cfg
@@ -162,7 +166,7 @@ exploreContractTwoPhaseWith postcondition contract method targetMethods vm baseL
       logTarget target = liftIO $ pushCampaignEvent env (WorkerEvent wid SymbolicWorker (SymExecLog ("Two-phase " <> baseLabel <> ": " <> methodSig <> " -> " <> unpack target.methodSignature)))
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      res <- exploreMethodTwoPhase postcondition logTarget method targetMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
+      res <- exploreMethodTwoPhase postcondition phase2Caller logTarget method targetMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan res
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
