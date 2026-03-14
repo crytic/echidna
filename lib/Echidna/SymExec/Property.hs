@@ -33,7 +33,7 @@ import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..))
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Worker (WorkerType(..), WorkerEvent(..), CampaignEvent(..))
-import Echidna.Worker (pushWorkerEvent, pushCampaignEvent)
+import Echidna.Worker (pushCampaignEvent)
 
 -- | Postcondition for property mode phase 2: check if property function
 -- returned false (i.e., return value is 0).
