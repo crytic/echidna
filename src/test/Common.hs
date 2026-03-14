@@ -1,11 +1,13 @@
 module Common
   ( testConfig
   , runContract
+  , runContractMultiWorker
   , testContract
   , testContractV
   , solcV
   , withSolcVersion
   , testContract'
+  , testContractMultiWorker
   , testContractNamed
   , checkConstructorConditions
   , optimized
@@ -25,6 +27,8 @@ module Common
   , gasConsumedGt
   ) where
 
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (forM_, void)
 import Control.Monad.Random (getRandomR)
 import Control.Monad.Reader (runReaderT)
@@ -45,7 +49,7 @@ import EVM.Solidity (Contracts(..), BuildOutput(..), SolcContract(..))
 import EVM.Types hiding (Env, Gas)
 
 import Echidna (mkEnv, prepareContract)
-import Echidna.Agent (runAgent)
+import Echidna.Agent (runAgent, runAgentWithReady)
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Solidity (selectMainContract, mkTests, loadSpecified, compileContracts)
 import Echidna.Test (checkETest)
@@ -56,8 +60,9 @@ import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..))
-import Echidna.Types.Worker (WorkerType(..))
+import Echidna.Types.Worker (WorkerType(..), WorkerEvent(..), CampaignEvent(..))
 import Echidna.Types.World (World(..))
+import Echidna.Worker (pushCampaignEvent)
 
 testConfig :: EConfig
 testConfig = defaultConfig & overrideQuiet
@@ -121,6 +126,63 @@ runContract f selectedContract cfg workerType = do
   -- TODO: consider snapshotting the state so checking functions don't need to
   -- be IO
   pure (env, finalState)
+
+-- | Run a contract with multiple workers (fuzz + symbolic) concurrently.
+-- Returns the env and the symbolic worker's state.
+runContractMultiWorker :: FilePath -> Maybe ContractName -> EConfig -> IO (Env, WorkerState)
+runContractMultiWorker f selectedContract cfg = do
+  seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
+  buildOutput <- compileContracts cfg.solConf (f :| [])
+  (vm, env, dict) <- prepareContract cfg (f :| []) buildOutput selectedContract seed
+  let nFuzz = getNFuzzWorkers cfg.campaignConf
+  -- Subscribe the symbolic worker before fuzz workers can publish events.
+  symState <- newIORef initialWorkerState
+  symReady <- newEmptyMVar
+  symResult <- newEmptyMVar
+  let symbolic = SymbolicAgent { initialVm = vm
+                              , initialDict = dict
+                              , contractName = selectedContract
+                              , stateRef = symState
+                              }
+  _ <- forkIO $ do
+    result <- runAgentWithReady (putMVar symReady ()) symbolic env
+    putMVar symResult result
+  takeMVar symReady
+  -- Spawn fuzz workers, push WorkerStopped when done
+  forM_ [1..nFuzz] $ \wid -> do
+    stateRef <- newIORef initialWorkerState
+    let fuzzer = FuzzerAgent { fuzzerId = wid
+                            , initialVm = vm
+                            , initialDict = dict
+                            , initialCorpus = []
+                            , testLimit = cfg.campaignConf.testLimit
+                            , stateRef
+                            }
+    void $ forkIO $ do
+      stopReason <- runAgent fuzzer env
+      pushCampaignEvent env (WorkerEvent wid FuzzWorker (WorkerStopped stopReason))
+  -- Wait for symbolic worker (it exits after all fuzz workers send WorkerStopped)
+  _stopReason <- takeMVar symResult
+  finalState <- readIORef symState
+  pure (env, finalState)
+
+testContractMultiWorker
+  :: FilePath
+  -> Maybe ContractName
+  -> Maybe SolcVersionComp
+  -> Maybe FilePath
+  -> [(String, (Env, WorkerState) -> IO Bool)]
+  -> TestTree
+testContractMultiWorker fp n v configPath expectations = testCase fp $ withSolcVersion v $ do
+  c <- case configPath of
+    Just path -> do
+      parsed <- parseConfig path
+      pure parsed.econfig
+    Nothing -> pure testConfig
+  let c' = c & overrideQuiet
+  result <- runContractMultiWorker fp n c'
+  forM_ expectations $ \(message, assertion) -> do
+    assertion result >>= assertBool message
 
 testContract
   :: FilePath

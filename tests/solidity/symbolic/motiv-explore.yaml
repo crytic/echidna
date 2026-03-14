@@ -1,0 +1,6 @@
+testMode: assertion
+symExec: true
+symExecSMTSolver: z3
+workers: 2
+testLimit: 50000
+seed: 1
