@@ -31,6 +31,7 @@ import Echidna.SymExec.Common
 import Echidna.Test (isFoundryMode)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..))
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
+import Echidna.Types.Test (TestConf(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Worker (WorkerType(..), WorkerEvent(..), CampaignEvent(..))
 import Echidna.Worker (pushCampaignEvent)
@@ -86,8 +87,10 @@ verifyMethodForProperty method contract vm = do
       logTarget target = liftIO $ pushCampaignEvent env (WorkerEvent wid SymbolicWorker (SymExecLog ("Verifying property: " <> methodSig <> " -> " <> Text.unpack target.methodSignature)))
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
+    let dst = conf.solConf.contractAddr
+        propertySender = LitAddr (conf.testConf.testSender dst)
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      (res, partials) <- exploreMethodTwoPhase checkPropertyReturn logTarget method propertyMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
+      (res, partials) <- exploreMethodTwoPhase checkPropertyReturn propertySender logTarget method propertyMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan (res, partials)
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
@@ -127,7 +130,7 @@ verifyMethodForAssertion assertionMethods method contract vm = do
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      (res, partials) <- exploreMethodTwoPhase (checkAssertions [0x1] isFoundry) logTarget method assertionMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
+      (res, partials) <- exploreMethodTwoPhase (checkAssertions [0x1] isFoundry) (SymAddr "caller") logTarget method assertionMethods contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan (res, partials)
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
