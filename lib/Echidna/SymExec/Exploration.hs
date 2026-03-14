@@ -20,11 +20,9 @@ import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Fetch (RpcInfo(..))
 import EVM.Solidity (SolcContract(..), Method(..))
 import EVM.Solvers (defMemLimit, withSolvers)
-import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
+import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..), Postcondition)
 import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
-
-import EVM.SymExec (Postcondition)
 
 import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, exploreMethodTwoPhase, checkAssertions, rpcFetcher, TxOrError(..), PartialsLogs)
 import Echidna.SymExec.Property (checkPropertyReturn)
