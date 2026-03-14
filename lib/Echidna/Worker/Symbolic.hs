@@ -14,7 +14,7 @@ import Data.Foldable (foldlM)
 import Data.IORef (readIORef)
 import Data.List.NonEmpty qualified as NEList
 import Data.Map qualified as Map
-import Data.Text (Text, isPrefixOf, pack, unpack)
+import Data.Text (Text, pack, unpack)
 import System.Random (mkStdGen)
 import UnliftIO.STM (atomically, dupTChan)
 
@@ -159,8 +159,7 @@ runSymWorker callback onReady vm dict workerId name = do
     -- Filter to only targets that have registered open tests
     testRefs <- asks (.testRefs)
     tests <- liftIO $ traverse readIORef testRefs
-    let prefix = conf.solConf.prefix
-        stateChanging = filter suitableForSymExec $ Map.elems contract.abiMap
+    let stateChanging = filter suitableForSymExec $ Map.elems contract.abiMap
         noArgTargets
           | isPropertyMode conf.solConf.testMode =
               -- Property mode: only echidna_ functions that have open property tests
