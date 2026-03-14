@@ -83,7 +83,8 @@ extractErrors = mapMaybe (\case
   _ -> Nothing)
 
 suitableForSymExec :: Method -> Bool
-suitableForSymExec m = not $ null m.inputs
+suitableForSymExec m =
+  not (null m.inputs)
   && null (filter (\(_, t) -> abiKind t == Dynamic) m.inputs)
   && not (T.isInfixOf "_no_symexec" m.name)
 
