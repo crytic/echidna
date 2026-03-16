@@ -1,4 +1,4 @@
-contract Abstract {
-  function nothere() pure public {}
-  function echidna_nothere() pure public {}
+abstract contract Abstract {
+  function nothere() pure public virtual;
+  function echidna_nothere() pure public virtual returns (bool);
 }
