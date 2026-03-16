@@ -40,7 +40,7 @@ compilationTests = testGroup "Compilation and loading tests"
   ]
 
 loadFails :: FilePath -> Maybe Text -> String -> (SolException -> Bool) -> TestTree
-loadFails fp c e p = loadFailsWith fp c "property" e p
+loadFails fp c = loadFailsWith fp c "property"
 
 loadFailsWith :: FilePath -> Maybe Text -> String -> String -> (SolException -> Bool) -> TestTree
 loadFailsWith fp c mode e p = testCase fp . catch tryLoad $ assertBool e . p where
