@@ -317,8 +317,6 @@ mkTests solConf campaignConf mainContract = do
     throwM NoFuncs
   when (null tests && isPropertyMode solConf.testMode) $
     throwM NoTests
-  when (null funs && not (null tests)) $
-    throwM OnlyTests
 
   case find (not . null . snd) tests of
     Just (t, _) -> throwM $ TestArgsFound t

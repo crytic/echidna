@@ -21,8 +21,6 @@ compilationTests = testGroup "Compilation and loading tests"
       \case NoFuncs -> True; _ -> False
   , loadFails "bad/notests.sol"    Nothing    "failed to warn on no tests found" $
       \case NoTests -> True; _ -> False
-  , loadFails "bad/onlytests.sol"  Nothing    "failed to warn on no non-tests found" $
-      \case OnlyTests -> True; _ -> False
   , loadFails "bad/testargs.sol"   Nothing    "failed to warn on test args found" $
       \case TestArgsFound _ -> True; _ -> False
   , loadFails "bad/consargs.sol"   Nothing    "failed to warn on cons args found" $
