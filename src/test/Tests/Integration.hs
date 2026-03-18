@@ -70,6 +70,9 @@ integrationTests = testGroup "Solidity Integration Testing"
   , testContract "basic/delay.sol"        Nothing
       [ ("echidna_block_number passed",            solved    "echidna_block_number")
       , ("echidna_timestamp passed",               solved    "echidna_timestamp") ]
+  , testContract "basic/no-delay.sol"   (Just "basic/no-delay.yaml")
+      [ ("echidna_block_number failed",            passed    "echidna_block_number")
+      , ("echidna_timestamp failed",               passed    "echidna_timestamp") ]
   , testContractV "basic/immutable.sol"    (Just (>= solcV (0,6,0))) Nothing
       [ ("echidna_test passed",                    solved      "echidna_test") ]
   , testContractV "basic/immutable-2.sol"    (Just (>= solcV (0,6,0))) Nothing
