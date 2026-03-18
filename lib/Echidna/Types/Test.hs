@@ -117,6 +117,18 @@ instance ToJSON EchidnaTest where
     , "result" .= result
     ]
 
+isPropertyTest :: EchidnaTest -> Bool
+isPropertyTest EchidnaTest{testType = PropertyTest _ _} = True
+isPropertyTest _ = False
+
+getPropertyName :: EchidnaTest -> Text
+getPropertyName EchidnaTest{testType = PropertyTest n _} = n
+getPropertyName _ = error "Not a property test"
+
+getPropertyAddr :: EchidnaTest -> Addr
+getPropertyAddr EchidnaTest{testType = PropertyTest _ a} = a
+getPropertyAddr _ = error "Not a property test"
+
 isOptimizationTest :: EchidnaTest -> Bool
 isOptimizationTest EchidnaTest{testType = OptimizationTest _ _} = True
 isOptimizationTest _ = False
