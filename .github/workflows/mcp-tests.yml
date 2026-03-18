@@ -1,0 +1,35 @@
+name: MCP integration tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  mcp-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Build echidna
+        run: nix build .#echidna --out-link result
+
+      - name: Add echidna to PATH
+        run: echo "$GITHUB_WORKSPACE/result/bin" >> "$GITHUB_PATH"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install pytest httpx
+
+      - name: Run MCP integration tests
+        run: pytest tests/mcp/test_mcp.py -v
