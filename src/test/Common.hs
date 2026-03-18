@@ -4,6 +4,7 @@ module Common
   , testContract
   , testContractV
   , solcV
+  , withSolcVersion
   , testContract'
   , testContractNamed
   , checkConstructorConditions

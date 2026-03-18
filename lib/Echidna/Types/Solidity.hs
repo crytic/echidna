@@ -23,11 +23,13 @@ data SolException
   | SolcReadFailure
   | NoContracts
   | TestArgsFound Text
+  | PropertyWithoutReturn Text
+  | OptimizationWithWrongReturn Text
   | ContractNotFound Text
   | NoBytecode Text
   | NoFuncs
   | NoTests
-  | OnlyTests
+
   | ConstructorArgs String
   | DeploymentFailed Addr Text
   | SetUpCallFailed Text
@@ -43,10 +45,12 @@ instance Show SolException where
     NoContracts            -> "No contracts found in given file"
     ContractNotFound c     -> "Given contract " ++ show c ++ " not found in given file"
     TestArgsFound t        -> "Test " ++ show t ++ " has arguments, aborting"
+    PropertyWithoutReturn t -> "Property " ++ show t ++ " does not return bool. Property functions must have signature: function " ++ unpack t ++ "() public returns (bool)"
+    OptimizationWithWrongReturn t -> "Optimization " ++ show t ++ " does not return int256. Optimization functions must have signature: function " ++ unpack t ++ "() public returns (int256)"
     NoBytecode t           -> "No bytecode found for contract " ++ show t
     NoFuncs                -> "ABI is empty, are you sure your constructor is right?"
     NoTests                -> "No tests found in ABI. If you are using assert(), use --test-mode assertion"
-    OnlyTests              -> "Only tests and no public functions found in ABI"
+
     ConstructorArgs s      -> "Constructor arguments are required: " ++ s
     NoCryticCompile        -> "crytic-compile not installed or not found in PATH. To install it, run:\n   pip install crytic-compile"
     InvalidMethodFilters f -> "Applying the filter " ++ show f ++ " to the methods produces an empty list. Are you filtering the correct functions using `filterFunctions` or fuzzing the correct contract?"
