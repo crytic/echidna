@@ -391,14 +391,14 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
        | (null tests || any isOpen tests) && ncalls < testLimit ->
          fuzz >> lift callback >> run
 
-       -- NOTE: this is a hack which forces shrinking of optimization tests
-       -- after test limit is reached
+       -- Test limit reached. Close any open optimization tests so they
+       -- enter the shrink loop above, same as other test types.
        | ncalls >= testLimit && any (\t -> isOpen t && isOptimizationTest t) tests -> do
          liftIO $ forM_ testRefs $ \testRef ->
             atomicModifyIORef' testRef (\test -> (closeOptimizationTest test, ()))
          lift callback >> run
 
-       -- no more work to do, means we reached the test limit, exit
+       -- no more work to do, exit
        | otherwise ->
          lift callback >> pure TestLimitReached
 
