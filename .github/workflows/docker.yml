@@ -7,10 +7,15 @@ on:
     tags:
       - '*'
 
+permissions: {}
+
 jobs:
   build:
     name: build ${{ matrix.platform }} container
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -97,6 +102,9 @@ jobs:
   merge:
     name: merge containers
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     needs:
       - build
     steps:
