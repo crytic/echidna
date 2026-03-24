@@ -1,5 +1,15 @@
 ## Unreleased
 
+## 2.3.2
+
+* Improved support for Foundry tests (#1499)
+* Errors are now shown when using optimization and property mode with invalid function definitions (#1536)
+* Echidna now shrinks when a test was interrupted (#1535)
+* Etherscan backend now supports displaying coverage on contracts with multiple files (#1520)
+* Improved coverage tracking for contracts with immutables and contracts that deploy other contracts (#1506)
+* Maximum block and timestamp delays can now be set to zero (#1541)
+* Updated hevm to `8da7ea4` with support for `vm.etch()`, the CLZ opcode, and other Osaka changes
+
 ## 2.3.1
 
 * Fixes for Foundry reproducer test generation (#1484, #1514)
