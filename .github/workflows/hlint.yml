@@ -8,6 +8,9 @@ on:
     branches:
     - master
 
+permissions:
+  contents: read
+
 jobs:
   hlint:
     runs-on: ubuntu-latest

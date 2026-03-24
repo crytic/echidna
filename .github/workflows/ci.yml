@@ -8,6 +8,9 @@ on:
     branches:
     - master
 
+permissions:
+  contents: read
+
 env:
   # Tag for cache invalidation
   CACHE_VERSION: v10
