@@ -27,28 +27,40 @@ template :: Template
 template = $(embedTemplate ["lib/Echidna/Output/assets"] "foundry.mustache")
 
 -- | Generate a Foundry test from an EchidnaTest result.
-foundryTest :: Maybe Text -> EchidnaTest -> TL.Text
-foundryTest mContractName test =
+-- For property tests, psender is the address used to call the property function.
+foundryTest :: Maybe Text -> Maybe Addr -> EchidnaTest -> TL.Text
+foundryTest mContractName mPsender test =
   case test.testType of
     AssertionTest{} ->
-      let testData = createTestData mContractName test
+      let testData = createTestData mContractName Nothing test
+      in fromStrict $ substituteValue template (toMustache testData)
+    PropertyTest name _ ->
+      let testData = createTestData mContractName (Just (name, mPsender)) test
       in fromStrict $ substituteValue template (toMustache testData)
     _ -> ""
 
 -- | Create an Aeson Value from test data for the Mustache template.
-createTestData :: Maybe Text -> EchidnaTest -> Value
-createTestData mContractName test =
+-- When a property name and psender are provided, a final assertion is added
+-- to call the property from psender and check it returns false.
+createTestData :: Maybe Text -> Maybe (Text, Maybe Addr) -> EchidnaTest -> Value
+createTestData mContractName mProperty test =
   let
     senders = nub $ map (.src) test.reproducer
     actors = zipWith actorObject senders [1..]
     repro = mapMaybe (foundryTx senders) test.reproducer
     cName = fromMaybe "YourContract" mContractName
+    propAssertion = mProperty >>= \(name, mAddr) ->
+      let prank = case mAddr of
+            Just addr -> "        vm.stopPrank();\n        vm.prank(" ++ formatAddr addr ++ ");\n"
+            Nothing   -> "        vm.stopPrank();\n"
+      in Just $ prank ++ "        assertFalse(Target." ++ unpack name ++ "());"
   in
   object
     [ "testName"     .= ("FoundryTest" :: Text)
     , "contractName" .= cName
     , "actors"       .= actors
     , "reproducer"   .= repro
+    , "propertyAssertion" .= propAssertion
     ]
 
 -- | Create a JSON object for an actor.

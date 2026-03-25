@@ -29,6 +29,7 @@ foundryTestGenTests = testGroup "Foundry test generation"
   , testCase "correctly encodes bytes1" testBytes1Encoding
   , testCase "fallback function syntax" testFallbackSyntax
   , testCase "null bytes in arguments" testNullBytes
+  , testCase "property test generates assertFalse" testPropertyTestGen
   , testGroup "Concrete execution (fuzzing)"
       [ testForgeStd "solves assertTrue"
           "foundry/FoundryAsserts.sol"
@@ -159,6 +160,9 @@ foundryTestGenTests = testGroup "Foundry test generation"
           FuzzWorker
           [ ("vm.assume should not be treated as test failure", passed "test_assume_filters")
           ]
+      , testContract "foundry/PropertyRepro.sol" (Just "foundry/PropertyRepro.yaml")
+          [ ("property test should be detected", solved "echidna_counter_is_zero")
+          ]
       ]
   , testGroup "Symbolic execution (SMT solving)"
       [ testForgeStd "solves assertTrue"
@@ -287,7 +291,7 @@ testForgeCompiles tmpDirSuffix contractName testData outputFile = do
           copyFile contractPath (tmpDir ++ "/src/" ++ contractFile)
 
           -- Generate test and add contract import after forge-std import
-          let generated = TL.unpack $ foundryTest (Just (pack contractName)) testData
+          let generated = TL.unpack $ foundryTest (Just (pack contractName)) Nothing testData
               forgeStdImport = pack "import \"forge-std/Test.sol\";"
               contractImport = pack $ "import \"../src/" ++ contractFile ++ "\";"
               testWithImport = unpack $ replace forgeStdImport
@@ -318,10 +322,37 @@ testBytes1Encoding = do
       , delay = (0, 0)
       }
     test = mkMinimalTest { reproducer = [reproducerTx] }
-    generated = TL.unpack $ foundryTest (Just "FoundryTestTarget") test
+    generated = TL.unpack $ foundryTest (Just "FoundryTestTarget") Nothing test
   if "hex\"92\"" `isInfixOf` generated
     then pure ()
     else assertFailure $ "bytes1 not correctly encoded: " ++ generated
+
+-- | Test that property mode tests generate assertFalse with psender prank.
+testPropertyTestGen :: IO ()
+testPropertyTestGen = do
+  let
+    reproducerTx = Tx
+      { call = SolCall ("inc", [])
+      , src = 0x10000
+      , dst = 0
+      , value = 0
+      , gas = 0
+      , gasprice = 0
+      , delay = (0, 0)
+      }
+    test = mkMinimalTest
+      { testType = PropertyTest "echidna_counter_is_zero" 0
+      , reproducer = [reproducerTx]
+      }
+    generated = TL.unpack $ foundryTest (Just "PropertyRepro") (Just 0x10000) test
+  assertBool ("should contain assertFalse call, got: " ++ generated)
+    ("assertFalse(Target.echidna_counter_is_zero())" `isInfixOf` generated)
+  assertBool ("should contain vm.prank for psender, got: " ++ generated)
+    ("vm.prank(" `isInfixOf` generated)
+  assertBool ("should contain vm.stopPrank, got: " ++ generated)
+    ("vm.stopPrank()" `isInfixOf` generated)
+  assertBool ("should contain inc() call, got: " ++ generated)
+    ("Target.inc()" `isInfixOf` generated)
 
 -- | Wrapper for testContractNamed that skips if solc < 0.8.13.
 testForgeStd :: String -> FilePath -> Maybe String -> Maybe FilePath -> WorkerType -> [(String, (Env, WorkerState) -> IO Bool)] -> TestTree

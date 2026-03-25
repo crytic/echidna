@@ -45,7 +45,7 @@ import Echidna.Test (validateTestMode)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Solidity
-import Echidna.Types.Test (TestMode, EchidnaTest(..), TestType(..), TestState(..))
+import Echidna.Types.Test (TestMode, EchidnaTest(..), TestConf(..), TestType(..), TestState(..))
 import Echidna.UI
 import Echidna.Utility (measureIO)
 
@@ -93,16 +93,21 @@ main = withUtf8 $ withCP65001 $ do
           isLargeOrSolved _ = False
       measureIO cfg.solConf.quiet "Saving foundry reproducers" $ do
         let foundryDir = dir </> "foundry"
+            TestConf{testSender} = cfg.testConf
+            psender = testSender 0
+            saveRepro mPsender test = do
+              let
+                reproducerHash = (show . abs . hash) test.reproducer
+                fileName = foundryDir </> "Test." ++ reproducerHash <.> "sol"
+                content = foundryTest cliSelectedContract mPsender test
+              liftIO $ writeFile fileName (TL.unpack content)
         liftIO $ createDirectoryIfMissing True foundryDir
         forM_ tests $ \test ->
           case (test.testType, test.state) of
             (AssertionTest{}, state) | isLargeOrSolved state ->
-              do
-              let
-                reproducerHash = (show . abs . hash) test.reproducer
-                fileName = foundryDir </> "Test." ++ reproducerHash <.> "sol"
-                content = foundryTest cliSelectedContract test
-              liftIO $ writeFile fileName (TL.unpack content)
+              saveRepro Nothing test
+            (PropertyTest{}, state) | isLargeOrSolved state ->
+              saveRepro (Just psender) test
             _ -> pure ()
 
 
