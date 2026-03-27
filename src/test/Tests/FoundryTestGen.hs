@@ -15,6 +15,7 @@ import System.Process (readProcessWithExitCode)
 import Text.Read (readMaybe)
 
 import Common (solved, passed, testContract, testContractNamed)
+import Echidna.Config (defaultPsender)
 import Echidna.Types.Config (Env)
 import Echidna.Types.Campaign (WorkerState)
 import EVM.ABI (AbiValue(..))
@@ -291,7 +292,7 @@ testForgeCompiles tmpDirSuffix contractName testData outputFile = do
           copyFile contractPath (tmpDir ++ "/src/" ++ contractFile)
 
           -- Generate test and add contract import after forge-std import
-          let generated = TL.unpack $ foundryTest (Just (pack contractName)) Nothing testData
+          let generated = TL.unpack $ foundryTest (Just (pack contractName)) defaultPsender testData
               forgeStdImport = pack "import \"forge-std/Test.sol\";"
               contractImport = pack $ "import \"../src/" ++ contractFile ++ "\";"
               testWithImport = unpack $ replace forgeStdImport
@@ -322,7 +323,7 @@ testBytes1Encoding = do
       , delay = (0, 0)
       }
     test = mkMinimalTest { reproducer = [reproducerTx] }
-    generated = TL.unpack $ foundryTest (Just "FoundryTestTarget") Nothing test
+    generated = TL.unpack $ foundryTest (Just "FoundryTestTarget") defaultPsender test
   if "hex\"92\"" `isInfixOf` generated
     then pure ()
     else assertFailure $ "bytes1 not correctly encoded: " ++ generated
@@ -344,7 +345,7 @@ testPropertyTestGen = do
       { testType = PropertyTest "echidna_counter_is_zero" 0
       , reproducer = [reproducerTx]
       }
-    generated = TL.unpack $ foundryTest (Just "PropertyRepro") (Just 0x10000) test
+    generated = TL.unpack $ foundryTest (Just "PropertyRepro") defaultPsender test
   assertBool ("should contain assertFalse call, got: " ++ generated)
     ("assertFalse(Target.echidna_counter_is_zero())" `isInfixOf` generated)
   assertBool ("should contain vm.prank for psender, got: " ++ generated)
