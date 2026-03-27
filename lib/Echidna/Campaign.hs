@@ -25,6 +25,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text, unpack)
 import Data.Time (LocalTime)
+import GHC.Clock (getMonotonicTimeNSec)
 import Data.Vector qualified as V
 import System.Random (mkStdGen)
 
@@ -97,13 +98,13 @@ runWorker
   -> Int     -- ^ Worker id starting from 0
   -> [(FilePath, [Tx])]
   -- ^ Initial corpus of transactions
-  -> Int     -- ^ Test limit for this worker
+  -> WorkPool -- ^ Shared pool of remaining work
   -> Maybe Text -- ^ Specified contract name
   -> m (WorkerStopReason, WorkerState)
 runWorker SymbolicWorker callback vm dict workerId initialCorpus _ name =
   runSymWorker callback vm dict workerId initialCorpus name
-runWorker FuzzWorker callback vm dict workerId initialCorpus testLimit _ =
-  runFuzzWorker callback vm dict workerId initialCorpus testLimit
+runWorker FuzzWorker callback vm dict workerId initialCorpus workPool _ =
+  runFuzzWorker callback vm dict workerId initialCorpus workPool
 
 runSymWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
@@ -328,9 +329,10 @@ runFuzzWorker
   -> Int     -- ^ Worker id starting from 0
   -> [(FilePath, [Tx])]
   -- ^ Initial corpus of transactions
-  -> Int     -- ^ Test limit for this worker
+  -> WorkPool -- ^ Shared pool of remaining work
   -> m (WorkerStopReason, WorkerState)
-runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
+runFuzzWorker callback vm dict workerId initialCorpus workPool = do
+  cfg <- asks (.cfg)
   let
     effectiveSeed = dict.defSeed + workerId
     effectiveGenDict = dict { defSeed = effectiveSeed }
@@ -343,19 +345,45 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
                   , totalGas = 0
                   , runningThreads = []
                   }
+    initialBatchSize = max 1 (cfg.campaignConf.seqLen * 10)
 
   flip runStateT initialState $ do
     flip evalRandT (mkStdGen effectiveSeed) $ do
       lift callback
       void $ replayCorpus vm initialCorpus
-      run
+      -- Claim initial batch from the shared pool
+      initialBatch <- liftIO $ claimWork workPool initialBatchSize
+      batchStartTime <- liftIO getMonotonicTimeNSec
+      batchStartCalls <- gets (.ncalls)
+      run initialBatch initialBatchSize batchStartTime batchStartCalls
 
   where
-  run = do
+  targetBatchSecs = 15 :: Double
+
+  closeOptimizationTest test =
+    case test.testType of
+      OptimizationTest _ _ ->
+        test { Test.state = Large 0
+             , workerId = Just workerId
+             }
+      _ -> test
+
+  -- Close open optimization tests so they enter the shrink loop, or stop.
+  closeOptTestsOrStop testRefs tests remainingArgs = do
+    if any (\t -> isOpen t && isOptimizationTest t) tests then do
+      liftIO $ forM_ testRefs $ \testRef ->
+        atomicModifyIORef' testRef (\t -> (closeOptimizationTest t, ()))
+      lift callback >> uncurry4 run remainingArgs
+    else
+      lift callback >> pure TestLimitReached
+
+  uncurry4 f (a, b, c, d) = f a b c d
+
+  run remainingInBatch currentBatchSize batchStartTime batchStartCalls = do
     testRefs <- asks (.testRefs)
     tests <- liftIO $ traverse readIORef testRefs
-    CampaignConf{stopOnFail, shrinkLimit} <- asks (.cfg.campaignConf)
-    ncalls <- gets (.ncalls)
+    CampaignConf{stopOnFail, shrinkLimit, seqLen, testLimit} <- asks (.cfg.campaignConf)
+    ncallsBefore <- gets (.ncalls)
 
     let
       shrinkable test =
@@ -372,31 +400,57 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
           Failed _ -> True
           _        -> False
 
-      closeOptimizationTest test =
-        case test.testType of
-          OptimizationTest _ _ ->
-            test { Test.state = Large 0
-                 , workerId = Just workerId
-                 }
-          _ -> test
+    -- Compute adaptive batch size based on throughput from previous batch
+    let adaptBatchSize = do
+          now <- liftIO getMonotonicTimeNSec
+          currentCalls <- gets (.ncalls)
+          let elapsedNs = now - batchStartTime
+              callsUsed = currentCalls - batchStartCalls
+              elapsedSecs = fromIntegral elapsedNs / 1e9 :: Double
+              floor_ = seqLen
+              ceil_ = max floor_ (testLimit `div` 10)
+              nextSize
+                | elapsedSecs > 0 =
+                    let throughput = fromIntegral callsUsed / elapsedSecs
+                        raw = round (throughput * targetBatchSecs) :: Int
+                    in max floor_ (min ceil_ raw)
+                | otherwise =
+                    -- elapsed=0 means very fast, double the batch
+                    min ceil_ (currentBatchSize * 2)
+          newBatch <- liftIO $ claimWork workPool nextSize
+          pure (newBatch, nextSize)
+
+    let curBatchArgs = (0, currentBatchSize, batchStartTime, batchStartCalls)
 
     if | stopOnFail && any final tests ->
          lift callback >> pure FastFailed
 
        -- we shrink first before going back to fuzzing
        | any shrinkable tests ->
-         shrink >> lift callback >> run
+         shrink >> lift callback >> run remainingInBatch currentBatchSize batchStartTime batchStartCalls
 
-       -- no shrinking work, fuzz
-       | (null tests || any isOpen tests) && ncalls < testLimit ->
-         fuzz >> lift callback >> run
+       -- no shrinking work, fuzz if we have budget
+       | (null tests || any isOpen tests) && remainingInBatch > 0 -> do
+         fuzz >> lift callback
+         ncallsAfter <- gets (.ncalls)
+         let used = ncallsAfter - ncallsBefore
+             remainingInBatch' = remainingInBatch - used
+         if remainingInBatch' <= 0 then do
+           -- Batch exhausted, adapt size and claim more work
+           (newBatch, nextSize) <- adaptBatchSize
+           if newBatch > 0 then do
+             newStartTime <- liftIO getMonotonicTimeNSec
+             newStartCalls <- gets (.ncalls)
+             run (remainingInBatch' + newBatch) nextSize newStartTime newStartCalls
+           else
+             closeOptTestsOrStop testRefs tests curBatchArgs
+         else
+           run remainingInBatch' currentBatchSize batchStartTime batchStartCalls
 
-       -- Test limit reached. Close any open optimization tests so they
+       -- No remaining budget. Close any open optimization tests so they
        -- enter the shrink loop above, same as other test types.
-       | ncalls >= testLimit && any (\t -> isOpen t && isOptimizationTest t) tests -> do
-         liftIO $ forM_ testRefs $ \testRef ->
-            atomicModifyIORef' testRef (\test -> (closeOptimizationTest test, ()))
-         lift callback >> run
+       | remainingInBatch <= 0 && any (\t -> isOpen t && isOptimizationTest t) tests ->
+         closeOptTestsOrStop testRefs tests curBatchArgs
 
        -- no more work to do, exit
        | otherwise ->
@@ -406,11 +460,7 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
 
   -- To avoid contention we only shrink tests that were falsified by this
   -- worker. Tests are marked with a worker in 'updateOpenTest'.
-  --
-  -- TODO: This makes some workers run longer as they work less on their
-  -- test limit portion during shrinking. We should move to a test limit shared
-  -- between workers to avoid that. This way other workers will "drain"
-  -- the work queue.
+  -- Other workers will drain the shared work pool while this worker shrinks.
   shrink = updateTests $ \test -> do
     if test.workerId == Just workerId then
       shrinkTest vm test

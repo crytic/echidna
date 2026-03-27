@@ -97,8 +97,9 @@ runContract f selectedContract cfg workerType = do
 
   (vm, env, dict) <- prepareContract cfg (f :| []) buildOutput selectedContract seed
 
+  workPool <- newWorkPool cfg.campaignConf.testLimit
   (_stopReason, finalState) <- flip runReaderT env $
-    runWorker workerType (pure ()) vm dict 0 [] cfg.campaignConf.testLimit selectedContract
+    runWorker workerType (pure ()) vm dict 0 [] workPool selectedContract
 
   -- TODO: consider snapshotting the state so checking functions don't need to
   -- be IO

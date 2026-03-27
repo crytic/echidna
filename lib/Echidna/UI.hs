@@ -38,7 +38,7 @@ import Echidna.Output.Corpus (saveCorpusEvent)
 import Echidna.Output.JSON qualified
 import Echidna.Server (runSSEServer)
 import Echidna.SourceAnalysis.Slither (isEmptySlitherInfo)
-import Echidna.Types.Campaign
+import Echidna.Types.Campaign hiding (claimWork)
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage (coverageStats)
@@ -84,19 +84,17 @@ ui vm dict initialCorpus cliSelectedContract = do
       Interactive | not terminalPresent -> NonInteractive Text
       other -> other
 
-    -- Distribute over all workers, could be slightly bigger overall due to
-    -- ceiling but this doesn't matter
-    perWorkerTestLimit = ceiling
-      (fromIntegral conf.campaignConf.testLimit / fromIntegral nFuzzWorkers :: Double)
-
     chunkSize = ceiling
       (fromIntegral (length initialCorpus) / fromIntegral nFuzzWorkers :: Double)
     corpusChunks = chunksOf chunkSize initialCorpus ++ repeat []
 
+  -- Shared work pool: all fuzz workers claim batches from this pool
+  workPool <- liftIO $ newWorkPool conf.campaignConf.testLimit
+
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
   workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
-    uncurry (spawnWorker env perWorkerTestLimit)
+    uncurry (spawnWorker env workPool)
 
   case effectiveMode of
     Interactive -> do
@@ -227,7 +225,7 @@ ui vm dict initialCorpus cliSelectedContract = do
 
   where
 
-  spawnWorker env testLimit corpusChunk workerId = do
+  spawnWorker env workPool corpusChunk workerId = do
     stateRef <- newIORef initialWorkerState
 
     threadId <- forkIO $ do
@@ -239,7 +237,7 @@ ui vm dict initialCorpus cliSelectedContract = do
             corpus = if workerType == SymbolicWorker then initialCorpus else corpusChunk
           maybeResult <- timeout timeoutUsecs $
             runWorker workerType (get >>= writeIORef stateRef)
-                      vm dict workerId corpus testLimit cliSelectedContract
+                      vm dict workerId corpus workPool cliSelectedContract
           pure $ case maybeResult of
             Just (stopReason, _finalState) -> stopReason
             Nothing -> TimeLimitReached
@@ -250,14 +248,16 @@ ui vm dict initialCorpus cliSelectedContract = do
 
       -- When a fuzz worker is interrupted by timeout, tests may not have
       -- finished shrinking. Run a shrink-only pass outside the timeout using
-      -- the same worker loop (testLimit=0 means no fuzzing, only shrink).
+      -- the same worker loop with an exhausted pool (no fuzzing, only shrink).
       -- (See github.com/crytic/echidna/issues/839)
       case stopReason of
         TimeLimitReached | workerType == FuzzWorker -> do
           tests <- traverse readIORef env.testRefs
-          when (any needsShrinking tests) $ void $
-            runReaderT (runWorker FuzzWorker (get >>= writeIORef stateRef)
-                        vm dict workerId [] 0 cliSelectedContract) env
+          when (any needsShrinking tests) $ do
+            emptyPool <- liftIO $ newWorkPool 0
+            void $
+              runReaderT (runWorker FuzzWorker (get >>= writeIORef stateRef)
+                          vm dict workerId [] emptyPool cliSelectedContract) env
         _ -> pure ()
 
       time <- liftIO getTimestamp
