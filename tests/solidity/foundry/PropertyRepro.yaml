@@ -1,0 +1,3 @@
+testMode: property
+seed: 1234
+disableSlither: true

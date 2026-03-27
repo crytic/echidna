@@ -14,7 +14,7 @@ import Data.Text (isPrefixOf)
 import Data.Yaml qualified as Y
 
 import EVM.Solvers (Solver(..))
-import EVM.Types (VM(..), W256)
+import EVM.Types (Addr, VM(..), W256)
 
 import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Test
@@ -82,7 +82,7 @@ instance FromJSON EConfigWithUsage where
         <*> getWord256 "maxValue" 100000000000000000000 -- 100 eth
 
       testConfParser = do
-        psender <- v ..:? "psender" ..!= 0x10000
+        psender <- v ..:? "psender" ..!= defaultPsender
         fprefix <- v ..:? "prefix"  ..!= "echidna_"
         let goal fname = if (fprefix <> "revert_") `isPrefixOf` fname then ResRevert else ResTrue
             classify fname vm = maybe ResOther classifyRes vm.result == goal fname
@@ -158,6 +158,10 @@ instance FromJSON EConfigWithUsage where
         Just "none"             -> pure . Just . NonInteractive $ None
         Nothing -> pure Nothing
         _ -> fail "Unrecognized format type (should be text, json, or none)")
+
+-- | Default address for the property test sender.
+defaultPsender :: Addr
+defaultPsender = 0x10000
 
 -- | The default config used by Echidna (see the 'FromJSON' instance for values used).
 defaultConfig :: EConfig
