@@ -138,6 +138,15 @@ isOpen t = case t.state of
   Open -> True
   _    -> False
 
+-- | Whether a test still needs shrinking. This includes optimization tests
+-- that haven't been closed yet (Open) and any test mid-shrink (Large).
+needsShrinking :: EchidnaTest -> Bool
+needsShrinking t =
+  case t.state of
+    Large _ -> True
+    Open    -> isOptimizationTest t
+    _       -> False
+
 didFail :: EchidnaTest -> Bool
 didFail t = case t.state of
   Large _ -> True

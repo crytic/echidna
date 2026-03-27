@@ -148,7 +148,7 @@ genTxFromPrototype world deployedContracts (pName, pArgs) = do
 genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
 genDelay mv ds =
   join $ oftenUsually fromDict randValue
-  where randValue = fromIntegral <$> getRandomR (1 :: Integer, fromIntegral mv)
+  where randValue = fromIntegral <$> getRandomR (0 :: Integer, fromIntegral mv)
         fromDict = (`mod` (mv + 1)) <$> rElem' ds
 
 genValue

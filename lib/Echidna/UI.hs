@@ -44,7 +44,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage (coverageStats)
-import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOptimizationTest)
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), didFail, isOptimizationTest, needsShrinking)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker
 import Echidna.UI.Report
@@ -275,8 +275,19 @@ ui vm dict initialCorpus cliSelectedContract = do
 
       case maybeStopReason of
         Just stopReason -> do
-           time <- liftIO getTimestamp
-           liftIO $ writeChan env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
+          -- When a fuzz worker is interrupted by timeout, tests may not have
+          -- finished shrinking. Run a shrink-only pass outside the timeout
+          -- using the same agent loop (testLimit=0 means no fuzzing, only shrink).
+          -- (See github.com/crytic/echidna/issues/839)
+          case stopReason of
+            TimeLimitReached | workerType == FuzzWorker -> do
+              tests <- traverse readIORef env.testRefs
+              when (any needsShrinking tests) $ void $ do
+                let shrinkAgent = FuzzerAgent workerId vm dict [] 0 stateRef
+                runAgent shrinkAgent bus env
+            _ -> pure ()
+          time <- liftIO getTimestamp
+          liftIO $ writeChan env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
         Nothing -> pure ()
 
     pure (threadId, stateRef)
