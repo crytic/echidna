@@ -11,6 +11,7 @@ import Tests.Foundry (foundryTests)
 import Tests.FoundryTestGen (foundryTestGenTests)
 import Tests.Integration (integrationTests)
 import Tests.Optimization (optimizationTests)
+import Tests.PrefillCorpus (prefillCorpusTests)
 import Tests.Overflow (overflowTests)
 import Tests.Research (researchTests)
 import Tests.Seed (seedTests)
@@ -34,6 +35,7 @@ main = withCurrentDirectory "./tests/solidity" . defaultMain $
            , foundryTests
            , encodingJSONTests
            , foundryTestGenTests
+           , prefillCorpusTests
            , cheatTests
            , symbolicTests
            ]
