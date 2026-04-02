@@ -5,7 +5,6 @@
 module Echidna.Output.Foundry (foundryTest) where
 
 import Data.Aeson (Value(..), object, (.=))
-import Data.Functor ((<&>))
 import Data.List (elemIndex, isPrefixOf, nub)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text, unpack)
