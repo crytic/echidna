@@ -8,5 +8,6 @@
         "ethereum": {
             "ownedBy": "0xc44F30Be3eBBEfdDBB5a85168710b4f0e18f4Ff0"
         }
-    }
+    },
+    "custom": ["https://giveth.io/project/echidna:-a-fast-smart-contract-fuzzer"]
 }
