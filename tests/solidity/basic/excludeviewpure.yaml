@@ -1,0 +1,4 @@
+testMode: property
+excludeViewPure: true
+seed: 123
+testLimit: 5000

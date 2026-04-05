@@ -17,6 +17,7 @@ module Common
   , solvedWith
   , solvedWithout
   , solvedUsing
+  , notPresent
   , countCorpus
   , overrideQuiet
   , loadSolTests
@@ -231,6 +232,13 @@ passed n (env, _) = do
     Just t | isOpen t   -> True
     Nothing             -> error ("no test was found with name: " ++ show n)
     _                   -> False
+
+notPresent :: Text -> (Env, WorkerState) -> IO Bool
+notPresent n (env, _) = do
+  tests <- traverse readIORef env.testRefs
+  pure $ case getResult n tests of
+    Nothing -> True
+    _       -> False
 
 verified :: Text -> (Env, WorkerState) -> IO Bool
 verified n (env, _) = do
