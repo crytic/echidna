@@ -50,8 +50,11 @@ shrinkTest vm test = do
                     , result = getResultFromVM vm'
                     , value = val }
               Nothing ->
-                -- The test passed, so no success with shrinking this time, just bump number of tries to shrink
-                Just test { state = Large (i + 1), reproducer = rr}
+                -- The test passed, so no success with shrinking this time, just bump number of tries to shrink.
+                -- Do NOT update the reproducer here — removeReverts can corrupt the sequence
+                -- by replacing transactions that revert under different timing with NoCalls,
+                -- which would desync the reproducer from the stored vm/traces.
+                Just test { state = Large (i + 1) }
           else
             pure $ Just test { state = if isOptimizationTest test
                                     then Large (i + 1)
