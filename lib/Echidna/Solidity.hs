@@ -273,11 +273,22 @@ mkSignatureMap
   -> IO SignatureMap
 mkSignatureMap solConf mainContract contracts = do
   let
+    -- Optionally exclude view/pure functions from the ABI, but never
+    -- exclude prefixed functions (e.g. echidna_*) as they may be properties
+    filterViewPure contract sigs
+      | solConf.excludeViewPure =
+          let viewPureNames = map (.name) $ filter (\m -> m.mutability == View || m.mutability == Pure)
+                                                   (Map.elems contract.abiMap)
+          in NE.filter (\(n, _) -> isPrefixOf solConf.prefix n || n `notElem` viewPureNames) sigs
+      | otherwise = NE.toList sigs
     -- Filter ABI according to the config options
     fabiOfc = if isFoundryMode solConf.testMode
                 then NE.toList $ filterMethodsWithArgs (abiOf solConf.prefix mainContract)
-                else filterMethods mainContract.contractName solConf.methodFilter $
-                       abiOf solConf.prefix mainContract
+                else let base = filterMethods mainContract.contractName solConf.methodFilter $
+                                  abiOf solConf.prefix mainContract
+                     in case NE.nonEmpty base of
+                       Just ne -> filterViewPure mainContract ne
+                       Nothing -> base
     -- Construct ABI mapping for World
     abiMapping =
       if solConf.allContracts then
@@ -285,7 +296,10 @@ mkSignatureMap solConf mainContract contracts = do
             let filtered = filterMethods contract.contractName
                                          solConf.methodFilter
                                          (abiOf solConf.prefix contract)
-            in (contract.runtimeCodehash,) <$> NE.nonEmpty filtered)
+                filtered' = case NE.nonEmpty filtered of
+                  Just ne -> filterViewPure contract ne
+                  Nothing -> filtered
+            in (contract.runtimeCodehash,) <$> NE.nonEmpty filtered')
           contracts
       else
         case NE.nonEmpty fabiOfc of
@@ -308,9 +322,14 @@ mkTests solConf campaignConf mainContract = do
     abi = Map.elems mainContract.abiMap <&> \method -> (method.name, snd <$> method.inputs)
     (tests, funs) = partition (isPrefixOf solConf.prefix . fst) abi
     -- Filter again for foundry tests or assertions checking if enabled
-    neFuns = filterMethods mainContract.contractName
-                           solConf.methodFilter
-                           (fallback NE.:| funs)
+    neFuns' = filterMethods mainContract.contractName
+                            solConf.methodFilter
+                            (fallback NE.:| funs)
+    neFuns = if solConf.excludeViewPure
+             then let viewPureNames = map (.name) $ filter (\m -> m.mutability == View || m.mutability == Pure)
+                                                           (Map.elems mainContract.abiMap)
+                  in filter (\(n, _) -> isPrefixOf solConf.prefix n || n `notElem` viewPureNames) neFuns'
+             else neFuns'
     testNames = fst <$> tests
 
   when (null abi) $
@@ -371,13 +390,13 @@ mkWorld
   -> SlitherInfo
   -> [SolcContract]
   -> World
-mkWorld SolConf{sender, testMode} sigMap maybeContract slitherInfo contracts =
+mkWorld SolConf{sender, testMode, excludeViewPure} sigMap maybeContract slitherInfo contracts =
   let
     eventMap = Map.unions $ map (.eventMap) contracts
     payableSigs = filterResults maybeContract slitherInfo.payableFunctions
     assertSigs = filterResults maybeContract (assertFunctionList <$> slitherInfo.asserts)
     as = if isAssertionMode testMode then filterResults maybeContract (assertFunctionList <$> slitherInfo.asserts) else []
-    cs = if isFoundryMode testMode then [] else filterResults maybeContract slitherInfo.constantFunctions \\ as
+    cs = if isFoundryMode testMode || excludeViewPure then [] else filterResults maybeContract slitherInfo.constantFunctions \\ as
     (highSignatureMap, lowSignatureMap) = prepareHashMaps cs as $
       filterFallbacks slitherInfo.fallbackDefined slitherInfo.receiveDefined contracts sigMap
   in World { senders = sender
