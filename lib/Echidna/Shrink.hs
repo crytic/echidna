@@ -50,11 +50,8 @@ shrinkTest vm test = do
                     , result = getResultFromVM vm'
                     , value = val }
               Nothing ->
-                -- The test passed, so no success with shrinking this time, just bump number of tries to shrink.
-                -- Do NOT update the reproducer here — removeReverts can corrupt the sequence
-                -- by replacing transactions that revert under different timing with NoCalls,
-                -- which would desync the reproducer from the stored vm/traces.
-                Just test { state = Large (i + 1) }
+                -- The test passed, so no success with shrinking this time, just bump number of tries to shrink
+                Just test { state = Large (i + 1), reproducer = rr}
           else
             pure $ Just test { state = if isOptimizationTest test
                                     then Large (i + 1)
@@ -62,7 +59,7 @@ shrinkTest vm test = do
     _ -> pure Nothing
 
 replaceByNoCall :: Tx -> Tx
-replaceByNoCall tx = tx { call = NoCall }
+replaceByNoCall tx = tx { call = NoCall, delay = (0, 0) }
 
 -- | Given a sequence of transactions, remove useless NoCalls. These are NoCalls
 -- that have both zero increment in timestamp and block number.
