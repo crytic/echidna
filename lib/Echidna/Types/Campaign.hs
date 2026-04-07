@@ -1,6 +1,7 @@
 module Echidna.Types.Campaign where
 
 import Control.Concurrent (ThreadId)
+import Data.IORef (IORef, newIORef, atomicModifyIORef')
 import Data.Text (Text)
 import Data.Word (Word8, Word16)
 import GHC.Conc (numCapabilities)
@@ -134,3 +135,19 @@ getNFuzzWorkers conf = maybe defaultN fromIntegral conf.workers
     n = numCapabilities
     maxN = max 1 n
     defaultN = min 4 maxN -- capped at 4 by default
+
+-- | A shared pool of remaining work (number of calls) for all fuzz workers.
+-- Workers claim batches from this pool for natural load balancing.
+newtype WorkPool = WorkPool (IORef Int)
+
+-- | Create a new work pool with the given total number of calls.
+newWorkPool :: Int -> IO WorkPool
+newWorkPool total = WorkPool <$> newIORef total
+
+-- | Atomically claim up to @batchSize@ calls from the pool.
+-- Returns the number of calls actually claimed (0 if pool is exhausted).
+claimWork :: WorkPool -> Int -> IO Int
+claimWork (WorkPool ref) batchSize =
+  atomicModifyIORef' ref $ \remaining ->
+    let claimed = min batchSize remaining
+    in (remaining - claimed, claimed)
