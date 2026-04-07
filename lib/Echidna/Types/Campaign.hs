@@ -67,6 +67,9 @@ data CampaignConf = CampaignConf
   , symExecMaxExplore :: Integer
     -- ^ Maximum number of states to explore before we stop exploring it.
     -- Only relevant if symExec is True
+  , symExecSeqSamples :: Int
+    -- ^ Number of random (method, split) samples for two-phase exploration
+    -- per coverage event. Only relevant if symExec is True
   }
 
 -- | The state of a fuzzing campaign.
@@ -116,6 +119,9 @@ defaultSymExecNWorkers = 1
 
 defaultSymExecMaxExplore :: Integer
 defaultSymExecMaxExplore = 10
+
+defaultSymExecSeqSamples :: Int
+defaultSymExecSeqSamples = 3
 
 defaultSymExecMaxIters :: Integer
 defaultSymExecMaxIters = 5
