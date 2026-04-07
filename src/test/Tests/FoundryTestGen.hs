@@ -31,6 +31,7 @@ foundryTestGenTests = testGroup "Foundry test generation"
   , testCase "fallback function syntax" testFallbackSyntax
   , testCase "null bytes in arguments" testNullBytes
   , testCase "property test generates assertFalse" testPropertyTestGen
+  , testCase "event assertion generates recordLogs" testEventAssertionTestGen
   , testGroup "Concrete execution (fuzzing)"
       [ testForgeStd "solves assertTrue"
           "foundry/FoundryAsserts.sol"
@@ -395,6 +396,42 @@ solcSupportsForgeStd = unsafePerformIO $ do
     splitOn c s = case break (== c) s of
       (a, _:b) -> a : splitOn c b
       (a, [])  -> [a]
+
+-- | Test that event-based assertion failures (CallTest "AssertionFailed(..)")
+-- generate Foundry reproducers with vm.recordLogs() and event checks.
+testEventAssertionTestGen :: IO ()
+testEventAssertionTestGen = do
+  let
+    reproducerTx = Tx
+      { call = SolCall ("inc", [])
+      , src = 0x10000
+      , dst = 0
+      , value = 0
+      , gas = 0
+      , gasprice = 0
+      , delay = (0, 0)
+      }
+    test = mkMinimalTest
+      { testType = CallTest "AssertionFailed(..)" (\_ _ -> BoolValue True)
+      , reproducer = [reproducerTx, reproducerTx, reproducerTx, reproducerTx]
+      }
+    generated = TL.unpack $ foundryTest (Just "EventAssertion") defaultPsender test
+  assertBool ("should not be empty, got: " ++ generated)
+    (not $ null generated)
+  assertBool ("should contain vm.recordLogs(), got: " ++ generated)
+    ("vm.recordLogs()" `isInfixOf` generated)
+  assertBool ("should contain vm.getRecordedLogs(), got: " ++ generated)
+    ("vm.getRecordedLogs()" `isInfixOf` generated)
+  assertBool ("should contain _isAssertionFailed helper call, got: " ++ generated)
+    ("_isAssertionFailed(" `isInfixOf` generated)
+  assertBool ("should contain _isAssertionFailed function definition, got: " ++ generated)
+    ("function _isAssertionFailed" `isInfixOf` generated)
+  assertBool ("should check all fuzzlib overloads, got: " ++ generated)
+    ("AssertionFailed(string,uint256)" `isInfixOf` generated)
+  assertBool ("should contain assertTrue, got: " ++ generated)
+    ("assertTrue(found" `isInfixOf` generated)
+  assertBool ("should contain inc() call, got: " ++ generated)
+    ("Target.inc()" `isInfixOf` generated)
 
 mkMinimalTest :: EchidnaTest
 mkMinimalTest = EchidnaTest
