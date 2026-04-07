@@ -43,6 +43,8 @@ balanceContract: 0
 codeSize: 0xffffffff
 #whether or not to disable running slither (default false, uses slither)
 disableSlither: false
+#whether to extract tx sequences from Foundry tests to prefill corpus
+prefillCorpus: false
 #solcArgs allows special args to solc
 solcArgs: ""
 #solcLibs is solc libraries
