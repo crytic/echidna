@@ -59,7 +59,7 @@ shrinkTest vm test = do
     _ -> pure Nothing
 
 replaceByNoCall :: Tx -> Tx
-replaceByNoCall tx = tx { call = NoCall, delay = (0, 0) }
+replaceByNoCall tx = tx { call = NoCall }
 
 -- | Given a sequence of transactions, remove useless NoCalls. These are NoCalls
 -- that have both zero increment in timestamp and block number.
