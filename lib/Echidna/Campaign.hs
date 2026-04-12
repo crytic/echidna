@@ -388,7 +388,7 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
          shrink >> lift callback >> run
 
        -- no shrinking work, fuzz
-       | (null tests || any isOpen tests) && ncalls < testLimit ->
+       | (null tests || any isOpen tests) && (ncalls < testLimit || testLimit <= 0) ->
          fuzz >> lift callback >> run
 
        -- Test limit reached. Close any open optimization tests so they
