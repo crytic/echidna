@@ -15,6 +15,7 @@ import Control.Monad.State.Strict hiding (state)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (chunksOf)
 import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Maybe (isJust, mapMaybe)
 import Data.Sequence ((|>))
 import Data.Text (Text)
@@ -138,8 +139,11 @@ ui vm dict initialCorpus cliSelectedContract = do
           , timeStopped = Nothing
           , now = now
           , slitherSucceeded = not $ isEmptySlitherInfo env.slitherInfo
-          , fetchedContracts = mempty
-          , fetchedSlots = mempty
+          , fetchedContractsSuccess = 0
+          , fetchedContractsTotal = 0
+          , fetchedSlotsSuccess = 0
+          , fetchedSlotsTotal = 0
+          , fetchedDialogData = Nothing
           , fetchedDialog = B.dialog (Just $ str " Fetched contracts/slots ") Nothing 80
           , displayFetchedDialog = False
           , displayLogPane = True
@@ -289,9 +293,9 @@ monitor = do
   let
     drawUI :: UIState -> [Widget Name]
     drawUI uiState =
-      [ if uiState.displayFetchedDialog
-           then fetchedDialogWidget uiState
-           else emptyWidget
+      [ case (uiState.displayFetchedDialog, uiState.fetchedDialogData) of
+          (True, Just (c, s)) -> fetchedDialogWidget uiState.fetchedDialog c s
+          _                   -> emptyWidget
       , uiState.campaignWidget ]
 
     toggleFocus :: UIState -> UIState
@@ -321,8 +325,20 @@ monitor = do
         modify $ const updatedState { campaignWidget = newWidget }
       AppEvent (FetchCacheUpdated contracts slots) ->
         modify' $ \state ->
-          state { fetchedContracts = contracts
-                , fetchedSlots = slots }
+          let !cTotal = Map.size contracts
+              !cSuccess = Map.size (Map.filter isJust contracts)
+              slotVals = concat (Map.elems (Map.elems <$> slots))
+              !sTotal = length slotVals
+              !sSuccess = length (filter isJust slotVals)
+              !dialogData = if state.displayFetchedDialog
+                               then Just (contracts, slots)
+                               else Nothing
+          in state { fetchedContractsSuccess = cSuccess
+                   , fetchedContractsTotal = cTotal
+                   , fetchedSlotsSuccess = sSuccess
+                   , fetchedSlotsTotal = sTotal
+                   , fetchedDialogData = dialogData
+                   }
       AppEvent (EventReceived event@(time,campaignEvent)) -> do
         modify' $ \state -> state { events = state.events |> event }
 
@@ -342,9 +358,14 @@ monitor = do
                     }
 
           _ -> pure ()
-      VtyEvent (EvKey (KChar 'f') _) ->
-        modify' $ \state ->
-          state { displayFetchedDialog = not state.displayFetchedDialog }
+      VtyEvent (EvKey (KChar 'f') _) -> do
+        state <- get
+        let opening = not state.displayFetchedDialog
+        snapshot <- if opening
+                    then liftIO $ Just <$> EVM.Fetch.getCacheState env.fetchSession
+                    else pure Nothing
+        modify' $ \s -> s { displayFetchedDialog = opening
+                          , fetchedDialogData = snapshot }
       VtyEvent (EvKey (KChar 'l') _) ->
         modify' $ \state ->
           refocusIfNeeded $ state { displayLogPane = not state.displayLogPane }
