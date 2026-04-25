@@ -10,7 +10,7 @@ import Test.Tasty.HUnit (testCase, assertBool, assertFailure)
 
 import Echidna.Config (defaultConfig, parseConfig)
 import Echidna.Types.Campaign (CampaignConf(..))
-import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..))
+import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..), UIConf(..))
 import Echidna.Types.Tx (TxConf(..))
 
 configTests :: TestTree
@@ -39,11 +39,19 @@ configTests = testGroup "Configuration tests" $
       assertBool "" $ isNothing (defaultConfig.campaignConf.corpusDir)
   , testCase "coverageDir defaults to Nothing" $
       assertBool "" $ isNothing (defaultConfig.campaignConf.coverageDir)
+  , testCase "color output is enabled by default" $
+      assertBool "" defaultConfig.uiConf.useColor
   , testCase "default.yaml" $ do
       EConfigWithUsage _ bad unset <- parseConfig "basic/default.yaml"
       assertBool ("unused options: " ++ show bad) $ null bad
       let unset' = unset & sans "seed"
       assertBool ("unset options: " ++ show unset') $ null unset'
+  , testCase "parse useColor" $ do
+      config <- (.econfig) <$> parseConfig "basic/default.yaml"
+      assertBool "" config.uiConf.useColor
+      case Y.decodeEither' "useColor: false" of
+        Right (c :: EConfigWithUsage) -> assertBool "" $ not c.econfig.uiConf.useColor
+        Left e -> assertFailure $ "unexpected decoding error: " <> show e
   , testCase "W256 decoding" $ do
       let maxW256  = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
           overW256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0"
