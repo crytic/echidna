@@ -53,7 +53,7 @@ import Echidna.Types.Tx
   ( basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp
   , initialBlockNumber )
 import Echidna.Types.World (World(..))
-import Echidna.Utility (maybeStripAnsi, measureIO)
+import Echidna.Utility (applyAnsiColor, measureIO)
 
 readSolcBatch :: FilePath -> IO [BuildOutput]
 readSolcBatch d = do
@@ -222,7 +222,7 @@ loadSpecified env mainContract cs = do
     vm3 <- deployment
     when (isNothing $ currentContract vm3) $
       throwM $ DeploymentFailed solConf.contractAddr $
-        maybeStripAnsi env.cfg.uiConf.noColor $ showTraceTree env.dapp vm3
+        applyAnsiColor env.cfg.uiConf.useColor $ showTraceTree env.dapp vm3
 
     -- Run setUp function
     let
@@ -244,7 +244,7 @@ loadSpecified env mainContract cs = do
 
     case vm4.result of
       Just (VMFailure _) -> throwM $ SetUpCallFailed $
-        maybeStripAnsi env.cfg.uiConf.noColor $ showTraceTree env.dapp vm4
+        applyAnsiColor env.cfg.uiConf.useColor $ showTraceTree env.dapp vm4
       _ -> pure vm4
 
   where

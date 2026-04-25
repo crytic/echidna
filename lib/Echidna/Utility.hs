@@ -28,9 +28,9 @@ timePrefix :: LocalTime -> String
 timePrefix time =
   "[" <> formatTime defaultTimeLocale "%F %T.%2q" time <> "] "
 
-maybeStripAnsi :: Bool -> Text -> Text
-maybeStripAnsi noColor =
-  if noColor then stripAnsiEscapeCodes else id
+applyAnsiColor :: Bool -> Text -> Text
+applyAnsiColor useColor =
+  if useColor then id else stripAnsiEscapeCodes
 
 listDirectory :: FilePath -> IO [FilePath]
 listDirectory path = filter f <$> getDirectoryContents path

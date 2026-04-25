@@ -41,7 +41,7 @@ import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..)
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (TxCall(..), Tx(call, dst), TxResult(..), initialTimestamp, initialBlockNumber, getResult)
-import Echidna.Utility (getTimestamp, maybeStripAnsi, timePrefix)
+import Echidna.Utility (applyAnsiColor, getTimestamp, timePrefix)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
 data ErrorClass = RevertE | IllegalE | UnknownE
@@ -75,8 +75,8 @@ pattern Illegal <- VMFailure (classifyError -> IllegalE)
 -- | Given an execution error, throw the appropriate exception.
 -- Also optionally takes a DappInfo and VM, which are used to show the stack trace.
 vmExcept :: MonadThrow m => Bool -> Maybe (DappInfo, VM Concrete) -> EvmError -> m ()
-vmExcept noColor traceInfo e =
-  let trace = (\(dappInfo, vm) -> maybeStripAnsi noColor $ showTraceTree dappInfo vm) <$> traceInfo
+vmExcept useColor traceInfo e =
+  let trace = (\(dappInfo, vm) -> applyAnsiColor useColor $ showTraceTree dappInfo vm) <$> traceInfo
   in throwM $
     case VMFailure e of {Illegal -> IllegalExec e; _ -> UnknownFailure e trace}
 
@@ -194,10 +194,10 @@ execTxWith executeTx tx = do
       #state % #codeContract .= codeContractBeforeVMReset
       #burned .= burnedGas
     (VMFailure x, _) -> do
-      noColor <- asks (.cfg.uiConf.noColor)
+      useColor <- asks (.cfg.uiConf.useColor)
       dapp <- asks (.dapp)
       vm <- get
-      vmExcept noColor (Just (dapp, vm)) x
+      vmExcept useColor (Just (dapp, vm)) x
     (VMSuccess (ConcreteBuf bytecode'), SolCreate _) -> do
       -- Handle contract creation.
       #env % #contracts % at (LitAddr tx.dst) % _Just % #code .= InitCode mempty mempty

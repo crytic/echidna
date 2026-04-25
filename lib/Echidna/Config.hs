@@ -54,7 +54,7 @@ instance FromJSON EConfigWithUsage where
               <*> solConfParser
               <*> testConfParser
               <*> txConfParser
-              <*> (UIConf <$> v ..:? "timeout" <*> formatParser <*> (v ..:? "noColor" ..!= False))
+              <*> (UIConf <$> v ..:? "timeout" <*> formatParser <*> useColor)
               <*> v ..:? "allEvents" ..!= False
               <*> v ..:? "rpcUrl"
               <*> v ..:? "rpcBlock"
@@ -65,6 +65,7 @@ instance FromJSON EConfigWithUsage where
       useKey k = modify' $ Set.insert k
       x ..:? k = useKey k >> lift (x .:? k)
       x ..!= y = fromMaybe y <$> x
+      useColor = v ..:? "useColor" ..!= True
       -- Parse as unbounded Integer and see if it fits into W256
       getWord256 k def = do
         value :: Integer <- fromMaybe (fromIntegral (def :: W256)) <$> v ..:? k

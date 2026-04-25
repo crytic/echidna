@@ -26,7 +26,7 @@ import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
 import Echidna.Types.Worker
-import Echidna.Utility (maybeStripAnsi, timePrefix)
+import Echidna.Utility (applyAnsiColor, timePrefix)
 import Echidna.Worker
 
 ppLogLine :: (MonadReader Env m, MonadIO m) => VM Concrete -> (LocalTime, CampaignEvent) -> m String
@@ -46,8 +46,8 @@ ppCampaignEventLog vm ev = (ppCampaignEvent ev <>) <$> ppTxIfHas where
 ppTraceTree :: (MonadReader Env m, MonadIO m) => VM Concrete -> m String
 ppTraceTree vm = do
   dappInfo <- asks (.dapp)
-  noColor <- asks (.cfg.uiConf.noColor)
-  pure . T.unpack $ maybeStripAnsi noColor (showTraceTree dappInfo vm)
+  useColor <- asks (.cfg.uiConf.useColor)
+  pure . T.unpack $ applyAnsiColor useColor (showTraceTree dappInfo vm)
 
 ppTotalCalls :: [WorkerState] -> String
 ppTotalCalls workerStates = "Total calls: " <> show calls
