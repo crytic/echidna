@@ -28,6 +28,7 @@ data OperationMode = Interactive | NonInteractive OutputFormat deriving (Show, E
 data OutputFormat = Text | JSON | None deriving (Show, Eq)
 data UIConf = UIConf { maxTime       :: Maybe Int
                      , operationMode :: OperationMode
+                     , noColor       :: Bool
                      }
 
 -- | An address involved with a 'Transaction' is either the sender, the recipient, or neither of those things.

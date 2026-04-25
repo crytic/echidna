@@ -54,7 +54,7 @@ instance FromJSON EConfigWithUsage where
               <*> solConfParser
               <*> testConfParser
               <*> txConfParser
-              <*> (UIConf <$> v ..:? "timeout" <*> formatParser)
+              <*> (UIConf <$> v ..:? "timeout" <*> formatParser <*> (v ..:? "noColor" ..!= False))
               <*> v ..:? "allEvents" ..!= False
               <*> v ..:? "rpcUrl"
               <*> v ..:? "rpcBlock"

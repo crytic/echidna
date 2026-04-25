@@ -135,6 +135,7 @@ data Options = Options
   , cliSelectedContract :: Maybe Text
   , cliConfigFilepath   :: Maybe FilePath
   , cliOutputFormat     :: Maybe OutputFormat
+  , cliNoColor          :: Bool
   , cliCorpusDir        :: Maybe FilePath
   , cliCoverageDir      :: Maybe FilePath
   , cliTestMode         :: Maybe TestMode
@@ -189,6 +190,8 @@ options = Options . NE.fromList
   <*> optional (option auto $ long "format"
     <> metavar "FORMAT"
     <> help "Output format. Either 'json', 'text', 'none'. All these disable interactive UI")
+  <*> switch (long "no-color"
+    <> help "Disable ANSI color codes in text output.")
   <*> optional (option str $ long "corpus-dir"
     <> metavar "PATH"
     <> help "Directory to save and load corpus data.")
@@ -275,6 +278,7 @@ overrideConfig config Options{..} = do
   where
     overrideUiConf uiConf = uiConf
       { maxTime = cliTimeout <|> uiConf.maxTime
+      , noColor = cliNoColor || uiConf.noColor
       }
 
     overrideFormat cfg =

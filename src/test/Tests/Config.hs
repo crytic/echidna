@@ -39,11 +39,19 @@ configTests = testGroup "Configuration tests" $
       assertBool "" $ isNothing (defaultConfig.campaignConf.corpusDir)
   , testCase "coverageDir defaults to Nothing" $
       assertBool "" $ isNothing (defaultConfig.campaignConf.coverageDir)
+  , testCase "noColor defaults to False" $
+      assertBool "" $ not defaultConfig.uiConf.noColor
   , testCase "default.yaml" $ do
       EConfigWithUsage _ bad unset <- parseConfig "basic/default.yaml"
       assertBool ("unused options: " ++ show bad) $ null bad
       let unset' = unset & sans "seed"
       assertBool ("unset options: " ++ show unset') $ null unset'
+  , testCase "parse noColor" $ do
+      config <- (.econfig) <$> parseConfig "basic/default.yaml"
+      assertBool "" $ not config.uiConf.noColor
+      case Y.decodeEither' "noColor: true" of
+        Right (c :: EConfigWithUsage) -> assertBool "" c.econfig.uiConf.noColor
+        Left e -> assertFailure $ "unexpected decoding error: " <> show e
   , testCase "W256 decoding" $ do
       let maxW256  = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
           overW256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0"
