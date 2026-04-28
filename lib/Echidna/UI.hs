@@ -95,15 +95,20 @@ ui vm dict initialCorpus cliSelectedContract = do
 
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
-  workers <- forM (zip corpusChunks [0..(nworkers-1)]) $
-    uncurry (spawnWorker env perWorkerTestLimit)
+  let spawnWorkers =
+        forM (zip corpusChunks [0..(nworkers-1)]) $
+          uncurry (spawnWorker env perWorkerTestLimit)
 
   case effectiveMode of
     Interactive -> do
       -- Channel to push events to update UI
       uiChannel <- liftIO $ newBChan 1000
       let forwardEvent = void . writeBChanNonBlocking uiChannel . EventReceived
+
+      -- Attach the log/event forwarder before workers start so early worker
+      -- events (like startup logs) are not lost by dupChan.
       uiEventsForwarderStopVar <- spawnListener forwardEvent
+      workers <- spawnWorkers
 
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 200_000 -- 200 ms
@@ -172,15 +177,18 @@ ui vm dict initialCorpus cliSelectedContract = do
     NonInteractive outputFormat -> do
       serverStopVar <- newEmptyMVar
 
+      let forwardEvent ev = putStrLn =<< runReaderT (ppLogLine vm ev) env
+      -- Attach the log/event forwarder before workers start so early worker
+      -- events (like startup logs) are not lost by dupChan.
+      uiEventsForwarderStopVar <- spawnListener forwardEvent
+      workers <- spawnWorkers
+
       -- Handles ctrl-c
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
         let handler _ = do
               stopWorkers workers
               void $ tryPutMVar serverStopVar ()
         in installHandler sig handler
-
-      let forwardEvent ev = putStrLn =<< runReaderT (ppLogLine vm ev) env
-      uiEventsForwarderStopVar <- spawnListener forwardEvent
 
       -- Track last update time and gas for delta calculation
       startTime <- liftIO getTimestamp
