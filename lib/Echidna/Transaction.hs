@@ -11,7 +11,6 @@ import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Data.ByteString qualified as BS
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
-import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
 import Optics.Core
@@ -70,9 +69,9 @@ genTx world deployedContracts = do
   contractAList <- liftIO $ mapM (toContractA env sigMap) (toList deployedContracts)
   (dstAddr, dstAbis) <- rElem' $ Set.fromList $ catMaybes contractAList
   solCall <- genInteractionsM genDict dstAbis
-  value <- genValue txConf.maxValue genDict.dictValues world.payableSigs solCall
-  ts <- (,) <$> genDelay txConf.maxTimeDelay genDict.dictValues
-            <*> genDelay txConf.maxBlockDelay genDict.dictValues
+  value <- genValue txConf.maxValue genDict world.payableSigs solCall
+  ts <- (,) <$> genDelay txConf.maxTimeDelay genDict
+            <*> genDelay txConf.maxBlockDelay genDict
   pure $ Tx { call = SolCall solCall
             , src = sender
             , dst = dstAddr
@@ -86,20 +85,20 @@ genTx world deployedContracts = do
     toContractA env sigMap (addr, c) =
       fmap (forceAddr addr,) . snd <$> lookupUsingCodehash env.codehashMap c env.dapp sigMap
 
-genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
-genDelay mv ds =
+genDelay :: MonadRandom m => W256 -> GenDict -> m W256
+genDelay mv genDict =
   join $ oftenUsually fromDict randValue
   where randValue = fromIntegral <$> getRandomR (0 :: Integer, fromIntegral mv)
-        fromDict = (`mod` (mv + 1)) <$> rElem' ds
+        fromDict = maybe randValue (pure . (`mod` (mv + 1))) =<< dictValueFromDict genDict
 
 genValue
   :: MonadRandom m
   => W256
-  -> Set W256
+  -> GenDict
   -> [FunctionSelector]
   -> SolCall
   -> m W256
-genValue mv ds ps sc =
+genValue mv genDict ps sc =
   if sig `elem` ps then
     join $ oftenUsually fromDict randValue
   else
@@ -108,7 +107,7 @@ genValue mv ds ps sc =
   where
     randValue = fromIntegral <$> getRandomR (0 :: Integer, fromIntegral mv)
     sig = (hashSig . encodeSig . signatureCall) sc
-    fromDict = (`mod` (mv + 1)) <$> rElem' ds
+    fromDict = maybe randValue (pure . (`mod` (mv + 1))) =<< dictValueFromDict genDict
 
 -- | Check if a 'Transaction' is as \"small\" (simple) as possible (using ad-hoc heuristics).
 canShrinkTx :: Tx -> Bool

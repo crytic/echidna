@@ -500,12 +500,8 @@ callseq vm txSeq = do
       eventDiffs = extractEventValues env.dapp vm vm'
       -- union the return results with the new addresses
       additions = Map.unionsWith Set.union [resultMap, eventDiffs, diffs]
-      -- append to the constants dictionary
-      updatedDict = workerState.genDict
-        { constants = Map.unionWith Set.union workerState.genDict.constants additions
-        , dictValues = Set.union (mkDictValues $ Set.unions $ Map.elems additions)
-                                 workerState.genDict.dictValues
-        }
+      -- append to the runtime-mined constants dictionary
+      updatedDict = addDynamicConstants additions workerState.genDict
 
     -- Update the worker state
     in workerState

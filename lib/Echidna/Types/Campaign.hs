@@ -29,6 +29,12 @@ data CampaignConf = CampaignConf
     -- ^ Seed used for the generation of random transactions
   , dictFreq           :: Float
     -- ^ Frequency for the use of dictionary values in the random transactions
+  , dictDynamicConstantsLimit :: Int
+    -- ^ Maximum runtime-mined constants to keep per ABI type
+  , dictDynamicValuesLimit :: Int
+    -- ^ Maximum runtime-mined int/uint constants to keep
+  , dictDynamicCallsLimit :: Int
+    -- ^ Maximum runtime-mined whole calls to keep per signature
   , corpusDir          :: Maybe FilePath
     -- ^ Directory to load and save lists of transactions
   , coverageDir        :: Maybe FilePath
@@ -107,6 +113,15 @@ defaultSequenceLength = 100
 
 defaultShrinkLimit :: Int
 defaultShrinkLimit = 5000
+
+defaultDictDynamicConstantsLimit :: Int
+defaultDictDynamicConstantsLimit = 4096
+
+defaultDictDynamicValuesLimit :: Int
+defaultDictDynamicValuesLimit = 8192
+
+defaultDictDynamicCallsLimit :: Int
+defaultDictDynamicCallsLimit = 1024
 
 defaultSymExecTimeout :: Int
 defaultSymExecTimeout = 30
