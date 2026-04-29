@@ -13,7 +13,7 @@ import Control.Monad.Catch
 import Control.Monad.Reader
 import Control.Monad.State.Strict hiding (state)
 import Data.ByteString.Lazy qualified as BS
-import Data.List.Split (chunksOf)
+import Data.List.Split (splitPlaces)
 import Data.Map (Map)
 import Data.Maybe (isJust, mapMaybe)
 import Data.Sequence ((|>))
@@ -89,9 +89,11 @@ ui vm dict initialCorpus cliSelectedContract = do
     perWorkerTestLimit = ceiling
       (fromIntegral conf.campaignConf.testLimit / fromIntegral nFuzzWorkers :: Double)
 
-    chunkSize = ceiling
-      (fromIntegral (length initialCorpus) / fromIntegral nFuzzWorkers :: Double)
-    corpusChunks = chunksOf chunkSize initialCorpus ++ repeat []
+    (corpusChunkSize, largerCorpusChunks) = length initialCorpus `divMod` nFuzzWorkers
+    corpusChunkSizes =
+      replicate largerCorpusChunks (corpusChunkSize + 1) <>
+      replicate (nFuzzWorkers - largerCorpusChunks) corpusChunkSize
+    corpusChunks = splitPlaces corpusChunkSizes initialCorpus ++ repeat []
 
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
