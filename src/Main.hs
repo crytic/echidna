@@ -2,6 +2,7 @@
 
 module Main where
 
+import Control.Exception (SomeException, displayException, handle, throwIO, fromException)
 import Control.Monad (unless, when, forM_)
 import Control.Monad.Random (getRandomR)
 import Control.Monad.Reader (runReaderT, liftIO)
@@ -14,6 +15,7 @@ import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
+import Data.String.AnsiEscapeCodes.Strip.Text (stripAnsiEscapeCodes)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
@@ -23,8 +25,9 @@ import Data.Word (Word8, Word16, Word64)
 import Main.Utf8 (withUtf8)
 import Options.Applicative
 import Paths_echidna (version)
+import System.Console.ANSI (hNowSupportsANSI)
 import System.Directory (createDirectoryIfMissing)
-import System.Exit (exitWith, exitSuccess, ExitCode(..))
+import System.Exit (exitWith, exitSuccess, ExitCode(..), exitFailure)
 import System.FilePath ((</>), (<.>))
 import System.IO (hPutStrLn, stderr)
 import System.IO.CodePage (withCP65001)
@@ -49,8 +52,24 @@ import Echidna.Types.Test (TestMode, EchidnaTest(..), TestConf(..), TestType(..)
 import Echidna.UI
 import Echidna.Utility (measureIO)
 
+-- | Strip ANSI escape codes from any uncaught exception's display text when
+-- stderr doesn't support them (e.g., redirected to a file). Covers the
+-- ExecException trace that vmExcept stores, since that travels via the
+-- default GHC handler which formats with displayException. Re-throws
+-- ExitCode so normal exitSuccess/exitWith flow is preserved.
+withStrippedExceptions :: IO a -> IO a
+withStrippedExceptions = handle $ \(e :: SomeException) ->
+  case fromException e :: Maybe ExitCode of
+    Just ec -> throwIO ec
+    Nothing -> do
+      colored <- hNowSupportsANSI stderr
+      let msg = T.pack (displayException e)
+      hPutStrLn stderr . T.unpack $
+        if colored then msg else stripAnsiEscapeCodes msg
+      exitFailure
+
 main :: IO ()
-main = withUtf8 $ withCP65001 $ do
+main = withUtf8 $ withCP65001 $ withStrippedExceptions $ do
   opts@Options{..} <- execParser optsParser
   EConfigWithUsage loadedCfg ks _ <-
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
