@@ -72,6 +72,12 @@ instance FromJSON EConfigWithUsage where
           fail $ show k <> ": value does not fit in 256 bits"
         else
           pure $ fromIntegral value
+      nonNegative k def = do
+        value <- v ..:? k ..!= def
+        if value < 0 then
+          lift $ fail $ show k <> ": value must be non-negative"
+        else
+          pure value
 
       txConfParser = TxConf
         <$> v ..:? "propMaxGas" ..!= maxGasPerBlock
@@ -96,6 +102,9 @@ instance FromJSON EConfigWithUsage where
         <*> (v ..:? "coverage" <&> \case Just False -> Nothing;  _ -> Just mempty)
         <*> v ..:? "seed"
         <*> v ..:? "dictFreq" ..!= 0.40
+        <*> nonNegative "dictDynamicConstantsLimit" defaultDictDynamicConstantsLimit
+        <*> nonNegative "dictDynamicValuesLimit" defaultDictDynamicValuesLimit
+        <*> nonNegative "dictDynamicCallsLimit" defaultDictDynamicCallsLimit
         <*> v ..:? "corpusDir" ..!= Nothing
         <*> v ..:? "coverageDir" ..!= Nothing
         <*> v ..:? "mutConsts" ..!= defaultMutationConsts

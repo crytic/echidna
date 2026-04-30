@@ -17,7 +17,9 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, catMaybes)
+import Data.Maybe (catMaybes)
+import Data.Sequence (Seq, (|>))
+import Data.Sequence qualified as Seq
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -111,19 +113,73 @@ hashSig = abiKeccak . TE.encodeUtf8
 data GenDict = GenDict
   { pSynthA    :: Float
     -- ^ Fraction of time to use dictionary vs. synthesize
-  , constants  :: !(Map AbiType (Set AbiValue))
-    -- ^ Constants to use, sorted by type
-  , wholeCalls :: !(Map SolSignature (Set SolCall))
-    -- ^ Whole calls to use, sorted by type
+  , staticConstants  :: !(Map AbiType (Set AbiValue))
+    -- ^ Static constants to use, sorted by type
+  , dynamicConstants :: !(Map AbiType (BoundedSet AbiValue))
+    -- ^ Runtime-mined constants to use, sorted by type
+  , staticWholeCalls :: !(Map SolSignature (Set SolCall))
+    -- ^ Static whole calls to use, sorted by type
+  , dynamicWholeCalls :: !(Map SolSignature (BoundedSet SolCall))
+    -- ^ Runtime-mined whole calls to use, sorted by type
   , defSeed    :: Int
     -- ^ Default seed to use if one is not provided in EConfig
   , rTypes     :: Text -> Maybe AbiType
     -- ^ Return types of any methods we scrape return values from
-  , dictValues :: !(Set W256)
-    -- ^ A set of int/uint constants for better performance
+  , staticDictValues :: !(Set W256)
+    -- ^ Static int/uint constants for better performance
+  , dynamicDictValues :: !(BoundedSet W256)
+    -- ^ Runtime-mined int/uint constants for better performance
+  , dynamicConstantsLimit :: !Int
+    -- ^ Maximum runtime-mined constants to keep per ABI type
+  , dynamicValuesLimit :: !Int
+    -- ^ Maximum runtime-mined int/uint constants to keep
+  , dynamicCallsLimit :: !Int
+    -- ^ Maximum runtime-mined whole calls to keep per signature
   , callbackSigs    :: ![SolSignature]
     -- ^ A list of callback signatures (for generating random callbacks)
   }
+
+data BoundedSet a = BoundedSet
+  { boundedOrder :: !(Seq a)
+  , boundedMembers :: !(Set a)
+  }
+
+emptyBoundedSet :: BoundedSet a
+emptyBoundedSet = BoundedSet mempty Set.empty
+
+boundedSize :: BoundedSet a -> Int
+boundedSize = Set.size . (.boundedMembers)
+
+boundedInsert :: Ord a => Int -> Set a -> a -> BoundedSet a -> BoundedSet a
+boundedInsert limit staticMembers value bounded
+  | limit <= 0 = emptyBoundedSet
+  | value `Set.member` staticMembers = bounded
+  | value `Set.member` bounded.boundedMembers = bounded
+  | otherwise = trimBounded limit $
+      BoundedSet (bounded.boundedOrder |> value) (Set.insert value bounded.boundedMembers)
+
+boundedInsertSet :: Ord a => Int -> Set a -> Set a -> BoundedSet a -> BoundedSet a
+boundedInsertSet limit staticMembers values bounded =
+  Set.foldl' (\acc value -> boundedInsert limit staticMembers value acc) bounded values
+
+trimBounded :: Ord a => Int -> BoundedSet a -> BoundedSet a
+trimBounded limit bounded
+  | boundedSize bounded <= limit = bounded
+  | otherwise =
+      case Seq.viewl bounded.boundedOrder of
+        Seq.EmptyL -> emptyBoundedSet
+        value Seq.:< rest -> trimBounded limit $ BoundedSet rest (Set.delete value bounded.boundedMembers)
+
+rElemStaticDynamic :: (MonadRandom m, Ord a) => Set a -> BoundedSet a -> m (Maybe a)
+rElemStaticDynamic staticMembers dynamicMembers =
+  case Set.size staticMembers + boundedSize dynamicMembers of
+    0 -> pure Nothing
+    total -> do
+      idx <- getRandomR (0, total - 1)
+      pure . Just $
+        if idx < Set.size staticMembers
+          then Set.elemAt idx staticMembers
+          else Seq.index dynamicMembers.boundedOrder (idx - Set.size staticMembers)
 
 hashMapBy
   :: (Ord k, Eq k, Ord a)
@@ -134,7 +190,32 @@ hashMapBy f = Map.fromListWith Set.union . fmap (\v -> (f v, Set.singleton v)) .
 
 gaddCalls :: Set SolCall -> GenDict -> GenDict
 gaddCalls calls dict =
-  dict { wholeCalls = dict.wholeCalls <> hashMapBy (fmap $ fmap abiValueType) calls }
+  dict { dynamicWholeCalls = Map.foldlWithKey' insertCalls dict.dynamicWholeCalls callsBySig }
+  where
+    callsBySig = hashMapBy (fmap $ fmap abiValueType) calls
+    insertCalls acc sig callsForSig =
+      let staticCalls = Map.findWithDefault Set.empty sig dict.staticWholeCalls
+          existingCalls = Map.findWithDefault emptyBoundedSet sig acc
+          updatedCalls = boundedInsertSet dict.dynamicCallsLimit staticCalls callsForSig existingCalls
+      in if boundedSize updatedCalls == 0
+         then Map.delete sig acc
+         else Map.insert sig updatedCalls acc
+
+addDynamicConstants :: Map AbiType (Set AbiValue) -> GenDict -> GenDict
+addDynamicConstants additions dict =
+  dict
+    { dynamicConstants = Map.foldlWithKey' insertConstants dict.dynamicConstants additions
+    , dynamicDictValues = boundedInsertSet dict.dynamicValuesLimit dict.staticDictValues dynamicValues dict.dynamicDictValues
+    }
+  where
+    insertConstants acc abiType values =
+      let staticValues = Map.findWithDefault Set.empty abiType dict.staticConstants
+          existingValues = Map.findWithDefault emptyBoundedSet abiType acc
+          updatedValues = boundedInsertSet dict.dynamicConstantsLimit staticValues values existingValues
+      in if boundedSize updatedValues == 0
+         then Map.delete abiType acc
+         else Map.insert abiType updatedValues acc
+    dynamicValues = mkDictValues $ Set.unions $ Map.elems additions
 
 -- | Construct a 'GenDict' from some dictionaries, a 'Float', a default seed,
 -- and a typing rule for return values
@@ -144,18 +225,27 @@ mkGenDict
   -> Set SolCall  -- ^ A list of complete 'SolCall's to mutate
   -> Int          -- ^ A default seed
   -> (Text -> Maybe AbiType) -- ^ A return value typing rule
+  -> Int
+  -> Int
+  -> Int
   -> [SolSignature]
   -> GenDict
-mkGenDict mutationChance abiValues solCalls seed typingRule =
+mkGenDict mutationChance abiValues solCalls seed typingRule constantsLimit valuesLimit callsLimit =
   GenDict mutationChance
           (hashMapBy abiValueType abiValues)
+          Map.empty
           (hashMapBy (fmap $ fmap abiValueType) solCalls)
+          Map.empty
           seed
           typingRule
           (mkDictValues abiValues)
+          emptyBoundedSet
+          constantsLimit
+          valuesLimit
+          callsLimit
 
 emptyDict :: GenDict
-emptyDict = mkGenDict 0 Set.empty Set.empty 0 (const Nothing) []
+emptyDict = mkGenDict 0 Set.empty Set.empty 0 (const Nothing) 0 0 0 []
 
 mkDictValues :: Set AbiValue -> Set W256
 mkDictValues =
@@ -361,19 +451,32 @@ mutateAbiCall = traverse f
 -- @a@ from a 'GenDict', return a generator that takes an @a@ and either synthesizes new @b@s with the
 -- provided generator or uses the 'GenDict' dictionary (when available).
 genWithDict
-  :: (Eq a, Ord a, MonadRandom m)
+  :: (MonadRandom m)
   => GenDict
-  -> Map a (Set b)
+  -> (a -> m (Maybe b))
   -> (a -> m b)
   -> a
   -> m b
-genWithDict genDict m g t = do
+genWithDict genDict fromDict g t = do
   r <- getRandom
-  let maybeValM = if genDict.pSynthA >= r then fromDict else pure Nothing
-      fromDict = case Map.lookup t m of
-                   Nothing -> pure Nothing
-                   Just cs -> Just <$> rElem' cs
-  fromMaybe <$> g t <*> maybeValM
+  maybeVal <- if genDict.pSynthA >= r then fromDict t else pure Nothing
+  maybe (g t) pure maybeVal
+
+constantFromDict :: MonadRandom m => GenDict -> AbiType -> m (Maybe AbiValue)
+constantFromDict genDict abiType =
+  rElemStaticDynamic
+    (Map.findWithDefault Set.empty abiType genDict.staticConstants)
+    (Map.findWithDefault emptyBoundedSet abiType genDict.dynamicConstants)
+
+wholeCallFromDict :: MonadRandom m => GenDict -> SolSignature -> m (Maybe SolCall)
+wholeCallFromDict genDict sig =
+  rElemStaticDynamic
+    (Map.findWithDefault Set.empty sig genDict.staticWholeCalls)
+    (Map.findWithDefault emptyBoundedSet sig genDict.dynamicWholeCalls)
+
+dictValueFromDict :: MonadRandom m => GenDict -> m (Maybe W256)
+dictValueFromDict genDict =
+  rElemStaticDynamic genDict.staticDictValues genDict.dynamicDictValues
 
 -- | A small number of dummy addresses
 pregenAdds :: [Addr]
@@ -418,7 +521,7 @@ genAbiValueM' genDict funcName depth t =
         AbiTupleType v        -> AbiTuple <$> traverse (genAbiValueM' genDict funcName (depth + 1)) v
         AbiFunctionType       -> AbiFunction <$> rElem (NE.fromList pregenAdds)
                                              <*> (FunctionSelector <$> getRandom)
-  in genWithDict genDict genDict.constants go t
+  in genWithDict genDict (constantFromDict genDict) go t
 
 -- | Given a 'SolSignature', generate a random 'SolCall' with that signature,
 -- possibly with a dictionary.
@@ -426,7 +529,7 @@ genAbiCallM :: MonadRandom m => GenDict -> SolSignature -> m SolCall
 genAbiCallM genDict (name, types) = do
   let genVals = zipWithM (flip (genAbiValueM' genDict name)) types (repeat 0)
   solCall <- genWithDict genDict
-                         genDict.wholeCalls
+                         (wholeCallFromDict genDict)
                          (const ((name,) <$> genVals))
                          (name, types)
   mutateAbiCall solCall

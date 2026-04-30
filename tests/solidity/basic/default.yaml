@@ -64,6 +64,12 @@ timeout: null
 #dictFreq controls how often to use echidna's internal dictionary vs random
 #values
 dictFreq: 0.40
+#maximum runtime-mined constants to keep per ABI type
+dictDynamicConstantsLimit: 4096
+#maximum runtime-mined int/uint constants to keep
+dictDynamicValuesLimit: 8192
+#maximum runtime-mined whole calls to keep per signature
+dictDynamicCallsLimit: 1024
 maxTimeDelay: 604800
 #maximum time between generated txs; default is one week
 maxBlockDelay: 60480

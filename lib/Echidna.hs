@@ -100,6 +100,9 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
                      Set.empty
                      seed
                      (returnTypes contracts)
+                     env.cfg.campaignConf.dictDynamicConstantsLimit
+                     env.cfg.campaignConf.dictDynamicValuesLimit
+                     env.cfg.campaignConf.dictDynamicCallsLimit
                      nonViewPureSigs
   pure (vm, env, dict)
 
