@@ -26,7 +26,7 @@ import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
 import Echidna.Types.Worker
-import Echidna.Utility (timePrefix)
+import Echidna.Utility (applyAnsiColor, timePrefix)
 import Echidna.Worker
 
 ppLogLine :: (MonadReader Env m, MonadIO m) => VM Concrete -> (LocalTime, CampaignEvent) -> m String
@@ -42,6 +42,12 @@ ppCampaignEventLog vm ev = (ppCampaignEvent ev <>) <$> ppTxIfHas where
   ppTxIfHas = case ev of
     (WorkerEvent _ _ (TestFalsified test)) -> ("\n  Call sequence:\n" <>) . unlines <$> mapM (ppTx vm $ length (nub $ (.src) <$> test.reproducer) /= 1) test.reproducer
     _ -> pure ""
+
+ppTraceTree :: MonadReader Env m => VM Concrete -> m String
+ppTraceTree vm = do
+  dapp     <- asks (.dapp)
+  useColor <- asks (.useColor)
+  pure . T.unpack $ applyAnsiColor useColor (showTraceTree dapp vm)
 
 ppTotalCalls :: [WorkerState] -> String
 ppTotalCalls workerStates = "Total calls: " <> show calls
@@ -146,16 +152,15 @@ ppFail b vm xs = do
         Nothing    -> ""
         Just (n,m) -> ", shrinking " <> progress n m
   prettyTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> xs) /= 1) xs
-  dappInfo <- asks (.dapp)
+  traces <- ppTraceTree vm
   pure $ "failed!💥  \n  Call sequence" <> status <> ":\n"
          <> unlines (("    " <>) <$> prettyTxs) <> "\n"
-         <> "Traces: \n" <> T.unpack (showTraceTree dappInfo vm)
+         <> "Traces: \n" <> traces
 
 -- | Pretty-print the status of a solved test.
 ppFailWithTraces :: (MonadReader Env m, MonadIO m) => Maybe (Int, Int) -> VM Concrete -> [(Tx, VM Concrete)] -> m String
 ppFailWithTraces  _ _ []  = pure "failed with no transactions made ⁉️ "
 ppFailWithTraces b finalVM results = do
-  dappInfo <- asks (.dapp)
   let xs = fst <$> results
   let status = case b of
         Nothing    -> ""
@@ -163,10 +168,12 @@ ppFailWithTraces b finalVM results = do
   let printName = length (nub $ (.src) <$> xs) /= 1
   prettyTxs <- forM results $ \(tx, vm) -> do
     txPrinted <- ppTx vm printName tx
-    pure $ txPrinted <> "\nTraces:\n" <> T.unpack (showTraceTree dappInfo vm)
+    traces <- ppTraceTree vm
+    pure $ txPrinted <> "\nTraces:\n" <> traces
+  finalTraces <- ppTraceTree finalVM
   pure $ "failed!💥  \n  Call sequence" <> status <> ":\n"
          <> unlines (("    " <>) <$> prettyTxs) <> "\n"
-         <> "Test traces: \n" <> T.unpack (showTraceTree dappInfo finalVM)
+         <> "Test traces: \n" <> finalTraces
 
 -- | Pretty-print the status of a test.
 
@@ -199,10 +206,10 @@ ppOptimized b vm xs = do
         Nothing    -> ""
         Just (n,m) -> ", shrinking " <> progress n m
   prettyTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> xs) /= 1) xs
-  dappInfo <- asks (.dapp)
+  traces <- ppTraceTree vm
   pure $ "\n  Call sequence" <> status <> ":\n"
          <> unlines (("    " <>) <$> prettyTxs) <> "\n"
-         <> "Traces: \n" <> T.unpack (showTraceTree dappInfo vm)
+         <> "Traces: \n" <> traces
 
 -- | Pretty-print the status of all 'SolTest's in a 'Campaign'.
 ppTests :: (MonadReader Env m, MonadIO m) => [EchidnaTest] -> m String
