@@ -6,7 +6,7 @@ import Test.Tasty (TestTree, testGroup)
 
 import EVM.ABI (AbiValue(..))
 
-import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout)
+import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, notPresent, solved, solvedLen, solvedWith, solvedWithout)
 import Echidna.Types.Tx (TxCall(..))
 import Echidna.Types.Worker (WorkerType(..))
 
@@ -34,6 +34,11 @@ integrationTests = testGroup "Solidity Integration Testing"
       [ ("echidna_alwaystrue failed",                      passed      "echidna_alwaystrue")
       , ("echidna_revert_always failed",                   passed      "echidna_revert_always")
       , ("echidna_sometimesfalse passed",                  passed      "echidna_sometimesfalse")
+      ]
+  , testContract "basic/excludeviewpure.sol" (Just "basic/excludeviewpure.yaml")
+      -- echidna_counter_small is a view property: must not be excluded, and must be solved
+      -- (which also proves increment() is still being called by the fuzzer)
+      [ ("view property must not be excluded and should be solved", solved "echidna_counter_small")
       ]
   , testContract "basic/revert.sol" Nothing
       [ ("echidna_fails_on_revert passed", solved "echidna_fails_on_revert")
