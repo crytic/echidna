@@ -90,6 +90,18 @@ Our tool signals each execution trace in the corpus with the following "line mar
 * `o` if an execution ended with an out-of-gas error
 * `e` if an execution ended with any other error (zero division, assertion failure, etc)
 
+#### Viewing coverage in VS Code
+
+Echidna can also output coverage in **lcov** format, which can be visualized directly in VS Code with the [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) extension.
+
+To enable lcov output, add `lcov` to `coverageFormats` in your config file:
+
+```yaml
+coverageFormats: ["txt", "html", "lcov"]
+```
+
+After running Echidna with `corpusDir` set, open the generated `coverage/lcov.info` file in VS Code, then run the **Coverage Gutters: Display Coverage** command (`Ctrl+Shift+7` / `Cmd+Shift+7`) to see inline coverage highlighting in your source files.
+
 ### Support for smart contract build systems
 
 Echidna can test contracts compiled with different smart contract build systems, including [Foundry](https://book.getfoundry.sh/), [Hardhat](https://hardhat.org/), and [Truffle](https://archive.trufflesuite.com/), using [crytic-compile](https://github.com/crytic/crytic-compile). To invoke Echidna with the current compilation framework, use `echidna .`.
