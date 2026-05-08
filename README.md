@@ -67,9 +67,13 @@ The example above uses the default **property** mode, but Echidna supports sever
 
 ### Collecting and visualizing coverage
 
-After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain two entries: (1) a directory named `coverage` with JSON files that can be replayed by Echidna and (2) a plain-text file named `covered.txt`, a copy of the source code with coverage annotations.
+After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain a `coverage` subdirectory with JSON files that can be replayed by Echidna, plus one or more `covered.<seed>.<ext>` coverage reports next to it.
 
-If you run `tests/solidity/basic/flags.sol` example, Echidna will save a few files serialized transactions in the `coverage` directory and a `covered.$(date +%s).txt` file with the following lines:
+The default coverage formats are `txt`, `html`, and `lcov` (see `coverageFormats` in [`tests/solidity/basic/default.yaml`](tests/solidity/basic/default.yaml)).
+
+#### Plain-text report (`covered.<seed>.txt`)
+
+If you run the `tests/solidity/basic/flags.sol` example, Echidna saves serialized transactions in the `coverage` directory and a `covered.<seed>.txt` file with the following lines:
 
 ```text
 *r  |  function set0(int val) public returns (bool){
@@ -83,12 +87,23 @@ If you run `tests/solidity/basic/flags.sol` example, Echidna will save a few fil
   }
 ```
 
-Our tool signals each execution trace in the corpus with the following "line marker":
+Each line is prefixed with a "line marker" describing how executions of that line ended:
 
 * `*` if an execution ended with a STOP
 * `r` if an execution ended with a REVERT
 * `o` if an execution ended with an out-of-gas error
 * `e` if an execution ended with any other error (zero division, assertion failure, etc)
+
+#### HTML report (`covered.<seed>.html`)
+
+Open the generated `covered.<seed>.html` file in a browser for a navigable view of all source files with per-file coverage statistics and line-by-line annotations.
+
+#### LCOV report (`covered.<seed>.lcov`)
+
+Echidna also emits coverage in the standard [LCOV tracefile format](https://github.com/linux-test-project/lcov), which is consumed by most coverage tooling. Two common ways to view it:
+
+* **In VS Code**: install an LCOV-aware extension such as [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters), point it at `covered.<seed>.lcov` (e.g. via the `coverage-gutters.coverageFileNames` setting), and toggle the gutter highlights to see covered/uncovered lines inline with your Solidity source.
+* **As a static HTML site**: run `genhtml covered.<seed>.lcov -o coverage-html` (from [lcov](https://github.com/linux-test-project/lcov)) to produce a browsable report.
 
 ### Support for smart contract build systems
 
