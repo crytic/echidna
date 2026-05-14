@@ -22,8 +22,10 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
 
+import Data.Text (Text)
+
 import EVM (cheatCode)
-import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
+import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(..), abiValueType)
 import EVM.Types (VM(..), VMResult(..), VMType(..), Expr(..))
 import EVM.Types qualified as EVM
 
@@ -40,7 +42,7 @@ import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
 import Echidna.Test (checkETest, getResultFromVM)
 import Echidna.Types.Test qualified as Test
-import Echidna.Types.Tx (TxCall(..), Tx(..))
+import Echidna.Types.Tx (TxCall(..), Tx(..), TxResult(..), getResult)
 import Echidna.Types.Worker (WorkerEvent(..))
 import Echidna.Worker (pushWorkerEvent)
 
@@ -85,6 +87,14 @@ callseq vm txSeq isReplaying = do
   -- Run each call sequentially. This gives us the result of each call
   -- and the new state
   (results, vm') <- evalSeq vm execFunc txSeq
+
+  -- Update sample stats for any tracked functions. Off the hot path when
+  -- no functions are sampled (the common case).
+  sampled <- gets (.sampledFunctions)
+  when (not (Map.null sampled)) $ do
+    rTypes <- gets (.genDict.rTypes)
+    modify' $ \ws ->
+      ws { sampledFunctions = updateSampleStats rTypes sampled results }
 
   -- If there is new coverage, add the transaction list to the corpus
   newCoverage <- gets (.newCoverage)
@@ -179,6 +189,34 @@ callseq vm txSeq isReplaying = do
   addToCorpus n res corpus =
     if null rtxs then corpus else Set.insert (n, rtxs) corpus
     where rtxs = fst <$> res
+
+-- | Apply a sequence of tx results to the sampling map, updating call
+-- counts, revert summaries, and return-value min/max for each tracked
+-- function. Functions not in the input map are ignored. The per-event
+-- algebra lives in 'applySampleEvent' (pure, unit-tested separately).
+updateSampleStats
+  :: (FunctionName -> Maybe AbiType)
+  -- ^ Return-type lookup, typically @workerState.genDict.rTypes@.
+  -> Map Text SampleStats
+  -> [(Tx, VMResult Concrete)]
+  -> Map Text SampleStats
+updateSampleStats returnTypeOf = List.foldl' applyOne
+  where
+    applyOne acc (tx, vmResult) = case tx.call of
+      SolCall (fname, args) ->
+        let !sig = encodeSig (fname, map abiValueType args)
+        in case Map.lookup sig acc of
+             Nothing    -> acc
+             Just stats ->
+               let decoded = case (vmResult, returnTypeOf fname) of
+                     (VMSuccess (ConcreteBuf buf), Just typ) ->
+                       case runGetOrFail (getAbi typ) (LBS.fromStrict buf) of
+                         Right (_, _, v) -> Just v
+                         _               -> Nothing
+                     _ -> Nothing
+                   !stats' = applySampleEvent (getResult vmResult) decoded fname args stats
+               in Map.insert sig stats' acc
+      _ -> acc
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction
 -- executed, saving the transaction if it finds new coverage.

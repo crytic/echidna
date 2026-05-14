@@ -17,6 +17,7 @@ import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
 import Data.Time (UTCTime, getCurrentTime, diffUTCTime)
 import Text.Printf (printf)
+import Data.Map (Map)
 import qualified Data.Map as Map
 import Text.Read (readMaybe)
 import System.Directory (getCurrentDirectory)
@@ -37,7 +38,10 @@ import Echidna.Output.Corpus (loadTxs)
 
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.World (World(..))
-import Echidna.Types.Campaign (getNFuzzWorkers, CampaignConf(..), WorkerState(..))
+import Echidna.Types.Campaign
+  ( getNFuzzWorkers, CampaignConf(..), WorkerState(..)
+  , SampleStats(..), mergeSampleStats
+  )
 import Echidna.Types.InterWorker (Bus, Message(..), WrappedMessage(..), AgentId(..), FuzzerCmd(..), BroadcastMsg(..))
 
 -- | Status state to track coverage info
@@ -91,6 +95,8 @@ statusTool workerRefs statusRef _ env _ _ = do
         Nothing -> Null
         Just t  -> toJSON (round (diffUTCTime now t) :: Integer)
 
+  let samples = map sampleStatsJson (Map.toList (collectSamples workers))
+
   pure $ BL8.unpack $ encode $ object
     [ "corpus_size"                  .= Set.size c
     , "iterations"                   .= iterations
@@ -101,6 +107,7 @@ statusTool workerRefs statusRef _ env _ _ = do
     , "optimization_values"          .= optValues
     , "time_since_last_coverage_sec" .= timeSinceCov
     , "recent_covered_functions"     .= st.coveredFunctions
+    , "samples"                      .= samples
     ]
 
 -- | Helper functions for inject_transaction
@@ -288,6 +295,51 @@ clearPrioritiesTool _ env bus _ = do
   mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i ClearPrioritization))) [0 .. nWorkers - 1]
   return $ printf "Requested clearing priorities on %d fuzzers" nWorkers
 
+-- | Implementation of sample tool. The single argument @function@ is either:
+--   * the literal "off" to clear all sampling, or
+--   * a function name or canonical signature ("totalSupply", "totalSupply()",
+--     "transfer(address,uint256)") which is resolved against the contract's
+--     ABI and broadcast to every worker.
+sampleTool :: ToolExecution
+sampleTool args env bus _ = do
+  let nWorkers = getNFuzzWorkers env.cfg.campaignConf
+      input   = T.strip (Data.Maybe.fromMaybe "" (lookup "function" args))
+  if T.toLower input == "off"
+     then do
+       mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i ClearSampling))) [0 .. nWorkers - 1]
+       pure "Sampling cleared on all fuzzers."
+     else if T.null input
+       then pure "Error: 'function' argument is required (or pass 'off' to clear sampling)."
+       else do
+         let allMethods = concatMap (Map.elems . (.abiMap)) (Map.elems env.dapp.solcByName)
+             matchesInput m = m.methodSignature == input || m.name == input
+             matchedSigs = Set.fromList $ map (.methodSignature) (filter matchesInput allMethods)
+         case Set.toList matchedSigs of
+           []    -> pure $ printf "Error: function '%s' not found in contract ABI." (unpack input)
+           [sig] -> do
+             mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i (EnableSampling sig)))) [0 .. nWorkers - 1]
+             pure $ printf "Sampling enabled for %s on %d fuzzers." (unpack sig) nWorkers
+           sigs  ->
+             pure $ printf "Error: '%s' is ambiguous, matches %s. Pass the full signature."
+                       (unpack input) (unpack $ T.intercalate ", " sigs)
+
+-- | Merge all workers' 'sampledFunctions' maps into a single map.
+collectSamples :: [WorkerState] -> Map Text SampleStats
+collectSamples = Map.unionsWith mergeSampleStats . map (.sampledFunctions)
+
+-- | Render one merged 'SampleStats' as a JSON object for inclusion in
+-- 'statusTool' output.
+sampleStatsJson :: (Text, SampleStats) -> Value
+sampleStatsJson (sig, st) = object
+  [ "function"       .= sig
+  , "calls"          .= st.sampleCalls
+  , "reverts"        .= st.sampleReverts
+  , "return_range"   .= case st.sampleReturnRange of
+      Nothing       -> Null
+      Just (lo, hi) -> object [ "min" .= show lo, "max" .= show hi ]
+  , "recent_reverts" .= st.sampleRecentReverts
+  ]
+
 -- | Parse a transaction-sequence string into a list of concrete 'Tx' values.
 -- Rejects wildcards ('?') because both execute_sequence and trace_sequence
 -- require fully concrete arguments.
@@ -450,6 +502,7 @@ availableTools workerRefs statusRef =
   , Tool "inject_fuzz_transactions" "Inject a sequence of transaction to fuzz with optional concrete arguments" fuzzTransactionTool
   , Tool "execute_sequence" "Replay a concrete transaction sequence on worker 0 (no random noise) and return a JSON report. Pass trace=\"true\" to also include the EVM trace tree of the LAST tx in the report." executeSequenceTool
   , Tool "clear_fuzz_priorities" "Clear the function prioritization list used in fuzzing" clearPrioritiesTool
+  , Tool "sample" "Enable sampling for a function (e.g. 'totalSupply' or 'transfer(address,uint256)') to track call/revert counts, recent revert summaries and return-value min/max ranges. Pass 'off' to clear all sampling. Results appear in the 'samples' field of the 'status' tool output." sampleTool
   --, Tool "read_logs" "Read the last 100 log messages" readLogsTool
   , Tool "show_coverage" "Show coverage report for a particular contract" showCoverageTool
   ]
@@ -488,7 +541,7 @@ runMCPServer env workerRefs port logsRef = do
     let serverInfo = McpServerInfo
             { serverName = "Echidna MCP Server"
             , serverVersion = "1.0.0"
-            , serverInstructions = "Echidna Agent Interface. Available tools: status, target, reload_corpus, dump_lcov, inject_fuzz_transactions, execute_sequence, clear_fuzz_priorities, show_coverage"
+            , serverInstructions = "Echidna Agent Interface. Available tools: status, target, reload_corpus, dump_lcov, inject_fuzz_transactions, execute_sequence, clear_fuzz_priorities, sample, show_coverage"
             }
 
     let mkToolDefinition :: Tool -> ToolDefinition
@@ -518,6 +571,10 @@ runMCPServer env workerRefs port logsRef = do
                 "clear_fuzz_priorities" -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
+                    }
+                "sample" -> InputSchemaDefinitionObject
+                    { properties = [("function", InputSchemaDefinitionProperty "string" "Function name or canonical signature to sample (e.g. 'totalSupply', 'transfer(address,uint256)'). Pass 'off' to clear all sampling.")]
+                    , required = ["function"]
                     }
                 "show_coverage" -> InputSchemaDefinitionObject
                     { properties = [("contract", InputSchemaDefinitionProperty "string" "The name of the contract")]

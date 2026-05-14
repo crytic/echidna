@@ -44,7 +44,7 @@ import Echidna.Transaction (genTx, genTxFromPrototype)
 import Echidna.Types.Random (rElem)
 import qualified Data.List.NonEmpty as NE
 import Echidna.Types.Agent
-import Echidna.Types.Campaign (WorkerState(..), CampaignConf(..))
+import Echidna.Types.Campaign (WorkerState(..), CampaignConf(..), emptySampleStats, maxSampledFunctions)
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.InterWorker (AgentId(..), Bus, WrappedMessage(..), Message(..), FuzzerCmd(..))
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..), isOpen, isOptimizationTest)
@@ -91,6 +91,7 @@ instance Agent FuzzerAgent where
           , totalGas = 0
           , runningThreads = []
           , prioritizedSequences = []
+          , sampledFunctions = Map.empty
           }
 
     -- Callback to update the IORef with the current state
@@ -225,6 +226,19 @@ fuzzerLoop callback vm testLimit bus = do
           when (tid == workerId && workerId == 0) $ do
              report <- executeSeq trace vm txs
              liftIO $ atomically $ putTMVar replyVar report
+       Just (WrappedMessage _ (ToFuzzer tid (EnableSampling sig))) -> do
+          workerId <- gets (.workerId)
+          when (tid == workerId) $
+             modify' $ \s ->
+               if Map.size s.sampledFunctions >= maxSampledFunctions
+                  || Map.member sig s.sampledFunctions
+               then s
+               else s { sampledFunctions =
+                          Map.insert sig emptySampleStats s.sampledFunctions }
+       Just (WrappedMessage _ (ToFuzzer tid ClearSampling)) -> do
+          workerId <- gets (.workerId)
+          when (tid == workerId) $
+             modify' $ \s -> s { sampledFunctions = Map.empty }
        _ -> pure ()
 
 -- | Replay a concrete sequence and return a compact JSON report.

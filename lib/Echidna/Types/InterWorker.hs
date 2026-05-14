@@ -22,6 +22,11 @@ data FuzzerCmd
     --   The 'Bool' flag, when 'True', additionally includes the EVM trace
     --   tree of the LAST tx in the JSON output (intermediate trees are
     --   skipped to keep cost bounded). Only worker 0 responds.
+  | EnableSampling Text
+    -- ^ Begin sampling the given function (canonical signature). Capped
+    --   per-worker by 'maxSampledFunctions'.
+  | ClearSampling
+    -- ^ Drop all sampling state.
 
 instance Show FuzzerCmd where
   show DumpLcov = "DumpLcov"
@@ -29,6 +34,8 @@ instance Show FuzzerCmd where
   show (FuzzSequence s p) = "FuzzSequence " ++ show s ++ " (" ++ show p ++ ")"
   show ClearPrioritization = "ClearPrioritization"
   show (ExecuteSequence txs trace _) = "ExecuteSequence " ++ show txs ++ " trace=" ++ show trace
+  show (EnableSampling sig) = "EnableSampling " ++ show sig
+  show ClearSampling = "ClearSampling"
 
 -- | Symbolic specific commands
 newtype SymbolicCmd

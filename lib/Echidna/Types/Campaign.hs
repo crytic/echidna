@@ -1,16 +1,111 @@
 module Echidna.Types.Campaign where
 
 import Control.Concurrent (ThreadId)
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Word (Word8, Word16)
 import GHC.Conc (numCapabilities)
 
 import EVM.Solvers (Solver(..))
-import EVM.ABI (AbiValue)
+import EVM.ABI (AbiValue(..))
 
 import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
 import Echidna.Types.Coverage (CoverageFileType, CoverageMap)
+import Echidna.Types.Tx (TxResult(..))
+
+-- | Maximum number of functions that can be sampled simultaneously.
+maxSampledFunctions :: Int
+maxSampledFunctions = 10
+
+-- | Maximum number of recent revert entries kept per sampled function.
+maxRecentReverts :: Int
+maxRecentReverts = 5
+
+-- | Per-function sampling state. Updated on the fuzzer hot path so all
+-- fields must be strict (see GA's MCP postmortem on thunk retention).
+data SampleStats = SampleStats
+  { sampleCalls         :: !Int
+    -- ^ Total calls observed.
+  , sampleReverts       :: !Int
+    -- ^ Total calls that did not return successfully.
+  , sampleReturnRange   :: !(Maybe (AbiValue, AbiValue))
+    -- ^ Min/max of the decoded return value (only tracked for functions
+    -- with a single numeric return type known via 'GenDict.rTypes').
+  , sampleRecentReverts :: ![Text]
+    -- ^ Last 'maxRecentReverts' revert summaries, newest first.
+  } deriving Show
+
+emptySampleStats :: SampleStats
+emptySampleStats = SampleStats 0 0 Nothing []
+
+-- | Total comparison for the subset of 'AbiValue' kinds that have a natural
+-- ordering. Returns 'Nothing' for anything else (e.g. bytes, strings, tuples,
+-- arrays).
+abiCompare :: AbiValue -> AbiValue -> Maybe Ordering
+abiCompare (AbiUInt _ a)  (AbiUInt _ b)  = Just (compare a b)
+abiCompare (AbiInt  _ a)  (AbiInt  _ b)  = Just (compare a b)
+abiCompare (AbiAddress a) (AbiAddress b) = Just (compare a b)
+abiCompare (AbiBool a)    (AbiBool b)    = Just (compare a b)
+abiCompare _ _ = Nothing
+
+-- | Apply one observed call (its result kind, possibly decoded return value,
+-- function name, and args) to an existing 'SampleStats' record. Pure so
+-- it can be unit tested without constructing 'VMResult' values.
+applySampleEvent
+  :: TxResult       -- ^ Result kind from 'getResult'.
+  -> Maybe AbiValue -- ^ Decoded return value, if available and a known type.
+  -> Text           -- ^ Function name (used in revert summary).
+  -> [AbiValue]     -- ^ Call args (used in revert summary).
+  -> SampleStats
+  -> SampleStats
+applySampleEvent result decoded fname args stats =
+  let isSuccess = result `elem` [ReturnTrue, ReturnFalse, Stop]
+      !range' = case decoded of
+        Just v  -> updateRange v stats.sampleReturnRange
+        Nothing -> stats.sampleReturnRange
+  in if isSuccess
+     then stats { sampleCalls       = stats.sampleCalls + 1
+                , sampleReturnRange = range'
+                }
+     else
+       let !summary = revertSummary fname args result
+       in stats { sampleCalls         = stats.sampleCalls + 1
+                , sampleReverts       = stats.sampleReverts + 1
+                , sampleRecentReverts = take maxRecentReverts
+                                          (summary : stats.sampleRecentReverts)
+                }
+  where
+    revertSummary fname' args' r =
+      let argStr = T.intercalate "," (map (T.pack . show) args')
+      in fname' <> "(" <> argStr <> "): " <> T.pack (show r)
+
+    updateRange v Nothing = Just (v, v)
+    updateRange v (Just (lo, hi)) =
+      let lo' = case abiCompare v lo of Just Prelude.LT -> v; _ -> lo
+          hi' = case abiCompare v hi of Just Prelude.GT -> v; _ -> hi
+      in Just (lo', hi')
+
+-- | Combine two per-function 'SampleStats' (typically from different
+-- workers). Counts are summed, ranges are widened, recent reverts are
+-- concatenated and capped at 'maxRecentReverts'.
+mergeSampleStats :: SampleStats -> SampleStats -> SampleStats
+mergeSampleStats a b = SampleStats
+  { sampleCalls         = a.sampleCalls + b.sampleCalls
+  , sampleReverts       = a.sampleReverts + b.sampleReverts
+  , sampleReturnRange   = mergeRange a.sampleReturnRange b.sampleReturnRange
+  , sampleRecentReverts = take maxRecentReverts
+                            (a.sampleRecentReverts ++ b.sampleRecentReverts)
+  }
+  where
+    mergeRange Nothing x = x
+    mergeRange x Nothing = x
+    mergeRange (Just (loA, hiA)) (Just (loB, hiB)) =
+      let lo = case abiCompare loA loB of Just Prelude.GT -> loB; _ -> loA
+          hi = case abiCompare hiA hiB of Just Prelude.LT -> hiB; _ -> hiA
+      in Just (lo, hi)
 
 -- | Configuration for running an Echidna 'Campaign'.
 data CampaignConf = CampaignConf
@@ -89,6 +184,9 @@ data WorkerState = WorkerState
     --   aside from the main worker thread
   , prioritizedSequences :: ![(Double, [(Text, [Maybe AbiValue])])]
     -- ^ Sequences of functions to prioritize during fuzzing
+  , sampledFunctions :: !(Map Text SampleStats)
+    -- ^ Functions whose calls are sampled for min/max return values and
+    --   revert history. Keyed by canonical signature (e.g. "totalSupply()").
   }
 
 initialWorkerState :: WorkerState
@@ -101,6 +199,7 @@ initialWorkerState =
               , totalGas = 0
               , runningThreads = []
               , prioritizedSequences = []
+              , sampledFunctions = Map.empty
               }
 
 defaultTestLimit :: Int
