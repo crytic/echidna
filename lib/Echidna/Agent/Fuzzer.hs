@@ -25,7 +25,6 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 import System.Directory (getCurrentDirectory)
-import Text.Printf (printf)
 
 import Echidna.Output.Source (saveLcovHook)
 import EVM.Dapp (DappInfo(..))
@@ -220,26 +219,24 @@ fuzzerLoop callback vm testLimit bus = do
           when (tid == workerId) $ do
              modify' $ \s -> s { prioritizedSequences = [] }
              pure ()
-       Just (WrappedMessage _ (ToFuzzer tid (ExecuteSequence txs replyVar))) -> do
+       Just (WrappedMessage _ (ToFuzzer tid (ExecuteSequence txs trace replyVar))) -> do
           workerId <- gets (.workerId)
           -- Only worker 0 responds; tid is expected to be 0 from MCP.
           when (tid == workerId && workerId == 0) $ do
-             report <- executeSeq vm txs
+             report <- executeSeq trace vm txs
              liftIO $ atomically $ putTMVar replyVar report
-       Just (WrappedMessage _ (ToFuzzer tid (TraceSequence txs replyVar))) -> do
-          workerId <- gets (.workerId)
-          when (tid == workerId && workerId == 0) $ do
-             traceStr <- traceSeq vm txs
-             liftIO $ atomically $ putTMVar replyVar traceStr
        _ -> pure ()
 
 -- | Replay a concrete sequence and return a compact JSON report.
 --   Uses 'execTx' directly so the running fuzzing campaign is not perturbed
 --   (no coverage/corpus side effects).
+--   When @includeTrace@ is 'True' the report additionally carries a @trace@
+--   field with the EVM trace tree of the LAST tx (intermediate trees are
+--   skipped to keep cost bounded — 'showTraceTree' is expensive).
 executeSeq
   :: (MonadIO m, MonadReader Env m, MonadThrow m)
-  => VM Concrete -> [Tx] -> m String
-executeSeq vm0 txs = do
+  => Bool -> VM Concrete -> [Tx] -> m String
+executeSeq includeTrace vm0 txs = do
   dapp <- asks (.dapp)
   let step (acc, mbFailed, mbFailedStatus, vm) (i, tx) = do
         let burnedBefore = vm.burned
@@ -266,7 +263,7 @@ executeSeq vm0 txs = do
         Just "assertion_failed" -> "assertion_failed" :: String
         Just _                  -> "reverted"
         Nothing                 -> "completed"
-      report = object
+      baseFields =
         [ "status"             .= overall
         , "transaction_count"  .= length txs
         , "failed_tx_index"    .= mbFailed
@@ -274,46 +271,21 @@ executeSeq vm0 txs = do
         , "final_timestamp"    .= show (EVM.forceLit finalVm.block.timestamp)
         , "transactions"       .= reverse entries
         ]
-  pure $ BL8.unpack $ encode report
+      traceField
+        | includeTrace && not (null txs) =
+            [ "trace" .= T.unpack (showTraceTree dapp finalVm) ]
+        | otherwise = []
+  pure $ BL8.unpack $ encode $ object (baseFields ++ traceField)
 
 txStatus :: TxResult -> [Text] -> String
 txStatus result events
-  | any isAssertionLog events                 = "assertion_failed"
+  | any isAssertionLog events                     = "assertion_failed"
   | result `elem` [ReturnTrue, ReturnFalse, Stop] = "completed"
-  | otherwise                                 = "reverted"
+  | otherwise                                     = "reverted"
 
 isAssertionLog :: Text -> Bool
 isAssertionLog event =
   "AssertFail" `T.isInfixOf` event || "Panic(AbiUInt 256 1)" `T.isInfixOf` event
-
--- | Replay a concrete sequence and return per-tx summaries followed by the
---   EVM trace tree of the LAST tx only. Intermediate trace trees are not
---   captured: 'showTraceTree' is expensive and the user only needs the final
---   call context.
-traceSeq
-  :: (MonadIO m, MonadReader Env m, MonadThrow m)
-  => VM Concrete -> [Tx] -> m String
-traceSeq vm0 txs = do
-  dapp <- asks (.dapp)
-  let step (acc, _prev, vm) (i, tx) = do
-        (vmResult, vm') <- execTx vm tx
-        let txResult = getResult vmResult
-        txStr <- ppTx vm' False tx
-        let header = unlines
-              [ printf "[%d] %s" i txStr
-              , printf "    Result: %s" (show txResult)
-              ]
-        pure (header : acc, Just vm', vm')
-  (entries, mbFinal, _) <-
-      foldM step ([], Nothing, vm0) (zip [1 :: Int ..] txs)
-  let lastTrace = case mbFinal of
-        Nothing -> ""
-        Just vm -> unlines
-          [ ""
-          , printf "=== Trace for last tx (#%d) ===" (length txs)
-          , T.unpack (showTraceTree dapp vm)
-          ]
-  pure $ unlines (["=== Transaction Trace ===", ""] ++ reverse entries) ++ lastTrace
 
 -- | Generate a new sequences of transactions, either using the corpus or with
 -- randomly created transactions

@@ -343,31 +343,26 @@ askWorkerZero bus mkCmd timeoutMicros = do
   atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer 0 (mkCmd replyVar)))
   timeout timeoutMicros (atomically $ takeTMVar replyVar)
 
+-- | Parse a "true"/"false" string argument (case insensitive); anything else
+-- including absence is treated as 'False'.
+parseBoolArg :: Text -> Bool
+parseBoolArg t = T.toLower t == "true"
+
 -- | Implementation of execute_sequence tool. Concrete replay on worker 0;
--- no random noise, no campaign side effects. Returns a JSON report.
+-- no random noise, no campaign side effects. Returns a JSON report. If the
+-- optional @trace@ argument is "true", the report additionally carries a
+-- @trace@ field with the EVM trace tree of the LAST tx (intermediate trees
+-- are skipped because 'showTraceTree' is expensive).
 executeSequenceTool :: ToolExecution
 executeSequenceTool args env bus _ = do
   let txStr = Data.Maybe.fromMaybe "" (lookup "transactions" args)
+      withTrace = parseBoolArg (Data.Maybe.fromMaybe "" (lookup "trace" args))
   case parseAndBuildTxs env txStr of
     Left err -> return err
     Right txs -> do
-      result <- askWorkerZero bus (ExecuteSequence txs) 300_000_000
+      result <- askWorkerZero bus (ExecuteSequence txs withTrace) 300_000_000
       return $ Data.Maybe.fromMaybe
         "Error: Timeout waiting for execute_sequence result (300s)."
-        result
-
--- | Implementation of trace_sequence tool. Like execute_sequence but returns
--- per-tx call summaries plus the EVM trace tree for the LAST tx only
--- (intermediate trees are skipped to keep the cost bounded).
-traceSequenceTool :: ToolExecution
-traceSequenceTool args env bus _ = do
-  let txStr = Data.Maybe.fromMaybe "" (lookup "transactions" args)
-  case parseAndBuildTxs env txStr of
-    Left err -> return err
-    Right txs -> do
-      result <- askWorkerZero bus (TraceSequence txs) 300_000_000
-      return $ Data.Maybe.fromMaybe
-        "Error: Timeout waiting for trace_sequence result (300s)."
         result
 
 -- | Implementation of read_logs tool
@@ -453,8 +448,7 @@ availableTools workerRefs statusRef =
   , Tool "reload_corpus" "Reload the transactions from the corpus, but without replay them" reloadCorpusTool
   , Tool "dump_lcov" "Dump coverage in LCOV format" dumpLcovTool
   , Tool "inject_fuzz_transactions" "Inject a sequence of transaction to fuzz with optional concrete arguments" fuzzTransactionTool
-  , Tool "execute_sequence" "Replay a concrete transaction sequence on worker 0 (no random noise) and return a JSON report" executeSequenceTool
-  , Tool "trace_sequence" "Replay a concrete transaction sequence on worker 0 and return per-tx summaries plus the EVM trace tree of the LAST tx only" traceSequenceTool
+  , Tool "execute_sequence" "Replay a concrete transaction sequence on worker 0 (no random noise) and return a JSON report. Pass trace=\"true\" to also include the EVM trace tree of the LAST tx in the report." executeSequenceTool
   , Tool "clear_fuzz_priorities" "Clear the function prioritization list used in fuzzing" clearPrioritiesTool
   --, Tool "read_logs" "Read the last 100 log messages" readLogsTool
   , Tool "show_coverage" "Show coverage report for a particular contract" showCoverageTool
@@ -494,7 +488,7 @@ runMCPServer env workerRefs port logsRef = do
     let serverInfo = McpServerInfo
             { serverName = "Echidna MCP Server"
             , serverVersion = "1.0.0"
-            , serverInstructions = "Echidna Agent Interface. Available tools: status, target, reload_corpus, dump_lcov, inject_fuzz_transactions, execute_sequence, trace_sequence, clear_fuzz_priorities, show_coverage"
+            , serverInstructions = "Echidna Agent Interface. Available tools: status, target, reload_corpus, dump_lcov, inject_fuzz_transactions, execute_sequence, clear_fuzz_priorities, show_coverage"
             }
 
     let mkToolDefinition :: Tool -> ToolDefinition
@@ -515,11 +509,10 @@ runMCPServer env workerRefs port logsRef = do
                     , required = ["transactions"]
                     }
                 "execute_sequence" -> InputSchemaDefinitionObject
-                    { properties = [("transactions", InputSchemaDefinitionProperty "string" "Concrete transaction sequence separated by ';' (no '?' wildcards), e.g. 'supply(1000);borrow(500)'")]
-                    , required = ["transactions"]
-                    }
-                "trace_sequence" -> InputSchemaDefinitionObject
-                    { properties = [("transactions", InputSchemaDefinitionProperty "string" "Concrete transaction sequence separated by ';' (no '?' wildcards); the EVM trace tree is only returned for the last tx")]
+                    { properties =
+                        [ ("transactions", InputSchemaDefinitionProperty "string" "Concrete transaction sequence separated by ';' (no '?' wildcards), e.g. 'supply(1000);borrow(500)'")
+                        , ("trace",        InputSchemaDefinitionProperty "string" "Optional: \"true\" to include the EVM trace tree of the LAST tx in the JSON report. Defaults to \"false\".")
+                        ]
                     , required = ["transactions"]
                     }
                 "clear_fuzz_priorities" -> InputSchemaDefinitionObject

@@ -17,12 +17,10 @@ data FuzzerCmd
   | SolutionFound [Tx]
   | FuzzSequence [(Text, [Maybe AbiValue])] Double
   | ClearPrioritization
-  | ExecuteSequence [Tx] (TMVar String)
+  | ExecuteSequence [Tx] Bool (TMVar String)
     -- ^ Replay a concrete sequence. Reply is a JSON-encoded report.
-    --   Only worker 0 responds.
-  | TraceSequence [Tx] (TMVar String)
-    -- ^ Replay a concrete sequence and return per-tx summaries plus the
-    --   EVM trace tree of the LAST tx only (intermediate trace trees are
+    --   The 'Bool' flag, when 'True', additionally includes the EVM trace
+    --   tree of the LAST tx in the JSON output (intermediate trees are
     --   skipped to keep cost bounded). Only worker 0 responds.
 
 instance Show FuzzerCmd where
@@ -30,8 +28,7 @@ instance Show FuzzerCmd where
   show (SolutionFound txs) = "SolutionFound " ++ show txs
   show (FuzzSequence s p) = "FuzzSequence " ++ show s ++ " (" ++ show p ++ ")"
   show ClearPrioritization = "ClearPrioritization"
-  show (ExecuteSequence txs _) = "ExecuteSequence " ++ show txs
-  show (TraceSequence txs _) = "TraceSequence " ++ show txs
+  show (ExecuteSequence txs trace _) = "ExecuteSequence " ++ show txs ++ " trace=" ++ show trace
 
 -- | Symbolic specific commands
 newtype SymbolicCmd
