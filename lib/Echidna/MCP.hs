@@ -6,8 +6,10 @@ module Echidna.MCP where
 import Control.Concurrent (forkIO)
 import Control.Monad (forever, unless)
 import Control.Concurrent.STM
+import Data.Aeson (Value(Null), encode, object, toJSON, (.=))
+import qualified Data.ByteString.Lazy.Char8 as BL8
 import Data.IORef (readIORef, modifyIORef', newIORef, IORef, atomicModifyIORef')
-import Data.List (find, isPrefixOf, isSuffixOf, sort, intercalate)
+import Data.List (find, isPrefixOf, isSuffixOf, sort)
 import qualified Data.Maybe
 import qualified Data.Set as Set
 import qualified Data.Vector as Vector
@@ -18,15 +20,17 @@ import Text.Printf (printf)
 import qualified Data.Map as Map
 import Text.Read (readMaybe)
 import System.Directory (getCurrentDirectory)
+import System.Timeout (timeout)
 import Data.Char (isSpace, toLower)
 
 import MCP.Server
 import EVM.Dapp (DappInfo(..))
 import EVM.Solidity (SolcContract(..), Method(..))
-import EVM.Types (Addr)
+import EVM.Types (Addr, W256)
 import EVM.ABI (AbiValue(..), AbiType(..), abiValueType)
 import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
-import Echidna.Types.Tx (Tx(..), TxCall(..))
+import Echidna.Types.Solidity (SolConf(..))
+import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock)
 import Echidna.Types.Coverage (CoverageFileType(..), mergeCoverageMaps, coverageStats)
 import Echidna.Output.Source (ppCoveredCode, saveLcovHook)
 import Echidna.Output.Corpus (loadTxs)
@@ -58,41 +62,46 @@ getFunctionName tx = case tx.call of
   SolCall (name, _) -> name
   _ -> "unknown"
 
--- | Implementation of status tool
+-- | Implementation of status tool. Returns a JSON document so agents can
+-- chain on individual fields without parsing free-form text.
 statusTool :: [IORef WorkerState] -> IORef StatusState -> ToolExecution
 statusTool workerRefs statusRef _ env _ _ = do
   c <- readIORef env.corpusRef
   st <- readIORef statusRef
   now <- getCurrentTime
 
-  -- Iterations
   workers <- mapM readIORef workerRefs
   let iterations = sum $ map (.ncalls) workers
-  let maxIterations = env.cfg.campaignConf.testLimit
+      maxIterations = env.cfg.campaignConf.testLimit
 
-  -- Coverage
   (covPoints, _) <- coverageStats env.coverageRefInit env.coverageRefRuntime
 
-  -- Tests
   tests <- mapM readIORef env.testRefs
   let failedCount = length $ filter didFail tests
-  let totalCount = length tests
+      totalCount = length tests
 
-  -- Optimization values
-  let optTests = filter isOptimizationTest tests
-      optValues = map (\(EchidnaTest {testType = ty, value = val}) -> printf "%s: %s" (show ty) (show val)) optTests
-      optStr = if null optValues then "None" else intercalate ", " optValues
+      optTests = filter isOptimizationTest tests
+      optEntry t = object
+        [ "type"  .= show t.testType
+        , "value" .= show t.value
+        ]
+      optValues = map optEntry optTests
 
-  let timeStr = case st.lastCoverageTime of
-                  Nothing -> "Never"
-                  Just t -> show (round (diffUTCTime now t) :: Integer)
+      timeSinceCov = case st.lastCoverageTime of
+        Nothing -> Null
+        Just t  -> toJSON (round (diffUTCTime now t) :: Integer)
 
-      funcs = if null st.coveredFunctions
-              then "None"
-              else unpack $ T.intercalate "\n- " st.coveredFunctions
-
-  return $ printf "Corpus Size: %d\nIterations: %d/%d\nCoverage: %d\nTests: %d/%d\nOptimization Values: %s\nTime since last coverage: %s\nLast 10 covered functions:\n- %s"
-                  (Set.size c) iterations maxIterations covPoints failedCount totalCount optStr timeStr funcs
+  pure $ BL8.unpack $ encode $ object
+    [ "corpus_size"                  .= Set.size c
+    , "iterations"                   .= iterations
+    , "iteration_limit"              .= maxIterations
+    , "coverage_points"              .= covPoints
+    , "tests_failed"                 .= failedCount
+    , "tests_total"                  .= totalCount
+    , "optimization_values"          .= optValues
+    , "time_since_last_coverage_sec" .= timeSinceCov
+    , "recent_covered_functions"     .= st.coveredFunctions
+    ]
 
 -- | Helper functions for inject_transaction
 trim :: String -> String
@@ -279,6 +288,88 @@ clearPrioritiesTool _ env bus _ = do
   mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i ClearPrioritization))) [0 .. nWorkers - 1]
   return $ printf "Requested clearing priorities on %d fuzzers" nWorkers
 
+-- | Parse a transaction-sequence string into a list of concrete 'Tx' values.
+-- Rejects wildcards ('?') because both execute_sequence and trace_sequence
+-- require fully concrete arguments.
+parseAndBuildTxs :: Env -> Text -> Either String [Tx]
+parseAndBuildTxs env txStr =
+  case parseFuzzSequence (unpack txStr) of
+    Nothing -> Left "Error: Failed to parse transaction sequence string."
+    Just seqPrototype
+      | any (\(_, callArgs) -> any Data.Maybe.isNothing callArgs) seqPrototype ->
+          Left "Error: concrete arguments required (no '?' wildcards)."
+      | otherwise ->
+          let dapp = env.dapp
+              methods = Map.elems dapp.abiMap
+              methodsByName = Map.fromListWith (++) [(m.name, [m]) | m <- methods]
+
+              validateCall (name, callArgs) =
+                case Map.lookup name methodsByName of
+                  Nothing -> Just $ printf "Function '%s' not found." (unpack name)
+                  Just ms ->
+                    if any (\m -> length m.inputs == length callArgs) ms
+                    then Nothing
+                    else Just $ printf "Function '%s' found but with different argument count. Expected: %s, Got: %d"
+                                       (unpack name)
+                                       (show $ map (length . (.inputs)) ms)
+                                       (length callArgs)
+
+              errors = Data.Maybe.mapMaybe validateCall seqPrototype
+          in if not (null errors)
+             then Left $ "Error:\n" ++ unlines errors
+             else
+               let solConf = env.cfg.solConf
+                   dst = solConf.contractAddr
+                   src = case Set.toList solConf.sender of
+                           (s:_) -> s
+                           []    -> 0x10000
+
+                   mkTx (name, callArgs) =
+                     let concreteArgs = Data.Maybe.catMaybes callArgs
+                     in Tx { call = SolCall (name, concreteArgs)
+                           , src = src
+                           , dst = dst
+                           , gas = fromIntegral maxGasPerBlock
+                           , gasprice = 0
+                           , value = 0
+                           , delay = (0 :: W256, 0 :: W256)
+                           }
+               in Right (map mkTx seqPrototype)
+
+-- | Send a request to worker 0 only and wait for its reply with a timeout.
+askWorkerZero :: Bus -> (TMVar String -> FuzzerCmd) -> Int -> IO (Maybe String)
+askWorkerZero bus mkCmd timeoutMicros = do
+  replyVar <- newEmptyTMVarIO
+  atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer 0 (mkCmd replyVar)))
+  timeout timeoutMicros (atomically $ takeTMVar replyVar)
+
+-- | Implementation of execute_sequence tool. Concrete replay on worker 0;
+-- no random noise, no campaign side effects. Returns a JSON report.
+executeSequenceTool :: ToolExecution
+executeSequenceTool args env bus _ = do
+  let txStr = Data.Maybe.fromMaybe "" (lookup "transactions" args)
+  case parseAndBuildTxs env txStr of
+    Left err -> return err
+    Right txs -> do
+      result <- askWorkerZero bus (ExecuteSequence txs) 300_000_000
+      return $ Data.Maybe.fromMaybe
+        "Error: Timeout waiting for execute_sequence result (300s)."
+        result
+
+-- | Implementation of trace_sequence tool. Like execute_sequence but returns
+-- per-tx call summaries plus the EVM trace tree for the LAST tx only
+-- (intermediate trees are skipped to keep the cost bounded).
+traceSequenceTool :: ToolExecution
+traceSequenceTool args env bus _ = do
+  let txStr = Data.Maybe.fromMaybe "" (lookup "transactions" args)
+  case parseAndBuildTxs env txStr of
+    Left err -> return err
+    Right txs -> do
+      result <- askWorkerZero bus (TraceSequence txs) 300_000_000
+      return $ Data.Maybe.fromMaybe
+        "Error: Timeout waiting for trace_sequence result (300s)."
+        result
+
 -- | Implementation of read_logs tool
 readLogsTool :: ToolExecution
 readLogsTool _ _ _ logsRef = do
@@ -357,11 +448,13 @@ showCoverageTool args env _ _ = do
 -- | Registry of available tools
 availableTools :: [IORef WorkerState] -> IORef StatusState -> [Tool]
 availableTools workerRefs statusRef =
-  [ Tool "status" "Show fuzzing campaign status" (statusTool workerRefs statusRef)
+  [ Tool "status" "Return fuzzing campaign status as a JSON document with fields: corpus_size, iterations, iteration_limit, coverage_points, tests_failed, tests_total, optimization_values, time_since_last_coverage_sec, recent_covered_functions" (statusTool workerRefs statusRef)
   , Tool "target" "Show the name and the ABI of the target contract" targetTool
   , Tool "reload_corpus" "Reload the transactions from the corpus, but without replay them" reloadCorpusTool
   , Tool "dump_lcov" "Dump coverage in LCOV format" dumpLcovTool
   , Tool "inject_fuzz_transactions" "Inject a sequence of transaction to fuzz with optional concrete arguments" fuzzTransactionTool
+  , Tool "execute_sequence" "Replay a concrete transaction sequence on worker 0 (no random noise) and return a JSON report" executeSequenceTool
+  , Tool "trace_sequence" "Replay a concrete transaction sequence on worker 0 and return per-tx summaries plus the EVM trace tree of the LAST tx only" traceSequenceTool
   , Tool "clear_fuzz_priorities" "Clear the function prioritization list used in fuzzing" clearPrioritiesTool
   --, Tool "read_logs" "Read the last 100 log messages" readLogsTool
   , Tool "show_coverage" "Show coverage report for a particular contract" showCoverageTool
@@ -401,7 +494,7 @@ runMCPServer env workerRefs port logsRef = do
     let serverInfo = McpServerInfo
             { serverName = "Echidna MCP Server"
             , serverVersion = "1.0.0"
-            , serverInstructions = "Echidna Agent Interface. Available tools: status, target, reload_corpus, dump_lcov, inject_fuzz_transactions, clear_fuzz_priorities, show_coverage"
+            , serverInstructions = "Echidna Agent Interface. Available tools: status, target, reload_corpus, dump_lcov, inject_fuzz_transactions, execute_sequence, trace_sequence, clear_fuzz_priorities, show_coverage"
             }
 
     let mkToolDefinition :: Tool -> ToolDefinition
@@ -419,6 +512,14 @@ runMCPServer env workerRefs port logsRef = do
                     }
                 "inject_fuzz_transactions" -> InputSchemaDefinitionObject
                     { properties = [("transactions", InputSchemaDefinitionProperty "string" "The transaction sequence string separated by ';' (e.g. 'func1();func2(arg1, ?)')")]
+                    , required = ["transactions"]
+                    }
+                "execute_sequence" -> InputSchemaDefinitionObject
+                    { properties = [("transactions", InputSchemaDefinitionProperty "string" "Concrete transaction sequence separated by ';' (no '?' wildcards), e.g. 'supply(1000);borrow(500)'")]
+                    , required = ["transactions"]
+                    }
+                "trace_sequence" -> InputSchemaDefinitionObject
+                    { properties = [("transactions", InputSchemaDefinitionProperty "string" "Concrete transaction sequence separated by ';' (no '?' wildcards); the EVM trace tree is only returned for the last tx")]
                     , required = ["transactions"]
                     }
                 "clear_fuzz_priorities" -> InputSchemaDefinitionObject

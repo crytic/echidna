@@ -6,8 +6,9 @@
 
 module Echidna.Agent.Fuzzer where
 
+import Control.Applicative ((<|>))
 import Control.Concurrent.STM (atomically, tryReadTChan, dupTChan, putTMVar)
-import Control.Monad (replicateM, void, forM_, when)
+import Control.Monad (foldM, replicateM, void, forM_, when)
 import Control.Monad.Reader (runReaderT, liftIO, asks, MonadReader, ask)
 import Control.Monad.State.Strict (runStateT, get, gets, modify', MonadState)
 import Control.Monad.Random.Strict (evalRandT, MonadRandom, RandT, getRandom, getRandomR)
@@ -15,21 +16,29 @@ import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class (MonadIO)
 import System.Random (mkStdGen)
+import Data.Aeson (encode, object, (.=))
+import qualified Data.ByteString.Lazy.Char8 as BL8
 import Data.IORef (IORef, writeIORef, readIORef, atomicModifyIORef')
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Text (Text)
+import qualified Data.Text as T
 import System.Directory (getCurrentDirectory)
+import Text.Printf (printf)
 
 import Echidna.Output.Source (saveLcovHook)
 import EVM.Dapp (DappInfo(..))
+import EVM.Format (showTraceTree)
 import EVM.Types (VM(..), VMType(Concrete), Expr(..), EType(..), Contract)
 import qualified EVM.Types as EVM
 
 import EVM.ABI (AbiValue)
 import Echidna.ABI (GenDict(..))
+import Echidna.Events (extractEvents)
+import Echidna.Exec (execTx)
 import Echidna.Execution (replayCorpus, callseq, updateTests)
+import Echidna.UI.Report (ppTx)
 import Echidna.Mutator.Corpus (getCorpusMutation, seqMutatorsStateless, seqMutatorsStateful, fromConsts)
 import Echidna.Shrink (shrinkTest)
 import Echidna.Transaction (genTx, genTxFromPrototype)
@@ -40,7 +49,7 @@ import Echidna.Types.Campaign (WorkerState(..), CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.InterWorker (AgentId(..), Bus, WrappedMessage(..), Message(..), FuzzerCmd(..))
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..), isOpen, isOptimizationTest)
-import Echidna.Types.Tx (Tx)
+import Echidna.Types.Tx (Tx, TxResult(..), getResult)
 import Echidna.Types.Worker (WorkerEvent(..), WorkerType(..), CampaignEvent(..), WorkerStopReason(..))
 import qualified Echidna.Types.Worker as Worker
 import Echidna.Worker (pushCampaignEvent)
@@ -213,13 +222,98 @@ fuzzerLoop callback vm testLimit bus = do
              pure ()
        Just (WrappedMessage _ (ToFuzzer tid (ExecuteSequence txs replyVar))) -> do
           workerId <- gets (.workerId)
-          when (tid == workerId) $ do
-             (_, newCov) <- callseq vm txs False
-             liftIO $ case replyVar of
-                Just var -> atomically $ putTMVar var newCov
-                Nothing -> pure ()
-             pure ()
+          -- Only worker 0 responds; tid is expected to be 0 from MCP.
+          when (tid == workerId && workerId == 0) $ do
+             report <- executeSeq vm txs
+             liftIO $ atomically $ putTMVar replyVar report
+       Just (WrappedMessage _ (ToFuzzer tid (TraceSequence txs replyVar))) -> do
+          workerId <- gets (.workerId)
+          when (tid == workerId && workerId == 0) $ do
+             traceStr <- traceSeq vm txs
+             liftIO $ atomically $ putTMVar replyVar traceStr
        _ -> pure ()
+
+-- | Replay a concrete sequence and return a compact JSON report.
+--   Uses 'execTx' directly so the running fuzzing campaign is not perturbed
+--   (no coverage/corpus side effects).
+executeSeq
+  :: (MonadIO m, MonadReader Env m, MonadThrow m)
+  => VM Concrete -> [Tx] -> m String
+executeSeq vm0 txs = do
+  dapp <- asks (.dapp)
+  let step (acc, mbFailed, mbFailedStatus, vm) (i, tx) = do
+        let burnedBefore = vm.burned
+        (vmResult, vm') <- execTx vm tx
+        let txResult = getResult vmResult
+        txStr <- ppTx vm' False tx
+        let events = extractEvents True dapp vm'
+            status = txStatus txResult events
+            failed       = if status == "completed" then mbFailed       else mbFailed       <|> Just i
+            failedStatus = if status == "completed" then mbFailedStatus else mbFailedStatus <|> Just status
+            gasUsed = vm'.burned - burnedBefore
+            entry = object
+              [ "index"    .= i
+              , "call"     .= txStr
+              , "status"   .= status
+              , "result"   .= show txResult
+              , "gas_used" .= gasUsed
+              , "logs"     .= map T.unpack events
+              ]
+        pure (entry : acc, failed, failedStatus, vm')
+  (entries, mbFailed, mbFailedStatus, finalVm) <-
+      foldM step ([], Nothing, Nothing, vm0) (zip [1 :: Int ..] txs)
+  let overall = case mbFailedStatus of
+        Just "assertion_failed" -> "assertion_failed" :: String
+        Just _                  -> "reverted"
+        Nothing                 -> "completed"
+      report = object
+        [ "status"             .= overall
+        , "transaction_count"  .= length txs
+        , "failed_tx_index"    .= mbFailed
+        , "final_block_number" .= show (EVM.forceLit finalVm.block.number)
+        , "final_timestamp"    .= show (EVM.forceLit finalVm.block.timestamp)
+        , "transactions"       .= reverse entries
+        ]
+  pure $ BL8.unpack $ encode report
+
+txStatus :: TxResult -> [Text] -> String
+txStatus result events
+  | any isAssertionLog events                 = "assertion_failed"
+  | result `elem` [ReturnTrue, ReturnFalse, Stop] = "completed"
+  | otherwise                                 = "reverted"
+
+isAssertionLog :: Text -> Bool
+isAssertionLog event =
+  "AssertFail" `T.isInfixOf` event || "Panic(AbiUInt 256 1)" `T.isInfixOf` event
+
+-- | Replay a concrete sequence and return per-tx summaries followed by the
+--   EVM trace tree of the LAST tx only. Intermediate trace trees are not
+--   captured: 'showTraceTree' is expensive and the user only needs the final
+--   call context.
+traceSeq
+  :: (MonadIO m, MonadReader Env m, MonadThrow m)
+  => VM Concrete -> [Tx] -> m String
+traceSeq vm0 txs = do
+  dapp <- asks (.dapp)
+  let step (acc, _prev, vm) (i, tx) = do
+        (vmResult, vm') <- execTx vm tx
+        let txResult = getResult vmResult
+        txStr <- ppTx vm' False tx
+        let header = unlines
+              [ printf "[%d] %s" i txStr
+              , printf "    Result: %s" (show txResult)
+              ]
+        pure (header : acc, Just vm', vm')
+  (entries, mbFinal, _) <-
+      foldM step ([], Nothing, vm0) (zip [1 :: Int ..] txs)
+  let lastTrace = case mbFinal of
+        Nothing -> ""
+        Just vm -> unlines
+          [ ""
+          , printf "=== Trace for last tx (#%d) ===" (length txs)
+          , T.unpack (showTraceTree dapp vm)
+          ]
+  pure $ unlines (["=== Transaction Trace ===", ""] ++ reverse entries) ++ lastTrace
 
 -- | Generate a new sequences of transactions, either using the corpus or with
 -- randomly created transactions
