@@ -130,6 +130,7 @@ tests:
       - tasty
       - tasty-hunit
       - tasty-quickcheck
+      - vector
       - yaml
     when:
         - condition: (os(linux) || os(windows)) && flag(static)
