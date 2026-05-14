@@ -5,6 +5,7 @@
 module Echidna.Output.Foundry (foundryTest) where
 
 import Data.Aeson (Value(..), object, (.=))
+import Data.Functor ((<&>))
 import Data.List (elemIndex, nub)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text, unpack)
@@ -27,28 +28,38 @@ template :: Template
 template = $(embedTemplate ["lib/Echidna/Output/assets"] "foundry.mustache")
 
 -- | Generate a Foundry test from an EchidnaTest result.
-foundryTest :: Maybe Text -> EchidnaTest -> TL.Text
-foundryTest mContractName test =
+-- For property tests, psender is the address used to call the property function.
+foundryTest :: Maybe Text -> Addr -> EchidnaTest -> TL.Text
+foundryTest mContractName psender test =
   case test.testType of
     AssertionTest{} ->
-      let testData = createTestData mContractName test
+      let testData = createTestData mContractName Nothing test
+      in fromStrict $ substituteValue template (toMustache testData)
+    PropertyTest name _ ->
+      let testData = createTestData mContractName (Just (name, psender)) test
       in fromStrict $ substituteValue template (toMustache testData)
     _ -> ""
 
 -- | Create an Aeson Value from test data for the Mustache template.
-createTestData :: Maybe Text -> EchidnaTest -> Value
-createTestData mContractName test =
+-- When a property name and psender are provided, a final assertion is added
+-- to call the property from psender and check it returns false.
+createTestData :: Maybe Text -> Maybe (Text, Addr) -> EchidnaTest -> Value
+createTestData mContractName mProperty test =
   let
     senders = nub $ map (.src) test.reproducer
     actors = zipWith actorObject senders [1..]
     repro = mapMaybe (foundryTx senders) test.reproducer
     cName = fromMaybe "YourContract" mContractName
+    propAssertion = mProperty <&> \(name, addr) ->
+      "        vm.stopPrank();\n        vm.prank(" ++ formatAddr addr ++ ");\n"
+      ++ "        assertFalse(Target." ++ unpack name ++ "());"
   in
   object
     [ "testName"     .= ("FoundryTest" :: Text)
     , "contractName" .= cName
     , "actors"       .= actors
     , "reproducer"   .= repro
+    , "propertyAssertion" .= propAssertion
     ]
 
 -- | Create a JSON object for an actor.

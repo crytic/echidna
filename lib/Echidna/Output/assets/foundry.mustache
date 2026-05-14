@@ -21,6 +21,9 @@ contract {{testName}} is Test {
     {{{prelude}}}
     {{{call}}}
 {{/reproducer}}
+{{#propertyAssertion}}
+{{{.}}}
+{{/propertyAssertion}}
   }
 
   function _setUpActor(address actor) internal {
