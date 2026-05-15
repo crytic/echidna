@@ -42,7 +42,7 @@ import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
 import Echidna.Test (checkETest, getResultFromVM)
 import Echidna.Types.Test qualified as Test
-import Echidna.Types.Tx (TxCall(..), Tx(..), TxResult(..), getResult)
+import Echidna.Types.Tx (TxCall(..), Tx(..), getResult)
 import Echidna.Types.Worker (WorkerEvent(..))
 import Echidna.Worker (pushWorkerEvent)
 
