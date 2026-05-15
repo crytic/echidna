@@ -87,11 +87,16 @@ ui vm dict initialCorpus cliSelectedContract = do
       other -> other
 
     -- Distribute over all workers, could be slightly bigger overall due to
-    -- ceiling but this doesn't matter
-    perWorkerTestLimit = ceiling
-      (fromIntegral conf.campaignConf.testLimit / fromIntegral nFuzzWorkers :: Double)
+    -- ceiling but this doesn't matter. In verification mode there are no
+    -- fuzz workers (only a symbolic worker), so guard against div-by-zero.
+    perWorkerTestLimit
+      | nFuzzWorkers == 0 = conf.campaignConf.testLimit
+      | otherwise = ceiling
+          (fromIntegral conf.campaignConf.testLimit / fromIntegral nFuzzWorkers :: Double)
 
-    (corpusChunkSize, largerCorpusChunks) = length initialCorpus `divMod` nFuzzWorkers
+    (corpusChunkSize, largerCorpusChunks)
+      | nFuzzWorkers == 0 = (0, 0)
+      | otherwise = length initialCorpus `divMod` nFuzzWorkers
     corpusChunkSizes =
       replicate largerCorpusChunks (corpusChunkSize + 1) <>
       replicate (nFuzzWorkers - largerCorpusChunks) corpusChunkSize
