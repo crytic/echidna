@@ -5,6 +5,15 @@
 
 module Echidna.Agent.Symbolic where
 
+-- TODO: implement the `inject_sym_transaction` MCP command. The agent should
+-- accept a single transaction string (with optional concrete arguments, e.g.
+-- "f(1, ?, 3)") via the inter-worker bus, route it to this symbolic worker,
+-- and explore it with symbolic execution. Requires:
+--   * a new InterWorker message type (see lib/Echidna/Types/InterWorker.hs)
+--   * a handler branch in `runAgent` that calls into the symbolic exploration
+--     entry point with the parsed transaction
+--   * a corresponding tool definition in lib/Echidna/MCP.hs
+
 import Control.Concurrent (takeMVar)
 import Control.Concurrent.STM (atomically, readTChan, writeTChan, dupTChan, TChan)
 import Control.Monad (when, void, unless, forM_)

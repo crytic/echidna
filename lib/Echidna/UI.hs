@@ -16,7 +16,7 @@ import Data.List.Split (splitPlaces)
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
 import Data.Sequence ((|>))
-import Data.Text (Text, pack)
+import Data.Text (Text)
 import Data.Time
 import Graphics.Vty qualified as Vty
 import Graphics.Vty.Config (VtyUserConfig, defaultConfig, configInputMap)
@@ -25,7 +25,7 @@ import Graphics.Vty.Input.Events
 import System.Console.ANSI (hNowSupportsANSI)
 import System.Signal
 import UnliftIO
-  ( MonadUnliftIO, IORef, newIORef, readIORef, hFlush, stdout , writeIORef, timeout, atomicModifyIORef')
+  ( MonadUnliftIO, IORef, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
 
 import EVM.Fetch qualified
@@ -112,11 +112,8 @@ ui vm dict initialCorpus cliSelectedContract = do
     Interactive -> do
       -- Channel to push events to update UI
       uiChannel <- liftIO $ newBChan 1000
-      logBuffer <- newIORef []
 
-      let forwardEvent ev = do
-            msg <- runReaderT (ppLogLine vm ev) env
-            liftIO $ atomicModifyIORef' logBuffer (\logs -> (pack msg : logs, ()))
+      let forwardEvent ev =
             void $ writeBChanNonBlocking uiChannel $ EventReceived ev
 
       -- Attach the log/event forwarder before workers start so early worker
@@ -127,7 +124,7 @@ ui vm dict initialCorpus cliSelectedContract = do
       case conf.campaignConf.serverPort of
         Just port -> do
           liftIO $ pushCampaignEvent env (ServerLog ("MCP Server running at http://127.0.0.1:" ++ show port ++ "/mcp"))
-          void $ liftIO $ forkIO $ runMCPServer env (map snd workers) (fromIntegral port) logBuffer
+          void $ liftIO $ forkIO $ runMCPServer env (map snd workers) (fromIntegral port)
         Nothing -> pure ()
 
       ticker <- liftIO . forkIO . forever $ do
@@ -196,11 +193,9 @@ ui vm dict initialCorpus cliSelectedContract = do
 
     NonInteractive outputFormat -> do
       serverStopVar <- newEmptyMVar
-      logBuffer <- newIORef []
 
       let forwardEvent ev = do
             msg <- runReaderT (ppLogLine vm ev) env
-            liftIO $ atomicModifyIORef' logBuffer (\logs -> (pack msg : logs, ()))
             putStrLn msg
       -- Attach the log/event forwarder before workers start so early worker
       -- events (like startup logs) are not lost by dupChan.
@@ -225,12 +220,11 @@ ui vm dict initialCorpus cliSelectedContract = do
             let statusMsg = time <> "[status] " <> line
             putStrLn statusMsg
             hFlush stdout
-            liftIO $ atomicModifyIORef' logBuffer (\logs -> (pack statusMsg : logs, ()))
 
       case conf.campaignConf.serverPort of
         Just port -> do
           liftIO $ pushCampaignEvent env (ServerLog ("MCP Server running at http://127.0.0.1:" ++ show port ++ "/mcp"))
-          void $ liftIO $ forkIO $ runMCPServer env (map snd workers) (fromIntegral port) logBuffer
+          void $ liftIO $ forkIO $ runMCPServer env (map snd workers) (fromIntegral port)
         Nothing -> pure ()
 
       ticker <- liftIO . forkIO . forever $ do

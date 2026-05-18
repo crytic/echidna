@@ -52,7 +52,7 @@ data StatusState = StatusState
 
 -- | MCP Tool Definition
 -- Simulates the definition of a tool exposed by an MCP server.
-type ToolExecution = [(Text, Text)] -> Env -> Bus -> IORef [Text] -> IO String
+type ToolExecution = [(Text, Text)] -> Env -> Bus -> IO String
 
 data Tool = Tool
   { toolName :: String
@@ -69,7 +69,7 @@ getFunctionName tx = case tx.call of
 -- | Implementation of status tool. Returns a JSON document so agents can
 -- chain on individual fields without parsing free-form text.
 statusTool :: [IORef WorkerState] -> IORef StatusState -> ToolExecution
-statusTool workerRefs statusRef _ env _ _ = do
+statusTool workerRefs statusRef _ env _ = do
   c <- readIORef env.corpusRef
   st <- readIORef statusRef
   now <- getCurrentTime
@@ -216,7 +216,7 @@ parseTx ctx s = do
 
 -- | Implementation of reload_corpus tool
 reloadCorpusTool :: ToolExecution
-reloadCorpusTool _ env _ _ = do
+reloadCorpusTool _ env _ = do
   dir <- maybe getCurrentDirectory pure env.cfg.campaignConf.corpusDir
   loadedSeqs <- loadTxs dir -- returns [(FilePath, [Tx])]
 
@@ -244,7 +244,7 @@ reloadCorpusTool _ env _ _ = do
 
 -- | Implementation of dump_lcov tool
 dumpLcovTool :: ToolExecution
-dumpLcovTool _ env _ _ = do
+dumpLcovTool _ env _ = do
   let contracts = Map.elems env.dapp.solcByName
   dir <- maybe getCurrentDirectory pure env.cfg.campaignConf.corpusDir
   filename <- saveLcovHook env dir env.sourceCache contracts
@@ -252,7 +252,7 @@ dumpLcovTool _ env _ _ = do
 
 -- | Implementation of inject_fuzz_transactions tool
 fuzzTransactionTool :: ToolExecution
-fuzzTransactionTool args env bus _ = do
+fuzzTransactionTool args env bus = do
   let txStr = Data.Maybe.fromMaybe "" (lookup "transactions" args)
   case parseFuzzSequence (unpack txStr) of
     Nothing -> return "Error: Failed to parse transaction sequence string."
@@ -290,7 +290,7 @@ fuzzTransactionTool args env bus _ = do
 
 -- | Implementation of clear_fuzz_priorities tool
 clearPrioritiesTool :: ToolExecution
-clearPrioritiesTool _ env bus _ = do
+clearPrioritiesTool _ env bus = do
   let nWorkers = getNFuzzWorkers env.cfg.campaignConf
   mapM_ (\i -> atomically $ writeTChan bus (WrappedMessage AIId (ToFuzzer i ClearPrioritization))) [0 .. nWorkers - 1]
   return $ printf "Requested clearing priorities on %d fuzzers" nWorkers
@@ -301,7 +301,7 @@ clearPrioritiesTool _ env bus _ = do
 --     "transfer(address,uint256)") which is resolved against the contract's
 --     ABI and broadcast to every worker.
 sampleTool :: ToolExecution
-sampleTool args env bus _ = do
+sampleTool args env bus = do
   let nWorkers = getNFuzzWorkers env.cfg.campaignConf
       input   = T.strip (Data.Maybe.fromMaybe "" (lookup "function" args))
   if T.toLower input == "off"
@@ -406,7 +406,7 @@ parseBoolArg t = T.toLower t == "true"
 -- @trace@ field with the EVM trace tree of the LAST tx (intermediate trees
 -- are skipped because 'showTraceTree' is expensive).
 executeSequenceTool :: ToolExecution
-executeSequenceTool args env bus _ = do
+executeSequenceTool args env bus = do
   let txStr = Data.Maybe.fromMaybe "" (lookup "transactions" args)
       withTrace = parseBoolArg (Data.Maybe.fromMaybe "" (lookup "trace" args))
   case parseAndBuildTxs env txStr of
@@ -417,19 +417,9 @@ executeSequenceTool args env bus _ = do
         "Error: Timeout waiting for execute_sequence result (300s)."
         result
 
--- | Implementation of read_logs tool
-readLogsTool :: ToolExecution
-readLogsTool _ _ _ logsRef = do
-  logs <- readIORef logsRef
-  -- Get last 100 logs
-  -- logs is [Newest, ..., Oldest]
-  -- We want to take the 100 newest, and show them in chronological order
-  let logsToShow = reverse $ take 100 logs
-  return $ unpack $ T.unlines logsToShow
-
 -- | Implementation of target tool
 targetTool :: ToolExecution
-targetTool _ env _ _ = do
+targetTool _ env _ = do
   let contracts = env.dapp.solcByName
       world = env.world
 
@@ -450,7 +440,7 @@ targetTool _ env _ _ = do
 
 -- | Implementation of show_coverage tool
 showCoverageTool :: ToolExecution
-showCoverageTool args env _ _ = do
+showCoverageTool args env _ = do
   let contractName = Data.Maybe.fromMaybe "" (lookup "contract" args)
   if T.null contractName
      then return "Error: No contract name provided"
@@ -503,13 +493,12 @@ availableTools workerRefs statusRef =
   , Tool "execute_sequence" "Replay a concrete transaction sequence on worker 0 (no random noise) and return a JSON report. Pass trace=\"true\" to also include the EVM trace tree of the LAST tx in the report." executeSequenceTool
   , Tool "clear_fuzz_priorities" "Clear the function prioritization list used in fuzzing" clearPrioritiesTool
   , Tool "sample" "Enable sampling for a function (e.g. 'totalSupply' or 'transfer(address,uint256)') to track call/revert counts, recent revert summaries and return-value min/max ranges. Pass 'off' to clear all sampling. Results appear in the 'samples' field of the 'status' tool output." sampleTool
-  --, Tool "read_logs" "Read the last 100 log messages" readLogsTool
   , Tool "show_coverage" "Show coverage report for a particular contract" showCoverageTool
   ]
 
 -- | Run the MCP Server
-runMCPServer :: Env -> [IORef WorkerState] -> Int -> IORef [Text] -> IO ()
-runMCPServer env workerRefs port logsRef = do
+runMCPServer :: Env -> [IORef WorkerState] -> Int -> IO ()
+runMCPServer env workerRefs port = do
     statusRef <- newIORef (StatusState Nothing [])
 
     -- Spawn listener for coverage events
@@ -580,10 +569,6 @@ runMCPServer env workerRefs port logsRef = do
                     { properties = [("contract", InputSchemaDefinitionProperty "string" "The name of the contract")]
                     , required = ["contract"]
                     }
-                --"read_logs" -> InputSchemaDefinitionObject
-                --    { properties = []
-                --    , required = []
-                --    }
                 "status" -> InputSchemaDefinitionObject
                     { properties = []
                     , required = []
@@ -607,7 +592,7 @@ runMCPServer env workerRefs port logsRef = do
             case find (\t -> pack t.toolName == name) toolsList of
                 Nothing -> return $ Left $ UnknownTool name
                 Just tool -> do
-                    result <- tool.execute args env env.bus logsRef
+                    result <- tool.execute args env env.bus
                     return $ Right $ ContentText $ pack result
 
     let handlers = McpServerHandlers
