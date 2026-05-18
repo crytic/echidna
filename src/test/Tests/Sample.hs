@@ -111,7 +111,7 @@ applySampleEventTests = testGroup "applySampleEvent"
       s1.sampleReturnRange @?= Just (uint 1, uint 2)
 
   , testCase "recent reverts capped at maxRecentReverts (newest first)" $ do
-      let go i st = applySampleEvent ErrorRevert Nothing ("fn" <> T.pack (show i)) [] st
+      let go i = applySampleEvent ErrorRevert Nothing ("fn" <> T.pack (show i)) []
           final = foldr go emptySampleStats [1 .. maxRecentReverts + 5 :: Int]
       length final.sampleRecentReverts @?= maxRecentReverts
       case final.sampleRecentReverts of

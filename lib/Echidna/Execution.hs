@@ -5,7 +5,7 @@ module Echidna.Execution where
 
 import Control.Concurrent.STM (atomically, writeTChan)
 import Control.DeepSeq (force)
-import Control.Monad (when, forM_)
+import Control.Monad (when, unless, forM_)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
@@ -91,7 +91,7 @@ callseq vm txSeq isReplaying = do
   -- Update sample stats for any tracked functions. Off the hot path when
   -- no functions are sampled (the common case).
   sampled <- gets (.sampledFunctions)
-  when (not (Map.null sampled)) $ do
+  unless (Map.null sampled) $ do
     rTypes <- gets (.genDict.rTypes)
     modify' $ \ws ->
       ws { sampledFunctions = updateSampleStats rTypes sampled results }
