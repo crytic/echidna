@@ -62,15 +62,22 @@
           (pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "argotorg";
             repo = "hevm";
-            rev = "8da7ea44ebf5524dce65b14e70cee1a4413eb6f0";
-            sha256 = "sha256-/B4Yi9GU7/dTsPsyBf/F1hbePU+UwDuyA0en6C95v68=";
+            rev = "8b2cb6266413f7f964e49053a278a895a21dc507";
+            sha256 = "sha256-wHkH26sfGLEL6XFYl+qZUPdWRZLnoftTqpufy5ASX7k=";
           }) { secp256k1 = pkgs.secp256k1; })
           ([
             pkgs.haskell.lib.compose.dontCheck
           ]);
 
+        mcp-server = pkgs: pkgs.haskellPackages.callCabal2nix "mcp-server" (pkgs.fetchFromGitHub {
+          owner = "gustavo-grieco";
+          repo = "haskell-mcp-server";
+          rev = "9fd60af428b96ae4bc63a133b3960ed934494189";
+          sha256 = "sha256-lh65Gy8a43xbDDFPONOJ2UBUS1xWOW2UUx3wYFTG8Xg=";
+        }) {};
+
         echidna = pkgs: with pkgs; lib.pipe
-          (haskellPackages.callCabal2nix "echidna" ./. { hevm = hevm pkgs; })
+          (haskellPackages.callCabal2nix "echidna" ./. { hevm = hevm pkgs; mcp-server = mcp-server pkgs; })
           ([
             # FIXME: figure out solc situation, it conflicts with the one from
             # solc-select that is installed with slither, disable tests in the meantime
