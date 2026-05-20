@@ -24,7 +24,7 @@ import Echidna.Types.Config
 import Echidna.Types.Corpus (corpusSize)
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
-import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
+import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..), TxResult)
 import Echidna.Types.Worker
 import Echidna.Utility (timePrefix)
 import Echidna.Worker
@@ -139,22 +139,24 @@ ppCorpus = do
   pure $ "Corpus size: " <> show (corpusSize corpus)
 
 -- | Pretty-print the status of a solved test.
-ppFail :: (MonadReader Env m, MonadIO m) => Maybe (Int, Int) -> VM Concrete -> [Tx] -> m String
-ppFail _ _ []  = pure "failed with no transactions made ⁉️ "
-ppFail b vm xs = do
+ppFail :: (MonadReader Env m, MonadIO m) => Maybe (Int, Int) -> TxResult -> VM Concrete -> [Tx] -> m String
+ppFail _ result _ []  =
+  pure $ "failed!💥  \n  Reason: " <> show result <> "\n  No transactions were needed to reach the failure."
+ppFail b result vm xs = do
   let status = case b of
         Nothing    -> ""
         Just (n,m) -> ", shrinking " <> progress n m
   prettyTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> xs) /= 1) xs
   dappInfo <- asks (.dapp)
-  pure $ "failed!💥  \n  Call sequence" <> status <> ":\n"
+  pure $ "failed!💥  \n  Reason: " <> show result <> "\n  Call sequence" <> status <> ":\n"
          <> unlines (("    " <>) <$> prettyTxs) <> "\n"
          <> "Traces: \n" <> T.unpack (showTraceTree dappInfo vm)
 
 -- | Pretty-print the status of a solved test.
-ppFailWithTraces :: (MonadReader Env m, MonadIO m) => Maybe (Int, Int) -> VM Concrete -> [(Tx, VM Concrete)] -> m String
-ppFailWithTraces  _ _ []  = pure "failed with no transactions made ⁉️ "
-ppFailWithTraces b finalVM results = do
+ppFailWithTraces :: (MonadReader Env m, MonadIO m) => Maybe (Int, Int) -> TxResult -> VM Concrete -> [(Tx, VM Concrete)] -> m String
+ppFailWithTraces  _ result _ []  =
+  pure $ "failed!💥  \n  Reason: " <> show result <> "\n  No transactions were needed to reach the failure."
+ppFailWithTraces b result finalVM results = do
   dappInfo <- asks (.dapp)
   let xs = fst <$> results
   let status = case b of
@@ -164,22 +166,22 @@ ppFailWithTraces b finalVM results = do
   prettyTxs <- forM results $ \(tx, vm) -> do
     txPrinted <- ppTx vm printName tx
     pure $ txPrinted <> "\nTraces:\n" <> T.unpack (showTraceTree dappInfo vm)
-  pure $ "failed!💥  \n  Call sequence" <> status <> ":\n"
+  pure $ "failed!💥  \n  Reason: " <> show result <> "\n  Call sequence" <> status <> ":\n"
          <> unlines (("    " <>) <$> prettyTxs) <> "\n"
          <> "Test traces: \n" <> T.unpack (showTraceTree dappInfo finalVM)
 
 -- | Pretty-print the status of a test.
 
-ppTS :: (MonadReader Env m, MonadIO m) => TestState -> VM Concrete -> [Tx] -> m String
-ppTS (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
-ppTS Solved     vm l = ppFail Nothing vm l
-ppTS Passed     _ _  = pure " passed! 🎉"
-ppTS Open      _ []  = pure "passing"
-ppTS Unsolvable _ _ = pure "verified ✅"
-ppTS Open      vm r  = ppFail Nothing vm r
-ppTS (Large n) vm l  = do
+ppTS :: (MonadReader Env m, MonadIO m) => TestState -> TxResult -> VM Concrete -> [Tx] -> m String
+ppTS (Failed e) _ _ _  = pure $ "could not evaluate ☣\n  " <> show e
+ppTS Solved     res vm l = ppFail Nothing res vm l
+ppTS Passed     _ _ _  = pure " passed! 🎉"
+ppTS Open      _ _ []  = pure "passing"
+ppTS Unsolvable _ _ _ = pure "verified ✅"
+ppTS Open      res vm r  = ppFail Nothing res vm r
+ppTS (Large n) res vm l  = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
-  ppFail (if n < m then Just (n, m) else Nothing) vm l
+  ppFail (if n < m then Just (n, m) else Nothing) res vm l
 
 ppOPT :: (MonadReader Env m, MonadIO m) => TestState -> VM Concrete -> [Tx] -> m String
 ppOPT (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
@@ -212,13 +214,13 @@ ppTests tests = do
   pp t =
     case t.testType of
       PropertyTest n _ -> do
-        status <- ppTS t.state (fromJust t.vm) t.reproducer
+        status <- ppTS t.state t.result (fromJust t.vm) t.reproducer
         pure $ Just (T.unpack n <> ": " <> status)
       CallTest n _ -> do
-        status <- ppTS t.state (fromJust t.vm) t.reproducer
+        status <- ppTS t.state t.result (fromJust t.vm) t.reproducer
         pure $ Just (T.unpack n <> ": " <> status)
       AssertionTest _ s _ -> do
-        status <- ppTS t.state (fromJust t.vm) t.reproducer
+        status <- ppTS t.state t.result (fromJust t.vm) t.reproducer
         pure $ Just (T.unpack (encodeSig s) <> ": " <> status)
       OptimizationTest n _ -> do
         status <- ppOPT t.state (fromJust t.vm) t.reproducer
