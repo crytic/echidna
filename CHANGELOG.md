@@ -1,5 +1,7 @@
 ## Unreleased
 
+* The reason a test failed (e.g. revert, returned false) is now shown consistently in the text, JSON and UI outputs, including when no transactions are required to reproduce the failure (#1476)
+
 ## 2.3.2
 
 * Improved support for Foundry tests (#1499)

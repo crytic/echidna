@@ -360,7 +360,9 @@ failWidget
   -> EchidnaTest
   -> m (Widget Name, Widget Name)
 failWidget _ test | null test.reproducer =
-  pure (failureBadge, str "*no transactions made*")
+  pure ( failureBadge <+> str (" with " ++ show test.result)
+       , str "*no transactions made*"
+       )
 failWidget b test = do
   -- TODO: we know this is set for failed tests, ideally we should improve this
   -- with better types in EchidnaTest
