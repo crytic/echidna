@@ -65,7 +65,7 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
 
   mainContract <- selectMainContract solConf selectedContract contracts
   tests <- mkTests solConf campaignConf mainContract
-  signatureMap <- mkSignatureMap solConf mainContract contracts
+  signatureMap <- mkSignatureMap solConf campaignConf mainContract contracts
 
   -- run processors
   slitherInfo <- runSlither (NE.head solFiles) solConf
