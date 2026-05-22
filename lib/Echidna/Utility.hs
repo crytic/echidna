@@ -2,6 +2,8 @@ module Echidna.Utility where
 
 import Control.Monad (unless)
 import Control.Monad.Catch (bracket)
+import Data.String.AnsiEscapeCodes.Strip.Text (stripAnsiEscapeCodes)
+import Data.Text (Text)
 import Data.Time (diffUTCTime, getCurrentTime, zonedTimeToLocalTime, LocalTime, getZonedTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import System.Directory (getDirectoryContents, getCurrentDirectory, setCurrentDirectory)
@@ -25,6 +27,10 @@ getTimestamp =
 timePrefix :: LocalTime -> String
 timePrefix time =
   "[" <> formatTime defaultTimeLocale "%F %T.%2q" time <> "] "
+
+applyAnsiColor :: Bool -> Text -> Text
+applyAnsiColor True  = id
+applyAnsiColor False = stripAnsiEscapeCodes
 
 listDirectory :: FilePath -> IO [FilePath]
 listDirectory path = filter f <$> getDirectoryContents path
