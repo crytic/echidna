@@ -5,8 +5,7 @@
 module Echidna.Output.Foundry (foundryTest) where
 
 import Data.Aeson (Value(..), object, (.=))
-import Data.Functor ((<&>))
-import Data.List (elemIndex, nub)
+import Data.List (elemIndex, isPrefixOf, nub)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text, unpack)
 import Data.Text.Lazy (fromStrict)
@@ -33,26 +32,59 @@ foundryTest :: Maybe Text -> Addr -> EchidnaTest -> TL.Text
 foundryTest mContractName psender test =
   case test.testType of
     AssertionTest{} ->
-      let testData = createTestData mContractName Nothing test
+      let testData = createTestData mContractName Nothing Nothing test
       in fromStrict $ substituteValue template (toMustache testData)
     PropertyTest name _ ->
-      let testData = createTestData mContractName (Just (name, psender)) test
+      let testData = createTestData mContractName (Just (name, psender)) Nothing test
+      in fromStrict $ substituteValue template (toMustache testData)
+    CallTest name _ | "AssertionFailed" `isPrefixOf` unpack name ->
+      -- Echidna detects assertion failures via events named AssertionFailed
+      -- with any argument types (see checkAssertionEvent in Echidna.Test).
+      -- We check all overloads defined in crytic's fuzzlib (LibLog.sol):
+      --   AssertionFailed()
+      --   AssertionFailed(string)
+      --   AssertionFailed(string,string)
+      --   AssertionFailed(string,bytes)
+      --   AssertionFailed(string,uint256)
+      --   AssertionFailed(string,int256)
+      --   AssertionFailed(string,address)
+      --   AssertionFailed(string,bool)
+      --   AssertionFailed(string,bytes32)
+      let eventAssert = Just $
+            "        // Check that an AssertionFailed event was emitted\n"
+            ++ "        Vm.Log[] memory entries = vm.getRecordedLogs();\n"
+            ++ "        bool found = false;\n"
+            ++ "        for (uint i = 0; i < entries.length; i++) {\n"
+            ++ "            if (entries[i].topics.length > 0 && _isAssertionFailed(entries[i].topics[0])) {\n"
+            ++ "                found = true;\n"
+            ++ "                break;\n"
+            ++ "            }\n"
+            ++ "        }\n"
+            ++ "        assertTrue(found, \"Expected AssertionFailed event\");"
+          testData = createTestData mContractName Nothing eventAssert test
       in fromStrict $ substituteValue template (toMustache testData)
     _ -> ""
 
 -- | Create an Aeson Value from test data for the Mustache template.
 -- When a property name and psender are provided, a final assertion is added
 -- to call the property from psender and check it returns false.
-createTestData :: Maybe Text -> Maybe (Text, Addr) -> EchidnaTest -> Value
-createTestData mContractName mProperty test =
+-- When an event assertion is provided, vm.recordLogs() is added at the start
+-- and the event check is added at the end.
+createTestData :: Maybe Text -> Maybe (Text, Addr) -> Maybe String -> EchidnaTest -> Value
+createTestData mContractName mProperty mEventAssert test =
   let
     senders = nub $ map (.src) test.reproducer
     actors = zipWith actorObject senders [1..]
     repro = mapMaybe (foundryTx senders) test.reproducer
     cName = fromMaybe "YourContract" mContractName
-    propAssertion = mProperty <&> \(name, addr) ->
-      "        vm.stopPrank();\n        vm.prank(" ++ formatAddr addr ++ ");\n"
-      ++ "        assertFalse(Target." ++ unpack name ++ "());"
+    propAssertion = case mProperty of
+      Just (name, addr) -> Just $
+        "        vm.stopPrank();\n        vm.prank(" ++ formatAddr addr ++ ");\n"
+        ++ "        assertFalse(Target." ++ unpack name ++ "());"
+      Nothing -> mEventAssert
+    preamble = case mEventAssert of
+      Just _ -> Just ("        vm.recordLogs();" :: String)
+      Nothing -> Nothing
   in
   object
     [ "testName"     .= ("FoundryTest" :: Text)
@@ -60,6 +92,7 @@ createTestData mContractName mProperty test =
     , "actors"       .= actors
     , "reproducer"   .= repro
     , "propertyAssertion" .= propAssertion
+    , "preamble"     .= preamble
     ]
 
 -- | Create a JSON object for an actor.
