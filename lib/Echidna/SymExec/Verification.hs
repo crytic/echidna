@@ -66,7 +66,7 @@ verifyMethod method contract vm = do
   let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
-  pushWorkerEvent $ SymExecLog ("Verifying " <> (show method.name))
+  pushWorkerEvent $ SymExecLog ("Verifying " <> Text.unpack method.methodSignature)
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
