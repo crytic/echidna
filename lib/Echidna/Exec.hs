@@ -11,7 +11,7 @@ import Control.Monad.ST (ST, stToIO, RealWorld)
 import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO), gets, modify', execStateT)
 import Data.Bits
 import Data.ByteString qualified as BS
-import Data.IORef (readIORef, newIORef, writeIORef, modifyIORef')
+import Data.IORef (IORef, readIORef, newIORef, writeIORef, modifyIORef')
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
@@ -103,75 +103,8 @@ execTxWith executeTx tx = do
         pure vmResult
   where
   runFully = do
-    config <- asks (.cfg)
-    -- TODO: Is the latest block a good default? It makes fuzzing hard to reproduce. Rethink this.
-    let rpcBlock = maybe EVM.Fetch.Latest (EVM.Fetch.BlockNumber . fromIntegral) config.rpcBlock
-
     vmResult <- executeTx
-    -- For queries, we halt execution because the VM needs some additional
-    -- information from the outside. We provide this information and resume
-    -- the execution by recursively calling `runFully`.
-    case getQuery vmResult of
-      -- A previously unknown contract is required
-      Just q@(PleaseFetchContract addr _ continuation) -> do
-        --logMsg $ "INFO: Performing RPC: " <> show q
-        case config.rpcUrl of
-          Just rpcUrl -> do
-            session <- asks (.fetchSession)
-            ret <- liftIO $ safeFetchContractFrom session rpcBlock rpcUrl addr
-            case ret of
-              EVM.Fetch.FetchSuccess contract _ -> do
-                fromEVM (continuation contract)
-              EVM.Fetch.FetchFailure _ -> do
-                fromEVM (continuation emptyAccount)
-              EVM.Fetch.FetchError e -> do
-                error $ "ERROR: Failed to fetch contract: " <> show q <> " " <> T.unpack e
-          Nothing -> do
-            --logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
-            -- TODO: How should we fail here? RPC is not configured but VM
-            -- wants to fetch
-            fromEVM (continuation emptyAccount)
-        runFully -- resume execution
-
-      -- A previously unknown slot is required
-      Just q@(PleaseFetchSlot addr slot continuation) -> do
-        case config.rpcUrl of
-          Just rpcUrl -> do
-            session <- asks (.fetchSession)
-            ret <- liftIO $ safeFetchSlotFrom session rpcBlock rpcUrl addr slot
-            case ret of
-              EVM.Fetch.FetchSuccess value status -> do
-                -- Log only in text mode, ignoring quiet flag as this is important info
-                when (status == EVM.Fetch.Fresh) $ logMsg $ "Fetched new slot: " <> show q
-                fromEVM (continuation value)
-              EVM.Fetch.FetchFailure _ -> do
-                fromEVM (continuation 0)
-              EVM.Fetch.FetchError e -> do
-                error $ "ERROR: Failed to fetch slot: " <> show q <> " " <> T.unpack e
-          Nothing -> do
-            --logMsg $ "ERROR: Requested RPC but it is not configured: " <> show q
-            -- Use the zero slot
-            fromEVM (continuation 0)
-        runFully -- resume execution
-
-      -- Execute a FFI call
-      Just (PleaseDoFFI (cmd : args) envs continuation) -> do
-        existingEnv <- liftIO getEnvironment
-        let mergedEnv = Map.toList $ Map.union envs $ Map.fromList existingEnv
-        let process = (P.proc cmd args) { P.env = Just mergedEnv }
-        (_, stdout, _) <- liftIO $ P.readCreateProcessWithExitCode process ""
-        let encodedResponse = encodeAbiValue $
-              AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.strip . T.pack $ stdout])
-        fromEVM (continuation encodedResponse)
-        runFully
-
-      Just (PleaseReadEnv var continuation) -> do
-        value <- liftIO $ lookupEnv var
-        fromEVM (continuation $ fromMaybe "" value)
-        runFully -- resume execution
-
-      -- No queries to answer, the tx is fully executed and the result is final
-      _ -> pure vmResult
+    maybe (pure vmResult) (\q -> handleQuery q >> runFully) (getQuery vmResult)
 
   -- | Handles reverts, failures and contract creations that might be the result
   -- (`vmResult`) of executing transaction `tx`.
@@ -203,6 +136,71 @@ execTxWith executeTx tx = do
       fromEVM $ replaceCodeOfSelf (RuntimeCode (ConcreteRuntimeCode bytecode'))
       modify' $ execState $ loadContract (LitAddr tx.dst)
     _ -> pure ()
+
+  getRpcInfo = do
+    config <- asks (.cfg)
+    -- TODO: Is the latest block a good default? It makes fuzzing hard to reproduce. Rethink this.
+    let rpcBlock = maybe EVM.Fetch.Latest (EVM.Fetch.BlockNumber . fromIntegral) config.rpcBlock
+    return (config.rpcUrl, rpcBlock)
+
+  -- For queries, we halt execution because the VM needs some additional
+  -- information from the outside. We provide this information, and then
+  -- the execution is resumed.
+
+  -- A previously unknown contract is required
+  handleQuery q@(PleaseFetchContract addr _ continuation) = do
+    (maybeRpcUrl, rpcBlock) <- getRpcInfo
+    case maybeRpcUrl of
+      Just rpcUrl -> do
+        session <- asks (.fetchSession)
+        ret <- liftIO $ safeFetchContractFrom session rpcBlock rpcUrl addr
+        case ret of
+          EVM.Fetch.FetchSuccess contract _ -> do
+            fromEVM (continuation contract)
+          EVM.Fetch.FetchFailure _ -> do
+            fromEVM (continuation emptyAccount)
+          EVM.Fetch.FetchError e -> do
+            error $ "ERROR: Failed to fetch contract: " <> show q <> " " <> T.unpack e
+      Nothing -> do
+        -- TODO: How should we fail here? RPC is not configured but VM
+        -- wants to fetch
+        fromEVM (continuation emptyAccount)
+
+  -- A previously unknown slot is required
+  handleQuery q@(PleaseFetchSlot addr slot continuation) = do
+    (maybeRpcUrl, rpcBlock) <- getRpcInfo
+    case maybeRpcUrl of
+      Just rpcUrl -> do
+        session <- asks (.fetchSession)
+        ret <- liftIO $ safeFetchSlotFrom session rpcBlock rpcUrl addr slot
+        case ret of
+          EVM.Fetch.FetchSuccess value status -> do
+            -- Log only in text mode, ignoring quiet flag as this is important info
+            when (status == EVM.Fetch.Fresh) $ logMsg $ "Fetched new slot: " <> show q
+            fromEVM (continuation value)
+          EVM.Fetch.FetchFailure _ -> do
+            fromEVM (continuation 0)
+          EVM.Fetch.FetchError e -> do
+            error $ "ERROR: Failed to fetch slot: " <> show q <> " " <> T.unpack e
+      Nothing -> do
+        -- Use the zero slot
+        fromEVM (continuation 0)
+
+  -- Execute a FFI call
+  handleQuery (PleaseDoFFI (cmd : args) envs continuation) = do
+    existingEnv <- liftIO getEnvironment
+    let mergedEnv = Map.toList $ Map.union envs $ Map.fromList existingEnv
+    let process = (P.proc cmd args) { P.env = Just mergedEnv }
+    (_, stdout, _) <- liftIO $ P.readCreateProcessWithExitCode process ""
+    let encodedResponse = encodeAbiValue $
+          AbiTuple (V.fromList [AbiBytesDynamic . hexText . T.strip . T.pack $ stdout])
+    fromEVM (continuation encodedResponse)
+
+  handleQuery (PleaseDoFFI [] _ _) = error "Malformed FFI call"
+
+  handleQuery (PleaseReadEnv var continuation) = do
+    value <- liftIO $ lookupEnv var
+    fromEVM (continuation $ fromMaybe "" value)
 
 logMsg :: (MonadIO m, MonadReader Env m) => String -> m ()
 logMsg msg = do
@@ -249,69 +247,76 @@ execTxWithCov tx = do
     _ -> pure False
 
   pure (r, grew || grew')
+
+-- | The same as EVM.exec but collects coverage, will stop on a query
+execCov
+  :: (MonadIO m, MonadState (VM Concrete) m, MonadThrow m)
+  => Env
+  -> IORef CoverageContext
+  -> m (VMResult Concrete)
+execCov env covContextRef = do
+  vm <- get
+  (r, vm') <- liftIO $ loop vm
+  put vm'
+  pure r
   where
-    -- the same as EVM.exec but collects coverage, will stop on a query
-    execCov env covContextRef = do
-      vm <- get
-      (r, vm') <- liftIO $ loop vm
-      put vm'
-      pure r
-      where
-      -- | Repeatedly exec a step and add coverage until we have an end result
-      loop :: VM Concrete -> IO (VMResult Concrete, VM Concrete)
-      loop !vm = case vm.result of
-        Nothing -> do
-          addCoverage vm
-          stepVM vm >>= loop
-        Just r -> pure (r, vm)
+  -- | Repeatedly exec a step and add coverage until we have an end result
+  loop :: VM Concrete -> IO (VMResult Concrete, VM Concrete)
+  loop !vm = case vm.result of
+    Nothing -> do
+      addCoverage vm
+      stepVM vm >>= loop
+    Just r -> pure (r, vm)
 
-      -- | Execute one instruction on the EVM
-      stepVM :: VM Concrete -> IO (VM Concrete)
-      stepVM = stToIO . execStateT (exec1 defaultConfig)
+  -- | Execute one instruction on the EVM
+  stepVM :: VM Concrete -> IO (VM Concrete)
+  stepVM = stToIO . execStateT (exec1 defaultConfig)
 
-      -- | Add current location to the CoverageMap
-      addCoverage :: VM Concrete -> IO ()
-      addCoverage !vm = do
-        let (pc, opIx, depth) = currentCovLoc vm
-            contract = currentContract vm
-            covRef = case contract.code of
-              InitCode _ _ -> env.coverageRefInit
-              _ -> env.coverageRefRuntime
+  -- | Add current location to the CoverageMap
+  addCoverage :: VM Concrete -> IO ()
+  addCoverage !vm = do
+    let (pc, opIx, depth) = currentCovLoc vm
+        contract = currentContract vm
+        covRef = case contract.code of
+          InitCode _ _ -> env.coverageRefInit
+          _ -> env.coverageRefRuntime
 
-        maybeCovVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp covRef $ do
-          let
-            size = case contract.code of
-              InitCode b _ -> BS.length b
-              _ -> BS.length . forceBuf . fromJust . view bytecode $ contract
-          if size == 0 then pure Nothing else do
-            -- IO for making a new vec
-            vec <- VMut.new size
-            -- We use -1 for opIx to indicate that the location was not covered
-            forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0)
-            pure $ Just vec
+    maybeCovVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp covRef $ createCoverageVec contract
 
-        case maybeCovVec of
-          Nothing -> pure ()
-          Just vec -> do
-            -- TODO: no-op when pc is out-of-bounds. This shouldn't happen but
-            -- we observed this in some real-world scenarios. This is likely a
-            -- bug in another place, investigate.
-            -- ... this should be fixed now, since we use `codeContract` instead
-            -- of `contract` for everything; it may be safe to remove this check.
-            when (pc < VMut.length vec) $
-              VMut.read vec pc >>= \case
-                (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
-                  VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
-                  writeIORef covContextRef (True, Just (vec, pc))
-                _ ->
-                  modifyIORef' covContextRef $ \(new, _) -> (new, Just (vec, pc))
+    case maybeCovVec of
+      Nothing -> pure ()
+      Just vec ->
+        -- TODO: no-op when pc is out-of-bounds. This shouldn't happen but
+        -- we observed this in some real-world scenarios. This is likely a
+        -- bug in another place, investigate.
+        -- ... this should be fixed now, since we use `codeContract` instead
+        -- of `contract` for everything; it may be safe to remove this check.
+        when (pc < VMut.length vec) $
+          VMut.read vec pc >>= \case
+            (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
+              VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
+              writeIORef covContextRef (True, Just (vec, pc))
+            _ ->
+              modifyIORef' covContextRef $ \(new, _) -> (new, Just (vec, pc))
 
-      -- | Get the VM's current execution location
-      currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames)
+  createCoverageVec contract = do
+    let
+      size = case contract.code of
+        InitCode b _ -> BS.length b
+        _ -> BS.length . forceBuf . fromJust . view bytecode $ contract
+    if size == 0 then pure Nothing else do
+      -- IO for making a new vec
+      vec <- VMut.new size
+      -- We use -1 for opIx to indicate that the location was not covered
+      forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0)
+      pure $ Just vec
 
-      -- | Get the current contract being executed
-      currentContract vm = fromMaybe (error "no contract information on coverage") $
-        vm ^? #env % #contracts % at vm.state.codeContract % _Just
+  -- | Get the VM's current execution location
+  currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames)
+
+  -- | Get the current contract being executed
+  currentContract vm = fromMaybe (error "no contract information on coverage") $
+    vm ^? #env % #contracts % at vm.state.codeContract % _Just
 
 initialVM :: Bool -> ST RealWorld (VM Concrete)
 initialVM ffi = do
