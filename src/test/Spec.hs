@@ -6,6 +6,7 @@ import Tests.Cheat (cheatTests)
 import Tests.Compile (compilationTests)
 import Tests.Config (configTests)
 import Tests.Coverage (coverageTests)
+import Tests.Dict (dictTests)
 import Tests.Encoding (encodingJSONTests)
 import Tests.Foundry (foundryTests)
 import Tests.FoundryTestGen (foundryTestGenTests)
@@ -21,6 +22,7 @@ main :: IO ()
 main = withCurrentDirectory "./tests/solidity" . defaultMain $
          testGroup "Echidna"
            [ configTests
+           , dictTests
            , compilationTests
            , seedTests
            , integrationTests
