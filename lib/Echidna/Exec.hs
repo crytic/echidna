@@ -40,7 +40,7 @@ import Echidna.Types (ExecException(..), fromEVM, emptyAccount)
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Solidity (SolConf(..))
-import Echidna.Types.Tx (TxCall(..), Tx(call, dst), TxResult(..), initialTimestamp, initialBlockNumber, getResult)
+import Echidna.Types.Tx (TxCall(..), Tx(call, dst, delay), TxResult(..), initialTimestamp, initialBlockNumber, getResult)
 import Echidna.Utility (getTimestamp, timePrefix)
 
 -- | Broad categories of execution failures: reversions, illegal operations, and ???.
@@ -184,6 +184,10 @@ execTxWith executeTx tx = do
       burnedGas <- gets (.burned)
       -- If a transaction reverts reset VM to state before the transaction.
       put vmBeforeTx
+      -- Re-apply the time/block advancement from the transaction's delay.
+      -- Time doesn't go backwards on revert, only EVM state does.
+      let txDelay = tx.delay
+      #block %= \b -> advanceBlock b txDelay
       -- Undo reset of some of the VM state.
       -- Otherwise we'd lose all information about the reverted transaction like
       -- contract address, calldata, result and traces.
