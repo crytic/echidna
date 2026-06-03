@@ -18,6 +18,23 @@ cd libff
 git checkout v0.2.1
 git submodule init && git submodule update
 
+# Fix libff header installation with CMake >= 4.3
+# CMake 4.3 commit 4e7e6928cb ("install: Fix bugs around empty
+#  directories") changed the behavior of install(DIRECTORY "" ...).
+# Previously, an empty string was silently expanded to the current source
+# directory. CMake 4.3 now treats it as a no-op that creates the
+# destination directory but installs nothing into it.
+# Replace the empty string with "./" to explicitly reference the current
+# source directory, restoring header installation. The trailing slash
+# ensures the directory *contents* are installed rather than the directory
+# itself.
+# See: https://gitlab.kitware.com/cmake/cmake/-/issues/27568
+if [ "$HOST_OS" = "macOS" ]; then
+  sed -i '' 's#DIRECTORY "" DESTINATION "include/libff"#DIRECTORY "./" DESTINATION "include/libff"#' libff/CMakeLists.txt
+else
+  sed -i 's#DIRECTORY "" DESTINATION "include/libff"#DIRECTORY "./" DESTINATION "include/libff"#' libff/CMakeLists.txt
+fi
+
 ARGS=("-DCMAKE_INSTALL_PREFIX=$PREFIX" "-DWITH_PROCPS=OFF" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DCMAKE_CXX_STANDARD=11")
 CXXFLAGS=""
 if [ "$HOST_OS" = "macOS" ]; then
