@@ -186,8 +186,7 @@ execTxWith executeTx tx = do
       put vmBeforeTx
       -- Re-apply the time/block advancement from the transaction's delay.
       -- Time doesn't go backwards on revert, only EVM state does.
-      let txDelay = tx.delay
-      #block %= \b -> advanceBlock b txDelay
+      #block %= \b -> advanceBlock b tx.delay
       -- Undo reset of some of the VM state.
       -- Otherwise we'd lose all information about the reverted transaction like
       -- contract address, calldata, result and traces.
