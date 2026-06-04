@@ -22,7 +22,7 @@ import Echidna.Types.Config (Env(..))
 import Echidna.Types.Coverage (CoverageInfo, mergeCoverageMaps)
 import Echidna.Types.Test (EchidnaTest(..))
 import Echidna.Types.Test qualified as T
-import Echidna.Types.Tx (Tx(..), TxCall(..))
+import Echidna.Types.Tx (Tx(..), TxCall(..), TxResult)
 
 data Campaign = Campaign
   { _success :: Bool
@@ -46,6 +46,7 @@ data Test = Test
   , name :: Text
   , status :: TestStatus
   , _error :: Maybe String
+  , reason :: Maybe TxResult
   , events :: Events
   , testType :: TestType
   , transactions :: Maybe [Transaction]
@@ -57,6 +58,7 @@ instance ToJSON Test where
     , "name" .= name
     , "status" .= status
     , "error" .= _error
+    , "reason" .= reason
     , "events" .= events
     , "type" .= testType
     , "transactions" .= transactions
@@ -122,6 +124,7 @@ mapTest dappInfo test =
     , name = "name" -- TODO add a proper name here
     , status = status
     , _error = err
+    , reason = mapReason test.state
     , events = maybe [] (extractEvents False dappInfo) test.vm
     , testType = Property
     , transactions = transactions
@@ -133,6 +136,11 @@ mapTest dappInfo test =
   mapTestState T.Unsolvable _ = (Verified, Nothing, Nothing)
   mapTestState (T.Large _) txs = (Shrinking, Just $ mapTx <$> txs, Nothing)
   mapTestState (T.Failed e) _ = (Error, Nothing, Just $ Prelude.show e) -- TODO add (show e)
+
+  -- The reason a test failed is only meaningful for falsified tests.
+  mapReason T.Solved    = Just test.result
+  mapReason (T.Large _) = Just test.result
+  mapReason _           = Nothing
 
   mapTx tx =
     let (function, args) = mapCall tx.call
