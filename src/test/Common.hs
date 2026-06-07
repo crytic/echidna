@@ -1,11 +1,13 @@
 module Common
   ( testConfig
   , runContract
+  , runContractMultiWorker
   , testContract
   , testContractV
   , solcV
   , withSolcVersion
   , testContract'
+  , testContractMultiWorker
   , testContractNamed
   , checkConstructorConditions
   , optimized
@@ -24,6 +26,8 @@ module Common
   , gasConsumedGt
   ) where
 
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (forM_)
 import Control.Monad.Random (getRandomR)
 import Control.Monad.Reader (runReaderT)
@@ -45,6 +49,8 @@ import EVM.Types hiding (Env, Gas)
 
 import Echidna (mkEnv, prepareContract)
 import Echidna.Campaign (runWorker)
+import Echidna.Types.Worker (WorkerType(..), WorkerEvent(..), CampaignEvent(..))
+import Echidna.Worker (pushCampaignEvent)
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Solidity (selectMainContract, mkTests, loadSpecified, compileContracts)
 import Echidna.Test (checkETest)
@@ -54,7 +60,6 @@ import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..))
-import Echidna.Types.Worker (WorkerType(..))
 import Echidna.Types.World (World(..))
 
 testConfig :: EConfig
@@ -103,6 +108,49 @@ runContract f selectedContract cfg workerType = do
   -- TODO: consider snapshotting the state so checking functions don't need to
   -- be IO
   pure (env, finalState)
+
+-- | Run a contract with multiple workers (fuzz + symbolic) concurrently.
+-- Returns the env and the symbolic worker's state.
+runContractMultiWorker :: FilePath -> Maybe ContractName -> EConfig -> IO (Env, WorkerState)
+runContractMultiWorker f selectedContract cfg = do
+  seed <- maybe (getRandomR (0, maxBound)) pure cfg.campaignConf.seed
+  buildOutput <- compileContracts cfg.solConf (f :| [])
+  (vm, env, dict) <- prepareContract cfg (f :| []) buildOutput selectedContract seed
+  let nFuzz = getNFuzzWorkers cfg.campaignConf
+  -- Spawn fuzz workers, push WorkerStopped when done
+  forM_ [0..nFuzz-1] $ \wid ->
+    forkIO $ do
+      (stopReason, _) <- flip runReaderT env $
+        runWorker FuzzWorker (pure ()) vm dict wid [] cfg.campaignConf.testLimit selectedContract
+      pushCampaignEvent env (WorkerEvent wid FuzzWorker (WorkerStopped stopReason))
+  -- Spawn symbolic worker (last worker ID)
+  let symWid = nFuzz
+  symResult <- newEmptyMVar
+  _ <- forkIO $ do
+    result <- flip runReaderT env $
+      runWorker SymbolicWorker (pure ()) vm dict symWid [] cfg.campaignConf.testLimit selectedContract
+    putMVar symResult result
+  -- Wait for symbolic worker (it exits after all fuzz workers send WorkerStopped)
+  (_stopReason, finalState) <- takeMVar symResult
+  pure (env, finalState)
+
+testContractMultiWorker
+  :: FilePath
+  -> Maybe ContractName
+  -> Maybe SolcVersionComp
+  -> Maybe FilePath
+  -> [(String, (Env, WorkerState) -> IO Bool)]
+  -> TestTree
+testContractMultiWorker fp n v configPath expectations = testCase fp $ withSolcVersion v $ do
+  c <- case configPath of
+    Just path -> do
+      parsed <- parseConfig path
+      pure parsed.econfig
+    Nothing -> pure testConfig
+  let c' = c & overrideQuiet
+  result <- runContractMultiWorker fp n c'
+  forM_ expectations $ \(message, assertion) -> do
+    assertion result >>= assertBool message
 
 testContract
   :: FilePath
