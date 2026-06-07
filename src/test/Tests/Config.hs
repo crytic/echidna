@@ -1,6 +1,7 @@
 module Tests.Config (configTests) where
 
 import Control.Monad (void)
+import Data.ByteString (ByteString)
 import Data.Function ((&))
 import Data.Maybe (isJust, isNothing)
 import Data.Yaml qualified as Y
@@ -9,7 +10,12 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertBool, assertFailure)
 
 import Echidna.Config (defaultConfig, parseConfig)
-import Echidna.Types.Campaign (CampaignConf(..))
+import Echidna.Types.Campaign
+  ( CampaignConf(..)
+  , defaultDictDynamicCallsLimit
+  , defaultDictDynamicConstantsLimit
+  , defaultDictDynamicValuesLimit
+  )
 import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..))
 import Echidna.Types.Tx (TxConf(..))
 
@@ -39,6 +45,16 @@ configTests = testGroup "Configuration tests" $
       assertBool "" $ isNothing (defaultConfig.campaignConf.corpusDir)
   , testCase "coverageDir defaults to Nothing" $
       assertBool "" $ isNothing (defaultConfig.campaignConf.coverageDir)
+  , testCase "dynamic dictionary limits default" $ do
+      assertBool "" $ defaultConfig.campaignConf.dictDynamicConstantsLimit == defaultDictDynamicConstantsLimit
+      assertBool "" $ defaultConfig.campaignConf.dictDynamicValuesLimit == defaultDictDynamicValuesLimit
+      assertBool "" $ defaultConfig.campaignConf.dictDynamicCallsLimit == defaultDictDynamicCallsLimit
+  , testCase "dynamic dictionary limits reject negative values" $
+      mapM_ assertRejectsNegative
+        ([ "dictDynamicConstantsLimit"
+        , "dictDynamicValuesLimit"
+        , "dictDynamicCallsLimit"
+        ] :: [ByteString])
   , testCase "default.yaml" $ do
       EConfigWithUsage _ bad unset <- parseConfig "basic/default.yaml"
       assertBool ("unused options: " ++ show bad) $ null bad
@@ -56,3 +72,7 @@ configTests = testGroup "Configuration tests" $
         Left _ -> pure ()
   ]
   where files = ["basic/config.yaml", "basic/default.yaml", "basic/coverage-test.yaml", "basic/corpus-fallback-test.yaml"]
+        assertRejectsNegative key =
+          case Y.decodeEither' (key <> ": -1") of
+            Right (_ :: EConfigWithUsage) -> assertFailure $ show key <> " should not decode"
+            Left _ -> pure ()
