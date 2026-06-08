@@ -27,6 +27,7 @@ import Data.Text (Text, unpack)
 import Data.Time (LocalTime)
 import Data.Vector qualified as V
 import System.Random (mkStdGen)
+import UnliftIO.STM (TChan, atomically, dupTChan, readTChan)
 
 import EVM (cheatCode)
 import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
@@ -120,7 +121,7 @@ runSymWorker callback vm dict workerId _ name = do
   cfg <- asks (.cfg)
   let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
   eventQueue <- asks (.eventQueue)
-  chan <- liftIO $ dupChan eventQueue
+  chan <- liftIO $ atomically $ dupTChan eventQueue
 
   flip runStateT initialState $
     flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
@@ -644,7 +645,7 @@ updateOpenTest vm reproducer test = do
                            , result
                            , workerId
                            }
-          pushWorkerEvent (TestFalsified test')
+          pushWorkerEvent (TestFalsified (test' { Test.vm = Nothing }))
           pure $ Just test'
 
         IntValue value' | value' > value -> do
@@ -653,7 +654,7 @@ updateOpenTest vm reproducer test = do
                            , vm = Just vm
                            , result
                            }
-          pushWorkerEvent (TestOptimized test')
+          pushWorkerEvent (TestOptimized (test' { Test.vm = Nothing }))
           pure $ Just test'
           where
           value =
@@ -686,7 +687,7 @@ spawnListener handler = do
   cfg <- asks (.cfg)
   let nworkers = getNWorkers cfg.campaignConf
   eventQueue <- asks (.eventQueue)
-  chan <- liftIO $ dupChan eventQueue
+  chan <- liftIO $ atomically $ dupTChan eventQueue
   stopVar <- liftIO newEmptyMVar
   liftIO $ void $ forkFinally (listenerLoop handler chan nworkers) (const $ putMVar stopVar ())
   pure stopVar
@@ -697,14 +698,14 @@ listenerLoop
   :: (MonadIO m)
   => ((LocalTime, CampaignEvent) -> m ())
   -- ^ a function that handles the events
-  -> Chan (LocalTime, CampaignEvent)
+  -> TChan (LocalTime, CampaignEvent)
   -- ^ event channel
   -> Int
   -- ^ number of workers which have to stop before loop exits
   -> m ()
 listenerLoop handler chan !workersAlive =
   when (workersAlive > 0) $ do
-    event <- liftIO $ readChan chan
+    event <- liftIO $ atomically $ readTChan chan
     handler event
     case event of
       (_, WorkerEvent _ _ (WorkerStopped _)) -> listenerLoop handler chan (workersAlive - 1)

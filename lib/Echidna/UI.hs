@@ -28,6 +28,7 @@ import System.Signal
 import UnliftIO
   ( MonadUnliftIO, IORef, newIORef, readIORef, hFlush, stdout , writeIORef, timeout)
 import UnliftIO.Concurrent hiding (killThread, threadDelay)
+import UnliftIO.STM (atomically, writeTChan)
 
 import EVM.Fetch qualified
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
@@ -108,7 +109,7 @@ ui vm dict initialCorpus cliSelectedContract = do
       let forwardEvent = void . writeBChanNonBlocking uiChannel . EventReceived
 
       -- Attach the log/event forwarder before workers start so early worker
-      -- events (like startup logs) are not lost by dupChan.
+      -- events (like startup logs) are not lost by dupTChan.
       uiEventsForwarderStopVar <- spawnListener forwardEvent
       workers <- spawnWorkers
 
@@ -181,7 +182,7 @@ ui vm dict initialCorpus cliSelectedContract = do
 
       let forwardEvent ev = putStrLn =<< runReaderT (ppLogLine vm ev) env
       -- Attach the log/event forwarder before workers start so early worker
-      -- events (like startup logs) are not lost by dupChan.
+      -- events (like startup logs) are not lost by dupTChan.
       uiEventsForwarderStopVar <- spawnListener forwardEvent
       workers <- spawnWorkers
 
@@ -271,7 +272,8 @@ ui vm dict initialCorpus cliSelectedContract = do
         _ -> pure ()
 
       time <- liftIO getTimestamp
-      writeChan env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
+      liftIO $ atomically $
+        writeTChan env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
 
     pure (threadId, stateRef)
 

@@ -1,10 +1,10 @@
 module Echidna.Worker where
 
-import Control.Concurrent
 import Control.Monad.Reader (MonadReader, MonadIO, liftIO, ask)
 import Control.Monad.State.Strict(MonadState(..), gets)
 import Data.Aeson
 import Data.Text (unpack)
+import UnliftIO.STM (atomically, writeTChan)
 
 import Echidna.ABI (encodeSig)
 import Echidna.Types.Campaign
@@ -47,7 +47,7 @@ pushWorkerEvent event = do
 pushCampaignEvent :: Env -> CampaignEvent -> IO ()
 pushCampaignEvent env event = do
   time <- liftIO getTimestamp
-  writeChan env.eventQueue (time, event)
+  atomically $ writeTChan env.eventQueue (time, event)
 
 ppCampaignEvent :: CampaignEvent -> String
 ppCampaignEvent = \case
