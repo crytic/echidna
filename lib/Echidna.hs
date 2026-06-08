@@ -1,6 +1,5 @@
 module Echidna where
 
-import Control.Concurrent (newChan)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (liftIO)
 import Data.IORef (newIORef)
@@ -14,6 +13,7 @@ import Data.Text qualified as T
 import System.Console.ANSI (hNowSupportsANSI)
 import System.FilePath ((</>))
 import System.IO (stderr, stdout, hPutStrLn)
+import UnliftIO.STM (newBroadcastTChanIO)
 
 import EVM (cheatCode)
 import EVM.ABI (AbiValue(AbiAddress))
@@ -124,7 +124,7 @@ mkEnv :: EConfig -> BuildOutput -> [EchidnaTest] -> World -> Maybe SlitherInfo -
 mkEnv cfg buildOutput tests world slitherInfo = do
   codehashMap <- newIORef mempty
   chainId <- Onchain.fetchChainIdFrom cfg.rpcUrl
-  eventQueue <- newChan
+  eventQueue <- newBroadcastTChanIO
   coverageRefInit <- newIORef mempty
   coverageRefRuntime <- newIORef mempty
   corpusRef <- newIORef mempty
