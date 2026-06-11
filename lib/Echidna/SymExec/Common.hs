@@ -83,7 +83,12 @@ extractErrors = mapMaybe (\case
   _ -> Nothing)
 
 suitableForSymExec :: Method -> Bool
-suitableForSymExec m = not $ null m.inputs
+suitableForSymExec m =
+  -- the method must take arguments (otherwise there is nothing to solve for),
+  -- none of which may be a dynamic ABI type (hevm's symAbiArg cannot encode
+  -- bytes/string/dynamic arrays symbolically and throws), and it must not opt
+  -- out via a `_no_symexec` name.
+  not (null m.inputs)
   && null (filter (\(_, t) -> abiKind t == Dynamic) m.inputs)
   && not (T.isInfixOf "_no_symexec" m.name)
 
