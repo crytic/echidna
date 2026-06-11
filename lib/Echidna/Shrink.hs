@@ -44,6 +44,10 @@ shrinkTest vm test = do
             pure $ case maybeShrunk of
               -- the test still fails, let's create another test with the reduced sequence
               Just (txs, val, vm') -> do
+                -- collapse the suspended execution state before storing the
+                -- VM, otherwise the stored thunks retain every intermediate
+                -- VM of the replayed sequence until the next shrink step
+                let !_ = forceVMData vm'
                 Just test { state = Large (i + 1)
                     , reproducer = txs
                     , vm = Just vm'

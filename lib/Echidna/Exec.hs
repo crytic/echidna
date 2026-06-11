@@ -14,6 +14,7 @@ import Data.ByteString qualified as BS
 import Data.IORef (readIORef, newIORef, writeIORef, modifyIORef')
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, fromJust)
+import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Data.Vector.Unboxed.Mutable qualified as VMut
@@ -323,3 +324,28 @@ initialVM ffi = do
             & #block % #number .~ Lit initialBlockNumber
             & #env % #contracts .~ mempty -- fixes weird nonce issues
             & #config % #allowFFI .~ ffi
+
+-- | Force the parts of a VM that accumulate suspended computation during
+-- execution. Lens-based state updates leave record fields as thunk chains
+-- referencing every intermediate VM of the run; storing such a VM (e.g. in
+-- 'EchidnaTest.vm' on falsification or per shrink step) would otherwise
+-- retain the whole execution history until the field is demanded -- which
+-- reporting only does once at campaign end, and the interactive UI's
+-- periodic test snapshots turn into gigabytes of standing heap.
+forceVMData :: VM Concrete -> ()
+forceVMData vm =
+    contractsWhnf `seq`
+    storesWhnf `seq`
+    Set.size vm.keccakPreImgs `seq`
+    length vm.constraints `seq`
+    length vm.logs `seq`
+    vm.burned `seq`
+    ()
+  where
+    contractsWhnf = Map.size vm.env.contracts
+    storesWhnf =
+      Map.foldl' (\acc c -> acc + storeSize c.storage + storeSize c.origStorage)
+                 (0 :: Int) vm.env.contracts
+    storeSize :: Expr Storage -> Int
+    storeSize (ConcreteStore m) = Map.size m
+    storeSize _ = 0

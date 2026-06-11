@@ -484,7 +484,10 @@ callseq vm txSeq = do
     pushWorkerEvent NewCoverage { points
                                 , numCodehashes
                                 , corpusSize = newSize
-                                , transactions = fst <$> results
+                                  -- force the list so the event doesn't hold a
+                                  -- thunk pinning every VMResult (and its
+                                  -- returndata) of the executed sequence
+                                , transactions = force $ fst <$> results
                                 }
 
   modify' $ \workerState ->
@@ -638,6 +641,9 @@ updateOpenTest vm reproducer test = do
       case testValue of
         BoolValue False -> do
           workerId <- Just <$> gets (.workerId)
+          -- collapse the suspended execution state before storing the VM,
+          -- otherwise the stored thunks retain every intermediate VM
+          let !_ = forceVMData vm
           let test' = test { Test.state = Large 0
                            , reproducer
                            , vm = Just vm
@@ -648,6 +654,7 @@ updateOpenTest vm reproducer test = do
           pure $ Just test'
 
         IntValue value' | value' > value -> do
+          let !_ = forceVMData vm
           let test' = test { reproducer
                            , value = IntValue value'
                            , vm = Just vm
