@@ -48,10 +48,11 @@ shrinkTest vm test = do
                 -- VM, otherwise the stored thunks retain every intermediate
                 -- VM of the replayed sequence until the next shrink step
                 let !_ = forceVMData vm'
+                    !shrunkResult = getResultFromVM vm'
                 Just test { state = Large (i + 1)
                     , reproducer = txs
                     , vm = Just vm'
-                    , result = getResultFromVM vm'
+                    , result = shrunkResult
                     , value = val }
               Nothing ->
                 -- The test passed, so no success with shrinking this time, just bump number of tries to shrink

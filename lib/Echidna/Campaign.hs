@@ -639,6 +639,10 @@ updateOpenTest vm reproducer test = do
   case test.state of
     Open -> do
       (testValue, vm') <- checkETest test vm
+      -- forced in the branches that store it so the stored test (and its
+      -- VM-free event copies) does not retain vm' through an unevaluated
+      -- selector; must stay unevaluated on the fall-through path where
+      -- vm' may carry no result
       let result = getResultFromVM vm'
       case testValue of
         BoolValue False -> do
@@ -646,6 +650,7 @@ updateOpenTest vm reproducer test = do
           -- collapse the suspended execution state before storing the VM,
           -- otherwise the stored thunks retain every intermediate VM
           let !_ = forceVMData vm
+          let !_ = result
           let test' = test { Test.state = Large 0
                            , reproducer
                            , vm = Just vm
@@ -657,6 +662,7 @@ updateOpenTest vm reproducer test = do
 
         IntValue value' | value' > value -> do
           let !_ = forceVMData vm
+          let !_ = result
           let test' = test { reproducer
                            , value = IntValue value'
                            , vm = Just vm
