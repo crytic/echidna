@@ -350,7 +350,7 @@ forceVMData vm =
     -- the suspended inserts still need their spines demanded via size
     subStateWhnf =
       let ss = vm.tx.subState
-          whnfElems = foldl (\u x -> x `seq` u) ()
+          whnfElems = foldl (flip seq) ()
       in whnfElems ss.selfdestructs `seq`
          whnfElems ss.touchedAccounts `seq`
          whnfElems (map fst ss.refunds) `seq`

@@ -388,7 +388,7 @@ monitor snapshotRef = do
             -- evaluated, and nothing in the render path demands the list
             -- elements
             let strippedTests = (\t -> t { vm = Nothing } :: EchidnaTest) <$> tests
-                !_ = foldl (\u t -> t `seq` u) () strippedTests
+                !_ = foldl (flip seq) () strippedTests
             let updatedState = state { campaigns = c', status = Running, now
                                      , tests = strippedTests
                                      , fetchedContracts = contracts
