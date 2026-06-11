@@ -7,6 +7,7 @@ import Brick.BChan
 import Brick.Widgets.Dialog qualified as B
 import Control.Concurrent (killThread, threadDelay)
 import Control.Concurrent.MVar (readMVar)
+import Control.DeepSeq (deepseq)
 import Control.Exception (AsyncException)
 import Control.Monad
 import Control.Monad.Catch
@@ -151,7 +152,12 @@ ui vm dict initialCorpus cliSelectedContract = do
             let output = Vty.outputIface v
             when (Vty.supportsMode output Vty.Mouse) $
               Vty.setMode output Vty.Mouse True
-            pure v
+            -- deep-force every picture before it reaches vty: brick's
+            -- renderFinal composes pictures lazily and threads suspended
+            -- viewport state across renders, so the picture parked in
+            -- vty's lastPicRef otherwise grows a thunk chain that pins
+            -- one UI state generation (and its test snapshots) per render
+            pure v { Vty.update = \pic -> pic `deepseq` Vty.update v pic }
       initialVty <- liftIO buildVty
       app <- customMain initialVty buildVty (Just uiChannel) <$> monitor snapshotRef
 
@@ -377,7 +383,12 @@ monitor snapshotRef = do
             -- snapshot reachable from them would be pinned (the tests pane
             -- above is built from the VM-bearing snapshot and renders to
             -- forced strings, so nothing else needs the VMs here)
+            -- the stripped copies must be forced: each `t { vm = Nothing }`
+            -- is itself a thunk retaining the VM-bearing original until
+            -- evaluated, and nothing in the render path demands the list
+            -- elements
             let strippedTests = (\t -> t { vm = Nothing } :: EchidnaTest) <$> tests
+                !_ = foldl (\u t -> t `seq` u) () strippedTests
             let updatedState = state { campaigns = c', status = Running, now
                                      , tests = strippedTests
                                      , fetchedContracts = contracts

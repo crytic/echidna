@@ -481,13 +481,15 @@ callseq vm txSeq = do
       in (corp', corpusSize corp')
 
     (points, numCodehashes) <- liftIO $ coverageStats env.coverageRefInit env.coverageRefRuntime
+    -- force the list eagerly: `transactions` is a non-strict field, so a
+    -- lazy `force (...)` is itself stored as a thunk that pins every
+    -- VMResult (and its returndata) of the executed sequence until some
+    -- consumer demands it -- and none does under the default config
+    let !transactions = force $ fst <$> results
     pushWorkerEvent NewCoverage { points
                                 , numCodehashes
                                 , corpusSize = newSize
-                                  -- force the list so the event doesn't hold a
-                                  -- thunk pinning every VMResult (and its
-                                  -- returndata) of the executed sequence
-                                , transactions = force $ fst <$> results
+                                , transactions
                                 }
 
   modify' $ \workerState ->

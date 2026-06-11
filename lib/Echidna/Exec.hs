@@ -336,12 +336,28 @@ forceVMData :: VM Concrete -> ()
 forceVMData vm =
     contractsWhnf `seq`
     storesWhnf `seq`
+    subStateWhnf `seq`
     Set.size vm.keccakPreImgs `seq`
     length vm.constraints `seq`
     length vm.logs `seq`
     vm.burned `seq`
     ()
   where
+    -- the substate's list elements are pushed lazily (hevm's pushTo conses
+    -- an unevaluated Expr EAddr closing over the mid-execution VM), so a
+    -- stored VM otherwise chains to every intermediate VM of its
+    -- transaction; Set elements are already forced by Ord on insert, but
+    -- the suspended inserts still need their spines demanded via size
+    subStateWhnf =
+      let ss = vm.tx.subState
+          whnfElems = foldl (\u x -> x `seq` u) ()
+      in whnfElems ss.selfdestructs `seq`
+         whnfElems ss.touchedAccounts `seq`
+         whnfElems (map fst ss.refunds) `seq`
+         Set.size ss.accessedAddresses `seq`
+         Set.size ss.accessedStorageKeys `seq`
+         Set.size ss.createdContracts `seq`
+         ()
     contractsWhnf = Map.size vm.env.contracts
     storesWhnf =
       Map.foldl' (\acc c -> acc + storeSize c.storage + storeSize c.origStorage)
