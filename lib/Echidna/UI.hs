@@ -17,6 +17,7 @@ import Data.List.Split (splitPlaces)
 import Data.Map (Map)
 import Data.Maybe (isJust, mapMaybe)
 import Data.Sequence ((|>))
+import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Time
 import Graphics.Vty qualified as Vty
@@ -51,10 +52,27 @@ import Echidna.Utility (timePrefix, getTimestamp)
 import Echidna.Worker (getNWorkers, workerIDToType)
 
 data UIEvent =
-  CampaignUpdated LocalTime [EchidnaTest] [WorkerState]
-  | FetchCacheUpdated (Map Addr (Maybe Contract))
-                      (Map Addr (Map W256 (Maybe W256)))
+  CampaignTick
   | EventReceived (LocalTime, CampaignEvent)
+
+-- | Latest campaign snapshot, read by the UI when handling 'CampaignTick'.
+-- It is deliberately kept in an IORef instead of being carried inside the
+-- event queue: queued payloads would pin one '[EchidnaTest]' generation
+-- (each with full VM snapshots) per tick whenever the render loop falls
+-- behind the producer, retaining gigabytes during shrinking. With an IORef
+-- at most one generation is ever reachable.
+type UISnapshot =
+  ( LocalTime
+  , [EchidnaTest]
+  , [WorkerState]
+  , Map Addr (Maybe Contract)
+  , Map Addr (Map W256 (Maybe W256))
+  )
+
+-- | Bound for the log pane history; it is also rendered with an O(n) fold,
+-- so an unbounded sequence would grow both heap and frame time forever.
+maxUILogEvents :: Int
+maxUILogEvents = 5000
 
 -- | Gas tracking state for calculating gas consumption rate
 data GasTracker = GasTracker
@@ -112,17 +130,20 @@ ui vm dict initialCorpus cliSelectedContract = do
       uiEventsForwarderStopVar <- spawnListener forwardEvent
       workers <- spawnWorkers
 
+      snapshotRef <- liftIO $ newIORef (Nothing :: Maybe UISnapshot)
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 200_000 -- 200 ms
 
         now <- getTimestamp
         tests <- traverse readIORef env.testRefs
         states <- workerStates workers
-        writeBChan uiChannel (CampaignUpdated now tests states)
-
         -- TODO: remove and use events for this
         (c, s) <- EVM.Fetch.getCacheState env.fetchSession
-        writeBChan uiChannel (FetchCacheUpdated c s)
+        -- publish the snapshot out-of-band and only signal via the queue;
+        -- dropping the tick when the queue is full is fine, the next handled
+        -- tick reads the freshest snapshot anyway
+        writeIORef snapshotRef $ Just (now, tests, states, c, s)
+        void $ writeBChanNonBlocking uiChannel CampaignTick
 
       -- UI initialization
       let buildVty = do
@@ -132,7 +153,7 @@ ui vm dict initialCorpus cliSelectedContract = do
               Vty.setMode output Vty.Mouse True
             pure v
       initialVty <- liftIO buildVty
-      app <- customMain initialVty buildVty (Just uiChannel) <$> monitor
+      app <- customMain initialVty buildVty (Just uiChannel) <$> monitor snapshotRef
 
       liftIO $ do
         tests <- traverse readIORef env.testRefs
@@ -158,6 +179,9 @@ ui vm dict initialCorpus cliSelectedContract = do
           , numCodehashes = 0
           , lastNewCov = now
           , tests
+          , testsPane = emptyWidget
+          , testsPaneDigest = []
+          , testsPaneBuilt = now
           , campaignWidget = emptyWidget -- temporary, will be overwritten below
           }
         initialCampaignWidget <- runReaderT (campaignStatus uiState) env
@@ -294,8 +318,8 @@ vtyConfig = do
     ] }
 
 -- | Check if we should stop drawing (or updating) the dashboard, then do the right thing.
-monitor :: MonadReader Env m => m (App UIState UIEvent Name)
-monitor = do
+monitor :: MonadReader Env m => IORef (Maybe UISnapshot) -> m (App UIState UIEvent Name)
+monitor snapshotRef = do
   let
     drawUI :: UIState -> [Widget Name]
     drawUI uiState =
@@ -323,18 +347,57 @@ monitor = do
       LogPane   -> viewportScroll LogViewPort
 
     onEvent env = \case
-      AppEvent (CampaignUpdated now tests c') -> do
-        state <- get
-        let updatedState = state { campaigns = c', status = Running, now, tests }
-        newWidget <- liftIO $ runReaderT (campaignStatus updatedState) env
-        -- intentionally using lazy modify here, so unnecessary widget states don't get computed
-        modify $ const updatedState { campaignWidget = newWidget }
-      AppEvent (FetchCacheUpdated contracts slots) ->
-        modify' $ \state ->
-          state { fetchedContracts = contracts
-                , fetchedSlots = slots }
+      AppEvent CampaignTick ->
+        liftIO (readIORef snapshotRef) >>= \case
+          Nothing -> pure ()
+          Just (now, tests, c', contracts, slots) -> do
+            state <- get
+            -- rebuild the tests pane only when a test actually changed:
+            -- rebuilding allocates pretty-printing structures (ppTx, traces)
+            -- per test that have been observed to accumulate unboundedly
+            -- when reconstructed on every 200 ms tick
+            let digest = (\t -> (show t.state, t.value)) <$> tests
+            -- also rate-limit rebuilds: during shrinking the digest changes
+            -- on every step, and superseded pane structures are retained,
+            -- so rebuild at most once a second
+            (testsPane, testsPaneBuilt) <-
+              if digest == state.testsPaneDigest
+                 || diffLocalTime now state.testsPaneBuilt < 1
+                then pure (state.testsPane, state.testsPaneBuilt)
+                else do
+                  w <- liftIO $ runReaderT (testsWidget tests) env
+                  pure (w, now)
+            -- sever the previous widget before building the new one: widget
+            -- render closures capture this state record, and if it still
+            -- referenced the previous campaignWidget every tick would chain
+            -- to the one before it, pinning each generation's tests (and
+            -- their VM snapshots) for the whole session
+            -- store a VM-free copy: brick's event loop has been observed to
+            -- chain superseded state generations internally, and each VM
+            -- snapshot reachable from them would be pinned (the tests pane
+            -- above is built from the VM-bearing snapshot and renders to
+            -- forced strings, so nothing else needs the VMs here)
+            let strippedTests = (\t -> t { vm = Nothing } :: EchidnaTest) <$> tests
+            let updatedState = state { campaigns = c', status = Running, now
+                                     , tests = strippedTests
+                                     , fetchedContracts = contracts
+                                     , fetchedSlots = slots
+                                     , testsPane
+                                     , testsPaneDigest = digest
+                                     , testsPaneBuilt
+                                     , campaignWidget = emptyWidget }
+            newWidget <- liftIO $ runReaderT (campaignStatus updatedState) env
+            -- strict in the record (WHNF) so ticks don't chain unevaluated
+            -- state generations when rendering can't keep up; the widget
+            -- body itself stays lazy, so unnecessary widget states still
+            -- don't get computed
+            modify' $ const updatedState { campaignWidget = newWidget }
       AppEvent (EventReceived event@(time,campaignEvent)) -> do
-        modify' $ \state -> state { events = state.events |> event }
+        -- bounded log history: drop the oldest entry once at capacity
+        modify' $ \state ->
+          state { events = (if Seq.length state.events >= maxUILogEvents
+                              then Seq.drop 1 state.events
+                              else state.events) |> event }
 
         case campaignEvent of
           WorkerEvent _ _ (NewCoverage { points, numCodehashes, corpusSize }) ->
