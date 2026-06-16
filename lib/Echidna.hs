@@ -12,8 +12,9 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Data.Text qualified as T
+import System.Console.ANSI (hNowSupportsANSI)
 import System.FilePath ((</>))
-import System.IO (stderr, hPutStrLn)
+import System.IO (stderr, stdout, hPutStrLn)
 
 import EVM (cheatCode)
 import EVM.ABI (AbiValue(AbiAddress))
@@ -132,10 +133,11 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   testRefs <- traverse newIORef tests
   fetchSession <- EVM.Fetch.mkSession cfg.campaignConf.corpusDir (fromIntegral <$> cfg.rpcBlock)
   contractNameCache <- newIORef mempty
+  useColor <- hNowSupportsANSI stdout
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
       sourceCache = buildOutput.sources
   pure $ Env { cfg, dapp, sourceCache, codehashMap, fetchSession, contractNameCache
              , chainId, eventQueue, bus, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
-             , slitherInfo
+             , slitherInfo, useColor
              }

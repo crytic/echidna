@@ -26,6 +26,12 @@ assertionTests = testGroup "Assertion-based Integration Testing"
       , ("assert_unreachable failed",  passed      "assert_unreachable")
       ]
 
+    -- Reverting transactions must still advance the block clock (PR #1554).
+    -- The assert in f is only reachable if the revert at og+1 still advanced
+    -- time, so this is solved iff the time-on-revert fix is present.
+    , testContractV "assert/time_on_revert.sol" (Just (\v -> v >= solcV (0,7,0))) (Just "assert/time_on_revert.yaml")
+      [ ("f assertion found", solved "f") ]
+
     , testContract "assert/external.sol" (Just "assert/config.yaml")
       [ ("assert_external passed",     solvedUsing "assert_external" "AssertionFailed(..)")
       , ("assert_call failed",         passed      "external_call")

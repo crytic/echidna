@@ -17,6 +17,9 @@ contract {{testName}} is Test {
   }
 
   function test_replay() public {
+{{#preamble}}
+{{{.}}}
+{{/preamble}}
 {{#reproducer}}
     {{{prelude}}}
     {{{call}}}
@@ -35,4 +38,20 @@ contract {{testName}} is Test {
       vm.warp(block.timestamp + timeInSeconds);
       vm.roll(block.number + numBlocks);
   }
+
+{{#preamble}}
+  /// @dev Checks if a topic matches any known AssertionFailed event signature.
+  /// Covers all overloads from crytic/fuzzlib (LibLog.sol).
+  function _isAssertionFailed(bytes32 t) internal pure returns (bool) {
+      return t == keccak256("AssertionFailed()")
+          || t == keccak256("AssertionFailed(string)")
+          || t == keccak256("AssertionFailed(string,string)")
+          || t == keccak256("AssertionFailed(string,bytes)")
+          || t == keccak256("AssertionFailed(string,uint256)")
+          || t == keccak256("AssertionFailed(string,int256)")
+          || t == keccak256("AssertionFailed(string,address)")
+          || t == keccak256("AssertionFailed(string,bool)")
+          || t == keccak256("AssertionFailed(string,bytes32)");
+  }
+{{/preamble}}
 }

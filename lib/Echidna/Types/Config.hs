@@ -74,6 +74,11 @@ data Env = Env
   , dapp :: DappInfo
   , sourceCache :: SourceCache
 
+  -- | Whether stdout supports ANSI escape codes. Detected once at startup;
+  -- false when output is redirected to a file or pipe so traces can be
+  -- saved without unrenderable color codes.
+  , useColor :: Bool
+
   -- | Shared between all workers. Events are fairly rare so contention is
   -- minimal.
   , eventQueue :: Chan (LocalTime, CampaignEvent)
