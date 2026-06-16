@@ -22,3 +22,9 @@ crytic-export/
 echidna.cabal
 *.swp
 profiles/
+
+# Python (MCP test suite under tests/mcp/, helper scripts)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
