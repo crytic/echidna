@@ -58,5 +58,12 @@ jobs:
       - name: Install test dependencies
         run: pip install -r tests/mcp/requirements-test.txt
 
+      # Echidna shells out to crytic-compile + solc to compile the test contract.
+      - name: Install crytic-compile and solc
+        run: |
+          pip install crytic-compile solc-select
+          solc-select install 0.8.25
+          solc-select use 0.8.25
+
       - name: Run MCP test suite (tools + conformance + Claude + Codex)
         run: pytest tests/mcp -v
