@@ -20,6 +20,7 @@ import Data.List qualified as List
 import Data.List.NonEmpty qualified as NEList
 import Data.Map (Map, (\\))
 import Data.Map qualified as Map
+import Data.Map.Strict qualified as MapStrict
 import Data.Maybe (isJust, mapMaybe, fromJust)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -502,7 +503,13 @@ callseq vm txSeq = do
       additions = Map.unionsWith Set.union [resultMap, eventDiffs, diffs]
       -- append to the constants dictionary
       updatedDict = workerState.genDict
-        { constants = Map.unionWith Set.union workerState.genDict.constants additions
+        -- the union must be strict in the per-key sets: with the lazy Map a
+        -- `Set.union old new` suspension is allocated per colliding key per
+        -- callseq, and it is only ever forced if the generator samples that
+        -- AbiType -- types that never occur as a fuzzed function argument
+        -- (always AbiAddressType, inserted unconditionally above) accumulate
+        -- an unbounded thunk chain
+        { constants = MapStrict.unionWith Set.union workerState.genDict.constants additions
         , dictValues = Set.union (mkDictValues $ Set.unions $ Map.elems additions)
                                  workerState.genDict.dictValues
         }
