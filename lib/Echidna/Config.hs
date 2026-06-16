@@ -25,9 +25,21 @@ import Echidna.Types.Solidity
 import Echidna.Types.Test (TestConf(..))
 import Echidna.Types.Tx (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
 
+adjustForVerificationMode :: EConfig -> EConfig
+adjustForVerificationMode cfg =
+  if isVerificationMode cfg.solConf.testMode then
+    cfg { campaignConf = cfg.campaignConf
+            { workers = Just 0
+            , seqLen = 1
+            , symExec = True
+            }
+        }
+  else
+    cfg
+
 instance FromJSON EConfig where
   -- retrieve the config from the key usage annotated parse
-  parseJSON x = (.econfig) <$> parseJSON @EConfigWithUsage x
+  parseJSON x = adjustForVerificationMode . (.econfig) <$> parseJSON @EConfigWithUsage x
 
 instance FromJSON EConfigWithUsage where
   -- this runs the parser in a StateT monad which keeps track of the keys

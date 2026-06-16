@@ -1,0 +1,51 @@
+name: MCP integration tests
+
+# Out-of-process MCP testing: spins up a real Echidna campaign with the MCP
+# server and drives it the way real agent clients do. Besides the tool/semantic
+# tests it runs the client-compatibility suite:
+#   * test_mcp_conformance.py -- wire-protocol regression guard (202/405/handshake)
+#   * test_mcp_codex.py       -- replays Codex's strict rmcp handshake
+#   * test_mcp_claude.py      -- drives the server with the official `mcp` SDK
+# Both client checks are transport-level and need no API keys, so they run on
+# every push/PR. (A live-model smoke using examples/mcp_agent.py needs
+# ANTHROPIC_API_KEY / Codex auth and is intentionally not part of CI.)
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Least-privilege GITHUB_TOKEN: this workflow only checks out the repo and runs
+# tests, so it needs no write scopes.
+permissions:
+  contents: read
+
+jobs:
+  mcp-client-compat:
+    name: MCP client compatibility (Claude + Codex)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Build echidna
+        run: nix build .#echidna --out-link result
+
+      - name: Add echidna to PATH
+        run: echo "$GITHUB_WORKSPACE/result/bin" >> "$GITHUB_PATH"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install -r tests/mcp/requirements-test.txt
+
+      - name: Run MCP test suite (tools + conformance + Claude + Codex)
+        run: pytest tests/mcp -v

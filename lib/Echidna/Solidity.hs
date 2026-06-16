@@ -156,11 +156,25 @@ filterMethods contractName (Blacklist ig) ms =
 --   See: https://book.getfoundry.sh/forge/invariant-testing
 -- - Other functions with arguments are kept as callable targets for
 --   invariant test campaigns.
-filterMethodsWithArgs :: NonEmpty SolSignature -> NonEmpty SolSignature
-filterMethodsWithArgs ms =
-  case NE.filter (\(n, xs) -> T.isPrefixOf "test" n || (T.isPrefixOf "invariant_" n || not (null xs))) ms of
+--
+-- The set of callable functions depends on @seqLen@, mirroring how tests are
+-- selected in 'Echidna.Test.createTests':
+-- - In fuzz mode (@seqLen == 1@) each "test" function is itself the fuzz
+--   target and is called directly by the fuzzer. Only "test" functions with
+--   at least one parameter are kept; calling other functions (e.g. handlers
+--   like @mint@) would only waste effort since no test checks them.
+-- - In invariant mode (@seqLen > 1@) the "invariant_" functions plus any
+--   state-mutating handlers (functions with arguments) make up the callable
+--   set, which is exercised in randomized sequences.
+filterMethodsWithArgs :: Int -> NonEmpty SolSignature -> NonEmpty SolSignature
+filterMethodsWithArgs seqLen ms =
+  case NE.filter keep ms of
     [] -> error "No foundry tests found"
     fs -> NE.fromList fs
+  where
+    keep (n, xs)
+      | seqLen == 1 = T.isPrefixOf "test" n && not (null xs)
+      | otherwise   = T.isPrefixOf "test" n || T.isPrefixOf "invariant_" n || not (null xs)
 
 abiOf :: Text -> SolcContract -> NonEmpty SolSignature
 abiOf pref solcContract =
@@ -270,14 +284,15 @@ selectMainContract solConf name cs = do
 
 mkSignatureMap
   :: SolConf
+  -> CampaignConf
   -> SolcContract
   -> [SolcContract]
   -> IO SignatureMap
-mkSignatureMap solConf mainContract contracts = do
+mkSignatureMap solConf campaignConf mainContract contracts = do
   let
     -- Filter ABI according to the config options
     fabiOfc = if isFoundryMode solConf.testMode
-                then NE.toList $ filterMethodsWithArgs (abiOf solConf.prefix mainContract)
+                then NE.toList $ filterMethodsWithArgs campaignConf.seqLen (abiOf solConf.prefix mainContract)
                 else filterMethods mainContract.contractName solConf.methodFilter $
                        abiOf solConf.prefix mainContract
     -- Construct ABI mapping for World

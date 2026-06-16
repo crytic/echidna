@@ -1,6 +1,7 @@
 module Echidna where
 
 import Control.Concurrent (newChan)
+import Control.Concurrent.STM (newBroadcastTChanIO)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (liftIO)
 import Data.IORef (newIORef)
@@ -65,7 +66,7 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
 
   mainContract <- selectMainContract solConf selectedContract contracts
   tests <- mkTests solConf campaignConf mainContract
-  signatureMap <- mkSignatureMap solConf mainContract contracts
+  signatureMap <- mkSignatureMap solConf campaignConf mainContract contracts
 
   -- run processors
   slitherInfo <- runSlither (NE.head solFiles) solConf
@@ -88,7 +89,7 @@ prepareContract cfg solFiles buildOutput selectedContract seed = do
                 <> staticAddresses solConf
                 <> deployedAddresses
     deployedSolcContracts = nub $ mapMaybe (findSrcForReal env.dapp) $ Map.elems vm.env.contracts
-    nonViewPureSigs = concatMap (mapMaybe (\ (Method {name, inputs, mutability}) -> 
+    nonViewPureSigs = concatMap (mapMaybe (\ (Method {name, inputs, mutability}) ->
       case mutability of
         View -> Nothing
         Pure -> Nothing
@@ -125,6 +126,7 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   codehashMap <- newIORef mempty
   chainId <- Onchain.fetchChainIdFrom cfg.rpcUrl
   eventQueue <- newChan
+  bus <- newBroadcastTChanIO
   coverageRefInit <- newIORef mempty
   coverageRefRuntime <- newIORef mempty
   corpusRef <- newIORef mempty
@@ -134,7 +136,8 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   useColor <- hNowSupportsANSI stdout
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
-  pure $ Env { cfg, dapp, codehashMap, fetchSession, contractNameCache
-             , chainId, eventQueue, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
+      sourceCache = buildOutput.sources
+  pure $ Env { cfg, dapp, sourceCache, codehashMap, fetchSession, contractNameCache
+             , chainId, eventQueue, bus, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
              , slitherInfo, useColor
              }
