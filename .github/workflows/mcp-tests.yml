@@ -15,6 +15,11 @@ on:
     branches: ["**"]
   pull_request:
 
+# Least-privilege GITHUB_TOKEN: this workflow only checks out the repo and runs
+# tests, so it needs no write scopes.
+permissions:
+  contents: read
+
 jobs:
   mcp-client-compat:
     name: MCP client compatibility (Claude + Codex)
