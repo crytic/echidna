@@ -1,37 +1,26 @@
 """
-Basic integration tests for the Echidna MCP server.
+Tool/semantic integration tests for the Echidna MCP server.
 
-Tests the core workflow: inject transactions, check coverage,
-reset priorities, and verify status.
+Verifies the core MCP tools return sensible results against a live Echidna
+campaign: status, inject_fuzz_transactions, show_coverage, clear_fuzz_priorities.
+
+Originally contributed by Dani Tradito (@datradito) in crytic/echidna#1509;
+adapted here to share the session-scoped `echidna_server` fixture in conftest.py.
 
 Run with:
     pytest tests/mcp/test_mcp.py
 """
 
-import pytest
-import socket
-import time
-import os
-import subprocess
 import httpx
 
 
-MCP_PORT = 8080
-MCP_URL = f"http://localhost:{MCP_PORT}/mcp"
-CONTRACT = "tests/mcp/contracts/EchidnaMCPTest.sol"
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-def _call_tool(tool: str, args: dict = None) -> dict:
+def _call_tool(url: str, tool: str, args: dict = None) -> dict:
     payload = {
         "jsonrpc": "2.0", "id": 1,
         "method": "tools/call",
         "params": {"name": tool, "arguments": args or {}},
     }
-    resp = httpx.post(MCP_URL, json=payload, timeout=30)
+    resp = httpx.post(url, json=payload, timeout=30)
     resp.raise_for_status()
     return resp.json().get("result", {})
 
@@ -40,56 +29,9 @@ def _text(result: dict) -> str:
     return result.get("content", [{}])[0].get("text", "")
 
 
-@pytest.fixture(scope="module")
-def echidna(tmp_path_factory):
-    """Start an Echidna campaign with the MCP server for the whole test module."""
-    corpus_dir = tmp_path_factory.mktemp("corpus")
-    env = os.environ.copy()
-    env["PATH"] = os.path.expanduser("~/.local/bin") + ":" + env.get("PATH", "")
-
-    cmd = [
-        "echidna", CONTRACT,
-        "--contract", "EchidnaMCPTest",
-        "--server", str(MCP_PORT),
-        "--format", "text",
-        "--test-limit", "1000000000",
-        "--corpus-dir", str(corpus_dir),
-    ]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            text=True, env=env)
-
-    # Wait up to 10 s for the server to accept connections
-    deadline = time.time() + 10
-    while time.time() < deadline:
-        try:
-            with socket.create_connection(("localhost", MCP_PORT), timeout=1):
-                break
-        except OSError:
-            time.sleep(0.5)
-    else:
-        proc.terminate()
-        out, err = proc.communicate(timeout=5)
-        raise RuntimeError(
-            f"Echidna MCP server did not start.\nstdout: {out}\nstderr: {err}"
-        )
-
-    yield proc
-
-    proc.terminate()
-    try:
-        proc.communicate(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-def test_status(echidna):
+def test_status(echidna_server):
     """status tool returns campaign metrics."""
-    result = _call_tool("status")
+    result = _call_tool(echidna_server["url"], "status")
     text = _text(result)
     assert text, "status returned empty response"
     assert "corpus" in text.lower() or "coverage" in text.lower(), (
@@ -97,9 +39,9 @@ def test_status(echidna):
     )
 
 
-def test_inject_transactions(echidna):
+def test_inject_transactions(echidna_server):
     """inject_fuzz_transactions accepts a call sequence and confirms injection."""
-    result = _call_tool("inject_fuzz_transactions", {
+    result = _call_tool(echidna_server["url"], "inject_fuzz_transactions", {
         "transactions": (
             "transfer(0x1111111111111111111111111111111111111111, 100);"
             "approve(0x2222222222222222222222222222222222222222, 50)"
@@ -112,17 +54,17 @@ def test_inject_transactions(echidna):
     )
 
 
-def test_show_coverage(echidna):
+def test_show_coverage(echidna_server):
     """show_coverage returns a non-empty coverage report."""
-    result = _call_tool("show_coverage")
+    result = _call_tool(echidna_server["url"], "show_coverage")
     text = _text(result)
     assert isinstance(text, str), "show_coverage response is not a string"
     assert len(text) > 0, "show_coverage returned empty report"
 
 
-def test_clear_priorities_and_status(echidna):
+def test_clear_priorities_and_status(echidna_server):
     """clear_fuzz_priorities succeeds, then status is still reachable."""
-    clear = _call_tool("clear_fuzz_priorities")
+    clear = _call_tool(echidna_server["url"], "clear_fuzz_priorities")
     clear_text = _text(clear)
     assert clear_text, "clear_fuzz_priorities returned empty response"
     assert "requested" in clear_text.lower() or "clear" in clear_text.lower(), (
@@ -130,5 +72,5 @@ def test_clear_priorities_and_status(echidna):
     )
 
     # Status should still work after clearing
-    status = _call_tool("status")
+    status = _call_tool(echidna_server["url"], "status")
     assert _text(status), "status failed after clear_fuzz_priorities"

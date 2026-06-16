@@ -1,12 +1,23 @@
 name: MCP integration tests
 
+# Out-of-process MCP testing: spins up a real Echidna campaign with the MCP
+# server and drives it the way real agent clients do. Besides the tool/semantic
+# tests it runs the client-compatibility suite:
+#   * test_mcp_conformance.py -- wire-protocol regression guard (202/405/handshake)
+#   * test_mcp_codex.py       -- replays Codex's strict rmcp handshake
+#   * test_mcp_claude.py      -- drives the server with the official `mcp` SDK
+# Both client checks are transport-level and need no API keys, so they run on
+# every push/PR. (A live-model smoke using examples/mcp_agent.py needs
+# ANTHROPIC_API_KEY / Codex auth and is intentionally not part of CI.)
+
 on:
   push:
     branches: ["**"]
   pull_request:
 
 jobs:
-  mcp-tests:
+  mcp-client-compat:
+    name: MCP client compatibility (Claude + Codex)
     runs-on: ubuntu-latest
 
     steps:
@@ -29,7 +40,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install test dependencies
-        run: pip install pytest httpx
+        run: pip install -r tests/mcp/requirements-test.txt
 
-      - name: Run MCP integration tests
-        run: pytest tests/mcp/test_mcp.py -v
+      - name: Run MCP test suite (tools + conformance + Claude + Codex)
+        run: pytest tests/mcp -v
