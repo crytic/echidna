@@ -35,7 +35,7 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_revert_always failed",                   passed      "echidna_revert_always")
       , ("echidna_sometimesfalse passed",                  passed      "echidna_sometimesfalse")
       ]
-  , testContract "basic/excludeviewpure.sol" (Just "basic/excludeviewpure.yaml")
+  , testContractV "basic/excludeviewpure.sol" (Just (>= solcV (0,8,0))) (Just "basic/excludeviewpure.yaml")
       -- echidna_counter_small is a view property: must not be excluded, and must be solved
       -- (which also proves increment() is still being called by the fuzzer)
       [ ("view property must not be excluded and should be solved", solved "echidna_counter_small")
