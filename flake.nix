@@ -26,7 +26,45 @@
             foundry.overlay
             (final: prev: {
               # build with GHC 9.8
-              haskellPackages = prev.haskell.packages.ghc98;
+              haskellPackages = prev.haskell.packages.ghc98.override {
+                overrides = hfinal: hprev: {
+                  # Bump tls to >= 2.2.2 for the fix in https://github.com/haskell-tls/hs-tls/pull/515.
+                  # tls 2.2.2 needs the crypton-x509 1.8 line, which still builds against the
+                  # crypton 1.0.x already in nixpkgs (the 1.9 line would force crypton >= 1.1 and a
+                  # much wider cascade). Everything else it needs (crypton-asn1-*, crypton-pem,
+                  # hpke, ech-config, time-hourglass) is already at a compatible version, and the
+                  # rest of the package set rebuilds against these through the fixpoint.
+                  tls = hfinal.callHackageDirect {
+                    pkg = "tls"; ver = "2.2.2";
+                    sha256 = "sha256-lbroDPZiOa2YH1jqEzxzNgBGcPZDP6WJEeD0odDgNqs=";
+                  } {};
+                  crypton-x509 = hfinal.callHackageDirect {
+                    pkg = "crypton-x509"; ver = "1.8.0";
+                    sha256 = "sha256-wxU8Ou52UCuCT2gbxqPKssteIVGUyg5WEbv1xRIyZTg=";
+                  } {};
+                  crypton-x509-store = hfinal.callHackageDirect {
+                    pkg = "crypton-x509-store"; ver = "1.8.0";
+                    sha256 = "sha256-U6DH5Ke3JXAzZuqxLM6mPKDxqj4HTf5kjoBXaerLOcc=";
+                  } {};
+                  crypton-x509-validation = hfinal.callHackageDirect {
+                    pkg = "crypton-x509-validation"; ver = "1.8.0";
+                    sha256 = "sha256-CyRqTUOcUzzVlQfTd3yylwDVtOaumBbBg9hMyvtcu7c=";
+                  } {};
+
+                  # Relax the `tls < 2.2` upper bounds of the other tls consumers in the set
+                  # (crypton-connection pulled in by echidna; warp-tls/tls-session-manager pulled
+                  # in by Hoogle in the dev shell). All compile fine against 2.2.2.
+                  crypton-connection = prev.haskell.lib.doJailbreak hprev.crypton-connection;
+                  warp-tls = prev.haskell.lib.doJailbreak hprev.warp-tls;
+                  tls-session-manager = prev.haskell.lib.doJailbreak hprev.tls-session-manager;
+
+                  # callHackageDirect runs the `cabal2nix` tool from this set, and cabal2nix
+                  # transitively depends on tls — regenerating tls with it would loop. Pin the
+                  # tool to the un-overridden base set to break the cycle (it's build-time only,
+                  # so its own tls version is irrelevant).
+                  cabal2nix = prev.haskell.packages.ghc98.cabal2nix;
+                };
+              };
             })
           ];
         };
