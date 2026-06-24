@@ -17,7 +17,7 @@ import Data.Text qualified as T
 import Optics.Core ((.~), (%), (%~))
 
 import EVM (loadContract, resetState, symbolify)
-import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..), selector, encodeAbiValue, AbiValue(..))
+import EVM.ABI (Sig(..), decodeBuf, AbiVals(..), selector, encodeAbiValue, AbiValue(..))
 import EVM.Effects (TTY, ReadConfig)
 import EVM.Expr qualified
 import EVM.Fetch qualified as Fetch
@@ -84,12 +84,11 @@ extractErrors = mapMaybe (\case
 
 suitableForSymExec :: Method -> Bool
 suitableForSymExec m =
-  -- the method must take arguments (otherwise there is nothing to solve for),
-  -- none of which may be a dynamic ABI type (hevm's symAbiArg cannot encode
-  -- bytes/string/dynamic arrays symbolically and throws), and it must not opt
-  -- out via a `_no_symexec` name.
+  -- the method must take arguments (otherwise there is nothing to solve for)
+  -- and must not opt out via a `_no_symexec` name. Dynamic ABI types
+  -- (bytes/string/dynamic arrays) are now supported: hevm concretizes them to a
+  -- bounded length (see maxDynSize), so they no longer disqualify a method.
   not (null m.inputs)
-  && null (filter (\(_, t) -> abiKind t == Dynamic) m.inputs)
   && not (T.isInfixOf "_no_symexec" m.name)
 
 
