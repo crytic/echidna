@@ -173,8 +173,11 @@ exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
   Method -> SolcContract -> SourceCache -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
 
 exploreMethod method _contract _sources vm defaultSender conf veriOpts solvers rpcInfo session = do
-  calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
+  -- hevm's mkCalldata now returns ((calldata, constraints), caveats); the
+  -- caveats (e.g. bounded dynamic args) are not surfaced through echidna yet.
+  (calldataSym, _caveats) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   let
+    constraints = snd calldataSym
     cd = fst calldataSym
     fetcher = Fetch.oracle solvers (Just session) rpcInfo
     dst = conf.solConf.contractAddr
