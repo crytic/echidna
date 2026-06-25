@@ -98,7 +98,7 @@ exploreContract contract method vm = do
   resultChan <- liftIO newEmptyMVar
   let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
   let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = StackBased}
-  let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, dumpQueries = False }
+  let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, maxDynSize = 128, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, dumpQueries = False }
   let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
