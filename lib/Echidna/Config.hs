@@ -72,6 +72,15 @@ instance FromJSON EConfigWithUsage where
           fail $ show k <> ": value does not fit in 256 bits"
         else
           pure $ fromIntegral value
+      rejectPrecompileAddress field addr
+        | addr `Set.member` precompileAddresses =
+          fail $ field <> ": address " <> show addr <> " is reserved for an EVM precompile"
+        | otherwise = pure addr
+      rejectPrecompileDeployments field =
+        traverse $ \(addr, target) -> do
+          addr' <- rejectPrecompileAddress field addr
+          pure (addr', target)
+      precompileAddresses = Set.fromList [1..10]
 
       txConfParser = TxConf
         <$> v ..:? "propMaxGas" ..!= maxGasPerBlock
@@ -120,7 +129,7 @@ instance FromJSON EConfigWithUsage where
           Nothing                -> pure Bitwuzla
 
       solConfParser = SolConf
-        <$> v ..:? "contractAddr"    ..!= defaultContractAddr
+        <$> (v ..:? "contractAddr"    ..!= defaultContractAddr >>= rejectPrecompileAddress "contractAddr")
         <*> v ..:? "deployer"        ..!= defaultDeployerAddr
         <*> v ..:? "sender"          ..!= Set.fromList [0x10000, 0x20000, defaultDeployerAddr]
         <*> v ..:? "balanceAddr"     ..!= 0xffffffff
@@ -132,8 +141,8 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "solcArgs"        ..!= ""
         <*> v ..:? "solcLibs"        ..!= []
         <*> v ..:? "quiet"           ..!= False
-        <*> v ..:? "deployContracts" ..!= []
-        <*> v ..:? "deployBytecodes" ..!= []
+        <*> (v ..:? "deployContracts" ..!= [] >>= rejectPrecompileDeployments "deployContracts")
+        <*> (v ..:? "deployBytecodes" ..!= [] >>= rejectPrecompileDeployments "deployBytecodes")
         <*> ((<|>) <$> v ..:? "allContracts"
                    -- TODO: keep compatible with the old name for a while
                    <*> lift (v .:? "multi-abi")) ..!= False
