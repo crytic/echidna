@@ -64,8 +64,9 @@ configTests = testGroup "Configuration tests" $
               Right (_ :: EConfigWithUsage) -> pure ()
               Left e -> assertFailure $ "unexpected decoding error: " <> show e
       shouldReject "contractAddr: \"0x1\""
-      shouldReject "deployContracts: [[\"0x1\", \"A\"]]"
+      shouldReject "contractAddr: \"0x11\""
+      shouldReject "deployContracts: [[\"0x100\", \"A\"]]"
       shouldReject "deployBytecodes: [[\"0xa\", \"00\"]]"
-      shouldAccept "contractAddr: \"0xb\"\ndeployContracts: [[\"0xb\", \"A\"]]\ndeployBytecodes: [[\"0xb\", \"00\"]]"
+      shouldAccept "contractAddr: \"0x12\"\ndeployContracts: [[\"0x12\", \"A\"]]\ndeployBytecodes: [[\"0x101\", \"00\"]]"
   ]
   where files = ["basic/config.yaml", "basic/default.yaml", "basic/coverage-test.yaml", "basic/corpus-fallback-test.yaml"]

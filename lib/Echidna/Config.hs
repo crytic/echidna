@@ -13,6 +13,7 @@ import Data.Set qualified as Set
 import Data.Text (isPrefixOf)
 import Data.Yaml qualified as Y
 
+import EVM (isPrecompileAddr')
 import EVM.Solvers (Solver(..))
 import EVM.Types (Addr, VM(..), W256)
 
@@ -73,14 +74,13 @@ instance FromJSON EConfigWithUsage where
         else
           pure $ fromIntegral value
       rejectPrecompileAddress field addr
-        | addr `Set.member` precompileAddresses =
+        | isPrecompileAddr' addr =
           fail $ field <> ": address " <> show addr <> " is reserved for an EVM precompile"
         | otherwise = pure addr
       rejectPrecompileDeployments field =
         traverse $ \(addr, target) -> do
           addr' <- rejectPrecompileAddress field addr
           pure (addr', target)
-      precompileAddresses = Set.fromList [1..10]
 
       txConfParser = TxConf
         <$> v ..:? "propMaxGas" ..!= maxGasPerBlock
