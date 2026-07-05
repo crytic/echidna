@@ -54,5 +54,19 @@ configTests = testGroup "Configuration tests" $
       case Y.decodeEither' ("maxGasprice: " <> overW256) of
         Right (_ :: EConfigWithUsage) -> assertFailure "should not decode"
         Left _ -> pure ()
+  , testCase "reject precompile deployment addresses" $ do
+      let shouldReject config =
+            case Y.decodeEither' config of
+              Right (_ :: EConfigWithUsage) -> assertFailure "should not decode"
+              Left _ -> pure ()
+          shouldAccept config =
+            case Y.decodeEither' config of
+              Right (_ :: EConfigWithUsage) -> pure ()
+              Left e -> assertFailure $ "unexpected decoding error: " <> show e
+      shouldReject "contractAddr: \"0x1\""
+      shouldReject "contractAddr: \"0x11\""
+      shouldReject "deployContracts: [[\"0x100\", \"A\"]]"
+      shouldReject "deployBytecodes: [[\"0xa\", \"00\"]]"
+      shouldAccept "contractAddr: \"0x12\"\ndeployContracts: [[\"0x12\", \"A\"]]\ndeployBytecodes: [[\"0x101\", \"00\"]]"
   ]
   where files = ["basic/config.yaml", "basic/default.yaml", "basic/coverage-test.yaml", "basic/corpus-fallback-test.yaml"]
