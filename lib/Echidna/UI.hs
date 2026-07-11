@@ -89,11 +89,16 @@ ui vm dict initialCorpus cliSelectedContract = do
     perWorkerTestLimit = ceiling
       (fromIntegral conf.campaignConf.testLimit / fromIntegral nFuzzWorkers :: Double)
 
-    (corpusChunkSize, largerCorpusChunks) = length initialCorpus `divMod` nFuzzWorkers
-    corpusChunkSizes =
-      replicate largerCorpusChunks (corpusChunkSize + 1) <>
-      replicate (nFuzzWorkers - largerCorpusChunks) corpusChunkSize
-    corpusChunks = splitPlaces corpusChunkSizes initialCorpus ++ repeat []
+    -- Distribute the replay corpus across the fuzz workers. The symbolic
+    -- worker always replays the full corpus (see spawnWorker), so with no
+    -- fuzz workers there is nothing to distribute.
+    corpusChunks
+      | nFuzzWorkers == 0 = repeat []
+      | otherwise = splitPlaces chunkSizes initialCorpus ++ repeat []
+      where
+        (baseSize, remainder) = length initialCorpus `divMod` nFuzzWorkers
+        chunkSizes = replicate remainder (baseSize + 1)
+                  <> replicate (nFuzzWorkers - remainder) baseSize
 
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
