@@ -1,0 +1,4 @@
+testMode: "property"
+testLimit: 100
+seqLen: 10
+prefillCorpus: true

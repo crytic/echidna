@@ -69,6 +69,7 @@ library:
     - signal
     - split
     - strip-ansi-escape
+    - template-haskell
     - time
     - unliftio
     - unliftio-core
