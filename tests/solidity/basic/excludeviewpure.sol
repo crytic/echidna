@@ -24,4 +24,12 @@ contract ViewPureProperty {
     function getConst() external pure returns (uint256) {
         return 42;
     }
+
+    // planted failing assert: with excludeViewPure no assertion test may be
+    // created for it (and the fuzzer must never call it); without the flag
+    // its assertion test must be found immediately
+    function neverCalled() external view returns (uint256) {
+        assert(false);
+        return counter;
+    }
 }

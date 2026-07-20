@@ -6,7 +6,7 @@ import Test.Tasty (TestTree, testGroup)
 
 import EVM.ABI (AbiValue(..))
 
-import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, passed, solved, solvedLen, solvedWith, solvedWithout)
+import Common (testContract, testContractV, solcV, testContract', checkConstructorConditions, notPresent, passed, solved, solvedLen, solvedWith, solvedWithout)
 import Echidna.Types.Tx (TxCall(..))
 import Echidna.Types.Worker (WorkerType(..))
 
@@ -39,6 +39,22 @@ integrationTests = testGroup "Solidity Integration Testing"
       -- echidna_counter_small is a view property: must not be excluded, and must be solved
       -- (which also proves increment() is still being called by the fuzzer)
       [ ("view property must not be excluded and should be solved", solved "echidna_counter_small")
+      ]
+  , testContractV "basic/excludeviewpure.sol" (Just (>= solcV (0,8,0))) (Just "basic/excludeviewpure-assert.yaml")
+      -- in assertion mode excludeViewPure must not create tests for view/pure
+      -- functions, so neverCalled()'s planted assert(false) can never fire
+      [ ("view assertion test must not be created", notPresent "neverCalled")
+      , ("view assertion test must not be created", notPresent "getCounter")
+      , ("pure assertion test must not be created", notPresent "getConst")
+      , ("non-view function must still be tested",  passed     "increment")
+      ]
+  , testContractV "basic/excludeviewpure.sol" (Just (>= solcV (0,8,0))) (Just "basic/excludeviewpure-assert-control.yaml")
+      -- control: without excludeViewPure the planted assert IS reachable and
+      -- the view/pure functions ARE tested, proving the notPresent checks
+      -- above are not vacuous (and pinning the test names they look up)
+      [ ("planted view assert must be found without excludeViewPure", solved "neverCalled")
+      , ("view function must be tested without excludeViewPure",      passed "getCounter")
+      , ("pure function must be tested without excludeViewPure",      passed "getConst")
       ]
   , testContract "basic/revert.sol" Nothing
       [ ("echidna_fails_on_revert passed", solved "echidna_fails_on_revert")
