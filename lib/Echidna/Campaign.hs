@@ -482,10 +482,15 @@ callseq vm txSeq = do
       in (corp', corpusSize corp')
 
     (points, numCodehashes) <- liftIO $ coverageStats env.coverageRefInit env.coverageRefRuntime
+    -- force the list eagerly: `transactions` is a non-strict field, so a
+    -- lazy `force (...)` is itself stored as a thunk that pins every
+    -- VMResult (and its returndata) of the executed sequence until some
+    -- consumer demands it -- and none does under the default config
+    let !transactions = force $ fst <$> results
     pushWorkerEvent NewCoverage { points
                                 , numCodehashes
                                 , corpusSize = newSize
-                                , transactions = fst <$> results
+                                , transactions
                                 }
 
   modify' $ \workerState ->
@@ -641,10 +646,18 @@ updateOpenTest vm reproducer test = do
   case test.state of
     Open -> do
       (testValue, vm') <- checkETest test vm
+      -- forced in the branches that store it so the stored test (and its
+      -- VM-free event copies) does not retain vm' through an unevaluated
+      -- selector; must stay unevaluated on the fall-through path where
+      -- vm' may carry no result
       let result = getResultFromVM vm'
       case testValue of
         BoolValue False -> do
           workerId <- Just <$> gets (.workerId)
+          -- collapse the suspended execution state before storing the VM,
+          -- otherwise the stored thunks retain every intermediate VM
+          let !_ = forceVMData vm
+          let !_ = result
           let test' = test { Test.state = Large 0
                            , reproducer
                            , vm = Just vm
@@ -658,6 +671,8 @@ updateOpenTest vm reproducer test = do
           pure $ Just test'
 
         IntValue value' | value' > value -> do
+          let !_ = forceVMData vm
+          let !_ = result
           let test' = test { reproducer
                            , value = IntValue value'
                            , vm = Just vm
