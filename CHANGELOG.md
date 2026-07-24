@@ -13,7 +13,7 @@
 * Deploying contracts to precompile addresses is now rejected with an error (#1585)
 * Fixed TLS handshake failures when fetching contracts from RPC providers using certificate compression, such as Alchemy, by updating `tls` to 2.2.2 (#1581)
 * Fixed libff header installation with CMake 4.3+ (#1573)
-* Updated hevm to `408bf31` with support for dynamic argument inputs in symbolic mode (#1575, #1580)
+* Updated hevm to `4ca42fd` (0.58.0) with support for dynamic argument inputs in symbolic mode (#1575, #1580)
 
 ## 2.3.2
 
