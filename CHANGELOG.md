@@ -1,6 +1,19 @@
 ## Unreleased
 
+## 2.3.3
+
+* New `excludeViewPure` option to disable testing of view and pure functions in property mode, except those with the test prefix (#1552)
 * The reason a test failed (e.g. revert, returned false) is now shown consistently in the text, JSON and UI outputs, including when no transactions are required to reproduce the failure (#1476)
+* Foundry reproducers are now generated for assertion failures that emit events (#1550)
+* The replay corpus is now distributed evenly across all fuzz workers (#1565), and a divide-by-zero when using `workers: 0` was fixed (#1583)
+* Fixed a desync between the transaction sequence and traces shown for shrunk reproducers (#1554)
+* Fixed two memory leaks, one in the constants dictionary (#1577) and one in the campaign event queue (#1587)
+* ANSI escape codes are now disabled when Echidna's output is not a TTY (#1567)
+* The UI event listener is now started before the workers to avoid missing early events (#1563)
+* Deploying contracts to precompile addresses is now rejected with an error (#1585)
+* Fixed TLS handshake failures when fetching contracts from RPC providers using certificate compression, such as Alchemy, by updating `tls` to 2.2.2 (#1581)
+* Fixed libff header installation with CMake 4.3+ (#1573)
+* Updated hevm to `408bf31` with support for dynamic argument inputs in symbolic mode (#1575, #1580)
 
 ## 2.3.2
 
