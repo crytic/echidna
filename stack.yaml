@@ -4,9 +4,36 @@ resolver: lts-23.24
 packages:
 - '.'
 
+# Relax the `tls < 2.2` upper bounds of the tls consumers so they can use tls 2.2.2
+# (they all compile fine against it). crypton-connection has no release targeting tls 2.2
+# at all (0.4.5 caps < 2.2, 0.4.6 needs >= 2.3). Mirrors the doJailbreaks in flake.nix.
+allow-newer: true
+allow-newer-deps:
+- crypton-connection
+- warp-tls
+- tls-session-manager
+
 extra-deps:
 - git: https://github.com/argotorg/hevm.git
   commit: 408bf3100f1edbfc489b21b5218332e583e503a7
+
+# Bump tls to >= 2.2.2 for the fix in https://github.com/haskell-tls/hs-tls/pull/515.
+# tls 2.2.2 needs the crypton-x509 1.8 line, which migrated from asn1-*/pem/hourglass to
+# the crypton-asn1-*/crypton-pem/time-hourglass packages (none of which are in lts-23.24),
+# while still building against crypton 1.0.x. Pin the whole set explicitly.
+- tls-2.2.2
+- crypton-x509-1.8.0
+- crypton-x509-store-1.8.0
+- crypton-x509-validation-1.8.0
+- crypton-asn1-encoding-0.10.0
+- crypton-asn1-parse-0.10.0
+- crypton-asn1-types-0.4.1
+- crypton-pem-0.3.0
+- time-hourglass-0.3.0
+- hpke-0.0.0
+- ech-config-0.0.1
+- crypton-connection-0.4.5
+- crypton-socks-0.6.2@sha256:19f8f9a8c1973905ec000ea431bb4454a9c437b80f1e5f5f83ff84b964c49885,2017
 
 - smt2-parser-0.1.0.1@sha256:1e1a4565915ed851c13d1e6b8bb5185cf5d454da3b43170825d53e221f753d77,1421
 - spawn-0.3@sha256:b91e01d8f2b076841410ae284b32046f91471943dc799c1af77d666c72101f02,1162
