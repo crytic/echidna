@@ -254,10 +254,7 @@ updateOpenTest vm reproducer test = do
                            , result
                            , workerId
                            }
-          -- Publish a VM-free copy, forced strict so the event can't retain the
-          -- VM through a thunk. testRefs keeps the full 'test'' for shrinking.
-          let !vmFreeTest = test' { Test.vm = Nothing }
-          pushWorkerEvent (TestFalsified vmFreeTest)
+          pushWorkerEvent (TestFalsified test')
           pure $ Just test'
 
         IntValue value' | value' > value -> do
@@ -266,9 +263,7 @@ updateOpenTest vm reproducer test = do
                            , vm = Just vm
                            , result
                            }
-          -- VM-free copy, as in the TestFalsified case above.
-          let !vmFreeTest = test' { Test.vm = Nothing }
-          pushWorkerEvent (TestOptimized vmFreeTest)
+          pushWorkerEvent (TestOptimized test')
           pure $ Just test'
           where
           value =
