@@ -156,11 +156,25 @@ filterMethods contractName (Blacklist ig) ms =
 --   See: https://book.getfoundry.sh/forge/invariant-testing
 -- - Other functions with arguments are kept as callable targets for
 --   invariant test campaigns.
-filterMethodsWithArgs :: NonEmpty SolSignature -> NonEmpty SolSignature
-filterMethodsWithArgs ms =
-  case NE.filter (\(n, xs) -> T.isPrefixOf "test" n || (T.isPrefixOf "invariant_" n || not (null xs))) ms of
+--
+-- The set of callable functions depends on @seqLen@, mirroring how tests are
+-- selected in 'Echidna.Test.createTests':
+-- - In fuzz mode (@seqLen == 1@) each "test" function is itself the fuzz
+--   target and is called directly by the fuzzer. Only "test" functions with
+--   at least one parameter are kept; calling other functions (e.g. handlers
+--   like @mint@) would only waste effort since no test checks them.
+-- - In invariant mode (@seqLen > 1@) test functions, "invariant_" functions,
+--   and parameterized handlers retain the existing callable set, which is
+--   exercised in randomized sequences.
+filterMethodsWithArgs :: Int -> NonEmpty SolSignature -> NonEmpty SolSignature
+filterMethodsWithArgs seqLen ms =
+  case NE.filter keep ms of
     [] -> error "No foundry tests found"
     fs -> NE.fromList fs
+  where
+    keep (n, xs)
+      | seqLen == 1 = T.isPrefixOf "test" n && not (null xs)
+      | otherwise   = T.isPrefixOf "test" n || T.isPrefixOf "invariant_" n || not (null xs)
 
 abiOf :: Text -> SolcContract -> NonEmpty SolSignature
 abiOf pref solcContract =
@@ -270,10 +284,11 @@ selectMainContract solConf name cs = do
 
 mkSignatureMap
   :: SolConf
+  -> CampaignConf
   -> SolcContract
   -> [SolcContract]
   -> IO SignatureMap
-mkSignatureMap solConf mainContract contracts = do
+mkSignatureMap solConf campaignConf mainContract contracts = do
   let
     -- Optionally exclude view/pure functions from the ABI, but never
     -- exclude prefixed functions (e.g. echidna_*) as they may be properties
@@ -285,7 +300,7 @@ mkSignatureMap solConf mainContract contracts = do
       | otherwise = NE.toList sigs
     -- Filter ABI according to the config options
     fabiOfc = if isFoundryMode solConf.testMode
-                then NE.toList $ filterMethodsWithArgs (abiOf solConf.prefix mainContract)
+                then NE.toList $ filterMethodsWithArgs campaignConf.seqLen (abiOf solConf.prefix mainContract)
                 else let base = filterMethods mainContract.contractName solConf.methodFilter $
                                   abiOf solConf.prefix mainContract
                      in case NE.nonEmpty base of
