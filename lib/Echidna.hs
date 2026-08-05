@@ -1,7 +1,9 @@
 module Echidna where
 
-import Control.Concurrent (newChan)
+import Control.Concurrent (forkIO, newChan, readChan)
 import Control.Concurrent.STM (newBroadcastTChanIO)
+import Control.Exception (SomeException, handle)
+import Control.Monad (forever, void)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (liftIO)
 import Data.IORef (newIORef)
@@ -126,6 +128,11 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   codehashMap <- newIORef mempty
   chainId <- Onchain.fetchChainIdFrom cfg.rpcUrl
   eventQueue <- newChan
+  -- Consumers read events from their own 'dupChan', so this original read end
+  -- is never advanced and would otherwise pin every event ever written. Drain
+  -- it from a dedicated thread so the GC can reclaim delivered events.
+  void $ forkIO $ handle (\(_ :: SomeException) -> pure ()) $
+    forever $ void $ readChan eventQueue
   bus <- newBroadcastTChanIO
   coverageRefInit <- newIORef mempty
   coverageRefRuntime <- newIORef mempty

@@ -17,7 +17,7 @@ import Data.Text qualified as T
 import Optics.Core ((.~), (%), (%~))
 
 import EVM (loadContract, resetState, symbolify)
-import EVM.ABI (abiKind, AbiKind(Dynamic), Sig(..), decodeBuf, AbiVals(..), selector, encodeAbiValue, AbiValue(..))
+import EVM.ABI (Sig(..), decodeBuf, AbiVals(..), selector, encodeAbiValue, AbiValue(..))
 import EVM.Effects (TTY, ReadConfig)
 import EVM.Expr qualified
 import EVM.Fetch qualified as Fetch
@@ -83,8 +83,12 @@ extractErrors = mapMaybe (\case
   _ -> Nothing)
 
 suitableForSymExec :: Method -> Bool
-suitableForSymExec m = not $ null m.inputs
-  && null (filter (\(_, t) -> abiKind t == Dynamic) m.inputs)
+suitableForSymExec m =
+  -- the method must take arguments (otherwise there is nothing to solve for)
+  -- and must not opt out via a `_no_symexec` name. Dynamic ABI types
+  -- (bytes/string/dynamic arrays) are now supported: hevm concretizes them to a
+  -- bounded length (see maxDynSize), so they no longer disqualify a method.
+  not (null m.inputs)
   && not (T.isInfixOf "_no_symexec" m.name)
 
 
@@ -168,8 +172,11 @@ exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
   Method -> SolcContract -> SourceCache -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
 
 exploreMethod method _contract _sources vm defaultSender conf veriOpts solvers rpcInfo session = do
-  calldataSym@(_, constraints) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
+  -- hevm's mkCalldata now returns ((calldata, constraints), caveats); the
+  -- caveats (e.g. bounded dynamic args) are not surfaced through echidna yet.
+  (calldataSym, _caveats) <- mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   let
+    constraints = snd calldataSym
     cd = fst calldataSym
     fetcher = Fetch.oracle solvers (Just session) rpcInfo
     dst = conf.solConf.contractAddr

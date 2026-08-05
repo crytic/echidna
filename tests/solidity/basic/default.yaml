@@ -74,6 +74,8 @@ maxBlockDelay: 60480
 filterFunctions: []
 # by default, blacklist methods in filterFunctions
 filterBlacklist: true
+# exclude view/pure functions from fuzzing (prefixed property tests are kept)
+excludeViewPure: false
 # enable or disable ffi HEVM cheatcode
 allowFFI: false
 #directory to save the corpus; by default is disabled

@@ -17,6 +17,7 @@ import Data.IORef (readIORef, atomicModifyIORef', writeIORef)
 import Data.List qualified as List
 import Data.Map (Map, (\\))
 import Data.Map qualified as Map
+import Data.Map.Strict qualified as MapStrict
 import Data.Maybe (isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -133,7 +134,9 @@ callseq vm txSeq isReplaying = do
       additions = Map.unionsWith Set.union [resultMap, eventDiffs, diffs]
       -- append to the constants dictionary
       updatedDict = workerState.genDict
-        { constants = Map.unionWith Set.union workerState.genDict.constants additions
+        -- The strict union prevents an unbounded chain of suspended Set unions
+        -- for ABI types that are never sampled by the generator.
+        { constants = MapStrict.unionWith Set.union workerState.genDict.constants additions
         , dictValues = Set.union (mkDictValues $ Set.unions $ Map.elems additions)
                                  workerState.genDict.dictValues
         }
@@ -303,7 +306,9 @@ updateOpenTest vm reproducer test = do
                            , result
                            , workerId
                            }
-          pushWorkerEvent (TestFalsified test')
+          -- Keep the VM for shrinking, but do not retain it in the event queue.
+          let !vmFreeTest = test' { Test.vm = Nothing }
+          pushWorkerEvent (TestFalsified vmFreeTest)
           pure $ Just test'
 
         IntValue value' | value' > value -> do
@@ -312,7 +317,8 @@ updateOpenTest vm reproducer test = do
                            , vm = Just vm
                            , result
                            }
-          pushWorkerEvent (TestOptimized test')
+          let !vmFreeTest = test' { Test.vm = Nothing }
+          pushWorkerEvent (TestOptimized vmFreeTest)
           pure $ Just test'
           where
           value =

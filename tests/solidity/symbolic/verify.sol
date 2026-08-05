@@ -39,4 +39,12 @@ contract VulnerableContract {
     assert(y != 42);
   }
 
+  // dynamic (bytes) input: hevm concretizes it up to maxDynSize (128 bytes).
+  // Solvable, since the bug only needs the first two bytes to be 0xde 0xad.
+  function dynamic(bytes calldata data) public {
+    if (data.length >= 2) {
+      assert(data[0] != 0xde || data[1] != 0xad); // BUG
+    }
+  }
+
 }
