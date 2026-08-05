@@ -53,6 +53,7 @@ import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Signature (FunctionName)
+import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..))
@@ -125,7 +126,7 @@ runSymWorker callback vm dict workerId _ name = do
 
   flip runStateT initialState $
     flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
-      if (cfg.campaignConf.workers == Just 0) && (cfg.campaignConf.seqLen == 1) then do
+      if isVerificationMode cfg.solConf.testMode then do
         verifyMethods -- No arguments, everything is in this environment
         pure SymbolicVerificationDone
       else do

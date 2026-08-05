@@ -26,9 +26,22 @@ import Echidna.Types.Solidity
 import Echidna.Types.Test (TestConf(..))
 import Echidna.Types.Tx (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
 
+-- | Verification is a stateless symbolic mode: it uses one symbolic worker
+-- and exactly one transaction per sequence.
+adjustForVerificationMode :: EConfig -> EConfig
+adjustForVerificationMode cfg
+  | isVerificationMode cfg.solConf.testMode =
+      cfg { campaignConf = cfg.campaignConf
+              { workers = Just 0
+              , seqLen = 1
+              , symExec = True
+              }
+          }
+  | otherwise = cfg
+
 instance FromJSON EConfig where
   -- retrieve the config from the key usage annotated parse
-  parseJSON x = (.econfig) <$> parseJSON @EConfigWithUsage x
+  parseJSON x = adjustForVerificationMode . (.econfig) <$> parseJSON @EConfigWithUsage x
 
 instance FromJSON EConfigWithUsage where
   -- this runs the parser in a StateT monad which keeps track of the keys
