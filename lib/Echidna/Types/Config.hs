@@ -4,12 +4,14 @@ import Control.Concurrent (Chan)
 import Data.Aeson.Key (Key)
 import Data.IORef (IORef)
 import Data.Set (Set)
+import Echidna.Types.InterWorker (Bus)
 import Data.Text (Text)
 import Data.Time (LocalTime)
 import Data.Word (Word64)
 
 import EVM.Dapp (DappInfo)
 import EVM.Fetch qualified as Fetch
+import EVM.Solidity (SourceCache)
 import EVM.Types (Addr, W256)
 
 import Echidna.SourceAnalysis.Slither (SlitherInfo)
@@ -70,6 +72,7 @@ data EConfigWithUsage = EConfigWithUsage
 data Env = Env
   { cfg :: EConfig
   , dapp :: DappInfo
+  , sourceCache :: SourceCache
 
   -- | Whether stdout supports ANSI escape codes. Detected once at startup;
   -- false when output is redirected to a file or pipe so traces can be
@@ -79,6 +82,7 @@ data Env = Env
   -- | Shared between all workers. Events are fairly rare so contention is
   -- minimal.
   , eventQueue :: Chan (LocalTime, CampaignEvent)
+  , bus :: Bus
 
   , testRefs :: [IORef EchidnaTest]
   , coverageRefInit :: IORef CoverageMap

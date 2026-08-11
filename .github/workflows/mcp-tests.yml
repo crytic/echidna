@@ -1,0 +1,69 @@
+name: MCP integration tests
+
+# Out-of-process MCP testing: spins up a real Echidna campaign with the MCP
+# server and drives it the way real agent clients do. Besides the tool/semantic
+# tests it runs the client-compatibility suite:
+#   * test_mcp_conformance.py -- wire-protocol regression guard (202/405/handshake)
+#   * test_mcp_codex.py       -- replays Codex's strict rmcp handshake
+#   * test_mcp_claude.py      -- drives the server with the official `mcp` SDK
+# Both client checks are transport-level and need no API keys, so they run on
+# every push/PR. (A live-model smoke using examples/mcp_agent.py needs
+# ANTHROPIC_API_KEY / Codex auth and is intentionally not part of CI.)
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Least-privilege GITHUB_TOKEN: this workflow only checks out the repo and runs
+# tests, so it needs no write scopes.
+permissions:
+  contents: read
+
+# A new push to the same ref cancels an in-flight run (avoids piling up slow builds).
+concurrency:
+  group: mcp-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mcp-client-compat:
+    name: MCP client compatibility (Claude + Codex)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      # Pull prebuilt echidna/hevm/deps from the project's Cachix so the build
+      # takes minutes instead of compiling the whole closure from source.
+      - name: Configure Cachix
+        uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71 # v17
+        with:
+          name: trailofbits
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Build echidna
+        run: nix build .#echidna --out-link result
+
+      - name: Add echidna to PATH
+        run: echo "$GITHUB_WORKSPACE/result/bin" >> "$GITHUB_PATH"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install -r tests/mcp/requirements-test.txt
+
+      # Echidna shells out to crytic-compile + solc to compile the test contract.
+      - name: Install crytic-compile and solc
+        run: |
+          pip install crytic-compile solc-select
+          solc-select install 0.8.25
+          solc-select use 0.8.25
+
+      - name: Run MCP test suite (tools + conformance + Claude + Codex)
+        run: pytest tests/mcp -v
