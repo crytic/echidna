@@ -166,6 +166,10 @@ foundryTestGenTests = testGroup "Foundry test generation"
           [ ("a reverting testFail should pass", passed "testFail_always_reverts")
           , ("a non reverting testFail should be detected", solved "testFail_sometimes_reverts")
           ]
+      , testContract "foundry/CheckProve.sol" (Just "foundry/CheckProve.yaml")
+          [ ("check functions should be fuzzed without symbolic execution", solved "check_small")
+          , ("prove functions should be fuzzed without symbolic execution", solved "prove_small")
+          ]
       , testContract "foundry/PropertyRepro.sol" (Just "foundry/PropertyRepro.yaml")
           [ ("property test should be detected", solved "echidna_counter_is_zero")
           ]

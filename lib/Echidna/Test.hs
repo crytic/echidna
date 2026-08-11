@@ -136,13 +136,18 @@ createTests m td ts seqLen r ss = case m of
     map (\s -> createTest (AssertionTest False s r)) (filter (/= fallback) ss)
   -- In foundry mode, seqLen distinguishes fuzz tests (seqLen == 1) from
   -- invariant tests (seqLen > 1), which determines how functions are filtered.
+  -- "check" and "prove" functions are symbolic entry points, but this is a
+  -- fuzzing campaign, so they are tested as regular fuzz tests here.
   "foundry" ->
     if seqLen == 1 then
       map (\s -> createTest (AssertionTest True s r))
-        (filter (\(n, xs) -> isFoundryTestName n && not (null xs)) ss)
+        (filter (\(n, xs) -> (isFoundryTestName n || isFoundrySymbolicName n)
+                             && not (null xs)) ss)
     else
       map (\s -> createTest (AssertionTest True s r))
-          (filter (\(n, xs) -> isFoundryInvariantName n || not (null xs)) ss)
+          (filter (\(n, xs) -> isFoundryInvariantName n
+                               || isFoundrySymbolicName n
+                               || not (null xs)) ss)
   _ -> error validateTestModeError
   ++ (if td then [sdt, sdat] else [])
   where
@@ -293,7 +298,9 @@ checkFoundryAssertion vm sig addr = do
           -- vm.assume failures should not be treated as test failures
           Just (VMFailure AssumeCheatFailed) -> False
           Just (VMFailure (Revert _)) ->
-            isFoundryTestName name || isFoundryInvariantName name
+            isFoundryTestName name
+              || isFoundryInvariantName name
+              || isFoundrySymbolicName name
           Just (VMFailure _) -> True
           _ -> False
     isCorrectAddr = LitAddr addr == vm.state.codeContract

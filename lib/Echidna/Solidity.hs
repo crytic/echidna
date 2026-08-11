@@ -44,7 +44,8 @@ import Echidna.Exec (execTx, execTxWithCov, initialVM)
 import Echidna.SourceAnalysis.Slither
 import Echidna.Test
   ( createTests, isAssertionMode, isFoundryInvariantName, isFoundryMode
-  , isFoundryTestName, isOptimizationMode, isPropertyMode )
+  , isFoundrySymbolicName, isFoundryTestName, isOptimizationMode
+  , isPropertyMode )
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
@@ -156,13 +157,16 @@ filterMethods contractName (Blacklist ig) ms =
 -- - Functions prefixed with "invariant" or "statefulFuzz" are invariant tests,
 --   called in randomized sequences to verify properties that must always hold.
 --   See: https://book.getfoundry.sh/forge/invariant-testing
+-- - Functions prefixed with "check" or "prove" are symbolic entry points, only
+--   verified in verification mode. This is a fuzzing campaign, so they are
+--   called and checked like any other test function.
 -- - Other functions with arguments are kept as callable targets for
 --   invariant test campaigns.
 --
 -- @seqLen@ selects between Foundry's two fuzzing modes, mirroring how tests
 -- are selected in 'Echidna.Test.createTests':
--- - Stateless fuzzing (@seqLen == 1@): each "test" function is itself the fuzz
---   target and is called directly by the fuzzer. Only "test" functions with
+-- - Stateless fuzzing (@seqLen == 1@): each test function is itself the fuzz
+--   target and is called directly by the fuzzer. Only test functions with
 --   at least one parameter are kept; calling other functions (e.g. handlers
 --   like @mint@) would only waste effort since no test checks them.
 -- - Stateful (invariant) fuzzing (@seqLen > 1@): test functions, invariant
@@ -175,8 +179,12 @@ filterMethodsWithArgs seqLen ms =
     fs -> NE.fromList fs
   where
     keep (n, xs)
-      | seqLen == 1 = isFoundryTestName n && not (null xs)
-      | otherwise   = isFoundryTestName n || isFoundryInvariantName n || not (null xs)
+      | seqLen == 1 = (isFoundryTestName n || isFoundrySymbolicName n)
+                      && not (null xs)
+      | otherwise   = isFoundryTestName n
+                      || isFoundryInvariantName n
+                      || isFoundrySymbolicName n
+                      || not (null xs)
 
 abiOf :: Text -> SolcContract -> NonEmpty SolSignature
 abiOf pref solcContract =

@@ -19,12 +19,13 @@ foundryTests = testGroup "Foundry Integration Testing"
   [ testGroup "ABI filtering"
       [ testCase "stateless fuzzing only calls parameterized test functions" $
           assertEqual "filtered signatures"
-            ["testFuzz", "testFailFuzz"]
+            ["testFuzz", "testFailFuzz", "check_value"]
             (fst <$> NE.toList (filterMethodsWithArgs 1 foundrySignatures))
       , testCase "invariant fuzzing retains the callable function set" $
           assertEqual "filtered signatures"
             [ "testUnit", "testFuzz", "testFailFuzz", "handler"
-            , "invariant_total", "invariantTotal", "statefulFuzzTotal" ]
+            , "invariant_total", "invariantTotal", "statefulFuzzTotal"
+            , "check_value", "prove_total" ]
             (fst <$> NE.toList (filterMethodsWithArgs 100 foundrySignatures))
       ]
   , testGroup "function name classification"
@@ -71,4 +72,6 @@ foundrySignatures =
     , ("invariant_total", [])
     , ("invariantTotal", [])
     , ("statefulFuzzTotal", [])
+    , ("check_value", [AbiUIntType 256])
+    , ("prove_total", [])
     ]
