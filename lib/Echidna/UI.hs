@@ -85,9 +85,12 @@ ui vm dict initialCorpus cliSelectedContract = do
       other -> other
 
     -- Distribute over all workers, could be slightly bigger overall due to
-    -- ceiling but this doesn't matter
-    perWorkerTestLimit = ceiling
-      (fromIntegral conf.campaignConf.testLimit / fromIntegral nFuzzWorkers :: Double)
+    -- ceiling but this doesn't matter. Verification mode has no fuzz workers,
+    -- so avoid dividing by zero in that case.
+    perWorkerTestLimit
+      | nFuzzWorkers == 0 = conf.campaignConf.testLimit
+      | otherwise = ceiling
+          (fromIntegral conf.campaignConf.testLimit / fromIntegral nFuzzWorkers :: Double)
 
     -- Distribute the replay corpus across the fuzz workers. The symbolic
     -- worker always replays the full corpus (see spawnWorker), so with no

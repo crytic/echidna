@@ -291,6 +291,8 @@ overrideConfig config Options{..} = do
            , disableOnchainSources = cliDisableOnchainSources || config.disableOnchainSources
            }
            & overrideFormat
+           -- re-apply, as --test-mode may have selected the verification mode
+           & adjustForVerificationMode
   where
     overrideUiConf uiConf = uiConf
       { maxTime = cliTimeout <|> uiConf.maxTime

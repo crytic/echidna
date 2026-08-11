@@ -26,6 +26,21 @@ import Echidna.Types.Solidity
 import Echidna.Types.Test (TestConf(..))
 import Echidna.Types.Tx (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
 
+-- | Verification is a stateless symbolic mode: it uses one symbolic worker
+-- and exactly one transaction per sequence. This is applied when parsing a
+-- config file; the CLI applies it again after its own overrides, since the
+-- test mode can also be selected with @--test-mode@.
+adjustForVerificationMode :: EConfig -> EConfig
+adjustForVerificationMode cfg
+  | isVerificationMode cfg.solConf.testMode =
+      cfg { campaignConf = cfg.campaignConf
+              { workers = Just 0
+              , seqLen = 1
+              , symExec = True
+              }
+          }
+  | otherwise = cfg
+
 instance FromJSON EConfig where
   -- retrieve the config from the key usage annotated parse
   parseJSON x = (.econfig) <$> parseJSON @EConfigWithUsage x
@@ -42,7 +57,9 @@ instance FromJSON EConfigWithUsage where
                _        -> mempty
     (c, ks) <- runStateT (parser v') $ Set.fromList []
     let found = Set.fromList (keys v')
-    pure $ EConfigWithUsage c (found `Set.difference` ks) (ks `Set.difference` found)
+    pure $ EConfigWithUsage (adjustForVerificationMode c)
+                            (found `Set.difference` ks)
+                            (ks `Set.difference` found)
     -- this parser runs in StateT and comes equipped with the following
     -- equivalent unary operators:
     -- x .:? k (Parser) <==> x ..:? k (StateT)

@@ -68,5 +68,15 @@ configTests = testGroup "Configuration tests" $
       shouldReject "deployContracts: [[\"0x100\", \"A\"]]"
       shouldReject "deployBytecodes: [[\"0xa\", \"00\"]]"
       shouldAccept "contractAddr: \"0x12\"\ndeployContracts: [[\"0x12\", \"A\"]]\ndeployBytecodes: [[\"0x101\", \"00\"]]"
+  , testCase "verification mode configures symbolic execution" $
+      case Y.decodeEither' "testMode: verification" of
+        Right (config :: EConfig) -> do
+          assertBool "verification mode should use no fuzz workers" $
+            config.campaignConf.workers == Just 0
+          assertBool "verification mode should use one transaction" $
+            config.campaignConf.seqLen == 1
+          assertBool "verification mode should enable symbolic execution" $
+            config.campaignConf.symExec
+        Left e -> assertFailure $ "unexpected decoding error: " <> show e
   ]
   where files = ["basic/config.yaml", "basic/default.yaml", "basic/coverage-test.yaml", "basic/corpus-fallback-test.yaml"]
