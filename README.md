@@ -60,7 +60,8 @@ The example above uses the default **property** mode, but Echidna supports sever
 
 * **`property`** (default): Test `echidna_`-prefixed functions that return `bool`.
 * **`assertion`**: Detect assertion failures from `assert()` and Foundry's `assertX` helpers (`assertTrue`, `assertEq`, etc.).
-* **`foundry`**: Run Foundry-style `test`-prefixed unit tests and `invariant_`-prefixed stateful invariants.
+* **`foundry`**: Run Foundry-style tests, following its naming conventions: `test`-prefixed unit and fuzz tests (`testFail`-prefixed ones are expected to revert) and `invariant`- or `statefulFuzz`-prefixed stateful invariants.
+* **`verification`**: Symbolically verify each function of the contract using a single transaction. `check`- and `prove`-prefixed functions are always used as entry points.
 * **`overflow`**: Detect integer over/underflows (Solidity >= 0.8.0).
 * **`optimization`**: Maximize the return value of `echidna_`-prefixed functions that return `int256` (uses the same configurable prefix as property mode).
 * **`exploration`**: Collect coverage without checking properties.

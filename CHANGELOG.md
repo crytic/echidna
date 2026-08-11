@@ -1,5 +1,10 @@
 ## Unreleased
 
+* New `verification` test mode to symbolically verify each function of a contract using a single transaction, instead of configuring the symbolic worker by hand (#1595)
+* Foundry mode now follows Foundry's function naming conventions more closely: `invariant`- and `statefulFuzz`-prefixed functions are stateful invariants, and `testFail`-prefixed tests are expected to revert (#1595)
+* Foundry mode now only calls parameterized `test` functions when `seqLen` is 1, matching Foundry's stateless fuzzing (#1595)
+* `check`- and `prove`-prefixed functions are always verified in verification mode, even when no assertion was found in them (#1595)
+
 ## 2.3.3
 
 * New `excludeViewPure` option to disable testing of view and pure functions in property mode, except those with the test prefix (#1552)

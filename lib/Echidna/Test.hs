@@ -89,6 +89,29 @@ isOptimizationMode :: TestMode -> Bool
 isOptimizationMode "optimization" = True
 isOptimizationMode _               = False
 
+-- The following predicates classify function names following the Foundry
+-- naming conventions, mirroring @TestFunctionKind::classify@:
+-- https://github.com/foundry-rs/foundry/blob/master/crates/common/src/traits.rs
+
+-- | @test*@ functions are tests: unit tests when they take no arguments,
+-- fuzz tests when they do.
+isFoundryTestName :: Text -> Bool
+isFoundryTestName = T.isPrefixOf "test"
+
+-- | @testFail*@ functions are tests that are expected to revert, so their
+-- outcome is inverted with respect to a plain @test*@ function.
+isFoundryTestFailName :: Text -> Bool
+isFoundryTestFailName = T.isPrefixOf "testFail"
+
+-- | @invariant*@ and @statefulFuzz*@ functions are stateful (invariant) tests,
+-- checked after each transaction of a randomized sequence.
+isFoundryInvariantName :: Text -> Bool
+isFoundryInvariantName n = T.isPrefixOf "invariant" n || T.isPrefixOf "statefulFuzz" n
+
+-- | @check*@ and @prove*@ functions are symbolic test entry points.
+isFoundrySymbolicName :: Text -> Bool
+isFoundrySymbolicName n = T.isPrefixOf "check" n || T.isPrefixOf "prove" n
+
 createTests
   :: TestMode
   -> Bool
@@ -116,10 +139,10 @@ createTests m td ts seqLen r ss = case m of
   "foundry" ->
     if seqLen == 1 then
       map (\s -> createTest (AssertionTest True s r))
-        (filter (\(n, xs) -> T.isPrefixOf "test" n && not (null xs)) ss)
+        (filter (\(n, xs) -> isFoundryTestName n && not (null xs)) ss)
     else
       map (\s -> createTest (AssertionTest True s r))
-          (filter (\(n, xs) -> T.isPrefixOf "invariant_" n || not (null xs)) ss)
+          (filter (\(n, xs) -> isFoundryInvariantName n || not (null xs)) ss)
   _ -> error validateTestModeError
   ++ (if td then [sdt, sdat] else [])
   where
@@ -251,19 +274,28 @@ checkFoundryAssertion
   -> m (TestValue, VM Concrete)
 checkFoundryAssertion vm sig addr = do
   let
+    name = fst sig
     -- Whether the last transaction has any value
     hasValue = vm.state.callvalue /= Lit 0
     -- Whether the last transaction called the function `sig`.
     isCorrectFn =
       BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty))
                     (forceBuf vm.state.calldata)
-    isAssertionFailure = case vm.result of
-      -- vm.assume failures should not be treated as test failures
-      Just (VMFailure AssumeCheatFailed) -> False
-      Just (VMFailure (Revert _)) ->
-        T.isPrefixOf "test" (fst sig) || T.isPrefixOf "invariant_" (fst sig)
-      Just (VMFailure _) -> True
-      _ -> False
+    isAssertionFailure
+      -- "testFail" functions are expected to revert, so the test only fails
+      -- when the call succeeds.
+      | isFoundryTestFailName name = case vm.result of
+          -- vm.assume failures discard the input, they neither pass nor fail
+          Just (VMFailure AssumeCheatFailed) -> False
+          Just (VMSuccess _) -> True
+          _ -> False
+      | otherwise = case vm.result of
+          -- vm.assume failures should not be treated as test failures
+          Just (VMFailure AssumeCheatFailed) -> False
+          Just (VMFailure (Revert _)) ->
+            isFoundryTestName name || isFoundryInvariantName name
+          Just (VMFailure _) -> True
+          _ -> False
     isCorrectAddr = LitAddr addr == vm.state.codeContract
     isCorrectTarget = isCorrectFn && isCorrectAddr
     isFailure = not hasValue && (isCorrectTarget && isAssertionFailure)

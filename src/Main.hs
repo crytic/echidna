@@ -73,8 +73,7 @@ main = withUtf8 $ withCP65001 $ withStrippedExceptions $ do
   opts@Options{..} <- execParser optsParser
   EConfigWithUsage loadedCfg ks _ <-
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
-  cfg' <- overrideConfig loadedCfg opts
-  let cfg = adjustForVerificationMode cfg'
+  cfg <- overrideConfig loadedCfg opts
 
   printProjectName cfg.projectName
 
@@ -292,6 +291,8 @@ overrideConfig config Options{..} = do
            , disableOnchainSources = cliDisableOnchainSources || config.disableOnchainSources
            }
            & overrideFormat
+           -- re-apply, as --test-mode may have selected the verification mode
+           & adjustForVerificationMode
   where
     overrideUiConf uiConf = uiConf
       { maxTime = cliTimeout <|> uiConf.maxTime

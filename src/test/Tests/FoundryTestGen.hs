@@ -162,6 +162,10 @@ foundryTestGenTests = testGroup "Foundry test generation"
           FuzzWorker
           [ ("vm.assume should not be treated as test failure", passed "test_assume_filters")
           ]
+      , testContract "foundry/TestFail.sol" (Just "foundry/TestFail.yaml")
+          [ ("a reverting testFail should pass", passed "testFail_always_reverts")
+          , ("a non reverting testFail should be detected", solved "testFail_sometimes_reverts")
+          ]
       , testContract "foundry/PropertyRepro.sol" (Just "foundry/PropertyRepro.yaml")
           [ ("property test should be detected", solved "echidna_counter_is_zero")
           ]
