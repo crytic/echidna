@@ -1,0 +1,4 @@
+testMode: foundry
+seed: 1234
+seqLen: 10
+disableSlither: true
