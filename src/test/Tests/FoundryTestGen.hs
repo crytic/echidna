@@ -162,6 +162,25 @@ foundryTestGenTests = testGroup "Foundry test generation"
           FuzzWorker
           [ ("vm.assume should not be treated as test failure", passed "test_assume_filters")
           ]
+      , testContract "foundry/TestFail.sol" (Just "foundry/TestFail.yaml")
+          [ ("a reverting testFail should pass", passed "testFail_always_reverts")
+          , ("a non reverting testFail should be detected", solved "testFail_sometimes_reverts")
+          ]
+      , testContractNamed "foundry/CheckProve.sol (stateless)"
+          "foundry/CheckProve.sol"
+          (Just "CheckProveTest") Nothing (Just "foundry/CheckProve.yaml")
+          True FuzzWorker
+          [ ("check functions should be fuzzed without symbolic execution", solved "check_small")
+          , ("prove functions should be fuzzed without symbolic execution", solved "prove_small")
+          , ("a revert in a check function should be a failure", solved "check_revert")
+          ]
+      , testContractNamed "foundry/CheckProve.sol (stateful)"
+          "foundry/CheckProve.sol"
+          (Just "CheckProveStatefulTest") Nothing (Just "foundry/CheckProveStateful.yaml")
+          True FuzzWorker
+          [ ("check functions should be checked in sequences", solved "check_counter")
+          , ("prove functions should be checked in sequences", solved "prove_counter")
+          ]
       , testContract "foundry/PropertyRepro.sol" (Just "foundry/PropertyRepro.yaml")
           [ ("property test should be detected", solved "echidna_counter_is_zero")
           ]

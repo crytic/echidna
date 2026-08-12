@@ -23,6 +23,7 @@ import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 
 import Echidna.SymExec.Common (rpcFetcher, exploreMethod, suitableForSymExec, TxOrError(..), PartialsLogs)
+import Echidna.Test (isFoundrySymbolicName)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Solidity (SolConf(..))
@@ -38,10 +39,15 @@ isSuitableToVerifyMethod contract method symExecTargets = do
       (selector, _) = case find (\(_, m) -> m == method) allMethods of
         Nothing -> error $ "Method " ++ show method.name ++ " not found in contract ABI"
         Just x  -> x
+      -- "check" and "prove" functions are explicit symbolic test entry points
+      -- (as in Foundry and Halmos), so they are verified even when the static
+      -- analysis found no assertion in them.
+      isSymbolicEntryPoint = isFoundrySymbolicName method.name
 
   return $
     if null symExecTargets
-    then (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method
+    then (isSymbolicEntryPoint || null assertSigs || selector `elem` assertSigs)
+         && suitableForSymExec method
     else method.name `elem` symExecTargets
 
 

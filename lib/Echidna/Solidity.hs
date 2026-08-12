@@ -42,7 +42,10 @@ import Echidna.ABI
 import Echidna.Deploy (deployContracts, deployBytecodes)
 import Echidna.Exec (execTx, execTxWithCov, initialVM)
 import Echidna.SourceAnalysis.Slither
-import Echidna.Test (createTests, isAssertionMode, isPropertyMode, isFoundryMode, isOptimizationMode)
+import Echidna.Test
+  ( createTests, isAssertionMode, isFoundryInvariantName, isFoundryMode
+  , isFoundrySymbolicName, isFoundryTestName, isOptimizationMode
+  , isPropertyMode )
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
@@ -151,21 +154,24 @@ filterMethods contractName (Blacklist ig) ms =
 -- - Functions prefixed with "test" are test functions (unit or fuzz).
 --   Fuzz tests are distinguished by having at least one parameter.
 --   See: https://book.getfoundry.sh/forge/fuzz-testing
--- - Functions prefixed with "invariant_" are invariant tests, called in
---   randomized sequences to verify properties that must always hold.
+-- - Functions prefixed with "invariant" or "statefulFuzz" are invariant tests,
+--   called in randomized sequences to verify properties that must always hold.
 --   See: https://book.getfoundry.sh/forge/invariant-testing
+-- - Functions prefixed with "check" or "prove" are symbolic entry points, only
+--   verified in verification mode. This is a fuzzing campaign, so they are
+--   called and checked like any other test function.
 -- - Other functions with arguments are kept as callable targets for
 --   invariant test campaigns.
 --
--- The set of callable functions depends on @seqLen@, mirroring how tests are
--- selected in 'Echidna.Test.createTests':
--- - In fuzz mode (@seqLen == 1@) each "test" function is itself the fuzz
---   target and is called directly by the fuzzer. Only "test" functions with
+-- @seqLen@ selects between Foundry's two fuzzing modes, mirroring how tests
+-- are selected in 'Echidna.Test.createTests':
+-- - Stateless fuzzing (@seqLen == 1@): each test function is itself the fuzz
+--   target and is called directly by the fuzzer. Only test functions with
 --   at least one parameter are kept; calling other functions (e.g. handlers
 --   like @mint@) would only waste effort since no test checks them.
--- - In invariant mode (@seqLen > 1@) test functions, "invariant_" functions,
---   and parameterized handlers retain the existing callable set, which is
---   exercised in randomized sequences.
+-- - Stateful (invariant) fuzzing (@seqLen > 1@): test functions, invariant
+--   functions, and parameterized handlers retain the existing callable set,
+--   which is exercised in randomized sequences.
 filterMethodsWithArgs :: Int -> NonEmpty SolSignature -> NonEmpty SolSignature
 filterMethodsWithArgs seqLen ms =
   case NE.filter keep ms of
@@ -173,8 +179,12 @@ filterMethodsWithArgs seqLen ms =
     fs -> NE.fromList fs
   where
     keep (n, xs)
-      | seqLen == 1 = T.isPrefixOf "test" n && not (null xs)
-      | otherwise   = T.isPrefixOf "test" n || T.isPrefixOf "invariant_" n || not (null xs)
+      | seqLen == 1 = (isFoundryTestName n || isFoundrySymbolicName n)
+                      && not (null xs)
+      | otherwise   = isFoundryTestName n
+                      || isFoundryInvariantName n
+                      || isFoundrySymbolicName n
+                      || not (null xs)
 
 abiOf :: Text -> SolcContract -> NonEmpty SolSignature
 abiOf pref solcContract =
