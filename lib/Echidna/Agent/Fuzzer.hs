@@ -18,6 +18,7 @@ import EVM.Types hiding (Env, Frame(state), Gas)
 import Echidna.ABI
 import Echidna.Execution (callseq, replayCorpus, updateTests)
 import Echidna.Mutator.Corpus
+import Echidna.Orphans.Rand ()
 import Echidna.Shrink (shrinkTest)
 import Echidna.Transaction
 import Echidna.Types.Campaign

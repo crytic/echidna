@@ -25,6 +25,7 @@ import EVM.Types hiding (Env, Frame(state), Gas)
 import Echidna.ABI
 import Echidna.Exec (execTx)
 import Echidna.Execution (callseq, findFailedTests, updateTests)
+import Echidna.Orphans.Rand ()
 import Echidna.Shrink (shrinkTest)
 import Echidna.Solidity (chooseContract)
 import Echidna.SymExec.Common (extractErrors, extractTxs)

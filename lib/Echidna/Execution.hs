@@ -10,12 +10,11 @@ module Echidna.Execution
 
 import Control.DeepSeq (force)
 import Control.Monad (forM_, when)
-import Control.Monad.Catch (MonadThrow(..))
-import Control.Monad.Random.Strict (MonadRandom, RandT)
+import Control.Monad.Catch (MonadThrow)
+import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader (MonadReader, ask, asks, liftIO)
 import Control.Monad.State.Strict
   (MonadIO, MonadState(..), StateT(..), gets, modify')
-import Control.Monad.Trans (lift)
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
 import Data.IORef (atomicModifyIORef', readIORef, writeIORef)
@@ -47,9 +46,6 @@ import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..))
 import Echidna.Types.Worker
 import Echidna.Worker
-
-instance MonadThrow m => MonadThrow (RandT g m) where
-  throwM = lift . throwM
 
 -- | Run all the transaction sequences from the corpus and accumulate campaign
 -- state. Can be used to minimize corpus as the final campaign state will
