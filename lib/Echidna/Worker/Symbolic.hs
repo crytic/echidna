@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 
-module Echidna.Agent.Symbolic (runSymWorker) where
+module Echidna.Worker.Symbolic (runSymWorker) where
 
 import Control.Concurrent (dupChan, takeMVar)
 import Control.Monad (forM_, unless, void, when)
@@ -24,7 +24,6 @@ import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
 import Echidna.Exec (execTx)
-import Echidna.Execution (callseq)
 import Echidna.Orphans.Rand ()
 import Echidna.Shrink (shrinkTest)
 import Echidna.Solidity (chooseContract)
@@ -41,6 +40,7 @@ import Echidna.Types.Test
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker
 import Echidna.Worker (listenerLoop, pushWorkerEvent)
+import Echidna.Worker.Sequence (callseq)
 
 runSymWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)

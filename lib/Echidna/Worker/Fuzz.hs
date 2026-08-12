@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 
-module Echidna.Agent.Fuzzer (runFuzzWorker) where
+module Echidna.Worker.Fuzz (runFuzzWorker) where
 
 import Control.Monad (forM_, replicateM, void)
 import Control.Monad.Catch (MonadThrow)
@@ -16,7 +16,6 @@ import System.Random (mkStdGen)
 import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
-import Echidna.Execution (callseq, replayCorpus)
 import Echidna.Mutator.Corpus
 import Echidna.Orphans.Rand ()
 import Echidna.Shrink (shrinkTest)
@@ -28,6 +27,7 @@ import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker
+import Echidna.Worker.Sequence (callseq, replayCorpus)
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once

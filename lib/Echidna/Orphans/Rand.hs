@@ -8,7 +8,7 @@ import Control.Monad.Random.Strict (RandT)
 import Control.Monad.Trans (lift)
 
 -- | Workers run their body in @RandT g (StateT WorkerState m)@ and call into
--- 'Echidna.Execution.callseq', which needs 'MonadThrow'. @exceptions@ covers
+-- 'Echidna.Worker.Sequence.callseq', which needs 'MonadThrow'. @exceptions@ covers
 -- the standard transformers, but MonadRandom's 'RandT' is a newtype over
 -- 'StateT' that derives nothing from @exceptions@, hence the gap we fill here.
 -- Any further lifted instances for 'RandT' (MonadCatch or MonadMask, should a

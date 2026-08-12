@@ -1,7 +1,13 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 
-module Echidna.Execution
+-- | Running transaction sequences on behalf of a worker: the shared substrate
+-- both 'Echidna.Worker.Fuzz' and 'Echidna.Worker.Symbolic' build on.
+--
+-- Everything here is worker-scoped -- each function needs the worker's
+-- 'WorkerState' to track coverage, gas and the generation dictionary, or to
+-- attribute events to a worker.
+module Echidna.Worker.Sequence
   ( replayCorpus
   , callseq
   ) where
@@ -44,7 +50,7 @@ import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..))
 import Echidna.Types.Worker
-import Echidna.Worker
+import Echidna.Worker (pushWorkerEvent)
 
 -- | Run all the transaction sequences from the corpus and accumulate campaign
 -- state. Can be used to minimize corpus as the final campaign state will
