@@ -18,13 +18,12 @@ import EVM.Types hiding (Env)
 import Echidna.ABI (GenDict)
 import Echidna.Agent.Fuzzer (runFuzzWorker)
 import Echidna.Agent.Symbolic (runSymWorker)
-import Echidna.Execution (listenerLoop)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker
-import Echidna.Worker (getNWorkers)
+import Echidna.Worker (getNWorkers, listenerLoop)
 
 -- | Given a 'Campaign', check if the test results should be reported as a
 -- success or a failure.

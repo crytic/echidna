@@ -6,10 +6,8 @@ module Echidna.Execution
   , callseq
   , updateTests
   , findFailedTests
-  , listenerLoop
   ) where
 
-import Control.Concurrent (Chan, readChan)
 import Control.DeepSeq (force)
 import Control.Monad (forM_, when)
 import Control.Monad.Catch (MonadThrow(..))
@@ -28,7 +26,6 @@ import Data.Map.Strict qualified as MapStrict
 import Data.Maybe (isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Time (LocalTime)
 import Data.Vector qualified as V
 
 import EVM (cheatCode)
@@ -307,22 +304,3 @@ updateOpenTest vm reproducer test = do
     _ ->
       -- not an open test, skip
       pure Nothing
-
--- | Repeatedly run 'handler' on events from 'chan'.
--- Stops once 'workersAlive' workers stop.
-listenerLoop
-  :: (MonadIO m)
-  => ((LocalTime, CampaignEvent) -> m ())
-  -- ^ a function that handles the events
-  -> Chan (LocalTime, CampaignEvent)
-  -- ^ event channel
-  -> Int
-  -- ^ number of workers which have to stop before loop exits
-  -> m ()
-listenerLoop handler chan !workersAlive =
-  when (workersAlive > 0) $ do
-    event <- liftIO $ readChan chan
-    handler event
-    case event of
-      (_, WorkerEvent _ _ (WorkerStopped _)) -> listenerLoop handler chan (workersAlive - 1)
-      _                                      -> listenerLoop handler chan workersAlive

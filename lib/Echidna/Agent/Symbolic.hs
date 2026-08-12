@@ -24,7 +24,7 @@ import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
 import Echidna.Exec (execTx)
-import Echidna.Execution (callseq, findFailedTests, listenerLoop, updateTests)
+import Echidna.Execution (callseq, findFailedTests, updateTests)
 import Echidna.Shrink (shrinkTest)
 import Echidna.Solidity (chooseContract)
 import Echidna.SymExec.Common (extractErrors, extractTxs)
@@ -39,7 +39,7 @@ import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker
-import Echidna.Worker (pushWorkerEvent)
+import Echidna.Worker (listenerLoop, pushWorkerEvent)
 
 runSymWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
