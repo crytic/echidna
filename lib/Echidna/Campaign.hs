@@ -1,4 +1,8 @@
-module Echidna.Campaign where
+module Echidna.Campaign
+  ( isSuccessful
+  , runWorker
+  , spawnListener
+  ) where
 
 import Control.Concurrent (MVar, dupChan, forkFinally, newEmptyMVar, putMVar)
 import Control.Monad (void)

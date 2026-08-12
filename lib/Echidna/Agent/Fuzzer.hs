@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 
-module Echidna.Agent.Fuzzer where
+module Echidna.Agent.Fuzzer (runFuzzWorker) where
 
 import Control.Monad (forM_, replicateM, void)
 import Control.Monad.Catch (MonadThrow)

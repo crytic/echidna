@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 
-module Echidna.Agent.Symbolic where
+module Echidna.Agent.Symbolic (runSymWorker) where
 
 import Control.Concurrent (dupChan, takeMVar)
 import Control.Monad (forM_, unless, void, when)

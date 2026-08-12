@@ -1,7 +1,13 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 
-module Echidna.Execution where
+module Echidna.Execution
+  ( replayCorpus
+  , callseq
+  , updateTests
+  , findFailedTests
+  , listenerLoop
+  ) where
 
 import Control.Concurrent (Chan, readChan)
 import Control.DeepSeq (force)
