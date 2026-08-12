@@ -26,7 +26,7 @@ module Common
   ) where
 
 import Control.Concurrent.STM (newBroadcastTChanIO)
-import Control.Monad (forM_)
+import Control.Monad (forM_, void)
 import Control.Monad.Random (getRandomR)
 import Control.Monad.Reader (runReaderT)
 import Data.DoubleWord (Int256)
@@ -46,8 +46,6 @@ import EVM.Solidity (Contracts(..), BuildOutput(..), SolcContract(..))
 import EVM.Types hiding (Env, Gas)
 
 import Echidna (mkEnv, prepareContract)
-import Echidna.Agent.Fuzzer (FuzzerAgent(..))
-import Echidna.Agent.Symbolic (SymbolicAgent(..))
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Solidity (selectMainContract, mkTests, loadSpecified, compileContracts)
 import Echidna.Test (checkETest)
@@ -60,6 +58,8 @@ import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerType(..))
 import Echidna.Types.World (World(..))
+import Echidna.Worker.Fuzz (FuzzerAgent(..))
+import Echidna.Worker.Symbolic (SymbolicAgent(..))
 
 testConfig :: EConfig
 testConfig = defaultConfig & overrideQuiet
@@ -113,7 +113,7 @@ runContract f selectedContract cfg workerType = do
              , testLimit = cfg.campaignConf.testLimit
              , stateRef = stateRef
              }
-       runAgent agent bus env
+       void $ runAgent agent bus env
     SymbolicWorker -> do
        let agent = SymbolicAgent
              { initialVm = vm
@@ -122,7 +122,7 @@ runContract f selectedContract cfg workerType = do
              , contractName = selectedContract
              , stateRef = stateRef
              }
-       runAgent agent bus env
+       void $ runAgent agent bus env
 
   finalState <- readIORef stateRef
 

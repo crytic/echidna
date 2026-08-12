@@ -1,19 +1,28 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 
-module Echidna.Execution where
+-- | Running transaction sequences on behalf of a worker: the shared substrate
+-- both 'Echidna.Worker.Fuzz' and 'Echidna.Worker.Symbolic' build on.
+--
+-- Everything here is worker-scoped -- each function needs the worker's
+-- 'WorkerState' to track coverage, gas and the generation dictionary, or to
+-- attribute events to a worker.
+module Echidna.Worker.Sequence
+  ( replayCorpus
+  , callseq
+  ) where
 
 import Control.Concurrent.STM (atomically, writeTChan)
 import Control.DeepSeq (force)
-import Control.Monad (when, unless, forM_)
-import Control.Monad.Catch (MonadThrow(..))
+import Control.Monad (forM_, unless, when)
+import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom)
-import Control.Monad.Reader (MonadReader, asks, liftIO, ask)
+import Control.Monad.Reader (MonadReader, ask, liftIO)
 import Control.Monad.State.Strict
-  (MonadState(..), StateT(..), gets, MonadIO, modify')
+  (MonadIO, MonadState(..), StateT(..), gets, modify')
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
-import Data.IORef (readIORef, atomicModifyIORef', writeIORef)
+import Data.IORef (atomicModifyIORef')
 import Data.List qualified as List
 import Data.Map (Map, (\\))
 import Data.Map qualified as Map
@@ -21,30 +30,30 @@ import Data.Map.Strict qualified as MapStrict
 import Data.Maybe (isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Text (Text)
 import Data.Vector qualified as V
 
-import Data.Text (Text)
-
 import EVM (cheatCode)
-import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(..), abiValueType)
-import EVM.Types (VM(..), VMResult(..), VMType(..), Expr(..))
-import EVM.Types qualified as EVM
+import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
+import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
 import Echidna.Events (extractEventValues)
 import Echidna.Exec
+import Echidna.SymExec.Symbolic (forceAddr)
+import Echidna.Test
+import Echidna.Test.State (updateTests)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
-import Echidna.Types.InterWorker (WrappedMessage(..), Message(..), BroadcastMsg(NewCoverageInfo), AgentId(..))
-import Echidna.SymExec.Symbolic (forceAddr)
+import Echidna.Types.InterWorker
+  (AgentId(..), BroadcastMsg(NewCoverageInfo), Message(..), WrappedMessage(..))
 import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
-import Echidna.Test (checkETest, getResultFromVM)
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), getResult)
-import Echidna.Types.Worker (WorkerEvent(..))
+import Echidna.Types.Worker
 import Echidna.Worker (pushWorkerEvent)
 
 -- | Run all the transaction sequences from the corpus and accumulate campaign
@@ -67,6 +76,8 @@ replayCorpus vm txSeqs =
       Just faultyTx ->
         pushWorkerEvent (TxSequenceReplayFailed file faultyTx)
 
+-- TODO callseq ideally shouldn't need to be MonadRandom
+
 -- | Runs a transaction sequence and checks if any test got falsified or can be
 -- minimized. Stores any useful data in the campaign state if coverage increased.
 -- Returns resulting VM, as well as whether any new coverage was found.
@@ -74,7 +85,7 @@ callseq
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM Concrete
   -> [Tx]
-  -> Bool
+  -> Bool -- ^ Whether this sequence comes from replaying the corpus
   -> m (VM Concrete, Bool)
 callseq vm txSeq isReplaying = do
   env <- ask
@@ -115,9 +126,11 @@ callseq vm txSeq isReplaying = do
                                 , transactions = fst <$> results
                                 }
 
-    -- Broadcast new coverage to other agents (e.g. Symbolic)
+    -- Broadcast new coverage to other agents (e.g. the symbolic one)
     workerId <- gets (.workerId)
-    liftIO $ atomically $ writeTChan env.bus (WrappedMessage (FuzzerId workerId) (Broadcast (NewCoverageInfo points (fst <$> results) isReplaying)))
+    liftIO $ atomically $ writeTChan env.bus $
+      WrappedMessage (FuzzerId workerId)
+        (Broadcast (NewCoverageInfo points (fst <$> results) isReplaying))
 
   modify' $ \workerState ->
 
@@ -134,8 +147,12 @@ callseq vm txSeq isReplaying = do
       additions = Map.unionsWith Set.union [resultMap, eventDiffs, diffs]
       -- append to the constants dictionary
       updatedDict = workerState.genDict
-        -- The strict union prevents an unbounded chain of suspended Set unions
-        -- for ABI types that are never sampled by the generator.
+        -- the union must be strict in the per-key sets: with the lazy Map a
+        -- `Set.union old new` suspension is allocated per colliding key per
+        -- callseq, and it is only ever forced if the generator samples that
+        -- AbiType -- types that never occur as a fuzzed function argument
+        -- (always AbiAddressType, inserted unconditionally above) accumulate
+        -- an unbounded thunk chain
         { constants = MapStrict.unionWith Set.union workerState.genDict.constants additions
         , dictValues = Set.union (mkDictValues $ Set.unions $ Map.elems additions)
                                  workerState.genDict.dictValues
@@ -263,28 +280,6 @@ evalSeq vm0 execFunc = go vm0 [] where
         (remaining, vm'') <- go vm' (tx:executedSoFar) remainingTxs
         pure ((tx, result) : remaining, vm'')
 
--- | Update tests based on the return value from the given function.
--- Nothing skips the update.
-updateTests
-  :: (MonadIO m, MonadReader Env m, MonadState WorkerState m)
-  => (EchidnaTest -> m (Maybe EchidnaTest))
-  -> m ()
-updateTests f = do
-  testRefs <- asks (.testRefs)
-  forM_ testRefs $ \testRef -> do
-    test <- liftIO $ readIORef testRef
-    f test >>= \case
-      Just test' -> liftIO $ writeIORef testRef test'
-      Nothing -> pure ()
-
-findFailedTests
-  :: (MonadIO m, MonadReader Env m, MonadState WorkerState m)
-  => m [EchidnaTest]
-findFailedTests = do
-  testRefs <- asks (.testRefs)
-  tests <- liftIO $ traverse readIORef testRefs
-  pure $ filter didFail tests
-
 -- | Update an open test after checking if it is falsified by the 'reproducer'
 updateOpenTest
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
@@ -306,7 +301,8 @@ updateOpenTest vm reproducer test = do
                            , result
                            , workerId
                            }
-          -- Keep the VM for shrinking, but do not retain it in the event queue.
+          -- Publish a VM-free copy, forced strict so the event can't retain the
+          -- VM through a thunk. testRefs keeps the full 'test'' for shrinking.
           let !vmFreeTest = test' { Test.vm = Nothing }
           pushWorkerEvent (TestFalsified vmFreeTest)
           pure $ Just test'
@@ -317,6 +313,7 @@ updateOpenTest vm reproducer test = do
                            , vm = Just vm
                            , result
                            }
+          -- VM-free copy, as in the TestFalsified case above.
           let !vmFreeTest = test' { Test.vm = Nothing }
           pushWorkerEvent (TestOptimized vmFreeTest)
           pure $ Just test'

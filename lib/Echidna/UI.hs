@@ -14,7 +14,7 @@ import Control.Monad.State.Strict hiding (state)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (splitPlaces)
 import Data.Map (Map)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Sequence ((|>))
 import Data.Text (Text)
 import Data.Time
@@ -32,14 +32,11 @@ import EVM.Fetch qualified
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
-import Echidna.Campaign (spawnListener)
+import Echidna.MCP (runMCPServer)
 import Echidna.Output.Corpus (saveCorpusEvent)
 import Echidna.Output.JSON qualified
-import Echidna.Types.Agent (runAgent)
-import Echidna.Agent.Fuzzer (FuzzerAgent(..))
-import Echidna.Agent.Symbolic (SymbolicAgent(..))
-import Echidna.MCP (runMCPServer)
 import Echidna.SourceAnalysis.Slither (isEmptySlitherInfo)
+import Echidna.Types.Agent (runAgent)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
@@ -50,7 +47,9 @@ import Echidna.Types.Worker
 import Echidna.UI.Report
 import Echidna.UI.Widgets
 import Echidna.Utility (timePrefix, getTimestamp)
-import Echidna.Worker (getNWorkers, workerIDToType, pushCampaignEvent)
+import Echidna.Worker (getNWorkers, pushCampaignEvent, spawnListener, workerIDToType)
+import Echidna.Worker.Fuzz (FuzzerAgent(..))
+import Echidna.Worker.Symbolic (SymbolicAgent(..))
 
 data UIEvent =
   CampaignUpdated LocalTime [EchidnaTest] [WorkerState]
@@ -87,8 +86,8 @@ ui vm dict initialCorpus cliSelectedContract = do
       other -> other
 
     -- Distribute over all workers, could be slightly bigger overall due to
-    -- ceiling but this doesn't matter. In verification mode there are no
-    -- fuzz workers (only a symbolic worker), so guard against div-by-zero.
+    -- ceiling but this doesn't matter. Verification mode has no fuzz workers,
+    -- so avoid dividing by zero in that case.
     perWorkerTestLimit
       | nFuzzWorkers == 0 = conf.campaignConf.testLimit
       | otherwise = ceiling
@@ -262,43 +261,36 @@ ui vm dict initialCorpus cliSelectedContract = do
     threadId <- forkIO $ do
       -- TODO: maybe figure this out with forkFinally?
       let workerType = workerIDToType env.cfg.campaignConf workerId
-      maybeStopReason <- catches (do
+      stopReason <- catches (do
           let
             timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
             corpus = if workerType == SymbolicWorker then initialCorpus else corpusChunk
 
           maybeResult <- timeout timeoutUsecs $ case workerType of
-             FuzzWorker -> do
-                 let agent = FuzzerAgent workerId vm dict corpus testLimit stateRef
-                 runAgent agent bus env
-             SymbolicWorker -> do
-                 let agent = SymbolicAgent vm dict corpus cliSelectedContract stateRef
-                 runAgent agent bus env
+             FuzzWorker ->
+                 runAgent (FuzzerAgent workerId vm dict corpus testLimit stateRef) bus env
+             SymbolicWorker ->
+                 runAgent (SymbolicAgent vm dict corpus cliSelectedContract stateRef) bus env
 
-          pure $ case maybeResult of
-            Just () -> Nothing -- Agent finished and pushed event
-            Nothing -> Just TimeLimitReached
+          pure $ fromMaybe TimeLimitReached maybeResult
         )
-        [ Handler $ \(e :: AsyncException) -> pure $ Just (Killed (show e))
-        , Handler $ \(e :: SomeException)  -> pure $ Just (Crashed (show e))
+        [ Handler $ \(e :: AsyncException) -> pure $ Killed (show e)
+        , Handler $ \(e :: SomeException)  -> pure $ Crashed (show e)
         ]
 
-      case maybeStopReason of
-        Just stopReason -> do
-          -- When a fuzz worker is interrupted by timeout, tests may not have
-          -- finished shrinking. Run a shrink-only pass outside the timeout
-          -- using the same agent loop (testLimit=0 means no fuzzing, only shrink).
-          -- (See github.com/crytic/echidna/issues/839)
-          case stopReason of
-            TimeLimitReached | workerType == FuzzWorker -> do
-              tests <- traverse readIORef env.testRefs
-              when (any needsShrinking tests) $ void $ do
-                let shrinkAgent = FuzzerAgent workerId vm dict [] 0 stateRef
-                runAgent shrinkAgent bus env
-            _ -> pure ()
-          time <- liftIO getTimestamp
-          liftIO $ writeChan env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
-        Nothing -> pure ()
+      -- When a fuzz worker is interrupted by timeout, tests may not have
+      -- finished shrinking. Run a shrink-only pass outside the timeout
+      -- using the same agent loop (testLimit=0 means no fuzzing, only shrink).
+      -- (See github.com/crytic/echidna/issues/839)
+      case stopReason of
+        TimeLimitReached | workerType == FuzzWorker -> do
+          tests <- traverse readIORef env.testRefs
+          when (any needsShrinking tests) $ void $
+            runAgent (FuzzerAgent workerId vm dict [] 0 stateRef) bus env
+        _ -> pure ()
+
+      time <- liftIO getTimestamp
+      liftIO $ writeChan env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
 
     pure (threadId, stateRef)
 
