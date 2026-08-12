@@ -4,20 +4,18 @@
 module Echidna.Execution
   ( replayCorpus
   , callseq
-  , updateTests
-  , findFailedTests
   ) where
 
 import Control.DeepSeq (force)
 import Control.Monad (forM_, when)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom)
-import Control.Monad.Reader (MonadReader, ask, asks, liftIO)
+import Control.Monad.Reader (MonadReader, ask, liftIO)
 import Control.Monad.State.Strict
   (MonadIO, MonadState(..), StateT(..), gets, modify')
 import Data.Binary.Get (runGetOrFail)
 import Data.ByteString.Lazy qualified as LBS
-import Data.IORef (atomicModifyIORef', readIORef, writeIORef)
+import Data.IORef (atomicModifyIORef')
 import Data.List qualified as List
 import Data.Map (Map, (\\))
 import Data.Map qualified as Map
@@ -36,6 +34,7 @@ import Echidna.Events (extractEventValues)
 import Echidna.Exec
 import Echidna.SymExec.Symbolic (forceAddr)
 import Echidna.Test
+import Echidna.Test.State (updateTests)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (Corpus, corpusSize)
@@ -227,28 +226,6 @@ evalSeq vm0 execFunc = go vm0 [] where
         -- of each transaction - `m ([(Tx, result, VM)])`
         (remaining, vm'') <- go vm' (tx:executedSoFar) remainingTxs
         pure ((tx, result) : remaining, vm'')
-
--- | Update tests based on the return value from the given function.
--- Nothing skips the update.
-updateTests
-  :: (MonadIO m, MonadReader Env m, MonadState WorkerState m)
-  => (EchidnaTest -> m (Maybe EchidnaTest))
-  -> m ()
-updateTests f = do
-  testRefs <- asks (.testRefs)
-  forM_ testRefs $ \testRef -> do
-    test <- liftIO $ readIORef testRef
-    f test >>= \case
-      Just test' -> liftIO $ writeIORef testRef test'
-      Nothing -> pure ()
-
-findFailedTests
-  :: (MonadIO m, MonadReader Env m, MonadState WorkerState m)
-  => m [EchidnaTest]
-findFailedTests = do
-  testRefs <- asks (.testRefs)
-  tests <- liftIO $ traverse readIORef testRefs
-  pure $ filter didFail tests
 
 -- | Update an open test after checking if it is falsified by the 'reproducer'
 updateOpenTest

@@ -24,7 +24,7 @@ import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
 import Echidna.Exec (execTx)
-import Echidna.Execution (callseq, findFailedTests, updateTests)
+import Echidna.Execution (callseq)
 import Echidna.Orphans.Rand ()
 import Echidna.Shrink (shrinkTest)
 import Echidna.Solidity (chooseContract)
@@ -32,12 +32,12 @@ import Echidna.SymExec.Common (extractErrors, extractTxs)
 import Echidna.SymExec.Exploration (exploreContract, getRandomTargetMethod, getTargetMethodFromTx)
 import Echidna.SymExec.Verification (isSuitableToVerifyMethod, verifyMethod)
 import Echidna.Test
+import Echidna.Test.State (findFailedTests, setAssertionTestState, updateTests)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
-import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker
 import Echidna.Worker (listenerLoop, pushWorkerEvent)
@@ -232,20 +232,12 @@ runSymWorker callback vm dict workerId _ name = do
     let methodSignature = unpack method.methodSignature
     unless newCoverage $ do
       unless (null txs) $ error "No new coverage but symbolic execution found valid txs. Something is wrong."
-      when (null errors && null partials) $ do
-        updateTests $ \test -> do
-          if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
-                pure $ Just $ test { Test.state = Unsolvable }
-          else
-            pure $ Just test
+      when (null errors && null partials) $
+        setAssertionTestState Unsolvable methodSignature
 
     unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) solving constraints produced by method " <> methodSignature <> ": " <> show e)) errors
     unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic verification of method " <> methodSignature <> ": " <> unpack e)) partials
-    when (not (null partials) || not (null errors)) $ do
-      updateTests $ \test -> do
-        if isOpen test && isAssertionTest test && getAssertionSignature test == methodSignature then
-          pure $ Just $ test {Test.state = Passed}
-        else
-          pure $ Just test
+    when (not (null partials) || not (null errors)) $
+      setAssertionTestState Passed methodSignature
 
     pushWorkerEvent $ SymExecLog ("Symbolic execution finished verifying contract " <> unpack (fromJust name) <> " using a single symbolic transaction.")
