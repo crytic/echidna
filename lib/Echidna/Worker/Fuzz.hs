@@ -45,16 +45,10 @@ runFuzzWorker
 runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
   let
     effectiveSeed = dict.defSeed + workerId
-    effectiveGenDict = dict { defSeed = effectiveSeed }
     initialState =
-      WorkerState { workerId
-                  , genDict = effectiveGenDict
-                  , newCoverage = False
-                  , ncallseqs = 0
-                  , ncalls = 0
-                  , totalGas = 0
-                  , runningThreads = []
-                  }
+      initialWorkerState { workerId
+                         , genDict = dict { defSeed = effectiveSeed }
+                         }
 
   flip runStateT initialState $ do
     flip evalRandT (mkStdGen effectiveSeed) $ do
@@ -78,12 +72,6 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
             n < shrinkLimit
           _       -> False
 
-      final test =
-        case test.state of
-          Solved   -> True
-          Failed _ -> True
-          _        -> False
-
       closeOptimizationTest test =
         case test.testType of
           OptimizationTest _ _ ->
@@ -92,7 +80,7 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
                  }
           _ -> test
 
-    if | stopOnFail && any final tests ->
+    if | stopOnFail && any isConclusiveFailure tests ->
          lift callback >> pure FastFailed
 
        -- we shrink first before going back to fuzzing

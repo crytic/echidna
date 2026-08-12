@@ -72,16 +72,10 @@ runSymWorker callback vm dict workerId _ name = do
   where
 
   effectiveSeed = dict.defSeed + workerId
-  effectiveGenDict = dict { defSeed = effectiveSeed }
   initialState =
-    WorkerState { workerId
-                , genDict = effectiveGenDict
-                , newCoverage = False
-                , ncallseqs = 0
-                , ncalls = 0
-                , totalGas = 0
-                , runningThreads = []
-                }
+    initialWorkerState { workerId
+                       , genDict = dict { defSeed = effectiveSeed }
+                       }
 
   -- We could pattern match on workerType here to ignore WorkerEvents from SymbolicWorkers,
   -- but it may be useful to symexec on top of symexec results to produce multi-transaction
@@ -102,7 +96,7 @@ runSymWorker callback vm dict workerId _ name = do
     testRefs <- asks (.testRefs)
     tests <- liftIO $ traverse readIORef testRefs
     CampaignConf{stopOnFail, shrinkLimit} <- asks (.cfg.campaignConf)
-    if stopOnFail && any final tests then
+    if stopOnFail && any isConclusiveFailure tests then
       lift callback -- >> pure FastFailed
     else if any shrinkable tests then do
       shrinkLoop shrinkLimit
@@ -117,12 +111,6 @@ runSymWorker callback vm dict workerId _ name = do
       -- worker, see 'updateOpenTest'
       Large _ | test.workerId == Just workerId -> True
       _       -> False
-
-  final test =
-    case test.state of
-      Solved   -> True
-      Failed _ -> True
-      _        -> False
 
   shrinkLoop 0 = return ()
   shrinkLoop n = do
