@@ -25,7 +25,7 @@ import EVM.Types hiding (Env, Frame(state), Gas)
 import Echidna.ABI
 import Echidna.Exec (execTx)
 import Echidna.Orphans.Rand ()
-import Echidna.Shrink (shrinkWorkerTests)
+import Echidna.Shrink (isShrinkable, shrinkWorkerTests)
 import Echidna.Solidity (chooseContract)
 import Echidna.SymExec.Common (extractErrors, extractTxs)
 import Echidna.SymExec.Exploration (exploreContract, getRandomTargetMethod, getTargetMethodFromTx)
@@ -90,7 +90,7 @@ runSymWorker callback vm dict workerId _ name = do
     testRefs <- asks (.testRefs)
     tests <- liftIO $ traverse readIORef testRefs
     CampaignConf{shrinkLimit} <- asks (.cfg.campaignConf)
-    when (any shrinkable tests) $ shrinkLoop shrinkLimit
+    when (any (isShrinkable shrinkLimit workerId) tests) $ shrinkLoop shrinkLimit
 
   shrinkAndRandomlyExplore txs n = do
     testRefs <- asks (.testRefs)
@@ -98,19 +98,12 @@ runSymWorker callback vm dict workerId _ name = do
     CampaignConf{stopOnFail, shrinkLimit} <- asks (.cfg.campaignConf)
     if stopOnFail && any isConclusiveFailure tests then
       lift callback -- >> pure FastFailed
-    else if any shrinkable tests then do
+    else if any (isShrinkable shrinkLimit workerId) tests then do
       shrinkLoop shrinkLimit
       shrinkAndRandomlyExplore txs n
     else do
       symexecTxs False txs
       shrinkAndRandomlyExplore txs (n - 1)
-
-  shrinkable test =
-    case test.state of
-      -- we shrink only tests which were solved on this
-      -- worker, see 'updateOpenTest'
-      Large _ | test.workerId == Just workerId -> True
-      _       -> False
 
   shrinkLoop 0 = return ()
   shrinkLoop n = do

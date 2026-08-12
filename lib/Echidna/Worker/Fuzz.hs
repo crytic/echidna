@@ -18,7 +18,7 @@ import EVM.Types hiding (Env, Frame(state), Gas)
 import Echidna.ABI
 import Echidna.Mutator.Corpus
 import Echidna.Orphans.Rand ()
-import Echidna.Shrink (shrinkWorkerTests)
+import Echidna.Shrink (isShrinkable, shrinkWorkerTests)
 import Echidna.Transaction
 import Echidna.Types.Campaign
 import Echidna.Types.Config
@@ -64,14 +64,6 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
     ncalls <- gets (.ncalls)
 
     let
-      shrinkable test =
-        case test.state of
-          -- we shrink only tests which were solved on this
-          -- worker, see 'updateOpenTest'
-          Large n | test.workerId == Just workerId ->
-            n < shrinkLimit
-          _       -> False
-
       closeOptimizationTest test =
         case test.testType of
           OptimizationTest _ _ ->
@@ -84,7 +76,7 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
          lift callback >> pure FastFailed
 
        -- we shrink first before going back to fuzzing
-       | any shrinkable tests ->
+       | any (isShrinkable shrinkLimit workerId) tests ->
          shrink >> lift callback >> run
 
        -- no shrinking work, fuzz
