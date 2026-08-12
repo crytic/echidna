@@ -1,4 +1,4 @@
-module Echidna.Shrink (shrinkTest) where
+module Echidna.Shrink (shrinkTest, shrinkWorkerTests) where
 
 import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadThrow)
@@ -13,12 +13,29 @@ import EVM.Types (VM, VMType(..))
 
 import Echidna.Exec
 import Echidna.Test (getResultFromVM, checkETest)
+import Echidna.Test.State (updateTests)
 import Echidna.Transaction
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (TestValue(..), EchidnaTest(..), TestState(..), isOptimizationTest)
 import Echidna.Types.Tx (Tx(..), hasReverted, isUselessNoCall, catNoCalls, TxCall(..))
+
+-- | Shrink every test falsified by the given worker, once.
+--
+-- To avoid contention we only shrink tests that were falsified by this worker.
+-- Tests are marked with a worker in 'updateOpenTest'.
+shrinkWorkerTests
+  :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m)
+  => Int -- ^ Worker id
+  -> VM Concrete
+  -> m ()
+shrinkWorkerTests workerId vm =
+  updateTests $ \test ->
+    if test.workerId == Just workerId then
+      shrinkTest vm test
+    else
+      pure Nothing
 
  -- | Top level function to shrink the complexity of the sequence of transactions once
 shrinkTest

@@ -25,13 +25,13 @@ import EVM.Types hiding (Env, Frame(state), Gas)
 import Echidna.ABI
 import Echidna.Exec (execTx)
 import Echidna.Orphans.Rand ()
-import Echidna.Shrink (shrinkTest)
+import Echidna.Shrink (shrinkWorkerTests)
 import Echidna.Solidity (chooseContract)
 import Echidna.SymExec.Common (extractErrors, extractTxs)
 import Echidna.SymExec.Exploration (exploreContract, getRandomTargetMethod, getTargetMethodFromTx)
 import Echidna.SymExec.Verification (isSuitableToVerifyMethod, verifyMethod)
 import Echidna.Test
-import Echidna.Test.State (findFailedTests, setAssertionTestState, updateTests)
+import Echidna.Test.State (findFailedTests, setAssertionTestState)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Random (rElem)
@@ -127,11 +127,7 @@ runSymWorker callback vm dict workerId _ name = do
   shrinkLoop 0 = return ()
   shrinkLoop n = do
     lift callback
-    updateTests $ \test -> do
-      if test.workerId == Just workerId then
-        shrinkTest vm test
-      else
-        pure Nothing
+    shrinkWorkerTests workerId vm
     shrinkLoop (n - 1)
 
   symexecTxs onlyRandom txs = mapM_ symexecTx =<< txsToTxAndVmsSym onlyRandom txs

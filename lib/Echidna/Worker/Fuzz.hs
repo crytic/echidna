@@ -18,8 +18,7 @@ import EVM.Types hiding (Env, Frame(state), Gas)
 import Echidna.ABI
 import Echidna.Mutator.Corpus
 import Echidna.Orphans.Rand ()
-import Echidna.Shrink (shrinkTest)
-import Echidna.Test.State (updateTests)
+import Echidna.Shrink (shrinkWorkerTests)
 import Echidna.Transaction
 import Echidna.Types.Campaign
 import Echidna.Types.Config
@@ -117,18 +116,11 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
 
   fuzz = randseq vm.env.contracts >>= fmap fst . callseq vm
 
-  -- To avoid contention we only shrink tests that were falsified by this
-  -- worker. Tests are marked with a worker in 'updateOpenTest'.
-  --
-  -- TODO: This makes some workers run longer as they work less on their
-  -- test limit portion during shrinking. We should move to a test limit shared
-  -- between workers to avoid that. This way other workers will "drain"
-  -- the work queue.
-  shrink = updateTests $ \test -> do
-    if test.workerId == Just workerId then
-      shrinkTest vm test
-    else
-      pure Nothing
+  -- TODO: Shrinking only this worker's tests makes some workers run longer as
+  -- they work less on their test limit portion during shrinking. We should move
+  -- to a test limit shared between workers to avoid that. This way other
+  -- workers will "drain" the work queue.
+  shrink = shrinkWorkerTests workerId vm
 
 -- | Generate a new sequences of transactions, either using the corpus or with
 -- randomly created transactions
