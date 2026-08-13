@@ -7,6 +7,7 @@ import Brick.AttrMap qualified as A
 import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Brick.Widgets.Dialog qualified as B
+import Control.DeepSeq (force)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, asks, ask)
 import Data.List (nub, intersperse, sortBy)
@@ -65,6 +66,17 @@ data UIState = UIState
   , campaignWidget :: Widget Name
   -- ^ Pre-computed widget to avoid IO in drawing
 
+  , testsPane :: Widget Name
+  -- ^ Cached tests pane; rebuilt only when 'testsPaneDigest' changes.
+  -- Rebuilding it on every tick allocates ppTx/trace pretty-printing
+  -- structures per test per 200 ms that accumulate into an unbounded heap
+  -- on long interactive runs.
+  , testsPaneDigest :: [(String, TestValue)]
+  -- ^ Cheap fingerprint (state + value per test) of the cached tests pane
+  , testsPaneBuilt :: LocalTime
+  -- ^ When the cached tests pane was built; rebuilds are rate-limited
+  -- because superseded widget structures are observed to be retained
+
   , tests :: [EchidnaTest]
   }
 
@@ -108,7 +120,7 @@ data Name
 -- | Render 'Campaign' progress as a 'Widget'.
 campaignStatus :: (MonadReader Env m, MonadIO m) => UIState -> m (Widget Name)
 campaignStatus uiState = do
-  tests <- testsWidget uiState.tests
+  let tests = uiState.testsPane
 
   if uiState.workersAlive == 0 then
     mainbox tests (finalStatus "Campaign complete, C-c or esc to exit")
@@ -349,7 +361,9 @@ tracesWidget vm = do
   -- TODO: showTraceTree does coloring with ANSI escape codes, we need to strip
   -- those because they break the Brick TUI. Fix in hevm so we can display
   -- colors here as well.
-  let traces = stripAnsiEscapeCodes $ showTraceTree dappInfo vm
+  -- strict: the rendered text must not stay a thunk over the VM, since the
+  -- produced widget can be retained well past this VM's lifetime
+  let !traces = force $ stripAnsiEscapeCodes $ showTraceTree dappInfo vm
   pure $
     if T.null traces then str ""
     else str "Traces" <+> str ":" <=> txtBreak traces
@@ -369,8 +383,11 @@ failWidget b test = do
   let vm = fromJust test.vm
   s <- seqWidget vm test.reproducer
   traces <- tracesWidget vm
+  -- strict: don't let the widget capture the test record (and its VM)
+  -- through unevaluated show/format thunks
+  let !resultStr = force (" with " ++ show test.result)
   pure
-    ( failureBadge <+> str (" with " ++ show test.result)
+    ( failureBadge <+> str resultStr
     , shrinkWidget b test <=> titleWidget <=> s <=> str " " <=> traces
     )
 
@@ -411,15 +428,17 @@ shrinkWidget b test =
   case b of
     Nothing -> emptyWidget
     Just (n,m) ->
-      str "Current action: " <+>
-      withAttr (attrName "working")
-               (str ("shrinking " ++ progress n m ++ showWorker))
+      -- strict: don't capture the test record through the format thunk
+      let !line = force ("shrinking " ++ progress n m ++ showWorker)
+      in str "Current action: " <+> withAttr (attrName "working") (str line)
   where
   showWorker = maybe "" (\i -> " (worker " <> show i <> ")") test.workerId
 
 seqWidget :: (MonadReader Env m, MonadIO m) => VM Concrete -> [Tx] -> m (Widget Name)
 seqWidget vm xs = do
-  ppTxs <- mapM (ppTx vm $ length (nub $ (.src) <$> xs) /= 1) xs
+  -- strict: pretty-printed transactions must not stay thunks over the VM,
+  -- since the produced widget can be retained well past this VM's lifetime
+  ppTxs <- force <$> mapM (ppTx vm $ length (nub $ (.src) <$> xs) /= 1) xs
   let ordinals = str . printf "%d. " <$> [1 :: Int ..]
   pure $
     foldl (<=>) emptyWidget $
