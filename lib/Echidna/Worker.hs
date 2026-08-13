@@ -112,7 +112,7 @@ ppWorkerEvent = \case
     let -- the coverage is credited to the last transaction of the sequence
         culprit = case transactions of
           [] -> "init"
-          txs -> case (last txs).call of
+          txs -> let tx = last txs in case tx.call of
             SolCall (name, _) -> unpack name
             SolCreate _ -> "constructor"
             SolCalldata _ -> "fallback"
