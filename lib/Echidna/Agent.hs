@@ -32,8 +32,8 @@ runAgent agent env = do
   (reason, finalState) <- flip runReaderT env $ case agent of
     FuzzerAgent{initialVm, initialDict, initialCorpus, testLimit} ->
       runFuzzWorker callback initialVm initialDict workerId initialCorpus testLimit
-    SymbolicAgent{initialVm, initialDict, initialCorpus, contractName} ->
-      runSymWorker callback initialVm initialDict workerId initialCorpus contractName
+    SymbolicAgent{initialVm, initialDict, contractName} ->
+      runSymWorker callback initialVm initialDict workerId contractName
 
   -- The callback publishes as the worker goes, but not from every exit path
   -- (verification mode never runs it), so publish the final state here too.

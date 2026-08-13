@@ -23,10 +23,10 @@ data Agent
       , testLimit :: Int
       , stateRef :: IORef WorkerState
       }
+  -- | The symbolic worker does not replay the corpus, so it carries none.
   | SymbolicAgent
       { initialVm :: VM Concrete
       , initialDict :: GenDict
-      , initialCorpus :: [(FilePath, [Tx])]
       , contractName :: Maybe Text
       , stateRef :: IORef WorkerState
       }
