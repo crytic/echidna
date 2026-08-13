@@ -25,7 +25,7 @@ module Common
   , gasConsumedGt
   ) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, void)
 import Control.Monad.Random (getRandomR)
 import Control.Monad.Reader (runReaderT)
 import Data.DoubleWord (Int256)
@@ -45,10 +45,10 @@ import EVM.Solidity (Contracts(..), BuildOutput(..), SolcContract(..))
 import EVM.Types hiding (Env, Gas)
 
 import Echidna (mkEnv, prepareContract)
-import Echidna.Campaign (runWorker)
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Solidity (selectMainContract, mkTests, loadSpecified, compileContracts)
 import Echidna.Test (checkETest)
+import Echidna.Types.Agent (runAgent)
 import Echidna.Types.Campaign
 import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
 import Echidna.Types.Signature (ContractName)
@@ -57,6 +57,8 @@ import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerType(..))
 import Echidna.Types.World (World(..))
+import Echidna.Worker.Fuzz (FuzzerAgent(..))
+import Echidna.Worker.Symbolic (SymbolicAgent(..))
 
 testConfig :: EConfig
 testConfig = defaultConfig & overrideQuiet
@@ -98,8 +100,24 @@ runContract f selectedContract cfg workerType = do
 
   (vm, env, dict) <- prepareContract cfg (f :| []) buildOutput selectedContract seed
 
-  (_stopReason, finalState) <- flip runReaderT env $
-    runWorker workerType (pure ()) vm dict 0 [] cfg.campaignConf.testLimit selectedContract
+  stateRef <- newIORef initialWorkerState
+  void $ case workerType of
+    FuzzWorker -> runAgent
+      FuzzerAgent { fuzzerId = 0
+                  , initialVm = vm
+                  , initialDict = dict
+                  , initialCorpus = []
+                  , testLimit = cfg.campaignConf.testLimit
+                  , stateRef
+                  } env
+    SymbolicWorker -> runAgent
+      SymbolicAgent { initialVm = vm
+                    , initialDict = dict
+                    , initialCorpus = []
+                    , contractName = selectedContract
+                    , stateRef
+                    } env
+  finalState <- readIORef stateRef
 
   -- TODO: consider snapshotting the state so checking functions don't need to
   -- be IO
