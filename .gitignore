@@ -22,3 +22,9 @@ crytic-export/
 echidna.cabal
 *.swp
 profiles/
+
+# Python helper scripts and test suites
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
