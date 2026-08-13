@@ -1,17 +1,17 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 
-module Echidna.Worker.Symbolic (SymbolicAgent(..), runSymWorker) where
+module Echidna.Worker.Symbolic (runSymWorker) where
 
 import Control.Concurrent (dupChan, takeMVar)
 import Control.Monad (forM_, unless, void, when)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (evalRandT)
-import Control.Monad.Reader (MonadReader, asks, liftIO, runReaderT)
-import Control.Monad.State.Strict (MonadIO, StateT, get, modify', runStateT)
+import Control.Monad.Reader (MonadReader, asks, liftIO)
+import Control.Monad.State.Strict (MonadIO, StateT, modify', runStateT)
 import Control.Monad.Trans (lift)
 import Data.Foldable (foldlM)
-import Data.IORef (IORef, readIORef, writeIORef)
+import Data.IORef (readIORef)
 import Data.List.NonEmpty qualified as NEList
 import Data.Map qualified as Map
 import Data.Maybe (fromJust)
@@ -20,7 +20,7 @@ import System.Random (mkStdGen)
 
 import EVM.Dapp (DappInfo(..))
 import EVM.Solidity (Method(..), SolcContract(..))
-import EVM.Types hiding (Env, Frame(state), Gas, Log)
+import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
 import Echidna.Exec (execTx)
@@ -32,7 +32,6 @@ import Echidna.SymExec.Exploration (exploreContract, getRandomTargetMethod, getT
 import Echidna.SymExec.Verification (isSuitableToVerifyMethod, verifyMethod)
 import Echidna.Test
 import Echidna.Test.State (findFailedTests, setAssertionTestState)
-import Echidna.Types.Agent
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Random (rElem)
@@ -40,35 +39,8 @@ import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker
-import Echidna.Worker (listenerLoop, pushCampaignEvent, pushWorkerEvent)
+import Echidna.Worker (listenerLoop, pushWorkerEvent)
 import Echidna.Worker.Sequence (callseq)
-
--- | The symbolic worker. There is at most one, and it is always worker 0.
-data SymbolicAgent = SymbolicAgent
-  { initialVm :: VM Concrete
-  , initialDict :: GenDict
-  , initialCorpus :: [(FilePath, [Tx])]
-  , contractName :: Maybe Text
-  , stateRef :: IORef WorkerState
-  }
-
-instance Agent SymbolicAgent where
-  runAgent agent env = do
-    let workerId = 0
-        -- Publish the worker state so the UI can read it
-        callback = get >>= liftIO . writeIORef agent.stateRef
-
-    pushCampaignEvent env $ WorkerEvent workerId SymbolicWorker
-      (Log ("Starting SymbolicAgent " ++ show workerId))
-
-    (reason, finalState) <- flip runReaderT env $
-      runSymWorker callback agent.initialVm agent.initialDict workerId
-                   agent.initialCorpus agent.contractName
-
-    -- The callback publishes as the worker goes, but not from every exit path
-    -- (verification mode never runs it), so publish the final state here too.
-    writeIORef agent.stateRef finalState
-    pure reason
 
 runSymWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
