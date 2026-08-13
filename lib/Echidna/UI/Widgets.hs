@@ -12,7 +12,7 @@ import Control.Monad.Reader (MonadReader, asks, ask)
 import Data.List (nub, intersperse, sortBy)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, isJust, fromJust)
+import Data.Maybe (fromMaybe, fromJust)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.String.AnsiEscapeCodes.Strip.Text (stripAnsiEscapeCodes)
@@ -45,8 +45,12 @@ data UIState = UIState
   , timeStopped :: Maybe LocalTime
   , now :: LocalTime
   , slitherSucceeded :: Bool
-  , fetchedContracts :: Map Addr (Maybe Contract)
-  , fetchedSlots :: Map Addr (Map W256 (Maybe W256))
+  , fetchedContractsSuccess :: !Int
+  , fetchedContractsTotal :: !Int
+  , fetchedSlotsSuccess :: !Int
+  , fetchedSlotsTotal :: !Int
+  , fetchedDialogData :: Maybe ( Map Addr (Maybe Contract)
+                               , Map Addr (Map W256 (Maybe W256)) )
   , fetchedDialog :: B.Dialog () Name
   , displayFetchedDialog :: Bool
   , displayLogPane :: Bool
@@ -211,7 +215,12 @@ summaryWidget env uiState =
       slitherWidget uiState.slitherSucceeded
   rightSide =
     padLeft (Pad 1)
-      (rpcInfoWidget uiState.fetchedContracts uiState.fetchedSlots env.chainId)
+      (rpcInfoWidget
+         uiState.fetchedContractsSuccess
+         uiState.fetchedContractsTotal
+         uiState.fetchedSlotsSuccess
+         uiState.fetchedSlotsTotal
+         env.chainId)
 
 timeElapsed :: UIState -> LocalTime -> String
 timeElapsed uiState since =
@@ -227,20 +236,15 @@ formatNominalDiffTime diff =
   in formatTime defaultTimeLocale fmt diff
 
 rpcInfoWidget
-  :: Map Addr (Maybe Contract)
-  -> Map Addr (Map W256 (Maybe W256))
+  :: Int -> Int -> Int -> Int
   -> Maybe W256
   -> Widget Name
-rpcInfoWidget contracts slots chainId =
+rpcInfoWidget contractsSuccess contractsTotal slotsSuccess slotsTotal chainId =
   (str "Chain ID: " <+> str (maybe "-" show chainId))
   <=>
-  (str "Fetched contracts: " <+> countWidget (Map.elems contracts))
+  (str "Fetched contracts: " <+> outOf contractsSuccess contractsTotal)
   <=>
-  (str "Fetched slots: " <+> countWidget (concat $ Map.elems (Map.elems <$> slots)))
-  where
-  countWidget fetches =
-    let successful = filter isJust fetches
-    in outOf (length successful) (length fetches)
+  (str "Fetched slots: " <+> outOf slotsSuccess slotsTotal)
 
 slitherWidget
   :: Bool
@@ -278,10 +282,14 @@ gasPerfWidget uiState =
     diffLocalTime (fromMaybe uiState.now uiState.timeStopped)
                   uiState.timeStarted
 
-fetchedDialogWidget :: UIState -> Widget Name
-fetchedDialogWidget uiState =
-  B.renderDialog uiState.fetchedDialog $ padLeftRight 1 $
-    foldl (<=>) emptyWidget (Map.mapWithKey renderContract uiState.fetchedContracts)
+fetchedDialogWidget
+  :: B.Dialog () Name
+  -> Map Addr (Maybe Contract)
+  -> Map Addr (Map W256 (Maybe W256))
+  -> Widget Name
+fetchedDialogWidget dialog contracts slots =
+  B.renderDialog dialog $ padLeftRight 1 $
+    foldl (<=>) emptyWidget (Map.mapWithKey renderContract contracts)
   where
   renderContract addr (Just _code) =
     bold (str (show addr))
@@ -291,7 +299,7 @@ fetchedDialogWidget uiState =
     bold $ failure (str (show addr))
   renderSlots addr =
     foldl (<=>) emptyWidget $
-      Map.mapWithKey renderSlot (fromMaybe mempty $ Map.lookup addr uiState.fetchedSlots)
+      Map.mapWithKey renderSlot (fromMaybe mempty $ Map.lookup addr slots)
   renderSlot slot (Just value) =
     padLeft (Pad 1) $ strBreak (show slot <> " => " <> show value)
   renderSlot slot Nothing =
