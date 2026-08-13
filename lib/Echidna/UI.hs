@@ -15,7 +15,7 @@ import Control.Monad.State.Strict hiding (state)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (splitPlaces)
 import Data.Map (Map)
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Sequence ((|>))
 import Data.Text (Text)
 import Data.Time
@@ -33,11 +33,11 @@ import EVM.Fetch qualified
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
-import Echidna.Campaign (runWorker)
 import Echidna.Output.Corpus (saveCorpusEvent)
 import Echidna.Output.JSON qualified
 import Echidna.Server (runSSEServer)
 import Echidna.SourceAnalysis.Slither (isEmptySlitherInfo)
+import Echidna.Types.Agent (runAgent)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
@@ -49,6 +49,8 @@ import Echidna.UI.Report
 import Echidna.UI.Widgets
 import Echidna.Utility (timePrefix, getTimestamp)
 import Echidna.Worker (getNWorkers, spawnListener, workerIDToType)
+import Echidna.Worker.Fuzz (FuzzerAgent(..))
+import Echidna.Worker.Symbolic (SymbolicAgent(..))
 
 data UIEvent =
   CampaignUpdated LocalTime [EchidnaTest] [WorkerState]
@@ -106,7 +108,7 @@ ui vm dict initialCorpus cliSelectedContract = do
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
   let spawnWorkers =
-        forM (zip corpusChunks [0..(nworkers-1)]) $
+        liftIO $ forM (zip corpusChunks [0..(nworkers-1)]) $
           uncurry (spawnWorker env perWorkerTestLimit)
 
   case effectiveMode of
@@ -248,6 +250,15 @@ ui vm dict initialCorpus cliSelectedContract = do
   spawnWorker env testLimit corpusChunk workerId = do
     stateRef <- newIORef initialWorkerState
 
+    let fuzzerAgent corpus limit =
+          FuzzerAgent { fuzzerId = workerId
+                      , initialVm = vm
+                      , initialDict = dict
+                      , initialCorpus = corpus
+                      , testLimit = limit
+                      , stateRef
+                      }
+
     threadId <- forkIO $ do
       -- TODO: maybe figure this out with forkFinally?
       let workerType = workerIDToType env.cfg.campaignConf workerId
@@ -255,12 +266,16 @@ ui vm dict initialCorpus cliSelectedContract = do
           let
             timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
             corpus = if workerType == SymbolicWorker then initialCorpus else corpusChunk
-          maybeResult <- timeout timeoutUsecs $
-            runWorker workerType (get >>= writeIORef stateRef)
-                      vm dict workerId corpus testLimit cliSelectedContract
-          pure $ case maybeResult of
-            Just (stopReason, _finalState) -> stopReason
-            Nothing -> TimeLimitReached
+          maybeResult <- timeout timeoutUsecs $ case workerType of
+            FuzzWorker -> runAgent (fuzzerAgent corpus testLimit) env
+            SymbolicWorker -> runAgent
+              SymbolicAgent { initialVm = vm
+                            , initialDict = dict
+                            , initialCorpus = corpus
+                            , contractName = cliSelectedContract
+                            , stateRef
+                            } env
+          pure $ fromMaybe TimeLimitReached maybeResult
         )
         [ Handler $ \(e :: AsyncException) -> pure $ Killed (show e)
         , Handler $ \(e :: SomeException)  -> pure $ Crashed (show e)
@@ -268,14 +283,13 @@ ui vm dict initialCorpus cliSelectedContract = do
 
       -- When a fuzz worker is interrupted by timeout, tests may not have
       -- finished shrinking. Run a shrink-only pass outside the timeout using
-      -- the same worker loop (testLimit=0 means no fuzzing, only shrink).
+      -- the same agent (testLimit=0 means no fuzzing, only shrink).
       -- (See github.com/crytic/echidna/issues/839)
       case stopReason of
         TimeLimitReached | workerType == FuzzWorker -> do
           tests <- traverse readIORef env.testRefs
           when (any needsShrinking tests) $ void $
-            runReaderT (runWorker FuzzWorker (get >>= writeIORef stateRef)
-                        vm dict workerId [] 0 cliSelectedContract) env
+            runAgent (fuzzerAgent [] 0) env
         _ -> pure ()
 
       time <- liftIO getTimestamp
