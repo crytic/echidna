@@ -36,6 +36,10 @@ instance ToJSON SSE where
     object [ "timestamp" .= time
            , "filename" .= filename
            ]
+  toJSON (SSE (time, ServerLog msg)) =
+    object [ "timestamp" .= time
+           , "data" .= msg
+           ]
 
 runSSEServer :: MVar () -> Env -> Word16 -> Int -> IO ()
 runSSEServer serverStopVar env port nworkers = do
@@ -53,11 +57,13 @@ runSSEServer serverStopVar env port nworkers = do
               NewCoverage {} -> "new_coverage"
               SymExecLog _ -> "sym_exec_log"
               SymExecError _ -> "sym_exec_error"
+              Log _ -> "log"
               TxSequenceReplayed {} -> "tx_sequence_replayed"
               TxSequenceReplayFailed {} -> "tx_sequence_replay_failed"
               WorkerStopped _ -> "worker_stopped"
           Failure _err -> "failure"
           ReproducerSaved _ -> "saved_reproducer"
+          ServerLog _ -> "server_log"
 
     let serverEvent = ServerEvent
           { eventName = Just (eventName campaignEvent)
