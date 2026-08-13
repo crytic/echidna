@@ -45,10 +45,11 @@ import EVM.Solidity (Contracts(..), BuildOutput(..), SolcContract(..))
 import EVM.Types hiding (Env, Gas)
 
 import Echidna (mkEnv, prepareContract)
+import Echidna.Agent (runAgent)
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Solidity (selectMainContract, mkTests, loadSpecified, compileContracts)
 import Echidna.Test (checkETest)
-import Echidna.Types.Agent (runAgent)
+import Echidna.Types.Agent (Agent(..))
 import Echidna.Types.Campaign
 import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
 import Echidna.Types.Signature (ContractName)
@@ -57,8 +58,6 @@ import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerType(..))
 import Echidna.Types.World (World(..))
-import Echidna.Worker.Fuzz (FuzzerAgent(..))
-import Echidna.Worker.Symbolic (SymbolicAgent(..))
 
 testConfig :: EConfig
 testConfig = defaultConfig & overrideQuiet
@@ -101,22 +100,23 @@ runContract f selectedContract cfg workerType = do
   (vm, env, dict) <- prepareContract cfg (f :| []) buildOutput selectedContract seed
 
   stateRef <- newIORef initialWorkerState
-  void $ case workerType of
-    FuzzWorker -> runAgent
-      FuzzerAgent { fuzzerId = 0
-                  , initialVm = vm
-                  , initialDict = dict
-                  , initialCorpus = []
-                  , testLimit = cfg.campaignConf.testLimit
-                  , stateRef
-                  } env
-    SymbolicWorker -> runAgent
-      SymbolicAgent { initialVm = vm
-                    , initialDict = dict
-                    , initialCorpus = []
-                    , contractName = selectedContract
-                    , stateRef
-                    } env
+  let agent = case workerType of
+        FuzzWorker ->
+          FuzzerAgent { fuzzerId = 0
+                      , initialVm = vm
+                      , initialDict = dict
+                      , initialCorpus = []
+                      , testLimit = cfg.campaignConf.testLimit
+                      , stateRef
+                      }
+        SymbolicWorker ->
+          SymbolicAgent { initialVm = vm
+                        , initialDict = dict
+                        , initialCorpus = []
+                        , contractName = selectedContract
+                        , stateRef
+                        }
+  void $ runAgent agent env
   finalState <- readIORef stateRef
 
   -- TODO: consider snapshotting the state so checking functions don't need to

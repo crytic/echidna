@@ -1,62 +1,32 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 
-module Echidna.Worker.Fuzz (FuzzerAgent(..), runFuzzWorker) where
+module Echidna.Worker.Fuzz (runFuzzWorker) where
 
 import Control.Monad (forM_, replicateM, void)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, evalRandT)
-import Control.Monad.Reader (MonadReader, ask, asks, liftIO, runReaderT)
-import Control.Monad.State.Strict (MonadIO, MonadState, StateT, get, gets, runStateT)
+import Control.Monad.Reader (MonadReader, ask, asks, liftIO)
+import Control.Monad.State.Strict (MonadIO, MonadState, StateT, gets, runStateT)
 import Control.Monad.Trans (lift)
-import Data.IORef (IORef, atomicModifyIORef', readIORef, writeIORef)
+import Data.IORef (atomicModifyIORef', readIORef)
 import Data.Map (Map)
 import System.Random (mkStdGen)
 
-import EVM.Types hiding (Env, Frame(state), Gas, Log)
+import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
 import Echidna.Mutator.Corpus
 import Echidna.Orphans.Rand ()
 import Echidna.Shrink (isShrinkable, shrinkWorkerTests)
 import Echidna.Transaction
-import Echidna.Types.Agent
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker
-import Echidna.Worker (pushCampaignEvent)
 import Echidna.Worker.Sequence (callseq, replayCorpus)
-
--- | A fuzzing worker. A campaign runs one per fuzz worker id.
-data FuzzerAgent = FuzzerAgent
-  { fuzzerId :: Int
-  , initialVm :: VM Concrete
-  , initialDict :: GenDict
-  , initialCorpus :: [(FilePath, [Tx])]
-  , testLimit :: Int
-  , stateRef :: IORef WorkerState
-  }
-
-instance Agent FuzzerAgent where
-  runAgent agent env = do
-    let workerId = agent.fuzzerId
-        -- Publish the worker state so the UI can read it
-        callback = get >>= liftIO . writeIORef agent.stateRef
-
-    pushCampaignEvent env $ WorkerEvent workerId FuzzWorker
-      (Log ("Starting FuzzerAgent " ++ show workerId))
-
-    (reason, finalState) <- flip runReaderT env $
-      runFuzzWorker callback agent.initialVm agent.initialDict workerId
-                    agent.initialCorpus agent.testLimit
-
-    -- The callback publishes as the worker goes, but not from every exit path,
-    -- so publish the final state here as well.
-    writeIORef agent.stateRef finalState
-    pure reason
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once

@@ -33,11 +33,12 @@ import EVM.Fetch qualified
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
+import Echidna.Agent (runAgent)
 import Echidna.Output.Corpus (saveCorpusEvent)
 import Echidna.Output.JSON qualified
 import Echidna.Server (runSSEServer)
 import Echidna.SourceAnalysis.Slither (isEmptySlitherInfo)
-import Echidna.Types.Agent (runAgent)
+import Echidna.Types.Agent (Agent(..), workerTypeOf)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
@@ -49,8 +50,6 @@ import Echidna.UI.Report
 import Echidna.UI.Widgets
 import Echidna.Utility (timePrefix, getTimestamp)
 import Echidna.Worker (getNWorkers, spawnListener, workerIDToType)
-import Echidna.Worker.Fuzz (FuzzerAgent(..))
-import Echidna.Worker.Symbolic (SymbolicAgent(..))
 
 data UIEvent =
   CampaignUpdated LocalTime [EchidnaTest] [WorkerState]
@@ -259,23 +258,25 @@ ui vm dict initialCorpus cliSelectedContract = do
                       , stateRef
                       }
 
+        -- Fuzz workers each replay their own chunk of the corpus; the symbolic
+        -- worker replays all of it.
+        agent = case workerIDToType env.cfg.campaignConf workerId of
+          FuzzWorker -> fuzzerAgent corpusChunk testLimit
+          SymbolicWorker ->
+            SymbolicAgent { initialVm = vm
+                          , initialDict = dict
+                          , initialCorpus = initialCorpus
+                          , contractName = cliSelectedContract
+                          , stateRef
+                          }
+
+        workerType = workerTypeOf agent
+
     threadId <- forkIO $ do
       -- TODO: maybe figure this out with forkFinally?
-      let workerType = workerIDToType env.cfg.campaignConf workerId
       stopReason <- catches (do
-          let
-            timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
-            corpus = if workerType == SymbolicWorker then initialCorpus else corpusChunk
-          maybeResult <- timeout timeoutUsecs $ case workerType of
-            FuzzWorker -> runAgent (fuzzerAgent corpus testLimit) env
-            SymbolicWorker -> runAgent
-              SymbolicAgent { initialVm = vm
-                            , initialDict = dict
-                            , initialCorpus = corpus
-                            , contractName = cliSelectedContract
-                            , stateRef
-                            } env
-          pure $ fromMaybe TimeLimitReached maybeResult
+          let timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
+          fromMaybe TimeLimitReached <$> timeout timeoutUsecs (runAgent agent env)
         )
         [ Handler $ \(e :: AsyncException) -> pure $ Killed (show e)
         , Handler $ \(e :: SomeException)  -> pure $ Crashed (show e)
