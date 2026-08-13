@@ -37,7 +37,6 @@ import Echidna.Types.Config
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
-import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker
 import Echidna.Worker (listenerLoop, pushWorkerEvent)
 import Echidna.Worker.Sequence (callseq)
@@ -49,11 +48,9 @@ runSymWorker
   -> VM Concrete -- ^ Initial VM state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
-  -> [(FilePath, [Tx])]
-  -- ^ Initial corpus of transactions
   -> Maybe Text -- ^ Specified contract name
   -> m (WorkerStopReason, WorkerState)
-runSymWorker callback vm dict workerId _ name = do
+runSymWorker callback vm dict workerId name = do
   cfg <- asks (.cfg)
   let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
   eventQueue <- asks (.eventQueue)

@@ -94,8 +94,8 @@ ui vm dict initialCorpus cliSelectedContract = do
           (fromIntegral conf.campaignConf.testLimit / fromIntegral nFuzzWorkers :: Double)
 
     -- Distribute the replay corpus across the fuzz workers. The symbolic
-    -- worker always replays the full corpus (see spawnWorker), so with no
-    -- fuzz workers there is nothing to distribute.
+    -- worker does not replay it, so with no fuzz workers there is nothing to
+    -- distribute.
     corpusChunks
       | nFuzzWorkers == 0 = repeat []
       | otherwise = splitPlaces chunkSizes initialCorpus ++ repeat []
@@ -258,14 +258,11 @@ ui vm dict initialCorpus cliSelectedContract = do
                       , stateRef
                       }
 
-        -- Fuzz workers each replay their own chunk of the corpus; the symbolic
-        -- worker replays all of it.
         agent = case workerIDToType env.cfg.campaignConf workerId of
           FuzzWorker -> fuzzerAgent corpusChunk testLimit
           SymbolicWorker ->
             SymbolicAgent { initialVm = vm
                           , initialDict = dict
-                          , initialCorpus = initialCorpus
                           , contractName = cliSelectedContract
                           , stateRef
                           }
