@@ -37,7 +37,6 @@ import EVM.Solidity (BuildOutput(..))
 import EVM.Types (Addr)
 
 import Echidna
-import Echidna.Campaign (isSuccessful)
 import Echidna.Config
 import Echidna.Onchain qualified as Onchain
 import Echidna.Output.Corpus
@@ -48,7 +47,7 @@ import Echidna.Test (validateTestMode)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Solidity
-import Echidna.Types.Test (TestMode, EchidnaTest(..), TestConf(..), TestType(..), TestState(..))
+import Echidna.Types.Test (TestMode, EchidnaTest(..), TestConf(..), TestType(..), TestState(..), isSuccessful)
 import Echidna.UI
 import Echidna.Utility (measureIO)
 

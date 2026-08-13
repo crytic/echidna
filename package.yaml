@@ -128,7 +128,6 @@ tests:
       - process
       - semver
       - split
-      - stm
       - tasty
       - tasty-hunit
       - tasty-quickcheck

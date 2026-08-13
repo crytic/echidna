@@ -1,17 +1,17 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 
-module Echidna.Worker.Symbolic (SymbolicAgent(..), runSymWorker) where
+module Echidna.Worker.Symbolic (runSymWorker) where
 
 import Control.Concurrent (dupChan, takeMVar)
 import Control.Monad (forM_, unless, void, when)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (evalRandT)
-import Control.Monad.Reader (MonadReader, asks, liftIO, runReaderT)
-import Control.Monad.State.Strict (MonadIO, StateT, get, modify', runStateT)
+import Control.Monad.Reader (MonadReader, asks, liftIO)
+import Control.Monad.State.Strict (MonadIO, StateT, modify', runStateT)
 import Control.Monad.Trans (lift)
 import Data.Foldable (foldlM)
-import Data.IORef (IORef, readIORef, writeIORef)
+import Data.IORef (readIORef)
 import Data.List.NonEmpty qualified as NEList
 import Data.Map qualified as Map
 import Data.Maybe (fromJust)
@@ -32,52 +32,14 @@ import Echidna.SymExec.Exploration (exploreContract, getRandomTargetMethod, getT
 import Echidna.SymExec.Verification (isSuitableToVerifyMethod, verifyMethod)
 import Echidna.Test
 import Echidna.Test.State (findFailedTests, setAssertionTestState)
-import Echidna.Types.Agent
 import Echidna.Types.Campaign
 import Echidna.Types.Config
-import Echidna.Types.InterWorker (AgentId(..))
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
-import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker
-import Echidna.Worker (listenerLoop, pushCampaignEvent, pushWorkerEvent)
+import Echidna.Worker (listenerLoop, pushWorkerEvent)
 import Echidna.Worker.Sequence (callseq)
-
--- | The symbolic worker. There is at most one, and it is always worker 0.
-data SymbolicAgent = SymbolicAgent
-  { initialVm :: VM Concrete
-  , initialDict :: GenDict
-  , initialCorpus :: [(FilePath, [Tx])]
-  , contractName :: Maybe Text
-  , stateRef :: IORef WorkerState
-  }
-
-instance Show SymbolicAgent where
-  show agent = "SymbolicAgent { contractName = " ++ show agent.contractName ++ " }"
-
-instance Agent SymbolicAgent where
-  getAgentId _ = SymbolicId
-
-  -- NOTE: the symbolic worker does not read the inter-worker bus. It learns
-  -- about new coverage from the campaign event queue instead, which is also
-  -- how it knows when every fuzzing worker has stopped so it can exit. The
-  -- 'Echidna.Types.InterWorker.ToSymbolic' commands have no senders yet; wiring
-  -- them up needs a listener that can block on the event queue and the bus at
-  -- once, otherwise the worker stops terminating.
-  runAgent agent _bus env = do
-    let workerId = 0
-        -- Publish the worker state so the UI and the MCP server can read it
-        callback = get >>= liftIO . writeIORef agent.stateRef
-
-    pushCampaignEvent env $ WorkerEvent workerId SymbolicWorker
-      (Log ("Starting SymbolicAgent " ++ show workerId))
-
-    (reason, _) <- flip runReaderT env $
-      runSymWorker callback agent.initialVm agent.initialDict workerId
-                   agent.initialCorpus agent.contractName
-
-    pure reason
 
 runSymWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
@@ -86,11 +48,9 @@ runSymWorker
   -> VM Concrete -- ^ Initial VM state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
-  -> [(FilePath, [Tx])]
-  -- ^ Initial corpus of transactions
   -> Maybe Text -- ^ Specified contract name
   -> m (WorkerStopReason, WorkerState)
-runSymWorker callback vm dict workerId _ name = do
+runSymWorker callback vm dict workerId name = do
   cfg <- asks (.cfg)
   let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
   eventQueue <- asks (.eventQueue)

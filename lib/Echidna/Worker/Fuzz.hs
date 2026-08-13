@@ -1,19 +1,19 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 
-module Echidna.Worker.Fuzz (FuzzerAgent(..), runFuzzWorker) where
+module Echidna.Worker.Fuzz (runFuzzWorker) where
 
 import Control.Applicative ((<|>))
 import Control.Concurrent.STM (atomically, dupTChan, putTMVar, tryReadTChan)
 import Control.Monad (foldM, forM_, replicateM, void, when)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, evalRandT, getRandom, getRandomR)
-import Control.Monad.Reader (MonadReader, ask, asks, liftIO, runReaderT)
-import Control.Monad.State.Strict (MonadIO, MonadState, StateT, get, gets, modify', runStateT)
+import Control.Monad.Reader (MonadReader, ask, asks, liftIO)
+import Control.Monad.State.Strict (MonadIO, MonadState, StateT, gets, modify', runStateT)
 import Control.Monad.Trans (lift)
 import Data.Aeson (encode, object, (.=))
 import Data.ByteString.Lazy.Char8 qualified as BL8
-import Data.IORef (IORef, atomicModifyIORef', readIORef, writeIORef)
+import Data.IORef (atomicModifyIORef', readIORef)
 import Data.List.NonEmpty qualified as NE
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -37,49 +37,16 @@ import Echidna.Orphans.Rand ()
 import Echidna.Output.Source (saveLcovHook)
 import Echidna.Shrink (isShrinkable, shrinkWorkerTests)
 import Echidna.Transaction
-import Echidna.Types.Agent
 import Echidna.Types.Campaign
 import Echidna.Types.Config
-import Echidna.Types.InterWorker
-  (AgentId(..), Bus, FuzzerCmd(..), Message(..), WrappedMessage(..))
+import Echidna.Types.InterWorker (FuzzerCmd(..), Message(..), WrappedMessage(..))
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (Tx, TxResult(..), getResult)
 import Echidna.Types.Worker
 import Echidna.UI.Report (ppTx)
-import Echidna.Worker (pushCampaignEvent)
 import Echidna.Worker.Sequence (callseq, replayCorpus)
-
--- | A fuzzing worker, driven by the inter-worker bus.
-data FuzzerAgent = FuzzerAgent
-  { fuzzerId :: Int
-  , initialVm :: VM Concrete
-  , initialDict :: GenDict
-  , initialCorpus :: [(FilePath, [Tx])]
-  , testLimit :: Int
-  , stateRef :: IORef WorkerState
-  }
-
-instance Show FuzzerAgent where
-  show agent = "FuzzerAgent { fuzzerId = " ++ show agent.fuzzerId ++ " }"
-
-instance Agent FuzzerAgent where
-  getAgentId agent = FuzzerId agent.fuzzerId
-
-  runAgent agent bus env = do
-    let workerId = agent.fuzzerId
-        -- Publish the worker state so the UI and the MCP server can read it
-        callback = get >>= liftIO . writeIORef agent.stateRef
-
-    pushCampaignEvent env $ WorkerEvent workerId FuzzWorker
-      (Log ("Starting FuzzerAgent " ++ show workerId))
-
-    (reason, _) <- flip runReaderT env $
-      runFuzzWorker callback agent.initialVm agent.initialDict workerId
-                    agent.initialCorpus agent.testLimit bus
-
-    pure reason
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
@@ -94,9 +61,9 @@ runFuzzWorker
   -> [(FilePath, [Tx])]
   -- ^ Initial corpus of transactions
   -> Int     -- ^ Test limit for this worker
-  -> Bus     -- ^ Inter-worker bus
   -> m (WorkerStopReason, WorkerState)
-runFuzzWorker callback vm dict workerId initialCorpus testLimit bus = do
+runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
+  bus <- asks (.bus)
   let
     effectiveSeed = dict.defSeed + workerId
     initialState =

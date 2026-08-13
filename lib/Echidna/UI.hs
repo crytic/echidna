@@ -32,11 +32,12 @@ import EVM.Fetch qualified
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
+import Echidna.Agent (runAgent)
 import Echidna.MCP (runMCPServer)
 import Echidna.Output.Corpus (saveCorpusEvent)
 import Echidna.Output.JSON qualified
 import Echidna.SourceAnalysis.Slither (isEmptySlitherInfo)
-import Echidna.Types.Agent (runAgent)
+import Echidna.Types.Agent (Agent(..), workerTypeOf)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
@@ -48,8 +49,6 @@ import Echidna.UI.Report
 import Echidna.UI.Widgets
 import Echidna.Utility (timePrefix, getTimestamp)
 import Echidna.Worker (getNWorkers, pushCampaignEvent, spawnListener, workerIDToType)
-import Echidna.Worker.Fuzz (FuzzerAgent(..))
-import Echidna.Worker.Symbolic (SymbolicAgent(..))
 
 data UIEvent =
   CampaignUpdated LocalTime [EchidnaTest] [WorkerState]
@@ -94,8 +93,8 @@ ui vm dict initialCorpus cliSelectedContract = do
           (fromIntegral conf.campaignConf.testLimit / fromIntegral nFuzzWorkers :: Double)
 
     -- Distribute the replay corpus across the fuzz workers. The symbolic
-    -- worker always replays the full corpus (see spawnWorker), so with no
-    -- fuzz workers there is nothing to distribute.
+    -- worker does not replay it, so with no fuzz workers there is nothing to
+    -- distribute.
     corpusChunks
       | nFuzzWorkers == 0 = repeat []
       | otherwise = splitPlaces chunkSizes initialCorpus ++ repeat []
@@ -107,16 +106,14 @@ ui vm dict initialCorpus cliSelectedContract = do
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
   let spawnWorkers =
-        forM (zip corpusChunks [0..(nworkers-1)]) $
-          liftIO . uncurry (spawnWorker env perWorkerTestLimit)
+        liftIO $ forM (zip corpusChunks [0..(nworkers-1)]) $
+          uncurry (spawnWorker env perWorkerTestLimit)
 
   case effectiveMode of
     Interactive -> do
       -- Channel to push events to update UI
       uiChannel <- liftIO $ newBChan 1000
-
-      let forwardEvent ev =
-            void $ writeBChanNonBlocking uiChannel $ EventReceived ev
+      let forwardEvent = void . writeBChanNonBlocking uiChannel . EventReceived
 
       -- Attach the log/event forwarder before workers start so early worker
       -- events (like startup logs) are not lost by dupChan.
@@ -196,9 +193,7 @@ ui vm dict initialCorpus cliSelectedContract = do
     NonInteractive outputFormat -> do
       serverStopVar <- newEmptyMVar
 
-      let forwardEvent ev = do
-            msg <- runReaderT (ppLogLine vm ev) env
-            putStrLn msg
+      let forwardEvent ev = putStrLn =<< runReaderT (ppLogLine vm ev) env
       -- Attach the log/event forwarder before workers start so early worker
       -- events (like startup logs) are not lost by dupChan.
       uiEventsForwarderStopVar <- spawnListener forwardEvent
@@ -219,8 +214,7 @@ ui vm dict initialCorpus cliSelectedContract = do
             states <- liftIO $ workerStates workers
             time <- timePrefix <$> getTimestamp
             line <- statusLine env states lastUpdateRef
-            let statusMsg = time <> "[status] " <> line
-            putStrLn statusMsg
+            putStrLn $ time <> "[status] " <> line
             hFlush stdout
 
       case conf.campaignConf.serverPort of
@@ -256,41 +250,50 @@ ui vm dict initialCorpus cliSelectedContract = do
 
   spawnWorker env testLimit corpusChunk workerId = do
     stateRef <- newIORef initialWorkerState
-    let bus = env.bus
+
+    let fuzzerAgent corpus limit =
+          FuzzerAgent { fuzzerId = workerId
+                      , initialVm = vm
+                      , initialDict = dict
+                      , initialCorpus = corpus
+                      , testLimit = limit
+                      , stateRef
+                      }
+
+        agent = case workerIDToType env.cfg.campaignConf workerId of
+          FuzzWorker -> fuzzerAgent corpusChunk testLimit
+          SymbolicWorker ->
+            SymbolicAgent { initialVm = vm
+                          , initialDict = dict
+                          , contractName = cliSelectedContract
+                          , stateRef
+                          }
+
+        workerType = workerTypeOf agent
 
     threadId <- forkIO $ do
       -- TODO: maybe figure this out with forkFinally?
-      let workerType = workerIDToType env.cfg.campaignConf workerId
       stopReason <- catches (do
-          let
-            timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
-            corpus = if workerType == SymbolicWorker then initialCorpus else corpusChunk
-
-          maybeResult <- timeout timeoutUsecs $ case workerType of
-             FuzzWorker ->
-                 runAgent (FuzzerAgent workerId vm dict corpus testLimit stateRef) bus env
-             SymbolicWorker ->
-                 runAgent (SymbolicAgent vm dict corpus cliSelectedContract stateRef) bus env
-
-          pure $ fromMaybe TimeLimitReached maybeResult
+          let timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
+          fromMaybe TimeLimitReached <$> timeout timeoutUsecs (runAgent agent env)
         )
         [ Handler $ \(e :: AsyncException) -> pure $ Killed (show e)
         , Handler $ \(e :: SomeException)  -> pure $ Crashed (show e)
         ]
 
       -- When a fuzz worker is interrupted by timeout, tests may not have
-      -- finished shrinking. Run a shrink-only pass outside the timeout
-      -- using the same agent loop (testLimit=0 means no fuzzing, only shrink).
+      -- finished shrinking. Run a shrink-only pass outside the timeout using
+      -- the same agent (testLimit=0 means no fuzzing, only shrink).
       -- (See github.com/crytic/echidna/issues/839)
       case stopReason of
         TimeLimitReached | workerType == FuzzWorker -> do
           tests <- traverse readIORef env.testRefs
           when (any needsShrinking tests) $ void $
-            runAgent (FuzzerAgent workerId vm dict [] 0 stateRef) bus env
+            runAgent (fuzzerAgent [] 0) env
         _ -> pure ()
 
       time <- liftIO getTimestamp
-      liftIO $ writeChan env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
+      writeChan env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
 
     pure (threadId, stateRef)
 

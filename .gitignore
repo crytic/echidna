@@ -23,7 +23,7 @@ echidna.cabal
 *.swp
 profiles/
 
-# Python (MCP test suite under tests/mcp/, helper scripts)
+# Python helper scripts and test suites
 __pycache__/
 *.py[cod]
 .pytest_cache/
