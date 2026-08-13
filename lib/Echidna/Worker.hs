@@ -12,6 +12,7 @@ import Echidna.ABI (encodeSig)
 import Echidna.Types.Campaign
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Test
+import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker
 import Echidna.Utility (getTimestamp)
 
@@ -105,10 +106,18 @@ ppWorkerEvent = \case
   TestOptimized test ->
     let name = case test.testType of OptimizationTest n _ -> n; _ -> error "fixme"
     in "New maximum value of " <> unpack name <> ": " <> show test.value
-  NewCoverage { points, numCodehashes, corpusSize } ->
-    "New coverage: " <> show points <> " instr, "
+  NewCoverage { points, numCodehashes, corpusSize, transactions } ->
+    let -- the coverage is credited to the last transaction of the sequence
+        culprit = case transactions of
+          [] -> "init"
+          txs -> case (last txs).call of
+            SolCall (name, _) -> unpack name
+            SolCreate _ -> "constructor"
+            SolCalldata _ -> "fallback"
+            NoCall -> "no call"
+    in "New coverage: " <> show points <> " instr, "
       <> show numCodehashes <> " contracts, "
-      <> show corpusSize <> " seqs in corpus"
+      <> show corpusSize <> " seqs in corpus (" <> culprit <> ")"
   SymExecError err ->
     "Symbolic execution failed: " <> err
   SymExecLog msg ->
