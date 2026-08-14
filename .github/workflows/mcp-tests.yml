@@ -1,0 +1,99 @@
+name: MCP integration tests
+
+# Out-of-process MCP testing: spins up a real Echidna campaign with the MCP
+# server and drives it the way real agent clients do. Besides the tool tests it
+# runs the client-compatibility suite:
+#   * test_mcp_conformance.py -- wire-protocol regression guard (202/405/handshake)
+#   * test_mcp_codex.py       -- replays Codex's strict rmcp handshake
+#   * test_mcp_claude.py      -- drives the server with the official `mcp` SDK
+# Both client checks are transport-level and need no API keys, so they run on
+# every push/PR that touches the code they cover. (A live-model smoke using
+# examples/mcp_agent.py needs ANTHROPIC_API_KEY / Codex auth and is
+# intentionally not part of CI.)
+
+# Building the closure and running a campaign is expensive, so this is limited
+# to changes that can affect what the server answers. (GitHub Actions does not
+# support YAML anchors, hence the repetition.)
+on:
+  push:
+    branches:
+    - master
+    paths:
+    - '.github/workflows/mcp-tests.yml'
+    - 'tests/mcp/**'
+    - 'lib/**'
+    - 'src/**'
+    - 'package.yaml'
+    - 'flake.nix'
+    - 'flake.lock'
+  pull_request:
+    branches:
+    - master
+    paths:
+    - '.github/workflows/mcp-tests.yml'
+    - 'tests/mcp/**'
+    - 'lib/**'
+    - 'src/**'
+    - 'package.yaml'
+    - 'flake.nix'
+    - 'flake.lock'
+
+# Least-privilege GITHUB_TOKEN: this workflow only checks out the repo and runs
+# tests, so it needs no write scopes.
+permissions:
+  contents: read
+
+# A new push to the same ref cancels an in-flight run: this one builds the whole
+# closure and then fuzzes, so it is worth not piling up.
+concurrency:
+  group: mcp-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mcp-client-compat:
+    name: MCP client compatibility (Claude + Codex)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      # Pull prebuilt echidna/hevm/deps from the project's Cachix so the build
+      # takes minutes instead of compiling the whole closure from source.
+      # CACHIX_AUTH_TOKEN is not exposed to pull requests from forks, so those
+      # runs read the public cache and push nothing back: a fork PR that misses
+      # is slow rather than red.
+      - name: Configure Cachix
+        uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71 # v17
+        with:
+          name: trailofbits
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Build echidna
+        run: nix build .#echidna --out-link result
+
+      - name: Add echidna to PATH
+        run: echo "$GITHUB_WORKSPACE/result/bin" >> "$GITHUB_PATH"
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install -r tests/mcp/requirements-test.txt
+
+      # Echidna shells out to crytic-compile + solc to compile the test contract.
+      - name: Install crytic-compile and solc
+        run: |
+          pip install crytic-compile solc-select
+          solc-select install 0.8.25
+          solc-select use 0.8.25
+
+      - name: Run MCP test suite (tools + conformance + Claude + Codex)
+        run: pytest tests/mcp -v
