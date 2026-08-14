@@ -6,7 +6,7 @@ module Echidna.Transaction where
 import Control.Monad (join, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
-import Control.Monad.Reader (MonadReader, ask)
+import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Data.ByteString qualified as BS
 import Data.Map (Map, toList)
@@ -31,7 +31,7 @@ import Echidna.Types (fromEVM, Gas)
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Random
 import Echidna.Types.Signature
-  (SignatureMap, SolCall, ContractA)
+  (ContractA, SignatureMap, SolCall)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign
@@ -62,14 +62,48 @@ genTx
   -> Map (Expr EAddr) Contract
   -> m Tx
 genTx world deployedContracts = do
+  contracts <- callableContracts world deployedContracts
+  (dstAddr, solCall) <- genRandomCall contracts
+  toTx world dstAddr solCall
+
+-- | The deployed contracts Echidna knows how to build a call against, each
+-- paired with the ABI resolved for it.
+callableContracts
+  :: (MonadIO m, MonadRandom m, MonadReader Env m)
+  => World
+  -> Map (Expr EAddr) Contract
+  -> m [ContractA]
+callableContracts world deployedContracts = do
   env <- ask
-  let txConf = env.cfg.txConf
-  genDict <- gets (.genDict)
   sigMap <- getSignatures world.highSignatureMap world.lowSignatureMap
+  catMaybes <$> liftIO (mapM (toContractA env sigMap) (toList deployedContracts))
+  where
+    toContractA :: Env -> SignatureMap -> (Expr EAddr, Contract) -> IO (Maybe ContractA)
+    toContractA env sigMap (addr, c) =
+      fmap (forceAddr addr,) . snd <$> lookupUsingCodehash env.codehashMap c env.dapp sigMap
+
+-- | Pick one of the given contracts and generate a call to a random function
+-- of it.
+genRandomCall
+  :: (MonadRandom m, MonadState WorkerState m)
+  => [ContractA]
+  -> m (Addr, SolCall)
+genRandomCall contracts = do
+  genDict <- gets (.genDict)
+  (dstAddr, dstAbis) <- rElem' $ Set.fromList contracts
+  (dstAddr,) <$> genInteractionsM genDict dstAbis
+
+-- | Wrap a chosen call into a 'Tx', giving it a random sender, value and delay.
+toTx
+  :: (MonadRandom m, MonadState WorkerState m, MonadReader Env m)
+  => World
+  -> Addr
+  -> SolCall
+  -> m Tx
+toTx world dstAddr solCall = do
+  txConf <- asks (.cfg.txConf)
+  genDict <- gets (.genDict)
   sender <- rElem' world.senders
-  contractAList <- liftIO $ mapM (toContractA env sigMap) (toList deployedContracts)
-  (dstAddr, dstAbis) <- rElem' $ Set.fromList $ catMaybes contractAList
-  solCall <- genInteractionsM genDict dstAbis
   value <- genValue txConf.maxValue genDict.dictValues world.payableSigs solCall
   ts <- (,) <$> genDelay txConf.maxTimeDelay genDict.dictValues
             <*> genDelay txConf.maxBlockDelay genDict.dictValues
@@ -81,10 +115,6 @@ genTx world deployedContracts = do
             , value = value
             , delay = level ts
             }
-  where
-    toContractA :: Env -> SignatureMap -> (Expr EAddr, Contract) -> IO (Maybe ContractA)
-    toContractA env sigMap (addr, c) =
-      fmap (forceAddr addr,) . snd <$> lookupUsingCodehash env.codehashMap c env.dapp sigMap
 
 genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
 genDelay mv ds =
