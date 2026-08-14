@@ -10,6 +10,7 @@ import Tests.Encoding (encodingJSONTests)
 import Tests.Foundry (foundryTests)
 import Tests.FoundryTestGen (foundryTestGenTests)
 import Tests.Integration (integrationTests)
+import Tests.MCPParse (mcpParseTests)
 import Tests.Mutator (mutatorTests)
 import Tests.Optimization (optimizationTests)
 import Tests.Overflow (overflowTests)
@@ -37,6 +38,7 @@ main = withCurrentDirectory "./tests/solidity" . defaultMain $
            , researchTests
            , foundryTests
            , encodingJSONTests
+           , mcpParseTests
            , sampleTests
            , replayTests
            , foundryTestGenTests
