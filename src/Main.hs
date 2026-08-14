@@ -197,7 +197,7 @@ options = Options . NE.fromList
     <> help "Number of workers to run")
   <*> optional (option auto $ long "server"
     <> metavar "PORT"
-    <> help "Run events server on the given port")
+    <> help "Serve MCP on the given port, to watch and steer the campaign")
   <*> optional (option str $ long "contract"
     <> metavar "CONTRACT"
     <> help "Contract to analyze")

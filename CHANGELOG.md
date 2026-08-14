@@ -1,5 +1,6 @@
 ## Unreleased
 
+* **`--server PORT` now serves MCP instead of Server-Sent Events.** The flag and the `server` config key keep their names, but the protocol behind them has changed: instead of a one-way stream of campaign events, the port serves the Model Context Protocol over HTTP at `http://127.0.0.1:PORT/mcp`, with tools to inspect a running campaign (`status`, `target`, `show_coverage`, `dump_lcov`) and to steer it (`inject_fuzz_transactions`, `clear_fuzz_priorities`, `execute_sequence`, `sample`, `reload_corpus`). Anything consuming the SSE stream will need to move to the MCP `status` tool; the events themselves are unchanged in the text, JSON and UI outputs
 * New `verification` test mode to symbolically verify each function of a contract using a single transaction, instead of configuring the symbolic worker by hand (#1595)
 * Foundry mode now follows Foundry's function naming conventions more closely: `invariant`- and `statefulFuzz`-prefixed functions are stateful invariants, and `testFail`-prefixed tests are expected to revert (#1595)
 * Foundry mode now only calls parameterized `test` functions when `seqLen` is 1, matching Foundry's stateless fuzzing (#1595)
