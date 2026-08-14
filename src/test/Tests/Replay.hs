@@ -90,8 +90,11 @@ replayTests = testGroup "Sequence replay"
         (vm, env, call) <- load "assert/assert-0.8.sol"
         report <- replay env False vm [call "direct_assert" [AbiInt 256 100]]
         report.status @?= "assertion_failed"
-        assertBool "the panic is spelled out" $
-          any (T.isInfixOf "Panic(1)") (head report.transactions).logs
+        case report.transactions of
+          [tx] -> assertBool "the panic is spelled out" $
+                    any (T.isInfixOf "Panic(1)") tx.logs
+          txs -> assertFailure $
+                   "expected one transaction, got " <> show (length txs)
 
   , testCase "leaves the campaign's coverage and corpus alone" $ do
       (vm, env, txs) <- loadReverting
