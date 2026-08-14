@@ -58,6 +58,25 @@
                   warp-tls = prev.haskell.lib.doJailbreak hprev.warp-tls;
                   tls-session-manager = prev.haskell.lib.doJailbreak hprev.tls-session-manager;
 
+                  # nixpkgs ships mcp-server 0.1.0.19, which answers a
+                  # Streamable HTTP notification with `200 {}` and a
+                  # server-stream GET with a discovery document. 0.2.0.1 is the
+                  # release that follows the spec (202 with no body, and a real
+                  # per-request SSE stream). It needs http-types >= 0.12.6 —
+                  # only that version re-exports `hOrigin` from the umbrella
+                  # `Network.HTTP.Types` module, which mcp-server imports
+                  # unqualified — and http-types has to move for the whole set,
+                  # since wai and warp exchange its `Status` type with
+                  # mcp-server. Everything in the closure accepts 0.12.6.
+                  http-types = hfinal.callHackageDirect {
+                    pkg = "http-types"; ver = "0.12.6";
+                    sha256 = "sha256-bGrVUTZnP1NFVwR0apgNLolKPW3cJdVW4jSBSlV7srg=";
+                  } {};
+                  mcp-server = hfinal.callHackageDirect {
+                    pkg = "mcp-server"; ver = "0.2.0.1";
+                    sha256 = "sha256-Pe0Jdfor8p5Iwj3oV2bNC5SpjHMqEwzMYUpqrvmgvP0=";
+                  } {};
+
                   # callHackageDirect runs the `cabal2nix` tool from this set, and cabal2nix
                   # transitively depends on tls — regenerating tls with it would loop. Pin the
                   # tool to the un-overridden base set to break the cycle (it's build-time only,

@@ -21,8 +21,9 @@ import Echidna.Types.Signature (SolCallPrototype)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker (WorkerId)
 
--- | Who sent a message.
-data AgentId = FuzzerId WorkerId | SymbolicId
+-- | Who sent a message. 'ServerId' is the MCP server, standing in for whoever
+-- is driving the campaign from outside it.
+data AgentId = FuzzerId WorkerId | SymbolicId | ServerId
   deriving (Show, Eq, Ord)
 
 -- | The channel a command answers on, filled exactly once by whoever handles

@@ -6,7 +6,6 @@ import Brick
 import Brick.BChan
 import Brick.Widgets.Dialog qualified as B
 import Control.Concurrent (killThread, threadDelay)
-import Control.Concurrent.MVar (readMVar)
 import Control.Exception (AsyncException)
 import Control.Monad
 import Control.Monad.Catch
@@ -15,7 +14,7 @@ import Control.Monad.State.Strict hiding (state)
 import Data.ByteString.Lazy qualified as BS
 import Data.List.Split (splitPlaces)
 import Data.Map (Map)
-import Data.Maybe (fromMaybe, isJust, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Sequence ((|>))
 import Data.Text (Text)
 import Data.Time
@@ -34,9 +33,9 @@ import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
 import Echidna.Agent (runAgent)
+import Echidna.MCP (runMCPServer)
 import Echidna.Output.Corpus (saveCorpusEvent)
 import Echidna.Output.JSON qualified
-import Echidna.Server (runSSEServer)
 import Echidna.SourceAnalysis.Slither (isEmptySlitherInfo)
 import Echidna.Types.Agent (Agent(..), workerTypeOf)
 import Echidna.Types.Campaign
@@ -49,7 +48,8 @@ import Echidna.Types.Worker
 import Echidna.UI.Report
 import Echidna.UI.Widgets
 import Echidna.Utility (timePrefix, getTimestamp)
-import Echidna.Worker (getNWorkers, spawnListener, workerIDToType)
+import Echidna.Worker
+  (getNWorkers, pushCampaignEvent, spawnListener, workerIDToType)
 
 data UIEvent =
   CampaignUpdated LocalTime [EchidnaTest] [WorkerState]
@@ -110,6 +110,16 @@ ui vm dict initialCorpus cliSelectedContract = do
         liftIO $ forM (zip corpusChunks [0..(nworkers-1)]) $
           uncurry (spawnWorker env perWorkerTestLimit)
 
+      -- The MCP server answers for the campaign as it runs, reading worker
+      -- state through the workers' own refs, so it can only be started once
+      -- they exist. It has no shutdown of its own: the campaign ending is what
+      -- takes it down with the process.
+      spawnMCPServer workers = forM_ conf.campaignConf.serverPort $ \port -> do
+        liftIO $ pushCampaignEvent env $ ServerLog $
+          "MCP server listening on http://127.0.0.1:" <> show port <> "/mcp"
+        void $ liftIO $ forkIO $
+          runMCPServer env (map snd workers) (fromIntegral port)
+
   case effectiveMode of
     Interactive -> do
       -- Channel to push events to update UI
@@ -120,6 +130,7 @@ ui vm dict initialCorpus cliSelectedContract = do
       -- events (like startup logs) are not lost by dupChan.
       uiEventsForwarderStopVar <- spawnListener forwardEvent
       workers <- spawnWorkers
+      spawnMCPServer workers
 
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 200_000 -- 200 ms
@@ -186,20 +197,16 @@ ui vm dict initialCorpus cliSelectedContract = do
       pure states
 
     NonInteractive outputFormat -> do
-      serverStopVar <- newEmptyMVar
-
       let forwardEvent ev = putStrLn =<< runReaderT (ppLogLine vm ev) env
       -- Attach the log/event forwarder before workers start so early worker
       -- events (like startup logs) are not lost by dupChan.
       uiEventsForwarderStopVar <- spawnListener forwardEvent
       workers <- spawnWorkers
+      spawnMCPServer workers
 
       -- Handles ctrl-c
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
-        let handler _ = do
-              stopWorkers workers
-              void $ tryPutMVar serverStopVar ()
-        in installHandler sig handler
+        installHandler sig (const (stopWorkers workers))
 
       -- Track last update time and gas for delta calculation
       startTime <- liftIO getTimestamp
@@ -212,10 +219,6 @@ ui vm dict initialCorpus cliSelectedContract = do
             putStrLn $ time <> "[status] " <> line
             hFlush stdout
 
-      case conf.campaignConf.serverPort of
-        Just port -> liftIO $ runSSEServer serverStopVar env port nworkers
-        Nothing -> pure ()
-
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 3_000_000 -- 3 seconds
         printStatus
@@ -227,11 +230,6 @@ ui vm dict initialCorpus cliSelectedContract = do
 
       -- print final status regardless of the last scheduled update
       liftIO printStatus
-
-      when (isJust conf.campaignConf.serverPort) $ do
-        -- wait until we send all SSE events
-        liftIO $ putStrLn "Waiting until all SSE are received..."
-        liftIO $ Control.Concurrent.MVar.readMVar serverStopVar
 
       states <- liftIO $ workerStates workers
 
