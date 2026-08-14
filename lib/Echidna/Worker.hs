@@ -12,6 +12,7 @@ import Echidna.ABI (encodeSig)
 import Echidna.Types.Campaign
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Test
+import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker
 import Echidna.Utility (getTimestamp)
 
@@ -30,6 +31,7 @@ instance ToJSON WorkerEvent where
       object [ "coverage" .= points, "contracts" .= numCodehashes, "corpus_size" .= corpusSize]
     SymExecError msg -> object [ "msg" .= msg ]
     SymExecLog msg -> object [ "msg" .= msg ]
+    Log msg -> object [ "msg" .= msg ]
     TxSequenceReplayed file current total ->
       object [ "file" .= file, "current" .= current, "total" .= total ]
     TxSequenceReplayFailed file tx ->
@@ -97,6 +99,7 @@ ppCampaignEvent = \case
   WorkerEvent _ _ e -> ppWorkerEvent e
   Failure err -> err
   ReproducerSaved f -> "Saved reproducer to " <> f
+  ServerLog msg -> msg
 
 ppWorkerEvent :: WorkerEvent -> String
 ppWorkerEvent = \case
@@ -105,14 +108,24 @@ ppWorkerEvent = \case
   TestOptimized test ->
     let name = case test.testType of OptimizationTest n _ -> n; _ -> error "fixme"
     in "New maximum value of " <> unpack name <> ": " <> show test.value
-  NewCoverage { points, numCodehashes, corpusSize } ->
-    "New coverage: " <> show points <> " instr, "
+  NewCoverage { points, numCodehashes, corpusSize, transactions } ->
+    let -- the coverage is credited to the last transaction of the sequence
+        culprit = case transactions of
+          [] -> "init"
+          txs -> let tx = last txs in case tx.call of
+            SolCall (name, _) -> unpack name
+            SolCreate _ -> "constructor"
+            SolCalldata _ -> "fallback"
+            NoCall -> "no call"
+    in "New coverage: " <> show points <> " instr, "
       <> show numCodehashes <> " contracts, "
-      <> show corpusSize <> " seqs in corpus"
+      <> show corpusSize <> " seqs in corpus (" <> culprit <> ")"
   SymExecError err ->
     "Symbolic execution failed: " <> err
   SymExecLog msg ->
     "Symbolic execution log: " <> msg
+  Log msg ->
+    msg
   TxSequenceReplayed file current total ->
     "Sequence replayed from corpus file " <> file <> " (" <> show current <> "/" <> show total <> ")"
   TxSequenceReplayFailed file tx ->
