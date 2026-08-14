@@ -67,7 +67,7 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
 
   where
   run chan = do
-    checkMessages chan
+    checkMessages vm chan
     testRefs <- asks (.testRefs)
     tests <- liftIO $ traverse readIORef testRefs
     CampaignConf{stopOnFail, shrinkLimit} <- asks (.cfg.campaignConf)
