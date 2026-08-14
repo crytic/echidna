@@ -10,10 +10,11 @@ module Echidna.Types.InterWorker
   , Bus
   , FuzzerCmd(..)
   , Message(..)
+  , Reply(..)
   , WrappedMessage(..)
   ) where
 
-import Control.Concurrent.STM (TChan)
+import Control.Concurrent.STM (TChan, TMVar)
 import Data.Text (Text)
 
 import Echidna.Types.Signature (SolCallPrototype)
@@ -23,6 +24,14 @@ import Echidna.Types.Worker (WorkerId)
 -- | Who sent a message.
 data AgentId = FuzzerId WorkerId | SymbolicId
   deriving (Show, Eq, Ord)
+
+-- | The channel a command answers on, filled exactly once by whoever handles
+-- the command. Shown opaquely, so that carrying one does not cost a command
+-- its derived 'Show'.
+newtype Reply a = Reply (TMVar a)
+
+instance Show (Reply a) where
+  show _ = "<reply>"
 
 -- | A command addressed to a single fuzzing worker.
 data FuzzerCmd
@@ -36,6 +45,11 @@ data FuzzerCmd
     --   probability in place of a corpus-mutated one.
   | ClearPrioritization
     -- ^ Forget every prioritized sequence.
+  | ExecuteSequence [Tx] Bool (Reply Text)
+    -- ^ Replay a sequence of transactions and report on what it did, without
+    --   perturbing the campaign. The flag asks for the EVM trace to be part of
+    --   the report; the reply is the JSON report itself. See
+    --   'Echidna.Worker.Replay.executeSeq'.
   deriving Show
 
 -- | A message every agent gets to see.
