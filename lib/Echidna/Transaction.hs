@@ -3,12 +3,13 @@
 
 module Echidna.Transaction where
 
-import Control.Monad (join, when)
+import Control.Monad (join, when, zipWithM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Data.ByteString qualified as BS
+import Data.List.NonEmpty qualified as NE
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
 import Data.Set (Set)
@@ -31,7 +32,7 @@ import Echidna.Types (fromEVM, Gas)
 import Echidna.Types.Config (Env(..), EConfig(..))
 import Echidna.Types.Random
 import Echidna.Types.Signature
-  (ContractA, SignatureMap, SolCall)
+  (ContractA, SignatureMap, SolCall, SolCallPrototype)
 import Echidna.Types.Tx
 import Echidna.Types.World (World(..))
 import Echidna.Types.Campaign
@@ -66,6 +67,25 @@ genTx world deployedContracts = do
   (dstAddr, solCall) <- genRandomCall contracts
   toTx world dstAddr solCall
 
+-- | Generate a 'Transaction' calling the function a prototype names, letting
+-- the generator fill in whichever of its arguments the prototype left open.
+--
+-- Falls back to a fully random transaction when nothing deployed exposes such
+-- a function, so a prototype naming a function that isn't there costs
+-- diversity rather than stalling the worker.
+genTxFromPrototype
+  :: (MonadIO m, MonadRandom m, MonadState WorkerState m, MonadReader Env m)
+  => World
+  -> Map (Expr EAddr) Contract
+  -> SolCallPrototype
+  -> m Tx
+genTxFromPrototype world deployedContracts prototype = do
+  contracts <- callableContracts world deployedContracts
+  (dstAddr, solCall) <- case matchingContracts prototype contracts of
+    []         -> genRandomCall contracts
+    candidates -> genPrototypeCall prototype candidates
+  toTx world dstAddr solCall
+
 -- | The deployed contracts Echidna knows how to build a call against, each
 -- paired with the ABI resolved for it.
 callableContracts
@@ -82,6 +102,21 @@ callableContracts world deployedContracts = do
     toContractA env sigMap (addr, c) =
       fmap (forceAddr addr,) . snd <$> lookupUsingCodehash env.codehashMap c env.dapp sigMap
 
+-- | The contracts exposing the function a prototype names, each cut down to
+-- just the signatures matching it.
+--
+-- Matching is on name and arity only: an argument the prototype leaves open
+-- carries no type to compare against, so same-arity overloads all qualify and
+-- one is picked at random.
+matchingContracts :: SolCallPrototype -> [ContractA] -> [ContractA]
+matchingContracts (name, args) contracts =
+  [ (addr, matchingSigs)
+  | (addr, sigs) <- contracts
+  , Just matchingSigs <- [NE.nonEmpty (NE.filter matches sigs)]
+  ]
+  where
+    matches (n, types) = n == name && length types == length args
+
 -- | Pick one of the given contracts and generate a call to a random function
 -- of it.
 genRandomCall
@@ -92,6 +127,22 @@ genRandomCall contracts = do
   genDict <- gets (.genDict)
   (dstAddr, dstAbis) <- rElem' $ Set.fromList contracts
   (dstAddr,) <$> genInteractionsM genDict dstAbis
+
+-- | Pick one of the contracts 'matchingContracts' selected and generate the
+-- prototype's call against it, generating a value for every argument left open.
+genPrototypeCall
+  :: (MonadRandom m, MonadState WorkerState m)
+  => SolCallPrototype
+  -> [ContractA] -- ^ From 'matchingContracts', so every signature matches
+  -> m (Addr, SolCall)
+genPrototypeCall (name, args) candidates = do
+  genDict <- gets (.genDict)
+  (dstAddr, dstAbis) <- rElem' $ Set.fromList candidates
+  -- Only the argument types are taken from the signature; its name is the one
+  -- the prototype asked for.
+  (_, types) <- rElem dstAbis
+  vals <- zipWithM (\arg t -> maybe (genAbiValueM' genDict name 0 t) pure arg) args types
+  pure (dstAddr, (name, vals))
 
 -- | Wrap a chosen call into a 'Tx', giving it a random sender, value and delay.
 toTx
