@@ -3,12 +3,13 @@
 
 module Echidna.Transaction where
 
-import Control.Monad (join, when, zipWithM)
+import Control.Monad (join, replicateM, when, zipWithM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
 import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Data.ByteString qualified as BS
+import Data.IORef (readIORef)
 import Data.List.NonEmpty qualified as NE
 import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
@@ -166,6 +167,61 @@ toTx world dstAddr solCall = do
             , value = value
             , delay = level ts
             }
+
+-- | Maximum number of random transactions inserted between two consecutive
+-- calls of a prioritized sequence.
+maxInterleavedTxs :: Int
+maxInterleavedTxs = 3
+
+-- | Expand a prioritized sequence of prototypes into a transaction sequence of
+-- the configured length.
+--
+-- The prototype calls are generated in order, with up to 'maxInterleavedTxs'
+-- random transactions between consecutive ones for diversity, and prefixed
+-- with the start of a corpus entry so the sequence runs from a state the
+-- campaign already reached. Worker 0 always takes the empty prefix, so the
+-- prototype is exercised from the initial state too. The result is padded with
+-- random transactions, or truncated, to respect @seqLen@.
+genPrioritizedSeq
+  :: (MonadIO m, MonadRandom m, MonadState WorkerState m, MonadReader Env m)
+  => Map (Expr EAddr) Contract
+  -> [SolCallPrototype]
+  -> m [Tx]
+genPrioritizedSeq deployedContracts prototypes = do
+  env <- ask
+  let world = env.world
+      seqLen = env.cfg.campaignConf.seqLen
+
+  txs <- expand world prototypes
+  prefix <- corpusPrefix (seqLen - length txs)
+
+  let combined = prefix ++ txs
+      padding = seqLen - length combined
+  if padding > 0
+    then (combined ++) <$> replicateM padding (genTx world deployedContracts)
+    else pure $ take seqLen combined
+
+  where
+    expand _ [] = pure []
+    expand world (p:ps) = do
+      tx <- genTxFromPrototype world deployedContracts p
+      case ps of
+        [] -> pure [tx]
+        _  -> do
+          n <- getRandomR (0, maxInterleavedTxs)
+          filler <- replicateM n (genTx world deployedContracts)
+          ((tx : filler) ++) <$> expand world ps
+
+    -- The start of one corpus entry, at most @room@ transactions of it.
+    corpusPrefix room = do
+      workerId <- gets (.workerId)
+      corpus <- asks (.corpusRef) >>= liftIO . readIORef
+      if workerId == 0 || room <= 0 || Set.null corpus
+        then pure []
+        else do
+          (_, corpusTxs) <- rElem' corpus
+          k <- getRandomR (0, min (length corpusTxs) room)
+          pure $ take k corpusTxs
 
 genDelay :: MonadRandom m => W256 -> Set W256 -> m W256
 genDelay mv ds =
