@@ -25,7 +25,7 @@ module Common
   , gasConsumedGt
   ) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, void)
 import Control.Monad.Random (getRandomR)
 import Control.Monad.Reader (runReaderT)
 import Data.DoubleWord (Int256)
@@ -45,10 +45,11 @@ import EVM.Solidity (Contracts(..), BuildOutput(..), SolcContract(..))
 import EVM.Types hiding (Env, Gas)
 
 import Echidna (mkEnv, prepareContract)
-import Echidna.Campaign (runWorker)
+import Echidna.Agent (runAgent)
 import Echidna.Config (parseConfig, defaultConfig)
 import Echidna.Solidity (selectMainContract, mkTests, loadSpecified, compileContracts)
 import Echidna.Test (checkETest)
+import Echidna.Types.Agent (Agent(..))
 import Echidna.Types.Campaign
 import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
 import Echidna.Types.Signature (ContractName)
@@ -98,8 +99,24 @@ runContract f selectedContract cfg workerType = do
 
   (vm, env, dict) <- prepareContract cfg (f :| []) buildOutput selectedContract seed
 
-  (_stopReason, finalState) <- flip runReaderT env $
-    runWorker workerType (pure ()) vm dict 0 [] cfg.campaignConf.testLimit selectedContract
+  stateRef <- newIORef initialWorkerState
+  let agent = case workerType of
+        FuzzWorker ->
+          FuzzerAgent { fuzzerId = 0
+                      , initialVm = vm
+                      , initialDict = dict
+                      , initialCorpus = []
+                      , testLimit = cfg.campaignConf.testLimit
+                      , stateRef
+                      }
+        SymbolicWorker ->
+          SymbolicAgent { initialVm = vm
+                        , initialDict = dict
+                        , contractName = selectedContract
+                        , stateRef
+                        }
+  void $ runAgent agent env
+  finalState <- readIORef stateRef
 
   -- TODO: consider snapshotting the state so checking functions don't need to
   -- be IO

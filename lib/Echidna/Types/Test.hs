@@ -172,6 +172,14 @@ isVerified t = case t.state of
   Unsolvable -> True
   _          -> False
 
+-- | Whether a whole test set should be reported as a success or a failure.
+-- This is what decides Echidna's exit code.
+--
+-- 'Unsolvable' counts as a success: it is the state verification mode sets on
+-- a test it has formally proven cannot be falsified.
+isSuccessful :: [EchidnaTest] -> Bool
+isSuccessful = all (\t -> isOpen t || isPassed t || isVerified t)
+
 instance ToJSON TestState where
   toJSON s =
     object $ ("passed", toJSON passed) : maybeToList desc
