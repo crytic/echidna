@@ -12,6 +12,7 @@ module Echidna.Worker.Sequence
   , callseq
   ) where
 
+import Control.Concurrent.STM (atomically, writeTChan)
 import Control.DeepSeq (force)
 import Control.Monad (forM_, unless, when)
 import Control.Monad.Catch (MonadThrow)
@@ -46,12 +47,14 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
+import Echidna.Types.InterWorker
+  (AgentId(..), BroadcastMsg(..), Message(..), WrappedMessage(..))
 import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), getResult)
 import Echidna.Types.Worker
-import Echidna.Worker (pushWorkerEvent)
+import Echidna.Worker (pushWorkerEvent, workerIDToType)
 
 -- | Run all the transaction sequences from the corpus and accumulate campaign
 -- state. Can be used to minimize corpus as the final campaign state will
@@ -68,7 +71,7 @@ replayCorpus vm txSeqs =
             List.filter (\case Tx { call = NoCall } -> False; _ -> True) txSeq
     case maybeFaultyTx of
       Nothing -> do
-        _ <- callseq vm txSeq
+        _ <- callseq vm txSeq True
         pushWorkerEvent (TxSequenceReplayed file i (length txSeqs))
       Just faultyTx ->
         pushWorkerEvent (TxSequenceReplayFailed file faultyTx)
@@ -82,8 +85,9 @@ callseq
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM Concrete
   -> [Tx]
+  -> Bool -- ^ Whether this sequence comes from replaying the corpus
   -> m (VM Concrete, Bool)
-callseq vm txSeq = do
+callseq vm txSeq isReplaying = do
   env <- ask
   -- First, we figure out whether we need to execute with or without coverage
   -- optimization and gas info, and pick our execution function appropriately
@@ -121,6 +125,15 @@ callseq vm txSeq = do
                                 , corpusSize = newSize
                                 , transactions = fst <$> results
                                 }
+
+    -- Tell the other agents about it too
+    workerId <- gets (.workerId)
+    let sender = case workerIDToType env.cfg.campaignConf workerId of
+          FuzzWorker -> FuzzerId workerId
+          SymbolicWorker -> SymbolicId
+    liftIO $ atomically $ writeTChan env.bus $
+      WrappedMessage sender
+        (Broadcast (NewCoverageInfo points (fst <$> results) isReplaying))
 
   modify' $ \workerState ->
 
