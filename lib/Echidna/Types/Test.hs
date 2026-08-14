@@ -153,6 +153,15 @@ didFail t = case t.state of
   Solved  -> True
   _       -> False
 
+-- | Whether a test has conclusively failed, which is what @stopOnFail@ acts on.
+-- A falsified test being shrunk ('Large') does not count yet: it only becomes
+-- 'Solved' once shrinking is done.
+isConclusiveFailure :: EchidnaTest -> Bool
+isConclusiveFailure t = case t.state of
+  Solved   -> True
+  Failed _ -> True
+  _        -> False
+
 isPassed :: EchidnaTest -> Bool
 isPassed t = case t.state of
   Passed -> True

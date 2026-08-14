@@ -1,10 +1,12 @@
 module Echidna.Worker where
 
 import Control.Concurrent
-import Control.Monad.Reader (MonadReader, MonadIO, liftIO, ask)
+import Control.Monad (void, when)
+import Control.Monad.Reader (MonadReader, MonadIO, asks, liftIO, ask)
 import Control.Monad.State.Strict(MonadState(..), gets)
 import Data.Aeson
 import Data.Text (unpack)
+import Data.Time (LocalTime)
 
 import Echidna.ABI (encodeSig)
 import Echidna.Types.Campaign
@@ -48,6 +50,47 @@ pushCampaignEvent :: Env -> CampaignEvent -> IO ()
 pushCampaignEvent env event = do
   time <- liftIO getTimestamp
   writeChan env.eventQueue (time, event)
+
+-- | Listener reads events and runs the given 'handler' function. It exits after
+-- receiving all 'WorkerStopped' events and sets the returned 'MVar' so the
+-- parent thread can safely block on listener until all events are processed.
+--
+-- NOTE: because the 'Failure' event does not come from a specific fuzzing worker
+-- it is possible that a listener won't process it if emitted after all workers
+-- are stopped. This is quite unlikely and non-critical but should be addressed
+-- in the long term.
+spawnListener
+  :: (MonadReader Env m, MonadIO m)
+  => ((LocalTime, CampaignEvent) -> IO ())
+  -- ^ a function that handles the events
+  -> m (MVar ())
+spawnListener handler = do
+  cfg <- asks (.cfg)
+  let nworkers = getNWorkers cfg.campaignConf
+  eventQueue <- asks (.eventQueue)
+  chan <- liftIO $ dupChan eventQueue
+  stopVar <- liftIO newEmptyMVar
+  liftIO $ void $ forkFinally (listenerLoop handler chan nworkers) (const $ putMVar stopVar ())
+  pure stopVar
+
+-- | Repeatedly run 'handler' on events from 'chan'.
+-- Stops once 'workersAlive' workers stop.
+listenerLoop
+  :: (MonadIO m)
+  => ((LocalTime, CampaignEvent) -> m ())
+  -- ^ a function that handles the events
+  -> Chan (LocalTime, CampaignEvent)
+  -- ^ event channel
+  -> Int
+  -- ^ number of workers which have to stop before loop exits
+  -> m ()
+listenerLoop handler chan !workersAlive =
+  when (workersAlive > 0) $ do
+    event <- liftIO $ readChan chan
+    handler event
+    case event of
+      (_, WorkerEvent _ _ (WorkerStopped _)) -> listenerLoop handler chan (workersAlive - 1)
+      _                                      -> listenerLoop handler chan workersAlive
 
 ppCampaignEvent :: CampaignEvent -> String
 ppCampaignEvent = \case
