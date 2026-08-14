@@ -43,3 +43,11 @@ handleCmd (EnableSampling sig) =
 
 handleCmd ClearSampling =
   modify' $ \workerState -> workerState { sampledFunctions = Map.empty }
+
+handleCmd (FuzzSequence prototypes prob) =
+  modify' $ \workerState -> workerState
+    { prioritizedSequences = (prob, prototypes) : workerState.prioritizedSequences
+    }
+
+handleCmd ClearPrioritization =
+  modify' $ \workerState -> workerState { prioritizedSequences = [] }

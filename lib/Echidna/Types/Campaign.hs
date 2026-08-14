@@ -14,6 +14,7 @@ import EVM.Solvers (Solver(..))
 import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
 import Echidna.Types.Coverage (CoverageFileType, CoverageMap)
+import Echidna.Types.Signature (SolCallPrototype)
 import Echidna.Types.Tx (TxResult(..))
 
 -- | Maximum number of functions a single worker samples at once.
@@ -195,6 +196,10 @@ data WorkerState = WorkerState
     -- ^ Functions whose calls are sampled for return-value range and revert
     --   history, keyed by canonical signature (e.g. @"totalSupply()"@). Empty
     --   unless sampling was explicitly enabled for this worker.
+  , prioritizedSequences :: ![(Double, [SolCallPrototype])]
+    -- ^ Call sequences to bias generation towards, each with the probability
+    --   of being used in place of a corpus-mutated sequence. Empty unless
+    --   sequences were explicitly injected into this worker.
   }
 
 initialWorkerState :: WorkerState
@@ -207,6 +212,7 @@ initialWorkerState =
               , totalGas = 0
               , runningThreads = []
               , sampledFunctions = Map.empty
+              , prioritizedSequences = []
               }
 
 defaultTestLimit :: Int
