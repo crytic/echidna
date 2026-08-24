@@ -18,6 +18,7 @@ import Echidna.Types.Cache
 import Echidna.Types.Campaign (CampaignConf)
 import Echidna.Types.Corpus (Corpus)
 import Echidna.Types.Coverage (CoverageMap)
+import Echidna.Types.InterWorker (Bus)
 import Echidna.Types.Solidity (SolConf)
 import Echidna.Types.Test (TestConf, EchidnaTest)
 import Echidna.Types.Tx (TxConf)
@@ -79,6 +80,11 @@ data Env = Env
   -- | Shared between all workers. Events are fairly rare so contention is
   -- minimal.
   , eventQueue :: Chan (LocalTime, CampaignEvent)
+
+  -- | Shared between all agents. Broadcast channel: readers take their own
+  -- 'Control.Concurrent.STM.dupTChan' of it, so every reader sees every
+  -- message.
+  , bus :: Bus
 
   , testRefs :: [IORef EchidnaTest]
   , coverageRefInit :: IORef CoverageMap

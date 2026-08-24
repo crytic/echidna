@@ -3,6 +3,7 @@
 
 module Echidna.Worker.Fuzz (runFuzzWorker) where
 
+import Control.Concurrent.STM (atomically, dupTChan)
 import Control.Monad (forM_, replicateM, void)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, evalRandT)
@@ -26,6 +27,7 @@ import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker
+import Echidna.Worker.Command (checkMessages)
 import Echidna.Worker.Sequence (callseq, replayCorpus)
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
@@ -43,6 +45,7 @@ runFuzzWorker
   -> Int     -- ^ Test limit for this worker
   -> m (WorkerStopReason, WorkerState)
 runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
+  bus <- asks (.bus)
   let
     effectiveSeed = dict.defSeed + workerId
     initialState =
@@ -54,10 +57,15 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
     flip evalRandT (mkStdGen effectiveSeed) $ do
       lift callback
       void $ replayCorpus vm initialCorpus
-      run
+      -- Each worker reads the bus through its own duplicate, so a message
+      -- reaches every worker instead of being raced for by whoever gets there
+      -- first.
+      chan <- liftIO $ atomically $ dupTChan bus
+      run chan
 
   where
-  run = do
+  run chan = do
+    checkMessages chan
     testRefs <- asks (.testRefs)
     tests <- liftIO $ traverse readIORef testRefs
     CampaignConf{stopOnFail, shrinkLimit} <- asks (.cfg.campaignConf)
@@ -77,24 +85,24 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
 
        -- we shrink first before going back to fuzzing
        | any (isShrinkable shrinkLimit workerId) tests ->
-         shrink >> lift callback >> run
+         shrink >> lift callback >> run chan
 
        -- no shrinking work, fuzz
        | (null tests || any isOpen tests) && ncalls < testLimit ->
-         fuzz >> lift callback >> run
+         fuzz >> lift callback >> run chan
 
        -- Test limit reached. Close any open optimization tests so they
        -- enter the shrink loop above, same as other test types.
        | ncalls >= testLimit && any (\t -> isOpen t && isOptimizationTest t) tests -> do
          liftIO $ forM_ testRefs $ \testRef ->
             atomicModifyIORef' testRef (\test -> (closeOptimizationTest test, ()))
-         lift callback >> run
+         lift callback >> run chan
 
        -- no more work to do, exit
        | otherwise ->
          lift callback >> pure TestLimitReached
 
-  fuzz = randseq vm.env.contracts >>= fmap fst . callseq vm
+  fuzz = randseq vm.env.contracts >>= \txs -> fst <$> callseq vm txs False
 
   -- TODO: Shrinking only this worker's tests makes some workers run longer as
   -- they work less on their test limit portion during shrinking. We should move

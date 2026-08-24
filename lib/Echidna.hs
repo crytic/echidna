@@ -1,6 +1,7 @@
 module Echidna where
 
 import Control.Concurrent (forkIO, newChan, readChan)
+import Control.Concurrent.STM (newBroadcastTChanIO)
 import Control.Exception (SomeException, handle)
 import Control.Monad (forever, void)
 import Control.Monad.Catch (MonadThrow(..))
@@ -132,6 +133,10 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   -- it from a dedicated thread so the GC can reclaim delivered events.
   void $ forkIO $ handle (\(_ :: SomeException) -> pure ()) $
     forever $ void $ readChan eventQueue
+  -- A broadcast channel has no read end of its own, so nothing accumulates
+  -- until an agent duplicates it, and messages written while nobody is
+  -- listening are dropped.
+  bus <- newBroadcastTChanIO
   coverageRefInit <- newIORef mempty
   coverageRefRuntime <- newIORef mempty
   corpusRef <- newIORef mempty
@@ -142,6 +147,6 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
   pure $ Env { cfg, dapp, codehashMap, fetchSession, contractNameCache
-             , chainId, eventQueue, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
+             , chainId, eventQueue, bus, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
              , slitherInfo, useColor
              }

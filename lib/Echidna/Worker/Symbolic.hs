@@ -78,7 +78,7 @@ runSymWorker callback vm dict workerId name = do
   -- but it may be useful to symexec on top of symexec results to produce multi-transaction
   -- chains where each transaction results in new coverage.
   listenerFunc (_, WorkerEvent _ _ (NewCoverage {transactions})) = do
-    void $ callseq vm transactions
+    void $ callseq vm transactions False
     symexecTxs False transactions
     shrinkAndRandomlyExplore transactions (10 :: Int)
   listenerFunc _ = pure ()
@@ -169,7 +169,7 @@ runSymWorker callback vm dict workerId name = do
     unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic exploration: " <> unpack e)) partials
 
     -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
-    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx])) txs
+    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx]) False) txs
 
     when (not newCoverage && null errors && not (null txs)) (
       pushWorkerEvent $ SymExecError "No errors but symbolic execution found valid txs breaking assertions. Something is wrong.")
@@ -202,7 +202,7 @@ runSymWorker callback vm dict workerId name = do
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
     -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
-    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm [symTx]) txs
+    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm [symTx] False) txs
     let methodSignature = unpack method.methodSignature
     unless newCoverage $ do
       unless (null txs) $ error "No new coverage but symbolic execution found valid txs. Something is wrong."
