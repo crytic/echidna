@@ -59,6 +59,7 @@ library:
     - html-entities
     - http-conduit
     - ListLike
+    - mcp-server
     - mustache
     - optics
     - optics-core
@@ -77,7 +78,6 @@ library:
     - vector
     - vty
     - vty-crossplatform
-    - wai-extra
     - warp
     - wreq
     - word-wrap
@@ -130,6 +130,7 @@ tests:
       - tasty
       - tasty-hunit
       - tasty-quickcheck
+      - vector
       - yaml
     when:
         - condition: (os(linux) || os(windows)) && flag(static)

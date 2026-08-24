@@ -90,6 +90,23 @@ coverageFileExtension Lcov = ".lcov"
 coverageFileExtension Html = ".html"
 coverageFileExtension Txt = ".txt"
 
+-- | Write the coverage reached so far as LCOV, and answer with the path it went
+-- to. Separate from 'saveCoverage', which writes the formats the configuration
+-- asked for once the campaign is over, under a name keyed by the seed: this one
+-- is for a client asking mid-campaign, so it is named by the time it was taken
+-- and never overwrites an earlier answer.
+saveLcovSnapshot :: Env -> FilePath -> IO FilePath
+saveLcovSnapshot env d = do
+  coverage <- mergeCoverageMaps env.dapp env.coverageRefInit env.coverageRefRuntime
+  timestamp <- formatTime defaultTimeLocale "%Y%m%d_%H%M%S" <$> getCurrentTime
+  let fn = d </> "covered." <> timestamp <> coverageFileExtension Lcov
+      cs = Map.elems env.dapp.solcByName
+      cc = ppCoveredCode Lcov env.dapp.sources cs coverage Nothing (T.pack timestamp)
+             env.cfg.campaignConf.coverageExcludes
+  createDirectoryIfMissing True d
+  writeFile fn cc
+  pure fn
+
 -- | Pretty-print the covered code
 ppCoveredCode :: CoverageFileType -> SourceCache -> [SolcContract] -> FrozenCoverageMap -> Maybe Text -> Text -> [Text] -> Text
 ppCoveredCode fileType sc cs s projectName timestamp excludePatterns
