@@ -1,3 +1,5 @@
 coverage: true
 seqLen: 10
 testLimit: 5000
+seed: 0
+workers: 1
