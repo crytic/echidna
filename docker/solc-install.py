@@ -15,7 +15,7 @@ if len(sys.argv) < 2:
 
 solc_version = os.getenv('SOLC_VERSION', None)
 if solc_version:
-    silent = os.getenv("SOLC_SELECT_SILENT", "1") == "1" and subprocess.DEVNULL or None
+    silent = subprocess.DEVNULL if os.getenv("SOLC_SELECT_SILENT", "1") == "1" else None
     subprocess.run(['solc-select', 'install', solc_version], stderr=silent, stdout=silent)
     subprocess.run(['solc-select', 'use', solc_version], stderr=silent, stdout=silent)
 
