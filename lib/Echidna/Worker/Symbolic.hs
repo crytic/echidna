@@ -3,7 +3,7 @@
 
 module Echidna.Worker.Symbolic (runSymWorker) where
 
-import Control.Concurrent (dupChan, takeMVar)
+import Control.Concurrent (takeMVar)
 import Control.Monad (forM_, unless, void, when)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (evalRandT)
@@ -17,6 +17,7 @@ import Data.Map qualified as Map
 import Data.Maybe (fromJust)
 import Data.Text (Text, unpack)
 import System.Random (mkStdGen)
+import UnliftIO.STM (atomically, dupTChan)
 
 import EVM.Dapp (DappInfo(..))
 import EVM.Solidity (Method(..), SolcContract(..))
@@ -54,7 +55,7 @@ runSymWorker callback vm dict workerId name = do
   cfg <- asks (.cfg)
   let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
   eventQueue <- asks (.eventQueue)
-  chan <- liftIO $ dupChan eventQueue
+  chan <- liftIO $ atomically $ dupTChan eventQueue
 
   flip runStateT initialState $
     flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq

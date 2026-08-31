@@ -1,12 +1,12 @@
 module Echidna.Types.Config where
 
-import Control.Concurrent (Chan)
 import Data.Aeson.Key (Key)
 import Data.IORef (IORef)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Time (LocalTime)
 import Data.Word (Word64)
+import UnliftIO.STM (TChan)
 
 import EVM.Dapp (DappInfo)
 import EVM.Fetch qualified as Fetch
@@ -79,7 +79,7 @@ data Env = Env
 
   -- | Shared between all workers. Events are fairly rare so contention is
   -- minimal.
-  , eventQueue :: Chan (LocalTime, CampaignEvent)
+  , eventQueue :: TChan (LocalTime, CampaignEvent)
 
   -- | Shared between all agents. Broadcast channel: readers take their own
   -- 'Control.Concurrent.STM.dupTChan' of it, so every reader sees every

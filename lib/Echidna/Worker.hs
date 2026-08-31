@@ -7,6 +7,7 @@ import Control.Monad.State.Strict(MonadState(..), gets)
 import Data.Aeson
 import Data.Text (unpack)
 import Data.Time (LocalTime)
+import UnliftIO.STM (TChan, atomically, dupTChan, readTChan, writeTChan)
 
 import Echidna.ABI (encodeSig)
 import Echidna.Types.Campaign
@@ -51,7 +52,7 @@ pushWorkerEvent event = do
 pushCampaignEvent :: Env -> CampaignEvent -> IO ()
 pushCampaignEvent env event = do
   time <- liftIO getTimestamp
-  writeChan env.eventQueue (time, event)
+  atomically $ writeTChan env.eventQueue (time, event)
 
 -- | Listener reads events and runs the given 'handler' function. It exits after
 -- receiving all 'WorkerStopped' events and sets the returned 'MVar' so the
@@ -70,7 +71,7 @@ spawnListener handler = do
   cfg <- asks (.cfg)
   let nworkers = getNWorkers cfg.campaignConf
   eventQueue <- asks (.eventQueue)
-  chan <- liftIO $ dupChan eventQueue
+  chan <- liftIO $ atomically $ dupTChan eventQueue
   stopVar <- liftIO newEmptyMVar
   liftIO $ void $ forkFinally (listenerLoop handler chan nworkers) (const $ putMVar stopVar ())
   pure stopVar
@@ -81,14 +82,14 @@ listenerLoop
   :: (MonadIO m)
   => ((LocalTime, CampaignEvent) -> m ())
   -- ^ a function that handles the events
-  -> Chan (LocalTime, CampaignEvent)
+  -> TChan (LocalTime, CampaignEvent)
   -- ^ event channel
   -> Int
   -- ^ number of workers which have to stop before loop exits
   -> m ()
 listenerLoop handler chan !workersAlive =
   when (workersAlive > 0) $ do
-    event <- liftIO $ readChan chan
+    event <- liftIO $ atomically $ readTChan chan
     handler event
     case event of
       (_, WorkerEvent _ _ (WorkerStopped _)) -> listenerLoop handler chan (workersAlive - 1)
