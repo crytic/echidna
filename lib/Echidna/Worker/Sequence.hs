@@ -12,8 +12,9 @@ module Echidna.Worker.Sequence
   , callseq
   ) where
 
+import Control.Concurrent.STM (atomically, writeTChan)
 import Control.DeepSeq (force)
-import Control.Monad (forM_, when)
+import Control.Monad (forM_, unless, when)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom)
 import Control.Monad.Reader (MonadReader, ask, liftIO)
@@ -29,6 +30,7 @@ import Data.Map.Strict qualified as MapStrict
 import Data.Maybe (isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Text (Text)
 import Data.Vector qualified as V
 
 import EVM (cheatCode)
@@ -45,12 +47,14 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
+import Echidna.Types.InterWorker
+  (AgentId(..), BroadcastMsg(..), Message(..), WrappedMessage(..))
 import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
-import Echidna.Types.Tx (TxCall(..), Tx(..))
+import Echidna.Types.Tx (TxCall(..), Tx(..), getResult)
 import Echidna.Types.Worker
-import Echidna.Worker (pushWorkerEvent)
+import Echidna.Worker (pushWorkerEvent, workerIDToType)
 
 -- | Run all the transaction sequences from the corpus and accumulate campaign
 -- state. Can be used to minimize corpus as the final campaign state will
@@ -67,7 +71,7 @@ replayCorpus vm txSeqs =
             List.filter (\case Tx { call = NoCall } -> False; _ -> True) txSeq
     case maybeFaultyTx of
       Nothing -> do
-        _ <- callseq vm txSeq
+        _ <- callseq vm txSeq True
         pushWorkerEvent (TxSequenceReplayed file i (length txSeqs))
       Just faultyTx ->
         pushWorkerEvent (TxSequenceReplayFailed file faultyTx)
@@ -81,8 +85,9 @@ callseq
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM Concrete
   -> [Tx]
+  -> Bool -- ^ Whether this sequence comes from replaying the corpus
   -> m (VM Concrete, Bool)
-callseq vm txSeq = do
+callseq vm txSeq isReplaying = do
   env <- ask
   -- First, we figure out whether we need to execute with or without coverage
   -- optimization and gas info, and pick our execution function appropriately
@@ -94,6 +99,14 @@ callseq vm txSeq = do
   -- Run each call sequentially. This gives us the result of each call
   -- and the new state
   (results, vm') <- evalSeq vm execFunc txSeq
+
+  -- Update the stats of any sampled function. Nothing is sampled unless a
+  -- client asked for it, so the hot path only pays for the emptiness check.
+  sampled <- gets (.sampledFunctions)
+  unless (Map.null sampled) $ do
+    rTypes <- gets (.genDict.rTypes)
+    modify' $ \workerState ->
+      workerState { sampledFunctions = updateSampleStats rTypes sampled results }
 
   -- If there is new coverage, add the transaction list to the corpus
   newCoverage <- gets (.newCoverage)
@@ -112,6 +125,15 @@ callseq vm txSeq = do
                                 , corpusSize = newSize
                                 , transactions = fst <$> results
                                 }
+
+    -- Tell the other agents about it too
+    workerId <- gets (.workerId)
+    let sender = case workerIDToType env.cfg.campaignConf workerId of
+          FuzzWorker -> FuzzerId workerId
+          SymbolicWorker -> SymbolicId
+    liftIO $ atomically $ writeTChan env.bus $
+      WrappedMessage sender
+        (Broadcast (NewCoverageInfo points (fst <$> results) isReplaying))
 
   modify' $ \workerState ->
 
@@ -190,6 +212,35 @@ callseq vm txSeq = do
   addToCorpus n res corpus =
     if null rtxs then corpus else Set.insert (n, rtxs) corpus
     where rtxs = fst <$> res
+
+-- | Fold a sequence of transaction results into the sampling map, updating
+-- call counts, revert summaries and return-value range for each sampled
+-- function. Calls to functions that are not sampled are ignored. The
+-- per-event algebra lives in 'applySampleEvent', which is unit tested.
+updateSampleStats
+  :: (FunctionName -> Maybe AbiType)
+  -- ^ Return-type lookup, i.e. @workerState.genDict.rTypes@.
+  -> Map Text SampleStats
+  -> [(Tx, VMResult Concrete)]
+  -> Map Text SampleStats
+updateSampleStats returnTypeOf = List.foldl' applyOne
+  where
+    applyOne acc (tx, vmResult) = case tx.call of
+      SolCall (fname, args) ->
+        let sig = encodeSig (fname, map abiValueType args) in
+        case Map.lookup sig acc of
+          Nothing -> acc
+          Just stats ->
+            let decoded = case (vmResult, returnTypeOf fname) of
+                  (VMSuccess (ConcreteBuf buf), Just type') ->
+                    case runGetOrFail (getAbi type') (LBS.fromStrict buf) of
+                      Right (_, _, abiValue) -> Just abiValue
+                      _ -> Nothing
+                  _ -> Nothing
+            in MapStrict.insert sig
+                 (applySampleEvent (getResult vmResult) decoded fname args stats)
+                 acc
+      _ -> acc
 
 -- | Execute a transaction, capturing the PC and codehash of each instruction
 -- executed, saving the transaction if it finds new coverage.
