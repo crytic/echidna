@@ -2,7 +2,7 @@ module Echidna.Shrink (isShrinkable, shrinkTest, shrinkWorkerTests) where
 
 import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadThrow)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR)
 import Control.Monad.Reader.Class (MonadReader (ask), asks)
 import Control.Monad.State.Strict (MonadIO)
 import Data.List qualified as List
@@ -17,6 +17,7 @@ import Echidna.Test.State (updateTests)
 import Echidna.Transaction
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config
+import Echidna.Types.Random (uniform)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (TestValue(..), EchidnaTest(..), TestState(..), isOptimizationTest)
 import Echidna.Types.Tx (Tx(..), hasReverted, isUselessNoCall, catNoCalls, TxCall(..))
