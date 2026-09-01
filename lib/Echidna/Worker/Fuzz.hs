@@ -130,8 +130,8 @@ randseq deployedContracts = do
   -- Generate new random transactions
   randTxs <- replicateM seqLen (genTx world deployedContracts)
   -- Generate a random mutator
-  cmut <- if seqLen == 1 then seqMutatorsStateless (fromConsts mutConsts)
-                         else seqMutatorsStateful (fromConsts mutConsts)
+  cmut <- if seqLen == 1 then seqMutatorsStateless mutConsts
+                         else seqMutatorsStateful mutConsts
   -- Fetch the mutator
   let mut = getCorpusMutation cmut
   corpus <- liftIO $ readIORef env.corpusRef
