@@ -78,6 +78,25 @@ extractEvents decodeErrors dappInfo vm =
         Just $ humanPanic $ decodePanic d
       _ -> Nothing
 
+-- | Whether the last transaction emitted an event with the given name, under
+-- any overload.
+--
+-- This is the answer @any (isPrefixOf (name <> "(")) . extractEvents@ gives:
+-- 'showValues' always parenthesises the arguments, so a rendered event starts
+-- with @name <> "("@ exactly when the event has that name, and nothing else
+-- 'extractEvents' produces (revert reasons, raw topics, error traces) can start
+-- that way. Rendering the arguments of every event is what made that check
+-- expensive, and none of it is needed to know the name.
+hasEventNamed :: Text -> DappInfo -> VM Concrete -> Bool
+hasEventNamed name dappInfo vm = any (any isNamed) (traceForest vm)
+  where
+  isNamed trace = case trace.tracedata of
+    EventTrace _ _ (topic:_) ->
+      case Map.lookup (forceWord topic) dappInfo.eventMap of
+        Just (Event name' _ _) -> name' == name
+        Nothing -> False
+    _ -> False
+
 -- | Extract all non‑indexed event values emitted between two VM states.
 extractEventValues :: DappInfo -> VM Concrete -> VM Concrete -> Map AbiType (Set AbiValue)
 extractEventValues dappInfo vm vm' =
