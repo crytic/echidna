@@ -1,6 +1,6 @@
 module Echidna.Mutator.Corpus where
 
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, weighted)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR)
 import Data.Maybe (maybeToList)
 import Data.Set qualified as Set
 
@@ -8,13 +8,11 @@ import Echidna.Mutator.Array
 import Echidna.Transaction (forceMutateTx, mutateTx, shrinkTx)
 import Echidna.Types (MutationConsts)
 import Echidna.Types.Corpus
+import Echidna.Types.Random (weighted)
 import Echidna.Types.Tx (Tx)
 
 defaultMutationConsts :: Num a => MutationConsts a
 defaultMutationConsts = (1, 1, 1, 1)
-
-fromConsts :: Num a => MutationConsts Integer -> MutationConsts a
-fromConsts (a, b, c, d) = let fi = fromInteger in (fi a, fi b, fi c, fi d)
 
 data TxsMutation = Identity
                  | Shrinking
@@ -97,7 +95,7 @@ getCorpusMutation RandomInterleave = selectAndCombine interleaveAtRandom
 
 seqMutatorsStateful
   :: MonadRandom m
-  => MutationConsts Rational
+  => MutationConsts Integer
   -> m CorpusMutation
 seqMutatorsStateful (c1, c2, c3, c4) = weighted
   [(RandomAppend Identity,   800),
@@ -123,7 +121,7 @@ seqMutatorsStateful (c1, c2, c3, c4) = weighted
 -- either a fresh transaction or a tweaked copy of a stored one.
 seqMutatorsStateless
   :: MonadRandom m
-  => MutationConsts Rational
+  => MutationConsts Integer
   -> m CorpusMutation
 seqMutatorsStateless (c1, c2, _, _) = weighted
   [(RandomAppend Identity,  500),
