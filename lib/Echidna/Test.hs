@@ -7,6 +7,7 @@ import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as LBS
+import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Prelude hiding (Word)
@@ -16,7 +17,7 @@ import EVM.Dapp (DappInfo)
 import EVM.Types hiding (Env)
 
 import Echidna.ABI
-import Echidna.Events (Events, extractEvents)
+import Echidna.Events (Events, decodeRevert, extractEvents, hasEventNamed)
 import Echidna.Exec
 import Echidna.SymExec.Symbolic (forceBuf)
 import Echidna.Types.Config
@@ -264,8 +265,7 @@ checkStatefulAssertion vm sel addr = do
     txtOffset = 4+32+32 -- selector + offset + length
     -- Test always passes if it doesn't target the last executed contract and function.
     -- Otherwise it passes if it doesn't cause an assertion failure.
-    events = extractEvents False dappInfo vm
-    eventFailure = not (null events) && (checkAssertionEvent events || checkPanicEvent "1" events)
+    eventFailure = hasEventNamed "AssertionFailed" dappInfo vm || hasPanic "1" dappInfo vm
     isFailure = isCorrectTarget && (eventFailure || isAssertionFailure)
   pure (BoolValue (not isFailure), vm)
 
@@ -316,11 +316,7 @@ checkCall vm f = do
 
 checkAssertionTest :: DappInfo -> VM Concrete -> TestValue
 checkAssertionTest dappInfo vm =
-  let events = extractEvents False dappInfo vm
-  in BoolValue $ null events || not (checkAssertionEvent events)
-
-checkAssertionEvent :: Events -> Bool
-checkAssertionEvent = any (T.isPrefixOf "AssertionFailed(")
+  BoolValue $ not (hasEventNamed "AssertionFailed" dappInfo vm)
 
 checkSelfDestructedTarget :: Addr -> DappInfo -> VM Concrete -> TestValue
 checkSelfDestructedTarget addr _ vm =
@@ -334,10 +330,20 @@ checkAnySelfDestructed _ vm =
 checkPanicEvent :: T.Text -> Events -> Bool
 checkPanicEvent n = any (T.isPrefixOf ("Panic(" <> n <> ")"))
 
+-- | Whether the last transaction is reported with @Panic(n)@ by 'extractEvents',
+-- i.e. it reverted with that panic code. Only the revert reason can render that
+-- way, so the events themselves are not rendered -- unless the contract
+-- declares an event named Panic, which 'checkPanicEvent' would match too.
+hasPanic :: T.Text -> DappInfo -> VM Concrete -> Bool
+hasPanic n dappInfo vm = checkPanicEvent n events
+  where
+  events
+    | hasEventNamed "Panic" dappInfo vm = extractEvents False dappInfo vm
+    | otherwise = maybeToList (decodeRevert False vm)
+
 checkOverflowTest :: DappInfo -> VM Concrete-> TestValue
 checkOverflowTest dappInfo vm =
-  let es = extractEvents False dappInfo vm
-  in BoolValue $ null es || not (checkPanicEvent "17" es)
+  BoolValue $ not (hasPanic "17" dappInfo vm)
 
 -- | Reproduce a test saving VM snapshot after every transaction
 reproduceTest
