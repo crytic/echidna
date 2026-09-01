@@ -11,18 +11,19 @@ import Control.Monad.ST (ST, stToIO, RealWorld)
 import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, MonadIO(liftIO), gets, modify', execStateT)
 import Data.Bits
 import Data.ByteString qualified as BS
-import Data.IORef (readIORef, newIORef, writeIORef, modifyIORef')
+import Data.IORef (readIORef, newIORef, writeIORef)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
 import Data.Vector qualified as V
+import Data.Vector.Storable qualified as VS
 import Data.Vector.Unboxed.Mutable qualified as VMut
 import Optics.Core
 import Optics.State.Operators
 import System.Environment (lookupEnv, getEnvironment)
 import System.Process qualified as P
 
-import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, vmOpIx, clearTStorages)
+import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, clearTStorages)
 import EVM.ABI
 import EVM.Dapp (DappInfo)
 import EVM.Effects (defaultConfig)
@@ -226,6 +227,22 @@ execTx vm tx = runStateT (execTxWith (fromEVM (exec defaultConfig)) tx) vm
 -- | A type alias for the context we carry while executing instructions
 type CoverageContext = (Bool, Maybe (VMut.IOVector CoverageInfo, Int))
 
+-- | The coverage vector of the code being executed, looked up once per
+-- contract switch rather than once per instruction. The executing code only
+-- changes at call boundaries, so nearly every step reuses it.
+data CoverageCache = CoverageCache
+  { code    :: ContractCode
+    -- ^ the key: the code executing at the previous step. Coverage is keyed
+    -- by codehash, so equal code means the same vector whatever the address.
+    -- The 'Eq' short-circuits to a pointer comparison of the underlying
+    -- 'BS.ByteString' when it is the same object, which the loop maintains
+    -- by storing the current step's code on every hit.
+  , opIxMap :: VS.Vector Int
+    -- ^ byte index to op index map of that code
+  , covVec  :: Maybe (VMut.IOVector CoverageInfo)
+    -- ^ its coverage vector, if it has any code at all
+  }
+
 -- | Execute a transaction, logging coverage at every step.
 execTxWithCov
   :: (MonadIO m, MonadState (VM Concrete) m, MonadReader Env m, MonadThrow m)
@@ -256,27 +273,70 @@ execTxWithCov tx = do
     -- the same as EVM.exec but collects coverage, will stop on a query
     execCov env covContextRef = do
       vm <- get
-      (r, vm') <- liftIO $ loop vm
+      -- The context survives across calls: execution resumes here after
+      -- answering a query, and the last location must span the whole tx.
+      ctx <- liftIO $ readIORef covContextRef
+      (r, vm', ctx') <- liftIO $ loop Nothing ctx vm
+      liftIO $ writeIORef covContextRef ctx'
       put vm'
       pure r
       where
       -- | Repeatedly exec a step and add coverage until we have an end result
-      loop :: VM Concrete -> IO (VMResult Concrete, VM Concrete)
-      loop !vm = case vm.result of
+      loop
+        :: Maybe CoverageCache -> CoverageContext -> VM Concrete
+        -> IO (VMResult Concrete, VM Concrete, CoverageContext)
+      loop cache !ctx !vm = case vm.result of
         Nothing -> do
-          addCoverage vm
-          stepVM vm >>= loop
-        Just r -> pure (r, vm)
+          (cache', ctx') <- addCoverage cache ctx vm
+          vm' <- stepVM vm
+          loop (Just cache') ctx' vm'
+        Just r -> pure (r, vm, ctx)
 
       -- | Execute one instruction on the EVM
       stepVM :: VM Concrete -> IO (VM Concrete)
       stepVM = stToIO . execStateT (exec1 defaultConfig)
 
       -- | Add current location to the CoverageMap
-      addCoverage :: VM Concrete -> IO ()
-      addCoverage !vm = do
-        let (pc, opIx, depth) = currentCovLoc vm
-            contract = currentContract vm
+      addCoverage
+        :: Maybe CoverageCache -> CoverageContext -> VM Concrete
+        -> IO (CoverageCache, CoverageContext)
+      addCoverage cache ctx@(grew, _) !vm = do
+        cache'@CoverageCache{opIxMap, covVec} <- case cache of
+          -- Hit: keep this step's code object so the next comparison is a
+          -- pointer check even if we just switched to a contract whose code is
+          -- equal but not the same object (a clone).
+          Just c | c.code == vm.state.code ->
+            pure CoverageCache { code = vm.state.code
+                               , opIxMap = c.opIxMap
+                               , covVec = c.covVec
+                               }
+          _ -> lookupCoverage vm
+
+        ctx' <- case covVec of
+          Nothing -> pure ctx
+          Just vec -> do
+            let pc = vm.state.pc
+                depth = length vm.frames
+            -- TODO: no-op when pc is out-of-bounds. This shouldn't happen but
+            -- we observed this in some real-world scenarios. This is likely a
+            -- bug in another place, investigate.
+            -- ... this should be fixed now, since we use `codeContract` instead
+            -- of `contract` for everything; it may be safe to remove this check.
+            if pc >= VMut.length vec then pure ctx else
+              VMut.read vec pc >>= \case
+                (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
+                  let opIx = fromMaybe 0 $ opIxMap VS.!? pc
+                  VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
+                  pure (True, Just (vec, pc))
+                _ ->
+                  pure (grew, Just (vec, pc))
+
+        pure (cache', ctx')
+
+      -- | Find (or create) the coverage vector of the contract being executed
+      lookupCoverage :: VM Concrete -> IO CoverageCache
+      lookupCoverage vm = do
+        let contract = currentContract vm
             covRef = case contract.code of
               InitCode _ _ -> env.coverageRefInit
               _ -> env.coverageRefRuntime
@@ -293,24 +353,10 @@ execTxWithCov tx = do
             forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0)
             pure $ Just vec
 
-        case maybeCovVec of
-          Nothing -> pure ()
-          Just vec -> do
-            -- TODO: no-op when pc is out-of-bounds. This shouldn't happen but
-            -- we observed this in some real-world scenarios. This is likely a
-            -- bug in another place, investigate.
-            -- ... this should be fixed now, since we use `codeContract` instead
-            -- of `contract` for everything; it may be safe to remove this check.
-            when (pc < VMut.length vec) $
-              VMut.read vec pc >>= \case
-                (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
-                  VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
-                  writeIORef covContextRef (True, Just (vec, pc))
-                _ ->
-                  modifyIORef' covContextRef $ \(new, _) -> (new, Just (vec, pc))
-
-      -- | Get the VM's current execution location
-      currentCovLoc vm = (vm.state.pc, fromMaybe 0 $ vmOpIx vm, length vm.frames)
+        pure CoverageCache { code = vm.state.code
+                           , opIxMap = contract.opIxMap
+                           , covVec = maybeCovVec
+                           }
 
       -- | Get the current contract being executed
       currentContract vm = fromMaybe (error "no contract information on coverage") $
