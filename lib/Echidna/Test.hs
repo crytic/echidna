@@ -130,21 +130,21 @@ createTests m td ts seqLen r ss = case m of
   "optimization" ->
     map (\t -> createTest (OptimizationTest t r)) ts
   "assertion" ->
-    map (\s -> createTest (AssertionTest False s r))
+    map (\s -> createTest (assertionTest False s r))
         (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
   "verification" ->
-    map (\s -> createTest (AssertionTest False s r)) (filter (/= fallback) ss)
+    map (\s -> createTest (assertionTest False s r)) (filter (/= fallback) ss)
   -- In foundry mode, seqLen distinguishes fuzz tests (seqLen == 1) from
   -- invariant tests (seqLen > 1), which determines how functions are filtered.
   -- "check" and "prove" functions are symbolic entry points, but this is a
   -- fuzzing campaign, so they are tested as regular fuzz tests here.
   "foundry" ->
     if seqLen == 1 then
-      map (\s -> createTest (AssertionTest True s r))
+      map (\s -> createTest (assertionTest True s r))
         (filter (\(n, xs) -> (isFoundryTestName n || isFoundrySymbolicName n)
                              && not (null xs)) ss)
     else
-      map (\s -> createTest (AssertionTest True s r))
+      map (\s -> createTest (assertionTest True s r))
           (filter (\(n, xs) -> isFoundryInvariantName n
                                || isFoundrySymbolicName n
                                || not (null xs)) ss)
@@ -189,8 +189,8 @@ checkETest test vm = case test.testType of
   Exploration -> pure (BoolValue True, vm) -- These values are never used
   PropertyTest n a -> checkProperty vm n a
   OptimizationTest n a -> checkOptimization vm n a
-  AssertionTest dt n a -> if dt then checkFoundryAssertion vm n a
-                                else checkStatefulAssertion vm n a
+  AssertionTest dt n a sel -> if dt then checkFoundryAssertion vm n sel a
+                                    else checkStatefulAssertion vm sel a
   CallTest _ f -> checkCall vm f
 
 -- | Given a property test, evaluate it and see if it currently passes.
@@ -245,16 +245,14 @@ checkOptimization vm f a = do
 checkStatefulAssertion
   :: (MonadReader Env m, MonadThrow m)
   => VM Concrete
-  -> SolSignature
+  -> BS.ByteString -- ^ selector of the function under test
   -> Addr
   -> m (TestValue, VM Concrete)
-checkStatefulAssertion vm sig addr = do
+checkStatefulAssertion vm sel addr = do
   dappInfo <- asks (.dapp)
   let
-    -- Whether the last transaction called the function `sig`.
-    isCorrectFn =
-      BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty))
-                    (forceBuf vm.state.calldata)
+    -- Whether the last transaction called the function under test.
+    isCorrectFn = BS.isPrefixOf sel (forceBuf vm.state.calldata)
     -- Whether the last transaction executed a function on the contract `addr`.
     isCorrectAddr = LitAddr addr == vm.state.codeContract
     isCorrectTarget = isCorrectFn && isCorrectAddr
@@ -275,17 +273,16 @@ checkFoundryAssertion
   :: (MonadReader Env m, MonadThrow m)
   => VM Concrete
   -> SolSignature
+  -> BS.ByteString -- ^ selector of the function under test
   -> Addr
   -> m (TestValue, VM Concrete)
-checkFoundryAssertion vm sig addr = do
+checkFoundryAssertion vm sig sel addr = do
   let
     name = fst sig
     -- Whether the last transaction has any value
     hasValue = vm.state.callvalue /= Lit 0
     -- Whether the last transaction called the function `sig`.
-    isCorrectFn =
-      BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty))
-                    (forceBuf vm.state.calldata)
+    isCorrectFn = BS.isPrefixOf sel (forceBuf vm.state.calldata)
     isAssertionFailure
       -- "testFail" functions are expected to revert, so the test only fails
       -- when the call succeeds.

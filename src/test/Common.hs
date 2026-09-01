@@ -211,7 +211,7 @@ getResult n tests =
 
   where findTest test = case test.testType  of
                           PropertyTest t _        -> t == n
-                          AssertionTest _ (t,_) _ -> t == n
+                          AssertionTest _ (t,_) _ _ -> t == n
                           CallTest t _            -> t == n
                           OptimizationTest t _    -> t == n
                           _                       -> False
