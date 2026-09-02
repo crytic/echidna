@@ -152,6 +152,6 @@ ppWorkerEvent = \case
   where
     showTest test = case test.testType of
       PropertyTest n _ -> n
-      AssertionTest _ n _ _ -> encodeSig n
+      AssertionTest{sig} -> encodeSig sig
       CallTest n _ -> n
       _ -> error "impossible"
