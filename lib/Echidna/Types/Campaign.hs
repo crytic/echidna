@@ -13,6 +13,7 @@ import EVM.Solvers (Solver(..))
 
 import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
+import Echidna.Types.Corpus (CorpusSelector)
 import Echidna.Types.Coverage (CoverageFileType, CoverageMap)
 import Echidna.Types.Tx (TxResult(..))
 
@@ -195,6 +196,10 @@ data WorkerState = WorkerState
     -- ^ Functions whose calls are sampled for return-value range and revert
     --   history, keyed by canonical signature (e.g. @"totalSupply()"@). Empty
     --   unless sampling was explicitly enabled for this worker.
+  , corpusSelector :: !(Maybe (Int, CorpusSelector))
+    -- ^ Cached corpus selection structure, tagged with the corpus size it was
+    --   built at. The shared corpus only ever grows, so the size doubles as a
+    --   version stamp; see 'Echidna.Worker.Fuzz.randseq'.
   }
 
 initialWorkerState :: WorkerState
@@ -207,6 +212,7 @@ initialWorkerState =
               , totalGas = 0
               , runningThreads = []
               , sampledFunctions = Map.empty
+              , corpusSelector = Nothing
               }
 
 defaultTestLimit :: Int
