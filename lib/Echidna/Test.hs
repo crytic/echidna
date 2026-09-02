@@ -21,7 +21,7 @@ import Echidna.Events (Events, decodeRevert, extractEvents, hasEventNamed)
 import Echidna.Exec
 import Echidna.SymExec.Symbolic (forceBuf)
 import Echidna.Types.Config
-import Echidna.Types.Signature (SolSignature)
+import Echidna.Types.Signature (FunctionName, SolSignature)
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx, TxConf(..), basicTx, TxResult(..), getResult)
 
@@ -190,8 +190,9 @@ checkETest test vm = case test.testType of
   Exploration -> pure (BoolValue True, vm) -- These values are never used
   PropertyTest n a -> checkProperty vm n a
   OptimizationTest n a -> checkOptimization vm n a
-  AssertionTest dt n a sel -> if dt then checkFoundryAssertion vm n sel a
-                                    else checkStatefulAssertion vm sel a
+  AssertionTest{foundry, sig, addr, sel} ->
+    if foundry then checkFoundryAssertion vm (fst sig) sel addr
+               else checkStatefulAssertion vm sel addr
   CallTest _ f -> checkCall vm f
 
 -- | Given a property test, evaluate it and see if it currently passes.
@@ -272,16 +273,15 @@ checkStatefulAssertion vm sel addr = do
 checkFoundryAssertion
   :: (MonadReader Env m, MonadThrow m)
   => VM Concrete
-  -> SolSignature
+  -> FunctionName -- ^ name of the function under test
   -> BS.ByteString -- ^ selector of the function under test
   -> Addr
   -> m (TestValue, VM Concrete)
-checkFoundryAssertion vm sig sel addr = do
+checkFoundryAssertion vm name sel addr = do
   let
-    name = fst sig
     -- Whether the last transaction has any value
     hasValue = vm.state.callvalue /= Lit 0
-    -- Whether the last transaction called the function `sig`.
+    -- Whether the last transaction called the function under test.
     isCorrectFn = BS.isPrefixOf sel (forceBuf vm.state.calldata)
     isAssertionFailure
       -- "testFail" functions are expected to revert, so the test only fails
