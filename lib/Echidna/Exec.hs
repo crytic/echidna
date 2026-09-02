@@ -37,6 +37,7 @@ import Echidna.SourceMapping (lookupUsingCodehashOrInsert)
 import Echidna.SymExec.Symbolic (forceBuf)
 import Echidna.Transaction
 import Echidna.Types (ExecException(..), fromEVM, emptyAccount)
+import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Solidity (SolConf(..))
@@ -316,10 +317,13 @@ execTxWithCov tx = do
       currentContract vm = fromMaybe (error "no contract information on coverage") $
         vm ^? #env % #contracts % at vm.state.codeContract % _Just
 
-initialVM :: Bool -> ST RealWorld (VM Concrete)
-initialVM ffi = do
+initialVM :: EConfig -> ST RealWorld (VM Concrete)
+initialVM cfg = do
   vm <- vmForEthrunCreation mempty
+  let !allowFFI = cfg.solConf.allowFFI
+      !recordKeccakPreImgs = cfg.campaignConf.symExec
   pure $ vm & #block % #timestamp .~ Lit initialTimestamp
             & #block % #number .~ Lit initialBlockNumber
             & #env % #contracts .~ mempty -- fixes weird nonce issues
-            & #config % #allowFFI .~ ffi
+            & #config % #allowFFI .~ allowFFI
+            & #config % #recordKeccakPreImgs .~ recordKeccakPreImgs
