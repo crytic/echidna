@@ -79,14 +79,8 @@ extractEvents decodeErrors dappInfo vm =
       _ -> Nothing
 
 -- | Whether the last transaction emitted an event with the given name, under
--- any overload.
---
--- This is the answer @any (isPrefixOf (name <> "(")) . extractEvents@ gives:
--- 'showValues' always parenthesises the arguments, so a rendered event starts
--- with @name <> "("@ exactly when the event has that name, and nothing else
--- 'extractEvents' produces (revert reasons, raw topics, error traces) can start
--- that way. Rendering the arguments of every event is what made that check
--- expensive, and none of it is needed to know the name.
+-- any overload. Checks the name via the event map instead of rendering the
+-- events, which is expensive.
 hasEventNamed :: Text -> DappInfo -> VM Concrete -> Bool
 hasEventNamed name dappInfo vm = any (any isNamed) (traceForest vm)
   where
