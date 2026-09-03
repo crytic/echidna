@@ -105,6 +105,7 @@
           }) { secp256k1 = pkgs.secp256k1; })
           ([
             pkgs.haskell.lib.compose.dontCheck
+            (pkgs.haskell.lib.compose.appendConfigureFlag "--enable-optimization=2")
           ]);
 
         echidna = pkgs: with pkgs; lib.pipe

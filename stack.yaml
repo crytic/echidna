@@ -13,6 +13,9 @@ allow-newer-deps:
 - warp-tls
 - tls-session-manager
 
+ghc-options:
+  hevm: -O2
+
 extra-deps:
 - git: https://github.com/argotorg/hevm.git
   commit: 62c16d10d41d04218a18d09e7494bba2dc564e9c
