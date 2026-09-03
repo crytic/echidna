@@ -20,11 +20,8 @@ rElem' v = (`S.elemAt` v) <$> getRandomR (0, length v - 1)
 
 -- | Pick an element with probability proportional to its weight.
 --
--- Draws one number in @[0, total)@ and walks the list with a single
--- subtraction and comparison per element. Same distribution as
--- 'Control.Monad.Random.weighted' (whose 'Rational' arithmetic took about 3%
--- of a campaign's CPU time), but the generator draws differ, so seeds do not
--- reproduce campaigns from versions that used it.
+-- Similar to 'Control.Monad.Random.weighted' but optimized to avoid
+-- 'Rational' arithmetic.
 weighted :: MonadRandom m => [(a, Integer)] -> m a
 weighted xs
   | total <= 0 = error "Echidna.Types.Random.weighted: empty list, or total weight <= 0"
@@ -37,13 +34,13 @@ weighted xs
              else getRandomR (0, total - 1)
       pure $ pick r xs
   where
-  total = sum (map snd xs)
-  -- total > 0 rules out the empty list, and r < total means the scan stops
-  -- within the list, so this is exhaustive
-  pick _ [] = error "Echidna.Types.Random.weighted: empty list"
-  pick r ((x, q) : rest)
-    | r < q = x
-    | otherwise = pick (r - q) rest
+    total = sum (map snd xs)
+    -- total > 0 rules out the empty list, and r < total means the scan stops
+    -- within the list, so this is exhaustive
+    pick _ [] = error "Echidna.Types.Random.weighted: empty list"
+    pick r ((x, q) : rest)
+        | r < q = x
+        | otherwise = pick (r - q) rest
 
 -- | Pick an element uniformly.
 uniform :: MonadRandom m => [a] -> m a
