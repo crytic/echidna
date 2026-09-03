@@ -330,10 +330,9 @@ checkAnySelfDestructed _ vm =
 checkPanicEvent :: T.Text -> Events -> Bool
 checkPanicEvent n = any (T.isPrefixOf ("Panic(" <> n <> ")"))
 
--- | Whether the last transaction is reported with @Panic(n)@ by 'extractEvents',
--- i.e. it reverted with that panic code. Only the revert reason can render that
--- way, so the events themselves are not rendered -- unless the contract
--- declares an event named Panic, which 'checkPanicEvent' would match too.
+-- | Whether the last transaction reverted with @Panic(n)@. Only renders the
+-- events if the contract declares a Panic event of its own, which
+-- 'checkPanicEvent' would match too.
 hasPanic :: T.Text -> DappInfo -> VM Concrete -> Bool
 hasPanic n dappInfo vm = checkPanicEvent n events
   where
