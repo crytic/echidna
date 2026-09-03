@@ -272,12 +272,14 @@ evalSeq vm0 execFunc = go vm0 [] where
     -- NOTE: we do reverse here because we build up this list by prepending,
     -- see the last line of this function.
     updateTests (updateOpenTest vm (reverse executedSoFar))
-    modify' $ \workerState -> workerState { ncalls = workerState.ncalls + 1 }
     case toExecute of
       [] -> pure ([], vm)
       (tx:remainingTxs) -> do
         (result, vm') <- execFunc vm tx
-        modify' $ \workerState -> workerState { totalGas = workerState.totalGas + fromIntegral (vm'.burned - vm.burned) }
+        modify' $ \workerState -> workerState
+          { ncalls = workerState.ncalls + 1
+          , totalGas = workerState.totalGas + fromIntegral (vm'.burned - vm.burned)
+          }
         -- NOTE: we don't use the intermediate VMs, just the last one. If any of
         -- the intermediate VMs are needed, they can be put next to the result
         -- of each transaction - `m ([(Tx, result, VM)])`

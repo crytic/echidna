@@ -222,7 +222,7 @@ options = Options . NE.fromList
     <> help "Timeout given in seconds.")
   <*> optional (option auto $ long "test-limit"
     <> metavar "INTEGER"
-    <> help ("Number of sequences of transactions to generate during testing. Default is " ++ show defaultTestLimit))
+    <> help ("Number of transactions to execute during testing. Default is " ++ show defaultTestLimit))
   <*> optional (option auto $ long "rpc-block"
     <> metavar "BLOCK"
     <> help "Block number to use when fetching over RPC.")
