@@ -24,7 +24,8 @@ valuesTests = testGroup "Value extraction tests"
     , testContract' "values/extreme.sol"   Nothing Nothing (Just "values/extreme.yaml") False FuzzWorker
       [ ("testMinInt8 passed",                   solved      "testMinInt8"),
         ("testMinInt16 passed",                  solved      "testMinInt16"),
-        ("testMinInt64 passed",                  solved      "testMinInt32"),
+        ("testMinInt32 passed",                  solved      "testMinInt32"),
+        ("testMinInt64 passed",                  solved      "testMinInt64"),
         ("testMinInt128 passed",                 solved      "testMinInt128")
       ]
     , testContract' "values/utf8.sol"   Nothing Nothing (Just "values/extreme.yaml") False FuzzWorker
