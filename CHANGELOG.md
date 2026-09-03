@@ -5,6 +5,7 @@
 * Foundry mode now only calls parameterized `test` functions when `seqLen` is 1, matching Foundry's stateless fuzzing (#1595)
 * `check`- and `prove`-prefixed functions are always verified in verification mode, even when no assertion was found in them, and are fuzzed like any other test function in foundry mode (#1595)
 * The test limit now counts only executed transactions. Each sequence used to be charged one extra call, which doubled the cost of every iteration when `seqLen` is 1
+* Corpus mutations now always produce sequences of exactly `seqLen` transactions. The prepend mutation could produce shorter sequences and, when `seqLen` is 1, produced an empty sequence about a fifth of the time
 
 ## 2.3.3
 

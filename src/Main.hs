@@ -234,7 +234,7 @@ options = Options . NE.fromList
     <> help ("Number of tries to attempt to shrink a failing sequence of transactions. Default is " ++ show defaultShrinkLimit))
   <*> optional (option auto $ long "seq-len"
     <> metavar "INTEGER"
-    <> help ("Number of transactions to generate during testing. Default is " ++ show defaultSequenceLength))
+    <> help ("Number of transactions in each generated sequence. Default is " ++ show defaultSequenceLength))
   <*> optional (option auto $ long "contract-addr"
     <> metavar "ADDRESS"
     <> help ("Address to deploy the contract to test. Default is " ++ show defaultContractAddr))

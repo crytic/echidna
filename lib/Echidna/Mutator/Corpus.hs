@@ -81,7 +81,11 @@ getCorpusMutation (RandomPrepend m) = mut (mutator m)
     mut f ql ctxs gtxs = do
       rtxs' <- selectAndMutate f ctxs
       k <- getRandomR (0, ql - 1)
-      pure . take ql $ take k gtxs ++ rtxs'
+      -- The fresh transactions not placed in front pad the sequence back to
+      -- full length, as in RandomAppend. Without them a short stored prefix
+      -- made the whole sequence shorter than seqLen, and at seqLen 1 (where
+      -- the prefix is always empty and k is always 0) it came out empty.
+      pure . take ql $ take k gtxs ++ rtxs' ++ drop k gtxs
 getCorpusMutation RandomSplice = selectAndCombine spliceAtRandom
 getCorpusMutation RandomInterleave = selectAndCombine interleaveAtRandom
 
