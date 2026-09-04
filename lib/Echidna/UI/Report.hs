@@ -228,9 +228,9 @@ ppTests tests = do
       CallTest n _ -> do
         status <- ppTS t.state t.result (fromJust t.vm) t.reproducer
         pure $ Just (T.unpack n <> ": " <> status)
-      AssertionTest _ s _ -> do
+      AssertionTest{sig} -> do
         status <- ppTS t.state t.result (fromJust t.vm) t.reproducer
-        pure $ Just (T.unpack (encodeSig s) <> ": " <> status)
+        pure $ Just (T.unpack (encodeSig sig) <> ": " <> status)
       OptimizationTest n _ -> do
         status <- ppOPT t.state (fromJust t.vm) t.reproducer
         pure $ Just (T.unpack n <> ": max value: " <> show t.value <> "\n" <> status)
@@ -241,7 +241,7 @@ ppTestName t =
   case t.testType of
     PropertyTest n _ -> T.unpack n
     CallTest n _ -> T.unpack n
-    AssertionTest _ s _ -> T.unpack (encodeSig s)
+    AssertionTest{sig} -> T.unpack (encodeSig sig)
     OptimizationTest n _ -> T.unpack n <> ": max value: " <> show t.value
     Exploration -> "<exploration>"
 

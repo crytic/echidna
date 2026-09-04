@@ -210,11 +210,11 @@ getResult n tests =
     _   -> error "found more than one tests"
 
   where findTest test = case test.testType  of
-                          PropertyTest t _        -> t == n
-                          AssertionTest _ (t,_) _ -> t == n
-                          CallTest t _            -> t == n
-                          OptimizationTest t _    -> t == n
-                          _                       -> False
+                          PropertyTest t _          -> t == n
+                          AssertionTest{sig = (t,_)} -> t == n
+                          CallTest t _              -> t == n
+                          OptimizationTest t _      -> t == n
+                          _                         -> False
 
 optnFor :: Text -> (Env, WorkerState) -> IO (Maybe TestValue)
 optnFor n (env, _) = do
