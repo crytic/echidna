@@ -1,10 +1,11 @@
 module Echidna.Types.Random where
 
-import Control.Monad.Random.Strict (MonadRandom, RandT, StdGen, getRandomR, weighted, evalRandT, getStdGen, forM_, liftIO)
+import Control.Monad.Random.Strict (MonadRandom, RandT, StdGen, getRandomR, evalRandT, getStdGen, forM_, liftIO)
 import Data.Array.IO (IOArray, newListArray, readArray, writeArray, getElems)
 import Data.List.NonEmpty ((!!), NonEmpty(..))
 import Data.Set (Set)
 import Data.Set qualified as S
+import Data.Word (Word64)
 import Prelude hiding ((!!))
 
 type Seed = Int
@@ -16,6 +17,34 @@ rElem l  = (l !!) <$> getRandomR (0, length l - 1)
 -- | Get a random element of a Set
 rElem' :: MonadRandom m => Set a -> m a
 rElem' v = (`S.elemAt` v) <$> getRandomR (0, length v - 1)
+
+-- | Pick an element with probability proportional to its weight.
+--
+-- Similar to 'Control.Monad.Random.weighted' but optimized to avoid
+-- 'Rational' arithmetic.
+weighted :: MonadRandom m => [(a, Integer)] -> m a
+weighted xs
+  | total <= 0 = error "Echidna.Types.Random.weighted: empty list, or total weight <= 0"
+  | otherwise = do
+      -- weights in practice always sum well below 2^64, and a Word64 draw is
+      -- a single generator step where an Integer draw pays the
+      -- arbitrary-precision range machinery on every call
+      r <- if total <= toInteger (maxBound :: Word64)
+             then toInteger <$> getRandomR (0, fromInteger (total - 1) :: Word64)
+             else getRandomR (0, total - 1)
+      pure $ pick r xs
+  where
+    total = sum (map snd xs)
+    -- total > 0 rules out the empty list, and r < total means the scan stops
+    -- within the list, so this is exhaustive
+    pick _ [] = error "Echidna.Types.Random.weighted: empty list"
+    pick r ((x, q) : rest)
+        | r < q = x
+        | otherwise = pick (r - q) rest
+
+-- | Pick an element uniformly.
+uniform :: MonadRandom m => [a] -> m a
+uniform = weighted . map (, 1)
 
 oftenUsually :: MonadRandom m => a -> a -> m a
 oftenUsually u r = weighted [(u, 10), (r, 1)]

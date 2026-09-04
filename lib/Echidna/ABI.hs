@@ -1,8 +1,7 @@
 module Echidna.ABI where
 
 import Control.Monad (liftM2, liftM3, foldM, replicateM, zipWithM)
-import Control.Monad.Random.Strict (MonadRandom, join, getRandom, getRandoms, getRandomR, uniform, fromList)
-import Control.Monad.Random.Strict qualified as Random
+import Control.Monad.Random.Strict (MonadRandom, join, getRandom, getRandoms, getRandomR)
 import Data.Binary.Put (runPut, putWord32be)
 import Data.BinaryWord (unsignedWord)
 import Data.Bits (bit)
@@ -180,7 +179,7 @@ getRandomPow n = if n <= 0 then return 0 else
 -- * 4% (1/21) using the getRandomPow function
 getRandomUint :: MonadRandom m => Int -> m Integer
 getRandomUint n =
-  join $ Random.weighted
+  join $ weighted
     [ (getRandomR (0, 1023), 2)
     , (getRandomR (0, 2 ^ n - 5), 16)
     , (getRandomR (2 ^ n - 5, 2 ^ n - 1), 2)
@@ -192,7 +191,7 @@ getRandomUint n =
 -- * 90% uniformly from the range -1 * 2 ^ (n - 1) to 2 ^ (n - 1) - 1.
 getRandomInt :: MonadRandom m => Int -> m Integer
 getRandomInt n =
-  getRandomR =<< Random.weighted
+  getRandomR =<< weighted
     [ ((-1023, 1023), 1)
     , (((-1) * 2 ^ (n - 1), 2 ^ (n - 1) - 1), 9)
     ]
@@ -313,7 +312,7 @@ shrinkAbiCall (name, vals) = do
       | otherwise = do
           -- We want to pick which ones to shrink uniformly from the vals list.
           -- Odds of shrinking one element is numToShrink/numShrinkable.
-          shouldShrink <- fromList [(True, numToShrink), (False, numShrinkable-numToShrink)]
+          shouldShrink <- weighted [(True, numToShrink), (False, numShrinkable-numToShrink)]
           h' <- if shouldShrink then shrinkAbiValue h else pure h
           let
             numShrinkable' = numShrinkable-1
@@ -444,7 +443,7 @@ genAbiValueM' genDict funcName depth t =
                liftM2 (\n -> AbiBytesDynamic . BS.pack . take n)
                  (getRandomR (1, 32)) getRandoms
              else
-               join $ Random.weighted
+               join $ weighted
                  [ (do
                      sig@(_, types) <- uniform filteredSigs
                      params <- V.fromList <$> mapM (genAbiValueM' genDict "" $ depth + 1) types
