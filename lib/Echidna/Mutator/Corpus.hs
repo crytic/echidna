@@ -34,24 +34,18 @@ mutator :: MonadRandom m => TxsMutation -> [Tx] -> m [Tx]
 mutator Identity  = return
 mutator Shrinking = mapM shrinkTx
 mutator Mutation = \case
-  -- 'mutateTx' leaves most transactions alone so that a long prefix keeps most
-  -- of its shape, and 'mutateAbiValue' changes an integer only one time in ten.
-  -- On a single transaction that is almost always a verbatim replay, which at
-  -- seqLen 1 (every sequence starts from the same VM) cannot find anything.
-  -- Force a change instead, and drop the transaction when nothing in it can
-  -- change: the caller pads the sequence back to length with fresh
-  -- transactions, so the iteration still runs a useful transaction.
+  -- 'mutateTx' rarely changes anything, which on a single transaction is a
+  -- verbatim replay. Force a change, or drop the transaction so the caller
+  -- pads with a fresh one.
   [tx] -> maybeToList <$> forceMutateTx tx
   txs -> mapM mutateTx txs
 mutator Expansion = expandRandList
 mutator Swapping = swapRandList
 mutator Deletion = deleteRandList
 
--- | The range the cut point is drawn from when a stored sequence of the given
--- length is handed to a mutation. Identity gets a strict prefix: replaying a
--- sequence unchanged finds nothing new, and the empty prefix is the "fresh
--- sequence" case. Every other mutation needs something to work on, so its
--- prefix is non-empty and may be the whole sequence.
+-- | Range of the prefix length taken from a stored sequence. Identity takes a
+-- strict prefix, since replaying it unchanged finds nothing; the other
+-- mutations need a non-empty one.
 cutRange :: TxsMutation -> Int -> (Int, Int)
 cutRange Identity len = (0, max 0 (len - 1))
 cutRange _ len = (min 1 len, len)
@@ -96,10 +90,7 @@ getCorpusMutation (RandomAppend m) = \ql ctxs gtxs -> do
 getCorpusMutation (RandomPrepend m) = \ql ctxs gtxs -> do
   rtxs' <- selectAndMutate m ctxs
   k <- getRandomR (0, ql - 1)
-  -- The fresh transactions not placed in front pad the sequence back to full
-  -- length, as in RandomAppend. Without them a short stored prefix made the
-  -- whole sequence shorter than seqLen, and at seqLen 1 (where k is always 0)
-  -- an empty prefix came out as an empty sequence.
+  -- Pad with the remaining fresh transactions so the sequence has ql entries.
   pure . take ql $ take k gtxs ++ rtxs' ++ drop k gtxs
 getCorpusMutation RandomSplice = selectAndCombine spliceAtRandom
 getCorpusMutation RandomInterleave = selectAndCombine interleaveAtRandom
@@ -128,12 +119,8 @@ seqMutatorsStateful (c1, c2, c3, c4) = weighted
    (RandomInterleave,        c4)
  ]
 
--- | At seqLen 1 a stored sequence is a single transaction, so the stateful
--- vocabulary collapses: there is no prefix to extend and nothing to prepend to,
--- and Identity can only mean a fresh transaction, since replaying the stored
--- one unchanged from the same initial VM finds nothing. Each iteration is
--- therefore either a fresh transaction or a tweaked copy of a stored one, with
--- the mutConsts knobs adding to the tweak share as in the stateful table.
+-- | At seqLen 1 there is nothing to extend or prepend to, so each sequence is
+-- either a fresh transaction or a tweaked copy of a stored one.
 seqMutatorsStateless
   :: MonadRandom m
   => MutationConsts Rational

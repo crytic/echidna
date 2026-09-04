@@ -83,8 +83,7 @@ mutatorTests = testGroup "Corpus mutation"
       ]
   ]
 
--- | A corpus holding one single-transaction sequence, as every entry is at
--- seqLen 1.
+-- | A seqLen 1 corpus: one single-transaction sequence.
 singleton :: Corpus
 singleton = Set.singleton (1, [stored])
 
@@ -110,15 +109,13 @@ allMutations =
   <> [RandomSplice, RandomInterleave]
   where txsMutations = [Identity, Shrinking, Mutation, Expansion, Swapping, Deletion]
 
--- | A non-empty corpus of non-empty sequences. The keys are the selection
--- weights, so they are positive as in a real corpus.
+-- | A non-empty corpus of non-empty sequences with positive weights.
 genCorpus :: Gen Corpus
 genCorpus = Set.fromList <$> listOf1 entry
   where entry = (,) . getPositive <$> arbitrary <*> listOf1 arbitrary
 
--- | A single fuzz worker with coverage on, no shrinking and a property that
--- never fails, so it runs until the limit. Every sequence it runs must then
--- have exactly seqLen transactions and be charged exactly that many calls.
+-- | Run a single worker to the test limit and check that every sequence had
+-- exactly seqLen transactions and was charged that many calls.
 accountingTest :: Int -> Int -> TestTree
 accountingTest n limit =
   testCase ("seqLen " <> show n) $ do

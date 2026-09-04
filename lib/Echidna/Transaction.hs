@@ -156,9 +156,8 @@ mutateTx tx@Tx{call = SolCall c} = do
         skip _ = pure tx
 mutateTx tx = pure tx
 
--- | Mutate one argument of a transaction's call so that the call differs from
--- the original. Nothing when no argument can change, which includes calls
--- without arguments.
+-- | Mutate one call argument so that the transaction differs from the original.
+-- Nothing when no argument can change.
 forceMutateTx :: MonadRandom m => Tx -> m (Maybe Tx)
 forceMutateTx tx@Tx{call = SolCall c} = fmap (\c' -> tx { call = SolCall c' }) <$> forceMutateAbiCall c
 forceMutateTx _ = pure Nothing
