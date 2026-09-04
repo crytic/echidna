@@ -237,7 +237,9 @@ defaultSymExecAskSMTIters = 1
 
 -- | Get number of fuzzing workers (doesn't include sym exec worker)
 -- Defaults to `N` if set to Nothing, where `N` is Haskell's -N value,
--- usually the number of cores, clamped between 1 and 4.
+-- clamped between 1 and 4. The echidna executable always fills in `workers`
+-- (from the processor count, see `Main.overrideConfig`), since it starts the
+-- RTS with a single capability; this fallback serves other entry points.
 getNFuzzWorkers :: CampaignConf -> Int
 getNFuzzWorkers conf = maybe defaultN fromIntegral conf.workers
   where
