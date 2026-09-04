@@ -355,6 +355,48 @@ mutateAbiCall = traverse f
                   mv <- mutateAbiValue $ xs !! k
                   return $ replaceAt mv xs k
 
+-- | Whether 'forceMutateAbiValue' can change a value.
+isMutable :: AbiValue -> Bool
+isMutable = \case
+  AbiAddress _ -> False
+  AbiFunction _ _ -> False
+  AbiTuple vs -> any isMutable vs
+  _ -> True
+
+-- | Like 'mutateAbiValue', but the result always differs from the original.
+-- Nothing when the value cannot change (see 'isMutable').
+forceMutateAbiValue :: MonadRandom m => AbiValue -> m (Maybe AbiValue)
+forceMutateAbiValue v = case v of
+  AbiAddress _ -> pure Nothing
+  AbiFunction _ _ -> pure Nothing
+  AbiBool b -> pure $ Just $ AbiBool (not b)
+  AbiUInt n x -> changed $ fixAbiUInt n <$> mutateNum x
+  AbiInt n x -> changed $ fixAbiInt n <$> mutateNum x
+  AbiTuple vs -> case [i | (i, c) <- zip [0 ..] (V.toList vs), isMutable c] of
+    [] -> pure Nothing
+    idxs -> do
+      i <- uniform idxs
+      fmap (\c -> AbiTuple (vs V.// [(i, c)])) <$> forceMutateAbiValue (vs V.! i)
+  -- bytes, strings and arrays: the list mutations already apply unconditionally
+  _ -> changed $ mutateAbiValue v
+  where
+    -- Fall back to a fresh value when the mutation was a no-op.
+    changed m = do
+      v' <- m
+      if v' /= v then pure (Just v') else do
+        g <- genAbiValue (abiValueType v)
+        pure $ if g /= v then Just g else Nothing
+
+-- | Mutate one argument of a call so that the call differs from the original.
+-- Nothing when no argument can change.
+forceMutateAbiCall :: MonadRandom m => SolCall -> m (Maybe SolCall)
+forceMutateAbiCall (name, vals) =
+  case [i | (i, v) <- zip [0 ..] vals, isMutable v] of
+    [] -> pure Nothing
+    idxs -> do
+      i <- uniform idxs
+      fmap (\v -> (name, replaceAt v vals i)) <$> forceMutateAbiValue (vals !! i)
+
 -- Generation, with dictionary
 
 -- | Given a generator taking an @a@ and returning a @b@ and a way to get @b@s associated with some

@@ -156,6 +156,12 @@ mutateTx tx@Tx{call = SolCall c} = do
         skip _ = pure tx
 mutateTx tx = pure tx
 
+-- | Mutate one call argument so that the transaction differs from the original.
+-- Nothing when no argument can change.
+forceMutateTx :: MonadRandom m => Tx -> m (Maybe Tx)
+forceMutateTx tx@Tx{call = SolCall c} = fmap (\c' -> tx { call = SolCall c' }) <$> forceMutateAbiCall c
+forceMutateTx _ = pure Nothing
+
 -- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
 -- 'Transaction's \"on-chain\".
 setupTx :: (MonadIO m, MonadState (VM Concrete) m) => Tx -> m ()

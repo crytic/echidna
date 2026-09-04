@@ -222,7 +222,7 @@ options = Options . NE.fromList
     <> help "Timeout given in seconds.")
   <*> optional (option auto $ long "test-limit"
     <> metavar "INTEGER"
-    <> help ("Number of sequences of transactions to generate during testing. Default is " ++ show defaultTestLimit))
+    <> help ("Number of transactions to execute during testing. Default is " ++ show defaultTestLimit))
   <*> optional (option auto $ long "rpc-block"
     <> metavar "BLOCK"
     <> help "Block number to use when fetching over RPC.")
@@ -234,7 +234,7 @@ options = Options . NE.fromList
     <> help ("Number of tries to attempt to shrink a failing sequence of transactions. Default is " ++ show defaultShrinkLimit))
   <*> optional (option auto $ long "seq-len"
     <> metavar "INTEGER"
-    <> help ("Number of transactions to generate during testing. Default is " ++ show defaultSequenceLength))
+    <> help ("Number of transactions in each generated sequence. Default is " ++ show defaultSequenceLength))
   <*> optional (option auto $ long "contract-addr"
     <> metavar "ADDRESS"
     <> help ("Address to deploy the contract to test. Default is " ++ show defaultContractAddr))

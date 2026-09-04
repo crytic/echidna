@@ -16,7 +16,7 @@ propMaxGas: 12500000
 testMaxGas: 12500000
 #maxGasprice is the maximum gas price
 maxGasprice: 0
-#testLimit is the number of test sequences to run
+#testLimit is the number of transactions to execute
 testLimit: 50000
 #stopOnFail makes echidna terminate as soon as any property fails and has been shrunk
 stopOnFail: false
