@@ -31,6 +31,27 @@ data Agent
       , stateRef :: IORef WorkerState
       }
 
+-- | Construct a fuzzing agent with an explicit state publication reference.
+--
+-- Keeping the reference as an argument lets timeout-triggered auxiliary passes
+-- use a throwaway reference instead of overwriting the reporting state.
+mkFuzzerAgent
+  :: VM Concrete
+  -> GenDict
+  -> Int
+  -> IORef WorkerState
+  -> [(FilePath, [Tx])]
+  -> Int
+  -> Agent
+mkFuzzerAgent vm dict workerId stateRef initialCorpus testLimit =
+  FuzzerAgent { fuzzerId = workerId
+              , initialVm = vm
+              , initialDict = dict
+              , initialCorpus
+              , testLimit
+              , stateRef
+              }
+
 -- | The worker id this agent runs as. There is at most one symbolic worker and
 -- it is always worker 0.
 workerIdOf :: Agent -> WorkerId
