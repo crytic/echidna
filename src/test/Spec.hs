@@ -13,6 +13,7 @@ import Tests.Integration (integrationTests)
 import Tests.Mutator (mutatorTests)
 import Tests.Optimization (optimizationTests)
 import Tests.Overflow (overflowTests)
+import Tests.Replay (replayTests)
 import Tests.Research (researchTests)
 import Tests.Sample (sampleTests)
 import Tests.Seed (seedTests)
@@ -37,6 +38,7 @@ main = withCurrentDirectory "./tests/solidity" . defaultMain $
            , foundryTests
            , encodingJSONTests
            , sampleTests
+           , replayTests
            , foundryTestGenTests
            , cheatTests
            , symbolicTests
