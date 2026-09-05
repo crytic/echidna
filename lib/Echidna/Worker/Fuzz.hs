@@ -8,7 +8,7 @@ import Control.Monad (forM_, replicateM, void)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, evalRandT)
 import Control.Monad.Reader (MonadReader, ask, asks, liftIO)
-import Control.Monad.State.Strict (MonadIO, MonadState, StateT, gets, runStateT)
+import Control.Monad.State.Strict (MonadIO, MonadState, StateT, gets, modify', runStateT)
 import Control.Monad.Trans (lift)
 import Data.IORef (atomicModifyIORef', readIORef)
 import Data.Map (Map)
@@ -23,6 +23,7 @@ import Echidna.Shrink (isShrinkable, shrinkWorkerTests)
 import Echidna.Transaction
 import Echidna.Types.Campaign
 import Echidna.Types.Config
+import Echidna.Types.Corpus (Corpus, CorpusSelector, corpusSize, mkCorpusSelector)
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (Tx)
@@ -123,18 +124,35 @@ randseq deployedContracts = do
   let
     mutConsts = env.cfg.campaignConf.mutConsts
     seqLen = env.cfg.campaignConf.seqLen
+    genOne = genTx world deployedContracts
 
   -- TODO: include reproducer when optimizing
   --let rs = filter (not . null) $ map (.testReproducer) $ ca._tests
 
-  -- Generate new random transactions
-  randTxs <- replicateM seqLen (genTx world deployedContracts)
-  -- Generate a random mutator
-  cmut <- if seqLen == 1 then seqMutatorsStateless mutConsts
-                         else seqMutatorsStateful mutConsts
-  -- Fetch the mutator
-  let mut = getCorpusMutation cmut
   corpus <- liftIO $ readIORef env.corpusRef
   if null corpus
-    then pure randTxs -- Use the generated random transactions
-    else mut seqLen corpus randTxs -- Apply the mutator
+    then replicateM seqLen genOne -- Use fresh random transactions
+    else do
+      -- Generate a random mutator
+      cmut <- if seqLen == 1 then seqMutatorsStateless mutConsts
+                             else seqMutatorsStateful mutConsts
+      sel <- cachedCorpusSelector corpus
+      -- Apply the mutator, generating fresh transactions only for the part of
+      -- the sequence it doesn't fill from the corpus
+      getCorpusMutation cmut seqLen sel genOne
+
+-- | The corpus prepared for weighted selection, rebuilt only when the corpus
+-- changed. The shared corpus only ever grows an element at a time, so its
+-- size works as a version stamp.
+cachedCorpusSelector
+  :: MonadState WorkerState m
+  => Corpus
+  -> m CorpusSelector
+cachedCorpusSelector corpus = do
+  cached <- gets (.corpusSelector)
+  case cached of
+    Just (sz, sel) | sz == corpusSize corpus -> pure sel
+    _ -> do
+      let !sel = mkCorpusSelector corpus
+      modify' $ \ws -> ws { corpusSelector = Just (corpusSize corpus, sel) }
+      pure sel
