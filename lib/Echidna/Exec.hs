@@ -2,7 +2,12 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE GADTs #-}
 
-module Echidna.Exec where
+module Echidna.Exec
+  ( execTx
+  , execTxWithCov
+  , initialVM
+  , pattern Reversion
+  ) where
 
 import Control.Monad (when, forM_)
 import Control.Monad.Catch (MonadThrow(..))
