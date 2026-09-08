@@ -23,7 +23,7 @@ import Optics.State.Operators
 import System.Environment (lookupEnv, getEnvironment)
 import System.Process qualified as P
 
-import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, clearTStorages)
+import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, clearTStorages, currentContract)
 import EVM.ABI
 import EVM.Dapp (DappInfo)
 import EVM.Effects (defaultConfig)
@@ -287,7 +287,7 @@ execTxWithCov tx = do
         -> IO (VMResult Concrete, VM Concrete, CoverageContext)
       loop cache !ctx !vm = case vm.result of
         Nothing -> do
-          (cache', ctx') <- addCoverage cache ctx vm
+          (cache', ctx') <- addCoverage env cache ctx vm
           vm' <- stepVM vm
           loop (Just cache') ctx' vm'
         Just r -> pure (r, vm, ctx)
@@ -296,71 +296,67 @@ execTxWithCov tx = do
       stepVM :: VM Concrete -> IO (VM Concrete)
       stepVM = stToIO . execStateT (exec1 defaultConfig)
 
-      -- | Add current location to the CoverageMap
-      addCoverage
-        :: Maybe CoverageCache -> CoverageContext -> VM Concrete
-        -> IO (CoverageCache, CoverageContext)
-      addCoverage cache ctx@(grew, _) !vm = do
-        cache'@CoverageCache{opIxMap, covVec} <- case cache of
-          -- Hit: keep this step's code object so the next comparison is a
-          -- pointer check even if we just switched to a contract whose code is
-          -- equal but not the same object (a clone).
-          Just c | c.code == vm.state.code ->
-            pure CoverageCache { code = vm.state.code
-                               , opIxMap = c.opIxMap
-                               , covVec = c.covVec
-                               }
-          _ -> lookupCoverage vm
+-- | Add current location to the CoverageMap
+addCoverage
+  :: Env -> Maybe CoverageCache -> CoverageContext -> VM Concrete
+  -> IO (CoverageCache, CoverageContext)
+addCoverage env cache ctx@(grew, _) !vm = do
+  cache'@CoverageCache{opIxMap, covVec} <- case cache of
+    -- Hit: keep this step's code object so the next comparison is a
+    -- pointer check even if we just switched to a contract whose code is
+    -- equal but not the same object (a clone).
+    Just c | c.code == vm.state.code ->
+      pure CoverageCache { code = vm.state.code
+                         , opIxMap = c.opIxMap
+                         , covVec = c.covVec
+                         }
+    _ -> lookupCoverage env vm
 
-        ctx' <- case covVec of
-          Nothing -> pure ctx
-          Just vec -> do
-            let pc = vm.state.pc
-                depth = length vm.frames
-            -- TODO: no-op when pc is out-of-bounds. This shouldn't happen but
-            -- we observed this in some real-world scenarios. This is likely a
-            -- bug in another place, investigate.
-            -- ... this should be fixed now, since we use `codeContract` instead
-            -- of `contract` for everything; it may be safe to remove this check.
-            if pc >= VMut.length vec then pure ctx else
-              VMut.read vec pc >>= \case
-                (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
-                  let opIx = fromMaybe 0 $ opIxMap VS.!? pc
-                  VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
-                  pure (True, Just (vec, pc))
-                _ ->
-                  pure (grew, Just (vec, pc))
+  ctx' <- case covVec of
+    Nothing -> pure ctx
+    Just vec -> do
+      let pc = vm.state.pc
+          depth = length vm.frames
+      -- TODO: no-op when pc is out-of-bounds. This shouldn't happen but
+      -- we observed this in some real-world scenarios. This is likely a
+      -- bug in another place, investigate.
+      -- ... this should be fixed now, since we use `codeContract` instead
+      -- of `contract` for everything; it may be safe to remove this check.
+      if pc >= VMut.length vec then pure ctx else
+        VMut.read vec pc >>= \case
+          (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
+            let opIx = fromMaybe 0 $ opIxMap VS.!? pc
+            VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
+            pure (True, Just (vec, pc))
+          _ ->
+            pure (grew, Just (vec, pc))
 
-        pure (cache', ctx')
+  pure (cache', ctx')
 
-      -- | Find (or create) the coverage vector of the contract being executed
-      lookupCoverage :: VM Concrete -> IO CoverageCache
-      lookupCoverage vm = do
-        let contract = currentContract vm
-            covRef = case contract.code of
-              InitCode _ _ -> env.coverageRefInit
-              _ -> env.coverageRefRuntime
+-- | Find (or create) the coverage vector of the contract being executed
+lookupCoverage :: Env -> VM Concrete -> IO CoverageCache
+lookupCoverage env vm = do
+  let contract = fromMaybe (error "no contract information on coverage") $ currentContract vm
+      covRef = case contract.code of
+        InitCode _ _ -> env.coverageRefInit
+        _ -> env.coverageRefRuntime
 
-        maybeCovVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp covRef $ do
-          let
-            size = case contract.code of
-              InitCode b _ -> BS.length b
-              _ -> BS.length . forceBuf . fromJust . view bytecode $ contract
-          if size == 0 then pure Nothing else do
-            -- IO for making a new vec
-            vec <- VMut.new size
-            -- We use -1 for opIx to indicate that the location was not covered
-            forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0)
-            pure $ Just vec
+  maybeCovVec <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp covRef $ do
+    let
+      size = case contract.code of
+        InitCode b _ -> BS.length b
+        _ -> BS.length . forceBuf . fromJust . view bytecode $ contract
+    if size == 0 then pure Nothing else do
+      -- IO for making a new vec
+      vec <- VMut.new size
+      -- We use -1 for opIx to indicate that the location was not covered
+      forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0)
+      pure $ Just vec
 
-        pure CoverageCache { code = vm.state.code
-                           , opIxMap = contract.opIxMap
-                           , covVec = maybeCovVec
-                           }
-
-      -- | Get the current contract being executed
-      currentContract vm = fromMaybe (error "no contract information on coverage") $
-        vm ^? #env % #contracts % at vm.state.codeContract % _Just
+  pure CoverageCache { code = vm.state.code
+                     , opIxMap = contract.opIxMap
+                     , covVec = maybeCovVec
+                     }
 
 initialVM :: Bool -> ST RealWorld (VM Concrete)
 initialVM ffi = do
