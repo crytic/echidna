@@ -7,7 +7,6 @@ import Data.Aeson
 import Data.Aeson.KeyMap (keys)
 import Data.Bool (bool)
 import Data.ByteString qualified as BS
-import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (isPrefixOf)
@@ -119,7 +118,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "stopOnFail" ..!= False
         <*> v ..:? "seqLen" ..!= defaultSequenceLength
         <*> v ..:? "shrinkLimit" ..!= defaultShrinkLimit
-        <*> (v ..:? "coverage" <&> \case Just False -> Nothing;  _ -> Just mempty)
+        <*> v ..:? "coverage" ..!= True
         <*> v ..:? "seed"
         <*> v ..:? "dictFreq" ..!= 0.40
         <*> v ..:? "corpusDir" ..!= Nothing

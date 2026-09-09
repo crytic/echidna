@@ -14,7 +14,7 @@ import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NEE
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (isJust, isNothing, catMaybes, listToMaybe, mapMaybe)
+import Data.Maybe (isNothing, catMaybes, listToMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text, isPrefixOf, isSuffixOf, append)
@@ -237,7 +237,7 @@ loadSpecified env mainContract cs = do
 
     -- main contract deployment
     let
-      coverageEnabled = isJust env.cfg.campaignConf.knownCoverage
+      coverageEnabled = env.cfg.campaignConf.coverageEnabled
       deployTx = createTxWithValue
                     mainContract.creationCode
                     solConf.deployer
