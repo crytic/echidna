@@ -245,7 +245,7 @@ loadSpecified env mainContract cs = do
                     unlimitedGasPerBlock
                     (fromIntegral solConf.balanceContract)
                     (0, 0)
-      deployment = if coverageEnabled then snd <$> runStateT (execTxWithCov deployTx) vm2 else snd <$> execTx vm2 deployTx
+      deployment = if coverageEnabled then snd <$> runStateT (execTxWithCov env.deploymentSlot deployTx) vm2 else snd <$> execTx vm2 deployTx
 
     vm3 <- deployment
     when (isNothing $ currentContract vm3) $

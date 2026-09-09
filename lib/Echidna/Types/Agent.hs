@@ -17,6 +17,7 @@ import Echidna.Types.Worker (WorkerId, WorkerType(..))
 data Agent
   = FuzzerAgent
       { fuzzerId :: Int
+      , covSlot :: Int
       , initialVm :: VM Concrete
       , initialDict :: GenDict
       , initialCorpus :: [(FilePath, [Tx])]
@@ -25,7 +26,8 @@ data Agent
       }
   -- | The symbolic worker does not replay the corpus, so it carries none.
   | SymbolicAgent
-      { initialVm :: VM Concrete
+      { covSlot :: Int
+      , initialVm :: VM Concrete
       , initialDict :: GenDict
       , contractName :: Maybe Text
       , stateRef :: IORef WorkerState
@@ -36,6 +38,12 @@ data Agent
 workerIdOf :: Agent -> WorkerId
 workerIdOf FuzzerAgent{fuzzerId} = fuzzerId
 workerIdOf SymbolicAgent{} = 0
+
+-- | The coverage slot this agent owns. Unique per agent even when 'workerIdOf'
+-- coincides (the symbolic worker is worker 0 too).
+covSlotOf :: Agent -> Int
+covSlotOf FuzzerAgent{covSlot} = covSlot
+covSlotOf SymbolicAgent{covSlot} = covSlot
 
 -- | The kind of worker this agent is, for tagging campaign events.
 workerTypeOf :: Agent -> WorkerType

@@ -49,9 +49,10 @@ runSymWorker
   -> VM Concrete -- ^ Initial VM state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
+  -> Int     -- ^ Coverage slot index (see 'CovSlot')
   -> Maybe Text -- ^ Specified contract name
   -> m (WorkerStopReason, WorkerState)
-runSymWorker callback vm dict workerId name = do
+runSymWorker callback vm dict workerId covSlot name = do
   cfg <- asks (.cfg)
   let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
   eventQueue <- asks (.eventQueue)
@@ -72,6 +73,7 @@ runSymWorker callback vm dict workerId name = do
   effectiveSeed = dict.defSeed + workerId
   initialState =
     initialWorkerState { workerId
+                       , covSlot
                        , genDict = dict { defSeed = effectiveSeed }
                        }
 

@@ -51,8 +51,9 @@ deployBytecodes' cs src initialVM = foldM deployOne initialVM cs
   where
   deployOne vm (dst, bytecode) = do
     coverageEnabled <- asks (.cfg.campaignConf.coverageEnabled)
+    slot <- asks (.deploymentSlot)
     let deployTx = createTx (bytecode <> zeros) src dst unlimitedGasPerBlock (0, 0)
-    vm' <- if coverageEnabled then snd <$> runStateT (execTxWithCov deployTx) vm else snd <$> execTx vm deployTx
+    vm' <- if coverageEnabled then snd <$> runStateT (execTxWithCov slot deployTx) vm else snd <$> execTx vm deployTx
     case vm'.result of
       Just (VMSuccess _) -> pure vm'
       _ -> do
