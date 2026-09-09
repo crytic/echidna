@@ -63,6 +63,7 @@ library:
     - mustache
     - optics
     - optics-core
+    - primitive
     - process
     - random
     - rosezipper
@@ -125,6 +126,7 @@ tests:
       - echidna
       - exceptions
       - optics-core
+      - primitive
       - process
       - semver
       - split
