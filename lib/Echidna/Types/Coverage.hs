@@ -7,12 +7,15 @@ import Data.Foldable (foldl', length, sum)
 import Data.IORef (IORef, readIORef)
 import Data.Map qualified as Map
 import Data.Map.Strict (Map)
+import Data.Maybe (fromMaybe)
+import Data.Primitive.PrimArray
+  (MutablePrimArray, PrimArray, freezePrimArray, indexPrimArray, newPrimArray, readPrimArray, setPrimArray)
 import Data.Set qualified as Set
 import Data.Text (toLower)
+import Data.Vector.Storable qualified as VS
 import Data.Vector.Unboxed qualified as V
-import Data.Vector.Unboxed.Mutable (IOVector)
-import Data.Vector.Unboxed.Mutable qualified as VM
 import Data.Word (Word64)
+import GHC.Exts (RealWorld)
 import Prelude hiding (Foldable(..))
 
 import EVM.Dapp (DappInfo(..))
@@ -21,9 +24,52 @@ import EVM.Types (W256)
 
 import Echidna.Types.Tx (TxResult)
 
+-- | Coverage of one code unit: the runtime code or the creation code of a
+-- contract, identified by its compile-time codehash (see `CodehashMap`).
+data CovEntry = CovEntry
+  { bits :: !(MutablePrimArray RealWorld Int)
+    -- ^ Two words per pc, shared by every worker: word @2*pc@ is the bitset of
+    -- call depths the pc executed at, word @2*pc+1@ the bitset of 'TxResult's
+    -- observed with the pc as the last executed instruction. A pc is covered
+    -- iff its depth word is non-zero. Written only through the atomic
+    -- primitives in "Echidna.Types.Coverage.Atomic".
+  , opIxMap :: !(VS.Vector Int)
+    -- ^ Byte index to op index of the code unit, borrowed from hevm's 'Contract'
+  , len :: !Int
+    -- ^ Number of pcs (bytes of code)
+  }
+
 -- | Map with the coverage information needed for fuzzing and source code printing.
 -- Indexed by contracts' compile-time codehash; see `CodehashMap`.
-type CoverageMap = Map W256 (IOVector CoverageInfo)
+type CoverageMap = Map W256 CovEntry
+
+-- | Allocate a zeroed entry for a code unit of the given length.
+newCovEntry :: VS.Vector Int -> Int -> IO CovEntry
+newCovEntry opIxMap len = do
+  bits <- newPrimArray (2 * len)
+  setPrimArray bits 0 (2 * len) 0
+  pure CovEntry { bits, opIxMap, len }
+
+-- | Snapshot an entry into the per-pc tuples the report and JSON writers
+-- consume. A pc that was never covered gets op index @-1@, as before.
+freezeCovEntry :: CovEntry -> IO (V.Vector CoverageInfo)
+freezeCovEntry entry = do
+  frozen <- freezePrimArray entry.bits 0 (2 * entry.len) :: IO (PrimArray Int)
+  pure $ V.generate entry.len $ \pc ->
+    let depths = indexPrimArray frozen (2 * pc)
+        results = indexPrimArray frozen (2 * pc + 1)
+        opIx = if depths == 0 then -1 else fromMaybe 0 (entry.opIxMap VS.!? pc)
+    in (opIx, fromIntegral depths, fromIntegral results)
+
+-- | Number of covered pcs in an entry.
+coveredPoints :: CovEntry -> IO Int
+coveredPoints entry = go 0 0
+  where
+    go !acc !pc
+      | pc >= entry.len = pure acc
+      | otherwise = do
+          depths <- readPrimArray entry.bits (2 * pc)
+          go (if depths == 0 then acc else acc + 1) (pc + 1)
 
 -- | CoverageMap, but using Vectors instead of IOVectors.
 -- IO is not required to access this map's members.
@@ -46,7 +92,7 @@ type TxResults = Word64
 -- Takes IORef CoverageMap because this is how they are stored in the Env.
 mergeCoverageMaps :: DappInfo -> IORef CoverageMap -> IORef CoverageMap -> IO FrozenCoverageMap
 mergeCoverageMaps dapp initMap runtimeMap = mergeFrozenCoverageMaps dapp <$> freeze initMap <*> freeze runtimeMap
-  where freeze = readIORef >=> mapM V.freeze
+  where freeze = readIORef >=> mapM freezeCovEntry
 
 -- | Given the FrozenCoverageMaps used for contract init and runtime, produce a single combined coverage map
 -- with op indices from init correctly shifted over (see srcMapForOpLocation in Echidna.Output.Source).
@@ -75,11 +121,7 @@ coverageStats initRef runtimeRef = do
 -- only considering the different instruction PCs (discarding the TxResult).
 -- This is useful for reporting a coverage measure to the user
 scoveragePoints :: CoverageMap -> IO Int
-scoveragePoints cm = do
-  sum <$> mapM (VM.foldl' countCovered 0) (Map.elems cm)
-
-countCovered :: Int -> CoverageInfo -> Int
-countCovered acc (opIx,_,_) = if opIx == -1 then acc else acc + 1
+scoveragePoints cm = sum <$> mapM coveredPoints (Map.elems cm)
 
 unpackTxResults :: TxResults -> [TxResult]
 unpackTxResults txResults =
