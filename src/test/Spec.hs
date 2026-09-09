@@ -2,6 +2,7 @@ import System.Directory (withCurrentDirectory)
 import Test.Tasty (defaultMain, testGroup)
 import Tests.ABIv2 (abiv2Tests)
 import Tests.Assertion (assertionTests)
+import Tests.Atomic (atomicTests)
 import Tests.Cheat (cheatTests)
 import Tests.Compile (compilationTests)
 import Tests.Config (configTests)
@@ -22,7 +23,8 @@ import Tests.Values (valuesTests)
 main :: IO ()
 main = withCurrentDirectory "./tests/solidity" . defaultMain $
          testGroup "Echidna"
-           [ configTests
+           [ atomicTests
+           , configTests
            , compilationTests
            , seedTests
            , mutatorTests

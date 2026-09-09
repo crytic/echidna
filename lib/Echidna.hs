@@ -34,6 +34,7 @@ import Echidna.SymExec.Symbolic (forceAddr)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Coverage (newCovSlot)
+import Echidna.Types.Coverage.Atomic (assertWordSize)
 import Echidna.Types.Random
 import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Solidity
@@ -125,6 +126,7 @@ instance ReadConfig IO where
 
 mkEnv :: EConfig -> BuildOutput -> [EchidnaTest] -> World -> Maybe SlitherInfo -> IO Env
 mkEnv cfg buildOutput tests world slitherInfo = do
+  assertWordSize
   codehashMap <- newIORef mempty
   chainId <- Onchain.fetchChainIdFrom cfg.rpcUrl
   eventQueue <- newBroadcastTChanIO
