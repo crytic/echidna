@@ -101,3 +101,16 @@ instance FromJSON CoverageFileType where
     readFn "text" = pure Txt
     readFn "txt"  = pure Txt
     readFn _ = fail "could not parse CoverageFileType"
+
+-- | Per-agent private coverage state. There is one slot per fuzz or symbolic
+-- agent plus one for deployment-time coverage, allocated up front in
+-- 'Echidna.mkEnv' and addressed by position, never by 'workerId': the symbolic
+-- worker also runs as worker 0, so two agents can share a 'workerId'.
+data CovSlot = CovSlot
+  { slotIx :: !Int
+    -- ^ Position in 'Env.coverageSlots'; the last position is the deployment slot
+  }
+
+-- | Allocate the slot at the given position.
+newCovSlot :: Int -> IO CovSlot
+newCovSlot ix = pure CovSlot { slotIx = ix }

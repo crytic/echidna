@@ -22,6 +22,7 @@ import Echidna.Worker.Symbolic (runSymWorker)
 runAgent :: Agent -> Env -> IO WorkerStopReason
 runAgent agent env = do
   let workerId = workerIdOf agent
+      covSlot = covSlotOf agent
       stateRef = stateRefOf agent
       -- Publish the worker state so the UI can read it
       callback = get >>= liftIO . writeIORef stateRef
@@ -31,9 +32,9 @@ runAgent agent env = do
 
   (reason, finalState) <- flip runReaderT env $ case agent of
     FuzzerAgent{initialVm, initialDict, initialCorpus, testLimit} ->
-      runFuzzWorker callback initialVm initialDict workerId initialCorpus testLimit
+      runFuzzWorker callback initialVm initialDict workerId covSlot initialCorpus testLimit
     SymbolicAgent{initialVm, initialDict, contractName} ->
-      runSymWorker callback initialVm initialDict workerId contractName
+      runSymWorker callback initialVm initialDict workerId covSlot contractName
 
   -- The callback publishes as the worker goes, but not from every exit path
   -- (verification mode never runs it), so publish the final state here too.

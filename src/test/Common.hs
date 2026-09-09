@@ -103,6 +103,7 @@ runContract f selectedContract cfg workerType = do
   let agent = case workerType of
         FuzzWorker ->
           FuzzerAgent { fuzzerId = 0
+                      , covSlot = 0
                       , initialVm = vm
                       , initialDict = dict
                       , initialCorpus = []
@@ -110,7 +111,8 @@ runContract f selectedContract cfg workerType = do
                       , stateRef
                       }
         SymbolicWorker ->
-          SymbolicAgent { initialVm = vm
+          SymbolicAgent { covSlot = 0
+                        , initialVm = vm
                         , initialDict = dict
                         , contractName = selectedContract
                         , stateRef

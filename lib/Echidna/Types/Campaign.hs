@@ -178,6 +178,8 @@ data CampaignConf = CampaignConf
 data WorkerState = WorkerState
   { workerId    :: !Int
     -- ^ Worker ID starting from 0
+  , covSlot     :: !Int
+    -- ^ Index of this agent's private coverage slot in 'Env.coverageSlots'
   , genDict     :: !GenDict
     -- ^ Generation dictionary
   , newCoverage :: !Bool
@@ -200,6 +202,7 @@ data WorkerState = WorkerState
 initialWorkerState :: WorkerState
 initialWorkerState =
   WorkerState { workerId = 0
+              , covSlot = 0
               , genDict = emptyDict
               , newCoverage = False
               , ncallseqs = 0

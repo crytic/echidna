@@ -252,6 +252,7 @@ ui vm dict initialCorpus cliSelectedContract = do
 
     let fuzzerAgent corpus limit =
           FuzzerAgent { fuzzerId = workerId
+                      , covSlot = workerId
                       , initialVm = vm
                       , initialDict = dict
                       , initialCorpus = corpus
@@ -262,7 +263,8 @@ ui vm dict initialCorpus cliSelectedContract = do
         agent = case workerIDToType env.cfg.campaignConf workerId of
           FuzzWorker -> fuzzerAgent corpusChunk testLimit
           SymbolicWorker ->
-            SymbolicAgent { initialVm = vm
+            SymbolicAgent { covSlot = workerId
+                          , initialVm = vm
                           , initialDict = dict
                           , contractName = cliSelectedContract
                           , stateRef

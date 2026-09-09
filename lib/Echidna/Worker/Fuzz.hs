@@ -40,16 +40,18 @@ runFuzzWorker
   -> VM Concrete -- ^ Initial VM state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
+  -> Int     -- ^ Coverage slot index (see 'CovSlot')
   -> [(FilePath, [Tx])]
   -- ^ Initial corpus of transactions
   -> Int     -- ^ Test limit for this worker
   -> m (WorkerStopReason, WorkerState)
-runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
+runFuzzWorker callback vm dict workerId covSlot initialCorpus testLimit = do
   bus <- asks (.bus)
   let
     effectiveSeed = dict.defSeed + workerId
     initialState =
       initialWorkerState { workerId
+                         , covSlot
                          , genDict = dict { defSeed = effectiveSeed }
                          }
 

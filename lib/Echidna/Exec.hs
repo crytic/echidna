@@ -45,7 +45,7 @@ import Echidna.Transaction
 import Echidna.Types (ExecException(..), fromEVM, emptyAccount)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
-import Echidna.Types.Coverage (CoverageInfo)
+import Echidna.Types.Coverage (CoverageInfo, CovSlot)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (TxCall(..), Tx(call, dst, delay), TxResult(..), initialTimestamp, initialBlockNumber, getResult)
 import Echidna.Utility (getTimestamp, timePrefix)
@@ -252,9 +252,10 @@ data CoverageCache = CoverageCache
 -- | Execute a transaction, logging coverage at every step.
 execTxWithCov
   :: (MonadIO m, MonadState (VM Concrete) m, MonadReader Env m, MonadThrow m)
-  => Tx
+  => CovSlot -- ^ private coverage slot of the calling agent
+  -> Tx
   -> m (VMResult Concrete, Bool)
-execTxWithCov tx = do
+execTxWithCov _slot tx = do
   env <- ask
 
   covContextRef <- liftIO $ newIORef (False, Nothing)
