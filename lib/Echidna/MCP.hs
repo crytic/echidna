@@ -284,7 +284,7 @@ status env workerRefs statusRef = do
   corpus <- readIORef env.corpusRef
   workers <- traverse readIORef workerRefs
   tests <- traverse readIORef env.testRefs
-  (points, _) <- coverageStats env.coverageRefInit env.coverageRefRuntime
+  (points, _) <- coverageStats env.coveragePoints env.coverageRefInit env.coverageRefRuntime
   tracked <- readIORef statusRef
   now <- getCurrentTime
 

@@ -8,6 +8,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
 import Data.Maybe (mapMaybe)
+import Data.Primitive.PrimVar (newPrimVar)
 import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Vector qualified as V
@@ -136,6 +137,7 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   bus <- newBroadcastTChanIO
   coverageRefInit <- newIORef mempty
   coverageRefRuntime <- newIORef mempty
+  coveragePoints <- newPrimVar 0
   corpusRef <- newIORef mempty
   -- One coverage slot per agent (fuzz workers and the optional symbolic
   -- worker) plus a trailing one for deployment-time coverage.
@@ -148,7 +150,7 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
   pure $ Env { cfg, dapp, codehashMap, fetchSession, contractNameCache
-             , chainId, eventQueue, bus, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
+             , chainId, eventQueue, bus, coverageRefInit, coverageRefRuntime, coveragePoints, corpusRef, testRefs, world
              , coverageSlots, deploymentSlot
              , slitherInfo, useColor
              }

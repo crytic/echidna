@@ -8,6 +8,7 @@ import Data.IORef (IORef, readIORef)
 import Data.Map qualified as Map
 import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
+import Data.Primitive.PrimVar (PrimVar, atomicReadInt)
 import Data.Primitive.PrimArray
   (MutablePrimArray, PrimArray, freezePrimArray, indexPrimArray, newPrimArray, readPrimArray, setPrimArray)
 import Data.Set qualified as Set
@@ -106,16 +107,29 @@ mergeFrozenCoverageMaps dapp initMap runtimeMap = Map.unionWith (<>) runtimeMap 
     modifyCoverageInfo toAdd (op, x, y) = (op + toAdd, x, y)
     getOpOffset hash = maybe 0 (length . (.runtimeSrcmap) . snd) $ Map.lookup hash dapp.solcByHash
 
--- | Given the CoverageMaps used for contract init and runtime,
--- return the point coverage and the number of unique contracts hit.
--- Takes IORef CoverageMap because this is how they are stored in the Env.
-coverageStats :: IORef CoverageMap -> IORef CoverageMap -> IO (Int, Int)
-coverageStats initRef runtimeRef = do
+-- | Point coverage (from the running counter) and the number of unique
+-- contracts hit. Cheap enough for status lines and per-event use; the counter
+-- may trail concurrent writers by a few increments.
+coverageStats :: PrimVar RealWorld Int -> IORef CoverageMap -> IORef CoverageMap -> IO (Int, Int)
+coverageStats pointsVar initRef runtimeRef = do
+  points <- atomicReadInt pointsVar
+  codehashes <- uniqueCodehashes initRef runtimeRef
+  pure (points, codehashes)
+
+-- | Like 'coverageStats' but recounts the covered pcs from the arrays; exact,
+-- for the final report once the workers have stopped.
+coverageStatsExact :: IORef CoverageMap -> IORef CoverageMap -> IO (Int, Int)
+coverageStatsExact initRef runtimeRef = do
+  pointsInit <- scoveragePoints =<< readIORef initRef
+  pointsRuntime <- scoveragePoints =<< readIORef runtimeRef
+  codehashes <- uniqueCodehashes initRef runtimeRef
+  pure (pointsInit + pointsRuntime, codehashes)
+
+uniqueCodehashes :: IORef CoverageMap -> IORef CoverageMap -> IO Int
+uniqueCodehashes initRef runtimeRef = do
   initMap <- readIORef initRef
   runtimeMap <- readIORef runtimeRef
-  pointsInit <- scoveragePoints initMap
-  pointsRuntime <- scoveragePoints runtimeMap
-  pure (pointsInit + pointsRuntime, length $ Set.fromList $ Map.keys initMap ++ Map.keys runtimeMap)
+  pure $ length $ Set.fromList $ Map.keys initMap ++ Map.keys runtimeMap
 
 -- | Given good point coverage, count the number of unique points but
 -- only considering the different instruction PCs (discarding the TxResult).

@@ -118,7 +118,7 @@ callseq vm txSeq isReplaying = do
       let !corp' = addToCorpus (ncallseqs + 1) results corp
       in (corp', corpusSize corp')
 
-    (points, numCodehashes) <- liftIO $ coverageStats env.coverageRefInit env.coverageRefRuntime
+    (points, numCodehashes) <- liftIO $ coverageStats env.coveragePoints env.coverageRefInit env.coverageRefRuntime
     pushWorkerEvent NewCoverage { points
                                 , numCodehashes
                                 , corpusSize = newSize

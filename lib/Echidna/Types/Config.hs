@@ -2,11 +2,13 @@ module Echidna.Types.Config where
 
 import Data.Aeson.Key (Key)
 import Data.IORef (IORef)
+import Data.Primitive.PrimVar (PrimVar)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Time (LocalTime)
 import Data.Vector (Vector)
 import Data.Word (Word64)
+import GHC.Exts (RealWorld)
 import UnliftIO.STM (TChan)
 
 import EVM.Dapp (DappInfo)
@@ -90,6 +92,10 @@ data Env = Env
   , testRefs :: [IORef EchidnaTest]
   , coverageRefInit :: IORef CoverageMap
   , coverageRefRuntime :: IORef CoverageMap
+  -- | Number of covered pcs across both coverage maps, bumped when a pc's
+  -- depth word goes from zero to non-zero. Lets status lines and events skip
+  -- rescanning every coverage array.
+  , coveragePoints :: PrimVar RealWorld Int
   , corpusRef :: IORef Corpus
 
   -- | Per-agent coverage slots, indexed by 'WorkerState.covSlot'. Allocated
