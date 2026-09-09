@@ -15,16 +15,26 @@ import Data.Word (Word16)
 
 import EVM.Dapp (DappInfo(..), findSrc)
 import EVM.Expr (maybeLitByteSimp)
-import EVM.Solidity (SolcContract(..))
+import EVM.Solidity (CodeType(..), SolcContract(..))
 import EVM.Types (Contract(..), ContractCode(..), RuntimeCode(..), W256)
 
 import Echidna.SymExec.Symbolic (forceWord)
 
--- | Map from contracts' codehashes to their compile-time codehash.
--- This is relevant when the immutables solidity feature is used;
--- when this feature is not used, the map will just end up being an identity map.
--- `CodehashMap` is used in signature map and coverage map lookups.
-type CodehashMap = IORef (Map W256 W256)
+-- | Map from contracts' actual codehashes, tagged with the kind of code, to
+-- the compile-time codehash of the matching code unit: `runtimeCodehash` for
+-- runtime code and `creationCodehash` for creation code. The canonical hash
+-- differs from the actual one when immutables are used (runtime) and always
+-- for creation code, whose actual hash covers the constructor arguments. The
+-- tag keeps an init byte string that happens to equal some runtime byte string
+-- from sharing a cache line. `CodehashMap` is used in signature map and
+-- coverage map lookups.
+type CodehashMap = IORef (Map (CodeType, W256) W256)
+
+-- | Which kind of code unit a contract is currently running.
+codeTypeOf :: Contract -> CodeType
+codeTypeOf contr = case contr.code of
+  InitCode _ _ -> Creation
+  _ -> Runtime
 
 -- | Lookup a codehash in the `CodehashMap`.
 -- In the case that it is not found, find the compile-time codehash and add it to the map.
@@ -32,13 +42,17 @@ type CodehashMap = IORef (Map W256 W256)
 lookupCodehash :: CodehashMap -> W256 -> Contract -> DappInfo -> IO W256
 lookupCodehash chmap codehash contr dapp = do
   chmapVal <- readIORef chmap
-  case Map.lookup codehash chmapVal of
+  let kind = codeTypeOf contr
+  case Map.lookup (kind, codehash) chmapVal of
     Just val -> pure val
     Nothing -> do
       -- hevm's `findSrc` doesn't always work, since `SolcContract.immutableReferences` isn't always populated
       let solcContract = findSrc contr dapp <|> findSrcByMetadata contr dapp
-          originalCodehash = maybe codehash (.runtimeCodehash) solcContract
-      atomicModifyIORef' chmap $ (, ()) . Map.insert codehash originalCodehash
+          canonical = case kind of
+            Creation -> (.creationCodehash)
+            Runtime -> (.runtimeCodehash)
+          originalCodehash = maybe codehash canonical solcContract
+      atomicModifyIORef' chmap $ (, ()) . Map.insert (kind, codehash) originalCodehash
       pure originalCodehash
 
 -- | Given a map from codehash to some values of type `a`, lookup a contract in the map using its codehash.
@@ -57,17 +71,17 @@ lookupUsingCodehash chmap contr dapp mapVal =
       Just val -> pure (key, Just val)
 
 -- | Same as `lookupUsingCodehash`, except we add to the map if we don't find anything.
--- The `make` argument is the IO to generate a new element;
--- it is only run if nothing is found in the map.
+-- The `make` argument is the IO to generate a new element for the given
+-- compile-time codehash; it is only run if nothing is found in the map.
 -- In the case that `make` returns `Nothing`, the map will be unchanged.
 -- Returns the map entry, if it is found or generated.
-lookupUsingCodehashOrInsert :: CodehashMap -> Contract -> DappInfo -> IORef (Map W256 a) -> IO (Maybe a) -> IO (Maybe a)
+lookupUsingCodehashOrInsert :: CodehashMap -> Contract -> DappInfo -> IORef (Map W256 a) -> (W256 -> IO (Maybe a)) -> IO (Maybe a)
 lookupUsingCodehashOrInsert chmap contr dapp mapRef make = do
   mapVal <- readIORef mapRef
   (key, valFound) <- lookupUsingCodehash chmap contr dapp mapVal
   case valFound of
     Just val -> pure (Just val)
-    Nothing -> applyModification key =<< make
+    Nothing -> applyModification key =<< make key
   where
     applyModification _ Nothing = pure Nothing
     applyModification key (Just val) = atomicModifyIORef' mapRef $ modifyFn key val

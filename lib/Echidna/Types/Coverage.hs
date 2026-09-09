@@ -1,6 +1,6 @@
 module Echidna.Types.Coverage where
 
-import Control.Monad ((>=>))
+import Control.Monad (forM)
 import Data.Aeson (ToJSON(toJSON), FromJSON(parseJSON), withText)
 import Data.Bits (testBit)
 import Data.Foldable (foldl', length, sum)
@@ -38,18 +38,24 @@ data CovEntry = CovEntry
     -- ^ Byte index to op index of the code unit, borrowed from hevm's 'Contract'
   , len :: !Int
     -- ^ Number of pcs (bytes of code)
+  , owner :: !W256
+    -- ^ `runtimeCodehash` of the contract this unit belongs to: the key itself
+    -- for runtime code, the owning contract's runtime hash for creation code
+    -- (or the key when no compiled contract matched). Report and JSON output
+    -- group units by owner; "unique codehashes" counts distinct owners.
   }
 
--- | Map with the coverage information needed for fuzzing and source code printing.
--- Indexed by contracts' compile-time codehash; see `CodehashMap`.
+-- | Map with the coverage information needed for fuzzing and source code
+-- printing. Indexed by the code unit's compile-time codehash (`runtimeCodehash`
+-- in the runtime map, `creationCodehash` in the creation map); see `CodehashMap`.
 type CoverageMap = Map W256 CovEntry
 
--- | Allocate a zeroed entry for a code unit of the given length.
-newCovEntry :: VS.Vector Int -> Int -> IO CovEntry
-newCovEntry opIxMap len = do
+-- | Allocate a zeroed entry for a code unit of the given owner and length.
+newCovEntry :: W256 -> VS.Vector Int -> Int -> IO CovEntry
+newCovEntry owner opIxMap len = do
   bits <- newPrimArray (2 * len)
   setPrimArray bits 0 (2 * len) 0
-  pure CovEntry { bits, opIxMap, len }
+  pure CovEntry { bits, opIxMap, len, owner }
 
 -- | Snapshot an entry into the per-pc tuples the report and JSON writers
 -- consume. A pc that was never covered gets op index @-1@, as before.
@@ -88,23 +94,22 @@ type StackDepths = Word64
 -- | Packed TxResults used for coverage, corresponding bits are set
 type TxResults = Word64
 
--- | Given the CoverageMaps used for contract init and runtime, produce a single combined coverage map
--- with op indices from init correctly shifted over (see srcMapForOpLocation in Echidna.Output.Source).
--- Takes IORef CoverageMap because this is how they are stored in the Env.
+-- | Given the CoverageMaps used for contract init and runtime, produce a single
+-- combined coverage map keyed by owning contract (its `runtimeCodehash`), with
+-- the creation-code vectors appended after the runtime vector and their op
+-- indices shifted past the runtime source map (see srcMapForOpLocation in
+-- Echidna.Output.Source). Takes IORef CoverageMap because this is how they are
+-- stored in the Env.
 mergeCoverageMaps :: DappInfo -> IORef CoverageMap -> IORef CoverageMap -> IO FrozenCoverageMap
-mergeCoverageMaps dapp initMap runtimeMap = mergeFrozenCoverageMaps dapp <$> freeze initMap <*> freeze runtimeMap
-  where freeze = readIORef >=> mapM freezeCovEntry
-
--- | Given the FrozenCoverageMaps used for contract init and runtime, produce a single combined coverage map
--- with op indices from init correctly shifted over (see srcMapForOpLocation in Echidna.Output.Source).
--- Helper function for mergeCoverageMaps.
-mergeFrozenCoverageMaps :: DappInfo -> FrozenCoverageMap -> FrozenCoverageMap -> FrozenCoverageMap
-mergeFrozenCoverageMaps dapp initMap runtimeMap = Map.unionWith (<>) runtimeMap initMap'
+mergeCoverageMaps dapp initRef runtimeRef = do
+  runtimeFrozen <- traverse freezeCovEntry =<< readIORef runtimeRef
+  initEntries <- Map.elems <$> readIORef initRef
+  initFrozen <- Map.fromListWith (flip (<>)) <$> forM initEntries (\entry -> do
+    vec <- freezeCovEntry entry
+    pure (entry.owner, V.map (shiftOpIx (getOpOffset entry.owner)) vec))
+  pure $ Map.unionWith (<>) runtimeFrozen initFrozen
   where
-    initMap' = Map.mapWithKey modifyInitMapEntry initMap
-    -- eta reduced, second argument is a vec
-    modifyInitMapEntry hash = V.map $ modifyCoverageInfo $ getOpOffset hash
-    modifyCoverageInfo toAdd (op, x, y) = (op + toAdd, x, y)
+    shiftOpIx toAdd (op, x, y) = (op + toAdd, x, y)
     getOpOffset hash = maybe 0 (length . (.runtimeSrcmap) . snd) $ Map.lookup hash dapp.solcByHash
 
 -- | Point coverage (from the running counter) and the number of unique
@@ -125,11 +130,13 @@ coverageStatsExact initRef runtimeRef = do
   codehashes <- uniqueCodehashes initRef runtimeRef
   pure (pointsInit + pointsRuntime, codehashes)
 
+-- | Number of distinct contracts with coverage, counting a contract's runtime
+-- and creation code once.
 uniqueCodehashes :: IORef CoverageMap -> IORef CoverageMap -> IO Int
 uniqueCodehashes initRef runtimeRef = do
   initMap <- readIORef initRef
   runtimeMap <- readIORef runtimeRef
-  pure $ length $ Set.fromList $ Map.keys initMap ++ Map.keys runtimeMap
+  pure $ length $ Set.fromList $ map (.owner) $ Map.elems initMap ++ Map.elems runtimeMap
 
 -- | Given good point coverage, count the number of unique points but
 -- only considering the different instruction PCs (discarding the TxResult).

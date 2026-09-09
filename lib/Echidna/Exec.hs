@@ -30,11 +30,12 @@ import System.Process qualified as P
 
 import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, clearTStorages, currentContract)
 import EVM.ABI
-import EVM.Dapp (DappInfo)
+import EVM.Dapp (DappInfo(..))
 import EVM.Effects (defaultConfig)
 import EVM.Exec (exec, vmForEthrunCreation)
 import EVM.Fetch qualified
 import EVM.Format (hexText, showTraceTree)
+import EVM.Solidity (SolcContract(..))
 import EVM.Types hiding (Env, Gas)
 
 import Echidna.Events (emptyEvents)
@@ -346,12 +347,15 @@ lookupCoverage env vm = do
         InitCode _ _ -> env.coverageRefInit
         _ -> env.coverageRefRuntime
 
-  maybeEntry <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp covRef $ do
+  maybeEntry <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp covRef $ \key -> do
     let
       size = case contract.code of
         InitCode b _ -> BS.length b
         _ -> BS.length . forceBuf . fromJust . view bytecode $ contract
-    if size == 0 then pure Nothing else Just <$> newCovEntry contract.opIxMap size
+      -- The key is a compile-time hash, so it finds its contract in the dapp
+      -- unless the code is unknown to the build, in which case it owns itself.
+      owner = maybe key ((.runtimeCodehash) . snd) $ Map.lookup key env.dapp.solcByHash
+    if size == 0 then pure Nothing else Just <$> newCovEntry owner contract.opIxMap size
 
   pure CoverageCache { code = vm.state.code, covEntry = maybeEntry }
 
