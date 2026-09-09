@@ -2,7 +2,7 @@ module Tests.Config (configTests) where
 
 import Control.Monad (void)
 import Data.Function ((&))
-import Data.Maybe (isJust, isNothing)
+import Data.Maybe (isNothing)
 import Data.Yaml qualified as Y
 import Optics.Core (sans)
 import Test.Tasty (TestTree, testGroup)
@@ -18,9 +18,9 @@ configTests = testGroup "Configuration tests" $
   [ testCase file . void $ parseConfig file | file <- files ] ++
   [ testCase "parse \"coverage: true\"" $ do
       config <- (.econfig) <$> parseConfig "coverage/test.yaml"
-      assertBool "" $ isJust config.campaignConf.knownCoverage
+      assertBool "" config.campaignConf.coverageEnabled
   , testCase "coverage enabled by default" $
-      assertBool "" $ isJust defaultConfig.campaignConf.knownCoverage
+      assertBool "" defaultConfig.campaignConf.coverageEnabled
   , testCase "parse corpusDir" $ do
       config <- (.econfig) <$> parseConfig "research/bran_bar.yaml"
       assertBool "" $ config.campaignConf.corpusDir == Just "corpus"

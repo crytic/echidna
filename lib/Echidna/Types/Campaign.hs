@@ -13,7 +13,7 @@ import EVM.Solvers (Solver(..))
 
 import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
-import Echidna.Types.Coverage (CoverageFileType, CoverageMap)
+import Echidna.Types.Coverage (CoverageFileType)
 import Echidna.Types.Tx (TxResult(..))
 
 -- | Maximum number of functions a single worker samples at once.
@@ -127,9 +127,9 @@ data CampaignConf = CampaignConf
     -- reset the state to avoid unrecoverable states/save memory\"
   , shrinkLimit        :: Int
     -- ^ Maximum number of candidate sequences to evaluate while shrinking
-  , knownCoverage      :: Maybe CoverageMap
-    -- ^ If applicable, initially known coverage. If this is 'Nothing',
-    -- Echidna won't collect coverage information (and will go faster)
+  , coverageEnabled    :: Bool
+    -- ^ Whether to collect coverage. When off, Echidna executes transactions
+    -- without instrumentation (and goes faster) and keeps no corpus feedback.
   , seed               :: Maybe Int
     -- ^ Seed used for the generation of random transactions
   , dictFreq           :: Float

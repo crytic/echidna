@@ -27,7 +27,7 @@ import Data.List qualified as List
 import Data.Map (Map, (\\))
 import Data.Map qualified as Map
 import Data.Map.Strict qualified as MapStrict
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -93,7 +93,7 @@ callseq vm txSeq isReplaying = do
   -- optimization and gas info, and pick our execution function appropriately
   let
     conf = env.cfg.campaignConf
-    coverageEnabled = isJust conf.knownCoverage
+    coverageEnabled = conf.coverageEnabled
     execFunc = if coverageEnabled then execTxOptC else execTx
 
   -- Run each call sequentially. This gives us the result of each call

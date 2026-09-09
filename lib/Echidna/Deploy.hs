@@ -8,7 +8,6 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as BS16 (decode)
 import Data.Either (fromRight)
-import Data.Maybe (isJust)
 import Data.Text (Text, unlines)
 import Data.Text.Encoding (encodeUtf8)
 
@@ -51,7 +50,7 @@ deployBytecodes'
 deployBytecodes' cs src initialVM = foldM deployOne initialVM cs
   where
   deployOne vm (dst, bytecode) = do
-    coverageEnabled <- asks (isJust . (.cfg.campaignConf.knownCoverage))
+    coverageEnabled <- asks (.cfg.campaignConf.coverageEnabled)
     let deployTx = createTx (bytecode <> zeros) src dst unlimitedGasPerBlock (0, 0)
     vm' <- if coverageEnabled then snd <$> runStateT (execTxWithCov deployTx) vm else snd <$> execTx vm deployTx
     case vm'.result of
