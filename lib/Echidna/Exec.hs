@@ -9,7 +9,7 @@ module Echidna.Exec
   , pattern Reversion
   ) where
 
-import Control.Monad (when)
+import Control.Monad (void, when)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.ST (ST, stToIO, RealWorld)
@@ -20,6 +20,7 @@ import Data.IORef (readIORef, newIORef, writeIORef)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Primitive.PrimArray (readPrimArray)
+import Data.Primitive.PrimVar (fetchAddInt)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Optics.Core
@@ -330,6 +331,8 @@ addCoverage env cache ctx@(grew, _) !vm = do
             -- this worker set the depth bit first.
             old <- fetchOrPrimArray entry.bits (2 * pc) (bit depth)
             _ <- fetchOrPrimArray entry.bits (2 * pc + 1) (bit (fromEnum Stop))
+            -- A pc counts as a new unique instruction exactly once.
+            when (old == 0) $ void $ fetchAddInt env.coveragePoints 1
             pure (grew || not (old `testBit` depth), Just (entry, pc))
           else pure (grew, Just (entry, pc))
 

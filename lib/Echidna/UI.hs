@@ -441,7 +441,7 @@ statusLine
   -> IO String
 statusLine env states lastUpdateRef = do
   tests <- traverse readIORef env.testRefs
-  (points, _) <- coverageStats env.coverageRefInit env.coverageRefRuntime
+  (points, _) <- coverageStats env.coveragePoints env.coverageRefInit env.coverageRefRuntime
   corpus <- readIORef env.corpusRef
   now <- getTimestamp
   let totalCalls = sum ((.ncalls) <$> states)

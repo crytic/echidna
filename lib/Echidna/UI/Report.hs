@@ -22,7 +22,7 @@ import Echidna.SymExec.Symbolic (forceWord)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus (corpusSize)
-import Echidna.Types.Coverage (coverageStats)
+import Echidna.Types.Coverage (coverageStatsExact)
 import Echidna.Types.Test (EchidnaTest(..), TestState(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..), TxResult)
 import Echidna.Types.Worker
@@ -136,7 +136,7 @@ ppDelay (time, block) =
 ppCoverage :: (MonadIO m, MonadReader Env m) => m String
 ppCoverage = do
   env <- ask
-  (points, uniqueCodehashes) <- liftIO $ coverageStats env.coverageRefInit env.coverageRefRuntime
+  (points, uniqueCodehashes) <- liftIO $ coverageStatsExact env.coverageRefInit env.coverageRefRuntime
   pure $ "Unique instructions: " <> show points <> "\n" <>
          "Unique codehashes: " <> show uniqueCodehashes
 
