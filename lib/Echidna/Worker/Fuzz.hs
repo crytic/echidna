@@ -6,11 +6,12 @@ module Echidna.Worker.Fuzz (runFuzzWorker) where
 import Control.Concurrent.STM (atomically, dupTChan)
 import Control.Monad (forM_, replicateM, void)
 import Control.Monad.Catch (MonadThrow)
-import Control.Monad.Random.Strict (MonadRandom, evalRandT)
+import Control.Monad.Random.Strict (MonadRandom, evalRandT, getRandom)
 import Control.Monad.Reader (MonadReader, ask, asks, liftIO)
 import Control.Monad.State.Strict (MonadIO, MonadState, StateT, gets, runStateT)
 import Control.Monad.Trans (lift)
 import Data.IORef (atomicModifyIORef', readIORef)
+import Data.List.NonEmpty qualified as NE
 import Data.Map (Map)
 import System.Random (mkStdGen)
 
@@ -23,6 +24,7 @@ import Echidna.Shrink (isShrinkable, shrinkWorkerTests)
 import Echidna.Transaction
 import Echidna.Types.Campaign
 import Echidna.Types.Config
+import Echidna.Types.Random (rElem)
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (Tx)
@@ -110,13 +112,32 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
   -- workers will "drain" the work queue.
   shrink = shrinkWorkerTests workerId vm
 
--- | Generate a new sequences of transactions, either using the corpus or with
--- randomly created transactions
+-- | Generate a new sequence of transactions: from one of the sequences
+-- prioritized over the bus, or, failing that, the standard way.
 randseq
   :: (MonadRandom m, MonadReader Env m, MonadState WorkerState m, MonadIO m)
   => Map (Expr 'EAddr) Contract
   -> m [Tx]
 randseq deployedContracts = do
+  prioritized <- gets (.prioritizedSequences)
+  case NE.nonEmpty prioritized of
+    Nothing -> genStandardSeq deployedContracts
+    Just seqs -> do
+      -- Pick one of the prioritized sequences, then use it only with the
+      -- probability it was injected with.
+      (prob, prototypes) <- rElem seqs
+      roll <- getRandom
+      if roll <= prob
+        then genPrioritizedSeq deployedContracts prototypes
+        else genStandardSeq deployedContracts
+
+-- | Generate a new sequence of transactions, either using the corpus or with
+-- randomly created transactions
+genStandardSeq
+  :: (MonadRandom m, MonadReader Env m, MonadState WorkerState m, MonadIO m)
+  => Map (Expr 'EAddr) Contract
+  -> m [Tx]
+genStandardSeq deployedContracts = do
   env <- ask
   let world = env.world
 

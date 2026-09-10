@@ -16,6 +16,7 @@ module Echidna.Types.InterWorker
 import Control.Concurrent.STM (TChan)
 import Data.Text (Text)
 
+import Echidna.Types.Signature (SolCallPrototype)
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker (WorkerId)
 
@@ -30,6 +31,11 @@ data FuzzerCmd
     --   Capped per worker by 'Echidna.Types.Campaign.maxSampledFunctions'.
   | ClearSampling
     -- ^ Forget every sampled function and its statistics.
+  | FuzzSequence [SolCallPrototype] Double
+    -- ^ Bias generation towards a sequence of calls, using it with the given
+    --   probability in place of a corpus-mutated one.
+  | ClearPrioritization
+    -- ^ Forget every prioritized sequence.
   deriving Show
 
 -- | A message every agent gets to see.

@@ -25,6 +25,10 @@ type SolSignature = (FunctionName, [AbiType])
 -- A tuple for the name of the function and then any 'AbiValue' arguments passed (as a list).
 type SolCall = (FunctionName, [AbiValue])
 
+-- | A 'SolCall' with holes in it: the arguments given as 'Just' are fixed, and
+-- the ones given as 'Nothing' are left for the fuzzer to fill in.
+type SolCallPrototype = (FunctionName, [Maybe AbiValue])
+
 -- | A contract is just an address with an ABI (for our purposes).
 type ContractA = (Addr, NonEmpty SolSignature)
 
