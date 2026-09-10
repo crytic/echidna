@@ -5,7 +5,7 @@ module Echidna.Transaction where
 
 import Control.Monad (join, replicateM, when, zipWithM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Random.Strict (MonadRandom, getRandomR, uniform)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR)
 import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Data.ByteString qualified as BS
