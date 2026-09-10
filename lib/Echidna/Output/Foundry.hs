@@ -16,6 +16,7 @@ import Numeric (showHex)
 import qualified Data.Text.Lazy as TL
 import Text.Mustache (Template, substituteValue, toMustache)
 import Text.Mustache.Compile (embedTemplate)
+import Language.Haskell.TH.Syntax (addDependentFile)
 
 import EVM.ABI (AbiValue(..))
 import EVM.Types (W256, Addr)
@@ -24,7 +25,9 @@ import Echidna.Types.Test (EchidnaTest(..), TestType(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 
 template :: Template
-template = $(embedTemplate ["lib/Echidna/Output/assets"] "foundry.mustache")
+template = $(do
+  addDependentFile "lib/Echidna/Output/assets/foundry.mustache"
+  embedTemplate ["lib/Echidna/Output/assets"] "foundry.mustache")
 
 -- | Generate a Foundry test from an EchidnaTest result.
 -- For property tests, psender is the address used to call the property function.

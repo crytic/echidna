@@ -36,10 +36,11 @@ import System.Directory (getCurrentDirectory)
 import System.Timeout (timeout)
 
 import EVM.Dapp (DappInfo(..))
-import EVM.Solidity (Method(..), SolcContract(..))
+import EVM.Solidity (CodeType(Runtime), Method(..), SolcContract(..))
 
 import Echidna (loadInitialCorpus)
 import Echidna.ABI (coercePrototype, encodeSig)
+import Echidna.Coverage.HitCounts (snapshotHitCounts)
 import Echidna.MCP.Parse (parseFuzzSequence)
 import Echidna.Output.Source (ppCoveredCode, saveLcovSnapshot)
 import Echidna.Types.Campaign
@@ -48,7 +49,7 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Corpus qualified as Corpus
 import Echidna.Types.Coverage
-  (CoverageFileType(..), coverageStats, mergeCoverageMaps)
+  (CoverageFileType(..), coverageStats, snapshotUnits)
 import Echidna.Types.InterWorker
   ( AgentId(..), BroadcastMsg(..), FuzzerCmd(..), Message(..), Reply(..)
   , WrappedMessage(..) )
@@ -380,17 +381,18 @@ showCoverage env args = case Map.toList . matching <$> requiredText "contract" a
     "That name matches " <> T.intercalate ", " (map fst candidates)
       <> ". Pass the full name."
   Right [(fullName, contract)] -> do
-    covMap <- mergeCoverageMaps env.dapp env.coverageRefInit env.coverageRefRuntime
+    units <- snapshotUnits env.coverageRefInit env.coverageRefRuntime
+    hits <- if env.hitCountBudget > 0 then Just <$> snapshotHitCounts env.coverageSlots else pure Nothing
     let
       -- Report on every contract that has coverage, not just the one asked
       -- about: a line of a base contract is reached by executing the derived
       -- one, so restricting the report to this contract would show its
       -- inherited code as unreached. Filtering by file below cuts the report
       -- back down to the one that defines it.
-      covered = filter ((`Map.member` covMap) . (.runtimeCodehash))
+      covered = filter ((`Map.member` units) . (Runtime,) . (.runtimeCodehash))
                        (Map.elems env.dapp.solcByName)
       contracts = if null covered then [contract] else covered
-      report = ppCoveredCode Txt env.dapp.sources contracts covMap Nothing "" []
+      report = ppCoveredCode Txt env.dapp.sources contracts units hits Nothing "" []
     pure $ Right $ "```\n" <> fileSection (sourceFile fullName) report <> "```"
   where
   -- solcByName keys are "path:Contract", so a bare contract name matches on
