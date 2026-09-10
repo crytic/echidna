@@ -59,6 +59,7 @@ data UIState = UIState
   , corpusSize :: Int
   , coverage :: Int
   , numCodehashes :: Int
+  , edges :: Int
   , lastNewCov :: LocalTime
   -- ^ last timestamp of 'NewCoverage' event
 
@@ -203,6 +204,8 @@ summaryWidget env uiState =
       str ("Unique instructions: " <> show uiState.coverage)
       <=>
       str ("Unique codehashes: " <> show uiState.numCodehashes)
+      <=>
+      (if uiState.edges > 0 then str ("Unique edges: " <> show uiState.edges) else emptyWidget)
       <=>
       str ("Corpus size: " <> show uiState.corpusSize <> " seqs")
       <=>

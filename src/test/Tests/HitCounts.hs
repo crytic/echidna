@@ -98,7 +98,7 @@ hitCountTests = testGroup "Hit counts"
       assertBool "still flagged" snap'.incomplete
   ]
   where
-    entry kind key len = newCovEntry kind key key True (VS.replicate len 0) len
+    entry kind key len = newCovEntry kind key key True False Nothing (VS.replicate len 0) len
     unit key len = do
       slot <- newCovSlot 0
       a <- entry Runtime key len

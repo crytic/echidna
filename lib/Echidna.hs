@@ -138,6 +138,7 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   coverageRefInit <- newIORef mempty
   coverageRefRuntime <- newIORef mempty
   coveragePoints <- newPrimVar 0
+  coverageEdgePoints <- newPrimVar 0
   hitCountUsed <- newPrimVar 0
   let hitCountBudget = hitCountBudgetFor cfg.campaignConf.hitCounts
   corpusRef <- newIORef mempty
@@ -152,7 +153,7 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
   pure $ Env { cfg, dapp, codehashMap, fetchSession, contractNameCache
-             , chainId, eventQueue, bus, coverageRefInit, coverageRefRuntime, coveragePoints, corpusRef, testRefs, world
+             , chainId, eventQueue, bus, coverageRefInit, coverageRefRuntime, coveragePoints, coverageEdgePoints, corpusRef, testRefs, world
              , hitCountBudget, hitCountUsed
              , coverageSlots, deploymentSlot
              , slitherInfo, useColor

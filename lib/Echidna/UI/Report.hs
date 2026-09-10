@@ -6,6 +6,7 @@ import Data.IORef (readIORef, atomicModifyIORef')
 import Data.List (nub)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromJust, fromMaybe)
+import Data.Primitive.PrimVar (atomicReadInt)
 import Data.Text (Text, unpack)
 import Data.Text qualified as T
 import Data.Time (LocalTime)
@@ -137,8 +138,10 @@ ppCoverage :: (MonadIO m, MonadReader Env m) => m String
 ppCoverage = do
   env <- ask
   (points, uniqueCodehashes) <- liftIO $ coverageStatsExact env.coverageRefInit env.coverageRefRuntime
+  edges <- liftIO $ atomicReadInt env.coverageEdgePoints
   pure $ "Unique instructions: " <> show points <> "\n" <>
-         "Unique codehashes: " <> show uniqueCodehashes
+         "Unique codehashes: " <> show uniqueCodehashes <>
+         (if edges > 0 then "\nUnique edges: " <> show edges else "")
 
 -- | Pretty-print the corpus a 'Campaign' has obtained.
 ppCorpus :: (MonadIO m, MonadReader Env m) => m String

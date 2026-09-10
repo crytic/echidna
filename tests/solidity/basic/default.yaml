@@ -30,6 +30,9 @@ coverage: true
 #coverage reports: "auto" keeps them within a fixed memory budget, true always,
 #false never. Counting costs a few percent of throughput.
 coverageHitCounts: "auto"
+#coverageEdges also treats each taken jump (source, target) as coverage, so a
+#new path through already covered code is kept in the corpus
+coverageEdges: false
 #format can be "text" or "json" for different output (human or machine readable)
 #default is interactive if running on an interactive tty or text mode if not
 format: null

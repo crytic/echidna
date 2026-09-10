@@ -120,6 +120,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "shrinkLimit" ..!= defaultShrinkLimit
         <*> v ..:? "coverage" ..!= True
         <*> v ..:? "coverageHitCounts" ..!= HitCountsAuto
+        <*> v ..:? "coverageEdges" ..!= False
         <*> v ..:? "seed"
         <*> v ..:? "dictFreq" ..!= 0.40
         <*> v ..:? "corpusDir" ..!= Nothing
