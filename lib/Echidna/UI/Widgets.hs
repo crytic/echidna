@@ -316,7 +316,7 @@ testWidget test =
     Exploration          -> widget tsWidget "exploration" ""
     PropertyTest n _     -> widget tsWidget n ""
     OptimizationTest n _ -> widget optWidget n "optimizing "
-    AssertionTest _ s _  -> widget tsWidget (encodeSig s) "assertion in "
+    AssertionTest{sig}   -> widget tsWidget (encodeSig sig) "assertion in "
     CallTest n _         -> widget tsWidget n ""
   where
   widget f n infront = do

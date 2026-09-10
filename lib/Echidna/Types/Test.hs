@@ -4,11 +4,13 @@
 module Echidna.Types.Test where
 
 import Data.Aeson
+import Data.ByteString (ByteString)
 import Data.DoubleWord (Int256)
 import Data.Maybe (maybeToList)
 import Data.Text (Text, unpack)
 import GHC.Generics (Generic)
 
+import EVM.ABI (selector)
 import EVM.Dapp (DappInfo)
 import EVM.Types (Addr, VM, VMType(Concrete))
 
@@ -55,22 +57,39 @@ instance Show TestValue where
 data TestType
   = PropertyTest Text Addr
   | OptimizationTest Text Addr
-  | AssertionTest Bool SolSignature Addr
+  | AssertionTest
+      { foundry :: Bool
+        -- ^ Foundry-style test?
+      , sig :: SolSignature
+        -- ^ the function under test
+      , addr :: Addr
+        -- ^ the contract under test
+      , sel :: ByteString
+        -- ^ 4-byte selector of 'sig'. Derived; cached here because the check
+        -- runs for every open test after every call and hashing the signature
+        -- each time dominated it. Build with 'assertionTest'.
+      }
   | CallTest Text (DappInfo -> VM Concrete -> TestValue)
   | Exploration
 
+-- | An 'AssertionTest' with its selector filled in.
+assertionTest :: Bool -> SolSignature -> Addr -> TestType
+assertionTest foundry sig addr =
+  AssertionTest { foundry, sig, addr, sel = selector (encodeSig sig) }
+
 instance Eq TestType where
-  PropertyTest t a     == PropertyTest t' a'     = t == t' && a == a'
-  AssertionTest b s a  == AssertionTest b' s' a' = b == b' && s == s' && a == a'
-  OptimizationTest s a == OptimizationTest s' a' = s == s' && a == a'
-  CallTest t _         == CallTest t' _          = t == t'
-  Exploration          == Exploration            = True
-  _                    == _                      = False
+  -- 'sel' is ignored: it is derived from 'sig'.
+  PropertyTest t a      == PropertyTest t' a'       = t == t' && a == a'
+  AssertionTest b s a _ == AssertionTest b' s' a' _ = b == b' && s == s' && a == a'
+  OptimizationTest s a  == OptimizationTest s' a'   = s == s' && a == a'
+  CallTest t _          == CallTest t' _            = t == t'
+  Exploration           == Exploration              = True
+  _                     == _                        = False
 
 instance Show TestType where
   show = \case
     PropertyTest t _     -> show t
-    AssertionTest _ s _  -> show s
+    AssertionTest{sig}   -> show sig
     OptimizationTest s _ -> show s
     CallTest t _         -> show t
     Exploration          -> "Exploration"
@@ -81,7 +100,7 @@ instance ToJSON TestType where
       object [ "type" .= ("property_test" :: String), "name" .= name, "addr" .= addr ]
     OptimizationTest name addr ->
       object [ "type" .= ("optimization_test" :: String), "name" .= name, "addr" .= addr ]
-    AssertionTest _ sig addr ->
+    AssertionTest{sig, addr} ->
       object [ "type" .= ("assertion_test" :: String), "signature" .= sig, "addr" .= addr ]
     CallTest name _ ->
       object [ "type" .= ("call_test" :: String), "name" .= name ]
@@ -126,11 +145,11 @@ isAssertionTest EchidnaTest{testType = AssertionTest {}} = True
 isAssertionTest _ = False
 
 getAssertionSignature :: EchidnaTest -> String
-getAssertionSignature EchidnaTest{testType = AssertionTest _ sig _} = unpack $ encodeSig sig
+getAssertionSignature EchidnaTest{testType = AssertionTest{sig}} = unpack $ encodeSig sig
 getAssertionSignature _ = error "Not an assertion test"
 
 getAssertionFunctionName :: EchidnaTest -> String
-getAssertionFunctionName EchidnaTest{testType = AssertionTest _ (name, _) _} = unpack name
+getAssertionFunctionName EchidnaTest{testType = AssertionTest{sig = (name, _)}} = unpack name
 getAssertionFunctionName _ = error "Not an assertion test"
 
 isOpen :: EchidnaTest -> Bool
