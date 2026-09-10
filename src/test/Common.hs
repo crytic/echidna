@@ -21,18 +21,21 @@ module Common
   , countCorpus
   , codeUnits
   , uniqueCodehashes
+  , hitCountInvariants
   , overrideQuiet
   , loadSolTests
   , checkCoverageUsesCorpusDir
   , gasConsumedGt
   ) where
 
-import Control.Monad (forM_, void)
+import Control.Monad (forM, forM_, void)
 import Control.Monad.Random (getRandomR)
 import Control.Monad.Reader (runReaderT)
 import Data.DoubleWord (Int256)
 import Data.Function ((&))
 import Data.IORef
+import Data.Primitive.PrimArray (readPrimArray)
+import Data.Vector.Unboxed qualified as VU
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
 import Data.Map qualified as Map
@@ -54,7 +57,8 @@ import Echidna.Test (checkETest)
 import Echidna.Types.Agent (Agent(..))
 import Echidna.Types.Campaign
 import Echidna.Types.Config (Env(..), EConfig(..), EConfigWithUsage(..))
-import Echidna.Types.Coverage (coverageStatsExact)
+import Echidna.Coverage.HitCounts (HitCountSnapshot(..), snapshotHitCounts)
+import Echidna.Types.Coverage (CovEntry(..), coverageStatsExact)
 import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
@@ -301,6 +305,27 @@ uniqueCodehashes :: Int -> (Env, WorkerState) -> IO Bool
 uniqueCodehashes n (env, _) = do
   (_, codehashes) <- coverageStatsExact env.coverageRefInit env.coverageRefRuntime
   pure $ codehashes == n
+
+-- | Hit counts agree with coverage: a pc has executions iff it is covered,
+-- failed executions never exceed executions, no unit was dropped, and at
+-- least one covered pc executed only inside failing transactions.
+hitCountInvariants :: (Env, WorkerState) -> IO Bool
+hitCountInvariants (env, _) = do
+  creation <- readIORef env.coverageRefInit
+  runtime <- readIORef env.coverageRefRuntime
+  snaps <- snapshotHitCounts env.coverageSlots
+  let units = Map.elems creation ++ Map.elems runtime
+  checks <- forM units $ \entry -> case Map.lookup (entry.kind, entry.key) snaps of
+    Nothing -> pure (False, False)
+    Just snap -> do
+      depths <- forM [0 .. entry.len - 1] $ \pc -> readPrimArray entry.bits (2 * pc)
+      let execs = VU.toList snap.execs
+          failed = VU.toList snap.failedExecs
+          agree = and [ (e > 0) == (d /= 0) | (e, d) <- zip execs depths ]
+          bounded = and (zipWith (<=) failed execs)
+          onlyFailing = or [ f == e && e > 0 | (e, f) <- zip execs failed ]
+      pure (agree && bounded && not snap.incomplete, onlyFailing)
+  pure $ not (null checks) && all fst checks && any snd checks
 
 countCorpus :: Int -> (Env, WorkerState) -> IO Bool
 countCorpus n (env, _) = do

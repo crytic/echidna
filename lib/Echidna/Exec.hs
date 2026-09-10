@@ -40,14 +40,15 @@ import EVM.Types hiding (Env, Gas)
 
 import Echidna.Events (emptyEvents)
 import Echidna.Onchain (safeFetchContractFrom, safeFetchSlotFrom)
-import Echidna.SourceMapping (lookupUsingCodehashOrInsert)
+import Echidna.Coverage.HitCounts (beginTx, commitTx, recordPc, slotEntryFor, unitBytes)
+import Echidna.SourceMapping (codeTypeOf, lookupUsingCodehashOrInsert)
 import Echidna.SymExec.Symbolic (forceBuf)
 import Echidna.Transaction
 import Echidna.Types (ExecException(..), fromEVM, emptyAccount)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
-import Echidna.Types.Coverage (CovEntry(..), CovSlot, newCovEntry)
-import Echidna.Types.Coverage.Atomic (fetchOrPrimArray)
+import Echidna.Types.Coverage (CovEntry(..), CovSlot(..), SlotEntry, newCovEntry)
+import Echidna.Types.Coverage.Atomic (fetchOrPrimArray, ptrEq)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (TxCall(..), Tx(call, dst, delay), TxResult(..), initialTimestamp, initialBlockNumber, getResult)
 import Echidna.Utility (getTimestamp, timePrefix)
@@ -248,6 +249,9 @@ data CoverageCache = CoverageCache
     -- by storing the current step's code on every hit.
   , covEntry :: Maybe CovEntry
     -- ^ its coverage entry, if it has any code at all
+  , hit      :: Maybe (SlotEntry, Int)
+    -- ^ the slot's hit-count state for the unit and its index in the slot,
+    -- when the unit is eligible for hit counts
   }
 
 -- | Execute a transaction, logging coverage at every step.
@@ -256,9 +260,10 @@ execTxWithCov
   => CovSlot -- ^ private coverage slot of the calling agent
   -> Tx
   -> m (VMResult Concrete, Bool)
-execTxWithCov _slot tx = do
+execTxWithCov slot tx = do
   env <- ask
 
+  liftIO $ beginTx slot
   covContextRef <- liftIO $ newIORef (False, Nothing)
 
   r <- execTxWith (execCov env covContextRef) tx
@@ -275,8 +280,17 @@ execTxWithCov _slot tx = do
       pure $ not (old `testBit` txResultBit)
     _ -> pure False
 
+  -- Only now, with the bits published, fold the transaction's hit counts into
+  -- the slot's permanent counts; a failure to do so never affects coverage.
+  liftIO $ commitTx slot (failed r)
+
   pure (r, grew || grew')
   where
+    failed r = case getResult r of
+      ReturnTrue -> False
+      ReturnFalse -> False
+      Stop -> False
+      _ -> True
     -- the same as EVM.exec but collects coverage, will stop on a query
     execCov env covContextRef = do
       vm <- get
@@ -294,7 +308,7 @@ execTxWithCov _slot tx = do
         -> IO (VMResult Concrete, VM Concrete, CoverageContext)
       loop cache !ctx !vm = case vm.result of
         Nothing -> do
-          (cache', ctx') <- addCoverage env cache ctx vm
+          (cache', ctx') <- addCoverage env slot cache ctx vm
           vm' <- stepVM vm
           loop (Just cache') ctx' vm'
         Just r -> pure (r, vm, ctx)
@@ -305,16 +319,17 @@ execTxWithCov _slot tx = do
 
 -- | Add current location to the CoverageMap
 addCoverage
-  :: Env -> Maybe CoverageCache -> CoverageContext -> VM Concrete
+  :: Env -> CovSlot -> Maybe CoverageCache -> CoverageContext -> VM Concrete
   -> IO (CoverageCache, CoverageContext)
-addCoverage env cache ctx@(grew, _) !vm = do
-  cache'@CoverageCache{covEntry} <- case cache of
+addCoverage env slot cache ctx@(grew, _) !vm = do
+  cache'@CoverageCache{covEntry, hit} <- case cache of
     -- Hit: keep this step's code object so the next comparison is a
     -- pointer check even if we just switched to a contract whose code is
     -- equal but not the same object (a clone).
     Just c | c.code == vm.state.code ->
-      pure CoverageCache { code = vm.state.code, covEntry = c.covEntry }
-    _ -> lookupCoverage env vm
+      pure $ if ptrEq c.code vm.state.code then c
+             else CoverageCache { code = vm.state.code, covEntry = c.covEntry, hit = c.hit }
+    _ -> lookupCoverage env slot vm
 
   ctx' <- case covEntry of
     Nothing -> pure ctx
@@ -324,6 +339,11 @@ addCoverage env cache ctx@(grew, _) !vm = do
       -- The loop observes `pc == len` right before hevm's implicit STOP, and a
       -- truncated PUSH can leave pc past the end; neither is a location.
       if pc >= entry.len then pure ctx else do
+        -- Hit counts: a private, cache-hot counter per pc, folded into the
+        -- permanent counts when the transaction completes.
+        case hit of
+          Just (se, hitIx) -> recordPc slot se hitIx pc
+          Nothing -> pure ()
         depths <- readPrimArray entry.bits (2 * pc)
         if depth < 64 && not (depths `testBit` depth)
           then do
@@ -339,14 +359,19 @@ addCoverage env cache ctx@(grew, _) !vm = do
 
   pure (cache', ctx')
 
--- | Find (or create) the coverage entry of the contract being executed
-lookupCoverage :: Env -> VM Concrete -> IO CoverageCache
-lookupCoverage env vm = do
+-- | Find (or create) the coverage entry of the contract being executed, and
+-- the slot's hit-count state for it
+lookupCoverage :: Env -> CovSlot -> VM Concrete -> IO CoverageCache
+lookupCoverage env slot vm = do
   let contract = fromMaybe (error "no contract information on coverage") $ currentContract vm
       covRef = case contract.code of
         InitCode _ _ -> env.coverageRefInit
         _ -> env.coverageRefRuntime
 
+  -- Hit-count eligibility is decided once per unit, here, and charged to the
+  -- shared budget. Two agents may build the same unit at once; the one whose
+  -- entry loses the insertion race refunds its reservation.
+  built <- newIORef Nothing
   maybeEntry <- lookupUsingCodehashOrInsert env.codehashMap contract env.dapp covRef $ \key -> do
     let
       size = case contract.code of
@@ -355,9 +380,38 @@ lookupCoverage env vm = do
       -- The key is a compile-time hash, so it finds its contract in the dapp
       -- unless the code is unknown to the build, in which case it owns itself.
       owner = maybe key ((.runtimeCodehash) . snd) $ Map.lookup key env.dapp.solcByHash
-    if size == 0 then pure Nothing else Just <$> newCovEntry owner contract.opIxMap size
+    if size == 0 then pure Nothing else do
+      eligible <- reserveHitCounts env size
+      entry <- newCovEntry (codeTypeOf contract) key owner eligible contract.opIxMap size
+      writeIORef built (Just entry)
+      pure (Just entry)
+  ours <- readIORef built
+  case (ours, maybeEntry) of
+    (Just mine, Just winner) | not (ptrEq mine winner) && mine.countsEligible ->
+      void $ fetchAddInt env.hitCountUsed (negate (hitCountCost env mine.len))
+    _ -> pure ()
 
-  pure CoverageCache { code = vm.state.code, covEntry = maybeEntry }
+  hit <- case maybeEntry of
+    Just entry | entry.countsEligible -> Just <$> slotEntryFor slot entry
+    _ -> pure Nothing
+
+  pure CoverageCache { code = vm.state.code, covEntry = maybeEntry, hit }
+
+-- | Worst-case payload every slot may allocate for a unit of this length.
+hitCountCost :: Env -> Int -> Int
+hitCountCost env len = V.length env.coverageSlots * unitBytes len
+
+-- | Reserve the unit's hit-count payload from the budget; units above 2^20
+-- bytes of code are never counted (that bounds the masked commit walk).
+reserveHitCounts :: Env -> Int -> IO Bool
+reserveHitCounts env len
+  | len > 2 ^ (20 :: Int) || env.hitCountBudget <= 0 = pure False
+  | otherwise = do
+      let cost = hitCountCost env len
+      used <- fetchAddInt env.hitCountUsed cost
+      if used + cost <= env.hitCountBudget then pure True else do
+        void $ fetchAddInt env.hitCountUsed (negate cost)
+        pure False
 
 initialVM :: EConfig -> ST RealWorld (VM Concrete)
 initialVM cfg = do

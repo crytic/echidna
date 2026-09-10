@@ -13,7 +13,7 @@ import EVM.Solvers (Solver(..))
 
 import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
-import Echidna.Types.Coverage (CoverageFileType)
+import Echidna.Types.Coverage (CoverageFileType, HitCountsMode)
 import Echidna.Types.Tx (TxResult(..))
 
 -- | Maximum number of functions a single worker samples at once.
@@ -130,6 +130,8 @@ data CampaignConf = CampaignConf
   , coverageEnabled    :: Bool
     -- ^ Whether to collect coverage. When off, Echidna executes transactions
     -- without instrumentation (and goes faster) and keeps no corpus feedback.
+  , hitCounts          :: HitCountsMode
+    -- ^ Whether to keep per-line execution counts alongside coverage
   , seed               :: Maybe Int
     -- ^ Seed used for the generation of random transactions
   , dictFreq           :: Float

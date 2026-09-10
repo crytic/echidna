@@ -26,6 +26,10 @@ seqLen: 100
 shrinkLimit: 5000
 #coverage controls coverage guided testing
 coverage: true
+#coverageHitCounts adds per-line execution counts (and failed executions) to the
+#coverage reports: "auto" keeps them within a fixed memory budget, true always,
+#false never. Counting costs a few percent of throughput.
+coverageHitCounts: "auto"
 #format can be "text" or "json" for different output (human or machine readable)
 #default is interactive if running on an interactive tty or text mode if not
 format: null

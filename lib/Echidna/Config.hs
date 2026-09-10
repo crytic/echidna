@@ -20,7 +20,7 @@ import Echidna.Mutator.Corpus (defaultMutationConsts)
 import Echidna.Test
 import Echidna.Types.Campaign
 import Echidna.Types.Config
-import Echidna.Types.Coverage (CoverageFileType(..))
+import Echidna.Types.Coverage (CoverageFileType(..), HitCountsMode(..))
 import Echidna.Types.Solidity
 import Echidna.Types.Test (TestConf(..))
 import Echidna.Types.Tx (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
@@ -119,6 +119,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "seqLen" ..!= defaultSequenceLength
         <*> v ..:? "shrinkLimit" ..!= defaultShrinkLimit
         <*> v ..:? "coverage" ..!= True
+        <*> v ..:? "coverageHitCounts" ..!= HitCountsAuto
         <*> v ..:? "seed"
         <*> v ..:? "dictFreq" ..!= 0.40
         <*> v ..:? "corpusDir" ..!= Nothing
