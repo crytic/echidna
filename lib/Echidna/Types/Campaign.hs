@@ -132,6 +132,9 @@ data CampaignConf = CampaignConf
     -- without instrumentation (and goes faster) and keeps no corpus feedback.
   , hitCounts          :: HitCountsMode
     -- ^ Whether to keep per-line execution counts alongside coverage
+  , coverageEdges      :: Bool
+    -- ^ Whether taken jumps (source pc, target pc) also count as coverage,
+    -- so a new path through already covered code keeps its sequence
   , seed               :: Maybe Int
     -- ^ Seed used for the generation of random transactions
   , dictFreq           :: Float

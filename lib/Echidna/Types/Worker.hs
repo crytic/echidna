@@ -16,7 +16,7 @@ data CampaignEvent
 data WorkerEvent
   = TestFalsified !EchidnaTest
   | TestOptimized !EchidnaTest
-  | NewCoverage { points :: !Int, numCodehashes :: !Int, corpusSize :: !Int, transactions :: [Tx] }
+  | NewCoverage { points :: !Int, numCodehashes :: !Int, edges :: !Int, corpusSize :: !Int, transactions :: [Tx] }
   | SymExecError !String
   | SymExecLog !String
   | Log !String

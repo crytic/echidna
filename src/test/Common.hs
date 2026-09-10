@@ -22,6 +22,7 @@ module Common
   , codeUnits
   , uniqueCodehashes
   , hitCountInvariants
+  , uniqueEdgesAtLeast
   , overrideQuiet
   , loadSolTests
   , checkCoverageUsesCorpusDir
@@ -35,6 +36,7 @@ import Data.DoubleWord (Int256)
 import Data.Function ((&))
 import Data.IORef
 import Data.Primitive.PrimArray (readPrimArray)
+import Data.Primitive.PrimVar (readPrimVar)
 import Data.Vector.Unboxed qualified as VU
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
@@ -326,6 +328,10 @@ hitCountInvariants (env, _) = do
           onlyFailing = or [ f == e && e > 0 | (e, f) <- zip execs failed ]
       pure (agree && bounded && not snap.incomplete, onlyFailing)
   pure $ not (null checks) && all fst checks && any snd checks
+
+-- | At least @n@ distinct jump edges were recorded (edge coverage on).
+uniqueEdgesAtLeast :: Int -> (Env, WorkerState) -> IO Bool
+uniqueEdgesAtLeast n (env, _) = (>= n) <$> readPrimVar env.coverageEdgePoints
 
 countCorpus :: Int -> (Env, WorkerState) -> IO Bool
 countCorpus n (env, _) = do

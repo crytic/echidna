@@ -28,8 +28,8 @@ instance ToJSON WorkerEvent where
   toJSON = \case
     TestFalsified test -> toJSON test
     TestOptimized test -> toJSON test
-    NewCoverage { points, numCodehashes, corpusSize } ->
-      object [ "coverage" .= points, "contracts" .= numCodehashes, "corpus_size" .= corpusSize]
+    NewCoverage { points, numCodehashes, edges, corpusSize } ->
+      object [ "coverage" .= points, "contracts" .= numCodehashes, "edges" .= edges, "corpus_size" .= corpusSize]
     SymExecError msg -> object [ "msg" .= msg ]
     SymExecLog msg -> object [ "msg" .= msg ]
     Log msg -> object [ "msg" .= msg ]
@@ -109,7 +109,7 @@ ppWorkerEvent = \case
   TestOptimized test ->
     let name = case test.testType of OptimizationTest n _ -> n; _ -> error "fixme"
     in "New maximum value of " <> unpack name <> ": " <> show test.value
-  NewCoverage { points, numCodehashes, corpusSize, transactions } ->
+  NewCoverage { points, numCodehashes, edges, corpusSize, transactions } ->
     let -- the coverage is credited to the last transaction of the sequence
         culprit = case transactions of
           [] -> "init"
@@ -119,6 +119,7 @@ ppWorkerEvent = \case
             SolCalldata _ -> "fallback"
             NoCall -> "no call"
     in "New coverage: " <> show points <> " instr, "
+      <> (if edges > 0 then show edges <> " edges, " else "")
       <> show numCodehashes <> " contracts, "
       <> show corpusSize <> " seqs in corpus (" <> culprit <> ")"
   SymExecError err ->

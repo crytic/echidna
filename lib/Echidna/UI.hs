@@ -166,6 +166,7 @@ ui vm dict initialCorpus cliSelectedContract = do
           , corpusSize = 0
           , coverage = 0
           , numCodehashes = 0
+          , edges = 0
           , lastNewCov = now
           , tests
           , campaignWidget = emptyWidget -- temporary, will be overwritten below
@@ -361,11 +362,12 @@ monitor = do
         modify' $ \state -> state { events = state.events |> event }
 
         case campaignEvent of
-          WorkerEvent _ _ (NewCoverage { points, numCodehashes, corpusSize }) ->
+          WorkerEvent _ _ (NewCoverage { points, numCodehashes, edges, corpusSize }) ->
             modify' $ \state ->
               state { coverage = max state.coverage points -- max not really needed
                     , corpusSize
                     , numCodehashes
+                    , edges
                     , lastNewCov = time
                     }
           WorkerEvent _ _ (WorkerStopped _) ->

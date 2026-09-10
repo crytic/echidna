@@ -17,6 +17,7 @@ import Control.Monad.State.Strict (MonadState(get, put), execState, runStateT, M
 import Data.Bits
 import Data.ByteString qualified as BS
 import Data.IORef (readIORef, newIORef, writeIORef)
+import Data.Primitive.PrimArray (indexPrimArray)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Primitive.PrimArray (readPrimArray)
@@ -47,7 +48,7 @@ import Echidna.Transaction
 import Echidna.Types (ExecException(..), fromEVM, emptyAccount)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
-import Echidna.Types.Coverage (CovEntry(..), CovSlot(..), SlotEntry, newCovEntry)
+import Echidna.Types.Coverage (CovEntry(..), CovSlot(..), SlotEntry, isJumpOp, newCovEntry, recordEdge)
 import Echidna.Types.Coverage.Atomic (fetchOrPrimArray, ptrEq)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (TxCall(..), Tx(call, dst, delay), TxResult(..), initialTimestamp, initialBlockNumber, getResult)
@@ -321,7 +322,7 @@ execTxWithCov slot tx = do
 addCoverage
   :: Env -> CovSlot -> Maybe CoverageCache -> CoverageContext -> VM Concrete
   -> IO (CoverageCache, CoverageContext)
-addCoverage env slot cache ctx@(grew, _) !vm = do
+addCoverage env slot cache ctx@(grew, lastLoc) !vm = do
   cache'@CoverageCache{covEntry, hit} <- case cache of
     -- Hit: keep this step's code object so the next comparison is a
     -- pointer check even if we just switched to a contract whose code is
@@ -344,6 +345,14 @@ addCoverage env slot cache ctx@(grew, _) !vm = do
         case hit of
           Just (se, hitIx) -> recordPc slot se hitIx pc
           Nothing -> pure ()
+        -- Edge coverage: landing here right after a JUMP/JUMPI of this same
+        -- unit is the edge (previous pc, pc). Frame changes never qualify,
+        -- since the previous instruction is then a call or a return.
+        grewEdge <- case (entry.edges, lastLoc) of
+          (Just bm, Just (prevEntry, prevPc))
+            | ptrEq prevEntry entry && isJumpOp (indexPrimArray entry.code prevPc) ->
+                recordEdge env.coverageEdgePoints bm prevPc pc
+          _ -> pure False
         depths <- readPrimArray entry.bits (2 * pc)
         if depth < 64 && not (depths `testBit` depth)
           then do
@@ -354,8 +363,8 @@ addCoverage env slot cache ctx@(grew, _) !vm = do
             _ <- fetchOrPrimArray entry.bits (2 * pc + 1) (bit (fromEnum Stop))
             -- A pc counts as a new unique instruction exactly once.
             when (old == 0) $ void $ fetchAddInt env.coveragePoints 1
-            pure (grew || not (old `testBit` depth), Just (entry, pc))
-          else pure (grew, Just (entry, pc))
+            pure (grew || grewEdge || not (old `testBit` depth), Just (entry, pc))
+          else pure (grew || grewEdge, Just (entry, pc))
 
   pure (cache', ctx')
 
@@ -382,7 +391,11 @@ lookupCoverage env slot vm = do
       owner = maybe key ((.runtimeCodehash) . snd) $ Map.lookup key env.dapp.solcByHash
     if size == 0 then pure Nothing else do
       eligible <- reserveHitCounts env size
-      entry <- newCovEntry (codeTypeOf contract) key owner eligible contract.opIxMap size
+      let bytes = case contract.code of
+            InitCode b _ -> Just b
+            RuntimeCode (ConcreteRuntimeCode b) -> Just b
+            _ -> Nothing
+      entry <- newCovEntry (codeTypeOf contract) key owner eligible env.cfg.campaignConf.coverageEdges bytes contract.opIxMap size
       writeIORef built (Just entry)
       pure (Just entry)
   ours <- readIORef built

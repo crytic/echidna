@@ -1,22 +1,24 @@
 module Echidna.Types.Coverage where
 
-import Control.Monad (forM)
+import Control.Monad (forM, void, when)
 import Data.Aeson (ToJSON(toJSON), FromJSON(parseJSON), Value(..), withText)
-import Data.Bits (testBit)
+import Data.Bits (bit, shiftL, shiftR, testBit, xor, (.&.))
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.Foldable (foldl', length, sum)
 import Data.IORef (IORef, newIORef, readIORef)
 import Data.Map qualified as Map
 import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
 import Data.Primitive.PrimArray
-  (MutablePrimArray, PrimArray, freezePrimArray, indexPrimArray, newPrimArray, readPrimArray, setPrimArray)
-import Data.Primitive.PrimVar (PrimVar, atomicReadInt, newPrimVar)
+  (MutablePrimArray, PrimArray, freezePrimArray, indexPrimArray, newPrimArray, primArrayFromListN, readPrimArray, setPrimArray)
+import Data.Primitive.PrimVar (PrimVar, atomicReadInt, fetchAddInt, newPrimVar)
 import Data.Primitive.SmallArray (SmallArray, emptySmallArray)
 import Data.Set qualified as Set
 import Data.Text (toLower)
 import Data.Vector.Storable qualified as VS
 import Data.Vector.Unboxed qualified as V
-import Data.Word (Word32, Word64)
+import Data.Word (Word32, Word64, Word8)
 import GHC.Exts (RealWorld)
 import Prelude hiding (Foldable(..))
 
@@ -24,6 +26,7 @@ import EVM.Dapp (DappInfo(..))
 import EVM.Solidity (CodeType, SolcContract(..))
 import EVM.Types (W256)
 
+import Echidna.Types.Coverage.Atomic (fetchOrPrimArray)
 import Echidna.Types.Tx (TxResult)
 
 -- | Coverage of one code unit: the runtime code or the creation code of a
@@ -51,6 +54,11 @@ data CovEntry = CovEntry
   , countsEligible :: !Bool
     -- ^ Whether slots keep hit counts for this unit: decided once, at creation,
     -- from the code size and the hit-count byte budget (see 'HitCountsMode')
+  , code :: !(PrimArray Word8)
+    -- ^ The unit's bytecode, exactly 'len' bytes, kept only when edge coverage
+    -- is on so the loop can tell which pcs are jumps; empty otherwise
+  , edges :: !(Maybe (MutablePrimArray RealWorld Int))
+    -- ^ Edge coverage bitmap (see 'recordEdge'), when on and the code is concrete
   }
 
 -- | Map with the coverage information needed for fuzzing and source code
@@ -58,12 +66,46 @@ data CovEntry = CovEntry
 -- in the runtime map, `creationCodehash` in the creation map); see `CodehashMap`.
 type CoverageMap = Map W256 CovEntry
 
--- | Allocate a zeroed entry for a code unit.
-newCovEntry :: CodeType -> W256 -> W256 -> Bool -> VS.Vector Int -> Int -> IO CovEntry
-newCovEntry kind key owner countsEligible opIxMap len = do
+-- | Allocate a zeroed entry for a code unit. Edge coverage needs the concrete
+-- bytecode; without it the unit records no edges.
+newCovEntry :: CodeType -> W256 -> W256 -> Bool -> Bool -> Maybe ByteString -> VS.Vector Int -> Int -> IO CovEntry
+newCovEntry kind key owner countsEligible edgesOn bytes opIxMap len = do
   bits <- newPrimArray (2 * len)
   setPrimArray bits 0 (2 * len) 0
-  pure CovEntry { bits, opIxMap, len, owner, kind, key, countsEligible }
+  (code, edges) <- case bytes of
+    Just bs | edgesOn -> do
+      bm <- newPrimArray edgeWords
+      setPrimArray bm 0 edgeWords 0
+      -- pad a short buffer with INVALID, which is never a jump
+      pure (primArrayFromListN len (take len (BS.unpack bs ++ repeat 0xfe)), Just bm)
+    _ -> pure (primArrayFromListN 0 [], Nothing)
+  pure CovEntry { bits, opIxMap, len, owner, kind, key, countsEligible, code, edges }
+
+-- * Edge coverage
+
+-- | Words in a unit's edge bitmap: 2^16 bits, AFL-style, collisions accepted.
+edgeWords :: Int
+edgeWords = 1024
+
+-- | Whether the opcode byte is JUMP or JUMPI.
+isJumpOp :: Word8 -> Bool
+isJumpOp b = b == 0x56 || b == 0x57
+{-# INLINE isJumpOp #-}
+
+-- | Record the jump edge @(src, dst)@ in a unit's bitmap: a plain read, and an
+-- atomic OR only when the bit is missing, whose old value says whether this
+-- worker saw the edge first. Returns whether the edge was new.
+recordEdge :: PrimVar RealWorld Int -> MutablePrimArray RealWorld Int -> Int -> Int -> IO Bool
+recordEdge counter bm src dst = do
+  let h = ((src `shiftL` 1) `xor` dst) .&. 0xffff
+      w = h `shiftR` 6
+      b = h .&. 63
+  word <- readPrimArray bm w
+  if word `testBit` b then pure False else do
+    old <- fetchOrPrimArray bm w (bit b)
+    let new = not (old `testBit` b)
+    when new $ void $ fetchAddInt counter 1
+    pure new
 
 -- | Snapshot an entry into the per-pc tuples the report and JSON writers
 -- consume. A pc that was never covered gets op index @-1@, as before.
