@@ -76,6 +76,14 @@ freezeCovEntry entry = do
         opIx = if depths == 0 then -1 else fromMaybe 0 (entry.opIxMap VS.!? pc)
     in (opIx, fromIntegral depths, fromIntegral results)
 
+-- | Snapshot every code unit's per-pc tuples, keyed by unit, with op indices
+-- relative to the unit's own source map (unlike 'mergeCoverageMaps').
+snapshotUnits :: IORef CoverageMap -> IORef CoverageMap -> IO (Map (CodeType, W256) (V.Vector CoverageInfo))
+snapshotUnits initRef runtimeRef = do
+  initMap <- readIORef initRef
+  runtimeMap <- readIORef runtimeRef
+  Map.fromList <$> forM (Map.elems initMap ++ Map.elems runtimeMap) (\e -> ((e.kind, e.key),) <$> freezeCovEntry e)
+
 -- | Number of covered pcs in an entry.
 coveredPoints :: CovEntry -> IO Int
 coveredPoints entry = go 0 0

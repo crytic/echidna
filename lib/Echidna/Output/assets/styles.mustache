@@ -500,6 +500,28 @@ header {
     padding: 0 0.75rem;
 }
 
+/* Hit-count cells: glyph on the left, number right-aligned, so columns line up */
+.row-count {
+    user-select: none;
+    width: 1%;
+    min-width: 4.75rem;
+    padding: 0 0.5rem;
+    background: var(--gray-100);
+    border-right: 1px solid var(--gray-200);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.count {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.4rem;
+}
+
+.count-success { color: var(--success); }
+.count-failed { color: var(--warning); }
+.count-unknown { color: var(--gray-400); }
+
 .row-line-covered {
     background: rgba(var(--success-rgb), 0.1);
 }

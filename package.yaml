@@ -71,6 +71,7 @@ library:
     - split
     - stm
     - strip-ansi-escape
+    - template-haskell
     - time
     - unliftio
     - unliftio-core

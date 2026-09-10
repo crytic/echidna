@@ -96,6 +96,8 @@
                                 {{#lines}}
                                 <tr{{#rowClass}} class="{{rowClass}}"{{/rowClass}}>
                                     <td class="row-line-number">{{lineNumber}}</td>
+                                    {{#showCounts}}<td class="row-count">{{#hasSuccess}}<span class="count count-success" title="{{successTitle}}"><span>&#10003;</span><span>{{successCount}}</span></span>{{/hasSuccess}}{{#countsUnknown}}<span class="count count-unknown" title="Not counted: this line belongs to a code unit outside the hit-count budget"><span>?</span><span></span></span>{{/countsUnknown}}</td>
+                                    <td class="row-count">{{#hasFailed}}<span class="count count-failed" title="{{failedTitle}}"><span>&#10226;</span><span>{{failedCount}}</span></span>{{/hasFailed}}</td>{{/showCounts}}
                                     <td class="row-source"><pre>{{sourceCode}}</pre></td>
                                 </tr>
                                 {{/lines}}
