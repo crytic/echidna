@@ -10,12 +10,13 @@ module Echidna.Types.Coverage.Atomic
   , fetchAddPrimArray
   , atomicReadPrimArray
   , assertWordSize
+  , ptrEq
   ) where
 
 import Control.Monad (unless)
 import Data.Bits (finiteBitSize)
 import Data.Primitive.PrimArray (MutablePrimArray(..))
-import GHC.Exts (Int(I#), RealWorld, atomicReadIntArray#, fetchAddIntArray#, fetchOrIntArray#)
+import GHC.Exts (Int(I#), RealWorld, atomicReadIntArray#, fetchAddIntArray#, fetchOrIntArray#, isTrue#, reallyUnsafePtrEquality#)
 import GHC.IO (IO(IO))
 
 -- | Atomically OR a value into the word at an index; returns the previous value.
@@ -35,6 +36,13 @@ atomicReadPrimArray :: MutablePrimArray RealWorld Int -> Int -> IO Int
 atomicReadPrimArray (MutablePrimArray mba) (I# i) = IO $ \s ->
   case atomicReadIntArray# mba i s of (# s', v #) -> (# s', I# v #)
 {-# INLINE atomicReadPrimArray #-}
+
+-- | Pointer equality, usable only as a positive cache key: equal pointers are
+-- the same object, unequal pointers mean nothing (the object may have been
+-- evaluated or copied in between).
+ptrEq :: a -> a -> Bool
+ptrEq a b = isTrue# (reallyUnsafePtrEquality# a b)
+{-# INLINE ptrEq #-}
 
 -- | The coverage bitsets pack 64 call depths, or the 'Echidna.Types.Tx.TxResult'
 -- constructors, into one 'Int' word; refuse to start on anything narrower.

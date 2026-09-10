@@ -15,7 +15,7 @@ import EVM.Solvers (Solver(..))
 import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
 import Echidna.Types.Corpus (CorpusSelector)
-import Echidna.Types.Coverage (CoverageFileType)
+import Echidna.Types.Coverage (CoverageFileType, HitCountsMode)
 import Echidna.Types.Signature (SolCallPrototype)
 import Echidna.Types.Tx (TxResult(..))
 
@@ -133,6 +133,8 @@ data CampaignConf = CampaignConf
   , coverageEnabled    :: Bool
     -- ^ Whether to collect coverage. When off, Echidna executes transactions
     -- without instrumentation (and goes faster) and keeps no corpus feedback.
+  , hitCounts          :: HitCountsMode
+    -- ^ Whether to keep per-line execution counts alongside coverage
   , seed               :: Maybe Int
     -- ^ Seed used for the generation of random transactions
   , dictFreq           :: Float

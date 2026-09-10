@@ -1,26 +1,27 @@
 module Echidna.Types.Coverage where
 
 import Control.Monad (forM)
-import Data.Aeson (ToJSON(toJSON), FromJSON(parseJSON), withText)
+import Data.Aeson (ToJSON(toJSON), FromJSON(parseJSON), Value(..), withText)
 import Data.Bits (testBit)
 import Data.Foldable (foldl', length, sum)
-import Data.IORef (IORef, readIORef)
+import Data.IORef (IORef, newIORef, readIORef)
 import Data.Map qualified as Map
 import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
-import Data.Primitive.PrimVar (PrimVar, atomicReadInt)
 import Data.Primitive.PrimArray
   (MutablePrimArray, PrimArray, freezePrimArray, indexPrimArray, newPrimArray, readPrimArray, setPrimArray)
+import Data.Primitive.PrimVar (PrimVar, atomicReadInt, newPrimVar)
+import Data.Primitive.SmallArray (SmallArray, emptySmallArray)
 import Data.Set qualified as Set
 import Data.Text (toLower)
 import Data.Vector.Storable qualified as VS
 import Data.Vector.Unboxed qualified as V
-import Data.Word (Word64)
+import Data.Word (Word32, Word64)
 import GHC.Exts (RealWorld)
 import Prelude hiding (Foldable(..))
 
 import EVM.Dapp (DappInfo(..))
-import EVM.Solidity (SolcContract(..))
+import EVM.Solidity (CodeType, SolcContract(..))
 import EVM.Types (W256)
 
 import Echidna.Types.Tx (TxResult)
@@ -43,6 +44,13 @@ data CovEntry = CovEntry
     -- for runtime code, the owning contract's runtime hash for creation code
     -- (or the key when no compiled contract matched). Report and JSON output
     -- group units by owner; "unique codehashes" counts distinct owners.
+  , kind :: !CodeType
+    -- ^ Runtime or creation code
+  , key :: !W256
+    -- ^ The unit's compile-time codehash, its key in the coverage map
+  , countsEligible :: !Bool
+    -- ^ Whether slots keep hit counts for this unit: decided once, at creation,
+    -- from the code size and the hit-count byte budget (see 'HitCountsMode')
   }
 
 -- | Map with the coverage information needed for fuzzing and source code
@@ -50,12 +58,12 @@ data CovEntry = CovEntry
 -- in the runtime map, `creationCodehash` in the creation map); see `CodehashMap`.
 type CoverageMap = Map W256 CovEntry
 
--- | Allocate a zeroed entry for a code unit of the given owner and length.
-newCovEntry :: W256 -> VS.Vector Int -> Int -> IO CovEntry
-newCovEntry owner opIxMap len = do
+-- | Allocate a zeroed entry for a code unit.
+newCovEntry :: CodeType -> W256 -> W256 -> Bool -> VS.Vector Int -> Int -> IO CovEntry
+newCovEntry kind key owner countsEligible opIxMap len = do
   bits <- newPrimArray (2 * len)
   setPrimArray bits 0 (2 * len) 0
-  pure CovEntry { bits, opIxMap, len, owner }
+  pure CovEntry { bits, opIxMap, len, owner, kind, key, countsEligible }
 
 -- | Snapshot an entry into the per-pc tuples the report and JSON writers
 -- consume. A pc that was never covered gets op index @-1@, as before.
@@ -146,11 +154,12 @@ scoveragePoints cm = sum <$> mapM coveredPoints (Map.elems cm)
 
 unpackTxResults :: TxResults -> [TxResult]
 unpackTxResults txResults =
-  foldl' (\results bit ->
-    if txResults `testBit` bit
-      then toEnum bit : results
+  foldl' (\results b ->
+    if txResults `testBit` b
+      then toEnum b : results
       else results
   ) [] [0..63]
+
 
 data CoverageFileType = Lcov | Html | Txt deriving (Eq, Show)
 
@@ -165,6 +174,59 @@ instance FromJSON CoverageFileType where
     readFn "txt"  = pure Txt
     readFn _ = fail "could not parse CoverageFileType"
 
+-- * Hit counts
+
+-- | Whether to keep per-line hit counts, config key @coverageHitCounts@.
+-- Memory for hit counts grows with slots x eligible bytecode, so @auto@ keeps
+-- counting under a fixed payload budget and larger units fall back to bit
+-- coverage only.
+data HitCountsMode = HitCountsAuto | HitCountsOn | HitCountsOff
+  deriving (Eq, Show)
+
+instance FromJSON HitCountsMode where
+  parseJSON = \case
+    Bool True -> pure HitCountsOn
+    Bool False -> pure HitCountsOff
+    String "auto" -> pure HitCountsAuto
+    _ -> fail "coverageHitCounts must be true, false or \"auto\""
+
+-- | Payload budget in bytes for hit-count state, all slots together.
+hitCountBudgetFor :: HitCountsMode -> Int
+hitCountBudgetFor = \case
+  HitCountsAuto -> 1024 * 1024 * 1024
+  HitCountsOn -> maxBound
+  HitCountsOff -> 0
+
+-- | Hit-count state of one slot for one code unit, one counter per pc (see
+-- "Echidna.Coverage.HitCounts").
+data SlotEntry = SlotEntry
+  { unit :: !(CodeType, W256)
+  , len :: !Int
+  , execCount :: !(MutablePrimArray RealWorld Int)
+    -- ^ committed: executions of each pc
+  , failedCount :: !(MutablePrimArray RealWorld Int)
+    -- ^ committed: executions inside failed transactions
+  , txCount :: !(MutablePrimArray RealWorld Int)
+    -- ^ the current transaction's executions of each pc; zero between transactions
+  , touched :: !(MutablePrimArray RealWorld Word32)
+    -- ^ pcs whose 'txCount' went from zero this transaction, each at most once
+  , nTouched :: !(PrimVar RealWorld Int)
+  , regTx :: !(PrimVar RealWorld Int)
+    -- ^ 1 once the unit is registered in the slot's list for this transaction
+  , countsIncomplete :: !(PrimVar RealWorld Int)
+    -- ^ 1 once a transaction's counts had to be dropped; the unit reports
+    -- unknown counts from then on
+  }
+
+-- | A slot's table of units, published as one value so its parts agree.
+data SlotState = SlotState
+  { entries :: !(Map (CodeType, W256) Int)
+    -- ^ unit -> index into 'arrays'
+  , arrays :: !(SmallArray SlotEntry)
+  , touchedEntries :: !(MutablePrimArray RealWorld Int)
+    -- ^ indices registered in the current transaction; capacity = size of 'arrays'
+  }
+
 -- | Per-agent private coverage state. There is one slot per fuzz or symbolic
 -- agent plus one for deployment-time coverage, allocated up front in
 -- 'Echidna.mkEnv' and addressed by position, never by 'workerId': the symbolic
@@ -172,8 +234,15 @@ instance FromJSON CoverageFileType where
 data CovSlot = CovSlot
   { slotIx :: !Int
     -- ^ Position in 'Env.coverageSlots'; the last position is the deployment slot
+  , slotState :: !(IORef SlotState)
+  , nTouchedEntries :: !(PrimVar RealWorld Int)
+    -- ^ > 0 while a transaction is in flight (or was abandoned)
   }
 
 -- | Allocate the slot at the given position.
 newCovSlot :: Int -> IO CovSlot
-newCovSlot ix = pure CovSlot { slotIx = ix }
+newCovSlot ix = do
+  touchedEntries <- newPrimArray 0
+  slotState <- newIORef SlotState { entries = Map.empty, arrays = emptySmallArray, touchedEntries }
+  nTouchedEntries <- newPrimVar 0
+  pure CovSlot { slotIx = ix, slotState, nTouchedEntries }
