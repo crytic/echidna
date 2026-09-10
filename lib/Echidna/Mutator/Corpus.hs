@@ -1,13 +1,15 @@
 module Echidna.Mutator.Corpus where
 
+import Control.Monad (replicateM)
 import Control.Monad.Random.Strict (MonadRandom, getRandomR)
 import Data.Maybe (maybeToList)
-import Data.Set qualified as Set
+import Data.Vector qualified as V
+import Data.Vector.Unboxed qualified as VU
 
 import Echidna.Mutator.Array
 import Echidna.Transaction (forceMutateTx, mutateTx, shrinkTx)
 import Echidna.Types (MutationConsts)
-import Echidna.Types.Corpus
+import Echidna.Types.Corpus (CorpusSelector(..))
 import Echidna.Types.Random (weighted)
 import Echidna.Types.Tx (Tx)
 
@@ -51,10 +53,10 @@ cutRange _ len = (min 1 len, len)
 selectAndMutate
   :: MonadRandom m
   => TxsMutation
-  -> Corpus
+  -> CorpusSelector
   -> m [Tx]
-selectAndMutate m corpus = do
-  rtxs <- selectFromCorpus corpus
+selectAndMutate m sel = do
+  rtxs <- selectFromCorpus sel
   k <- getRandomR (cutRange m (length rtxs))
   mutator m $ take k rtxs
 
@@ -62,34 +64,55 @@ selectAndCombine
   :: MonadRandom m
   => ([Tx] -> [Tx] -> m [Tx])
   -> Int
-  -> Corpus
-  -> [Tx]
+  -> CorpusSelector
+  -> m Tx
   -> m [Tx]
-selectAndCombine f ql corpus gtxs = do
-  rtxs1 <- selectFromCorpus corpus
-  rtxs2 <- selectFromCorpus corpus
-  txs <- f rtxs1 rtxs2
-  pure . take ql $ txs <> gtxs
+selectAndCombine f ql sel genOne = do
+  rtxs1 <- selectFromCorpus sel
+  rtxs2 <- selectFromCorpus sel
+  txs <- take ql <$> f rtxs1 rtxs2
+  gtxs <- replicateM (ql - length txs) genOne
+  pure $ txs <> gtxs
 
+-- | Pick a sequence with probability proportional to its weight: draw a point
+-- in the total weight, then binary-search the cumulative weights for the
+-- sequence whose slice covers it.
 selectFromCorpus
   :: MonadRandom m
-  => Corpus
+  => CorpusSelector
   -> m [Tx]
-selectFromCorpus =
-  weighted . map (\(i, txs) -> (txs, fromIntegral i)) . Set.toDescList
+selectFromCorpus sel = do
+  r <- getRandomR (0, VU.last sel.cumWeights - 1)
+  pure $ sel.seqs V.! firstGreater r
+  where
+    -- smallest index whose cumulative weight exceeds r; r < total weight
+    -- guarantees one exists
+    firstGreater r = go 0 (VU.length sel.cumWeights - 1)
+      where
+        go lo hi
+          | lo >= hi = lo
+          | sel.cumWeights VU.! mid > r = go lo mid
+          | otherwise = go (mid + 1) hi
+          where mid = (lo + hi) `div` 2
 
+-- | A corpus mutation takes the target sequence length, the prepared corpus,
+-- and a generator for filler transactions, run only as many times as the
+-- mutated sequence needs topping up to that length.
 getCorpusMutation
   :: MonadRandom m
   => CorpusMutation
-  -> (Int -> Corpus -> [Tx] -> m [Tx])
-getCorpusMutation (RandomAppend m) = \ql ctxs gtxs -> do
-  rtxs' <- selectAndMutate m ctxs
-  pure . take ql $ rtxs' ++ gtxs
-getCorpusMutation (RandomPrepend m) = \ql ctxs gtxs -> do
-  rtxs' <- selectAndMutate m ctxs
+  -> (Int -> CorpusSelector -> m Tx -> m [Tx])
+getCorpusMutation (RandomAppend m) = \ql sel genOne -> do
+  rtxs' <- take ql <$> selectAndMutate m sel
+  gtxs <- replicateM (ql - length rtxs') genOne
+  pure $ rtxs' ++ gtxs
+getCorpusMutation (RandomPrepend m) = \ql sel genOne -> do
+  rtxs' <- selectAndMutate m sel
   k <- getRandomR (0, ql - 1)
-  -- Pad with the remaining fresh transactions so the sequence has ql entries.
-  pure . take ql $ take k gtxs ++ rtxs' ++ drop k gtxs
+  let mid = take (ql - k) rtxs'
+  -- Pad with fresh transactions so the sequence has ql entries.
+  gtxs <- replicateM (ql - length mid) genOne
+  pure $ take k gtxs ++ mid ++ drop k gtxs
 getCorpusMutation RandomSplice = selectAndCombine spliceAtRandom
 getCorpusMutation RandomInterleave = selectAndCombine interleaveAtRandom
 
