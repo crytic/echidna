@@ -11,7 +11,7 @@ import Control.Monad.State.Strict (MonadState, gets, modify', execState)
 import Data.ByteString qualified as BS
 import Data.IORef (readIORef)
 import Data.List.NonEmpty qualified as NE
-import Data.Map (Map, toList)
+import Data.Map (Map, toList, (!?))
 import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -66,7 +66,7 @@ genTx
 genTx world deployedContracts = do
   contracts <- callableContracts world deployedContracts
   (dstAddr, solCall) <- genRandomCall contracts
-  toTx world dstAddr solCall
+  toTx world deployedContracts dstAddr solCall
 
 -- | Generate a 'Transaction' calling the function a prototype names, letting
 -- the generator fill in whichever of its arguments the prototype left open.
@@ -85,7 +85,7 @@ genTxFromPrototype world deployedContracts prototype = do
   (dstAddr, solCall) <- case matchingContracts prototype contracts of
     []         -> genRandomCall contracts
     candidates -> genPrototypeCall prototype candidates
-  toTx world dstAddr solCall
+  toTx world deployedContracts dstAddr solCall
 
 -- | The deployed contracts Echidna knows how to build a call against, each
 -- paired with the ABI resolved for it.
@@ -145,18 +145,32 @@ genPrototypeCall (name, args) candidates = do
   vals <- zipWithM (\arg t -> maybe (genAbiValueM' genDict name 0 t) pure arg) args types
   pure (dstAddr, (name, vals))
 
+-- | The balance a sender address currently holds in the fuzzing world, read
+-- from the VM's contract store, where senders are seeded at startup (see
+-- @balanceAddr@) and only ever gain funds through internal transfers. An
+-- address absent from the store holds nothing. On any real chain a transaction
+-- carrying more value than its sender owns is rejected before execution, so
+-- generated transactions must respect this balance.
+senderBalance :: Map (Expr EAddr) Contract -> Addr -> W256
+senderBalance contracts src =
+  maybe 0 (forceWord . view #balance) (contracts !? LitAddr src)
+
 -- | Wrap a chosen call into a 'Tx', giving it a random sender, value and delay.
 toTx
   :: (MonadRandom m, MonadState WorkerState m, MonadReader Env m)
   => World
+  -> Map (Expr EAddr) Contract
   -> Addr
   -> SolCall
   -> m Tx
-toTx world dstAddr solCall = do
+toTx world deployedContracts dstAddr solCall = do
   txConf <- asks (.cfg.txConf)
   genDict <- gets (.genDict)
   sender <- rElem' world.senders
-  value <- genValue txConf.maxValue genDict.dictValues world.payableSigs solCall
+  -- Cap the value at the sender's balance: a transaction exceeding it is
+  -- rejected by real chains before it ever runs.
+  value <- genValue (min txConf.maxValue (senderBalance deployedContracts sender))
+                    genDict.dictValues world.payableSigs solCall
   ts <- (,) <$> genDelay txConf.maxTimeDelay genDict.dictValues
             <*> genDelay txConf.maxBlockDelay genDict.dictValues
   pure $ Tx { call = SolCall solCall
