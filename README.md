@@ -141,22 +141,64 @@ Test = {
   "name"         : string,
   "status"       : string,
   "error"        : string?,
-  "testType"     : string,
+  "reason"       : string?,
+  "events"       : [string],
+  "type"         : string,
   "transactions" : [Transaction]?
 }
 Transaction = {
   "contract"     : string,
   "function"     : string,
   "arguments"    : [string]?,
-  "gas"          : number,
-  "gasprice"     : number
+  "gas"          : string,
+  "gasprice"     : string,
+  "value"        : string
 }
 ```
 
-`Coverage` is a dict describing certain coverage-increasing calls. These interfaces are
-subject to change to be slightly more user-friendly at a later date. `testType`
-will be one of `property`, `assertion`, `optimization`, `exploration`, or `call`,
-and `status` always takes on either `fuzzing`, `shrinking`, `solved`, `passed`, or `error`.
+`Coverage` is a dict keyed by the code hash of each contract (`0x`-prefixed
+hexadecimal strings), mapping to lists of `[opIx, depths, results]` triples
+describing certain coverage-increasing calls. These interfaces are subject to
+change to be slightly more user-friendly at a later date. `type` will be one of
+`property` or `assertion`, and `status` always takes on either `fuzzing`,
+`shrinking`, `solved`, `verified`, `passed`, or `error`. `reason` carries the
+failure reason of a falsified test (e.g. `ErrorRevert` or `ReturnFalse`) and is
+`null` otherwise, while `events` lists the events emitted while replaying the
+transactions that falsified it.
+
+Note that `gas`, `gasprice` and `value` are serialized as decimal strings
+rather than JSON numbers: these quantities (especially `value`, typically a
+number of wei) routinely exceed the range where JSON numbers preserve
+exactness, so consumers should parse them with an arbitrary-precision
+representation (e.g. `BigInt`). The `contract` and `name` fields of tests and
+transactions are placeholders (always empty) pending proper contract-name
+tracking ([#415](https://github.com/crytic/echidna/issues/415)).
+
+### Reproducer and corpus file format
+
+When `corpusDir` is set, Echidna writes one JSON file per saved transaction
+sequence under `coverage`, `reproducers-unshrunk` and
+`reproducers-optimizations`. Note that these files use a `.txt` extension
+despite containing JSON. Each file contains a JSON array of transactions
+serialized with this schema:
+
+```
+Transaction = {
+  "call"     : Call,        // {"tag": "SolCall", "contents": [name, [args]]} |
+                            // {"tag": "SolCreate", "contents": <init code>} |
+                            // {"tag": "SolCalldata", "contents": <calldata>} | "NoCall"
+  "src"      : address,     // sender address
+  "dst"      : address,     // destination address
+  "gas"      : number,
+  "gasprice" : string,      // decimal string, see note above
+  "value"    : string,      // decimal string, see note above
+  "delay"    : [string, string] // [time delta in seconds, block delta]
+}
+```
+
+Files using the older schema with underscore-prefixed keys (`_call`, `_src`,
+`_dst`, `_gas'`, `_gasprice'`, `_value`, `_delay`) are still accepted for
+backwards compatibility.
 
 ### Debugging Performance Problems
 
