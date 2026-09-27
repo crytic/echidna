@@ -14,9 +14,6 @@ import Echidna.MCP.Parse
 uint :: Integer -> AbiValue
 uint = AbiUInt 256 . fromInteger
 
-addr :: Integer -> AbiValue
-addr = AbiAddress . fromInteger
-
 uintArray :: [Integer] -> AbiValue
 uintArray xs =
   AbiArrayDynamic (AbiUIntType 256) (Vector.fromList (map uint xs))
@@ -40,7 +37,21 @@ primitiveTests = testGroup "parsePrimitive"
   , testCase "FALSE (upper case)" $ parsePrimitive "FALSE" @?= Just (AbiBool False)
   , testCase "decimal integer" $ parsePrimitive "42" @?= Just (uint 42)
   , testCase "zero" $ parsePrimitive "0" @?= Just (uint 0)
-  , testCase "hex address" $ parsePrimitive "0x1234" @?= Just (addr 0x1234)
+  , testCase "hex integer keeps all 256 bits" $
+      parsePrimitive ("0x" <> replicate 64 'f') @?= Just (uint (2 ^ (256 :: Int) - 1))
+  , testCase "hex and decimal integers have the same provisional type" $
+      parsePrimitive "0x1234" @?= Just (uint 0x1234)
+  , testCase "negative integer retains its sign" $
+      parsePrimitive "-5" @?= Just (AbiInt 256 (-5))
+  , testCase "negative hex integer retains its sign" $
+      parsePrimitive "-0x5" @?= Just (AbiInt 256 (-5))
+  , testCase "minimum signed integer" $
+      parsePrimitive (show (negate (2 ^ (255 :: Int) :: Integer))) @?=
+        Just (AbiInt 256 minBound)
+  , testCase "rejects integers that would wrap" $
+      map (parsePrimitive . show)
+        [2 ^ (256 :: Int), negate (2 ^ (255 :: Int)) - 1 :: Integer] @?=
+          [Nothing, Nothing]
   , testCase "trims surrounding whitespace" $
       parsePrimitive "  42  " @?= Just (uint 42)
   , testCase "non-numeric garbage rejected" $
@@ -62,8 +73,10 @@ arrayTests = testGroup "parseArray"
       parseArray "[true, false]" @?=
         Just (AbiArrayDynamic AbiBoolType
                 (Vector.fromList [AbiBool True, AbiBool False]))
-  , testCase "rejects mixed element types" $
-      assertBool "expected Nothing" (isNothing (parseArray "[1, true]"))
+  , testCase "mixed signs are preserved for ABI coercion" $
+      parseArray "[-5, 11]" @?=
+        Just (AbiArrayDynamic (AbiIntType 256)
+                (Vector.fromList [AbiInt 256 (-5), uint 11]))
   ]
 
 argTests :: TestTree
@@ -105,7 +118,7 @@ fuzzCallTests = testGroup "parseFuzzCall"
         Just ("bar", [Just (uintArray [1, 2]), Nothing])
   , testCase "mixed primitive types" $
       parseFuzzCall "foo(1, true, 0x10)" @?=
-        Just ("foo", [Just (uint 1), Just (AbiBool True), Just (addr 0x10)])
+        Just ("foo", [Just (uint 1), Just (AbiBool True), Just (uint 0x10)])
   , testCase "missing opening paren rejected" $
       assertBool "expected Nothing" (isNothing (parseFuzzCall "foo)"))
   , testCase "missing closing paren rejected" $

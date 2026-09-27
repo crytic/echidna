@@ -1,8 +1,10 @@
 module Tests.Replay (replayTests) where
 
+import Control.Monad (forM_)
 import Control.Monad.Reader (runReaderT)
 import Data.Aeson (FromJSON(..), eitherDecodeStrict, withObject, (.:), (.:?))
 import Data.IORef (readIORef)
+import Data.List (intercalate)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
@@ -17,6 +19,8 @@ import EVM.ABI (AbiValue(..))
 import EVM.Types (VM, VMType(Concrete))
 
 import Echidna.Solidity (compileContracts)
+import Echidna.MCP (concreteTxs)
+import Echidna.MCP.Parse (parseFuzzSequence)
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Corpus (corpusSize)
 import Echidna.Types.Coverage (coverageStats)
@@ -126,6 +130,58 @@ replayTests = testGroup "Sequence replay"
       assertBool "nothing to report on" (null report.transactions)
       -- Nothing ran, so there is no trace to show even though one was asked for.
       report.trace @?= Nothing
+
+  , testCase "MCP concrete arguments reach the declared function intact" $
+      withSolcVersion (Just (>= solcV (0,8,0))) $ do
+        (vm, env, _) <- load "mcp/type-probe.sol"
+        let cases =
+              [ ("f_none()", ["Seen(8000)"])
+              , ("f_uint256(42)", ["Seen(42)"])
+              , ("f_uint8(7)", ["Seen(7)"])
+              , ("f_uint32(4294967295)", ["Seen(4294967295)"])
+              , ("f_int128(-5)", ["SignedSeen(-5)"])
+              , ("f_int128(-170141183460469231731687303715884105728)",
+                  ["SignedSeen(-170141183460469231731687303715884105728)"])
+              , ("f_int128(170141183460469231731687303715884105727)",
+                  ["SignedSeen(170141183460469231731687303715884105727)"])
+              , ("f_bytes4(0x01020304)", ["Seen(16909060)"])
+              , ("f_bytes32(0x" <> replicate 64 'f' <> ")",
+                  ["Seen(115792089237316195423570985008687907853269984665640564039457584007913129639935)"])
+              , ("f_addr(0x10000)", ["Seen(65536)"])
+              , ("f_bool(false)", ["Seen(0)"])
+              , ("f_bool(true)", ["Seen(1)"])
+              , ("f_uint8s([0, 255])", ["Seen(0)", "Seen(255)"])
+              , ("f_int128s([-5, 11])", ["SignedSeen(-5)", "SignedSeen(11)"])
+              , ("overloaded(300)", ["Seen(300)"])
+              ]
+        prototypes <- maybe (assertFailure "Could not parse probe sequence") pure $
+          parseFuzzSequence (intercalate ";" (map fst cases))
+        txs <- either (assertFailure . T.unpack) pure (concreteTxs env prototypes)
+        report <- replay env False vm txs
+        report.transactionCount @?= length cases
+        map (.status) report.transactions @?= replicate (length cases) "completed"
+        forM_ (zip report.transactions cases) $ \(tx, (literal, events)) ->
+          forM_ events $ \event -> assertBool (literal <> " emitted " <> show tx.logs) $
+            any (T.isInfixOf event) tx.logs
+
+  , testCase "MCP rejects invalid or ambiguous arguments before replay" $
+      withSolcVersion (Just (>= solcV (0,8,0))) $ do
+        (_, env, _) <- load "mcp/type-probe.sol"
+        forM_
+          [ ("f_uint8(300)", "300 does not fit in uint8")
+          , ("f_uint8(-1)", "-1 does not fit in uint8")
+          , ("f_int128(170141183460469231731687303715884105728)", "does not fit in int128")
+          , ("f_uint8s([1])", "Expected 2 elements")
+          , ("f_uint8s([1,300])", "300 does not fit in uint8")
+          , ("f_uint8(true)", "Cannot use true as uint8")
+          , ("f_uint8(?)", "Every argument has to be concrete")
+          , ("overloaded(7)", "Ambiguous call 'overloaded'")
+          ] $ \(literal, expected) -> do
+            prototypes <- maybe (assertFailure ("Could not parse " <> literal)) pure $
+              parseFuzzSequence literal
+            case concreteTxs env prototypes of
+              Left err -> assertBool (T.unpack err) (expected `T.isInfixOf` err)
+              Right _ -> assertFailure ("Accepted invalid call " <> literal)
   ]
   where
   -- Compile a fixture and return a way to call functions on it. These fixtures

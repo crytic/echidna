@@ -131,6 +131,8 @@ genRandomCall contracts = do
 
 -- | Pick one of the contracts 'matchingContracts' selected and generate the
 -- prototype's call against it, generating a value for every argument left open.
+-- A concrete argument must have the declared type too: the encoder derives the
+-- selector from the values. If it cannot be coerced, fuzz that argument instead.
 genPrototypeCall
   :: (MonadRandom m, MonadState WorkerState m)
   => SolCallPrototype
@@ -142,7 +144,9 @@ genPrototypeCall (name, args) candidates = do
   -- Only the argument types are taken from the signature; its name is the one
   -- the prototype asked for.
   (_, types) <- rElem dstAbis
-  vals <- zipWithM (\arg t -> maybe (genAbiValueM' genDict name 0 t) pure arg) args types
+  vals <- zipWithM (\arg t ->
+    let generate = genAbiValueM' genDict name 0 t
+    in maybe generate (either (const generate) pure . coerceAbiValue t) arg) args types
   pure (dstAddr, (name, vals))
 
 -- | Wrap a chosen call into a 'Tx', giving it a random sender, value and delay.

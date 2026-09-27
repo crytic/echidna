@@ -5,11 +5,9 @@
 --
 -- > transfer(0x10, 100); approve(?, ?)
 --
--- Parsing deliberately stops at an argument's shape rather than its type: an
--- integer becomes a @uint256@ and a @0x@-prefixed literal an @address@,
--- whatever the function's signature says. Calls are checked against the ABI in
--- 'Echidna.MCP', and only by name and arity — the same way
--- 'Echidna.Transaction.matchingContracts' resolves a prototype.
+-- Parsing preserves literal values using 256-bit integers, regardless of their
+-- base. Before encoding a call, its concrete arguments must be coerced to the
+-- declared ABI types with 'Echidna.ABI.coerceAbiValue'.
 module Echidna.MCP.Parse
   ( parseArg
   , parseArray
@@ -55,29 +53,30 @@ parseArg s
   | otherwise = parsePrimitive s'
   where s' = trim s
 
--- | Parse a bracketed list of primitives into a dynamic array. Every element
--- has to come out the same type, since the array needs one.
+-- | Parse a bracketed list. Its provisional element type comes from the first
+-- value; ABI coercion checks every element, including mixed-sign integers.
 parseArray :: String -> Maybe AbiValue
 parseArray s = do
-  vals <- mapM parsePrimitive . argList =<< delimited '[' ']' (trim s)
+  vals <- mapM parseArg . argList =<< delimited '[' ']' (trim s)
   case vals of
     -- Nothing in an empty array says what it holds, so it gets the type the
     -- rest of this parser defaults to.
     [] -> Just $ AbiArrayDynamic (AbiUIntType 256) V.empty
-    (v:_) | all ((== abiValueType v) . abiValueType) vals ->
-      Just $ AbiArrayDynamic (abiValueType v) (V.fromList vals)
-    _ -> Nothing
+    v:_ -> Just $ AbiArrayDynamic (abiValueType v) (V.fromList vals)
 
--- | Parse a single value: a boolean, a @0x@-prefixed address, or a @uint256@.
+-- | Parse a boolean or integer without truncating it. Negative literals need a
+-- signed representation so ABI coercion can reject them for unsigned types.
 parsePrimitive :: String -> Maybe AbiValue
 parsePrimitive s = case map toLower s' of
   "true" -> Just (AbiBool True)
   "false" -> Just (AbiBool False)
-  _ | "0x" `isPrefixOf` s' -> AbiAddress . fromIntegral <$> integer
-    | otherwise -> AbiUInt 256 . fromIntegral <$> integer
+  _ -> do
+    n <- readMaybe s' :: Maybe Integer
+    if | n < negate (2 ^ (255 :: Int)) || n >= 2 ^ (256 :: Int) -> Nothing
+       | n < 0 -> Just (AbiInt 256 (fromInteger n))
+       | otherwise -> Just (AbiUInt 256 (fromInteger n))
   where
     s' = trim s
-    integer = readMaybe s' :: Maybe Integer
 
 -- | Split a comma-separated argument list, keeping bracketed groups whole.
 splitArgs :: String -> [String]

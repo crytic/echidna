@@ -1,5 +1,6 @@
 import System.Directory (withCurrentDirectory)
 import Test.Tasty (defaultMain, testGroup)
+import Tests.ABI (abiTests)
 import Tests.ABIv2 (abiv2Tests)
 import Tests.Assertion (assertionTests)
 import Tests.Cheat (cheatTests)
@@ -38,6 +39,7 @@ main = withCurrentDirectory "./tests/solidity" . defaultMain $
            , researchTests
            , foundryTests
            , encodingJSONTests
+           , abiTests
            , mcpParseTests
            , sampleTests
            , replayTests

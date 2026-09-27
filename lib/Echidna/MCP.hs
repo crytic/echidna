@@ -6,7 +6,7 @@
 -- share, without touching them. The ones that do steer send a command over the
 -- inter-worker bus, which a worker picks up between sequences; see
 -- 'Echidna.Worker.Command'.
-module Echidna.MCP (runMCPServer) where
+module Echidna.MCP (runMCPServer, concreteTxs) where
 
 import Control.Concurrent (forkIO)
 import Control.Concurrent.STM
@@ -39,6 +39,7 @@ import EVM.Dapp (DappInfo(..))
 import EVM.Solidity (Method(..), SolcContract(..))
 
 import Echidna (loadInitialCorpus)
+import Echidna.ABI (coercePrototype, encodeSig)
 import Echidna.MCP.Parse (parseFuzzSequence)
 import Echidna.Output.Source (ppCoveredCode, saveLcovSnapshot)
 import Echidna.Types.Campaign
@@ -527,8 +528,24 @@ concreteTxs env prototypes
   | any (any isNothing . snd) prototypes =
       Left "Every argument has to be concrete here: '?' is only for \
            \inject_fuzz_transactions."
-  | otherwise = Right (map toTx prototypes)
+  | otherwise = traverse resolve prototypes
   where
+  resolve prototype@(fname, args) = case successes of
+    [(_, coerced)] -> Right (toTx coerced)
+    [] -> Left $ if null attempts
+      then "No matching ABI signature for '" <> fname <> "'."
+      else T.intercalate "\n" [err | (_, Left err) <- attempts]
+    _ -> Left $ "Ambiguous call '" <> fname <> "': matches "
+             <> T.intercalate ", " (map (encodeSig . fst) successes) <> "."
+    where
+    signatures = nub
+      [ (m.name, map snd m.inputs)
+      | m <- Map.elems env.dapp.abiMap
+      , m.name == fname, length m.inputs == length args
+      ]
+    attempts = [(sig, coercePrototype sig prototype) | sig <- signatures]
+    successes = [(sig, coerced) | (sig, Right coerced) <- attempts]
+
   -- Every call goes to the contract under test. A sequence naming a function
   -- of some other deployed contract would be sent to the wrong address, but
   -- there is no way to spell an address in the sequence syntax to fix that

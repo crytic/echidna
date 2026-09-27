@@ -3,6 +3,7 @@ module Echidna.ABI where
 import Control.Monad (liftM2, liftM3, foldM, replicateM, zipWithM)
 import Control.Monad.Random.Strict (MonadRandom, join, getRandom, getRandoms, getRandomR, uniform, fromList)
 import Control.Monad.Random.Strict qualified as Random
+import Data.Bifunctor (first)
 import Data.Binary.Put (runPut, putWord32be)
 import Data.BinaryWord (unsignedWord)
 import Data.Bits (bit)
@@ -30,7 +31,7 @@ import Data.Word (Word8)
 import Numeric (showHex)
 
 import EVM.ABI hiding (genAbiValue)
-import EVM.Types (Addr, abiKeccak, W256, FunctionSelector(..))
+import EVM.Types (Addr, abiKeccak, W256, FunctionSelector(..), word256Bytes)
 
 import Echidna.Mutator.Array (mutateLL, replaceAt)
 import Echidna.Types.Random
@@ -101,6 +102,58 @@ encodeSig (n, ts) =
 encodeSigWithName :: Text -> SolSignature -> Text
 encodeSigWithName cn (n, ts) =
   last (T.split (==':') cn) <> "." <> n <> "(" <> T.intercalate "," (abiTypeSolidity <$> ts) <> ")"
+
+-- | Give a concrete prototype argument its declared ABI type. Check bounds in
+-- Integer before converting, since the fixed-width number types wrap on overflow.
+-- Numeric bytesN literals are big-endian, left-padded to N bytes.
+coerceAbiValue :: AbiType -> AbiValue -> Either Text AbiValue
+coerceAbiValue t v = case t of
+  AbiUIntType n -> number 0 (2 ^ n - 1) (AbiUInt n . fromInteger)
+  AbiIntType n -> number (negate (2 ^ (n - 1))) (2 ^ (n - 1) - 1)
+                        (AbiInt n . fromInteger)
+  AbiAddressType -> number 0 (2 ^ (160 :: Int) - 1) (AbiAddress . fromInteger)
+  AbiBoolType -> case v of
+    AbiBool _ -> Right v
+    _ -> number 0 1 (AbiBool . (== 1))
+  AbiBytesType n -> case v of
+    AbiBytes m bytes | m == n && BS.length bytes == n -> Right v
+    _ -> number 0 (2 ^ (8 * n) - 1)
+           (AbiBytes n . BS.drop (32 - n) . word256Bytes . fromInteger)
+  AbiArrayDynamicType elemType -> do
+    values <- arrayValues
+    AbiArrayDynamic elemType <$> traverse (coerceAbiValue elemType) values
+  AbiArrayType n elemType -> do
+    values <- arrayValues
+    if V.length values /= n
+      then Left $ "Expected " <> T.pack (show n) <> " elements for "
+               <> abiTypeSolidity t <> ", got " <> T.pack (show (V.length values)) <> "."
+      else AbiArray n elemType <$> traverse (coerceAbiValue elemType) values
+  _ | abiValueType v == t -> Right v
+    | otherwise -> Left wrongType
+  where
+    number lo hi build = case v of
+      AbiUInt _ n -> checked (toInteger n)
+      AbiInt _ n -> checked (toInteger n)
+      AbiAddress n -> checked (toInteger n)
+      _ -> Left wrongType
+      where
+        checked n
+          | lo <= n && n <= hi = Right (build n)
+          | otherwise = Left $ T.pack (show n) <> " does not fit in " <> abiTypeSolidity t <> "."
+    arrayValues = case v of
+      AbiArrayDynamic _ values -> Right values
+      AbiArray _ _ values -> Right values
+      _ -> Left wrongType
+    wrongType = "Cannot use " <> T.pack (show v) <> " as " <> abiTypeSolidity t <> "."
+
+-- | Coerce every concrete argument against a signature, preserving fuzz holes.
+coercePrototype :: SolSignature -> SolCallPrototype -> Either Text SolCallPrototype
+coercePrototype sig@(name, types) (fname, args)
+  | name /= fname || length types /= length args =
+      Left $ "Call to '" <> fname <> "' does not match " <> encodeSig sig <> "."
+  | otherwise = (name,) <$> zipWithM coerce types args
+  where
+    coerce t = traverse (first ((name <> ": ") <>) . coerceAbiValue t)
 
 -- | Get the signature of a solidity method
 hashSig :: Text -> FunctionSelector
