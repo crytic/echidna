@@ -57,6 +57,8 @@ import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (EchidnaTest(..), didFail, isOptimizationTest)
 import Echidna.Types.Tx (Tx(..), TxCall(..), maxGasPerBlock)
 import Echidna.Types.World (World(..))
+import Echidna.Types.Worker (CampaignEvent(ServerLog))
+import Echidna.Worker (pushCampaignEvent)
 
 -- | One of the tools the server exposes.
 data Tool = Tool
@@ -105,7 +107,12 @@ runMCPServer env workerRefs port = do
   -- 'Echidna.Types.Worker.ServerLog' event instead, so the line is timestamped
   -- and prefixed like every other one, and Warp's settings stay in our hands.
   Warp.runSettings
-    (Warp.setHost "127.0.0.1" $ Warp.setPort port Warp.defaultSettings)
+    ( Warp.setBeforeMainLoop
+        (pushCampaignEvent env $ ServerLog $
+          "MCP server listening on http://127.0.0.1:" <> show port <> "/mcp")
+      $ Warp.setHost "127.0.0.1"
+      $ Warp.setPort port Warp.defaultSettings
+    )
     (mcpApplication httpConfig serverInfo handlers)
   where
   httpConfig = defaultHttpConfig

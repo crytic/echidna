@@ -39,6 +39,8 @@ runFuzzWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
   => StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
+  -> StateT WorkerState m ()
+  -- ^ Callback to run once the worker is ready for external commands
   -> VM Concrete -- ^ Initial VM state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
@@ -46,7 +48,7 @@ runFuzzWorker
   -- ^ Initial corpus of transactions
   -> Int     -- ^ Test limit for this worker
   -> m (WorkerStopReason, WorkerState)
-runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
+runFuzzWorker callback onReady vm dict workerId initialCorpus testLimit = do
   bus <- asks (.bus)
   let
     effectiveSeed = dict.defSeed + workerId
@@ -63,6 +65,7 @@ runFuzzWorker callback vm dict workerId initialCorpus testLimit = do
       -- reaches every worker instead of being raced for by whoever gets there
       -- first.
       chan <- liftIO $ atomically $ dupTChan bus
+      lift onReady
       run chan
 
   where

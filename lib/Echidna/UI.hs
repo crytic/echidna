@@ -33,7 +33,7 @@ import EVM.Fetch qualified
 import EVM.Types (Addr, Contract, VM, VMType(Concrete), W256)
 
 import Echidna.ABI
-import Echidna.Agent (runAgent)
+import Echidna.Agent (runAgent, runAgentWithReady)
 import Echidna.MCP (runMCPServer)
 import Echidna.Output.Corpus (saveCorpusEvent)
 import Echidna.Output.JSON qualified
@@ -50,7 +50,7 @@ import Echidna.UI.Report
 import Echidna.UI.Widgets
 import Echidna.Utility (timePrefix, getTimestamp)
 import Echidna.Worker
-  (getNWorkers, pushCampaignEvent, spawnListener, workerIDToType)
+  (getNWorkers, spawnListener, workerIDToType)
 
 data UIEvent =
   CampaignUpdated LocalTime [EchidnaTest] [WorkerState]
@@ -107,19 +107,22 @@ ui vm dict initialCorpus cliSelectedContract = do
 
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
-  let spawnWorkers =
-        liftIO $ forM (zip corpusChunks [0..(nworkers-1)]) $
+  let spawnWorkers = liftIO $ do
+        spawned <- forM (zip corpusChunks [0..(nworkers-1)]) $
           uncurry (spawnWorker env perWorkerTestLimit)
+        pure (map fst spawned, map snd spawned)
 
       -- The MCP server answers for the campaign as it runs, reading worker
-      -- state through the workers' own refs, so it can only be started once
-      -- they exist. It has no shutdown of its own: the campaign ending is what
-      -- takes it down with the process.
-      spawnMCPServer workers = forM_ conf.campaignConf.serverPort $ \port -> do
-        liftIO $ pushCampaignEvent env $ ServerLog $
-          "MCP server listening on http://127.0.0.1:" <> show port <> "/mcp"
-        void $ liftIO $ forkIO $
-          runMCPServer env (map snd workers) (fromIntegral port)
+      -- state through the workers' own refs. Wait until every fuzzing worker
+      -- has replayed its initial corpus and subscribed to the command bus
+      -- before accepting clients; a broadcast written before a worker
+      -- subscribes is intentionally dropped by TChan. Symbolic workers, which
+      -- accept no commands, signal readiness immediately.
+      spawnMCPServer workers readyVars =
+        forM_ conf.campaignConf.serverPort $ \port ->
+          void $ liftIO $ forkIO $ do
+            mapM_ readMVar readyVars
+            runMCPServer env (map snd workers) (fromIntegral port)
 
   case effectiveMode of
     Interactive -> do
@@ -130,8 +133,8 @@ ui vm dict initialCorpus cliSelectedContract = do
       -- Attach the log/event forwarder before workers start so early worker
       -- events (like startup logs) are not lost by dupTChan.
       uiEventsForwarderStopVar <- spawnListener forwardEvent
-      workers <- spawnWorkers
-      spawnMCPServer workers
+      (workers, readyVars) <- spawnWorkers
+      spawnMCPServer workers readyVars
 
       ticker <- liftIO . forkIO . forever $ do
         threadDelay 200_000 -- 200 ms
@@ -202,8 +205,8 @@ ui vm dict initialCorpus cliSelectedContract = do
       -- Attach the log/event forwarder before workers start so early worker
       -- events (like startup logs) are not lost by dupTChan.
       uiEventsForwarderStopVar <- spawnListener forwardEvent
-      workers <- spawnWorkers
-      spawnMCPServer workers
+      (workers, readyVars) <- spawnWorkers
+      spawnMCPServer workers readyVars
 
       -- Handles ctrl-c
       liftIO $ forM_ [sigINT, sigTERM] $ \sig ->
@@ -247,6 +250,7 @@ ui vm dict initialCorpus cliSelectedContract = do
 
   spawnWorker env testLimit corpusChunk workerId = do
     stateRef <- newIORef initialWorkerState
+    readyVar <- newEmptyMVar
 
     let fuzzerAgent corpus limit =
           FuzzerAgent { fuzzerId = workerId
@@ -272,7 +276,8 @@ ui vm dict initialCorpus cliSelectedContract = do
       -- TODO: maybe figure this out with forkFinally?
       stopReason <- catches (do
           let timeoutUsecs = maybe (-1) (*1_000_000) env.cfg.uiConf.maxTime
-          fromMaybe TimeLimitReached <$> timeout timeoutUsecs (runAgent agent env)
+          fromMaybe TimeLimitReached <$>
+            timeout timeoutUsecs (runAgentWithReady (putMVar readyVar ()) agent env)
         )
         [ Handler $ \(e :: AsyncException) -> pure $ Killed (show e)
         , Handler $ \(e :: SomeException)  -> pure $ Crashed (show e)
@@ -293,7 +298,7 @@ ui vm dict initialCorpus cliSelectedContract = do
       liftIO $ atomically $
         writeTChan env.eventQueue (time, WorkerEvent workerId workerType (WorkerStopped stopReason))
 
-    pure (threadId, stateRef)
+    pure ((threadId, stateRef), readyVar)
 
   -- | Get a snapshot of all worker states
   workerStates workers =
