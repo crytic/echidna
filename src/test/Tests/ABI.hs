@@ -51,10 +51,18 @@ abiTests = testGroup "ABI coercion"
   , testCase "bytes preserve the full word and pad within the declared width" $ do
       parseAndCoerce (AbiBytesType 32) ("0x" <> replicate 64 'f') @?=
         Right (AbiBytes 32 (BS.replicate 32 255))
+      parseAndCoerce (AbiBytesType 32) ("0xdeadbeef" <> replicate 54 '0' <> "01") @?=
+        Right (AbiBytes 32 (BS.pack [0xde, 0xad, 0xbe, 0xef] <> BS.replicate 27 0 <> BS.singleton 1))
+      parseAndCoerce (AbiBytesType 32) "0x01" @?=
+        Right (AbiBytes 32 (BS.replicate 31 0 <> BS.singleton 1))
+      parseAndCoerce (AbiBytesType 32) "0x00" @?=
+        Right (AbiBytes 32 (BS.replicate 32 0))
       parseAndCoerce (AbiBytesType 4) "0x1234" @?=
         Right (AbiBytes 4 (BS.pack [0, 0, 0x12, 0x34]))
       assertBool "rejects bytes truncation" $ isLeft (parseAndCoerce (AbiBytesType 1) "256")
       assertBool "rejects negative bytes" $ isLeft (parseAndCoerce (AbiBytesType 32) "-1")
+      assertBool "rejects words wider than 32 bytes" $ isLeft $
+        parseAndCoerce (AbiBytesType 32) ("0x1" <> replicate 64 '0')
   , testCase "arrays coerce all elements and fixed lengths" $ do
       parseAndCoerce (AbiArrayDynamicType (AbiIntType 8)) "[-5, 11]" @?=
         Right (AbiArrayDynamic (AbiIntType 8) (V.fromList [AbiInt 8 (-5), AbiInt 8 11]))
@@ -82,6 +90,21 @@ abiTests = testGroup "ABI coercion"
       checkGenerated "give(0, ?, 1000)" True
   , testCase "uncoercible fuzz arguments are generated without losing valid ones" $
       checkGenerated "give(300, ?, 1000)" False
+  , testCase "mixed fuzz prototypes preserve concrete bytes32 words" $ do
+      let types = [AbiUIntType 8, AbiUIntType 8, AbiUIntType 256, AbiBytesType 32]
+          literal = "f_bytes32_mixed(1, ?, 3, 0xdeadbeef" <> replicate 54 '0' <> "01)"
+          bytes = BS.pack [0xde, 0xad, 0xbe, 0xef] <> BS.replicate 27 0 <> BS.singleton 1
+      prototype <- maybe (assertFailure "Could not parse prototype") pure (parseFuzzCall literal)
+      let candidates = matchingContracts prototype [(0x10, ("f_bytes32_mixed", types) :| [])]
+      (_, (name, vals)) <- evalStateT (genPrototypeCall prototype candidates) initialWorkerState
+      name @?= "f_bytes32_mixed"
+      map abiValueType vals @?= types
+      case vals of
+        [a, _, c, d] -> do
+          a @?= AbiUInt 8 1
+          c @?= AbiUInt 256 3
+          d @?= AbiBytes 32 bytes
+        _ -> assertFailure "Expected four arguments."
   ]
   where
     parseAndCoerce t literal = case parseArg literal of

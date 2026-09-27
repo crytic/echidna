@@ -134,7 +134,9 @@ replayTests = testGroup "Sequence replay"
   , testCase "MCP concrete arguments reach the declared function intact" $
       withSolcVersion (Just (>= solcV (0,8,0))) $ do
         (vm, env, _) <- load "mcp/type-probe.sol"
-        let cases =
+        let rawWord = "0xdeadbeef" <> replicate 54 '0' <> "01"
+            paddedOne = "0x" <> replicate 62 '0' <> "01"
+            cases =
               [ ("f_none()", ["Seen(8000)"])
               , ("f_uint256(42)", ["Seen(42)"])
               , ("f_uint8(7)", ["Seen(7)"])
@@ -147,6 +149,10 @@ replayTests = testGroup "Sequence replay"
               , ("f_bytes4(0x01020304)", ["Seen(16909060)"])
               , ("f_bytes32(0x" <> replicate 64 'f' <> ")",
                   ["Seen(115792089237316195423570985008687907853269984665640564039457584007913129639935)"])
+              , ("f_bytes32_mixed(1, 2, 3, " <> rawWord <> ")",
+                  ["MixedSeen(1, 2, 3, " <> T.pack rawWord <> ")"])
+              , ("f_bytes32_mixed(1, 2, 3, 0x01)",
+                  ["MixedSeen(1, 2, 3, " <> T.pack paddedOne <> ")"])
               , ("f_addr(0x10000)", ["Seen(65536)"])
               , ("f_bool(false)", ["Seen(0)"])
               , ("f_bool(true)", ["Seen(1)"])
