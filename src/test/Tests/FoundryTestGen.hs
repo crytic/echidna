@@ -20,7 +20,7 @@ import Echidna.Types.Config (Env)
 import Echidna.Types.Campaign (WorkerState)
 import EVM.ABI (AbiValue(..))
 import Echidna.Output.Foundry (foundryTest)
-import Echidna.Types.Test (EchidnaTest(..), TestType(..), TestValue(..), TestState(..))
+import Echidna.Types.Test (EchidnaTest(..), TestType(..), TestValue(..), TestState(..), assertionTest)
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerType(FuzzWorker, SymbolicWorker))
 
@@ -457,7 +457,7 @@ mkMinimalTest = EchidnaTest
   -- Foundry tests are only generated for solved/large tests.
   { state = Large 0
   -- AssertionTest is required for Foundry test generation.
-  , testType = AssertionTest False ("test", []) 0
+  , testType = assertionTest False ("test", []) 0
   , value = BoolValue True
   -- Empty reproducer is sufficient for testing contract name generation.
   , reproducer = []
