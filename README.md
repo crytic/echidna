@@ -318,6 +318,25 @@ $ nix develop # alternatively nix-shell
 [nix-shell]$ cabal new-repl
 ```
 
+### Running the test suites
+
+`cabal run tests` is the Haskell suite, and covers everything Echidna does in
+process.
+
+The MCP server is tested out of process instead, by starting a real campaign and
+driving it the way an agent client would. That suite is Python, and needs an
+`echidna` on `$PATH`:
+
+```sh
+$ pip install -r tests/mcp/requirements-test.txt
+$ pytest tests/mcp -v
+```
+
+Point it at a campaign you started yourself with `ECHIDNA_MCP_URL`, at a
+different port with `ECHIDNA_MCP_PORT`, or at a specific binary with
+`ECHIDNA_BIN`. An example of an agent driving a campaign through the same
+interface is in [examples/](examples/README.md).
+
 ## Public use of Echidna
 
 ### Property testing suites

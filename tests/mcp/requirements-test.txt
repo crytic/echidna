@@ -1,0 +1,13 @@
+# Dependencies for the out-of-process MCP test suite (tests/mcp/).
+#
+# Bounded by major version only: the suite is a compatibility check, so it
+# should be running against what clients actually ship rather than against
+# whatever was current when it was written.
+
+httpx>=0.27,<1
+pytest>=8.0,<10
+pytest-asyncio>=0.24,<2
+
+# Official Model Context Protocol SDK -- used as the reference "Claude-family"
+# client in test_mcp_claude.py (transport only; no API key required).
+mcp>=2,<3
