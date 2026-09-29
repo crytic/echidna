@@ -1,4 +1,4 @@
-module Echidna.Agent (runAgent) where
+module Echidna.Agent (runAgent, runAgentWithReady) where
 
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.State.Strict (get)
@@ -20,7 +20,14 @@ import Echidna.Worker.Symbolic (runSymWorker)
 -- once per worker. Listeners count 'WorkerStopped' events to decide when the
 -- campaign is over, so a second one retires a worker that is still running.
 runAgent :: Agent -> Env -> IO WorkerStopReason
-runAgent agent env = do
+runAgent = runAgentWithReady (pure ())
+
+-- | Run an agent, calling the supplied action once it is ready for external
+-- commands. Fuzzing workers become ready after replaying their initial corpus
+-- and subscribing to the inter-worker bus; symbolic workers do not accept
+-- commands, so they are ready immediately.
+runAgentWithReady :: IO () -> Agent -> Env -> IO WorkerStopReason
+runAgentWithReady onReady agent env = do
   let workerId = workerIdOf agent
       stateRef = stateRefOf agent
       -- Publish the worker state so the UI can read it
@@ -31,8 +38,10 @@ runAgent agent env = do
 
   (reason, finalState) <- flip runReaderT env $ case agent of
     FuzzerAgent{initialVm, initialDict, initialCorpus, testLimit} ->
-      runFuzzWorker callback initialVm initialDict workerId initialCorpus testLimit
-    SymbolicAgent{initialVm, initialDict, contractName} ->
+      runFuzzWorker callback (liftIO onReady)
+        initialVm initialDict workerId initialCorpus testLimit
+    SymbolicAgent{initialVm, initialDict, contractName} -> do
+      liftIO onReady
       runSymWorker callback initialVm initialDict workerId contractName
 
   -- The callback publishes as the worker goes, but not from every exit path

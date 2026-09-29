@@ -148,7 +148,7 @@ data CampaignConf = CampaignConf
   , workers            :: Maybe Word8
     -- ^ Number of fuzzing workers
   , serverPort         :: Maybe Word16
-    -- ^ Server-Sent Events HTTP port number, if missing server is not ran
+    -- ^ Port to serve MCP on, if missing the server is not ran
   , symExec            :: Bool
     -- ^ Whether to add an additional symbolic execution worker
   , symExecSMTSolver   :: Solver
