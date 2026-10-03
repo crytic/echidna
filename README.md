@@ -1,6 +1,6 @@
 # Echidna: A Fast Smart Contract Fuzzer <a href="https://raw.githubusercontent.com/crytic/echidna/master/echidna.png"><img src="https://raw.githubusercontent.com/crytic/echidna/master/echidna.png" width="75"/></a>
 
-![Build Status](https://github.com/crytic/echidna/workflows/CI/badge.svg)
+[![Build Status](https://github.com/crytic/echidna/workflows/CI/badge.svg)](https://github.com/crytic/echidna/actions/workflows/ci.yml)
 
 Echidna is a weird creature that eats bugs and is highly electrosensitive (with apologies to Jacob Stanley)
 
