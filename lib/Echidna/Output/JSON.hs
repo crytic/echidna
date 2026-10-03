@@ -9,10 +9,12 @@ import Data.IORef (readIORef)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text
-import Data.Text.Encoding (decodeUtf8)
+import Data.Foldable (toList)
+import Data.Text.Encoding (decodeUtf8, decodeUtf8')
 import Data.Vector.Unboxed qualified as VU
 import Numeric (showHex)
 
+import EVM.ABI (AbiValue(..))
 import EVM.Dapp (DappInfo)
 
 import Echidna.ABI (ppAbiValue, GenDict(..))
@@ -84,7 +86,7 @@ instance ToJSON TestStatus where
 data Transaction = Transaction
   { contract :: Text
   , function :: Text
-  , arguments :: Maybe [String]
+  , arguments :: Maybe [Value]
   , gas :: String
   , gasprice :: String
   , value :: String
@@ -99,6 +101,22 @@ instance ToJSON Transaction where
     , "gasprice" .= gasprice
     , "value" .= value
     ]
+
+-- | Encode an 'AbiValue' as JSON. Integers, addresses, bools and functions keep
+-- their textual rendering ('ppAbiValue') as a JSON string. @bytes@ and @bytesN@
+-- are @0x@-prefixed hex strings, @string@ is a JSON string (hex like @bytes@ if
+-- it is not valid UTF-8), and arrays and tuples are JSON arrays of encoded elements.
+abiValueToJSON :: AbiValue -> Value
+abiValueToJSON = \case
+  AbiBytes _ b        -> hex b
+  AbiBytesDynamic b   -> hex b
+  AbiString s         -> either (const $ hex s) toJSON (decodeUtf8' s)
+  AbiArrayDynamic _ v -> toJSON $ abiValueToJSON <$> toList v
+  AbiArray _ _ v      -> toJSON $ abiValueToJSON <$> toList v
+  AbiTuple v          -> toJSON $ abiValueToJSON <$> toList v
+  v                   -> toJSON $ ppAbiValue mempty v
+  where
+  hex b = toJSON . decodeUtf8 $ "0x" <> BS16.encode b
 
 encodeCampaign :: Env -> [WorkerState] -> IO L.ByteString
 encodeCampaign env workerStates = do
@@ -155,6 +173,6 @@ mapTest dappInfo test =
 
   mapCall = \case
     SolCreate _          -> ("<CREATE>", Nothing)
-    SolCall (name, args) -> (name, Just $ ppAbiValue mempty <$> args)
+    SolCall (name, args) -> (name, Just $ abiValueToJSON <$> args)
     NoCall               -> ("*wait*", Nothing)
     SolCalldata x        -> (decodeUtf8 $ "0x" <> BS16.encode x, Nothing)
