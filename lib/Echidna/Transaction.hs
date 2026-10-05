@@ -142,7 +142,9 @@ genPrototypeCall (name, args) candidates = do
   -- Only the argument types are taken from the signature; its name is the one
   -- the prototype asked for.
   (_, types) <- rElem dstAbis
-  vals <- zipWithM (\arg t -> maybe (genAbiValueM' genDict name 0 t) pure arg) args types
+  vals <- zipWithM (\arg t ->
+    let generate = genAbiValueM' genDict name 0 t
+    in maybe generate (either (const generate) pure . coerceAbiValue t) arg) args types
   pure (dstAddr, (name, vals))
 
 -- | The balance a sender address currently holds in the fuzzing world, read
