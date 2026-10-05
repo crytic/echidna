@@ -149,7 +149,7 @@ Test = {
 Transaction = {
   "contract"     : string,
   "function"     : string,
-  "arguments"    : [string]?,
+  "arguments"    : [JSON value]?,
   "gas"          : string,
   "gasprice"     : string,
   "value"        : string
@@ -170,7 +170,12 @@ Note that `gas`, `gasprice` and `value` are serialized as decimal strings
 rather than JSON numbers: these quantities (especially `value`, typically a
 number of wei) routinely exceed the range where JSON numbers preserve
 exactness, so consumers should parse them with an arbitrary-precision
-representation (e.g. `BigInt`). The `contract` and `name` fields of tests and
+representation (e.g. `BigInt`). Transaction `arguments` are JSON values rather
+than stringified ABI values: integers, addresses, booleans and function values
+remain JSON strings; `bytes` and `bytesN` values are `0x`-prefixed hexadecimal
+strings; Solidity `string` values are JSON strings when valid UTF-8 and fall
+back to `0x`-prefixed hexadecimal otherwise; and arrays and tuples are encoded
+as JSON arrays recursively. The `contract` and `name` fields of tests and
 transactions are placeholders (always empty) pending proper contract-name
 tracking ([#415](https://github.com/crytic/echidna/issues/415)).
 
