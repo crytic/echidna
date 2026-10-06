@@ -27,7 +27,7 @@ import Options.Applicative
 import Paths_echidna (version)
 import System.Console.ANSI (hNowSupportsANSI)
 import System.Directory (createDirectoryIfMissing)
-import System.Exit (exitWith, exitSuccess, ExitCode(..), exitFailure)
+import System.Exit (die, exitWith, exitSuccess, ExitCode(..), exitFailure)
 import System.FilePath ((</>), (<.>))
 import System.IO (hPutStrLn, stderr)
 import System.IO.CodePage (withCP65001)
@@ -73,6 +73,7 @@ main = withUtf8 $ withCP65001 $ withStrippedExceptions $ do
   EConfigWithUsage loadedCfg ks _ <-
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
   cfg <- overrideConfig loadedCfg opts
+  either die pure $ validateConfig cfg
 
   printProjectName cfg.projectName
 
@@ -219,7 +220,7 @@ options = Options . NE.fromList
     <> help "Generate calls to all deployed contracts.")
   <*> optional (option auto $ long "timeout"
     <> metavar "INTEGER"
-    <> help "Timeout given in seconds.")
+    <> help "Timeout given in seconds. Cannot be used with --seed; use --test-limit instead.")
   <*> optional (option auto $ long "test-limit"
     <> metavar "INTEGER"
     <> help ("Number of transactions to execute during testing. Default is " ++ show defaultTestLimit))
@@ -246,7 +247,7 @@ options = Options . NE.fromList
     <> help "Addresses to use for the transactions sent during testing. Can be passed multiple times. Check the documentation to see the default values.")
   <*> optional (option auto $ long "seed"
     <> metavar "SEED"
-    <> help "Run with a specific seed.")
+    <> help "Run with a specific seed. Cannot be used with --timeout.")
   <*> switch (long "disable-slither"
     <> help "Disable running Slither.")
   <*> optional (option str $ long "crytic-args"

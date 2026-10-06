@@ -197,3 +197,10 @@ defaultConfig = either (error "Config parser got messed up :(") id $ Y.decodeEit
 -- | Try to parse an Echidna config file, throw an error if we can't.
 parseConfig :: FilePath -> IO EConfigWithUsage
 parseConfig f = BS.readFile f >>= Y.decodeThrow
+
+-- | Validate the configuration after applying command-line overrides.
+validateConfig :: EConfig -> Either String ()
+validateConfig config =
+  case (config.campaignConf.seed, config.uiConf.maxTime) of
+    (Just _, Just _) -> Left "Cannot use seed with timeout: timeout makes runs non-deterministic. Use testLimit (--test-limit) instead."
+    _ -> Right ()
