@@ -4,6 +4,7 @@ import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract', testContractNamed, solcV, solved, verified, proven)
 import Echidna.Types.Worker (WorkerType(..))
+import Tests.Keccak (keccakTests)
 
 symbolicTests :: TestTree
 symbolicTests = testGroup "Symbolic tests" $
@@ -30,6 +31,7 @@ symbolicTests = testGroup "Symbolic tests" $
   ] :: [TestTree])
   ++ map arithmeticTest ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
   ++ map arithmeticAbstractionTest ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
+  ++ [keccakTests]
   where
     arithmeticTest conf =
       testContractNamed ("symbolic/arithmetic.sol (" ++ conf ++ ")")
