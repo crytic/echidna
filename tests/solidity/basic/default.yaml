@@ -58,6 +58,7 @@ deployBytecodes: []
 #whether ot not to fuzz all contracts
 allContracts: false
 #timeout controls test timeout settings
+#timeout cannot be used with seed because it makes runs non-deterministic; use testLimit instead
 timeout: null
 #seed not defined by default, is the random seed
 #seed: 0

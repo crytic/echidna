@@ -1,14 +1,15 @@
 module Tests.Config (configTests) where
 
 import Control.Monad (void)
+import Data.Either (isRight)
 import Data.Function ((&))
 import Data.Maybe (isJust, isNothing)
 import Data.Yaml qualified as Y
 import Optics.Core (sans)
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (testCase, assertBool, assertFailure)
+import Test.Tasty.HUnit (testCase, assertBool, assertEqual, assertFailure)
 
-import Echidna.Config (defaultConfig, parseConfig)
+import Echidna.Config (defaultConfig, parseConfig, validateConfig)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfigWithUsage(..), EConfig(..))
 import Echidna.Types.Tx (TxConf(..))
@@ -78,5 +79,22 @@ configTests = testGroup "Configuration tests" $
           assertBool "verification mode should enable symbolic execution" $
             config.campaignConf.symExec
         Left e -> assertFailure $ "unexpected decoding error: " <> show e
+  , testGroup "seed and timeout validation"
+      [ testCase name $
+          case Y.decodeEither' yaml of
+            Left e -> assertFailure $ "unexpected decoding error: " <> show e
+            Right config -> assertEqual "configuration validity" valid $ isRight (validateConfig config)
+      | (name, yaml, valid) <-
+          [ ("default configuration", "", True)
+          , ("seed with test limit", "seed: 1\ntestLimit: 20000", True)
+          , ("timeout without seed", "timeout: 4", True)
+          , ("seed with null timeout", "seed: 0\ntimeout: null", True)
+          , ("timeout with null seed", "seed: null\ntimeout: 4", True)
+          , ("seed with timeout", "seed: 1\ntimeout: 4", False)
+          , ("zero seed with timeout", "seed: 0\ntimeout: 4", False)
+          , ("seed with zero timeout", "seed: 1\ntimeout: 0", False)
+          , ("seed with timeout and test limit", "seed: 1\ntimeout: 4\ntestLimit: 20000", False)
+          ]
+      ]
   ]
   where files = ["basic/config.yaml", "basic/default.yaml", "basic/coverage-test.yaml", "basic/corpus-fallback-test.yaml"]
