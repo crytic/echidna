@@ -34,6 +34,10 @@ import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..), maxGasPerBlock)
 
+-- | Enable hevm's arithmetic abstraction for symbolic exploration and verification.
+symExecAbstractArith :: Bool
+symExecAbstractArith = True
+
 panicMsg :: Word256 -> ByteString
 panicMsg err = selector "Panic(uint256)" <> encodeAbiValue (AbiUInt 256 err)
 
