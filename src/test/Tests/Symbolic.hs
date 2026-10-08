@@ -29,6 +29,7 @@ symbolicTests = testGroup "Symbolic tests" $
     --]
   ] :: [TestTree])
   ++ map arithmeticTest ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
+  ++ map arithmeticAbstractionTest ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
   where
     arithmeticTest conf =
       testContractNamed ("symbolic/arithmetic.sol (" ++ conf ++ ")")
@@ -39,3 +40,8 @@ symbolicTests = testGroup "Symbolic tests" $
         , ("division counterexample reproduced", solved "divCounterexample")
         , ("multiplication counterexample reproduced", solved "mulCounterexample")
         ]
+
+    arithmeticAbstractionTest conf =
+      testContractNamed ("symbolic/arithmetic-abstraction.sol (" ++ conf ++ ")")
+        "symbolic/arithmetic-abstraction.sol" (Just "ArithmeticAbstraction") Nothing (Just conf) True SymbolicWorker
+        [ ("multiplication monotonicity proved", proven "mulMonotone") ]
