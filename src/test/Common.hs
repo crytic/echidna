@@ -13,6 +13,7 @@ module Common
   , solved
   , passed
   , verified
+  , proven
   , solvedLen
   , solvedWith
   , solvedWithout
@@ -265,6 +266,12 @@ verified n (env, _) = do
     Just t | isOpen t     -> True
     Nothing               -> error ("no test was found with name: " ++ show n)
     _                     -> False
+
+-- | Require a completed proof; an open test or solver timeout is not sufficient.
+proven :: Text -> (Env, WorkerState) -> IO Bool
+proven n (env, _) = do
+  tests <- traverse readIORef env.testRefs
+  pure $ maybe False isVerified (getResult n tests)
 
 solvedLen :: Int -> Text -> (Env, WorkerState) -> IO Bool
 solvedLen i t final = (== Just i) . fmap length <$> solnFor t final

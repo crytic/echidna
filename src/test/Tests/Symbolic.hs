@@ -2,7 +2,7 @@ module Tests.Symbolic (symbolicTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract', solcV, solved, verified)
+import Common (testContract', testContractNamed, solcV, solved, verified, proven)
 import Echidna.Types.Worker (WorkerType(..))
 
 symbolicTests :: TestTree
@@ -28,3 +28,14 @@ symbolicTests = testGroup "Symbolic tests" $
     --  [ ("f passed", solved "f")
     --]
   ] :: [TestTree])
+  ++ map arithmeticTest ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
+  where
+    arithmeticTest conf =
+      testContractNamed ("symbolic/arithmetic.sol (" ++ conf ++ ")")
+        "symbolic/arithmetic.sol" (Just "Arithmetic") Nothing (Just conf) True SymbolicWorker
+        [ ("division/multiplication bound proved", proven "divMulBound")
+        , ("remainder bound proved", proven "modBound")
+        , ("spurious multiplication counterexample rejected", proven "mulRefinement")
+        , ("division counterexample reproduced", solved "divCounterexample")
+        , ("multiplication counterexample reproduced", solved "mulCounterexample")
+        ]
