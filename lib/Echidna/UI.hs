@@ -38,7 +38,7 @@ import Echidna.MCP (runMCPServer)
 import Echidna.Output.Corpus (saveCorpusEvent)
 import Echidna.Output.JSON qualified
 import Echidna.SourceAnalysis.Slither (isEmptySlitherInfo)
-import Echidna.Types.Agent (Agent(..), workerTypeOf)
+import Echidna.Types.Agent (Agent(..), mkFuzzerAgent, workerTypeOf)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Corpus qualified as Corpus
@@ -252,17 +252,10 @@ ui vm dict initialCorpus cliSelectedContract = do
     stateRef <- newIORef initialWorkerState
     readyVar <- newEmptyMVar
 
-    let fuzzerAgent corpus limit =
-          FuzzerAgent { fuzzerId = workerId
-                      , initialVm = vm
-                      , initialDict = dict
-                      , initialCorpus = corpus
-                      , testLimit = limit
-                      , stateRef
-                      }
+    let fuzzerAgent = mkFuzzerAgent vm dict workerId
 
         agent = case workerIDToType env.cfg.campaignConf workerId of
-          FuzzWorker -> fuzzerAgent corpusChunk testLimit
+          FuzzWorker -> fuzzerAgent stateRef corpusChunk testLimit
           SymbolicWorker ->
             SymbolicAgent { initialVm = vm
                           , initialDict = dict
@@ -290,8 +283,9 @@ ui vm dict initialCorpus cliSelectedContract = do
       case stopReason of
         TimeLimitReached | workerType == FuzzWorker -> do
           tests <- traverse readIORef env.testRefs
-          when (any needsShrinking tests) $ void $
-            runAgent (fuzzerAgent [] 0) env
+          when (any needsShrinking tests) $ do
+            shrinkStateRef <- newIORef initialWorkerState
+            void $ runAgent (fuzzerAgent shrinkStateRef [] 0) env
         _ -> pure ()
 
       time <- liftIO getTimestamp
