@@ -1,0 +1,7 @@
+# Regression test for #1556: senders with zero balance must never
+# carry a non-zero msg.value. The assertion in pay() fails if the
+# fuzzer generates a transaction that could not reach the callee on
+# a real chain.
+testMode: assertion
+balanceAddr: 0
+sender: ["0x10000"]

@@ -78,6 +78,8 @@ integrationTests = testGroup "Solidity Integration Testing"
       , ("echidna_low_level_call failed",          passed      "echidna_low_level_call")
       , ("echidna_no_magic failed",                passed      "echidna_no_magic")
       ]
+  , testContractV "basic/zero-balance-sender.sol" (Just (>= solcV (0,8,0))) (Just "basic/zero-balance-sender.yaml")
+      [ ("zero-balance sender carried value",      passed      "pay") ]
   , testContract "basic/library.sol"      (Just "basic/library.yaml")
       [ ("echidna_library_call failed",            solved      "echidna_library_call")
       , ("echidna_valid_timestamp failed",         passed      "echidna_valid_timestamp")
