@@ -252,13 +252,15 @@ ui vm dict initialCorpus cliSelectedContract = do
     stateRef <- newIORef initialWorkerState
     readyVar <- newEmptyMVar
 
-    let fuzzerAgent corpus limit =
+    let fuzzerAgent corpus limit = fuzzerAgentWith corpus limit stateRef
+
+        fuzzerAgentWith corpus limit ref =
           FuzzerAgent { fuzzerId = workerId
                       , initialVm = vm
                       , initialDict = dict
                       , initialCorpus = corpus
                       , testLimit = limit
-                      , stateRef
+                      , stateRef = ref
                       }
 
         agent = case workerIDToType env.cfg.campaignConf workerId of
@@ -290,8 +292,11 @@ ui vm dict initialCorpus cliSelectedContract = do
       case stopReason of
         TimeLimitReached | workerType == FuzzWorker -> do
           tests <- traverse readIORef env.testRefs
-          when (any needsShrinking tests) $ void $
-            runAgent (fuzzerAgent [] 0) env
+          when (any needsShrinking tests) $ do
+            -- A ref of its own, so the zeroed state this pass publishes first
+            -- cannot clobber the counters the report is read from.
+            shrinkStateRef <- newIORef initialWorkerState
+            void $ runAgent (fuzzerAgentWith [] 0 shrinkStateRef) env
         _ -> pure ()
 
       time <- liftIO getTimestamp
