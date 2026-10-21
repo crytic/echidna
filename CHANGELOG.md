@@ -1,6 +1,7 @@
 ## Unreleased
 
 * New `symExecSolverMemory` option sets the memory limit per SMT solver process in MB for symbolic exploration and verification. The default is 16384 MB (16 GB), increased from the fixed 1024 MB limit
+* Updated HEVM to `63a3f50f`
 * **JSON output: `transactions[].arguments` is now structured.** `bytes` and `bytesN` arguments are `0x`-prefixed hex strings, `string` arguments are plain JSON strings (hex if not valid UTF-8), and arrays and tuples are JSON arrays of encoded elements. They used to be the Haskell `show` rendering (e.g. `"\\NUL\\171"`, `"[...]"`) wrapped in a JSON string. Integers, addresses and bools are unchanged
 * **`--server PORT` now serves MCP instead of Server-Sent Events.** The flag and the `server` config key keep their names, but the protocol behind them has changed: instead of a one-way stream of campaign events, the port serves the Model Context Protocol over HTTP at `http://127.0.0.1:PORT/mcp`, with tools to inspect a running campaign (`status`, `target`, `show_coverage`, `dump_lcov`) and to steer it (`inject_fuzz_transactions`, `clear_fuzz_priorities`, `execute_sequence`, `sample`, `reload_corpus`). Anything consuming the SSE stream will need to move to the MCP `status` tool; the events themselves are unchanged in the text, JSON and UI outputs
 * New `verification` test mode to symbolically verify each function of a contract using a single transaction, instead of configuring the symbolic worker by hand (#1595)
