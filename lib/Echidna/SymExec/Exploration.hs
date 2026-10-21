@@ -19,7 +19,7 @@ import EVM.Dapp (DappInfo(..))
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Fetch (RpcInfo(..))
 import EVM.Solidity (SolcContract(..), Method(..))
-import EVM.Solvers (defMemLimit, withSolvers)
+import EVM.Solvers (withSolvers)
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
 import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
@@ -103,7 +103,7 @@ exploreContract contract method vm = do
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
   pushWorkerEvent $ SymExecLog ("Exploring " <> (show method.name))
-  liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
+  liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT conf.campaignConf.symExecSolverMemory $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
       -- For now, we will be exploring a single method at a time.
       -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.

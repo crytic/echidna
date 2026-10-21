@@ -7,6 +7,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word8, Word16)
 import GHC.Conc (numCapabilities)
+import Numeric.Natural (Natural)
 
 import EVM.ABI (AbiValue(..))
 import EVM.Solvers (Solver(..))
@@ -173,6 +174,8 @@ data CampaignConf = CampaignConf
   , symExecMaxExplore :: Integer
     -- ^ Maximum number of states to explore before we stop exploring it.
     -- Only relevant if symExec is True
+  , symExecSolverMemory :: Natural
+    -- ^ Memory limit for each SMT solver process, in MB.
   }
 
 -- | The state of a fuzzing campaign.
@@ -232,6 +235,9 @@ defaultSymExecNWorkers = 1
 
 defaultSymExecMaxExplore :: Integer
 defaultSymExecMaxExplore = 10
+
+defaultSymExecSolverMemory :: Natural
+defaultSymExecSolverMemory = 16384
 
 defaultSymExecMaxIters :: Integer
 defaultSymExecMaxIters = 5

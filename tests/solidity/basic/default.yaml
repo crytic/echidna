@@ -127,6 +127,9 @@ symExecTargets: null
 # List the max number of states to explore when using symbolc execution
 # only relevant if symExec is true
 symExecMaxExplore: 10
+# Memory limit for each SMT solver process, in MB (16 GB by default)
+# only relevant if symExec is true
+symExecSolverMemory: 16384
 # Select the SMT solver when using symbolic execution. Valid values are: "cvc5", "z3" and "bitwuzla"
 # only relevant if symExec is true
 symExecSMTSolver: bitwuzla
