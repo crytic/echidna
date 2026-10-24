@@ -17,9 +17,9 @@ import Data.Word (Word64)
 import EVM.Format (showTraceTree)
 import EVM.Types (Block(..), VM(..), VMType(Concrete), forceLit)
 
-import Echidna.Events (Events, extractEvents)
+import Echidna.Events (Events, extractEvents, hasEventNamed)
 import Echidna.Exec (execTx)
-import Echidna.Test (checkAssertionEvent, checkPanicEvent)
+import Echidna.Test (hasPanic)
 import Echidna.Types.Config (Env(..))
 import Echidna.Types.Tx (Tx, TxResult(..), getResult)
 import Echidna.UI.Report (ppTx)
@@ -107,9 +107,10 @@ executeSeq includeTrace vm0 txs = do
     let
       result = getResult vmResult
       logs = extractEvents True dapp vm'
+      assertionFailed = hasEventNamed "AssertionFailed" dapp vm' || hasPanic "1" dapp vm'
       outcome = TxOutcome { index
                           , call
-                          , status = txStatus result logs
+                          , status = txStatus assertionFailed result
                           , result
                           , gasUsed = fromIntegral (vm'.burned - vm.burned)
                           , logs
@@ -119,8 +120,8 @@ executeSeq includeTrace vm0 txs = do
 
 -- | Classify how a transaction ended, detecting assertion failures the same
 -- way an assertion test does.
-txStatus :: TxResult -> Events -> TxStatus
-txStatus result logs
-  | checkAssertionEvent logs || checkPanicEvent "1" logs = AssertionFailed
+txStatus :: Bool -> TxResult -> TxStatus
+txStatus assertionFailed result
+  | assertionFailed = AssertionFailed
   | result `elem` [ReturnTrue, ReturnFalse, Stop] = Completed
   | otherwise = Reverted

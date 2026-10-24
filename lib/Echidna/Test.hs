@@ -7,6 +7,7 @@ import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as LBS
+import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Prelude hiding (Word)
@@ -16,11 +17,11 @@ import EVM.Dapp (DappInfo)
 import EVM.Types hiding (Env)
 
 import Echidna.ABI
-import Echidna.Events (Events, extractEvents)
+import Echidna.Events (Events, decodeRevert, extractEvents, hasEventNamed)
 import Echidna.Exec
 import Echidna.SymExec.Symbolic (forceBuf)
 import Echidna.Types.Config
-import Echidna.Types.Signature (SolSignature)
+import Echidna.Types.Signature (FunctionName, SolSignature)
 import Echidna.Types.Test
 import Echidna.Types.Tx (Tx, TxConf(..), basicTx, TxResult(..), getResult)
 
@@ -130,21 +131,21 @@ createTests m td ts seqLen r ss = case m of
   "optimization" ->
     map (\t -> createTest (OptimizationTest t r)) ts
   "assertion" ->
-    map (\s -> createTest (AssertionTest False s r))
+    map (\s -> createTest (assertionTest False s r))
         (filter (/= fallback) ss) ++ [createTest (CallTest "AssertionFailed(..)" checkAssertionTest)]
   "verification" ->
-    map (\s -> createTest (AssertionTest False s r)) (filter (/= fallback) ss)
+    map (\s -> createTest (assertionTest False s r)) (filter (/= fallback) ss)
   -- In foundry mode, seqLen distinguishes fuzz tests (seqLen == 1) from
   -- invariant tests (seqLen > 1), which determines how functions are filtered.
   -- "check" and "prove" functions are symbolic entry points, but this is a
   -- fuzzing campaign, so they are tested as regular fuzz tests here.
   "foundry" ->
     if seqLen == 1 then
-      map (\s -> createTest (AssertionTest True s r))
+      map (\s -> createTest (assertionTest True s r))
         (filter (\(n, xs) -> (isFoundryTestName n || isFoundrySymbolicName n)
                              && not (null xs)) ss)
     else
-      map (\s -> createTest (AssertionTest True s r))
+      map (\s -> createTest (assertionTest True s r))
           (filter (\(n, xs) -> isFoundryInvariantName n
                                || isFoundrySymbolicName n
                                || not (null xs)) ss)
@@ -189,8 +190,9 @@ checkETest test vm = case test.testType of
   Exploration -> pure (BoolValue True, vm) -- These values are never used
   PropertyTest n a -> checkProperty vm n a
   OptimizationTest n a -> checkOptimization vm n a
-  AssertionTest dt n a -> if dt then checkFoundryAssertion vm n a
-                                else checkStatefulAssertion vm n a
+  AssertionTest{foundry, sig, addr, sel} ->
+    if foundry then checkFoundryAssertion vm (fst sig) sel addr
+               else checkStatefulAssertion vm sel addr
   CallTest _ f -> checkCall vm f
 
 -- | Given a property test, evaluate it and see if it currently passes.
@@ -245,16 +247,14 @@ checkOptimization vm f a = do
 checkStatefulAssertion
   :: (MonadReader Env m, MonadThrow m)
   => VM Concrete
-  -> SolSignature
+  -> BS.ByteString -- ^ selector of the function under test
   -> Addr
   -> m (TestValue, VM Concrete)
-checkStatefulAssertion vm sig addr = do
+checkStatefulAssertion vm sel addr = do
   dappInfo <- asks (.dapp)
   let
-    -- Whether the last transaction called the function `sig`.
-    isCorrectFn =
-      BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty))
-                    (forceBuf vm.state.calldata)
+    -- Whether the last transaction called the function under test.
+    isCorrectFn = BS.isPrefixOf sel (forceBuf vm.state.calldata)
     -- Whether the last transaction executed a function on the contract `addr`.
     isCorrectAddr = LitAddr addr == vm.state.codeContract
     isCorrectTarget = isCorrectFn && isCorrectAddr
@@ -266,26 +266,23 @@ checkStatefulAssertion vm sig addr = do
     txtOffset = 4+32+32 -- selector + offset + length
     -- Test always passes if it doesn't target the last executed contract and function.
     -- Otherwise it passes if it doesn't cause an assertion failure.
-    events = extractEvents False dappInfo vm
-    eventFailure = not (null events) && (checkAssertionEvent events || checkPanicEvent "1" events)
+    eventFailure = hasEventNamed "AssertionFailed" dappInfo vm || hasPanic "1" dappInfo vm
     isFailure = isCorrectTarget && (eventFailure || isAssertionFailure)
   pure (BoolValue (not isFailure), vm)
 
 checkFoundryAssertion
   :: (MonadReader Env m, MonadThrow m)
   => VM Concrete
-  -> SolSignature
+  -> FunctionName -- ^ name of the function under test
+  -> BS.ByteString -- ^ selector of the function under test
   -> Addr
   -> m (TestValue, VM Concrete)
-checkFoundryAssertion vm sig addr = do
+checkFoundryAssertion vm name sel addr = do
   let
-    name = fst sig
     -- Whether the last transaction has any value
     hasValue = vm.state.callvalue /= Lit 0
-    -- Whether the last transaction called the function `sig`.
-    isCorrectFn =
-      BS.isPrefixOf (BS.take 4 (abiCalldata (encodeSig sig) mempty))
-                    (forceBuf vm.state.calldata)
+    -- Whether the last transaction called the function under test.
+    isCorrectFn = BS.isPrefixOf sel (forceBuf vm.state.calldata)
     isAssertionFailure
       -- "testFail" functions are expected to revert, so the test only fails
       -- when the call succeeds.
@@ -319,11 +316,7 @@ checkCall vm f = do
 
 checkAssertionTest :: DappInfo -> VM Concrete -> TestValue
 checkAssertionTest dappInfo vm =
-  let events = extractEvents False dappInfo vm
-  in BoolValue $ null events || not (checkAssertionEvent events)
-
-checkAssertionEvent :: Events -> Bool
-checkAssertionEvent = any (T.isPrefixOf "AssertionFailed(")
+  BoolValue $ not (hasEventNamed "AssertionFailed" dappInfo vm)
 
 checkSelfDestructedTarget :: Addr -> DappInfo -> VM Concrete -> TestValue
 checkSelfDestructedTarget addr _ vm =
@@ -337,10 +330,19 @@ checkAnySelfDestructed _ vm =
 checkPanicEvent :: T.Text -> Events -> Bool
 checkPanicEvent n = any (T.isPrefixOf ("Panic(" <> n <> ")"))
 
+-- | Whether the last transaction reverted with @Panic(n)@. Only renders the
+-- events if the contract declares a Panic event of its own, which
+-- 'checkPanicEvent' would match too.
+hasPanic :: T.Text -> DappInfo -> VM Concrete -> Bool
+hasPanic n dappInfo vm = checkPanicEvent n events
+  where
+  events
+    | hasEventNamed "Panic" dappInfo vm = extractEvents False dappInfo vm
+    | otherwise = maybeToList (decodeRevert False vm)
+
 checkOverflowTest :: DappInfo -> VM Concrete-> TestValue
 checkOverflowTest dappInfo vm =
-  let es = extractEvents False dappInfo vm
-  in BoolValue $ null es || not (checkPanicEvent "17" es)
+  BoolValue $ not (hasPanic "17" dappInfo vm)
 
 -- | Reproduce a test saving VM snapshot after every transaction
 reproduceTest
