@@ -115,8 +115,7 @@ callseq vm txSeq isReplaying = do
     -- Even if this takes a bit of time, this is okay as finding new coverage
     -- is expected to be infrequent in the long term
     newSize <- liftIO $ atomicModifyIORef' env.corpusRef $ \corp ->
-      -- Corpus is a bit too lazy, force the evaluation to reduce the memory usage
-      let !corp' = force $ addToCorpus (ncallseqs + 1) results corp
+      let !corp' = addToCorpus (ncallseqs + 1) results corp
       in (corp', corpusSize corp')
 
     (points, numCodehashes) <- liftIO $ coverageStats env.coverageRefInit env.coverageRefRuntime
@@ -207,10 +206,15 @@ callseq vm txSeq isReplaying = do
       getTupleVector (AbiTuple ts) = ts
       getTupleVector _ = error "Not a tuple!"
 
-  -- | Add transactions to the corpus, discarding reverted ones
+  -- | Add transactions to the corpus, discarding reverted ones. The new entry
+  -- is deep-forced so the shared corpus never retains VM results or thunks
+  -- through it; everything already in the corpus was forced on its own
+  -- insertion.
   addToCorpus :: Int -> [(Tx, VMResult Concrete)] -> Corpus -> Corpus
   addToCorpus n res corpus =
-    if null rtxs then corpus else Set.insert (n, rtxs) corpus
+    if null rtxs
+      then corpus
+      else let !entry = force (n, rtxs) in Set.insert entry corpus
     where rtxs = fst <$> res
 
 -- | Fold a sequence of transaction results into the sampling map, updating

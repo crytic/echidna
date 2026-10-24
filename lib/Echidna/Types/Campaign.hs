@@ -14,6 +14,7 @@ import EVM.Solvers (Solver(..))
 
 import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
+import Echidna.Types.Corpus (CorpusSelector)
 import Echidna.Types.Coverage (CoverageFileType, CoverageMap)
 import Echidna.Types.Signature (SolCallPrototype)
 import Echidna.Types.Tx (TxResult(..))
@@ -203,6 +204,10 @@ data WorkerState = WorkerState
     -- ^ Call sequences to bias generation towards, each with the probability
     --   of being used in place of a corpus-mutated sequence. Empty unless
     --   sequences were explicitly injected into this worker.
+  , corpusSelector :: !(Maybe (Int, CorpusSelector))
+    -- ^ Cached corpus selection structure, tagged with the corpus size it was
+    --   built at. The shared corpus only ever grows, so the size doubles as a
+    --   version stamp; see 'Echidna.Worker.Fuzz.randseq'.
   }
 
 initialWorkerState :: WorkerState
@@ -216,6 +221,7 @@ initialWorkerState =
               , runningThreads = []
               , sampledFunctions = Map.empty
               , prioritizedSequences = []
+              , corpusSelector = Nothing
               }
 
 defaultTestLimit :: Int

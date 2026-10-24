@@ -10,7 +10,7 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, testCase, (@?=))
 import Test.Tasty.QuickCheck
   (Gen, Positive(..), arbitrary, choose, counterexample, elements, forAll, listOf1, property,
-   testProperty, vectorOf, (===))
+   testProperty, (===))
 
 import EVM.ABI (AbiValue(..))
 
@@ -20,7 +20,7 @@ import Echidna.Config (defaultConfig)
 import Echidna.Mutator.Corpus (CorpusMutation(..), TxsMutation(..), cutRange, getCorpusMutation)
 import Echidna.Types.Campaign
 import Echidna.Types.Config (EConfig(..), Env(..))
-import Echidna.Types.Corpus (Corpus)
+import Echidna.Types.Corpus (Corpus, CorpusSelector, mkCorpusSelector)
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerType(..))
 import Tests.Encoding () -- Arbitrary Tx
@@ -30,10 +30,11 @@ mutatorTests = testGroup "Corpus mutation"
   [ testProperty "every mutation yields exactly seqLen transactions" $
       forAll genCorpus $ \corpus ->
       forAll (choose (1, 8)) $ \ql ->
-      forAll (vectorOf ql arbitrary) $ \gtxs ->
+      forAll arbitrary $ \gtx ->
       forAll (elements allMutations) $ \m ->
       forAll arbitrary $ \seed ->
-        length (evalRand (getCorpusMutation m ql corpus gtxs) (mkStdGen seed)) === ql
+        length (evalRand (getCorpusMutation m ql (mkCorpusSelector corpus) (pure gtx)) (mkStdGen seed))
+          === ql
   , testGroup "cut point"
       [ testCase "identity keeps a strict prefix" $ do
           cutRange Identity 5 @?= (0, 4)
@@ -48,7 +49,7 @@ mutatorTests = testGroup "Corpus mutation"
       [ testProperty "a stored transaction is tweaked or replaced, never replayed" $
           forAll (elements [RandomAppend Mutation, RandomPrepend Mutation]) $ \m ->
           forAll arbitrary $ \seed ->
-            case evalRand (getCorpusMutation m 1 singleton [fresh]) (mkStdGen seed) of
+            case evalRand (getCorpusMutation m 1 singleton (pure fresh)) (mkStdGen seed) of
               [tx] | tx == fresh -> property True
                    | otherwise ->
                        counterexample (show tx) $ tx /= stored && fnName tx == fnName stored
@@ -56,12 +57,11 @@ mutatorTests = testGroup "Corpus mutation"
       , testProperty "a stored transaction with nothing to change is replaced" $
           forAll (elements [mkTx "stored" [], mkTx "stored" [AbiAddress 0]]) $ \s ->
           forAll arbitrary $ \seed ->
-            evalRand (getCorpusMutation (RandomAppend Mutation) 1 (Set.singleton (1, [s])) [fresh])
-                     (mkStdGen seed)
+            evalRand (getCorpusMutation (RandomAppend Mutation) 1 (single s) (pure fresh)) (mkStdGen seed)
               === [fresh]
       , testProperty "identity yields the fresh transaction" $
           forAll arbitrary $ \seed ->
-            evalRand (getCorpusMutation (RandomAppend Identity) 1 singleton [fresh]) (mkStdGen seed)
+            evalRand (getCorpusMutation (RandomAppend Identity) 1 singleton (pure fresh)) (mkStdGen seed)
               === [fresh]
       ]
   , testGroup "forced mutation"
@@ -83,9 +83,12 @@ mutatorTests = testGroup "Corpus mutation"
       ]
   ]
 
--- | A seqLen 1 corpus: one single-transaction sequence.
-singleton :: Corpus
-singleton = Set.singleton (1, [stored])
+-- | A seqLen 1 corpus prepared for selection: one single-transaction sequence.
+singleton :: CorpusSelector
+singleton = single stored
+
+single :: Tx -> CorpusSelector
+single tx = mkCorpusSelector (Set.singleton (1, [tx]))
 
 -- | The stored transaction takes an integer, the argument type the ABI mutators
 -- change least often. The fresh one is distinguishable by name.
