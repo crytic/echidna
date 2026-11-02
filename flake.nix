@@ -119,8 +119,8 @@
           (pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "argotorg";
             repo = "hevm";
-            rev = "63a3f50f562961080a114bddbd7764ce743ad001";
-            sha256 = "sha256-ZTd8JREb5Eyz0aZmf8O8HnvNdt5C5fELvsENMA+cycU=";
+            rev = "8007137b2c705f04a5bf5061db913eff075d189f";
+            sha256 = "sha256-N2Y3L6cqsy0NN/wbh8wDRsmUbyZokstTkMT+fIkPOjc=";
           }) { secp256k1 = pkgs.secp256k1; })
           ([
             pkgs.haskell.lib.compose.dontCheck
