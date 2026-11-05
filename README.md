@@ -66,6 +66,13 @@ The example above uses the default **property** mode, but Echidna supports sever
 * **`optimization`**: Maximize the return value of `echidna_`-prefixed functions that return `int256` (uses the same configurable prefix as property mode).
 * **`exploration`**: Collect coverage without checking properties.
 
+With `symExec: true`, the symbolic worker can solve for a state-changing call
+that makes a property or a subsequent no-argument assertion fail. It can start
+from the initial state or from a corpus sequence, and replays counterexamples
+concretely before reporting them. Set `workers: 0` to check each selected method
+without fuzzing workers; `symExecTargets` restricts those methods. This searches
+one symbolic state-changing call at a time and does not prove a stateful invariant.
+
 ### Collecting and visualizing coverage
 
 After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain two entries: (1) a directory named `coverage` with JSON files that can be replayed by Echidna and (2) a plain-text file named `covered.txt`, a copy of the source code with coverage annotations.

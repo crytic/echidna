@@ -1,5 +1,7 @@
 ## Unreleased
 
+* Symbolic execution can find inputs that falsify a property or a no-argument assertion after a state-changing call, including from corpus states. Counterexamples are replayed through the normal test and shrinking machinery. With `symExec: true` and `workers: 0`, each selected method is checked once; this is a bounded search, not an invariant proof.
+
 ## 2.4.0
 
 * New `symExecSolverMemory` option sets the memory limit per SMT solver process in MB for symbolic exploration and verification. The default is 16384 MB (16 GB), increased from the fixed 1024 MB limit

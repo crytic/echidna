@@ -96,11 +96,11 @@ solveAndReplay env contract vm secret = do
   method <- maybe (assertFailure "checkHash method missing") pure $
     find (\m -> m.name == "checkHash") (Map.elems contract.abiMap)
   ((_, resultsChan), _) <- runReaderT
-    (runStateT (exploreContract contract method vm) initialWorkerState) env
+    (runStateT (exploreContract method vm) initialWorkerState) env
   (results, partials) <- takeMVar resultsChan
   extractErrors results @?= []
   partials @?= []
-  let txs = extractTxs results
+  let txs = concat (extractTxs results)
   -- Checking the actual argument ensures the solver received the preimage:
   -- an unconstrained Keccak model could otherwise invent a spurious match.
   map (.call) txs @?= [SolCall ("checkHash", [secret])]
