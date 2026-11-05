@@ -2,7 +2,7 @@
 
 module Echidna.SymExec.Common where
 
-import Control.Concurrent.STM (newTVarIO)
+import Control.Concurrent.STM (TVar, newTVarIO)
 import Control.Monad (forM)
 import Control.Monad.IO.Unlift (MonadUnliftIO, liftIO)
 import Control.Monad.ST (stToIO)
@@ -21,7 +21,7 @@ import Optics.Core ((.~), (%), (%~))
 
 import EVM (clearTStorages, loadContract, resetState, symbolify)
 import EVM.ABI (Sig(..), decodeBuf, AbiVals(..), selector, encodeAbiValue, AbiValue(..))
-import EVM.Effects (TTY, ReadConfig)
+import EVM.Effects (App, TTY, ReadConfig)
 import EVM.Expr qualified
 import EVM.Fetch qualified as Fetch
 import EVM.Format (formatPartialDetailed)
@@ -30,8 +30,8 @@ import EVM.Keccak.Preimages qualified as Preimages
 import EVM.Solidity (Method(..), Mutability(..))
 import EVM.Solvers (SolverGroup, checkSatWithPropsAbortable, withRunAbort)
 import EVM.SymExec (mkCalldata, verifyInputsWithHandler, interpretVMAbortable, runExpr, freezeVM, extractProps, VeriOpts(..), subModel, defaultSymbolicValues, Postcondition)
-import EVM.Types (Addr, VMType(..), EType(..), EvmError(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), forceLit, isQed)
-import qualified EVM.Types (VM(..))
+import EVM.Types (Addr, VMType(..), EType(..), EvmError(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query, SMTResult, PartialExec, forceLit, isQed)
+import qualified EVM.Types (EVM, VM(..))
 
 import Echidna.Exec (classifyError, ErrorClass(..))
 import Echidna.Test (isFoundryMode, isPropertyMode, isVerificationMode)
@@ -193,6 +193,25 @@ getUnknownLogs = mapMaybe (\case
   Error err -> Just $ T.pack err
   _ -> Nothing)
 
+data ExplorationContext m = ExplorationContext
+  { abort :: TVar Bool
+  , solvers :: SolverGroup
+  , veriOpts :: VeriOpts
+  , fetcher :: Query Symbolic -> m (EVM.Types.EVM Symbolic ())
+  , conf :: EConfig
+  , defaultSender :: Addr
+  , foundry :: Bool
+  , toTx :: SMTResult -> TxOrError
+  }
+
+data StatefulCall = StatefulCall
+  { name :: T.Text
+  , addr :: Addr
+  , caller :: Expr EAddr
+  , constraints :: [Prop]
+  , postcondition :: Postcondition
+  }
+
 exploreMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
   Method -> [TestType] -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
 
@@ -205,20 +224,7 @@ exploreMethod method tests vm defaultSender conf veriOpts solvers rpcInfo sessio
     cd = fst calldataSym
     fetcher = Fetch.oracle solvers (Just session) rpcInfo
     dst = conf.solConf.contractAddr
-  vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
-  let
-    vm' = vmReset & execState (loadContract (LitAddr dst))
-                  & #tx % #isCreate .~ False
-                  -- Foundry tests cannot accept ether, force callvalue to zero
-                  & #state % #callvalue .~ (if isFoundryMode conf.solConf.testMode then Lit 0 else TxValue)
-                  & #state % #caller .~ SymAddr "caller"
-                  & #tx % #origin .~ SymAddr "caller"
-                  & #state % #calldata .~ cd
-
-    vm'' = symbolify vm'
-        & #block %~ blockMakeSymbolic
-        & #constraints %~ (addBlockConstraints conf.txConf.maxTimeDelay conf.txConf.maxBlockDelay vm'.block)
-        & #constraints %~ (++ constraints ++ senderConstraints (SymAddr "caller") conf.solConf.sender)
+  symbolicVm <- prepareSymbolicCall conf dst vm cd constraints
 
   -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
   -- Doing so might mess up concolic execution.
@@ -226,46 +232,126 @@ exploreMethod method tests vm defaultSender conf veriOpts solvers rpcInfo sessio
   abort <- liftIO $ newTVarIO False
   let post = if isPropertyMode conf.solConf.testMode then \_ _ -> PBool True else checkAssertions [0x1] foundry
       toTx = modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd
-      logs = map (\(p, _) -> formatPartialDetailed Nothing Map.empty p)
+      context = ExplorationContext { abort, solvers, veriOpts, fetcher, conf, defaultSender, foundry, toTx }
   if null tests then do
-    (models, partials) <- verifyInputsWithHandler abort solvers veriOpts fetcher vm'' post Nothing
-    pure (map (toTx . fst) $ filter (not . isQed . fst) models, logs partials)
-  else do
-    -- Keep the complete state, including block context and keccak preimages, for the next call.
-    leaves <- withRunAbort solvers abort $ interpretVMAbortable abort fetcher veriOpts.iterConf vm'' runExpr $ \leaf endVm shouldAbort -> do
-      result <- case post vm'' leaf of
+    verifyMethodInputs context symbolicVm post
+  else
+    verifyStatefulInputs context symbolicVm post tests
+
+prepareSymbolicCall :: MonadUnliftIO m =>
+  EConfig -> Addr -> EVM.Types.VM Concrete -> Expr Buf -> [Prop] -> m (EVM.Types.VM Symbolic)
+prepareSymbolicCall conf dst vm calldata constraints = do
+  vmReset <- liftIO $ snd <$> runStateT (fromEVM resetState) vm
+  let vm' = vmReset & execState (loadContract (LitAddr dst))
+                    & #tx % #isCreate .~ False
+                    -- Foundry tests cannot accept ether, force callvalue to zero
+                    & #state % #callvalue .~ (if isFoundryMode conf.solConf.testMode then Lit 0 else TxValue)
+                    & #state % #caller .~ SymAddr "caller"
+                    & #tx % #origin .~ SymAddr "caller"
+                    & #state % #calldata .~ calldata
+  pure $ symbolify vm'
+    & #block %~ blockMakeSymbolic
+    & #constraints %~ (addBlockConstraints conf.txConf.maxTimeDelay conf.txConf.maxBlockDelay vm'.block)
+    & #constraints %~ (++ constraints ++ senderConstraints (SymAddr "caller") conf.solConf.sender)
+
+verifyMethodInputs :: App m =>
+  ExplorationContext m -> EVM.Types.VM Symbolic -> Postcondition -> m ([TxOrError], PartialsLogs)
+verifyMethodInputs context vm post = do
+  (models, partials) <- verifyInputsWithHandler context.abort context.solvers context.veriOpts context.fetcher vm post Nothing
+  pure
+    ( map (context.toTx . fst) $ filter (not . isQed . fst) models
+    , formatPartials partials
+    )
+
+verifyStatefulInputs :: App m =>
+  ExplorationContext m -> EVM.Types.VM Symbolic -> Postcondition -> [TestType] -> m ([TxOrError], PartialsLogs)
+verifyStatefulInputs context vm post tests = do
+  leaves <- exploreMethodLeaves context vm post
+  checked <- forM leaves $ checkStatefulLeaf context tests
+  pure $ mconcat checked
+
+-- Keep the complete state, including block context and keccak preimages, for the next call.
+exploreMethodLeaves :: App m =>
+  ExplorationContext m
+  -> EVM.Types.VM Symbolic
+  -> Postcondition
+  -> m [(SMTResult, Expr End, Maybe (EVM.Types.VM Symbolic))]
+exploreMethodLeaves context vm post =
+  withRunAbort context.solvers context.abort $
+    interpretVMAbortable context.abort context.fetcher context.veriOpts.iterConf vm runExpr $ \leaf endVm shouldAbort -> do
+      result <- case post vm leaf of
         PBool True -> pure Qed
-        p -> checkSatWithPropsAbortable solvers (Just shouldAbort)
+        p -> checkSatWithPropsAbortable context.solvers (Just shouldAbort)
           (PNeg p : extractProps leaf <> Preimages.recordedProps endVm.keccakPreImgs)
       next <- case leaf of
         Success {} -> Just <$> liftIO (stToIO $ freezeVM endVm)
         _ -> pure Nothing
       pure (result, leaf, next)
-    checked <- forM leaves $ \(result, leaf, next) -> do
-      continuations <- case next of
-        Nothing -> pure []
-        Just endVm -> forM tests $ \test -> do
-          let (testName, addr, caller, props, testPost) = case test of
-                PropertyTest n a -> (n, a, LitAddr (conf.testConf.testSender a), [], checkProperty conf.solConf.prefix n)
-                AssertionTest _ (n, []) a -> (n, a, SymAddr "test_caller", senderConstraints (SymAddr "test_caller") conf.solConf.sender, checkAssertions [0x1] foundry)
-                _ -> error "unsupported symbolic stateful test"
-          (_, testVm) <- liftIO $ stToIO $ flip runStateT (endVm & #tx % #origin .~ caller) $ do
-            clearTStorages
-            startCall (LitAddr addr) caller (fromIntegral conf.txConf.propGas) testName
-              (ConcreteBuf (selector (testName <> "()")), props)
-          (models, partials) <- verifyInputsWithHandler abort solvers veriOpts fetcher
-            (testVm & #exploreDepth .~ 0) testPost Nothing
-          let replay res = case (test, res, toTx res) of
-                (AssertionTest _ (n, []) a, Cex cex, TxFromResult txs) ->
-                  let sender = fromMaybe defaultSender $ Map.lookup (SymAddr "test_caller") cex.addrs
-                  in TxFromResult $ txs <> [basicTx n [] sender a maxGasPerBlock (0, 0)]
-                _ -> toTx res
-          pure (map (replay . fst) $ filter (not . isQed . fst) models, logs partials)
-      let partials = case leaf of
-            Partial _ _ p -> [formatPartialDetailed Nothing Map.empty p]
-            _ -> []
-      pure $ ([toTx result | not (isQed result)], partials) <> mconcat continuations
-    pure $ mconcat checked
+
+checkStatefulLeaf :: App m =>
+  ExplorationContext m
+  -> [TestType]
+  -> (SMTResult, Expr End, Maybe (EVM.Types.VM Symbolic))
+  -> m ([TxOrError], PartialsLogs)
+checkStatefulLeaf context tests (result, leaf, next) = do
+  continuations <- case next of
+    Nothing -> pure []
+    Just endVm -> forM tests $ checkStatefulTest context endVm
+  pure $
+    ([context.toTx result | not (isQed result)], formatLeafPartial leaf)
+    <> mconcat continuations
+
+checkStatefulTest :: App m =>
+  ExplorationContext m
+  -> EVM.Types.VM Symbolic
+  -> TestType
+  -> m ([TxOrError], PartialsLogs)
+checkStatefulTest context endVm test = do
+  let call = statefulCall context.conf context.foundry test
+  (_, testVm) <- liftIO $ stToIO $ flip runStateT (endVm & #tx % #origin .~ call.caller) $ do
+    clearTStorages
+    startCall (LitAddr call.addr) call.caller (fromIntegral context.conf.txConf.propGas) call.name
+      (ConcreteBuf (selector (call.name <> "()")), call.constraints)
+  (models, partials) <- verifyInputsWithHandler
+    context.abort context.solvers context.veriOpts context.fetcher
+    (testVm & #exploreDepth .~ 0) call.postcondition Nothing
+  pure
+    ( map (replayStatefulTest context test . fst) $ filter (not . isQed . fst) models
+    , formatPartials partials
+    )
+
+statefulCall :: EConfig -> Bool -> TestType -> StatefulCall
+statefulCall conf foundry = \case
+  PropertyTest name addr -> StatefulCall
+    { name
+    , addr
+    , caller = LitAddr (conf.testConf.testSender addr)
+    , constraints = []
+    , postcondition = checkProperty conf.solConf.prefix name
+    }
+  AssertionTest _ (name, []) addr -> StatefulCall
+    { name
+    , addr
+    , caller = SymAddr "test_caller"
+    , constraints = senderConstraints (SymAddr "test_caller") conf.solConf.sender
+    , postcondition = checkAssertions [0x1] foundry
+    }
+  _ -> error "unsupported symbolic stateful test"
+
+replayStatefulTest :: ExplorationContext m -> TestType -> SMTResult -> TxOrError
+replayStatefulTest context test result = case (test, result, context.toTx result) of
+  (AssertionTest _ (name, []) addr, Cex cex, TxFromResult txs) ->
+    let sender = fromMaybe context.defaultSender $ Map.lookup (SymAddr "test_caller") cex.addrs
+    in TxFromResult $ txs <> [basicTx name [] sender addr maxGasPerBlock (0, 0)]
+  (_, _, tx) -> tx
+
+formatPartials :: [(PartialExec, Expr End)] -> PartialsLogs
+formatPartials = map (formatPartialDetailed Nothing Map.empty . fst)
+
+formatLeafPartial :: Expr End -> PartialsLogs
+formatLeafPartial = \case
+  Partial _ _ partial -> [formatPartialDetailed Nothing Map.empty partial]
+  _ -> []
 
 -- Match the normal property classifier, including echidna_revert_* properties.
 checkProperty :: T.Text -> T.Text -> Postcondition
