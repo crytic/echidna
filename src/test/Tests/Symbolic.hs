@@ -2,9 +2,10 @@ module Tests.Symbolic (symbolicTests) where
 
 import Test.Tasty (TestTree, testGroup)
 
-import Common (testContract', testContractNamed, solcV, solved, verified, proven)
+import Common (testContract', testContractNamed, solcV, solved, solvedByWorker, passed, verified, proven, solvedLen)
 import Echidna.Types.Worker (WorkerType(..))
 import Tests.Keccak (keccakTests)
+import Tests.StatefulSymbolic (statefulSymbolicTests)
 
 symbolicTests :: TestTree
 symbolicTests = testGroup "Symbolic tests" $
@@ -18,6 +19,25 @@ symbolicTests = testGroup "Symbolic tests" $
       , ("correct not verified", verified "correct")
       ]
   ) ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
+  ++ [ testContract' "symbolic/verify-property.sol" (Just "PropertyVerifyTest") (Just (>= solcV (0,6,9)))
+         (Just "symbolic/verify-property.yaml") True SymbolicWorker
+         [ ("property falsified after one call", solvedLen 1 "echidna_x_is_not_ten")
+         , ("unreachable value stays open", passed "echidna_x_is_not_one")
+         , ("even value falsifies property", solved "echidna_y_below_40")
+         , ("timestamp-dependent property falsified", solved "echidna_locked_before_1000")
+         ]
+     , testContract' "symbolic/verify-assertion-noarg.sol" (Just "AssertionNoArgTest") (Just (>= solcV (0,6,9)))
+         (Just "symbolic/verify-assertion-noarg.yaml") True SymbolicWorker
+         [ ("assertion falsified after two calls", solvedLen 2 "check_x_not_ten")
+         , ("second assertion falsified", solved "check_y_below_100")
+         , ("unreachable assertion stays open", passed "check_x_not_one")
+         ]
+     , testContract' "symbolic/motiv.sol" (Just "Motiv") (Just (>= solcV (0,6,9)))
+         (Just "symbolic/motiv.yaml") False SymbolicWorker
+         [ ("h falsified by the symbolic worker", solvedByWorker 1 "h")
+         , ("three-call counterexample", solvedLen 3 "h")
+         ]
+     ]
   ++ ([
     -- dynamic (bytes) calldata: hevm concretizes it up to maxDynSize (128 bytes),
     -- so the symbolic worker can solve it. Run under bitwuzla only.
@@ -31,7 +51,7 @@ symbolicTests = testGroup "Symbolic tests" $
   ] :: [TestTree])
   ++ map arithmeticTest ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
   ++ map arithmeticAbstractionTest ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
-  ++ [keccakTests]
+  ++ [keccakTests, statefulSymbolicTests]
   where
     arithmeticTest conf =
       testContractNamed ("symbolic/arithmetic.sol (" ++ conf ++ ")")

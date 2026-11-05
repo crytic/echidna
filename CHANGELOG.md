@@ -1,6 +1,7 @@
 ## Unreleased
 
 * Function selectors of the compiled contracts are computed once, instead of hashing the signature again for every generated transaction
+* Symbolic execution can find inputs that falsify a property or a no-argument assertion after a state-changing call, including from corpus states. Counterexamples are replayed through the normal test and shrinking machinery. With `symExec: true` and `workers: 0`, each selected method is checked once; this is a bounded search, not an invariant proof.
 
 ## 2.4.0
 
