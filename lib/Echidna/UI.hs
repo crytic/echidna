@@ -113,16 +113,16 @@ ui vm dict initialCorpus cliSelectedContract = do
             constraintSpecs = filter ((== ConstraintDiscoveryWorker) . workerIDToType conf.campaignConf . snd) extraSpecs
 
         -- Subscribe constraint discovery before fuzzers can submit requests.
-        constraints <- forM constraintSpecs $ \(corpus, wid) -> do
-          worker@(_, ready) <- spawnWorker env perWorkerTestLimit corpus wid
+        constraints <- forM constraintSpecs $ \spec -> do
+          worker@(_, ready) <- uncurry (spawnWorker env perWorkerTestLimit) spec
           readMVar ready
           pure worker
 
-        fuzzers <- forM fuzzerSpecs $ \(corpus, wid) ->
-          spawnWorker env perWorkerTestLimit corpus wid
+        fuzzers <- forM fuzzerSpecs $
+          uncurry (spawnWorker env perWorkerTestLimit)
 
-        symbolic <- forM symbolicSpecs $ \(corpus, wid) ->
-          spawnWorker env perWorkerTestLimit corpus wid
+        symbolic <- forM symbolicSpecs $
+          uncurry (spawnWorker env perWorkerTestLimit)
 
         -- Keep fuzzers first in snapshots and final reports. Among other
         -- things, the first state is used to report the campaign seed.

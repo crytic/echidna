@@ -34,7 +34,8 @@ import EVM.ABI hiding (genAbiValue)
 import EVM.Types (Addr, abiKeccak, W256, FunctionSelector(..), word256Bytes)
 
 import Echidna.Mutator.Array (mutateLL, replaceAt)
-import Echidna.Types.Constraint (ArgumentBounds, NumericBounds, unsignedRange)
+import Echidna.Types.Constraint
+  (ArgumentBounds, NumericBounds, signedRange, unsignedRange)
 import Echidna.Types.Random
 import Echidna.Types.Signature
 
@@ -534,12 +535,18 @@ applyArgumentBounds bounds = zipWithM apply [0..]
 boundedGenerator :: MonadRandom m => AbiType -> NumericBounds -> Maybe (m AbiValue)
 boundedGenerator (AbiUIntType bits) bounds = do
   (lower, upper) <- unsignedRange bits bounds
-  pure $ AbiUInt bits . fromInteger <$> join (Random.weighted
+  pure $ AbiUInt bits . fromInteger <$> boundedInteger lower upper
+boundedGenerator (AbiIntType bits) bounds = do
+  (lower, upper) <- signedRange bits bounds
+  pure $ AbiInt bits . fromInteger <$> boundedInteger lower upper
+boundedGenerator _ _ = Nothing
+
+boundedInteger :: MonadRandom m => Integer -> Integer -> m Integer
+boundedInteger lower upper = join (Random.weighted
     [ (getRandomR (lower, upper), 8)
     , (pure lower, 1)
     , (pure upper, 1)
     ])
-boundedGenerator _ _ = Nothing
 
 -- | Given a 'SolSignature', generate a random 'SolCall' with that signature,
 -- possibly with a dictionary.

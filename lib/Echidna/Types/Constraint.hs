@@ -1,6 +1,7 @@
 module Echidna.Types.Constraint where
 
 import Data.Map (Map)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Word (Word64)
 
@@ -44,6 +45,17 @@ unsignedRange bits NumericBounds{lowerBound, upperBound}
   | lower <= upper = Just (lower, upper)
   | otherwise = Nothing
   where
-    lower = max 0 $ maybe 0 id lowerBound
-    upper = min maximumValue $ maybe maximumValue id upperBound
+    lower = max 0 $ fromMaybe 0 lowerBound
+    upper = min maximumValue $ fromMaybe maximumValue upperBound
     maximumValue = 2 ^ bits - 1
+
+-- | Clamp discovered bounds to a signed ABI type's legal range.
+signedRange :: Int -> NumericBounds -> Maybe (Integer, Integer)
+signedRange bits NumericBounds{lowerBound, upperBound}
+  | lower <= upper = Just (lower, upper)
+  | otherwise = Nothing
+  where
+    minimumValue = negate $ 2 ^ (bits - 1)
+    maximumValue = 2 ^ (bits - 1) - 1
+    lower = max minimumValue $ fromMaybe minimumValue lowerBound
+    upper = min maximumValue $ fromMaybe maximumValue upperBound

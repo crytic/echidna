@@ -37,7 +37,7 @@ import Data.Vector qualified as V
 import EVM (cheatCode)
 import EVM.ABI
   ( getAbi
-  , AbiType(AbiAddressType, AbiTupleType, AbiUIntType)
+  , AbiType(AbiAddressType, AbiIntType, AbiTupleType, AbiUIntType)
   , AbiValue(AbiAddress, AbiTuple)
   , abiValueType
   )
@@ -327,13 +327,14 @@ requestArgumentBounds vm prefix tx@Tx{call = SolCall (name, arguments)} = do
         }
       contextsForSignature = Set.size $
         Set.filter ((== encodedSignature) . (.signature)) requested
-      hasUnsignedArgument = any (\argument -> case abiValueType argument of
+      hasIntegerArgument = any (\argument -> case abiValueType argument of
         AbiUIntType _ -> True
+        AbiIntType _ -> True
         _ -> False) arguments
       enabled = env.cfg.campaignConf.constraintDiscovery
         && workerIDToType env.cfg.campaignConf workerId == FuzzWorker
         && tx.dst == env.cfg.solConf.contractAddr
-  when (enabled && hasUnsignedArgument
+  when (enabled && hasIntegerArgument
         && isNothing pending
         && contextsForSignature < maxContextsPerSignature
         && Set.notMember key requested) $ do
