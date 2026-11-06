@@ -77,11 +77,8 @@ main = withUtf8 $ withCP65001 $ withStrippedExceptions $ do
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
   cfg <- overrideConfig loadedCfg opts
 
-  -- Size the RTS to the campaign: one capability per worker plus one for the
-  -- UI, but never more than there are cores (what -N used to give). The RTS
-  -- starts with a single capability (no -N in -with-rtsopts) and each one added
-  -- here brings its own 64 MiB nursery, so this is what bounds the process'
-  -- baseline memory. An explicit +RTS -N asking for more wins.
+  -- Give each worker and the UI a capability, capped at the processor count.
+  -- Keep a larger explicit +RTS -N setting.
   capabilities <- getNumCapabilities
   processors <- max 1 <$> getNumProcessors
   let neededCapabilities = min processors (getNWorkers cfg.campaignConf + 1)
@@ -294,9 +291,7 @@ overrideConfig config Options{..} = do
   envRpcUrl <- Onchain.rpcUrlEnv
   envRpcBlock <- Onchain.rpcBlockEnv
   envEtherscanApiKey <- Onchain.etherscanApiKey
-  -- Default worker count: one per core, capped at 4. Resolved here rather than
-  -- left to 'getNFuzzWorkers' because the RTS starts with a single capability
-  -- (see 'main'), so the capability count no longer reflects the machine.
+  -- Use processors for the default; the RTS starts with one capability.
   defaultWorkers <- fromIntegral . min 4 . max 1 <$> getNumProcessors
   pure $
     config { solConf = overrideSolConf config.solConf

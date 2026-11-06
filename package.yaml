@@ -101,9 +101,7 @@ executables:
     ghc-options:
       - -threaded
       - -rtsopts
-      # No -N: Main sizes the capabilities to the number of workers. Every
-      # capability gets its own 64 MiB nursery (-A64m), so -N alone would
-      # reserve cores × 64 MiB regardless of how many workers run.
+      # Main sizes capabilities; -N would allocate a 64 MiB nursery per core.
       - '"-with-rtsopts=-A64m"'
     when:
       - condition: (os(linux) || os(windows)) && flag(static)

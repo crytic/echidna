@@ -232,20 +232,12 @@ execTx vm tx = runStateT (execTxWith (fromEVM (exec defaultConfig)) tx) vm
 -- | A type alias for the context we carry while executing instructions
 type CoverageContext = (Bool, Maybe (VMut.IOVector CoverageInfo, Int))
 
--- | The coverage vector of the code being executed, looked up once per
--- contract switch rather than once per instruction. The executing code only
--- changes at call boundaries, so nearly every step reuses it.
+-- | Coverage data reused while the executing code is unchanged.
 data CoverageCache = CoverageCache
   { code    :: ContractCode
-    -- ^ the key: the code executing at the previous step. Coverage is keyed
-    -- by codehash, so equal code means the same vector whatever the address.
-    -- The 'Eq' short-circuits to a pointer comparison of the underlying
-    -- 'BS.ByteString' when it is the same object, which the loop maintains
-    -- by storing the current step's code on every hit.
+    -- ^ Equal code shares coverage across contract addresses.
   , opIxMap :: VS.Vector Int
-    -- ^ byte index to op index map of that code
   , covVec  :: Maybe (VMut.IOVector CoverageInfo)
-    -- ^ its coverage vector, if it has any code at all
   }
 
 -- | Execute a transaction, logging coverage at every step.
@@ -278,8 +270,7 @@ execTxWithCov tx = do
     -- the same as EVM.exec but collects coverage, will stop on a query
     execCov env covContextRef = do
       vm <- get
-      -- The context survives across calls: execution resumes here after
-      -- answering a query, and the last location must span the whole tx.
+      -- Preserve coverage state across VM queries.
       ctx <- liftIO $ readIORef covContextRef
       (r, vm', ctx') <- liftIO $ loop Nothing ctx vm
       liftIO $ writeIORef covContextRef ctx'
@@ -307,9 +298,7 @@ addCoverage
   -> IO (CoverageCache, CoverageContext)
 addCoverage env cache ctx@(grew, _) !vm = do
   cache'@CoverageCache{opIxMap, covVec} <- case cache of
-    -- Hit: keep this step's code object so the next comparison is a
-    -- pointer check even if we just switched to a contract whose code is
-    -- equal but not the same object (a clone).
+    -- Keep this code object to make the next equality check cheap.
     Just c | c.code == vm.state.code ->
       pure CoverageCache { code = vm.state.code
                          , opIxMap = c.opIxMap
@@ -338,7 +327,6 @@ addCoverage env cache ctx@(grew, _) !vm = do
 
   pure (cache', ctx')
 
--- | Find (or create) the coverage vector of the contract being executed
 lookupCoverage :: Env -> VM Concrete -> IO CoverageCache
 lookupCoverage env vm = do
   let contract = fromMaybe (error "no contract information on coverage") $ currentContract vm
