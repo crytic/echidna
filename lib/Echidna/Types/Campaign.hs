@@ -3,6 +3,8 @@ module Echidna.Types.Campaign where
 import Control.Concurrent (ThreadId)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word8, Word16)
@@ -14,6 +16,7 @@ import EVM.Solvers (Solver(..))
 
 import Echidna.ABI (GenDict, emptyDict)
 import Echidna.Types
+import Echidna.Types.Constraint (ArgumentBounds, ConstraintKey)
 import Echidna.Types.Coverage (CoverageFileType, CoverageMap)
 import Echidna.Types.Signature (SolCallPrototype)
 import Echidna.Types.Tx (TxResult(..))
@@ -152,6 +155,8 @@ data CampaignConf = CampaignConf
     -- ^ Port to serve MCP on, if missing the server is not ran
   , symExec            :: Bool
     -- ^ Whether to add an additional symbolic execution worker
+  , constraintDiscovery :: Bool
+    -- ^ Whether to add one lightweight worker that discovers argument bounds
   , symExecSMTSolver   :: Solver
     -- ^ SMT solver to use for symbolic execution.
     -- Supported solvers: "cvc5", "z3" and "bitwuzla"
@@ -203,6 +208,13 @@ data WorkerState = WorkerState
     -- ^ Call sequences to bias generation towards, each with the probability
     --   of being used in place of a corpus-mutated sequence. Empty unless
     --   sequences were explicitly injected into this worker.
+  , requestedBounds :: !(Set ConstraintKey)
+    -- ^ Concrete call contexts already submitted to constraint discovery.
+  , pendingBounds :: !(Maybe ConstraintKey)
+    -- ^ At most one in-flight request per fuzzer, keeping queued VMs bounded.
+  , constraintBounds :: !(Map ConstraintKey ArgumentBounds)
+    -- ^ Positive answers, keyed by the exact preceding prefix. The requested
+    --   set also remembers misses so an all-negative cache stays off hot paths.
   }
 
 initialWorkerState :: WorkerState
@@ -216,6 +228,9 @@ initialWorkerState =
               , runningThreads = []
               , sampledFunctions = Map.empty
               , prioritizedSequences = []
+              , requestedBounds = Set.empty
+              , pendingBounds = Nothing
+              , constraintBounds = Map.empty
               }
 
 defaultTestLimit :: Int

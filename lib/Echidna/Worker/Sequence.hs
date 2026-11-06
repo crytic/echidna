@@ -10,6 +10,7 @@
 module Echidna.Worker.Sequence
   ( replayCorpus
   , callseq
+  , applyCachedBounds
   ) where
 
 import Control.Concurrent.STM (atomically, writeTChan)
@@ -27,14 +28,19 @@ import Data.List qualified as List
 import Data.Map (Map, (\\))
 import Data.Map qualified as Map
 import Data.Map.Strict qualified as MapStrict
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (isJust, isNothing, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Vector qualified as V
 
 import EVM (cheatCode)
-import EVM.ABI (getAbi, AbiType(AbiAddressType, AbiTupleType), AbiValue(AbiAddress, AbiTuple), abiValueType)
+import EVM.ABI
+  ( getAbi
+  , AbiType(AbiAddressType, AbiTupleType, AbiUIntType)
+  , AbiValue(AbiAddress, AbiTuple)
+  , abiValueType
+  )
 import EVM.Types hiding (Env, Frame(state), Gas)
 
 import Echidna.ABI
@@ -45,11 +51,13 @@ import Echidna.Test
 import Echidna.Test.State (updateTests)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
+import Echidna.Types.Constraint (ConstraintKey(..), maxContextsPerSignature)
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.InterWorker
-  (AgentId(..), BroadcastMsg(..), Message(..), WrappedMessage(..))
+  (AgentId(..), BroadcastMsg(..), ConstraintRequest(..), Message(..), WrappedMessage(..))
 import Echidna.Types.Signature (FunctionName)
+import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
 import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (TxCall(..), Tx(..), getResult)
@@ -98,7 +106,7 @@ callseq vm txSeq isReplaying = do
 
   -- Run each call sequentially. This gives us the result of each call
   -- and the new state
-  (results, vm') <- evalSeq vm execFunc txSeq
+  (results, vm') <- evalSeq vm execFunc conf.constraintDiscovery txSeq
 
   -- Update the stats of any sampled function. Nothing is sampled unless a
   -- client asked for it, so the hot path only pays for the emptiness check.
@@ -131,6 +139,7 @@ callseq vm txSeq isReplaying = do
     let sender = case workerIDToType env.cfg.campaignConf workerId of
           FuzzWorker -> FuzzerId workerId
           SymbolicWorker -> SymbolicId
+          ConstraintDiscoveryWorker -> ConstraintDiscoveryId
     liftIO $ atomically $ writeTChan env.bus $
       WrappedMessage sender
         (Broadcast (NewCoverageInfo points (fst <$> results) isReplaying))
@@ -265,16 +274,19 @@ evalSeq
   :: (MonadIO m, MonadThrow m, MonadRandom m, MonadReader Env m, MonadState WorkerState m)
   => VM Concrete -- ^ Initial VM
   -> (VM Concrete -> Tx -> m (result, VM Concrete))
+  -> Bool -- ^ Whether to submit constraint-discovery requests
   -> [Tx]
   -> m ([(Tx, result)], VM Concrete)
-evalSeq vm0 execFunc = go vm0 [] where
+evalSeq vm0 execFunc discoverConstraints = go vm0 [] where
   go vm executedSoFar toExecute = do
     -- NOTE: we do reverse here because we build up this list by prepending,
     -- see the last line of this function.
-    updateTests (updateOpenTest vm (reverse executedSoFar))
+    let prefix = reverse executedSoFar
+    updateTests (updateOpenTest vm prefix)
     case toExecute of
       [] -> pure ([], vm)
       (tx:remainingTxs) -> do
+        when discoverConstraints $ requestArgumentBounds vm prefix tx
         (result, vm') <- execFunc vm tx
         modify' $ \workerState -> workerState
           { ncalls = workerState.ncalls + 1
@@ -285,6 +297,96 @@ evalSeq vm0 execFunc = go vm0 [] where
         -- of each transaction - `m ([(Tx, result, VM)])`
         (remaining, vm'') <- go vm' (tx:executedSoFar) remainingTxs
         pure ((tx, result) : remaining, vm'')
+
+-- | Ask the helper once per concrete call context, up to the small per-method
+-- cap, immediately before executing that call. This deliberately does not
+-- wait: the current input runs unconstrained and a later identical prefix can
+-- use the asynchronous answer. Passing the current VM preserves state changes
+-- made by every contract in the prefix.
+requestArgumentBounds
+  :: (MonadIO m, MonadReader Env m, MonadState WorkerState m)
+  => VM Concrete
+  -> [Tx]
+  -> Tx
+  -> m ()
+requestArgumentBounds vm prefix tx@Tx{call = SolCall (name, arguments)} = do
+  env <- ask
+  workerId <- gets (.workerId)
+  requested <- gets (.requestedBounds)
+  pending <- gets (.pendingBounds)
+  let encodedSignature = encodeSig (name, abiValueType <$> arguments)
+      key = ConstraintKey
+        { prefix
+        , signature = encodedSignature
+        , sender = tx.src
+        , destination = tx.dst
+        , callValue = tx.value
+        , callGas = tx.gas
+        , callGasPrice = tx.gasprice
+        , callDelay = tx.delay
+        }
+      contextsForSignature = Set.size $
+        Set.filter ((== encodedSignature) . (.signature)) requested
+      hasUnsignedArgument = any (\argument -> case abiValueType argument of
+        AbiUIntType _ -> True
+        _ -> False) arguments
+      enabled = env.cfg.campaignConf.constraintDiscovery
+        && workerIDToType env.cfg.campaignConf workerId == FuzzWorker
+        && tx.dst == env.cfg.solConf.contractAddr
+  when (enabled && hasUnsignedArgument
+        && isNothing pending
+        && contextsForSignature < maxContextsPerSignature
+        && Set.notMember key requested) $ do
+    modify' $ \workerState -> workerState
+      { requestedBounds = Set.insert key workerState.requestedBounds
+      , pendingBounds = Just key
+      }
+    liftIO $ atomically $ writeTChan env.bus $ WrappedMessage
+      { from = FuzzerId workerId
+      , content = ToConstraint ConstraintRequest
+          { key
+          , vm
+          , targetTx = tx
+          }
+      }
+requestArgumentBounds _ _ _ = pure ()
+
+-- | Apply a cached answer only when the generated sequence has the exact same
+-- preceding transactions and call context as the discovery request. No answer
+-- means no work and no waiting. Rebinding a call changes the context for every
+-- later call, so the rewritten transaction is included in the next key.
+applyCachedBounds
+  :: (MonadRandom m, MonadState WorkerState m)
+  => [Tx]
+  -> m [Tx]
+applyCachedBounds txs = do
+  cache <- gets (.constraintBounds)
+  if Map.null cache then pure txs else go cache [] txs
+  where
+    go _ _ [] = pure []
+    go cache executedRev (tx:remaining) = do
+      let prefix = reverse executedRev
+      tx' <- case constraintKey prefix tx >>= (`Map.lookup` cache) of
+        Just bounds -> case tx.call of
+          SolCall (name, arguments) -> do
+            arguments' <- applyArgumentBounds bounds arguments
+            pure tx { call = SolCall (name, arguments') }
+          _ -> pure tx
+        Nothing -> pure tx
+      (tx' :) <$> go cache (tx' : executedRev) remaining
+
+constraintKey :: [Tx] -> Tx -> Maybe ConstraintKey
+constraintKey prefix tx@Tx{call = SolCall (name, arguments)} = Just ConstraintKey
+  { prefix
+  , signature = encodeSig (name, abiValueType <$> arguments)
+  , sender = tx.src
+  , destination = tx.dst
+  , callValue = tx.value
+  , callGas = tx.gas
+  , callGasPrice = tx.gasprice
+  , callDelay = tx.delay
+  }
+constraintKey _ _ = Nothing
 
 -- | Update an open test after checking if it is falsified by the 'reproducer'
 updateOpenTest

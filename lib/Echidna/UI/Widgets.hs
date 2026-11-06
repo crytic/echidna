@@ -173,6 +173,7 @@ showLogLine (time, event@(WorkerEvent workerId workerType _)) =
   where
   symSuffix = case workerType of
     SymbolicWorker -> ", symbolic"
+    ConstraintDiscoveryWorker -> ", constraints"
     _ -> ""
 showLogLine (time, event) =
   withAttr (attrName "time") (str $ timePrefix time <> " ") <+> strBreak (ppCampaignEvent event)

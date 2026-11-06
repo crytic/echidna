@@ -1,5 +1,7 @@
 ## Unreleased
 
+* Add opt-in `constraint-discovery` / `--constraint-discovery` support. Fuzz workers asynchronously request approximate non-reverting bounds for unsigned integer arguments from one lightweight symbolic worker. Results are cached per concrete transaction-prefix context and bias later inputs without blocking fuzzing.
+
 ## 2.4.0
 
 * New `symExecSolverMemory` option sets the memory limit per SMT solver process in MB for symbolic exploration and verification. The default is 16384 MB (16 GB), increased from the fixed 1024 MB limit

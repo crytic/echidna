@@ -66,6 +66,14 @@ handleCmd _ (FuzzSequence prototypes prob) =
 handleCmd _ ClearPrioritization =
   modify' $ \workerState -> workerState { prioritizedSequences = [] }
 
+handleCmd _ (SetArgumentBounds key bounds) =
+  modify' $ \workerState -> workerState
+    { constraintBounds = if Map.null bounds
+        then workerState.constraintBounds
+        else Map.insert key bounds workerState.constraintBounds
+    , pendingBounds = Nothing
+    }
+
 -- The command is addressed to a single worker, so this replies exactly once and
 -- 'putTMVar' cannot block. The replay runs on the worker's own thread: the
 -- caller waits for it, and this worker stops fuzzing until it is done.

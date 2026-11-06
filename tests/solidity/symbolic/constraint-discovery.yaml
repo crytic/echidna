@@ -1,0 +1,5 @@
+constraint-discovery: true
+workers: 1
+testLimit: 10000
+seqLen: 1
+symExecSMTSolver: bitwuzla

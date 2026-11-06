@@ -34,6 +34,7 @@ import EVM.ABI hiding (genAbiValue)
 import EVM.Types (Addr, abiKeccak, W256, FunctionSelector(..), word256Bytes)
 
 import Echidna.Mutator.Array (mutateLL, replaceAt)
+import Echidna.Types.Constraint (ArgumentBounds, NumericBounds, unsignedRange)
 import Echidna.Types.Random
 import Echidna.Types.Signature
 
@@ -514,6 +515,31 @@ genAbiValueM' genDict funcName depth t =
         AbiFunctionType       -> AbiFunction <$> rElem (NE.fromList pregenAdds)
                                              <*> (FunctionSelector <$> getRandom)
   in genWithDict genDict genDict.constants go t
+
+-- | Rebind arguments in a call that is about to run from the exact concrete
+-- context these bounds describe. Unbounded arguments are retained, and even a
+-- bounded argument keeps its original value occasionally for diversity.
+applyArgumentBounds
+  :: MonadRandom m
+  => ArgumentBounds
+  -> [AbiValue]
+  -> m [AbiValue]
+applyArgumentBounds bounds = zipWithM apply [0..]
+  where
+    apply argument original =
+      case Map.lookup argument bounds >>= boundedGenerator (abiValueType original) of
+        Nothing -> pure original
+        Just bounded -> join $ Random.weighted [(bounded, 10), (pure original, 1)]
+
+boundedGenerator :: MonadRandom m => AbiType -> NumericBounds -> Maybe (m AbiValue)
+boundedGenerator (AbiUIntType bits) bounds = do
+  (lower, upper) <- unsignedRange bits bounds
+  pure $ AbiUInt bits . fromInteger <$> join (Random.weighted
+    [ (getRandomR (lower, upper), 8)
+    , (pure lower, 1)
+    , (pure upper, 1)
+    ])
+boundedGenerator _ _ = Nothing
 
 -- | Given a 'SolSignature', generate a random 'SolCall' with that signature,
 -- possibly with a dictionary.

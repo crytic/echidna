@@ -30,7 +30,7 @@ import Echidna.Types.Test qualified as Test
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker
 import Echidna.Worker.Command (checkMessages)
-import Echidna.Worker.Sequence (callseq, replayCorpus)
+import Echidna.Worker.Sequence (applyCachedBounds, callseq, replayCorpus)
 
 -- | Run a fuzzing campaign given an initial universe state, some tests, and an
 -- optional dictionary to generate calls with. Return the 'Campaign' state once
@@ -50,6 +50,9 @@ runFuzzWorker
   -> m (WorkerStopReason, WorkerState)
 runFuzzWorker callback onReady vm dict workerId initialCorpus testLimit = do
   bus <- asks (.bus)
+  -- Subscribe before replaying the initial corpus: replayed calls can submit
+  -- constraint requests, and their asynchronous answers must not be dropped.
+  chan <- liftIO $ atomically $ dupTChan bus
   let
     effectiveSeed = dict.defSeed + workerId
     initialState =
@@ -61,10 +64,6 @@ runFuzzWorker callback onReady vm dict workerId initialCorpus testLimit = do
     flip evalRandT (mkStdGen effectiveSeed) $ do
       lift callback
       void $ replayCorpus vm initialCorpus
-      -- Each worker reads the bus through its own duplicate, so a message
-      -- reaches every worker instead of being raced for by whoever gets there
-      -- first.
-      chan <- liftIO $ atomically $ dupTChan bus
       lift onReady
       run chan
 
@@ -107,7 +106,9 @@ runFuzzWorker callback onReady vm dict workerId initialCorpus testLimit = do
        | otherwise ->
          lift callback >> pure TestLimitReached
 
-  fuzz = randseq vm.env.contracts >>= \txs -> fst <$> callseq vm txs False
+  fuzz = do
+    txs <- applyCachedBounds =<< randseq vm.env.contracts
+    fst <$> callseq vm txs False
 
   -- TODO: Shrinking only this worker's tests makes some workers run longer as
   -- they work less on their test limit portion during shrinking. We should move

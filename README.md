@@ -66,6 +66,16 @@ The example above uses the default **property** mode, but Echidna supports sever
 * **`optimization`**: Maximize the return value of `echidna_`-prefixed functions that return `int256` (uses the same configurable prefix as property mode).
 * **`exploration`**: Collect coverage without checking properties.
 
+With `constraint-discovery: true` (or `--constraint-discovery true`), Echidna adds
+one lightweight worker that uses bounded symbolic execution to approximate
+non-reverting ranges for unsigned integer arguments. Requests are demand-driven:
+a fuzzer submits the concrete pre-call state and immediately continues without
+waiting. Answers are cached by the exact preceding transaction prefix plus call
+context; prefixes are compared structurally rather than hashed. If that context
+is generated again, bounded arguments are strongly preferred, while the
+original values remain possible. Each method has a small context cap, and
+constraint discovery always uses one solver with short, bounded searches.
+
 ### Collecting and visualizing coverage
 
 After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain two entries: (1) a directory named `coverage` with JSON files that can be replayed by Echidna and (2) a plain-text file named `covered.txt`, a copy of the source code with coverage annotations.

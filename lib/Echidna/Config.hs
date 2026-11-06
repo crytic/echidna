@@ -37,6 +37,7 @@ adjustForVerificationMode cfg
               { workers = Just 0
               , seqLen = 1
               , symExec = True
+              , constraintDiscovery = False
               }
           }
   | otherwise = cfg
@@ -130,6 +131,7 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "workers"
         <*> v ..:? "server"
         <*> v ..:? "symExec"            ..!= False
+        <*> constraintDiscoveryOption
         <*> smtSolver
         <*> v ..:? "symExecTargets"     ..!= []
         <*> v ..:? "symExecTimeout"     ..!= defaultSymExecTimeout
@@ -139,6 +141,13 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "symExecMaxExplore"  ..!= defaultSymExecMaxExplore
         <*> v ..:? "symExecSolverMemory" ..!= defaultSymExecSolverMemory
         where
+        constraintDiscoveryOption = do
+          primary <- v ..:? "constraint-discovery"
+          alias <- lift $ v .:? "constraintDiscovery"
+          case alias of
+            Just _ -> useKey "constraintDiscovery"
+            Nothing -> pure ()
+          pure $ fromMaybe (fromMaybe False alias) primary
         smtSolver = v ..:? "symExecSMTSolver" >>= \case
           Just ("z3" :: String)  -> pure Z3
           Just "cvc5"            -> pure CVC5

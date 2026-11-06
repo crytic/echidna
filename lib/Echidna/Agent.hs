@@ -10,6 +10,7 @@ import Echidna.Types.Config (Env)
 import Echidna.Types.Worker (CampaignEvent(..), WorkerEvent(..), WorkerStopReason)
 import Echidna.Worker (pushCampaignEvent)
 import Echidna.Worker.Fuzz (runFuzzWorker)
+import Echidna.Worker.ConstraintDiscovery (runConstraintDiscoveryWorker)
 import Echidna.Worker.Symbolic (runSymWorker)
 
 -- | Run an agent to completion and report why it stopped.
@@ -25,7 +26,8 @@ runAgent = runAgentWithReady (pure ())
 -- | Run an agent, calling the supplied action once it is ready for external
 -- commands. Fuzzing workers become ready after replaying their initial corpus
 -- and subscribing to the inter-worker bus; symbolic workers do not accept
--- commands, so they are ready immediately.
+-- commands, so they are ready immediately. Constraint discovery becomes ready
+-- after subscribing to requests and just before it starts serving them.
 runAgentWithReady :: IO () -> Agent -> Env -> IO WorkerStopReason
 runAgentWithReady onReady agent env = do
   let workerId = workerIdOf agent
@@ -43,6 +45,8 @@ runAgentWithReady onReady agent env = do
     SymbolicAgent{initialVm, initialDict, contractName} -> do
       liftIO onReady
       runSymWorker callback initialVm initialDict workerId contractName
+    ConstraintDiscoveryAgent{contractName} ->
+      runConstraintDiscoveryWorker callback (liftIO onReady) workerId contractName
 
   -- The callback publishes as the worker goes, but not from every exit path
   -- (verification mode never runs it), so publish the final state here too.

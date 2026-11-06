@@ -8,6 +8,7 @@ module Echidna.Types.InterWorker
   ( AgentId(..)
   , BroadcastMsg(..)
   , Bus
+  , ConstraintRequest(..)
   , FuzzerCmd(..)
   , Message(..)
   , Reply(..)
@@ -17,13 +18,16 @@ module Echidna.Types.InterWorker
 import Control.Concurrent.STM (TChan, TMVar)
 import Data.Text (Text)
 
+import EVM.Types (VM, VMType(Concrete))
+
 import Echidna.Types.Signature (SolCallPrototype)
+import Echidna.Types.Constraint (ArgumentBounds, ConstraintKey(..))
 import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker (WorkerId)
 
 -- | Who sent a message. 'ServerId' is the MCP server, standing in for whoever
 -- is driving the campaign from outside it.
-data AgentId = FuzzerId WorkerId | SymbolicId | ServerId
+data AgentId = FuzzerId WorkerId | SymbolicId | ConstraintDiscoveryId | ServerId
   deriving (Show, Eq, Ord)
 
 -- | The channel a command answers on, filled exactly once by whoever handles
@@ -46,12 +50,26 @@ data FuzzerCmd
     --   probability in place of a corpus-mutated one.
   | ClearPrioritization
     -- ^ Forget every prioritized sequence.
+  | SetArgumentBounds ConstraintKey ArgumentBounds
+    -- ^ Cache bounds for one exact concrete call context.
   | ExecuteSequence [Tx] Bool (Reply Text)
     -- ^ Replay a sequence of transactions and report on what it did, without
     --   perturbing the campaign. The flag asks for the EVM trace to be part of
     --   the report; the reply is the JSON report itself. See
     --   'Echidna.Worker.Replay.executeSeq'.
   deriving Show
+
+-- | A non-blocking request for bounds at the concrete state immediately before
+-- a call. The worker id is carried by 'WrappedMessage.from'. Keeping the VM in
+-- memory is bounded by the small per-signature context cap.
+data ConstraintRequest = ConstraintRequest
+  { key :: ConstraintKey
+  , vm :: VM Concrete
+  , targetTx :: Tx
+  }
+
+instance Show ConstraintRequest where
+  show request = "DiscoverConstraints " <> show request.key.signature
 
 -- | A message every agent gets to see.
 data BroadcastMsg
@@ -63,6 +81,7 @@ data BroadcastMsg
 data Message
   = Broadcast BroadcastMsg
   | ToFuzzer WorkerId FuzzerCmd
+  | ToConstraint ConstraintRequest
   deriving Show
 
 -- | A message together with its sender.

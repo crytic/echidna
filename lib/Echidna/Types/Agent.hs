@@ -30,24 +30,33 @@ data Agent
       , contractName :: Maybe Text
       , stateRef :: IORef WorkerState
       }
+  | ConstraintDiscoveryAgent
+      { constraintDiscoveryId :: Int
+      , contractName :: Maybe Text
+      , stateRef :: IORef WorkerState
+      }
 
 -- | The worker id this agent runs as. There is at most one symbolic worker and
 -- it is always worker 0.
 workerIdOf :: Agent -> WorkerId
 workerIdOf FuzzerAgent{fuzzerId} = fuzzerId
 workerIdOf SymbolicAgent{} = 0
+workerIdOf ConstraintDiscoveryAgent{constraintDiscoveryId} = constraintDiscoveryId
 
 -- | The kind of worker this agent is, for tagging campaign events.
 workerTypeOf :: Agent -> WorkerType
 workerTypeOf FuzzerAgent{} = FuzzWorker
 workerTypeOf SymbolicAgent{} = SymbolicWorker
+workerTypeOf ConstraintDiscoveryAgent{} = ConstraintDiscoveryWorker
 
 -- | The ref the agent publishes its 'WorkerState' through.
 stateRefOf :: Agent -> IORef WorkerState
 stateRefOf FuzzerAgent{stateRef} = stateRef
 stateRefOf SymbolicAgent{stateRef} = stateRef
+stateRefOf ConstraintDiscoveryAgent{stateRef} = stateRef
 
 -- | Name used to announce the agent when it starts.
 agentName :: Agent -> String
 agentName FuzzerAgent{} = "FuzzerAgent"
 agentName SymbolicAgent{} = "SymbolicAgent"
+agentName ConstraintDiscoveryAgent{} = "ConstraintDiscoveryAgent"
