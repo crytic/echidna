@@ -11,14 +11,44 @@ import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
 
 import EVM.ABI (AbiType(..), AbiValue(..), abiValueType)
 
-import Echidna.ABI (coerceAbiValue, coercePrototype)
+import Echidna.ABI (abiCalldata, abiCalldataCached, coerceAbiValue, coercePrototype,
+                    encodeSig, mkSelectorCache, signatureCall)
 import Echidna.MCP.Parse (parseArg, parseFuzzCall)
 import Echidna.Transaction (genPrototypeCall, matchingContracts)
 import Echidna.Types.Campaign (initialWorkerState)
 
 abiTests :: TestTree
 abiTests = testGroup "ABI coercion"
-  [ testGroup "integer bounds"
+  [ testGroup "cached selectors"
+      [ testCase "ERC20 selector and overloaded signatures" $ do
+          let transfer = ("transfer", [AbiAddress 0x1234, AbiUInt 256 7])
+              overload = ("transfer", [AbiUInt 256 7])
+              cache = mkSelectorCache (signatureCall <$> [transfer, overload])
+              encodeCached = abiCalldataCached cache
+          BS.take 4 (encodeCached transfer) @?= BS.pack [0xa9, 0x05, 0x9c, 0xbb]
+          assertBool "overloads have different selectors" $
+            BS.take 4 (encodeCached transfer) /= BS.take 4 (encodeCached overload)
+          map encodeCached [transfer, overload] @?=
+            map (\call -> abiCalldata (encodeSig (signatureCall call))
+                                      (V.fromList (snd call))) [transfer, overload]
+      , testCase "nested dynamic payload offsets are unchanged" $ do
+          let call = ("nested", [AbiTuple (V.fromList
+                       [ AbiString "abc"
+                       , AbiArrayDynamic AbiBytesDynamicType
+                           (V.fromList [AbiBytesDynamic "", AbiBytesDynamic "payload"])
+                       ]), AbiUInt 256 42])
+              sig = signatureCall call
+              expected = abiCalldata (encodeSig sig) (V.fromList (snd call))
+          abiCalldataCached (mkSelectorCache [sig]) call @?= expected
+      , testCase "empty arguments, synthetic fallback and cache misses" $ do
+          let known = ("empty", [])
+              cache = mkSelectorCache [known]
+              calls = [("empty", []), ("", []), ("unknown", [AbiInt 256 (-1)])]
+          map (abiCalldataCached cache) calls @?=
+            map (\call -> abiCalldata (encodeSig (signatureCall call))
+                                      (V.fromList (snd call))) calls
+      ]
+  , testGroup "integer bounds"
       [ testCase (show bits <> " bits") $ do
           let umax = 2 ^ bits - 1 :: Integer
               imin = negate (2 ^ (bits - 1)) :: Integer

@@ -15,12 +15,10 @@ import Data.Map (Map, toList)
 import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Vector qualified as V
 import Optics.Core
 import Optics.State.Operators
 
 import EVM (ceilDiv, initialContract, loadContract, resetState)
-import EVM.ABI (abiValueType)
 import EVM.FeeSchedule (FeeSchedule(..))
 import EVM.Transaction (setupTx)
 import EVM.Types hiding (Env, Gas, VMOpts(timestamp, gasprice))
@@ -305,15 +303,15 @@ forceMutateTx _ = pure Nothing
 
 -- | Given a 'Transaction', set up some 'VM' so it can be executed. Effectively, this just brings
 -- 'Transaction's \"on-chain\".
-setupTx :: (MonadIO m, MonadState (VM Concrete) m) => Tx -> m ()
-setupTx tx@Tx{call = NoCall} = fromEVM $ do
+setupTx :: (MonadIO m, MonadState (VM Concrete) m) => SelectorCache -> Tx -> m ()
+setupTx _ tx@Tx{call = NoCall} = fromEVM $ do
   resetState
   modify' $ \vm -> vm
     { state = vm.state
     , block = advanceBlock vm.block tx.delay
     }
 
-setupTx tx@Tx{call} = fromEVM $ do
+setupTx selectors tx@Tx{call} = fromEVM $ do
   resetState
   modify' $ \vm -> vm
     { result = Nothing
@@ -345,7 +343,6 @@ setupTx tx@Tx{call} = fromEVM $ do
           & #tx % #txReversion !~ reversionState
   where
     incrementBalance = #env % #contracts % ix (LitAddr tx.dst) % #balance %= (\v -> Lit $ forceWord v + tx.value)
-    encode (n, vs) = abiCalldata (encodeSig (n, abiValueType <$> vs)) $ V.fromList vs
     isCall = case call of
       SolCall _ -> True
       SolCalldata _ -> True
@@ -355,7 +352,7 @@ setupTx tx@Tx{call} = fromEVM $ do
       _ -> False
     calldata = case call of
       SolCreate bc -> bc
-      SolCall cd -> encode cd
+      SolCall cd -> abiCalldataCached selectors cd
       SolCalldata cd -> cd
     subState vm = let
         initialAccessedAddrs = Set.fromList $

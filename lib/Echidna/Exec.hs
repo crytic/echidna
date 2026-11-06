@@ -100,7 +100,8 @@ execTxWith executeTx tx = do
     config <- asks (.cfg)
     when (not config.allEvents) $ #traces .= emptyEvents
     vmBeforeTx <- get
-    setupTx tx
+    selectors <- asks (.functionSelectors)
+    setupTx selectors tx
     case tx.call of
       NoCall -> pure $ VMSuccess (ConcreteBuf "")
       _ -> do

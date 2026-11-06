@@ -4,7 +4,7 @@ import Control.Monad (liftM2, liftM3, foldM, replicateM, zipWithM)
 import Control.Monad.Random.Strict (MonadRandom, join, getRandom, getRandoms, getRandomR, uniform, fromList)
 import Control.Monad.Random.Strict qualified as Random
 import Data.Bifunctor (first)
-import Data.Binary.Put (runPut, putWord32be)
+import Data.Binary.Put (runPut, putWord32be, putByteString)
 import Data.BinaryWord (unsignedWord)
 import Data.Bits (bit)
 import Data.Bool (bool)
@@ -540,3 +540,24 @@ abiCalldata :: Text -> Vector AbiValue -> ByteString
 abiCalldata s xs = BSLazy.toStrict . runPut $ do
   putWord32be (abiKeccak (encodeUtf8 s)).unFunctionSelector
   putAbi (AbiTuple xs)
+
+-- | Four-byte selectors of the functions in the compiled ABIs. A selector
+-- depends only on the full signature, so it can be computed once instead of
+-- hashing the signature for every transaction. Calls with any other
+-- signature, including the synthetic fallback, are encoded as before.
+type SelectorCache = Map SolSignature ByteString
+
+mkSelectorCache :: [SolSignature] -> SelectorCache
+mkSelectorCache = Map.fromList . map (\sig -> (sig, abiCalldata (encodeSig sig) mempty))
+
+-- | Same bytes as 'abiCalldata' for the call's signature and arguments.
+abiCalldataCached :: SelectorCache -> SolCall -> ByteString
+abiCalldataCached cache call@(_, values) =
+  case Map.lookup sig cache of
+    Nothing -> abiCalldata (encodeSig sig) args
+    Just selectorBytes -> BSLazy.toStrict . runPut $ do
+      putByteString selectorBytes
+      putAbi (AbiTuple args)
+  where
+    sig = signatureCall call
+    args = V.fromList values
