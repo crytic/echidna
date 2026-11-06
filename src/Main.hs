@@ -2,6 +2,7 @@
 
 module Main where
 
+import Control.Concurrent (getNumCapabilities, setNumCapabilities)
 import Control.Exception (SomeException, displayException, handle, throwIO, fromException)
 import Control.Monad (unless, when, forM_)
 import Control.Monad.Random (getRandomR)
@@ -22,6 +23,7 @@ import Data.Text.Lazy qualified as TL
 import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Version (showVersion)
 import Data.Word (Word8, Word16, Word64)
+import GHC.Conc (getNumProcessors)
 import Main.Utf8 (withUtf8)
 import Options.Applicative
 import Paths_echidna (version)
@@ -50,6 +52,7 @@ import Echidna.Types.Solidity
 import Echidna.Types.Test (TestMode, EchidnaTest(..), TestConf(..), TestType(..), TestState(..), isSuccessful)
 import Echidna.UI
 import Echidna.Utility (measureIO)
+import Echidna.Worker (getNWorkers)
 
 -- | Strip ANSI escape codes from any uncaught exception's display text when
 -- stderr doesn't support them (e.g., redirected to a file). Covers the
@@ -74,6 +77,14 @@ main = withUtf8 $ withCP65001 $ withStrippedExceptions $ do
     maybe (pure (EConfigWithUsage defaultConfig mempty mempty)) parseConfig cliConfigFilepath
   cfg <- overrideConfig loadedCfg opts
   either die pure $ validateConfig cfg
+
+  -- Give each worker and the UI a capability, capped at the processor count.
+  -- Keep a larger explicit +RTS -N setting.
+  capabilities <- getNumCapabilities
+  processors <- max 1 <$> getNumProcessors
+  let neededCapabilities = min processors (getNWorkers cfg.campaignConf + 1)
+  when (capabilities < neededCapabilities) $
+    setNumCapabilities neededCapabilities
 
   printProjectName cfg.projectName
 
@@ -281,9 +292,11 @@ overrideConfig config Options{..} = do
   envRpcUrl <- Onchain.rpcUrlEnv
   envRpcBlock <- Onchain.rpcBlockEnv
   envEtherscanApiKey <- Onchain.etherscanApiKey
+  -- Use processors for the default; the RTS starts with one capability.
+  defaultWorkers <- fromIntegral . min 4 . max 1 <$> getNumProcessors
   pure $
     config { solConf = overrideSolConf config.solConf
-           , campaignConf = overrideCampaignConf config.campaignConf
+           , campaignConf = overrideCampaignConf defaultWorkers config.campaignConf
            , uiConf = overrideUiConf config.uiConf
            , rpcUrl = cliRpcUrl <|> envRpcUrl <|> config.rpcUrl
            , rpcBlock = cliRpcBlock <|> envRpcBlock <|> config.rpcBlock
@@ -306,14 +319,14 @@ overrideConfig config Options{..} = do
                               , solConf = cfg.solConf { quiet = True }
                               }
 
-    overrideCampaignConf campaignConf = campaignConf
+    overrideCampaignConf defaultWorkers campaignConf = campaignConf
       { corpusDir = cliCorpusDir <|> campaignConf.corpusDir
       , coverageDir = cliCoverageDir <|> campaignConf.coverageDir
       , testLimit = fromMaybe campaignConf.testLimit cliTestLimit
       , shrinkLimit = fromMaybe campaignConf.shrinkLimit cliShrinkLimit
       , seqLen = fromMaybe campaignConf.seqLen cliSeqLen
       , seed = cliSeed <|> campaignConf.seed
-      , workers = cliWorkers <|> campaignConf.workers
+      , workers = cliWorkers <|> campaignConf.workers <|> Just defaultWorkers
       , serverPort = cliServerPort <|> campaignConf.serverPort
       , symExec = fromMaybe campaignConf.symExec cliSymExec
       , symExecTargets = if null cliSymExecTargets then campaignConf.symExecTargets else cliSymExecTargets
