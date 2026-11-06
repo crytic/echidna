@@ -12,6 +12,7 @@ import EVM.Dapp (DappInfo)
 import EVM.Fetch qualified as Fetch
 import EVM.Types (Addr, W256)
 
+import Echidna.ABI (SelectorCache)
 import Echidna.SourceAnalysis.Slither (SlitherInfo)
 import Echidna.SourceMapping (CodehashMap)
 import Echidna.Types.Cache
@@ -97,4 +98,5 @@ data Env = Env
   , contractNameCache :: IORef ContractNameCache
   , chainId :: Maybe W256
   , world :: World
+  , functionSelectors :: SelectorCache
   }
