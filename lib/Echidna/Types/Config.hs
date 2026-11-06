@@ -18,7 +18,7 @@ import Echidna.Types.Cache
 import Echidna.Types.Campaign (CampaignConf)
 import Echidna.Types.Corpus (Corpus)
 import Echidna.Types.Coverage (CoverageMap)
-import Echidna.Types.InterWorker (Bus)
+import Echidna.Types.InterWorker (Bus, ConstraintQueue)
 import Echidna.Types.Solidity (SolConf)
 import Echidna.Types.Test (TestConf, EchidnaTest)
 import Echidna.Types.Tx (TxConf)
@@ -85,6 +85,10 @@ data Env = Env
   -- 'Control.Concurrent.STM.dupTChan' of it, so every reader sees every
   -- message.
   , bus :: Bus
+
+  -- | Recent constraint-discovery requests per fuzzer and signature. Unlike
+  -- the broadcast bus, this is a bounded work queue consumed by one worker.
+  , constraintQueue :: ConstraintQueue
 
   , testRefs :: [IORef EchidnaTest]
   , coverageRefInit :: IORef CoverageMap

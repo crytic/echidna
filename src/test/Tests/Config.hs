@@ -40,6 +40,18 @@ configTests = testGroup "Configuration tests" $
       assertBool "" $ isNothing (defaultConfig.campaignConf.corpusDir)
   , testCase "coverageDir defaults to Nothing" $
       assertBool "" $ isNothing (defaultConfig.campaignConf.coverageDir)
+  , testCase "constraint discovery defaults to disabled" $
+      assertBool "" $ not defaultConfig.campaignConf.constraintDiscovery
+  , testCase "parse constraint-discovery" $
+      case Y.decodeEither' "constraint-discovery: true" of
+        Right (config :: EConfig) ->
+          assertBool "constraint discovery should be enabled" config.campaignConf.constraintDiscovery
+        Left e -> assertFailure $ "unexpected decoding error: " <> show e
+  , testCase "parse constraintDiscovery compatibility alias" $
+      case Y.decodeEither' "constraintDiscovery: true" of
+        Right (config :: EConfig) ->
+          assertBool "constraint discovery alias should be enabled" config.campaignConf.constraintDiscovery
+        Left e -> assertFailure $ "unexpected decoding error: " <> show e
   , testCase "default.yaml" $ do
       EConfigWithUsage _ bad unset <- parseConfig "basic/default.yaml"
       assertBool ("unused options: " ++ show bad) $ null bad

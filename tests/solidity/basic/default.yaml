@@ -109,6 +109,8 @@ allEvents: false
 server: null
 # whether to add an additional symbolic execution worker
 symExec: false
+# whether to add one lightweight worker that discovers argument bounds
+constraint-discovery: false
 # number of SMT solvers used in symbolic execution
 # only relevant if symExec is true
 symExecNSolvers: 1

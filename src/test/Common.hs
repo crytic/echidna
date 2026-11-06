@@ -116,6 +116,12 @@ runContract f selectedContract cfg workerType = do
                         , contractName = selectedContract
                         , stateRef
                         }
+        ConstraintDiscoveryWorker ->
+          ConstraintDiscoveryAgent
+            { constraintDiscoveryId = getNFuzzWorkers cfg.campaignConf
+            , contractName = selectedContract
+            , stateRef
+            }
   void $ runAgent agent env
   finalState <- readIORef stateRef
 

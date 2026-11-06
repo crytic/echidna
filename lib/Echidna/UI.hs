@@ -108,8 +108,25 @@ ui vm dict initialCorpus cliSelectedContract = do
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
   let spawnWorkers = liftIO $ do
-        spawned <- forM (zip corpusChunks [0..(nworkers-1)]) $
+        let (fuzzerSpecs, extraSpecs) = splitAt nFuzzWorkers (zip corpusChunks [0..(nworkers-1)])
+            symbolicSpecs = filter ((== SymbolicWorker) . workerIDToType conf.campaignConf . snd) extraSpecs
+            constraintSpecs = filter ((== ConstraintDiscoveryWorker) . workerIDToType conf.campaignConf . snd) extraSpecs
+
+        -- Subscribe constraint discovery before fuzzers can submit requests.
+        constraints <- forM constraintSpecs $ \spec -> do
+          worker@(_, ready) <- uncurry (spawnWorker env perWorkerTestLimit) spec
+          readMVar ready
+          pure worker
+
+        fuzzers <- forM fuzzerSpecs $
           uncurry (spawnWorker env perWorkerTestLimit)
+
+        symbolic <- forM symbolicSpecs $
+          uncurry (spawnWorker env perWorkerTestLimit)
+
+        -- Keep fuzzers first in snapshots and final reports. Among other
+        -- things, the first state is used to report the campaign seed.
+        let spawned = fuzzers <> constraints <> symbolic
         pure (map fst spawned, map snd spawned)
 
       -- The MCP server answers for the campaign as it runs, reading worker
@@ -269,6 +286,12 @@ ui vm dict initialCorpus cliSelectedContract = do
                           , contractName = cliSelectedContract
                           , stateRef
                           }
+          ConstraintDiscoveryWorker ->
+            ConstraintDiscoveryAgent
+              { constraintDiscoveryId = workerId
+              , contractName = cliSelectedContract
+              , stateRef
+              }
 
         workerType = workerTypeOf agent
 

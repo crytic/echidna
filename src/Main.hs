@@ -172,6 +172,7 @@ data Options = Options
   , cliCryticArgs       :: Maybe String
   , cliSolcArgs         :: Maybe String
   , cliSymExec          :: Maybe Bool
+  , cliConstraintDiscovery :: Maybe Bool
   , cliSymExecTargets   :: [Text]
   , cliSymExecTimeout   :: Maybe Int
   , cliSymExecNSolvers  :: Maybe Int
@@ -259,6 +260,9 @@ options = Options . NE.fromList
   <*> optional (option bool $ long "sym-exec"
     <> metavar "BOOL"
     <> help "Whether to enable the experimental symbolic execution feature.")
+  <*> optional (option bool $ long "constraint-discovery"
+    <> metavar "BOOL"
+    <> help "Whether to enable lightweight symbolic discovery of non-reverting argument bounds.")
   <*> many (option str $ long "sym-exec-target"
     <> metavar "SELECTOR"
     <> help "Target for the symbolic execution run (assuming sym-exec is enabled). Can be passed multiple times. Default is all functions")
@@ -316,6 +320,7 @@ overrideConfig config Options{..} = do
       , workers = cliWorkers <|> campaignConf.workers
       , serverPort = cliServerPort <|> campaignConf.serverPort
       , symExec = fromMaybe campaignConf.symExec cliSymExec
+      , constraintDiscovery = fromMaybe campaignConf.constraintDiscovery cliConstraintDiscovery
       , symExecTargets = if null cliSymExecTargets then campaignConf.symExecTargets else cliSymExecTargets
       , symExecTimeout = fromMaybe campaignConf.symExecTimeout cliSymExecTimeout
       , symExecNSolvers = fromMaybe campaignConf.symExecNSolvers cliSymExecNSolvers

@@ -17,12 +17,19 @@ import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker
 import Echidna.Utility (getTimestamp)
 
--- | Number of workers, including SymExec worker if there is one
+-- | Number of workers, including optional symbolic helpers.
 getNWorkers :: CampaignConf -> Int
-getNWorkers conf = getNFuzzWorkers conf + (if conf.symExec then 1 else 0)
+getNWorkers conf = getNFuzzWorkers conf
+  + (if conf.symExec then 1 else 0)
+  + (if conf.constraintDiscovery then 1 else 0)
 
 workerIDToType :: CampaignConf -> WorkerId -> WorkerType
-workerIDToType conf wid = if conf.symExec && wid == (getNWorkers conf - 1) then SymbolicWorker else FuzzWorker
+workerIDToType conf wid
+  | wid < fuzzWorkers = FuzzWorker
+  | conf.constraintDiscovery && wid == fuzzWorkers = ConstraintDiscoveryWorker
+  | conf.symExec = SymbolicWorker
+  | otherwise = FuzzWorker
+  where fuzzWorkers = getNFuzzWorkers conf
 
 instance ToJSON WorkerEvent where
   toJSON = \case
@@ -139,6 +146,8 @@ ppWorkerEvent = \case
     "Symbolic worker ran out of transactions to explore. Stopping."
   WorkerStopped SymbolicVerificationDone ->
     "Symbolic worker finished with the list of methods to verify. Stopping."
+  WorkerStopped ConstraintDiscoveryDone ->
+    "Constraint discovery finished. Stopping."
   WorkerStopped TimeLimitReached ->
     "Time limit reached. Stopping."
   WorkerStopped FastFailed ->

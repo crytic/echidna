@@ -53,7 +53,12 @@ runSymWorker
   -> m (WorkerStopReason, WorkerState)
 runSymWorker callback vm dict workerId name = do
   cfg <- asks (.cfg)
-  let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
+  -- This worker emits its own stop event only after the listener returns, so
+  -- wait for every *other* worker. Constraint discovery is another helper and
+  -- can finish before the fuzzers; counting only fuzz workers would then stop
+  -- this listener one event too early.
+  let nworkers = getNFuzzWorkers cfg.campaignConf
+        + if cfg.campaignConf.constraintDiscovery then 1 else 0
   eventQueue <- asks (.eventQueue)
   chan <- liftIO $ atomically $ dupTChan eventQueue
 

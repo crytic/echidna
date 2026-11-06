@@ -3,7 +3,8 @@ module Echidna.Types.Worker where
 import Echidna.Types.Test
 import Echidna.Types.Tx
 
-data WorkerType = FuzzWorker | SymbolicWorker deriving (Eq)
+data WorkerType = FuzzWorker | SymbolicWorker | ConstraintDiscoveryWorker
+  deriving (Eq, Show)
 
 type WorkerId = Int
 
@@ -31,9 +32,9 @@ data WorkerStopReason
   = TestLimitReached
   | SymbolicExplorationDone
   | SymbolicVerificationDone
+  | ConstraintDiscoveryDone
   | TimeLimitReached
   | FastFailed
   | Killed !String
   | Crashed !String
   deriving Show
-
