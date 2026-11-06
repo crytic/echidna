@@ -28,7 +28,7 @@ import Data.List qualified as List
 import Data.Map (Map, (\\))
 import Data.Map qualified as Map
 import Data.Map.Strict qualified as MapStrict
-import Data.Maybe (isJust, isNothing, mapMaybe)
+import Data.Maybe (isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -51,11 +51,13 @@ import Echidna.Test
 import Echidna.Test.State (updateTests)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
-import Echidna.Types.Constraint (ConstraintKey(..), maxContextsPerSignature)
+import Echidna.Types.Constraint (ConstraintKey(..), maxRecentContextsPerSignature)
 import Echidna.Types.Corpus (Corpus, corpusSize)
 import Echidna.Types.Coverage (coverageStats)
 import Echidna.Types.InterWorker
-  (AgentId(..), BroadcastMsg(..), ConstraintRequest(..), Message(..), WrappedMessage(..))
+  ( AgentId(..), BroadcastMsg(..), ConstraintRequest(..), Message(..)
+  , WrappedMessage(..), submitConstraintRequest
+  )
 import Echidna.Types.Signature (FunctionName)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
@@ -298,11 +300,10 @@ evalSeq vm0 execFunc discoverConstraints = go vm0 [] where
         (remaining, vm'') <- go vm' (tx:executedSoFar) remainingTxs
         pure ((tx, result) : remaining, vm'')
 
--- | Ask the helper once per concrete call context, up to the small per-method
--- cap, immediately before executing that call. This deliberately does not
--- wait: the current input runs unconstrained and a later identical prefix can
--- use the asynchronous answer. Passing the current VM preserves state changes
--- made by every contract in the prefix.
+-- | Ask the helper once per recent concrete call context, immediately before
+-- executing that call. The current input does not wait; a useful asynchronous
+-- answer schedules targeted boundary probes from this exact prefix. Passing
+-- the current VM preserves state changes made by every contract in the prefix.
 requestArgumentBounds
   :: (MonadIO m, MonadReader Env m, MonadState WorkerState m)
   => VM Concrete
@@ -313,7 +314,7 @@ requestArgumentBounds vm prefix tx@Tx{call = SolCall (name, arguments)} = do
   env <- ask
   workerId <- gets (.workerId)
   requested <- gets (.requestedBounds)
-  pending <- gets (.pendingBounds)
+  cached <- gets (.constraintBounds)
   let encodedSignature = encodeSig (name, abiValueType <$> arguments)
       key = ConstraintKey
         { prefix
@@ -325,8 +326,6 @@ requestArgumentBounds vm prefix tx@Tx{call = SolCall (name, arguments)} = do
         , callGasPrice = tx.gasprice
         , callDelay = tx.delay
         }
-      contextsForSignature = Set.size $
-        Set.filter ((== encodedSignature) . (.signature)) requested
       hasIntegerArgument = any (\argument -> case abiValueType argument of
         AbiUIntType _ -> True
         AbiIntType _ -> True
@@ -335,22 +334,27 @@ requestArgumentBounds vm prefix tx@Tx{call = SolCall (name, arguments)} = do
         && workerIDToType env.cfg.campaignConf workerId == FuzzWorker
         && tx.dst == env.cfg.solConf.contractAddr
   when (enabled && hasIntegerArgument
-        && isNothing pending
-        && contextsForSignature < maxContextsPerSignature
+        && Map.notMember key cached
         && Set.notMember key requested) $ do
     modify' $ \workerState -> workerState
-      { requestedBounds = Set.insert key workerState.requestedBounds
-      , pendingBounds = Just key
+      { requestedBounds = rememberRecentRequest key workerState.requestedBounds
       }
-    liftIO $ atomically $ writeTChan env.bus $ WrappedMessage
-      { from = FuzzerId workerId
-      , content = ToConstraint ConstraintRequest
-          { key
-          , vm
-          , targetTx = tx
-          }
-      }
+    liftIO $ atomically $ submitConstraintRequest env.constraintQueue workerId
+      ConstraintRequest { key, vm, targetTx = tx }
 requestArgumentBounds _ _ _ = pure ()
+
+-- Keep only a small sample for each signature. Removing any existing entry
+-- makes space for the new context; tracking exact ages of full transaction
+-- prefixes would add bookkeeping to the fuzzing hot path.
+rememberRecentRequest :: ConstraintKey -> Set ConstraintKey -> Set ConstraintKey
+rememberRecentRequest key requested = Set.insert key trimmed
+  where
+    sameSignature = Set.filter ((== key.signature) . (.signature)) requested
+    trimmed
+      | Set.size sameSignature < maxRecentContextsPerSignature = requested
+      | otherwise = case Set.lookupMin sameSignature of
+          Just previous -> Set.delete previous requested
+          Nothing -> requested
 
 -- | Apply a cached answer only when the generated sequence has the exact same
 -- preceding transactions and call context as the discovery request. No answer

@@ -19,7 +19,7 @@ import Echidna.Types
 import Echidna.Types.Constraint (ArgumentBounds, ConstraintKey)
 import Echidna.Types.Coverage (CoverageFileType, CoverageMap)
 import Echidna.Types.Signature (SolCallPrototype)
-import Echidna.Types.Tx (TxResult(..))
+import Echidna.Types.Tx (Tx, TxResult(..))
 
 -- | Maximum number of functions a single worker samples at once.
 maxSampledFunctions :: Int
@@ -210,11 +210,12 @@ data WorkerState = WorkerState
     --   sequences were explicitly injected into this worker.
   , requestedBounds :: !(Set ConstraintKey)
     -- ^ Concrete call contexts already submitted to constraint discovery.
-  , pendingBounds :: !(Maybe ConstraintKey)
-    -- ^ At most one in-flight request per fuzzer, keeping queued VMs bounded.
   , constraintBounds :: !(Map ConstraintKey ArgumentBounds)
     -- ^ Positive answers, keyed by the exact preceding prefix. The requested
     --   set also remembers misses so an all-negative cache stays off hot paths.
+  , constraintProbes :: ![[Tx]]
+    -- ^ Targeted boundary calls waiting to be replayed from their captured
+    --   concrete prefixes. Kept separate from the ordinary corpus mutator.
   }
 
 initialWorkerState :: WorkerState
@@ -229,8 +230,8 @@ initialWorkerState =
               , sampledFunctions = Map.empty
               , prioritizedSequences = []
               , requestedBounds = Set.empty
-              , pendingBounds = Nothing
               , constraintBounds = Map.empty
+              , constraintProbes = []
               }
 
 defaultTestLimit :: Int

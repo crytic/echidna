@@ -9,11 +9,18 @@ import Data.Map qualified as Map
 
 import EVM.Types (VM, VMType(Concrete))
 
+import Echidna.ABI (argumentBoundaryVariants)
 import Echidna.Types.Campaign
 import Echidna.Types.Config (Env)
+import Echidna.Types.Constraint
+  (ArgumentBounds, ConstraintKey(..), maxContextsPerSignature)
 import Echidna.Types.InterWorker
   (FuzzerCmd(..), Message(..), Reply(..), WrappedMessage(..))
+import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Worker.Replay (executeSeq)
+
+maxPendingConstraintProbes :: Int
+maxPendingConstraintProbes = 12
 
 -- | Run every command addressed to this worker that is currently waiting on
 -- the bus, then return.
@@ -70,9 +77,21 @@ handleCmd _ (SetArgumentBounds key bounds) =
   modify' $ \workerState -> workerState
     { constraintBounds = if Map.null bounds
         then workerState.constraintBounds
-        else Map.insert key bounds workerState.constraintBounds
-    , pendingBounds = Nothing
+        else rememberBounds key bounds workerState.constraintBounds
     }
+
+handleCmd _ (ProbeArgumentBounds key targetTx bounds) =
+  modify' $ \workerState -> workerState
+    { constraintProbes = take maxPendingConstraintProbes $
+        workerState.constraintProbes <> boundaryProbes
+    }
+  where
+    boundaryProbes = case targetTx.call of
+      SolCall (name, arguments) ->
+        [ key.prefix <> [targetTx { call = SolCall (name, arguments') }]
+        | arguments' <- argumentBoundaryVariants bounds arguments
+        ]
+      _ -> []
 
 -- The command is addressed to a single worker, so this replies exactly once and
 -- 'putTMVar' cannot block. The replay runs on the worker's own thread: the
@@ -80,3 +99,23 @@ handleCmd _ (SetArgumentBounds key bounds) =
 handleCmd vm (ExecuteSequence txs includeTrace (Reply replyVar)) = do
   report <- executeSeq includeTrace vm txs
   liftIO $ atomically $ putTMVar replyVar report
+
+-- Retain a bounded rolling sample. Exact state prefixes are intentionally not
+-- hashed, so keeping this map small also bounds structural comparison costs.
+rememberBounds
+  :: ConstraintKey
+  -> ArgumentBounds
+  -> Map.Map ConstraintKey ArgumentBounds
+  -> Map.Map ConstraintKey ArgumentBounds
+rememberBounds key bounds cache
+  | Map.member key cache = Map.insert key bounds cache
+  | otherwise = Map.insert key bounds trimmed
+  where
+    sameSignature = Map.filterWithKey
+      (\cachedKey _ -> cachedKey.signature == key.signature)
+      cache
+    trimmed
+      | Map.size sameSignature < maxContextsPerSignature = cache
+      | otherwise = case Map.lookupMin sameSignature of
+          Just (previous, _) -> Map.delete previous cache
+          Nothing -> cache

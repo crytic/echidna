@@ -13,7 +13,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy as BSLazy (toStrict)
 import Data.DoubleWord (Int256, Word256)
 import Data.Foldable (toList)
-import Data.List (intercalate)
+import Data.List (intercalate, nub)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map (Map)
@@ -543,10 +543,56 @@ boundedGenerator _ _ = Nothing
 
 boundedInteger :: MonadRandom m => Integer -> Integer -> m Integer
 boundedInteger lower upper = join (Random.weighted
-    [ (getRandomR (lower, upper), 8)
-    , (pure lower, 1)
-    , (pure upper, 1)
+    [ (getRandomR (lower, upper), 4)
+    , (uniform . NE.fromList $ inRangeBoundaries lower upper, 6)
     ])
+
+-- | Produce a small deterministic set of calls around every discovered
+-- interval. All bounded arguments move together, avoiding a Cartesian product
+-- while still trying the endpoints, their immediate interior neighbors, and
+-- the values just outside the successful interval when the ABI type permits.
+argumentBoundaryVariants :: ArgumentBounds -> [AbiValue] -> [[AbiValue]]
+argumentBoundaryVariants bounds arguments
+  | not $ any fst choices = []
+  | otherwise = take 6 . nub $
+      [ pick candidate <$> choices
+      | candidate <- [0 .. maximum (length . snd <$> choices) - 1]
+      ]
+  where
+    choices = zipWith choicesFor [0..] arguments
+
+    choicesFor argument original = case Map.lookup argument bounds >>= boundaryValues original of
+      Nothing -> (False, [original])
+      Just values -> (True, values)
+
+    pick candidate (_, values) = values !! (candidate `mod` length values)
+
+boundaryValues :: AbiValue -> NumericBounds -> Maybe [AbiValue]
+boundaryValues (AbiUInt bits _) bounds = do
+  (lower, upper) <- unsignedRange bits bounds
+  let typeLower = 0
+      typeUpper = 2 ^ bits - 1
+  pure $ AbiUInt bits . fromInteger
+    <$> boundaryIntegers typeLower typeUpper lower upper
+boundaryValues (AbiInt bits _) bounds = do
+  (lower, upper) <- signedRange bits bounds
+  let typeLower = negate $ 2 ^ (bits - 1)
+      typeUpper = 2 ^ (bits - 1) - 1
+  pure $ AbiInt bits . fromInteger
+    <$> boundaryIntegers typeLower typeUpper lower upper
+boundaryValues _ _ = Nothing
+
+inRangeBoundaries :: Integer -> Integer -> [Integer]
+inRangeBoundaries lower upper = nub . filter inRange $
+  [lower, upper, lower + 1, upper - 1]
+  where
+    inRange value = value >= lower && value <= upper
+
+boundaryIntegers :: Integer -> Integer -> Integer -> Integer -> [Integer]
+boundaryIntegers typeLower typeUpper lower upper = nub . filter representable $
+  inRangeBoundaries lower upper <> [lower - 1, upper + 1]
+  where
+    representable value = value >= typeLower && value <= typeUpper
 
 -- | Given a 'SolSignature', generate a random 'SolCall' with that signature,
 -- possibly with a dictionary.

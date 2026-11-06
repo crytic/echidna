@@ -8,7 +8,8 @@ import Control.Monad (forM_, replicateM, void)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Random.Strict (MonadRandom, evalRandT, getRandom)
 import Control.Monad.Reader (MonadReader, ask, asks, liftIO)
-import Control.Monad.State.Strict (MonadIO, MonadState, StateT, gets, runStateT)
+import Control.Monad.State.Strict
+  (MonadIO, MonadState, StateT, gets, modify', runStateT)
 import Control.Monad.Trans (lift)
 import Data.IORef (atomicModifyIORef', readIORef)
 import Data.List.NonEmpty qualified as NE
@@ -107,8 +108,16 @@ runFuzzWorker callback onReady vm dict workerId initialCorpus testLimit = do
          lift callback >> pure TestLimitReached
 
   fuzz = do
-    txs <- applyCachedBounds =<< randseq vm.env.contracts
-    fst <$> callseq vm txs False
+    probes <- gets (.constraintProbes)
+    (txs, discoverConstraints) <- case probes of
+      probe : remaining -> do
+        modify' $ \workerState -> workerState { constraintProbes = remaining }
+        pure (probe, False)
+      [] -> do
+        enabled <- asks (.cfg.campaignConf.constraintDiscovery)
+        generated <- applyCachedBounds =<< randseq vm.env.contracts
+        pure (generated, enabled)
+    fst <$> callseq vm txs discoverConstraints
 
   -- TODO: Shrinking only this worker's tests makes some workers run longer as
   -- they work less on their test limit portion during shrinking. We should move

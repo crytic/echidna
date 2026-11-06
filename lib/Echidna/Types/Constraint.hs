@@ -35,9 +35,16 @@ data ConstraintKey = ConstraintKey
   }
   deriving (Eq, Ord, Show)
 
--- | Keep discovery bounded even when fuzzing produces many unique states.
+-- | Bound the useful state contexts cached by each fuzzer for a signature.
+-- Eviction lets later campaign states replace early discoveries.
 maxContextsPerSignature :: Int
 maxContextsPerSignature = 4
+
+-- | Bound the number of queued, requested, and cached misses per signature.
+-- Evicting from these small samples lets the discovery worker keep observing
+-- states reached later in the campaign.
+maxRecentContextsPerSignature :: Int
+maxRecentContextsPerSignature = 4
 
 -- | Clamp discovered bounds to an unsigned ABI type's legal range.
 unsignedRange :: Int -> NumericBounds -> Maybe (Integer, Integer)

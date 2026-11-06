@@ -6,12 +6,18 @@ module Echidna.SymExec.Bounds
   , suitableForConstraintDiscovery
   ) where
 
-import Control.Concurrent.STM (newTVarIO)
+import Control.Applicative ((<|>))
+import Control.Concurrent (forkIO, killThread, threadDelay)
+import Control.Concurrent.STM (atomically, newTVarIO, writeTVar)
+import Control.Monad (filterM)
 import Control.Monad.IO.Unlift (liftIO)
 import Control.Monad.State.Strict (execStateT)
+import Data.Bits ((.|.))
 import Data.Function ((&))
 import Data.List (foldl')
 import Data.Map qualified as Map
+import Data.Maybe (mapMaybe)
+import Data.Set qualified as Set
 import Data.Text qualified as T
 import Optics.Core ((.~), (%), (%~))
 import Text.Read (readMaybe)
@@ -22,9 +28,9 @@ import EVM.Effects (App)
 import EVM.Expr qualified as Expr
 import EVM.Fetch qualified as Fetch
 import EVM.Solidity (Method(..), Mutability(..))
-import EVM.Solvers (SolverGroup, withRunAbort)
+import EVM.Solvers (SolverGroup, checkSatWithPropsAbortable, withRunAbort)
 import EVM.SymExec (IterConfig, interpretVMAbortable, mkCalldata, runExpr)
-import EVM.Types (EType(..), Expr(..), Prop(..), VMType(..))
+import EVM.Types (EType(..), Expr(..), ProofResult(Qed), Prop(..), VMType(..))
 import EVM.Types qualified as EVM
 
 import Echidna.Types.Constraint
@@ -54,27 +60,36 @@ suitableForConstraintDiscovery method =
       _ -> False
 
 -- | Symbolically execute one method and approximate intervals that reach a
--- successful return. No model is requested: branch exploration is enough to
--- recover the path constraints and keeps this pass substantially cheaper than
--- normal symbolic exploration.
+-- successful return. Lightweight satisfiability checks discard contradictory
+-- leaves, but no models are requested, keeping this pass substantially cheaper
+-- than normal symbolic exploration.
 discoverMethodBounds :: App m =>
   Method
   -> EVM.VM Concrete
   -> Tx -- ^ Target transaction, including its concrete envelope
   -> IterConfig
+  -> Int -- ^ Maximum wall-clock time for this discovery request, in seconds
   -> SolverGroup
   -> Fetch.RpcInfo
   -> Fetch.Session
   -> m ArgumentBounds
-discoverMethodBounds method vm targetTx iterConfig solvers rpcInfo session = do
+discoverMethodBounds method vm targetTx iterConfig timeoutSeconds solvers rpcInfo session = do
   ((calldata, calldataConstraints), _caveats) <-
     mkCalldata (Just (Sig method.methodSignature (snd <$> method.inputs))) []
   symbolicVm <- prepareBoundsCall targetTx vm calldata calldataConstraints
-  abort <- liftIO $ newTVarIO False
+  -- A single complex request must not monopolize the only discovery worker.
+  -- Solver queries have their own timeout, but interpretation between queries
+  -- also needs a wall-clock budget so later corpus states can be sampled.
+  (abort, timerThread) <- liftIO $ do
+    timer <- newTVarIO False
+    thread <- forkIO $ do
+      threadDelay (max 1 timeoutSeconds * 1_000_000)
+      atomically $ writeTVar timer True
+    pure (timer, thread)
   let fetcher = Fetch.oracle solvers (Just session) rpcInfo
   leaves <- withRunAbort solvers abort $
     interpretVMAbortable abort fetcher iterConfig symbolicVm runExpr $ \leaf _ _ -> pure leaf
-  let nonRevertingPaths =
+  let candidatePaths =
         [ Expr.simplifyProps props
         | leaf <- leaves
         , props <- case leaf of
@@ -84,6 +99,11 @@ discoverMethodBounds method vm targetTx iterConfig solvers rpcInfo session = do
             Partial pathProps _ _ -> [pathProps]
             _ -> []
         ]
+      feasible props = checkSatWithPropsAbortable solvers (Just abort) props >>= \case
+        Qed -> pure False
+        _ -> pure True
+  nonRevertingPaths <- filterM feasible candidatePaths
+  liftIO $ killThread timerThread
   pure $ usefulBounds method $ inferArgumentBounds nonRevertingPaths
 
 prepareBoundsCall :: App m =>
@@ -111,49 +131,72 @@ inferArgumentBounds paths =
   foldl1 (Map.intersectionWith widenBounds) (pathBounds <$> paths)
 
 pathBounds :: [Prop] -> ArgumentBounds
-pathBounds = foldl' add Map.empty . concatMap flatten
+pathBounds props = foldl' add Map.empty $
+  mapMaybe (boundFromProp narrowedArguments) flattened
   where
+    flattened = concatMap flatten props
+    narrowedArguments = Set.fromList $ mapMaybe narrowedArgument flattened
+
     add bounds (argument, range) = Map.insertWith intersectBounds argument range bounds
 
     flatten (PAnd a b) = flatten a <> flatten b
-    flatten prop = maybe [] pure $ boundFromProp prop
+    flatten prop = [prop]
 
-boundFromProp :: Prop -> Maybe (Int, NumericBounds)
-boundFromProp = \case
-  PLT left right -> lessThan left right
-  PGT left right -> lessThan right left
-  PLEq left right -> lessThanOrEqual left right
-  PGEq left right -> lessThanOrEqual right left
-  PEq result (SLT left right) -> signedComparisonResult result left right
-  PEq (SLT left right) result -> signedComparisonResult result left right
+-- Solidity's ABI decoder constrains narrow integer arguments with equalities
+-- such as @arg2 == arg2 & 0xff@. Within that path, the masked expression is
+-- therefore equivalent to the argument and can safely participate in bounds.
+narrowedArgument :: Prop -> Maybe Int
+narrowedArgument = \case
   PEq left right -> do
     leftWord <- Expr.asWord left
     rightWord <- Expr.asWord right
-    equalTo leftWord rightWord
-  PNeg (PLT left right) -> lessThanOrEqual right left
-  PNeg (PGT left right) -> lessThanOrEqual left right
-  PNeg (PLEq left right) -> lessThan right left
-  PNeg (PGEq left right) -> lessThan left right
+    maskedEquality leftWord rightWord <|> maskedEquality rightWord leftWord
+  _ -> Nothing
+  where
+    maskedEquality :: Expr EWord -> Expr EWord -> Maybe Int
+    maskedEquality (Var name) (And (Lit _) (Var maskedName))
+      | name == maskedName = argumentIndex name
+    maskedEquality (Var name) (And (Var maskedName) (Lit _))
+      | name == maskedName = argumentIndex name
+    maskedEquality _ _ = Nothing
+
+boundFromProp :: Set.Set Int -> Prop -> Maybe (Int, NumericBounds)
+boundFromProp narrowed = \case
+  PLT left right -> lessThan narrowed left right
+  PGT left right -> lessThan narrowed right left
+  PLEq left right -> lessThanOrEqual narrowed left right
+  PGEq left right -> lessThanOrEqual narrowed right left
+  PEq result (SLT left right) -> signedComparisonResult narrowed result left right
+  PEq (SLT left right) result -> signedComparisonResult narrowed result left right
+  PEq left right -> do
+    leftWord <- Expr.asWord left
+    rightWord <- Expr.asWord right
+    equalTo narrowed leftWord rightWord
+  PNeg (PLT left right) -> lessThanOrEqual narrowed right left
+  PNeg (PGT left right) -> lessThanOrEqual narrowed left right
+  PNeg (PLEq left right) -> lessThan narrowed right left
+  PNeg (PGEq left right) -> lessThan narrowed left right
   _ -> Nothing
 
 signedComparisonResult
-  :: Expr EWord
+  :: Set.Set Int
+  -> Expr EWord
   -> Expr EWord
   -> Expr EWord
   -> Maybe (Int, NumericBounds)
-signedComparisonResult (Lit 0) left right = lessThanOrEqual right left
-signedComparisonResult (Lit 1) left right = lessThan left right
-signedComparisonResult _ _ _ = Nothing
+signedComparisonResult narrowed (Lit 0) left right = lessThanOrEqual narrowed right left
+signedComparisonResult narrowed (Lit 1) left right = lessThan narrowed left right
+signedComparisonResult _ _ _ _ = Nothing
 
-lessThan :: Expr EWord -> Expr EWord -> Maybe (Int, NumericBounds)
-lessThan = comparison (-1) 1
+lessThan :: Set.Set Int -> Expr EWord -> Expr EWord -> Maybe (Int, NumericBounds)
+lessThan narrowed = comparison narrowed (-1) 1
 
-lessThanOrEqual :: Expr EWord -> Expr EWord -> Maybe (Int, NumericBounds)
-lessThanOrEqual = comparison 0 0
+lessThanOrEqual :: Set.Set Int -> Expr EWord -> Expr EWord -> Maybe (Int, NumericBounds)
+lessThanOrEqual narrowed = comparison narrowed 0 0
 
-comparison :: Integer -> Integer -> Expr EWord -> Expr EWord -> Maybe (Int, NumericBounds)
-comparison upperAdjustment lowerAdjustment left right =
-  case (decompose left, decompose right) of
+comparison :: Set.Set Int -> Integer -> Integer -> Expr EWord -> Expr EWord -> Maybe (Int, NumericBounds)
+comparison narrowed upperAdjustment lowerAdjustment left right =
+  case (decompose narrowed left, decompose narrowed right) of
     (Just (Argument argument coefficient offset), Just (Literal literal)) ->
       argumentComparedToLiteral argument coefficient offset literal
     (Just (Literal literal), Just (Argument argument coefficient offset)) ->
@@ -172,9 +215,9 @@ comparison upperAdjustment lowerAdjustment left right =
       Just (argument, NumericBounds Nothing $ Just (offset - literal + upperAdjustment))
     literalComparedToArgument _ _ _ _ = Nothing
 
-equalTo :: Expr EWord -> Expr EWord -> Maybe (Int, NumericBounds)
-equalTo left right =
-  case (decompose left, decompose right) of
+equalTo :: Set.Set Int -> Expr EWord -> Expr EWord -> Maybe (Int, NumericBounds)
+equalTo narrowed left right =
+  case (decompose narrowed left, decompose narrowed right) of
     (Just (Argument argument coefficient offset), Just (Literal literal)) ->
       exact argument =<< solve coefficient offset literal
     (Just (Literal literal), Just (Argument argument coefficient offset)) ->
@@ -192,17 +235,48 @@ data Affine
 
 -- | Recognize the small affine fragment emitted for common require checks.
 -- Argument names come from hevm's calldata builder and are one-based.
-decompose :: Expr EWord -> Maybe Affine
-decompose = \case
+decompose :: Set.Set Int -> Expr EWord -> Maybe Affine
+decompose narrowed = \case
   Var name -> Argument <$> argumentIndex name <*> pure 1 <*> pure 0
   Lit value -> Just $ Literal (toInteger value)
-  SEx _ expression -> decompose expression
-  Add expression (Lit value) -> addOffset (toInteger value) =<< decompose expression
-  Add (Lit value) expression -> addOffset (toInteger value) =<< decompose expression
-  Sub expression (Lit value) -> addOffset (negate $ toInteger value) =<< decompose expression
-  Sub (Lit value) expression -> subtractFromLiteral (toInteger value) =<< decompose expression
+  SEx _ expression -> decompose narrowed expression
+  expression@Or {} -> reassembledArgument expression
+  And (Lit _) (Var name) -> narrowedVariable name
+  And (Var name) (Lit _) -> narrowedVariable name
+  Add expression (Lit value) -> addOffset (toInteger value) =<< decompose narrowed expression
+  Add (Lit value) expression -> addOffset (toInteger value) =<< decompose narrowed expression
+  Sub expression (Lit value) -> addOffset (negate $ toInteger value) =<< decompose narrowed expression
+  Sub (Lit value) expression -> subtractFromLiteral (toInteger value) =<< decompose narrowed expression
   _ -> Nothing
   where
+    narrowedVariable name = do
+      argument <- argumentIndex name
+      if argument `Set.member` narrowed
+        then Just $ Argument argument 1 0
+        else Nothing
+
+    -- ABI round-trips through an external call can split a word into masked
+    -- pieces and OR them back together. When every piece comes from the same
+    -- argument and the masks cover the full word, the result is exactly that
+    -- argument and can safely participate in bounds.
+    reassembledArgument expression = do
+      (name, mask) <- maskedPieces expression
+      if mask == maxBound
+        then Argument <$> argumentIndex name <*> pure 1 <*> pure 0
+        else Nothing
+
+    maskedPieces :: Expr EWord -> Maybe (T.Text, EVM.W256)
+    maskedPieces = \case
+      And (Lit mask) (Var name) -> Just (name, mask)
+      And (Var name) (Lit mask) -> Just (name, mask)
+      Or left right -> do
+        (leftName, leftMask) <- maskedPieces left
+        (rightName, rightMask) <- maskedPieces right
+        if leftName == rightName
+          then Just (leftName, leftMask .|. rightMask)
+          else Nothing
+      _ -> Nothing
+
     addOffset offset = \case
       Argument argument coefficient current ->
         Just $ Argument argument coefficient (current + offset)

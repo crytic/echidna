@@ -33,6 +33,7 @@ import Echidna.SymExec.Symbolic (forceAddr)
 import Echidna.Types.Campaign
 import Echidna.Types.Config
 import Echidna.Types.Random
+import Echidna.Types.InterWorker (newConstraintQueueIO)
 import Echidna.Types.Signature (ContractName)
 import Echidna.Types.Solidity
 import Echidna.Types.Test (EchidnaTest)
@@ -129,6 +130,7 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   -- until an agent duplicates it, and messages written while nobody is
   -- listening are dropped.
   bus <- newBroadcastTChanIO
+  constraintQueue <- newConstraintQueueIO
   coverageRefInit <- newIORef mempty
   coverageRefRuntime <- newIORef mempty
   corpusRef <- newIORef mempty
@@ -139,6 +141,6 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
   pure $ Env { cfg, dapp, codehashMap, fetchSession, contractNameCache
-             , chainId, eventQueue, bus, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
+             , chainId, eventQueue, bus, constraintQueue, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
              , slitherInfo, useColor
              }

@@ -2,7 +2,7 @@ module Echidna.Worker.ConstraintDiscovery (runConstraintDiscoveryWorker) where
 
 import Control.Concurrent.STM
   ( TChan, atomically, dupTChan, orElse, readTChan, writeTChan )
-import Control.Monad (when)
+import Control.Monad (unless, when)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Reader (MonadReader, asks, liftIO, runReaderT)
 import Control.Monad.State.Strict (MonadIO, StateT, runStateT)
@@ -26,11 +26,11 @@ import Echidna.Types.Campaign
 import Echidna.Types.Config qualified as Echidna
 import Echidna.Types.Constraint
   ( ArgumentBounds, ConstraintKey(..), NumericBounds(..)
-  , maxContextsPerSignature
+  , maxRecentContextsPerSignature
   )
 import Echidna.Types.InterWorker
   ( AgentId(..), ConstraintRequest(..), FuzzerCmd(..), Message(..)
-  , WrappedMessage(..)
+  , WrappedMessage(..), takeConstraintRequest
   )
 import Echidna.Types.Worker
   ( CampaignEvent(..), WorkerEvent(..), WorkerStopReason(..), WorkerType(..) )
@@ -50,12 +50,11 @@ runConstraintDiscoveryWorker
 runConstraintDiscoveryWorker callback onReady workerId contractName = do
   env <- asks id
   contract <- chooseContract (Map.elems env.dapp.solcByName) contractName
-  requestChan <- liftIO $ atomically $ dupTChan env.bus
   eventChan <- liftIO $ atomically $ dupTChan env.eventQueue
   onReady
   (_, finalState) <- flip runStateT (initialWorkerState { workerId }) $ do
     callback
-    liftIO $ serveRequests env workerId contract requestChan eventChan
+    liftIO $ serveRequests env workerId contract eventChan
     callback
   pure (ConstraintDiscoveryDone, finalState)
 
@@ -63,10 +62,9 @@ serveRequests
   :: Echidna.Env
   -> Int
   -> SolcContract
-  -> TChan WrappedMessage
   -> TChan (LocalTime, CampaignEvent)
   -> IO ()
-serveRequests env workerId contract requestChan eventChan
+serveRequests env workerId contract eventChan
   | fuzzWorkers == 0 = pure ()
   | otherwise = flip runReaderT runtimeEnv $
       withSolvers conf.campaignConf.symExecSMTSolver 1 (Just 1) solverMemory $ \solvers ->
@@ -80,14 +78,14 @@ serveRequests env workerId contract requestChan eventChan
       ]
     rpcInfo = RpcInfo (rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock))
     iterConfig = IterConfig
-      { maxIter = Just 1
-      , maxConcreteIter = Just 1
+      { maxIter = Just 2
+      , maxConcreteIter = Just 8
       , askSmtIters = 1
       , loopHeuristic = StackBased
       }
     hevmConfig = defaultConfig
       { maxWidth = 4
-      , maxDepth = Just 8
+      , maxDepth = Just 16
       , maxBufSize = 12
       , maxDynSize = 16
       , promiseNoReent = False
@@ -98,6 +96,7 @@ serveRequests env workerId contract requestChan eventChan
       }
     runtimeEnv = defaultEnv { config = hevmConfig }
     solverMemory = min 1024 conf.campaignConf.symExecSolverMemory
+    discoveryTimeout = max 1 $ min 2 conf.campaignConf.symExecTimeout
 
     loop
       :: App m
@@ -109,34 +108,27 @@ serveRequests env workerId contract requestChan eventChan
     loop solvers cache reported workersAlive = do
       input <- liftIO $ atomically $
         (Right <$> readTChan eventChan)
-        `orElse` (Left <$> readTChan requestChan)
+        `orElse` (Left <$> takeConstraintRequest env.constraintQueue)
       case input of
         Right (_, WorkerEvent _ FuzzWorker (WorkerStopped _))
           | workersAlive == 1 -> pure ()
           | otherwise -> loop solvers cache reported (workersAlive - 1)
-        Left (WrappedMessage (FuzzerId requester) (ToConstraint request)) -> do
+        Left (requester, request) -> do
           (bounds, cache') <- case Map.lookup request.key cache of
             Just cached -> pure (cached, cache)
             Nothing -> do
-              let cachedContexts = Map.size $
-                    Map.filterWithKey
-                      (\key _ -> key.signature == request.key.signature)
-                      cache
-              if cachedContexts >= maxContextsPerSignature
-                then pure (Map.empty, cache)
-                else do
-                  discovered <- discover solvers request
-                  pure (discovered, Map.insert request.key discovered cache)
+              discovered <- discover solvers request
+              pure (discovered, rememberDiscovery request.key discovered cache)
           reported' <- reportNewBounds reported request.key.signature bounds
-          liftIO $ respond requester request.key bounds
+          liftIO $ respond fuzzWorkers requester request bounds
           loop solvers cache' reported' workersAlive
-        _ -> loop solvers cache reported workersAlive
+        Right _ -> loop solvers cache reported workersAlive
 
     discover solvers request =
       case Map.lookup request.key.signature methods of
-        Just method | suitableForConstraintDiscovery method -> do
+        Just method | suitableForConstraintDiscovery method ->
           discoverMethodBounds method request.vm request.targetTx
-            iterConfig solvers rpcInfo env.fetchSession
+            iterConfig discoveryTimeout solvers rpcInfo env.fetchSession
         _ -> pure Map.empty
 
     reportNewBounds reported signature bounds = do
@@ -150,10 +142,39 @@ serveRequests env workerId contract requestChan eventChan
         then Map.insertWith (<>) signature [bounds] reported
         else reported
 
-    respond requester key bounds = atomically $ writeTChan env.bus $ WrappedMessage
-      { from = ConstraintDiscoveryId
-      , content = ToFuzzer requester (SetArgumentBounds key bounds)
-      }
+    respond workerCount requester request bounds = atomically $ do
+      let recipients
+            | Map.null bounds = [requester]
+            | otherwise = [0 .. workerCount - 1]
+      mapM_ (\recipient -> writeTChan env.bus $ WrappedMessage
+        { from = ConstraintDiscoveryId
+        , content = ToFuzzer recipient (SetArgumentBounds request.key bounds)
+        }) recipients
+      unless (Map.null bounds) $ writeTChan env.bus $ WrappedMessage
+        { from = ConstraintDiscoveryId
+        , content = ToFuzzer requester
+            (ProbeArgumentBounds request.key request.targetTx bounds)
+        }
+
+-- Retain a small rolling sample for reuse without letting early corpus states
+-- suppress discovery in states reached later by fuzzing.
+rememberDiscovery
+  :: ConstraintKey
+  -> ArgumentBounds
+  -> Map ConstraintKey ArgumentBounds
+  -> Map ConstraintKey ArgumentBounds
+rememberDiscovery key bounds cache
+  | Map.member key cache = Map.insert key bounds cache
+  | otherwise = Map.insert key bounds trimmed
+  where
+    sameSignature = Map.filterWithKey
+      (\cachedKey _ -> cachedKey.signature == key.signature)
+      cache
+    trimmed
+      | Map.size sameSignature < maxRecentContextsPerSignature = cache
+      | otherwise = case Map.lookupMin sameSignature of
+          Just (previous, _) -> Map.delete previous cache
+          Nothing -> cache
 
 renderBounds :: Map Int NumericBounds -> String
 renderBounds = T.unpack . T.intercalate ", " . fmap render . Map.toAscList
