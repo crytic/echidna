@@ -61,7 +61,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+        uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
       # Pull prebuilt echidna/hevm/deps from the project's Cachix so the build
       # takes minutes instead of compiling the whole closure from source.
@@ -81,7 +81,7 @@ jobs:
         run: echo "$GITHUB_WORKSPACE/result/bin" >> "$GITHUB_PATH"
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
 

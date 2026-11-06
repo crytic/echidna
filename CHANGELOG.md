@@ -1,5 +1,10 @@
 ## Unreleased
 
+## 2.4.0
+
+* New `symExecSolverMemory` option sets the memory limit per SMT solver process in MB for symbolic exploration and verification. The default is 16384 MB (16 GB), increased from the fixed 1024 MB limit
+* Updated HEVM to `8007137b`, with symbolic arithmetic abstraction and execution optimizations (#1639, #1645)
+* **JSON output: `transactions[].arguments` is now structured.** `bytes` and `bytesN` arguments are `0x`-prefixed hex strings, `string` arguments are plain JSON strings (hex if not valid UTF-8), and arrays and tuples are JSON arrays of encoded elements. They used to be the Haskell `show` rendering (e.g. `"\\NUL\\171"`, `"[...]"`) wrapped in a JSON string. Integers, addresses and bools are unchanged
 * **`--server PORT` now serves MCP instead of Server-Sent Events.** The flag and the `server` config key keep their names, but the protocol behind them has changed: instead of a one-way stream of campaign events, the port serves the Model Context Protocol over HTTP at `http://127.0.0.1:PORT/mcp`, with tools to inspect a running campaign (`status`, `target`, `show_coverage`, `dump_lcov`) and to steer it (`inject_fuzz_transactions`, `clear_fuzz_priorities`, `execute_sequence`, `sample`, `reload_corpus`). Anything consuming the SSE stream will need to move to the MCP `status` tool; the events themselves are unchanged in the text, JSON and UI outputs
 * New `verification` test mode to symbolically verify each function of a contract using a single transaction, instead of configuring the symbolic worker by hand (#1595)
 * Foundry mode now follows Foundry's function naming conventions more closely: `invariant`- and `statefulFuzz`-prefixed functions are stateful invariants, and `testFail`-prefixed tests are expected to revert (#1595)
@@ -8,6 +13,10 @@
 * The test limit now counts only executed transactions. Each sequence used to be charged one extra call, which doubled the cost of every iteration when `seqLen` is 1
 * Corpus mutations now always produce sequences of exactly `seqLen` transactions. The prepend mutation could produce shorter sequences and, when `seqLen` is 1, produced an empty sequence about a fifth of the time
 * When `seqLen` is 1 the corpus is now used: about half of the generated transactions are tweaked copies of stored transactions. Stored transactions were previously never fed back into generation, because only strict prefixes of stored sequences were reused
+* Added library auto-linking support using crytic-compile's `--compile-autolink` option (#1389)
+* A fixed `seed` can no longer be combined with a campaign `timeout`; use `testLimit` instead to bound seeded runs (#1637)
+* New-coverage log messages now identify the function that found the coverage (#1599)
+* Campaign event queues no longer retain full VM snapshots, reducing memory use (#1576)
 
 ## 2.3.3
 

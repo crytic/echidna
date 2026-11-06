@@ -43,6 +43,7 @@ import Echidna.SourceMapping (lookupUsingCodehashOrInsert)
 import Echidna.SymExec.Symbolic (forceBuf)
 import Echidna.Transaction
 import Echidna.Types (ExecException(..), fromEVM, emptyAccount)
+import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
 import Echidna.Types.Coverage (CoverageInfo)
 import Echidna.Types.Solidity (SolConf(..))
@@ -351,10 +352,15 @@ lookupCoverage env vm = do
                      , covVec = maybeCovVec
                      }
 
-initialVM :: Bool -> ST RealWorld (VM Concrete)
-initialVM ffi = do
+initialVM :: EConfig -> ST RealWorld (VM Concrete)
+initialVM cfg = do
   vm <- vmForEthrunCreation mempty
+  -- Symbolic execution needs hashes from deployment and earlier concrete
+  -- transactions, including replays of transactions found by the solver.
+  let !allowFFI = cfg.solConf.allowFFI
+      !recordKeccakPreImgs = cfg.campaignConf.symExec
   pure $ vm & #block % #timestamp .~ Lit initialTimestamp
             & #block % #number .~ Lit initialBlockNumber
             & #env % #contracts .~ mempty -- fixes weird nonce issues
-            & #config % #allowFFI .~ ffi
+            & #config % #allowFFI .~ allowFFI
+            & #config % #recordKeccakPreImgs .~ recordKeccakPreImgs

@@ -17,12 +17,12 @@ import EVM.Dapp (DappInfo(..))
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Fetch (RpcInfo(..))
 import EVM.Solidity (SolcContract(..), Method(..))
-import EVM.Solvers (defMemLimit, withSolvers)
+import EVM.Solvers (withSolvers)
 import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
 import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 
-import Echidna.SymExec.Common (rpcFetcher, exploreMethod, suitableForSymExec, TxOrError(..), PartialsLogs)
+import Echidna.SymExec.Common (rpcFetcher, exploreMethod, suitableForSymExec, symExecAbstractArith, TxOrError(..), PartialsLogs)
 import Echidna.Test (isFoundrySymbolicName)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
@@ -67,14 +67,14 @@ verifyMethod method contract vm = do
   doneChan <- liftIO newEmptyMVar
   resultChan <- liftIO newEmptyMVar
   let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
-  let iterConfig = IterConfig { maxIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = StackBased}
-  let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, dumpExprs = True, maxBufSize = 12, maxDynSize = 128, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive }
+  let iterConfig = IterConfig { maxIter = maxIters, maxConcreteIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = StackBased}
+  let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, dumpExprs = True, maxBufSize = 12, maxDynSize = 128, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, abstractArith = symExecAbstractArith }
   let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
   pushWorkerEvent $ SymExecLog ("Verifying " <> (show method.name))
 
-  liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT defMemLimit $ \solvers -> do
+  liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT conf.campaignConf.symExecSolverMemory $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
       (res, partials) <- exploreMethod method contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan (res, partials)

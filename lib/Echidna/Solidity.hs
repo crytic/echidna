@@ -208,7 +208,7 @@ loadSpecified env mainContract cs = do
 
   -- Set up initial VM with chosen contract
   -- need to use snd to add to ABI dict
-  initVM <- stToIO $ initialVM solConf.allowFFI
+  initVM <- stToIO $ initialVM env.cfg
   let vm = initVM & #block % #gaslimit .~ unlimitedGasPerBlock
                   & #block % #maxCodeSize .~ fromIntegral solConf.codeSize
 

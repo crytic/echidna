@@ -2,6 +2,7 @@
 
 module Echidna.SymExec.Common where
 
+import Control.Concurrent.STM (newTVarIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO, liftIO)
 import Control.Monad.State.Strict (execState, runStateT)
 import Data.ByteString (ByteString)
@@ -33,6 +34,10 @@ import Echidna.Types (fromEVM)
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..), maxGasPerBlock)
+
+-- | Enable hevm's arithmetic abstraction for symbolic exploration and verification.
+symExecAbstractArith :: Bool
+symExecAbstractArith = True
 
 panicMsg :: Word256 -> ByteString
 panicMsg err = selector "Panic(uint256)" <> encodeAbiValue (AbiUInt 256 err)
@@ -197,7 +202,8 @@ exploreMethod method _contract _sources vm defaultSender conf veriOpts solvers r
   -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
   -- Doing so might mess up concolic execution.
   let foundry = isFoundryMode conf.solConf.testMode
-  (models, partials) <- verifyInputsWithHandler solvers veriOpts fetcher vm'' (checkAssertions [0x1] foundry) Nothing
+  abort <- liftIO $ newTVarIO False
+  (models, partials) <- verifyInputsWithHandler abort solvers veriOpts fetcher vm'' (checkAssertions [0x1] foundry) Nothing
   let results = filter (\(r, _) -> not (isQed r)) models & map fst
   --liftIO $ mapM_ print partials
   return (map (modelToTx dst vm.block.timestamp vm.block.number method conf.solConf.sender defaultSender cd) results, map (\(p, _) -> formatPartialDetailed Nothing Map.empty p) partials)

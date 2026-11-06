@@ -119,11 +119,12 @@
           (pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "argotorg";
             repo = "hevm";
-            rev = "4ca42fd5b2dd1344b7596775fe5fe6ac2d03021f";
-            sha256 = "sha256-Gk1hroTuQuS4blEX4M4wJ7tDNg+hnMHSwtdFKpv0Gyc=";
+            rev = "8007137b2c705f04a5bf5061db913eff075d189f";
+            sha256 = "sha256-N2Y3L6cqsy0NN/wbh8wDRsmUbyZokstTkMT+fIkPOjc=";
           }) { secp256k1 = pkgs.secp256k1; })
           ([
             pkgs.haskell.lib.compose.dontCheck
+            (pkgs.haskell.lib.compose.appendConfigureFlag "--enable-optimization=2")
           ]);
 
         echidna = pkgs: with pkgs; lib.pipe
