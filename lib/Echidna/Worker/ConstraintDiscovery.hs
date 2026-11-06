@@ -2,7 +2,7 @@ module Echidna.Worker.ConstraintDiscovery (runConstraintDiscoveryWorker) where
 
 import Control.Concurrent.STM
   ( TChan, atomically, dupTChan, orElse, readTChan, writeTChan )
-import Control.Monad (unless)
+import Control.Monad (when)
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Reader (MonadReader, asks, liftIO, runReaderT)
 import Control.Monad.State.Strict (MonadIO, StateT, runStateT)
@@ -70,7 +70,7 @@ serveRequests env workerId contract requestChan eventChan
   | fuzzWorkers == 0 = pure ()
   | otherwise = flip runReaderT runtimeEnv $
       withSolvers conf.campaignConf.symExecSMTSolver 1 (Just 1) solverMemory $ \solvers ->
-        loop solvers Map.empty fuzzWorkers
+        loop solvers Map.empty Map.empty fuzzWorkers
   where
     conf = env.cfg
     fuzzWorkers = getNFuzzWorkers conf.campaignConf
@@ -99,15 +99,21 @@ serveRequests env workerId contract requestChan eventChan
     runtimeEnv = defaultEnv { config = hevmConfig }
     solverMemory = min 1024 conf.campaignConf.symExecSolverMemory
 
-    loop :: App m => SolverGroup -> Map ConstraintKey ArgumentBounds -> Int -> m ()
-    loop solvers cache workersAlive = do
+    loop
+      :: App m
+      => SolverGroup
+      -> Map ConstraintKey ArgumentBounds
+      -> Map T.Text [ArgumentBounds]
+      -> Int
+      -> m ()
+    loop solvers cache reported workersAlive = do
       input <- liftIO $ atomically $
         (Right <$> readTChan eventChan)
         `orElse` (Left <$> readTChan requestChan)
       case input of
         Right (_, WorkerEvent _ FuzzWorker (WorkerStopped _))
           | workersAlive == 1 -> pure ()
-          | otherwise -> loop solvers cache (workersAlive - 1)
+          | otherwise -> loop solvers cache reported (workersAlive - 1)
         Left (WrappedMessage (FuzzerId requester) (ToConstraint request)) -> do
           (bounds, cache') <- case Map.lookup request.key cache of
             Just cached -> pure (cached, cache)
@@ -121,21 +127,28 @@ serveRequests env workerId contract requestChan eventChan
                 else do
                   discovered <- discover solvers request
                   pure (discovered, Map.insert request.key discovered cache)
+          reported' <- reportNewBounds reported request.key.signature bounds
           liftIO $ respond requester request.key bounds
-          loop solvers cache' workersAlive
-        _ -> loop solvers cache workersAlive
+          loop solvers cache' reported' workersAlive
+        _ -> loop solvers cache reported workersAlive
 
     discover solvers request =
       case Map.lookup request.key.signature methods of
         Just method | suitableForConstraintDiscovery method -> do
-          bounds <- discoverMethodBounds method request.vm request.targetTx
+          discoverMethodBounds method request.vm request.targetTx
             iterConfig solvers rpcInfo env.fetchSession
-          unless (Map.null bounds) $ liftIO $ pushCampaignEvent env $
-            WorkerEvent workerId ConstraintDiscoveryWorker . Log $
-              "Discovered argument bounds for " <> T.unpack request.key.signature
-              <> ": " <> renderBounds bounds
-          pure bounds
         _ -> pure Map.empty
+
+    reportNewBounds reported signature bounds = do
+      let redundant = bounds `elem` Map.findWithDefault [] signature reported
+          useful = not $ Map.null bounds
+      when (useful && not redundant) $ liftIO $ pushCampaignEvent env $
+        WorkerEvent workerId ConstraintDiscoveryWorker . Log $
+          "New argument bounds discovered for " <> T.unpack signature
+          <> ": " <> renderBounds bounds
+      pure $ if useful && not redundant
+        then Map.insertWith (<>) signature [bounds] reported
+        else reported
 
     respond requester key bounds = atomically $ writeTChan env.bus $ WrappedMessage
       { from = ConstraintDiscoveryId
