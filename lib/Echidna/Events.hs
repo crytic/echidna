@@ -78,6 +78,19 @@ extractEvents decodeErrors dappInfo vm =
         Just $ humanPanic $ decodePanic d
       _ -> Nothing
 
+-- | Whether the last transaction emitted an event with the given name, under
+-- any overload. Checks the name via the event map instead of rendering the
+-- events, which is expensive.
+hasEventNamed :: Text -> DappInfo -> VM Concrete -> Bool
+hasEventNamed name dappInfo vm = any (any isNamed) (traceForest vm)
+  where
+  isNamed trace = case trace.tracedata of
+    EventTrace _ _ (topic:_) ->
+      case Map.lookup (forceWord topic) dappInfo.eventMap of
+        Just (Event name' _ _) -> name' == name
+        Nothing -> False
+    _ -> False
+
 -- | Extract all non‑indexed event values emitted between two VM states.
 extractEventValues :: DappInfo -> VM Concrete -> VM Concrete -> Map AbiType (Set AbiValue)
 extractEventValues dappInfo vm vm' =

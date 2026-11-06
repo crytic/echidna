@@ -39,7 +39,7 @@ foundryTest mContractName psender test =
       in fromStrict $ substituteValue template (toMustache testData)
     CallTest name _ | "AssertionFailed" `isPrefixOf` unpack name ->
       -- Echidna detects assertion failures via events named AssertionFailed
-      -- with any argument types (see checkAssertionEvent in Echidna.Test).
+      -- with any argument types (see checkAssertionTest in Echidna.Test).
       -- We check all overloads defined in crytic's fuzzlib (LibLog.sol):
       --   AssertionFailed()
       --   AssertionFailed(string)
