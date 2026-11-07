@@ -95,8 +95,7 @@ ui vm dict initialCorpus cliSelectedContract = do
           (fromIntegral conf.campaignConf.testLimit / fromIntegral nFuzzWorkers :: Double)
 
     -- Distribute the replay corpus across the fuzz workers. The symbolic
-    -- worker does not replay it, so with no fuzz workers there is nothing to
-    -- distribute.
+    -- worker receives the whole corpus separately.
     corpusChunks
       | nFuzzWorkers == 0 = repeat []
       | otherwise = splitPlaces chunkSizes initialCorpus ++ repeat []
@@ -108,16 +107,20 @@ ui vm dict initialCorpus cliSelectedContract = do
   corpusSaverStopVar <- spawnListener (saveCorpusEvent env)
 
   let spawnWorkers = liftIO $ do
-        spawned <- forM (zip corpusChunks [0..(nworkers-1)]) $
-          uncurry (spawnWorker env perWorkerTestLimit)
+        let (fuzzers, symbolic) = splitAt nFuzzWorkers (zip corpusChunks [0..(nworkers-1)])
+        spawned <- forM (symbolic <> fuzzers) $ \(corpus, wid) -> do
+          worker@(_, ready) <- spawnWorker env perWorkerTestLimit corpus wid
+          -- Subscribe the symbolic worker before fuzzers can publish coverage.
+          when (workerIDToType conf.campaignConf wid == SymbolicWorker) $ readMVar ready
+          pure worker
         pure (map fst spawned, map snd spawned)
 
       -- The MCP server answers for the campaign as it runs, reading worker
       -- state through the workers' own refs. Wait until every fuzzing worker
       -- has replayed its initial corpus and subscribed to the command bus
       -- before accepting clients; a broadcast written before a worker
-      -- subscribes is intentionally dropped by TChan. Symbolic workers, which
-      -- accept no commands, signal readiness immediately.
+      -- subscribes is intentionally dropped by TChan. Symbolic workers signal
+      -- readiness after subscribing to campaign events.
       spawnMCPServer workers readyVars =
         forM_ conf.campaignConf.serverPort $ \port ->
           void $ liftIO $ forkIO $ do
@@ -264,8 +267,10 @@ ui vm dict initialCorpus cliSelectedContract = do
         agent = case workerIDToType env.cfg.campaignConf workerId of
           FuzzWorker -> fuzzerAgent corpusChunk testLimit
           SymbolicWorker ->
-            SymbolicAgent { initialVm = vm
+            SymbolicAgent { symbolicId = workerId
+                          , initialVm = vm
                           , initialDict = dict
+                          , initialCorpus
                           , contractName = cliSelectedContract
                           , stateRef
                           }
@@ -282,6 +287,7 @@ ui vm dict initialCorpus cliSelectedContract = do
         [ Handler $ \(e :: AsyncException) -> pure $ Killed (show e)
         , Handler $ \(e :: SomeException)  -> pure $ Crashed (show e)
         ]
+      void $ tryPutMVar readyVar ()
 
       -- When a fuzz worker is interrupted by timeout, tests may not have
       -- finished shrinking. Run a shrink-only pass outside the timeout using

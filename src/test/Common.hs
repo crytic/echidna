@@ -11,6 +11,7 @@ module Common
   , optimized
   , solnFor
   , solved
+  , solvedByWorker
   , passed
   , verified
   , proven
@@ -59,6 +60,7 @@ import Echidna.Types.Test
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerType(..))
 import Echidna.Types.World (World(..))
+import Echidna.UI (ui)
 
 testConfig :: EConfig
 testConfig = defaultConfig & overrideQuiet
@@ -111,13 +113,20 @@ runContract f selectedContract cfg workerType = do
                       , stateRef
                       }
         SymbolicWorker ->
-          SymbolicAgent { initialVm = vm
+          SymbolicAgent { symbolicId = getNFuzzWorkers cfg.campaignConf
+                        , initialVm = vm
                         , initialDict = dict
+                        , initialCorpus = []
                         , contractName = selectedContract
                         , stateRef
                         }
-  void $ runAgent agent env
-  finalState <- readIORef stateRef
+  finalState <- if workerType == SymbolicWorker && getNFuzzWorkers cfg.campaignConf > 0
+    then do
+      symbolic : _ <- runReaderT (ui vm dict [] selectedContract) env
+      pure symbolic
+    else do
+      void $ runAgent agent env
+      readIORef stateRef
 
   -- TODO: consider snapshotting the state so checking functions don't need to
   -- be IO
@@ -241,6 +250,13 @@ solnFor n (env, _) = do
 
 solved :: Text -> (Env, WorkerState) -> IO Bool
 solved t f = isJust <$> solnFor t f
+
+solvedByWorker :: Int -> Text -> (Env, WorkerState) -> IO Bool
+solvedByWorker workerId name (env, _) = do
+  tests <- traverse readIORef env.testRefs
+  pure $ case getResult name tests of
+    Just t -> t.state == Solved && t.workerId == Just workerId
+    Nothing -> False
 
 passed :: Text -> (Env, WorkerState) -> IO Bool
 passed n (env, _) = do
