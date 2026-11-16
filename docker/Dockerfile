@@ -1,4 +1,4 @@
-FROM docker.io/benz0li/ghc-musl:9.8.4 AS builder-echidna
+FROM docker.io/benz0li/ghc-musl:9.12.4 AS builder-echidna
 # https://gitlab.com/benz0li/ghc-musl
 
 RUN apk upgrade --no-cache &&\
@@ -12,7 +12,6 @@ RUN apk upgrade --no-cache &&\
 RUN mkdir -p /etc/stack &&\
     { echo "system-ghc: true" ;\
       echo "install-ghc: false" ;\
-      echo "skip-ghc-check: true" ;\
     } >> /etc/stack/config.yaml
 
 ENV LD_LIBRARY_PATH=/usr/local/lib PREFIX=/usr/local HOST_OS=Linux
@@ -20,7 +19,7 @@ COPY . /echidna/
 WORKDIR /echidna
 RUN .github/scripts/install-libsecp256k1.sh
 RUN .github/scripts/install-libff.sh
-RUN stack upgrade && stack setup && stack install --flag echidna:static --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
+RUN stack setup && stack install --flag echidna:static --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
 
 
 FROM ubuntu:noble AS builder-python3

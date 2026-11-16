@@ -13,7 +13,7 @@ permissions:
 
 env:
   # Tag for cache invalidation
-  CACHE_VERSION: v10
+  CACHE_VERSION: v11
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
         include:
           - os: ubuntu-latest
             shell: bash
-            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.8.4\", \"options\": \"--user 1001\"}"
+            container: "{\"image\": \"elopeztob/alpine-haskell-stack-echidna:ghc-9.12.4\", \"options\": \"--user 1001\"}"
           - os: macos-15-intel # x86_64 macOS
             shell: bash
           - os: windows-latest
@@ -68,9 +68,9 @@ jobs:
         id: stack
         if: matrix.container == ''
         with:
-          ghc-version: '9.8.4'
+          ghc-version: '9.12.4'
           enable-stack: true
-          stack-version: 'latest'
+          stack-version: '3.11.1'
 
       - name: Configure Stack environment
         run: |
@@ -105,7 +105,6 @@ jobs:
             "$SKIP_MSYS" && echo "skip-msys: true" || true
             echo "system-ghc: true";
             echo "install-ghc: false";
-            echo "skip-ghc-check: true";
           } >> "$STACK_ROOT/config.yaml"
           cat "$STACK_ROOT/config.yaml"
         env:
