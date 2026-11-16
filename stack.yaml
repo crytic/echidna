@@ -43,6 +43,10 @@ extra-deps:
 - mcp-server-0.2.0.1
 - http-types-0.12.6
 
+# Use Win32's console input API to avoid duplicate record fields with the
+# Win32 2.14.2.1 bundled with GHC 9.12.4.
+- vty-windows-0.2.0.4
+
 - aeson-optics-1.2.1
 - smt2-parser-0.1.0.1@sha256:1e1a4565915ed851c13d1e6b8bb5185cf5d454da3b43170825d53e221f753d77,1421
 - spawn-0.3@sha256:b91e01d8f2b076841410ae284b32046f91471943dc799c1af77d666c72101f02,1162

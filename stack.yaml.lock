@@ -86,6 +86,13 @@ packages:
   original:
     hackage: http-types-0.12.6
 - completed:
+    hackage: vty-windows-0.2.0.4@sha256:6e338f56b8a1cac34ec53433bdbfc6d104cbf90ae296ad42830d7f3cea83ecca,2753
+    pantry-tree:
+      sha256: 39d57fe0f5a35b989c704e3ca889ee320d44973d477277cd41311bce5fcc1708
+      size: 2063
+  original:
+    hackage: vty-windows-0.2.0.4
+- completed:
     hackage: aeson-optics-1.2.1@sha256:f0dc0ffba23baed6ee93e3ca91e1630c4da38eee46c56c28f3b264f376c361c0,1551
     pantry-tree:
       sha256: e5abc0e63b06a02eb095e50e80787eb8c23315cf089ab6d655a513d99e0b1cfa
