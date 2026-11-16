@@ -224,8 +224,11 @@
 
         devShells = with pkgs; {
           default = haskellPackages.shellFor {
-            packages = _: [ (echidna pkgs) ];
+            # Include test dependencies even though package builds skip the suite.
+            packages = _: [ (haskell.lib.doCheck (echidna pkgs)) ];
             shellHook = ''
+              # Prefer the pinned compiler over Slither's solc-select wrapper.
+              export PATH="${solc}/bin:$PATH"
               hpack
             '';
             buildInputs = [
