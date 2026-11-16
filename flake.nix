@@ -1,10 +1,11 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     foundry = {
       url = "github:shazow/foundry.nix/stable";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
     };
     flake-compat = {
       url = "github:edolstra/flake-compat";
@@ -13,6 +14,7 @@
     solc-pkgs = {
       url = "github:hellwolf/solc.nix";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
     };
   };
 
@@ -25,9 +27,17 @@
             solc-pkgs.overlay
             foundry.overlay
             (final: prev: {
-              # build with GHC 9.8
-              haskellPackages = prev.haskell.packages.ghc98.override {
+              # build with GHC 9.12
+              haskellPackages = prev.haskell.packages.ghc912.override {
                 overrides = hfinal: hprev: {
+                  # GHC 9.12 changes the generated Core for three inspection tests
+                  # in optics 0.4.2.1. Keep the remaining tests enabled.
+                  optics = prev.haskell.lib.overrideCabal hprev.optics (old: {
+                    testFlags = (old.testFlags or []) ++ [
+                      "--pattern=!/traverseOf_ (_Left % itraversed % _1 % ifolded)/ && !/iover (itraversed..itraversed)/ && !/iset (itraversed..)/"
+                    ];
+                  });
+
                   # Bump tls to >= 2.2.2 for the fix in https://github.com/haskell-tls/hs-tls/pull/515.
                   # tls 2.2.2 needs the crypton-x509 1.8 line, which still builds against the
                   # crypton 1.0.x already in nixpkgs (the 1.9 line would force crypton >= 1.1 and a
@@ -77,11 +87,11 @@
                     sha256 = "sha256-Pe0Jdfor8p5Iwj3oV2bNC5SpjHMqEwzMYUpqrvmgvP0=";
                   } {};
 
-                  # callHackageDirect runs the `cabal2nix` tool from this set, and cabal2nix
+                  # callHackageDirect runs `cabal2nix-unstable` from this set, and cabal2nix
                   # transitively depends on tls — regenerating tls with it would loop. Pin the
                   # tool to the un-overridden base set to break the cycle (it's build-time only,
                   # so its own tls version is irrelevant).
-                  cabal2nix = prev.haskell.packages.ghc98.cabal2nix;
+                  cabal2nix-unstable = prev.haskell.packages.ghc912.cabal2nix-unstable;
                 };
               };
             })
@@ -119,8 +129,8 @@
           (pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "argotorg";
             repo = "hevm";
-            rev = "8007137b2c705f04a5bf5061db913eff075d189f";
-            sha256 = "sha256-N2Y3L6cqsy0NN/wbh8wDRsmUbyZokstTkMT+fIkPOjc=";
+            rev = "2cd4b0612cbf1ab7d5bb4bdbb2062a86c60ce2c0";
+            sha256 = "sha256-p3Z27l7gVMPCLGnrA33gNCxyVpMcPL7JeIGOlWZKjJg=";
           }) { secp256k1 = pkgs.secp256k1; })
           ([
             pkgs.haskell.lib.compose.dontCheck
@@ -168,7 +178,7 @@
           install_name_tool = "${pkgs.darwin.binutils.bintools}/bin/install_name_tool";
           codesign_allocate = "${pkgs.darwin.binutils.bintools}/bin/codesign_allocate";
           codesign = "${pkgs.darwin.sigtool}/bin/codesign";
-        in if pkgs.stdenv.isDarwin
+        in if pkgs.stdenv.hostPlatform.isDarwin
         then pkgs.runCommand "echidna-stripNixRefs" {} ''
           mkdir -p $out/bin
           cp ${pkgs.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
