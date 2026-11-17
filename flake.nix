@@ -20,7 +20,6 @@
 
   outputs =
     {
-      self,
       nixpkgs,
       flake-utils,
       solc-pkgs,
@@ -169,7 +168,6 @@
               (haskell.lib.compose.appendConfigureFlags (
                 map (drv: "--extra-lib-dirs=${stripDylib drv}/lib") dependencies-static-macos
               ))
-              (haskell.lib.compose.enableCabalFlag "static")
             ];
 
         # "static" binary for distribution
@@ -188,7 +186,7 @@
           if pkgs.stdenv.hostPlatform.isDarwin then
             pkgs.runCommand "echidna-stripNixRefs" { } ''
               mkdir -p $out/bin
-              cp ${pkgs.haskell.lib.dontCheck echidna-static}/bin/echidna $out/bin/
+              cp ${echidna-static}/bin/echidna $out/bin/
               # rewrite /nix/... library paths to point to /usr/lib
               exe="$out/bin/echidna"
               chmod 777 "$exe"
@@ -221,14 +219,13 @@
         stripDylib =
           drv:
           pkgs.runCommand "${drv.name}-strip-dylibs" { } ''
-            mkdir -p $out
             mkdir -p $out/lib
             cp -r ${drv}/* $out/
             rm -rf $out/**/*.dylib
           '';
 
       in
-      rec {
+      {
         packages.echidna = echidna pkgs;
         packages.default = echidna pkgs;
 
