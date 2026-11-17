@@ -26,139 +26,86 @@
           overlays = [
             solc-pkgs.overlay
             foundry.overlay
-            (final: prev: {
-              # https://github.com/NixOS/nixpkgs/pull/569508
-              # musl's fixed SIGSTKSZ can be smaller than the kernel requires.
-              libbsd = if prev.stdenv.hostPlatform.isMusl then prev.libbsd.overrideAttrs (old: {
-                postPatch = (old.postPatch or "") + ''
-                  substituteInPlace test/explicit_bzero.c \
-                    --replace-fail '(SIGSTKSZ + SECRETBYTES)' \
-                      '(sysconf(_SC_SIGSTKSZ) + SECRETBYTES)'
-                '';
-              }) else prev.libbsd;
-
-              # Backport https://github.com/NixOS/nixpkgs/pull/582577.
-              # tzdata 2026f's checks fail on or after 2026-11-01. Scope the fix
-              # to musl to preserve cached toolchains on the other platforms.
-              tzdata = if prev.stdenv.hostPlatform.isMusl then prev.tzdata.overrideAttrs (old: {
-                preCheck = (old.preCheck or "") + ''
-                  release_timestamp=$(awk '/^Release /{print $4, $5, $6; exit}' NEWS)
-                  release_time_t=$(date -d"$release_timestamp" +%s)
-                  checkFlagsArray+=("CHECK_NOW_TIMESTAMP=$release_time_t")
-                '';
-              }) else prev.tzdata;
-
-              # build with GHC 9.12
-              haskellPackages = prev.haskell.packages.ghc912.override {
-                overrides = hfinal: hprev: {
-                  # GHC 9.12 changes the generated Core for three inspection tests
-                  # in optics 0.4.2.1. Keep the remaining tests enabled.
-                  optics = prev.haskell.lib.overrideCabal hprev.optics (old: {
-                    testFlags = (old.testFlags or []) ++ [
-                      "--pattern=!/traverseOf_ (_Left % itraversed % _1 % ifolded)/ && !/iover (itraversed..itraversed)/ && !/iset (itraversed..)/"
-                    ];
-                  });
-
-                  # vcr's 100 ms concurrency test flakes on macOS CI.
-                  # Keep the other 30 tests enabled.
-                  vcr = prev.haskell.lib.overrideCabal hprev.vcr (old: {
-                    testFlags = (old.testFlags or []) ++ prev.lib.optionals prev.stdenv.hostPlatform.isDarwin [
-                      "--skip=/VCR/with/when mode is AnyOrder/with concurrent requests/records the requests concurrently, without blocking/"
-                    ];
-                  });
-
-                  # Bump tls to >= 2.2.2 for the fix in https://github.com/haskell-tls/hs-tls/pull/515.
-                  # tls 2.2.2 needs the crypton-x509 1.8 line, which still builds against the
-                  # crypton 1.0.x already in nixpkgs (the 1.9 line would force crypton >= 1.1 and a
-                  # much wider cascade). Everything else it needs (crypton-asn1-*, crypton-pem,
-                  # hpke, ech-config, time-hourglass) is already at a compatible version, and the
-                  # rest of the package set rebuilds against these through the fixpoint.
-                  tls = hfinal.callHackageDirect {
-                    pkg = "tls"; ver = "2.2.2";
-                    sha256 = "sha256-lbroDPZiOa2YH1jqEzxzNgBGcPZDP6WJEeD0odDgNqs=";
-                  } {};
-                  crypton-x509 = hfinal.callHackageDirect {
-                    pkg = "crypton-x509"; ver = "1.8.0";
-                    sha256 = "sha256-wxU8Ou52UCuCT2gbxqPKssteIVGUyg5WEbv1xRIyZTg=";
-                  } {};
-                  crypton-x509-store = hfinal.callHackageDirect {
-                    pkg = "crypton-x509-store"; ver = "1.8.0";
-                    sha256 = "sha256-U6DH5Ke3JXAzZuqxLM6mPKDxqj4HTf5kjoBXaerLOcc=";
-                  } {};
-                  crypton-x509-validation = hfinal.callHackageDirect {
-                    pkg = "crypton-x509-validation"; ver = "1.8.0";
-                    sha256 = "sha256-CyRqTUOcUzzVlQfTd3yylwDVtOaumBbBg9hMyvtcu7c=";
-                  } {};
-
-                  # Relax the `tls < 2.2` upper bounds of the other tls consumers in the set
-                  # (crypton-connection pulled in by echidna; warp-tls/tls-session-manager pulled
-                  # in by Hoogle in the dev shell). All compile fine against 2.2.2.
-                  crypton-connection = prev.haskell.lib.doJailbreak hprev.crypton-connection;
-                  warp-tls = prev.haskell.lib.doJailbreak hprev.warp-tls;
-                  tls-session-manager = prev.haskell.lib.doJailbreak hprev.tls-session-manager;
-
-                  # nixpkgs ships mcp-server 0.1.0.19, which answers a
-                  # Streamable HTTP notification with `200 {}` and a
-                  # server-stream GET with a discovery document. 0.2.0.1 is the
-                  # release that follows the spec (202 with no body, and a real
-                  # per-request SSE stream). It needs http-types >= 0.12.6 —
-                  # only that version re-exports `hOrigin` from the umbrella
-                  # `Network.HTTP.Types` module, which mcp-server imports
-                  # unqualified — and http-types has to move for the whole set,
-                  # since wai and warp exchange its `Status` type with
-                  # mcp-server. Everything in the closure accepts 0.12.6.
-                  http-types = hfinal.callHackageDirect {
-                    pkg = "http-types"; ver = "0.12.6";
-                    sha256 = "sha256-bGrVUTZnP1NFVwR0apgNLolKPW3cJdVW4jSBSlV7srg=";
-                  } {};
-                  mcp-server = hfinal.callHackageDirect {
-                    pkg = "mcp-server"; ver = "0.2.0.1";
-                    sha256 = "sha256-Pe0Jdfor8p5Iwj3oV2bNC5SpjHMqEwzMYUpqrvmgvP0=";
-                  } {};
-
-                  # callHackageDirect runs `cabal2nix-unstable` from this set, and cabal2nix
-                  # transitively depends on tls — regenerating tls with it would loop. Pin the
-                  # tool to the un-overridden base set to break the cycle (it's build-time only,
-                  # so its own tls version is irrelevant).
-                  cabal2nix-unstable = prev.haskell.packages.ghc912.cabal2nix-unstable.overrideScope (_: cprev: {
-                    # Reuse the test override with the tool's original dependencies.
-                    vcr = hfinal.vcr.overrideScope (_: _: cprev);
-                  });
-                };
-              };
-            })
           ];
         };
 
-        # prefer musl on Linux, static glibc + threading does not work properly
-        # TODO: maybe only override it for echidna-redistributable?
-        pkgsGHC = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsMusl else pkgs;
-        pkgsDeps = if pkgs.stdenv.hostPlatform.isLinux then pkgs.pkgsStatic else pkgs;
+        # Select GHC for Echidna without changing the native build tools.
+        hspkgs = ps: ps.haskell.packages.ghc912.override {
+          overrides = hfinal: hprev: {
+            # GHC 9.12 changes the generated Core for three inspection tests
+            # in optics 0.4.2.1. Keep the remaining tests enabled.
+            optics = ps.haskell.lib.overrideCabal hprev.optics (old: {
+              testFlags = (old.testFlags or []) ++ [
+                "--pattern=!/traverseOf_ (_Left % itraversed % _1 % ifolded)/ && !/iover (itraversed..itraversed)/ && !/iset (itraversed..)/"
+              ];
+            });
+
+            # Bump tls to >= 2.2.2 for the fix in https://github.com/haskell-tls/hs-tls/pull/515.
+            # tls 2.2.2 needs the crypton-x509 1.8 line, which still builds against the
+            # crypton 1.0.x already in nixpkgs (the 1.9 line would force crypton >= 1.1 and a
+            # much wider cascade). Everything else it needs (crypton-asn1-*, crypton-pem,
+            # hpke, ech-config, time-hourglass) is already at a compatible version, and the
+            # rest of the package set rebuilds against these through the fixpoint.
+            tls = hfinal.callHackageDirect {
+              pkg = "tls"; ver = "2.2.2";
+              sha256 = "sha256-lbroDPZiOa2YH1jqEzxzNgBGcPZDP6WJEeD0odDgNqs=";
+            } {};
+            crypton-x509 = hfinal.callHackageDirect {
+              pkg = "crypton-x509"; ver = "1.8.0";
+              sha256 = "sha256-wxU8Ou52UCuCT2gbxqPKssteIVGUyg5WEbv1xRIyZTg=";
+            } {};
+            crypton-x509-store = hfinal.callHackageDirect {
+              pkg = "crypton-x509-store"; ver = "1.8.0";
+              sha256 = "sha256-U6DH5Ke3JXAzZuqxLM6mPKDxqj4HTf5kjoBXaerLOcc=";
+            } {};
+            crypton-x509-validation = hfinal.callHackageDirect {
+              pkg = "crypton-x509-validation"; ver = "1.8.0";
+              sha256 = "sha256-CyRqTUOcUzzVlQfTd3yylwDVtOaumBbBg9hMyvtcu7c=";
+            } {};
+
+            # Relax the `tls < 2.2` upper bounds of the other tls consumers in the set
+            # (crypton-connection pulled in by echidna; warp-tls/tls-session-manager pulled
+            # in by Hoogle in the dev shell). All compile fine against 2.2.2.
+            crypton-connection = ps.haskell.lib.doJailbreak hprev.crypton-connection;
+            warp-tls = ps.haskell.lib.doJailbreak hprev.warp-tls;
+            tls-session-manager = ps.haskell.lib.doJailbreak hprev.tls-session-manager;
+
+            # nixpkgs ships mcp-server 0.1.0.19, which answers a
+            # Streamable HTTP notification with `200 {}` and a
+            # server-stream GET with a discovery document. 0.2.0.1 is the
+            # release that follows the spec (202 with no body, and a real
+            # per-request SSE stream). It needs http-types >= 0.12.6 —
+            # only that version re-exports `hOrigin` from the umbrella
+            # `Network.HTTP.Types` module, which mcp-server imports
+            # unqualified — and http-types has to move for the whole set,
+            # since wai and warp exchange its `Status` type with
+            # mcp-server. Everything in the closure accepts 0.12.6.
+            http-types = hfinal.callHackageDirect {
+              pkg = "http-types"; ver = "0.12.6";
+              sha256 = "sha256-bGrVUTZnP1NFVwR0apgNLolKPW3cJdVW4jSBSlV7srg=";
+            } {};
+            mcp-server = hfinal.callHackageDirect {
+              pkg = "mcp-server"; ver = "0.2.0.1";
+              sha256 = "sha256-Pe0Jdfor8p5Iwj3oV2bNC5SpjHMqEwzMYUpqrvmgvP0=";
+            } {};
+          };
+        };
+
         # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
         # 0.5.7 is not available on aarch64 darwin so alternatively pick 0.8.5
         solc = solc-pkgs.mkDefault pkgs (pkgs.solc_0_5_7 or pkgs.solc_0_8_5);
 
-        dependencies-static = with pkgsDeps; [
+        dependencies-static = with pkgs; [
           (gmp.override { withStatic = true; })
-          (pkgsDeps.secp256k1.overrideAttrs (attrs: {
+          (secp256k1.overrideAttrs (attrs: {
             configureFlags = attrs.configureFlags ++ [ "--enable-static" ];
           }))
           (libff.override { enableStatic = true; })
           (ncurses.override { enableStatic = true; })
-        ] ++ lib.optionals (pkgs.stdenv.hostPlatform.isLinux && pkgs.stdenv.hostPlatform.isx86_64) [
-          # FIXME: work around wrong libdw / libelf linking on musl builds on x86_64
-          (lib.getLib xz)
-          (lib.getLib bzip2)
-          (lib.getLib zstd)
-        ] ++ lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
-          # darwin provides these
-          (zlib.override { static = true; shared = false; })
-          (libffi.overrideAttrs (_: { dontDisableStatic = true; }))
-          (lib.getLib numactl)
         ];
 
         hevm = pkgs: pkgs.lib.pipe 
-          (pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
+          ((hspkgs pkgs).callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "argotorg";
             repo = "hevm";
             rev = "2cd4b0612cbf1ab7d5bb4bdbb2062a86c60ce2c0";
@@ -167,10 +114,13 @@
           ([
             pkgs.haskell.lib.compose.dontCheck
             (pkgs.haskell.lib.compose.appendConfigureFlag "--enable-optimization=2")
+          ] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isStatic [
+            # Profiling hevm can crash the musl external interpreter.
+            pkgs.haskell.lib.compose.disableLibraryProfiling
           ]);
 
         echidna = pkgs: with pkgs; lib.pipe
-          (haskellPackages.callCabal2nix "echidna" ./. { hevm = hevm pkgs; })
+          ((hspkgs pkgs).callCabal2nix "echidna" ./. { hevm = hevm pkgs; })
           ([
             # FIXME: figure out solc situation, it conflicts with the one from
             # solc-select that is installed with slither, disable tests in the meantime
@@ -179,25 +129,17 @@
             (haskell.lib.compose.disableCabalFlag "static")
           ]);
 
-        echidna-static = with pkgsGHC; lib.pipe
-          (echidna pkgsGHC)
-          ([
-            (haskell.lib.compose.appendConfigureFlags
-              (map (drv: "--extra-lib-dirs=${stripDylib drv}/lib") dependencies-static))
-            (haskell.lib.compose.enableCabalFlag "static")
-          ] ++ lib.optionals (pkgs.stdenv.hostPlatform.isLinux && pkgs.stdenv.hostPlatform.isx86_64) [
-            # FIXME: work around wrong libdw / libelf linking on musl builds on x86_64
-            (haskell.lib.compose.appendConfigureFlags [
-              "--ghc-option=-optl-Wl,--start-group"
-              "--ghc-option=-optl-lelf"
-              "--ghc-option=-optl-ldw"
-              "--ghc-option=-optl-lzstd"
-              "--ghc-option=-optl-lz" 
-              "--ghc-option=-optl-lbz2"
-              "--ghc-option=-optl-llzma"
-              "--ghc-option=-optl-Wl,--end-group"
-            ])
-          ]);
+        echidna-static = with pkgs; if stdenv.hostPlatform.isLinux
+        then lib.pipe (echidna pkgs.pkgsStatic) [
+          # Match hevm's release build; profiling libraries are not needed.
+          haskell.lib.compose.disableLibraryProfiling
+          (haskell.lib.compose.enableCabalFlag "static")
+        ]
+        else lib.pipe (echidna pkgs) [
+          (haskell.lib.compose.appendConfigureFlags
+            (map (drv: "--extra-lib-dirs=${stripDylib drv}/lib") dependencies-static))
+          (haskell.lib.compose.enableCabalFlag "static")
+        ];
 
         # "static" binary for distribution
         # on linux this is actually a real fully static binary
@@ -255,7 +197,7 @@
         packages.echidna-redistributable = echidnaRedistributable;
 
         devShells = with pkgs; {
-          default = haskellPackages.shellFor {
+          default = (hspkgs pkgs).shellFor {
             # Include test dependencies even though package builds skip the suite.
             packages = _: [ (haskell.lib.doCheck (echidna pkgs)) ];
             shellHook = ''
@@ -268,9 +210,9 @@
               secp256k1
               solc
               slither-analyzer
-              haskellPackages.hlint
-              haskellPackages.cabal-install
-              haskellPackages.haskell-language-server
+              (hspkgs pkgs).hlint
+              (hspkgs pkgs).cabal-install
+              (hspkgs pkgs).haskell-language-server
             ];
             withHoogle = true;
           };
