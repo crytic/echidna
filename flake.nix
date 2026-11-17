@@ -95,7 +95,7 @@
         # 0.5.7 is not available on aarch64 darwin so alternatively pick 0.8.5
         solc = solc-pkgs.mkDefault pkgs (pkgs.solc_0_5_7 or pkgs.solc_0_8_5);
 
-        dependencies-static = with pkgs; [
+        dependencies-static-macos = with pkgs; [
           (gmp.override { withStatic = true; })
           (secp256k1.overrideAttrs (attrs: {
             configureFlags = attrs.configureFlags ++ [ "--enable-static" ];
@@ -137,7 +137,7 @@
         ]
         else lib.pipe (echidna pkgs) [
           (haskell.lib.compose.appendConfigureFlags
-            (map (drv: "--extra-lib-dirs=${stripDylib drv}/lib") dependencies-static))
+            (map (drv: "--extra-lib-dirs=${stripDylib drv}/lib") dependencies-static-macos))
           (haskell.lib.compose.enableCabalFlag "static")
         ];
 
