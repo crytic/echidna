@@ -38,6 +38,14 @@
                     ];
                   });
 
+                  # vcr's 100 ms concurrency test flakes on macOS CI.
+                  # Keep the other 30 tests enabled.
+                  vcr = prev.haskell.lib.overrideCabal hprev.vcr (old: {
+                    testFlags = (old.testFlags or []) ++ prev.lib.optionals prev.stdenv.hostPlatform.isDarwin [
+                      "--skip=/VCR/with/when mode is AnyOrder/with concurrent requests/records the requests concurrently, without blocking/"
+                    ];
+                  });
+
                   # Bump tls to >= 2.2.2 for the fix in https://github.com/haskell-tls/hs-tls/pull/515.
                   # tls 2.2.2 needs the crypton-x509 1.8 line, which still builds against the
                   # crypton 1.0.x already in nixpkgs (the 1.9 line would force crypton >= 1.1 and a
@@ -91,7 +99,10 @@
                   # transitively depends on tls — regenerating tls with it would loop. Pin the
                   # tool to the un-overridden base set to break the cycle (it's build-time only,
                   # so its own tls version is irrelevant).
-                  cabal2nix-unstable = prev.haskell.packages.ghc912.cabal2nix-unstable;
+                  cabal2nix-unstable = prev.haskell.packages.ghc912.cabal2nix-unstable.overrideScope (_: cprev: {
+                    # Reuse the test override with the tool's original dependencies.
+                    vcr = hfinal.vcr.overrideScope (_: _: cprev);
+                  });
                 };
               };
             })
