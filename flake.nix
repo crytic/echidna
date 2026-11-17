@@ -27,6 +27,16 @@
             solc-pkgs.overlay
             foundry.overlay
             (final: prev: {
+              # https://github.com/NixOS/nixpkgs/pull/569508
+              # musl's fixed SIGSTKSZ can be smaller than the kernel requires.
+              libbsd = if prev.stdenv.hostPlatform.isMusl then prev.libbsd.overrideAttrs (old: {
+                postPatch = (old.postPatch or "") + ''
+                  substituteInPlace test/explicit_bzero.c \
+                    --replace-fail '(SIGSTKSZ + SECRETBYTES)' \
+                      '(sysconf(_SC_SIGSTKSZ) + SECRETBYTES)'
+                '';
+              }) else prev.libbsd;
+
               # Backport https://github.com/NixOS/nixpkgs/pull/582577.
               # tzdata 2026f's checks fail on or after 2026-11-01. Scope the fix
               # to musl to preserve cached toolchains on the other platforms.
