@@ -27,6 +27,17 @@
             solc-pkgs.overlay
             foundry.overlay
             (final: prev: {
+              # Backport https://github.com/NixOS/nixpkgs/pull/582577.
+              # tzdata 2026f's checks fail on or after 2026-11-01. Scope the fix
+              # to musl to preserve cached toolchains on the other platforms.
+              tzdata = if prev.stdenv.hostPlatform.isMusl then prev.tzdata.overrideAttrs (old: {
+                preCheck = (old.preCheck or "") + ''
+                  release_timestamp=$(awk '/^Release /{print $4, $5, $6; exit}' NEWS)
+                  release_time_t=$(date -d"$release_timestamp" +%s)
+                  checkFlagsArray+=("CHECK_NOW_TIMESTAMP=$release_time_t")
+                '';
+              }) else prev.tzdata;
+
               # build with GHC 9.12
               haskellPackages = prev.haskell.packages.ghc912.override {
                 overrides = hfinal: hprev: {
