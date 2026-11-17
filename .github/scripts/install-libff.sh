@@ -4,6 +4,8 @@ set -eux
 
 source .github/scripts/host.sh
 
+INSTALL_VERSION=0.2.1
+
 if [ -f $HOME/.local/lib/libff"$EXT" ]; then
   echo "libff exists, exiting..."
   exit 0
@@ -12,10 +14,10 @@ fi
 if [ -d libff ]; then
   echo "$(pwd)/libff" already exists! Using it instead of re-cloning the repo.
 else
-  git clone https://github.com/scipr-lab/libff -b v0.2.1 --recursive
+  git clone https://github.com/scipr-lab/libff -b "v$INSTALL_VERSION" --recursive
 fi
 cd libff
-git checkout v0.2.1
+git checkout "v$INSTALL_VERSION"
 git submodule init && git submodule update
 
 # Fix libff header installation with CMake >= 4.3
@@ -61,7 +63,7 @@ if [ "$HOST_OS" = "Windows" ]; then
   sed -i '/INCLUDE_DIRECTORIES.*OPENSSL_INCLUDE_DIR/d' CMakeLists.txt
 
   # Apply windows-specific libff patch carried by hevm
-  curl -fsSL https://raw.githubusercontent.com/argotorg/hevm/1abe4c79eeada928acc279b631c48eeb2a1376c2/.github/scripts/libff.patch | patch -p1
+  curl -fsSL https://raw.githubusercontent.com/argotorg/hevm/2cd4b0612cbf1ab7d5bb4bdbb2062a86c60ce2c0/.github/scripts/libff.patch | patch -p1
 fi
 
 mkdir -p build

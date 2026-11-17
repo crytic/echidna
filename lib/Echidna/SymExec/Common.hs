@@ -8,8 +8,8 @@ import Control.Monad.State.Strict (execState, runStateT)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.DoubleWord (Word256)
-import Data.List (foldl')
 import Data.Function ((&))
+import Data.List qualified as List (foldl')
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
@@ -67,7 +67,7 @@ checkAssertions errs isFoundry _ vmres
       -- TODO: also check for Error(string) "assertion failed" in partially-symbolic
       -- buffers, similar to hevm's symbolicFail in EVM.UnitTest
       Failure _ _ (Revert b) ->
-        foldl' PAnd (PBool True) (fmap (PNeg . PEq b . ConcreteBuf . panicMsg) errs)
+        List.foldl' PAnd (PBool True) (fmap (PNeg . PEq b . ConcreteBuf . panicMsg) errs)
       _ -> PBool True
   where
     txtOffset = 4 + 32 + 32 -- selector + offset + length
