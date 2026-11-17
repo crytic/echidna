@@ -107,6 +107,12 @@
             };
           };
 
+        withStaticInterpreter = import ./nix/static-interpreter.nix {
+          inherit pkgs;
+          buildHaskellPackages = hspkgs pkgs;
+          hostHaskellPackages = hspkgs pkgs.pkgsStatic;
+        };
+
         # this is not perfect for development as it hardcodes solc to 0.5.7, test suite runs fine though
         # 0.5.7 is not available on aarch64 darwin so alternatively pick 0.8.5
         solc = solc-pkgs.mkDefault pkgs (pkgs.solc_0_5_7 or pkgs.solc_0_8_5);
@@ -137,6 +143,7 @@
               ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isStatic [
                 # Profiling hevm can crash the musl external interpreter.
                 pkgs.haskell.lib.compose.disableLibraryProfiling
+                withStaticInterpreter
               ]
             );
 
@@ -162,6 +169,7 @@
               # Match hevm's release build; profiling libraries are not needed.
               haskell.lib.compose.disableLibraryProfiling
               (haskell.lib.compose.enableCabalFlag "static")
+              withStaticInterpreter
             ]
           else
             lib.pipe (echidna pkgs) [

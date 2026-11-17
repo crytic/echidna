@@ -71,7 +71,7 @@ jobs:
 
       - name: Build redistributable echidna
         run: |
-          nix build ".#packages.${NIX_SYSTEM}.echidna-redistributable" --out-link redistributable
+          nix build ".#packages.${NIX_SYSTEM}.echidna-redistributable" --out-link redistributable ${{ runner.debug == '1' && '-L' || '' }}
           tar -czf "echidna-${{ steps.version.outputs.version }}-${{ matrix.tuple }}.tar.gz" -C ./redistributable/bin/ echidna
         env:
           NIX_SYSTEM: ${{ matrix.system }}
