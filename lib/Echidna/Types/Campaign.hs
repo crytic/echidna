@@ -176,6 +176,9 @@ data CampaignConf = CampaignConf
     -- Only relevant if symExec is True
   , symExecSolverMemory :: Natural
     -- ^ Memory limit for each SMT solver process, in MB.
+  , symExecSeqLen :: Int
+    -- ^ Maximum symbolic calls to the selected method after a corpus prefix.
+    -- Defaults to one; larger bounds can grow the search exponentially.
   }
 
 -- | The state of a fuzzing campaign.

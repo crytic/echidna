@@ -138,6 +138,8 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "symExecAskSMTIters" ..!= defaultSymExecAskSMTIters
         <*> v ..:? "symExecMaxExplore"  ..!= defaultSymExecMaxExplore
         <*> v ..:? "symExecSolverMemory" ..!= defaultSymExecSolverMemory
+        <*> (v ..:? "symExecSeqLen" ..!= 1 >>= \n ->
+              if n > 0 then pure n else fail "symExecSeqLen must be positive")
         where
         smtSolver = v ..:? "symExecSMTSolver" >>= \case
           Just ("z3" :: String)  -> pure Z3

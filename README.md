@@ -71,13 +71,17 @@ for a state-changing call that makes a native property or a subsequent
 no-argument assertion fail. It starts from the initial state or a concrete
 corpus prefix and replays counterexamples before reporting them. Set
 `workers: 0` to check each selected method without fuzzing workers;
-`symExecTargets` restricts those methods. This searches one symbolic transition
-at a time and does not prove a stateful invariant.
+`symExecTargets` restricts those methods. `symExecSeqLen` bounds the number of
+symbolic calls to the selected method after each prefix (default: `1`). Increase
+it to search longer sequences without changing the contract; the search can
+grow exponentially. Reaching this bound does not prove a stateful invariant.
 
 This integration is experimental. The invariant API sends zero ETH, so this
 stateful search cannot solve a call that requires nonzero `msg.value`. It
-explores each configured sender separately to preserve `tx.origin`, and
-constrains timestamp and block-number changes to Echidna's configured bounds.
+uses hevm's shared exploration driver, which preserves `tx.origin` for each
+configured sender and constrains each timestamp and block-number increment to
+Echidna's bounds. Echidna supplies property semantics and replays the resulting
+transactions for validation, coverage and shrinking.
 Single-call assertion verification retains its existing symbolic-value search.
 
 ### Collecting and visualizing coverage

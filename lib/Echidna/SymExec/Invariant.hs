@@ -8,34 +8,29 @@ module Echidna.SymExec.Invariant
   , statefulTests
   ) where
 
-import Control.Concurrent.STM (newTVarIO)
 import Control.Monad (forM)
-import Control.Monad.IO.Unlift (liftIO)
-import Control.Monad.ST (stToIO)
-import Control.Monad.State.Strict (execStateT)
-import Data.ByteString qualified as BS
-import Data.Function ((&))
+import Data.Functor ((<&>))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as T
-import Optics.Core ((.~), (%), (%~))
 
-import EVM (clearTStorages, symbolify)
-import EVM.ABI (AbiVals(..), Sig(..), decodeBuf, selector)
+import EVM (symbolify)
+import EVM.ABI (Sig(..), selector)
 import EVM.Effects (App)
 import EVM.Expr qualified
 import EVM.Fetch qualified as Fetch
 import EVM.Format (formatPartialDetailed)
-import EVM.Invariant (startCall)
 import EVM.Invariant qualified as Inv
+import EVM.Invariant.Driver qualified as Driver
 import EVM.Solidity (Method(..), Mutability(..))
 import EVM.Solvers (SolverGroup)
-import EVM.SymExec (Postcondition, VeriOpts(..), calldataFromCex, verifyInputsWithHandler)
-import EVM.Types (Addr, Block(..), EType(..), Expr(..), ProofResult(..), Prop(..), SMTCex(..), VMResult(..), VMType(..), forceLit, isQed)
+import EVM.SymExec (Postcondition, VeriOpts)
+import EVM.Types (Addr, Expr(..), Prop(..), VMResult(..), VMType(..))
 import EVM.Types qualified (VM(..))
 
 import Echidna.SymExec.Common (PartialsLogs, TxOrError(..), checkAssertions, exploreSingleMethod, senderConstraints)
 import Echidna.Test (CallRes(ResRevert), classifyRes, isPropertyMode, isVerificationMode)
+import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (EchidnaTest(..), TestConf(..), TestType(..), isOpen)
@@ -60,108 +55,53 @@ exploreMethod :: App m =>
   Method -> [TestType] -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
 exploreMethod method tests vm defaultSender conf veriOpts solvers rpcInfo session
   | null tests = exploreSingleMethod method vm defaultSender conf veriOpts solvers rpcInfo session
-  | otherwise = exploreStatefulMethod method tests vm defaultSender conf veriOpts solvers rpcInfo session
+  | otherwise = exploreStatefulMethod method tests vm conf veriOpts solvers rpcInfo session
 
-data StatefulCall = StatefulCall
-  { name :: T.Text
-  , addr :: Addr
-  , caller :: Expr EAddr
-  , constraints :: [Prop]
-  , postcondition :: Postcondition
-  }
-
--- One symbolic transition after a concrete corpus prefix, as in the original
--- stateful worker. hevm owns execution and preservation of reached VMs. There
--- is no visited-state pruning here, and no invariant proof at the depth limit.
--- nextStates currently sends zero ETH; symbolic value remains supported by
--- the ordinary single-call assertion/verification path in Common.
--- TODO(hevm): expose call value and transaction context configuration, and
--- return unknown/error results from transition assertion checks. Keep these
--- features upstream instead of reintroducing an Echidna-specific leaf walker.
+-- hevm owns the search, VM boundaries and model materialization. Echidna
+-- supplies native property semantics and replays returned transactions through
+-- its campaign executor for validation, coverage and shrinking. Call value is
+-- currently zero; symbolic value belongs in a future hevm API extension.
 exploreStatefulMethod :: App m =>
-  Method -> [TestType] -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
-exploreStatefulMethod method tests vm defaultSender conf veriOpts solvers rpcInfo session = do
-  -- A concrete sender per expansion keeps tx.origin equal to msg.sender,
-  -- including account lookup in initTx, without relying on hevm variable names.
-  results <- forM (Set.toList conf.solConf.sender) $ \sender -> do
-    initial <- liftIO $ stToIO $ execStateT clearTStorages $
-      symbolify vm
-        & #tx % #origin .~ LitAddr sender
-        & #block % #number .~ number
-        & #constraints %~ (numberBounds ++)
-    let post before leaf
-          | isPropertyMode conf.solConf.testMode = PBool True
-          | otherwise = case checkAssertions [0x1] False before leaf of
-              PBool True -> PBool True
-              p -> POr (PNeg $ timeBounds before.block.timestamp) p
-    (states, partials, probes) <- Inv.nextStates solvers post fetcher veriOpts.iterConf
-      conf.txConf.txGas (Inv.OneOf [sender]) [target] (Inv.InvState initial [])
-    failures <- forM probes $ \probe ->
-      replay sender probe.state.calls Nothing (Cex probe.cex)
-    checked <- forM states $ \st -> do
-      let endVm = st.vm & #constraints %~ (timeBounds st.vm.block.timestamp :)
-      mconcat <$> forM tests (\test -> do
-        let call = statefulCall conf False test
-            gas = case test of PropertyTest {} -> conf.txConf.propGas; _ -> conf.txConf.txGas
-        testVm <- liftIO $ stToIO $ flip execStateT (endVm & #tx % #origin .~ call.caller) $ do
-          clearTStorages
-          startCall (LitAddr call.addr) call.caller gas call.name
-            (ConcreteBuf (selector (call.name <> "()")), call.constraints)
-        abort <- liftIO $ newTVarIO False
-        (models, incomplete) <- verifyInputsWithHandler abort solvers veriOpts fetcher
-          (testVm & #exploreDepth .~ 0) call.postcondition Nothing
-        txs <- traverse (replay sender st.calls (Just test) . fst) $ filter (not . isQed . fst) models
-        pure (txs, map (formatPartialDetailed Nothing Map.empty . fst) incomplete))
-    pure $ (failures, [formatPartialDetailed Nothing Map.empty p | Partial _ _ p <- partials]) <> mconcat checked
-  pure $ mconcat results
+  Method -> [TestType] -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+exploreStatefulMethod method tests vm conf veriOpts solvers rpcInfo session = do
+  exploration <- Driver.newExploration options (symbolify vm)
+  checked <- forM tests $ \test -> do
+    result <- Driver.searchInvariant solvers fetcher veriOpts exploration
+      (1, conf.campaignConf.symExecSeqLen) (statefulCall conf test)
+    txs <- case result.counterexample of
+      Nothing -> pure []
+      Just c -> do
+        let check = case test of AssertionTest {} -> [c.call]; _ -> []
+        pure <$> replay c.model (c.state.calls <> check)
+    pure (txs <> errors result.issues, partials result.partials)
+  (_, transitions) <- Driver.explorationStatus exploration
+  failures <- forM transitions.probes $ \probe -> replay probe.cex probe.state.calls
+  pure $ (failures <> errors transitions.issues, partials transitions.partials) <> mconcat checked
   where
     fetcher = Fetch.oracle solvers (Just session) rpcInfo
-    -- nextStates renders Sig with callSig, which adds the argument types.
     target = Inv.Target (LitAddr conf.solConf.contractAddr) "" (Sig method.name (map snd method.inputs))
-    number = Var "invariant_block_number"
-    numberBounds = [PGEq number vm.block.number, PLEq (Sub number vm.block.number) (Lit conf.txConf.maxBlockDelay)]
-    timeBounds timestamp = PAnd (PGEq timestamp vm.block.timestamp)
-      (PLEq (Sub timestamp vm.block.timestamp) (Lit conf.txConf.maxTimeDelay))
+    post = if isPropertyMode conf.solConf.testMode then \_ _ -> PBool True else checkAssertions [0x1] False
+    options = Driver.ExplorationConfig [target] (Inv.OneOf $ Set.toList conf.solConf.sender)
+      (Inv.CallConfig conf.txConf.txGas (Just conf.txConf.maxTimeDelay) (Just conf.txConf.maxBlockDelay) True) post False
+    errors = map (SMTErrorFromResult . T.unpack)
+    partials leaves = [formatPartialDetailed Nothing Map.empty p | Partial _ _ p <- leaves]
+    replay model calls = Driver.concretizeCalls vm.block model calls <&> \case
+      Left err -> SMTErrorFromResult err
+      Right concrete -> TxFromResult
+        [basicTx name call.arguments call.caller call.target conf.txConf.txGas call.delay
+        | call <- concrete, let Sig name _ = call.sig]
 
-    replay sender [call] test (Cex cex) = do
-      decoded <- calldataFromCex cex call.calldata call.target.sig
-      pure $ case decoded of
-        Left err -> SMTErrorFromResult err
-        Right bytes -> case decodeBuf (map snd method.inputs) (ConcreteBuf $ BS.drop 4 bytes) of
-          (CAbi args, "") ->
-            let timestamp = Map.findWithDefault (forceLit vm.block.timestamp) call.timestamp cex.vars
-                blockNumber = Map.findWithDefault (forceLit vm.block.number) number cex.vars
-                tx = basicTx method.name args sender conf.solConf.contractAddr conf.txConf.txGas
-                  (timestamp - forceLit vm.block.timestamp, blockNumber - forceLit vm.block.number)
-                check = case test of
-                  Just AssertionTest{sig = (name, []), addr} ->
-                    let caller = Map.findWithDefault defaultSender (SymAddr "test_caller") cex.addrs
-                    in [basicTx name [] caller addr conf.txConf.txGas (0, 0)]
-                  _ -> []
-            in TxFromResult (tx : check)
-          _ -> SMTErrorFromResult "could not decode invariant counterexample"
-    replay _ _ _ (Error err) = pure $ SMTErrorFromResult err
-    replay _ _ _ (Unknown err) = pure $ SMTErrorFromResult err
-    replay _ _ _ _ = pure $ SMTErrorFromResult "unexpected invariant counterexample"
-
-statefulCall :: EConfig -> Bool -> TestType -> StatefulCall
-statefulCall conf foundry = \case
-  PropertyTest name addr -> StatefulCall
-    { name
-    , addr
-    , caller = LitAddr (conf.testConf.testSender addr)
-    , constraints = []
-    , postcondition = checkProperty conf.solConf.prefix name
-    }
-  AssertionTest{sig = (name, []), addr} -> StatefulCall
-    { name
-    , addr
-    , caller = SymAddr "test_caller"
-    , constraints = senderConstraints (SymAddr "test_caller") conf.solConf.sender
-    , postcondition = checkAssertions [0x1] foundry
-    }
+statefulCall :: EConfig -> TestType -> Driver.Check
+statefulCall conf test = case test of
+  PropertyTest name addr -> call name addr (LitAddr $ conf.testConf.testSender addr) []
+    conf.txConf.propGas (checkProperty conf.solConf.prefix name)
+  AssertionTest{sig = (name, []), addr} -> call name addr caller
+    (senderConstraints caller conf.solConf.sender) conf.txConf.txGas (checkAssertions [0x1] False)
   _ -> error "unsupported symbolic stateful test"
-
+  where
+    caller = SymAddr "test_caller"
+    call name addr sender constraints gas = Driver.Check (Inv.Target (LitAddr addr) "" (Sig name []))
+      sender (Just sender) gas (ConcreteBuf (selector $ name <> "()"), constraints)
 
 -- Match the normal property classifier, including echidna_revert_* properties.
 checkProperty :: T.Text -> T.Text -> Postcondition

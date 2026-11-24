@@ -127,6 +127,9 @@ symExecTargets: null
 # List the max number of states to explore when using symbolc execution
 # only relevant if symExec is true
 symExecMaxExplore: 10
+# maximum symbolic calls to the selected method after a concrete corpus prefix
+# larger bounds can grow the search exponentially; only relevant if symExec is true
+symExecSeqLen: 1
 # Memory limit for each SMT solver process, in MB (16 GB by default)
 # only relevant if symExec is true
 symExecSolverMemory: 16384
