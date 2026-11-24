@@ -1,5 +1,7 @@
 ## Unreleased
 
+* Function selectors of the compiled contracts are computed once, instead of hashing the signature again for every generated transaction
+
 ## 2.4.0
 
 * New `symExecSolverMemory` option sets the memory limit per SMT solver process in MB for symbolic exploration and verification. The default is 16384 MB (16 GB), increased from the fixed 1024 MB limit

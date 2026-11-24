@@ -138,7 +138,13 @@ mkEnv cfg buildOutput tests world slitherInfo = do
   useColor <- hNowSupportsANSI stdout
   -- TODO put in real path
   let dapp = dappInfo "/" buildOutput
+      Contracts contracts = buildOutput.contracts
+      functionSelectors = mkSelectorCache
+        [ (method.name, snd <$> method.inputs)
+        | contract <- Map.elems contracts
+        , method <- Map.elems contract.abiMap
+        ]
   pure $ Env { cfg, dapp, codehashMap, fetchSession, contractNameCache
              , chainId, eventQueue, bus, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
-             , slitherInfo, useColor
+             , slitherInfo, useColor, functionSelectors
              }
