@@ -4,6 +4,8 @@ import Control.Concurrent (takeMVar)
 import Control.Monad (foldM, forM_)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.State.Strict (runStateT)
+import Data.Aeson (Value(..), eitherDecode)
+import Data.Aeson.KeyMap qualified as KeyMap
 import Data.IORef (newIORef, readIORef)
 import Data.List (find)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -20,20 +22,23 @@ import EVM.Solvers (Solver(Bitwuzla))
 import EVM.Types (VM, VMType(Concrete))
 
 import Common (loadSolTests, testConfig, solcV, withSolcVersion)
-import Echidna.ABI (emptyDict)
+import Echidna.ABI (GenDict(..), emptyDict)
 import Echidna.Agent (runAgent, runAgentWithReady)
 import Echidna.Exec (execTx)
+import Echidna.Output.JSON (encodeCampaign)
 import Echidna.Solidity (chooseContract, compileContracts)
 import Echidna.SymExec.Common (extractErrors, extractTxs)
 import Echidna.SymExec.Exploration (exploreContract)
 import Echidna.Test (checkETest, createTest)
-import Echidna.Types.Campaign (CampaignConf(..), initialWorkerState)
 import Echidna.Types.Agent (Agent(..))
-import Echidna.Types.Config (EConfig(..), Env(..))
+import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..), initialWorkerState)
+import Echidna.Types.Config (EConfig(..), Env(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test (TestConf(..), TestType(..), TestValue(..), TestState(Solved), EchidnaTest(..), isOpen)
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..), basicTx)
 import Echidna.Types.Worker (CampaignEvent(..), WorkerEvent(..), WorkerType(..), WorkerStopReason(..))
+import Echidna.UI (ui)
+import Echidna.UI.Report (ppSeed)
 import Echidna.Worker (pushCampaignEvent)
 
 statefulSymbolicTests :: TestTree
@@ -111,6 +116,20 @@ statefulSymbolicTests = testGroup "Stateful symbolic execution" $
       [test] <- traverse readIORef env.testRefs
       map (.call) test.reproducer @?= [SolCall ("prepare", []), SolCall ("set", [AbiUInt 256 42])]
       replay env vm test.reproducer test.testType
+  , solidityCase "symbolic startup preserves the reported campaign seed" $ do
+      (vm, env, _) <- load "echidna_value" False
+      let cfg = env.cfg
+            { campaignConf = env.cfg.campaignConf { workers = Just 1, testLimit = 0 }
+            , uiConf = env.cfg.uiConf { operationMode = NonInteractive None }
+            }
+          campaignEnv = env { cfg }
+      states <- runReaderT (ui vm (emptyDict { defSeed = 37 }) [] (Just "StatefulChecks")) campaignEnv
+      map (.workerId) states @?= [0, 1]
+      ppSeed states @?= "37"
+      encoded <- encodeCampaign campaignEnv states
+      case eitherDecode encoded of
+        Right (Object result) -> KeyMap.lookup "seed" result @?= Just (Number 37)
+        _ -> assertFailure "invalid campaign JSON"
   ]
 
 solidityCase :: String -> IO () -> TestTree

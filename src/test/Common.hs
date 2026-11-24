@@ -33,6 +33,7 @@ import Control.Monad.Reader (runReaderT)
 import Data.DoubleWord (Int256)
 import Data.Function ((&))
 import Data.IORef
+import Data.List (find)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.Split (splitOn)
 import Data.Map qualified as Map
@@ -122,8 +123,10 @@ runContract f selectedContract cfg workerType = do
                         }
   finalState <- if workerType == SymbolicWorker && getNFuzzWorkers cfg.campaignConf > 0
     then do
-      symbolic : _ <- runReaderT (ui vm dict [] selectedContract) env
-      pure symbolic
+      states <- runReaderT (ui vm dict [] selectedContract) env
+      case find (\s -> s.workerId == getNFuzzWorkers cfg.campaignConf) states of
+        Just symbolic -> pure symbolic
+        Nothing -> fail "symbolic worker state missing"
     else do
       void $ runAgent agent env
       readIORef stateRef

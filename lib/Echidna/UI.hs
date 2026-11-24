@@ -113,7 +113,11 @@ ui vm dict initialCorpus cliSelectedContract = do
           -- Subscribe the symbolic worker before fuzzers can publish coverage.
           when (workerIDToType conf.campaignConf wid == SymbolicWorker) $ readMVar ready
           pure worker
-        pure (map fst spawned, map snd spawned)
+        -- Reports take the campaign seed from worker 0. Keep worker order
+        -- independent of startup order, including when there are no fuzzers.
+        let (spawnedSymbolic, spawnedFuzzers) = splitAt (length symbolic) spawned
+            ordered = spawnedFuzzers <> spawnedSymbolic
+        pure (map fst ordered, map snd ordered)
 
       -- The MCP server answers for the campaign as it runs, reading worker
       -- state through the workers' own refs. Wait until every fuzzing worker
