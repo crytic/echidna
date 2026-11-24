@@ -1,6 +1,7 @@
 ## Unreleased
 
 * Function selectors of the compiled contracts are computed once, instead of hashing the signature again for every generated transaction
+* Updated hevm to `87598e81`, with improved symbolic arithmetic, canonical tuple ABI signatures, and EVM execution fixes
 
 ## 2.4.0
 

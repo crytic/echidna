@@ -28,6 +28,12 @@
               # build with GHC 9.8
               haskellPackages = prev.haskell.packages.ghc98.override {
                 overrides = hfinal: hprev: {
+                  # hevm's test-utils library requires tasty >= 1.5.4.
+                  tasty = hfinal.callHackageDirect {
+                    pkg = "tasty"; ver = "1.5.4";
+                    sha256 = "sha256-C6VyZuM+rcqllVlhk52snAKpw3sqrrzncz8Da1yE03Q=";
+                  } {};
+
                   # Bump tls to >= 2.2.2 for the fix in https://github.com/haskell-tls/hs-tls/pull/515.
                   # tls 2.2.2 needs the crypton-x509 1.8 line, which still builds against the
                   # crypton 1.0.x already in nixpkgs (the 1.9 line would force crypton >= 1.1 and a
@@ -119,8 +125,8 @@
           (pkgs.haskellPackages.callCabal2nix "hevm" (pkgs.fetchFromGitHub {
             owner = "argotorg";
             repo = "hevm";
-            rev = "8007137b2c705f04a5bf5061db913eff075d189f";
-            sha256 = "sha256-N2Y3L6cqsy0NN/wbh8wDRsmUbyZokstTkMT+fIkPOjc=";
+            rev = "87598e81c044e2889e4a42e9fd706bd5396448f2";
+            sha256 = "sha256-VF7hhxTs9V4AgSoZ9dukQRFR7L6py8/WJsEDUPbs5v4=";
           }) { secp256k1 = pkgs.secp256k1; })
           ([
             pkgs.haskell.lib.compose.dontCheck
