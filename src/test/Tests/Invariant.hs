@@ -89,7 +89,7 @@ experiment depth = do
   contract <- chooseContract (Map.elems env.dapp.solcByName) (Just "NativeInvariant")
   let selected = [m | m <- Map.elems contract.abiMap, m.methodSignature == "advance(uint256)"]
       targets = [Target (LitAddr cfg.solConf.contractAddr) contract.contractName
-                        (Sig m.methodSignature (map snd m.inputs)) | m <- selected]
+                        (Sig m.name (map snd m.inputs)) | m <- selected]
       properties = [m.name | m <- Map.elems contract.abiMap, cfg.solConf.prefix `T.isPrefixOf` m.name]
       initial = InvState (symbolify vm & #tx % #origin .~ LitAddr 0x10000) []
       runtime = HEVM.defaultEnv { HEVM.config = HEVM.defaultConfig { HEVM.abstractArith = symExecAbstractArith } }
@@ -152,8 +152,8 @@ checkProperties env solvers properties st = concat <$> forM properties (\name ->
 replayTx :: Env -> SMTCex -> Call -> InvariantM Tx
 replayTx env cex call = do
   bytes <- calldataFromCex cex call.calldata call.target.sig >>= either (liftIO . assertFailure) pure
-  let Sig signature types = call.target.sig
+  let Sig name types = call.target.sig
   case decodeBuf types (ConcreteBuf (BS.drop 4 bytes)) of
-    (CAbi args, "") -> pure $ basicTx (T.takeWhile (/= '(') signature) args
+    (CAbi args, "") -> pure $ basicTx name args
       (forceAddr call.caller) (forceAddr call.target.addr) env.cfg.txConf.txGas (0, 0)
     _ -> liftIO $ assertFailure "could not decode invariant counterexample"

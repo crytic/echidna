@@ -116,7 +116,8 @@ exploreStatefulMethod method tests vm defaultSender conf veriOpts solvers rpcInf
   pure $ mconcat results
   where
     fetcher = Fetch.oracle solvers (Just session) rpcInfo
-    target = Inv.Target (LitAddr conf.solConf.contractAddr) "" (Sig method.methodSignature (map snd method.inputs))
+    -- nextStates renders Sig with callSig, which adds the argument types.
+    target = Inv.Target (LitAddr conf.solConf.contractAddr) "" (Sig method.name (map snd method.inputs))
     number = Var "invariant_block_number"
     numberBounds = [PGEq number vm.block.number, PLEq (Sub number vm.block.number) (Lit conf.txConf.maxBlockDelay)]
     timeBounds timestamp = PAnd (PGEq timestamp vm.block.timestamp)
