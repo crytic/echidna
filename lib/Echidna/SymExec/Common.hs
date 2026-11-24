@@ -160,18 +160,6 @@ rpcFetcher :: Functor f =>
 rpcFetcher rpc block = (,) block' <$> rpc
   where block' = maybe Fetch.Latest Fetch.BlockNumber block
 
-removeUnknownResults :: [ProofResult SMTCex String] -> ([ProofResult SMTCex String], [ProofResult SMTCex String])
-removeUnknownResults results =
-  let
-    known = filter (\case Unknown _ -> False ; _ -> True) results
-    unknown = filter (\case Unknown _ -> True; _ -> False) results
-  in (known, unknown)
-
-getUnknownLogs :: [ProofResult SMTCex String] -> [T.Text]
-getUnknownLogs = mapMaybe (\case
-  Error err -> Just $ T.pack err
-  _ -> Nothing)
-
 exploreSingleMethod :: (MonadUnliftIO m, ReadConfig m, TTY m) =>
   Method -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
 exploreSingleMethod method vm defaultSender conf veriOpts solvers rpcInfo session = do

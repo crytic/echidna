@@ -9,6 +9,7 @@ import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
 import Control.Monad.State.Strict (MonadState)
+import Data.List (find)
 import Data.List.NonEmpty (fromList)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust)
@@ -25,6 +26,7 @@ import qualified EVM.Types (VM(..))
 
 import Echidna.SymExec.Common (suitableForSymExec, rpcFetcher, symExecAbstractArith, TxOrError(..), PartialsLogs)
 import Echidna.SymExec.Invariant (SymbolicSearch, exploreSearch, searchName, selectedMethod, selectedTarget)
+import Echidna.Test (isFoundrySymbolicName)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Random (rElem)
@@ -33,15 +35,6 @@ import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerEvent(..))
 import Echidna.Types.World (World(..))
 import Echidna.Worker (pushWorkerEvent)
-
--- | Uses symbolic execution to find transactions which would increase coverage.
--- Spawns a new thread; returns its thread ID as the first return value.
--- The second return value is an MVar which is populated with transactions
---   once the symbolic execution is finished.
--- Also takes an optional Tx argument; this is used as the transaction
---   to symbolize. If none is provided, we do full
---   symbolic execution.
---   The Tx argument, if present, must have a .call value of type SolCall.
 
 getTargetMethodFromTx :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => Tx -> SolcContract -> [String] -> m (Maybe Method)
 getTargetMethodFromTx (Tx { call = SolCall ("", _) }) _ _ = return Nothing
@@ -84,8 +77,31 @@ getRandomTargetMethod contract targets failedProperties = do
       [] -> return Nothing
       _  -> liftIO $ rElem (fromList $ map (Just . snd) targetMethods)
 
-exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SymbolicSearch -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
-exploreContract search vm = do
+isSuitableToVerifyMethod :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> Method -> [Text] -> m Bool
+isSuitableToVerifyMethod contract method symExecTargets = do
+  env <- ask
+  let allMethods = Map.assocs contract.abiMap
+      assertSigs = env.world.assertSigs
+      (selector, _) = case find (\(_, m) -> m == method) allMethods of
+        Nothing -> error $ "Method " ++ show method.name ++ " not found in contract ABI"
+        Just x  -> x
+      -- "check" and "prove" functions are explicit symbolic test entry points
+      -- (as in Foundry and Halmos), so they are verified even when the static
+      -- analysis found no assertion in them.
+      isSymbolicEntryPoint = isFoundrySymbolicName method.name
+
+  return $ selectedMethod env.cfg contract method &&
+    if null symExecTargets
+    then (isSymbolicEntryPoint || null assertSigs || selector `elem` assertSigs)
+         && suitableForSymExec method
+    else selectedTarget symExecTargets method
+
+
+data SearchMode = Explore | Verify deriving Eq
+
+-- | Shared solver setup for corpus exploration and verification.
+runSearch :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SearchMode -> SymbolicSearch -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+runSearch mode search vm = do
   conf <- asks (.cfg)
   let
     timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
@@ -100,11 +116,12 @@ exploreContract search vm = do
   resultChan <- liftIO newEmptyMVar
   let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
   let iterConfig = IterConfig { maxIter = maxIters, maxConcreteIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = StackBased}
-  let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, maxDynSize = 128, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, dumpQueries = False, abstractArith = symExecAbstractArith }
+  let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = 12, maxDynSize = 128, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, dumpExprs = mode == Verify, dumpQueries = False, abstractArith = symExecAbstractArith }
   let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
-  pushWorkerEvent $ SymExecLog ("Exploring " <> unpack (searchName search))
+  let action = if mode == Verify then "Checking " else "Exploring "
+  pushWorkerEvent $ SymExecLog (action <> unpack (searchName search))
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT conf.campaignConf.symExecSolverMemory $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
       res <- exploreSearch search vm defaultSender conf veriOpts solvers rpcInfo session

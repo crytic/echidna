@@ -29,7 +29,7 @@ import EVM.Types (VM, VMType(..))
 import Common (loadSolTests, solcV, testConfig, withSolcVersion)
 import Echidna.ABI (emptyDict)
 import Echidna.Agent (runAgent)
-import Echidna.Config ()
+import Echidna.Config (adjustForVerificationMode)
 import Echidna.Exec (execTx)
 import Echidna.Solidity (chooseContract, compileContracts)
 import Echidna.SymExec.Common (extractErrors, extractTxs, symExecAbstractArith)
@@ -39,7 +39,7 @@ import Echidna.Types.Agent (Agent(..))
 import Echidna.Types.Campaign (CampaignConf(..), initialWorkerState)
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Solidity (Filter(..), SolConf(..))
-import Echidna.Types.Test (EchidnaTest(..), TestConf(..), TestType(..), TestValue(BoolValue), isOpen)
+import Echidna.Types.Test (EchidnaTest(..), TestConf(..), TestType(..), TestValue(BoolValue), didFail, isOpen, isPassed, isVerified)
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
 import Echidna.Types.Worker (CampaignEvent(..), WorkerEvent(..))
 
@@ -112,6 +112,7 @@ invariantTests = testGroup "Native invariant integration"
       length [() | (_, WorkerEvent _ _ (SymExecLog message)) <- messages,
                    "Checking invariants over " `isPrefixOf` message] @?= 1
       [err | (_, WorkerEvent _ _ (SymExecError err)) <- messages] @?= []
+  , solidityCase "verification bounds include the failing call and preserve bounded result status" boundedVerification
   ]
   where
     solidityCase name = testCase name . withSolcVersion (Just (>= solcV (0,6,9)))
@@ -177,3 +178,53 @@ checkMixedReplay vm env txs = do
   let test = createTest $ PropertyTest "echidna_never_finished" env.cfg.solConf.contractAddr
   (value, _) <- runReaderT (checkETest test end) env
   value @?= BoolValue False
+
+boundedVerification :: IO ()
+boundedVerification = do
+  let cfg = testConfig
+        { solConf = testConfig.solConf
+            { testMode = "verification", disableSlither = True, sender = Set.singleton 0x10000 }
+        , txConf = testConfig.txConf { maxTimeDelay = 0, maxBlockDelay = 0 }
+        , campaignConf = testConfig.campaignConf { symExecSMTSolver = Bitwuzla, shrinkLimit = 0 }
+        }
+  build <- compileContracts cfg.solConf ("symbolic/bounded-verification.sol" :| [])
+  forM_ [(1, []), (2, []), (3, []), (3, ["trigger", "checkFinished"])] $ \(depth, targets) -> do
+    let config = adjustForVerificationMode $ cfg
+          { campaignConf = cfg.campaignConf { symExecSeqLen = depth, symExecTargets = targets } }
+    (vm, env, _) <- loadSolTests config build (Just "BoundedVerification")
+    stateRef <- newIORef initialWorkerState
+    events <- atomically $ dupTChan env.eventQueue
+    _ <- runAgent (SymbolicAgent 0 vm emptyDict [] (Just "BoundedVerification") stateRef) env
+    tests <- traverse readIORef env.testRefs
+    let assertion name = maybe (assertFailure $ "missing assertion " <> T.unpack name) pure $
+          find (\t -> case t.testType of AssertionTest{sig = (n, _)} -> n == name; _ -> False) tests
+    trigger <- assertion "trigger"
+    finished <- assertion "checkFinished"
+    arm <- assertion "arm"
+    shortcut <- assertion "shortcut_no_symexec"
+    didFail trigger @?= (depth >= 2 && null targets)
+    didFail finished @?= (depth >= 3 && null targets)
+    isOpen shortcut @?= True
+    if depth == 1 then do
+      isVerified trigger @?= True
+      isVerified finished @?= True
+    else do
+      any isVerified tests @?= False
+      isPassed arm @?= null targets
+      if null targets then do
+        map (.call) trigger.reproducer @?=
+          [SolCall ("arm", [AbiUInt 256 41]), SolCall ("trigger", [AbiUInt 256 42])]
+        if depth == 3 then
+          map (.call) finished.reproducer @?=
+            [SolCall ("arm", [AbiUInt 256 41]), SolCall ("prepare", []), SolCall ("checkFinished", [AbiUInt 256 43])]
+        else isPassed finished @?= True
+      else do
+        isOpen arm @?= True
+        isPassed trigger @?= True
+        isPassed finished @?= True
+    messages <- atomically $
+      let drain = tryReadTChan events >>= maybe (pure []) (\event -> (event :) <$> drain)
+      in drain
+    [err | (_, WorkerEvent _ _ (SymExecError err)) <- messages] @?= []
+    length [() | (_, WorkerEvent _ _ (SymExecLog message)) <- messages,
+                 "Checking bounded assertions over " `isPrefixOf` message] @?= (if depth > 1 then 1 else 0)

@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 
 -- | Adapt hevm's invariant transitions to native Echidna properties and
--- no-argument assertions, including concrete counterexample replay.
+-- assertions, including bounded verification and concrete counterexample replay.
 module Echidna.SymExec.Invariant
   ( checkProperty
   , SymbolicSearch(..)
@@ -13,7 +13,7 @@ module Echidna.SymExec.Invariant
   , selectedMethod
   ) where
 
-import Control.Monad (forM)
+import Control.Monad (forM, void, when)
 import Data.Functor ((<&>))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
@@ -29,7 +29,7 @@ import EVM.Invariant qualified as Inv
 import EVM.Invariant.Driver qualified as Driver
 import EVM.Solidity (Method(..), Mutability(..), SolcContract(..))
 import EVM.Solvers (SolverGroup)
-import EVM.SymExec (Postcondition, VeriOpts)
+import EVM.SymExec (Postcondition, VeriOpts(..))
 import EVM.Types (Addr, Expr(..), Prop(..), VMResult(..), VMType(..))
 import EVM.Types qualified (VM(..))
 
@@ -43,15 +43,20 @@ import Echidna.Types.Test (EchidnaTest(..), TestConf(..), TestType(..), isOpen)
 import Echidna.Types.Tx (TxConf(..), basicTx)
 
 -- A stateful search shares one hevm frontier across all targets and checks.
-data SymbolicSearch = SingleMethod Method | InvariantSearch [Method] [TestType]
+data SymbolicSearch
+  = SingleMethod Method
+  | InvariantSearch [Method] [TestType]
+  | BoundedVerification [Method]
 
 searchMethods :: SymbolicSearch -> [Method]
 searchMethods (SingleMethod method) = [method]
 searchMethods (InvariantSearch methods _) = methods
+searchMethods (BoundedVerification methods) = methods
 
 searchName :: SymbolicSearch -> T.Text
 searchName (SingleMethod method) = method.methodSignature
 searchName (InvariantSearch methods _) = "invariants over " <> T.intercalate ", " (map (.methodSignature) methods)
+searchName (BoundedVerification methods) = "bounded assertions over " <> T.intercalate ", " (map (.methodSignature) methods)
 
 selectedTarget :: [T.Text] -> Method -> Bool
 selectedTarget targets method = not ("_no_symexec" `T.isInfixOf` method.name)
@@ -64,21 +69,25 @@ selectedMethod conf contract method = selectedTarget conf.campaignConf.symExecTa
     Blacklist names -> sig `notElem` names
   where sig = encodeSigWithName contract.contractName (method.name, map snd method.inputs)
 
--- | All eligible state-changing methods of the selected contract. Properties
--- are checks, not transitions; explicit targets cannot override exclusions.
+-- | Native properties use state-changing transitions and isolated checks.
+-- Bounded verification checks assertions in every call, including view/pure
+-- methods and no-argument methods needed to reach an assertion.
 invariantSearch :: EConfig -> SolcContract -> [EchidnaTest] -> Maybe SymbolicSearch
 invariantSearch conf contract tests
-  | isVerificationMode conf.solConf.testMode || null methods || null checks = Nothing
+  | isVerificationMode conf.solConf.testMode =
+      if conf.campaignConf.symExecSeqLen > 1
+        then Just $ BoundedVerification targets
+        else Nothing
+  | null methods || null checks = Nothing
   | otherwise = Just $ InvariantSearch methods checks
   where
     checks = [t.testType | t <- tests, isOpen t, eligible t.testType]
     eligible (PropertyTest name _) = not ("_no_symexec" `T.isInfixOf` name)
     eligible AssertionTest{foundry = False, sig = (name, [])} = not ("_no_symexec" `T.isInfixOf` name)
     eligible _ = False
-    methods = [m | m <- Map.elems contract.abiMap
-                 , m.mutability `notElem` [Pure, View]
-                 , not (conf.solConf.prefix `T.isPrefixOf` m.name)
-                 , selectedMethod conf contract m]
+    targets = [m | m <- Map.elems contract.abiMap, selectedMethod conf contract m
+                 , not (conf.solConf.prefix `T.isPrefixOf` m.name)]
+    methods = [m | m <- targets, m.mutability `notElem` [Pure, View]]
 
 exploreSearch :: App m =>
   SymbolicSearch -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
@@ -86,6 +95,8 @@ exploreSearch (SingleMethod method) vm defaultSender conf veriOpts solvers rpcIn
   exploreSingleMethod method vm defaultSender conf veriOpts solvers rpcInfo session
 exploreSearch (InvariantSearch methods tests) vm _ conf veriOpts solvers rpcInfo session =
   exploreStatefulMethods methods tests vm conf veriOpts solvers rpcInfo session
+exploreSearch (BoundedVerification methods) vm _ conf veriOpts solvers rpcInfo session =
+  exploreStatefulMethods methods [] vm conf veriOpts solvers rpcInfo session
 
 -- hevm owns the search, VM boundaries and model materialization. Echidna
 -- supplies native property semantics and replays returned transactions through
@@ -95,6 +106,10 @@ exploreStatefulMethods :: App m =>
   [Method] -> [TestType] -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
 exploreStatefulMethods methods tests vm conf veriOpts solvers rpcInfo session = do
   exploration <- Driver.newExploration options (symbolify vm)
+  -- For verification, assertions are checked by the transitions themselves;
+  -- the failing call counts toward the bound and needs no separate check.
+  when (isVerificationMode conf.solConf.testMode) $
+    void $ Driver.exploreLevel solvers fetcher veriOpts.iterConf exploration conf.campaignConf.symExecSeqLen
   checked <- forM tests $ \test -> do
     result <- Driver.searchInvariant solvers fetcher veriOpts exploration
       (1, conf.campaignConf.symExecSeqLen) (statefulCall conf test)

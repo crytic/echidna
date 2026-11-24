@@ -135,7 +135,6 @@ buildSolcContract runtimeCode sd = do
       sourceCache = SourceCache
         { files = filesMap
         , lines = Vector.fromList . BS.split 0xa . snd <$> filesMap
-        , asts = mempty
         }
 
   -- Parse source maps safely

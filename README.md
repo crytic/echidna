@@ -61,7 +61,7 @@ The example above uses the default **property** mode, but Echidna supports sever
 * **`property`** (default): Test `echidna_`-prefixed functions that return `bool`.
 * **`assertion`**: Detect assertion failures from `assert()` and Foundry's `assertX` helpers (`assertTrue`, `assertEq`, etc.).
 * **`foundry`**: Run Foundry-style tests, following its naming conventions: `test`-prefixed unit and fuzz tests (`testFail`-prefixed ones are expected to revert) and `invariant`- or `statefulFuzz`-prefixed stateful invariants. `check`- and `prove`-prefixed functions are symbolic entry points, but since this mode is a fuzzing campaign, they are fuzzed like any other test function.
-* **`verification`**: Symbolically verify each function of the contract using a single transaction. `check`- and `prove`-prefixed functions are always used as entry points.
+* **`verification`**: Symbolically check assertions without fuzzing workers. Defaults to single-transaction verification, where `check`- and `prove`-prefixed functions are always used as entry points. Set `symExecSeqLen` above `1` for bounded verification of mixed transaction sequences.
 * **`overflow`**: Detect integer over/underflows (Solidity >= 0.8.0).
 * **`optimization`**: Maximize the return value of `echidna_`-prefixed functions that return `int256` (uses the same configurable prefix as property mode).
 * **`exploration`**: Collect coverage without checking properties.
@@ -78,6 +78,22 @@ method of the selected contract, so a bound of three can find sequences such as
 function filters and `_no_symexec` exclusions apply at every depth. Increase the
 bound to search longer sequences without changing the contract; the search can
 grow exponentially. Reaching this bound does not prove a stateful invariant.
+
+For example, to check assertions across sequences of up to three calls:
+
+```yaml
+testMode: verification
+symExecSeqLen: 3
+```
+
+The failing call counts toward this bound. Bounded verification includes
+no-argument setup methods and view/pure assertion methods, and checks assertions
+in each transaction. Target filters apply to every step. It reports remaining
+assertions as `passed` after a completed search, rather than `verified`; partial
+paths or solver errors leave them open and emit diagnostics. This is a bounded
+check from the initial state (or after a supplied corpus prefix), not a proof
+for arbitrary-length sequences. Native `echidna_*` boolean properties still use
+`testMode: property` with `symExec: true`.
 
 This integration is experimental. The invariant API sends zero ETH, so this
 stateful search cannot solve a call that requires nonzero `msg.value`. It

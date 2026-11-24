@@ -28,9 +28,8 @@ import Echidna.Orphans.Rand ()
 import Echidna.Shrink (isShrinkable, shrinkWorkerTests)
 import Echidna.Solidity (chooseContract)
 import Echidna.SymExec.Common (extractErrors, extractTxs)
-import Echidna.SymExec.Exploration (exploreContract, getRandomTargetMethod, getTargetMethodFromTx)
+import Echidna.SymExec.Exploration (SearchMode(..), getRandomTargetMethod, getTargetMethodFromTx, isSuitableToVerifyMethod, runSearch)
 import Echidna.SymExec.Invariant (SymbolicSearch(..), invariantSearch, searchMethods, searchName)
-import Echidna.SymExec.Verification (isSuitableToVerifyMethod, verifySearch)
 import Echidna.Test
 import Echidna.Test.State (findFailedTests, setAssertionTestState)
 import Echidna.Types.Campaign
@@ -151,35 +150,14 @@ runSymWorker callback onReady vm dict workerId initialCorpus name = do
     contract <- chooseContract cs name
     tests <- asks (.testRefs) >>= liftIO . traverse readIORef
     case invariantSearch conf contract tests of
-      Just search -> exploreAndVerify search vm' txsBase
+      Just search -> symbolicSearch Explore search vm' txsBase
       Nothing -> do
         failedTests <- findFailedTests
         let failedTestSignatures = map getAssertionSignature (filter isAssertionTest failedTests)
         method <- case tx of
           Nothing -> getRandomTargetMethod contract conf.campaignConf.symExecTargets failedTestSignatures
           Just t -> getTargetMethodFromTx t contract failedTestSignatures
-        forM_ method $ \m -> exploreAndVerify (SingleMethod m) vm' txsBase
-
-  exploreAndVerify search vm' txsBase = do
-    (threadId, symTxsChan) <- exploreContract search vm'
-    modify' (\ws -> ws { runningThreads = [threadId] })
-    lift callback
-
-    (symTxs, partials) <- liftIO $ takeMVar symTxsChan
-
-    modify' (\ws -> ws { runningThreads = [] })
-    lift callback
-
-    let txs = extractTxs symTxs
-    let errors = extractErrors symTxs
-
-    unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) during symbolic exploration: " <> show e)) errors
-    unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic exploration: " <> unpack e)) partials
-
-    -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
-    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> symTx) False) txs
-
-    unless newCoverage (pushWorkerEvent $ SymExecLog "Symbolic execution finished with no new coverage.")
+        forM_ method $ \m -> symbolicSearch Explore (SingleMethod m) vm' txsBase
 
   verifyMethods = do
     dapp <- asks (.dapp)
@@ -190,17 +168,18 @@ runSymWorker callback onReady vm dict workerId initialCorpus name = do
     tests <- asks (.testRefs) >>= liftIO . traverse readIORef
     let shared = invariantSearch conf contract tests
         searched = maybe [] searchMethods shared
-    forM_ shared symExecSearch
-    forM_ allMethods $ \method -> unless (method `elem` searched) $ do
-      suitable <- isSuitableToVerifyMethod contract method conf.campaignConf.symExecTargets
-      if suitable
-        then symExecSearch (SingleMethod method)
-        else pushWorkerEvent $ SymExecLog ("Skipping " <> unpack method.methodSignature)
+    forM_ shared $ \search -> symbolicSearch Verify search vm []
+    unless (isVerificationMode conf.solConf.testMode && conf.campaignConf.symExecSeqLen > 1) $
+      forM_ allMethods $ \method -> unless (method `elem` searched) $ do
+        suitable <- isSuitableToVerifyMethod contract method conf.campaignConf.symExecTargets
+        if suitable
+          then symbolicSearch Verify (SingleMethod method) vm []
+          else pushWorkerEvent $ SymExecLog ("Skipping " <> unpack method.methodSignature)
 
-  symExecSearch search = do
+  symbolicSearch mode search initialVm prefix = do
     conf <- asks (.cfg)
     lift callback
-    (threadId, symTxsChan) <- verifySearch search vm
+    (threadId, symTxsChan) <- runSearch mode search initialVm
 
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
@@ -211,14 +190,24 @@ runSymWorker callback onReady vm dict workerId initialCorpus name = do
 
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
-    mapM_ (\symTx -> callseq vm symTx False) txs
-    let methodSignature = unpack (searchName search)
-    when (isVerificationMode conf.solConf.testMode && null txs && null errors && null partials) $
-      setAssertionTestState Unsolvable methodSignature
+    -- Replay from the deployment state so coverage and failures retain the
+    -- concrete prefix as well as the symbolic suffix.
+    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (prefix <> symTx) False) txs
+    let label = unpack (searchName search)
+        incomplete = not (null errors) || not (null partials)
+    when (mode == Verify && isVerificationMode conf.solConf.testMode) $
+      case search of
+        SingleMethod method -> when (null txs || incomplete) $
+          setAssertionTestState (if incomplete then Passed else Unsolvable) (unpack method.methodSignature)
+        BoundedVerification methods -> unless incomplete $
+          forM_ methods $ \method -> setAssertionTestState Passed (unpack method.methodSignature)
+        InvariantSearch {} -> pure ()
 
-    unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) solving constraints produced by method " <> methodSignature <> ": " <> show e)) errors
-    unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic verification of method " <> methodSignature <> ": " <> unpack e)) partials
-    when (isVerificationMode conf.solConf.testMode && (not (null partials) || not (null errors))) $
-      setAssertionTestState Passed methodSignature
-
-    pushWorkerEvent $ SymExecLog ("Symbolic execution finished checking " <> methodSignature)
+    forM_ errors $ \err -> pushWorkerEvent $ SymExecError ("Error solving " <> label <> ": " <> err)
+    forM_ partials $ \partial -> pushWorkerEvent $ SymExecError ("Partial path while checking " <> label <> ": " <> unpack partial)
+    when (mode == Explore && not newCoverage) $
+      pushWorkerEvent $ SymExecLog "Symbolic execution finished with no new coverage."
+    let scope = case search of
+          BoundedVerification {} -> " (up to " <> show conf.campaignConf.symExecSeqLen <> " transactions; zero ETH per call)"
+          _ -> ""
+    pushWorkerEvent $ SymExecLog ("Symbolic execution finished checking " <> label <> scope)
