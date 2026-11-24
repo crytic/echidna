@@ -4,6 +4,7 @@
 -- and driver semantics are tested upstream in hevm.
 module Tests.Invariant (invariantTests) where
 
+import Control.Concurrent.STM (atomically, dupTChan, tryReadTChan)
 import Control.Monad (foldM, forM, forM_)
 import Control.Monad.Reader (runReaderT)
 import Data.IORef (newIORef, readIORef)
@@ -15,7 +16,6 @@ import Data.Text qualified as T
 import Data.Yaml qualified as Y
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertFailure, testCase, (@?=))
-import UnliftIO.STM (atomically, dupTChan, tryReadTChan)
 
 import EVM.ABI (AbiValue(..))
 import EVM.Dapp (DappInfo(..))

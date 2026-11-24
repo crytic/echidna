@@ -67,7 +67,7 @@ The example above uses the default **property** mode, but Echidna supports sever
 * **`exploration`**: Collect coverage without checking properties.
 
 With `symExec: true`, the symbolic worker uses hevm's invariant API to search
-for a state-changing call that makes a native property or a subsequent
+for sequences of state-changing calls that make a native property or a subsequent
 no-argument assertion fail. It starts from the initial state or a concrete
 corpus prefix and replays counterexamples before reporting them. Set
 `workers: 0` to run the search without fuzzing workers;
