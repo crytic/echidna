@@ -70,10 +70,13 @@ With `symExec: true`, the symbolic worker uses hevm's invariant API to search
 for a state-changing call that makes a native property or a subsequent
 no-argument assertion fail. It starts from the initial state or a concrete
 corpus prefix and replays counterexamples before reporting them. Set
-`workers: 0` to check each selected method without fuzzing workers;
+`workers: 0` to run the search without fuzzing workers;
 `symExecTargets` restricts those methods. `symExecSeqLen` bounds the number of
-symbolic calls to the selected method after each prefix (default: `1`). Increase
-it to search longer sequences without changing the contract; the search can
+symbolic calls after each prefix (default: `1`). Each step can call any eligible
+method of the selected contract, so a bound of three can find sequences such as
+`deposit → borrow → withdraw`. Targets accept names or canonical signatures, and
+function filters and `_no_symexec` exclusions apply at every depth. Increase the
+bound to search longer sequences without changing the contract; the search can
 grow exponentially. Reaching this bound does not prove a stateful invariant.
 
 This integration is experimental. The invariant API sends zero ETH, so this

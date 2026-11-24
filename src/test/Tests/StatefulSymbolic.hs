@@ -10,6 +10,7 @@ import Data.IORef (newIORef, readIORef)
 import Data.List (find)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Test.Tasty (TestTree, testGroup)
@@ -29,6 +30,7 @@ import Echidna.Output.JSON (encodeCampaign)
 import Echidna.Solidity (chooseContract, compileContracts)
 import Echidna.SymExec.Common (extractErrors, extractTxs)
 import Echidna.SymExec.Exploration (exploreContract)
+import Echidna.SymExec.Invariant (SymbolicSearch(..), invariantSearch)
 import Echidna.Test (checkETest, createTest)
 import Echidna.Types.Agent (Agent(..))
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..), initialWorkerState)
@@ -178,8 +180,11 @@ solve :: Env -> SolcContract -> VM Concrete -> Text -> IO ([[Tx]], [Text])
 solve env contract vm name = do
   method <- maybe (assertFailure "method missing") pure $
     find (\m -> m.name == name) (Map.elems contract.abiMap)
+  tests <- traverse readIORef env.testRefs
+  let cfg = env.cfg { campaignConf = env.cfg.campaignConf { symExecTargets = [name] } }
+      search = fromMaybe (SingleMethod method) (invariantSearch cfg contract tests)
   ((_, results), _) <- runReaderT
-    (runStateT (exploreContract method vm) initialWorkerState) env
+    (runStateT (exploreContract search vm) initialWorkerState) env { cfg }
   (txs, partials) <- takeMVar results
   extractErrors txs @?= []
   pure (extractTxs txs, partials)

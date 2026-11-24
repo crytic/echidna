@@ -29,7 +29,8 @@ import Echidna.Shrink (isShrinkable, shrinkWorkerTests)
 import Echidna.Solidity (chooseContract)
 import Echidna.SymExec.Common (extractErrors, extractTxs)
 import Echidna.SymExec.Exploration (exploreContract, getRandomTargetMethod, getTargetMethodFromTx)
-import Echidna.SymExec.Verification (isSuitableToVerifyMethod, verifyMethod)
+import Echidna.SymExec.Invariant (SymbolicSearch(..), invariantSearch, searchMethods, searchName)
+import Echidna.SymExec.Verification (isSuitableToVerifyMethod, verifySearch)
 import Echidna.Test
 import Echidna.Test.State (findFailedTests, setAssertionTestState)
 import Echidna.Types.Campaign
@@ -148,21 +149,19 @@ runSymWorker callback onReady vm dict workerId initialCorpus name = do
     dapp <- asks (.dapp)
     let cs = Map.elems dapp.solcByName
     contract <- chooseContract cs name
-    failedTests <- findFailedTests
-    let failedTestSignatures = map getAssertionSignature (filter isAssertionTest failedTests)
-    case tx of
-      Nothing -> getRandomTargetMethod contract conf.campaignConf.symExecTargets failedTestSignatures >>= \case
-        Nothing -> do
-          return ()
-        Just method -> exploreAndVerify method vm' txsBase
-      Just t -> getTargetMethodFromTx t contract failedTestSignatures >>= \case
-        Nothing -> do
-          return ()
-        Just method -> do
-          exploreAndVerify method vm' txsBase
+    tests <- asks (.testRefs) >>= liftIO . traverse readIORef
+    case invariantSearch conf contract tests of
+      Just search -> exploreAndVerify search vm' txsBase
+      Nothing -> do
+        failedTests <- findFailedTests
+        let failedTestSignatures = map getAssertionSignature (filter isAssertionTest failedTests)
+        method <- case tx of
+          Nothing -> getRandomTargetMethod contract conf.campaignConf.symExecTargets failedTestSignatures
+          Just t -> getTargetMethodFromTx t contract failedTestSignatures
+        forM_ method $ \m -> exploreAndVerify (SingleMethod m) vm' txsBase
 
-  exploreAndVerify method vm' txsBase = do
-    (threadId, symTxsChan) <- exploreContract method vm'
+  exploreAndVerify search vm' txsBase = do
+    (threadId, symTxsChan) <- exploreContract search vm'
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
 
@@ -188,17 +187,20 @@ runSymWorker callback onReady vm dict workerId initialCorpus name = do
     contract <- chooseContract cs name
     let allMethods = contract.abiMap
     conf <- asks (.cfg)
-    forM_ allMethods (\method -> do
-           isSuitable <- isSuitableToVerifyMethod contract method conf.campaignConf.symExecTargets
-           if isSuitable
-             then symExecMethod method
-            else pushWorkerEvent $ SymExecLog ("Skipping " <> unpack method.methodSignature)
-          )
+    tests <- asks (.testRefs) >>= liftIO . traverse readIORef
+    let shared = invariantSearch conf contract tests
+        searched = maybe [] searchMethods shared
+    forM_ shared symExecSearch
+    forM_ allMethods $ \method -> unless (method `elem` searched) $ do
+      suitable <- isSuitableToVerifyMethod contract method conf.campaignConf.symExecTargets
+      if suitable
+        then symExecSearch (SingleMethod method)
+        else pushWorkerEvent $ SymExecLog ("Skipping " <> unpack method.methodSignature)
 
-  symExecMethod method = do
+  symExecSearch search = do
     conf <- asks (.cfg)
     lift callback
-    (threadId, symTxsChan) <- verifyMethod method vm
+    (threadId, symTxsChan) <- verifySearch search vm
 
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
@@ -210,7 +212,7 @@ runSymWorker callback onReady vm dict workerId initialCorpus name = do
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
     mapM_ (\symTx -> callseq vm symTx False) txs
-    let methodSignature = unpack method.methodSignature
+    let methodSignature = unpack (searchName search)
     when (isVerificationMode conf.solConf.testMode && null txs && null errors && null partials) $
       setAssertionTestState Unsolvable methodSignature
 

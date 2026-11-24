@@ -9,7 +9,6 @@ import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
 import Control.Monad.State.Strict (MonadState)
-import Data.IORef (readIORef)
 import Data.List.NonEmpty (fromList)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust)
@@ -25,7 +24,7 @@ import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 
 import Echidna.SymExec.Common (suitableForSymExec, rpcFetcher, symExecAbstractArith, TxOrError(..), PartialsLogs)
-import Echidna.SymExec.Invariant (exploreMethod, statefulTests)
+import Echidna.SymExec.Invariant (SymbolicSearch, exploreSearch, searchName, selectedMethod, selectedTarget)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Random (rElem)
@@ -48,15 +47,14 @@ getTargetMethodFromTx :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => 
 getTargetMethodFromTx (Tx { call = SolCall ("", _) }) _ _ = return Nothing
 getTargetMethodFromTx (Tx { call = SolCall (methodName, _) }) contract failedProperties = do
   env <- ask
-  tests <- liftIO $ traverse readIORef env.testRefs
   let allMethods = Map.assocs contract.abiMap
       assertSigs = env.world.assertSigs
       (selector, method) = case filter (\(_, m) -> m.name == methodName) allMethods of
         [] -> error $ "Method " ++ show methodName ++ " not found in contract ABI"
         (x:_) -> x
 
-      hasChecks = not (null $ statefulTests env.cfg method tests)
-  if ((null assertSigs || selector `elem` assertSigs) && suitableForSymExec method || hasChecks) && (unpack method.methodSignature) `notElem` failedProperties
+  if selectedMethod env.cfg contract method && ((null assertSigs || selector `elem` assertSigs) && suitableForSymExec method)
+    && (unpack method.methodSignature) `notElem` failedProperties
   then return $ Just method
   else return Nothing
 
@@ -68,12 +66,10 @@ getTargetMethodFromTx _ _ _ = return Nothing
 getRandomTargetMethod :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> [Text] -> [String] -> m (Maybe Method)
 getRandomTargetMethod contract targets failedProperties = do
   env <- ask
-  tests <- liftIO $ traverse readIORef env.testRefs
-  let allMethods = Map.assocs contract.abiMap
+  let allMethods = filter (selectedMethod env.cfg contract . snd) (Map.assocs contract.abiMap)
       assertSigs = env.world.assertSigs
       filterFunc (selector, method) =
-        ((null assertSigs || selector `elem` assertSigs) && suitableForSymExec method
-          || not (null $ statefulTests env.cfg method tests))
+        ((null assertSigs || selector `elem` assertSigs) && suitableForSymExec method)
         && unpack method.methodSignature `notElem` failedProperties
       filteredMethods = filter filterFunc allMethods
 
@@ -83,15 +79,14 @@ getRandomTargetMethod contract targets failedProperties = do
     _  -> liftIO $ rElem (fromList $ map (Just . snd) filteredMethods)
   else
     let
-      targetMethods = filter (\(_, m) -> m.name `elem` targets) allMethods
+      targetMethods = filter (selectedTarget targets . snd) allMethods
     in case targetMethods of
       [] -> return Nothing
       _  -> liftIO $ rElem (fromList $ map (Just . snd) targetMethods)
 
-exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => Method -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
-exploreContract method vm = do
+exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SymbolicSearch -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+exploreContract search vm = do
   conf <- asks (.cfg)
-  tests <- asks (.testRefs) >>= liftIO . traverse readIORef
   let
     timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
     maxIters = Just conf.campaignConf.symExecMaxIters
@@ -109,13 +104,10 @@ exploreContract method vm = do
   let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
-  pushWorkerEvent $ SymExecLog ("Exploring " <> unpack method.methodSignature)
+  pushWorkerEvent $ SymExecLog ("Exploring " <> unpack (searchName search))
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT conf.campaignConf.symExecSolverMemory $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      -- For now, we will be exploring a single method at a time.
-      -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.
-      -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
-      res <- exploreMethod method (statefulTests conf method tests) vm defaultSender conf veriOpts solvers rpcInfo session
+      res <- exploreSearch search vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan res
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId

@@ -7,7 +7,6 @@ import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
 import Control.Monad.State.Strict (MonadState)
-import Data.IORef (readIORef)
 import Data.List (find)
 import Data.Map (assocs)
 import Data.Maybe (fromJust)
@@ -23,7 +22,7 @@ import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 
 import Echidna.SymExec.Common (rpcFetcher, suitableForSymExec, symExecAbstractArith, TxOrError(..), PartialsLogs)
-import Echidna.SymExec.Invariant (exploreMethod, statefulTests)
+import Echidna.SymExec.Invariant (SymbolicSearch, exploreSearch, searchName, selectedMethod, selectedTarget)
 import Echidna.Test (isFoundrySymbolicName)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
@@ -35,7 +34,6 @@ import Echidna.Worker (pushWorkerEvent)
 isSuitableToVerifyMethod :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> Method -> [Text.Text] -> m Bool
 isSuitableToVerifyMethod contract method symExecTargets = do
   env <- ask
-  tests <- liftIO $ traverse readIORef env.testRefs
   let allMethods = assocs contract.abiMap
       assertSigs = env.world.assertSigs
       (selector, _) = case find (\(_, m) -> m == method) allMethods of
@@ -46,18 +44,16 @@ isSuitableToVerifyMethod contract method symExecTargets = do
       -- analysis found no assertion in them.
       isSymbolicEntryPoint = isFoundrySymbolicName method.name
 
-  return $
+  return $ selectedMethod env.cfg contract method &&
     if null symExecTargets
     then (isSymbolicEntryPoint || null assertSigs || selector `elem` assertSigs)
          && suitableForSymExec method
-         || not (null $ statefulTests env.cfg method tests)
-    else method.name `elem` symExecTargets
+    else selectedTarget symExecTargets method
 
 
-verifyMethod :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => Method -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
-verifyMethod method vm = do
+verifySearch :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SymbolicSearch -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+verifySearch search vm = do
   conf <- asks (.cfg)
-  tests <- asks (.testRefs) >>= liftIO . traverse readIORef
   let
     timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
     maxIters = Just conf.campaignConf.symExecMaxIters
@@ -75,11 +71,11 @@ verifyMethod method vm = do
   let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
-  pushWorkerEvent $ SymExecLog ("Checking " <> Text.unpack method.methodSignature)
+  pushWorkerEvent $ SymExecLog ("Checking " <> Text.unpack (searchName search))
 
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT conf.campaignConf.symExecSolverMemory $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      (res, partials) <- exploreMethod method (statefulTests conf method tests) vm defaultSender conf veriOpts solvers rpcInfo session
+      (res, partials) <- exploreSearch search vm defaultSender conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan (res, partials)
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId

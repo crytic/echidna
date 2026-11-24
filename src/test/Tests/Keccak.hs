@@ -25,6 +25,7 @@ import Echidna.Exec (execTx, pattern Reversion)
 import Echidna.Solidity (chooseContract, compileContracts)
 import Echidna.SymExec.Common (extractErrors, extractTxs)
 import Echidna.SymExec.Exploration (exploreContract)
+import Echidna.SymExec.Invariant (SymbolicSearch(..))
 import Echidna.Types.Campaign (CampaignConf(..), initialWorkerState)
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Solidity (SolConf(..))
@@ -96,7 +97,7 @@ solveAndReplay env contract vm secret = do
   method <- maybe (assertFailure "checkHash method missing") pure $
     find (\m -> m.name == "checkHash") (Map.elems contract.abiMap)
   ((_, resultsChan), _) <- runReaderT
-    (runStateT (exploreContract method vm) initialWorkerState) env
+    (runStateT (exploreContract (SingleMethod method) vm) initialWorkerState) env
   (results, partials) <- takeMVar resultsChan
   extractErrors results @?= []
   partials @?= []

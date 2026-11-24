@@ -4,8 +4,13 @@
 -- no-argument assertions, including concrete counterexample replay.
 module Echidna.SymExec.Invariant
   ( checkProperty
-  , exploreMethod
-  , statefulTests
+  , SymbolicSearch(..)
+  , exploreSearch
+  , invariantSearch
+  , searchMethods
+  , searchName
+  , selectedTarget
+  , selectedMethod
   ) where
 
 import Control.Monad (forM)
@@ -22,48 +27,73 @@ import EVM.Fetch qualified as Fetch
 import EVM.Format (formatPartialDetailed)
 import EVM.Invariant qualified as Inv
 import EVM.Invariant.Driver qualified as Driver
-import EVM.Solidity (Method(..), Mutability(..))
+import EVM.Solidity (Method(..), Mutability(..), SolcContract(..))
 import EVM.Solvers (SolverGroup)
 import EVM.SymExec (Postcondition, VeriOpts)
 import EVM.Types (Addr, Expr(..), Prop(..), VMResult(..), VMType(..))
 import EVM.Types qualified (VM(..))
 
+import Echidna.ABI (encodeSigWithName)
 import Echidna.SymExec.Common (PartialsLogs, TxOrError(..), checkAssertions, exploreSingleMethod, senderConstraints)
 import Echidna.Test (CallRes(ResRevert), classifyRes, isPropertyMode, isVerificationMode)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..))
-import Echidna.Types.Solidity (SolConf(..))
+import Echidna.Types.Solidity (Filter(..), SolConf(..))
 import Echidna.Types.Test (EchidnaTest(..), TestConf(..), TestType(..), isOpen)
 import Echidna.Types.Tx (TxConf(..), basicTx)
 
--- State-changing calls can expose a property or a no-argument assertion failure.
-statefulTests :: EConfig -> Method -> [EchidnaTest] -> [TestType]
-statefulTests conf method tests
-  | isVerificationMode conf.solConf.testMode
-    || method.mutability `elem` [Pure, View]
-    || conf.solConf.prefix `T.isPrefixOf` method.name
-    || "_no_symexec" `T.isInfixOf` method.name = []
-  | otherwise = [t.testType | t <- tests, isOpen t, eligible t.testType]
-  where
-    eligible (PropertyTest n _) = not ("_no_symexec" `T.isInfixOf` n)
-    eligible AssertionTest{foundry = False, sig = (n, [])} =
-      method.methodSignature /= n <> "()" && not ("_no_symexec" `T.isInfixOf` n)
-    eligible _ = False
+-- A stateful search shares one hevm frontier across all targets and checks.
+data SymbolicSearch = SingleMethod Method | InvariantSearch [Method] [TestType]
 
--- | Check the method alone when there are no eligible stateful tests.
-exploreMethod :: App m =>
-  Method -> [TestType] -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
-exploreMethod method tests vm defaultSender conf veriOpts solvers rpcInfo session
-  | null tests = exploreSingleMethod method vm defaultSender conf veriOpts solvers rpcInfo session
-  | otherwise = exploreStatefulMethod method tests vm conf veriOpts solvers rpcInfo session
+searchMethods :: SymbolicSearch -> [Method]
+searchMethods (SingleMethod method) = [method]
+searchMethods (InvariantSearch methods _) = methods
+
+searchName :: SymbolicSearch -> T.Text
+searchName (SingleMethod method) = method.methodSignature
+searchName (InvariantSearch methods _) = "invariants over " <> T.intercalate ", " (map (.methodSignature) methods)
+
+selectedTarget :: [T.Text] -> Method -> Bool
+selectedTarget targets method = not ("_no_symexec" `T.isInfixOf` method.name)
+  && (null targets || method.name `elem` targets || method.methodSignature `elem` targets)
+
+selectedMethod :: EConfig -> SolcContract -> Method -> Bool
+selectedMethod conf contract method = selectedTarget conf.campaignConf.symExecTargets method
+  && case conf.solConf.methodFilter of
+    Whitelist names -> sig `elem` names
+    Blacklist names -> sig `notElem` names
+  where sig = encodeSigWithName contract.contractName (method.name, map snd method.inputs)
+
+-- | All eligible state-changing methods of the selected contract. Properties
+-- are checks, not transitions; explicit targets cannot override exclusions.
+invariantSearch :: EConfig -> SolcContract -> [EchidnaTest] -> Maybe SymbolicSearch
+invariantSearch conf contract tests
+  | isVerificationMode conf.solConf.testMode || null methods || null checks = Nothing
+  | otherwise = Just $ InvariantSearch methods checks
+  where
+    checks = [t.testType | t <- tests, isOpen t, eligible t.testType]
+    eligible (PropertyTest name _) = not ("_no_symexec" `T.isInfixOf` name)
+    eligible AssertionTest{foundry = False, sig = (name, [])} = not ("_no_symexec" `T.isInfixOf` name)
+    eligible _ = False
+    methods = [m | m <- Map.elems contract.abiMap
+                 , m.mutability `notElem` [Pure, View]
+                 , not (conf.solConf.prefix `T.isPrefixOf` m.name)
+                 , selectedMethod conf contract m]
+
+exploreSearch :: App m =>
+  SymbolicSearch -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+exploreSearch (SingleMethod method) vm defaultSender conf veriOpts solvers rpcInfo session =
+  exploreSingleMethod method vm defaultSender conf veriOpts solvers rpcInfo session
+exploreSearch (InvariantSearch methods tests) vm _ conf veriOpts solvers rpcInfo session =
+  exploreStatefulMethods methods tests vm conf veriOpts solvers rpcInfo session
 
 -- hevm owns the search, VM boundaries and model materialization. Echidna
 -- supplies native property semantics and replays returned transactions through
 -- its campaign executor for validation, coverage and shrinking. Call value is
 -- currently zero; symbolic value belongs in a future hevm API extension.
-exploreStatefulMethod :: App m =>
-  Method -> [TestType] -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
-exploreStatefulMethod method tests vm conf veriOpts solvers rpcInfo session = do
+exploreStatefulMethods :: App m =>
+  [Method] -> [TestType] -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+exploreStatefulMethods methods tests vm conf veriOpts solvers rpcInfo session = do
   exploration <- Driver.newExploration options (symbolify vm)
   checked <- forM tests $ \test -> do
     result <- Driver.searchInvariant solvers fetcher veriOpts exploration
@@ -79,9 +109,9 @@ exploreStatefulMethod method tests vm conf veriOpts solvers rpcInfo session = do
   pure $ (failures <> errors transitions.issues, partials transitions.partials) <> mconcat checked
   where
     fetcher = Fetch.oracle solvers (Just session) rpcInfo
-    target = Inv.Target (LitAddr conf.solConf.contractAddr) "" (Sig method.name (map snd method.inputs))
+    targets = [Inv.Target (LitAddr conf.solConf.contractAddr) "" (Sig m.name (map snd m.inputs)) | m <- methods]
     post = if isPropertyMode conf.solConf.testMode then \_ _ -> PBool True else checkAssertions [0x1] False
-    options = Driver.ExplorationConfig [target] (Inv.OneOf $ Set.toList conf.solConf.sender)
+    options = Driver.ExplorationConfig targets (Inv.OneOf $ Set.toList conf.solConf.sender)
       (Inv.CallConfig conf.txConf.txGas (Just conf.txConf.maxTimeDelay) (Just conf.txConf.maxBlockDelay) True) post False
     errors = map (SMTErrorFromResult . T.unpack)
     partials leaves = [formatPartialDetailed Nothing Map.empty p | Partial _ _ p <- leaves]

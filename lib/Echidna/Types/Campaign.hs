@@ -177,7 +177,7 @@ data CampaignConf = CampaignConf
   , symExecSolverMemory :: Natural
     -- ^ Memory limit for each SMT solver process, in MB.
   , symExecSeqLen :: Int
-    -- ^ Maximum symbolic calls to the selected method after a corpus prefix.
+    -- ^ Maximum symbolic calls across selected methods after a corpus prefix.
     -- Defaults to one; larger bounds can grow the search exponentially.
   }
 
