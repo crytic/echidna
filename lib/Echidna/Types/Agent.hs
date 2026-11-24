@@ -23,19 +23,20 @@ data Agent
       , testLimit :: Int
       , stateRef :: IORef WorkerState
       }
-  -- | The symbolic worker does not replay the corpus, so it carries none.
+  -- | The symbolic worker explores from states in the initial corpus.
   | SymbolicAgent
-      { initialVm :: VM Concrete
+      { symbolicId :: Int
+      , initialVm :: VM Concrete
       , initialDict :: GenDict
+      , initialCorpus :: [(FilePath, [Tx])]
       , contractName :: Maybe Text
       , stateRef :: IORef WorkerState
       }
 
--- | The worker id this agent runs as. There is at most one symbolic worker and
--- it is always worker 0.
+-- | The worker id this agent runs as.
 workerIdOf :: Agent -> WorkerId
 workerIdOf FuzzerAgent{fuzzerId} = fuzzerId
-workerIdOf SymbolicAgent{} = 0
+workerIdOf SymbolicAgent{symbolicId} = symbolicId
 
 -- | The kind of worker this agent is, for tagging campaign events.
 workerTypeOf :: Agent -> WorkerType

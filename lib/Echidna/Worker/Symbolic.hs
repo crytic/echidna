@@ -14,7 +14,6 @@ import Data.Foldable (foldlM)
 import Data.IORef (readIORef)
 import Data.List.NonEmpty qualified as NEList
 import Data.Map qualified as Map
-import Data.Maybe (fromJust)
 import Data.Text (Text, unpack)
 import System.Random (mkStdGen)
 import UnliftIO.STM (atomically, dupTChan)
@@ -38,6 +37,7 @@ import Echidna.Types.Config
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
+import Echidna.Types.Tx (Tx)
 import Echidna.Types.Worker
 import Echidna.Worker (listenerLoop, pushWorkerEvent)
 import Echidna.Worker.Sequence (callseq)
@@ -46,22 +46,29 @@ runSymWorker
   :: (MonadIO m, MonadThrow m, MonadReader Env m)
   => StateT WorkerState m ()
   -- ^ Callback to run after each state update (for instrumentation)
+  -> m () -- ^ Called after subscribing to campaign events
   -> VM Concrete -- ^ Initial VM state
   -> GenDict -- ^ Generation dictionary
   -> Int     -- ^ Worker id starting from 0
+  -> [(FilePath, [Tx])] -- ^ Initial corpus
   -> Maybe Text -- ^ Specified contract name
   -> m (WorkerStopReason, WorkerState)
-runSymWorker callback vm dict workerId name = do
+runSymWorker callback onReady vm dict workerId initialCorpus name = do
   cfg <- asks (.cfg)
   let nworkers = getNFuzzWorkers cfg.campaignConf -- getNFuzzWorkers, NOT getNWorkers
   eventQueue <- asks (.eventQueue)
   chan <- liftIO $ atomically $ dupTChan eventQueue
+  onReady
 
   flip runStateT initialState $
     flip evalRandT (mkStdGen effectiveSeed) $ do -- unused but needed for callseq
-      if isVerificationMode cfg.solConf.testMode then do
+      forM_ initialCorpus $ \(_, txs) -> do
+        (endVm, _) <- callseq vm txs True
+        symexecTx (Nothing, endVm, txs)
+      if isVerificationMode cfg.solConf.testMode || nworkers == 0 then do
         verifyMethods -- No arguments, everything is in this environment
-        pure SymbolicVerificationDone
+        unless (isVerificationMode cfg.solConf.testMode) $ shrinkAndRandomlyExplore [] 0
+        pure $ if isVerificationMode cfg.solConf.testMode then SymbolicVerificationDone else SymbolicExplorationDone
       else do
         lift callback
         listenerLoop listenerFunc chan nworkers
@@ -89,6 +96,7 @@ runSymWorker callback vm dict workerId name = do
     tests <- liftIO $ traverse readIORef testRefs
     CampaignConf{shrinkLimit} <- asks (.cfg.campaignConf)
     when (any (isShrinkable shrinkLimit workerId) tests) $ shrinkLoop shrinkLimit
+    shrinkWorkerTests workerId vm
 
   shrinkAndRandomlyExplore txs n = do
     testRefs <- asks (.testRefs)
@@ -125,7 +133,7 @@ runSymWorker callback vm dict workerId name = do
     cfg <- asks (.cfg)
     let targets = cfg.campaignConf.symExecTargets
     if null targets
-    then pure [(Just ltx, ivm, txs), (Nothing, rvm, rtxs)]
+    then pure [(Just ltx, ivm, itxs), (Nothing, rvm, rtxs)]
     else pure [(Nothing, rvm, rtxs)]
 
   txsToTxAndVmsSym True txs = do
@@ -141,20 +149,20 @@ runSymWorker callback vm dict workerId name = do
     let cs = Map.elems dapp.solcByName
     contract <- chooseContract cs name
     failedTests <- findFailedTests
-    let failedTestSignatures = map getAssertionSignature failedTests
+    let failedTestSignatures = map getAssertionSignature (filter isAssertionTest failedTests)
     case tx of
       Nothing -> getRandomTargetMethod contract conf.campaignConf.symExecTargets failedTestSignatures >>= \case
         Nothing -> do
           return ()
-        Just method -> exploreAndVerify contract method vm' txsBase
+        Just method -> exploreAndVerify method vm' txsBase
       Just t -> getTargetMethodFromTx t contract failedTestSignatures >>= \case
         Nothing -> do
           return ()
         Just method -> do
-          exploreAndVerify contract method vm' txsBase
+          exploreAndVerify method vm' txsBase
 
-  exploreAndVerify contract method vm' txsBase = do
-    (threadId, symTxsChan) <- exploreContract contract method vm'
+  exploreAndVerify method vm' txsBase = do
+    (threadId, symTxsChan) <- exploreContract method vm'
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
 
@@ -170,10 +178,8 @@ runSymWorker callback vm dict workerId name = do
     unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic exploration: " <> unpack e)) partials
 
     -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
-    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> [symTx]) False) txs
+    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (txsBase <> symTx) False) txs
 
-    when (not newCoverage && null errors && not (null txs)) (
-      pushWorkerEvent $ SymExecError "No errors but symbolic execution found valid txs breaking assertions. Something is wrong.")
     unless newCoverage (pushWorkerEvent $ SymExecLog "Symbolic execution finished with no new coverage.")
 
   verifyMethods = do
@@ -185,13 +191,14 @@ runSymWorker callback vm dict workerId name = do
     forM_ allMethods (\method -> do
            isSuitable <- isSuitableToVerifyMethod contract method conf.campaignConf.symExecTargets
            if isSuitable
-            then symExecMethod contract method
-            else pushWorkerEvent $ SymExecError ("Skipped verification of method " <> unpack method.methodSignature)
+             then symExecMethod method
+            else pushWorkerEvent $ SymExecLog ("Skipping " <> unpack method.methodSignature)
           )
 
-  symExecMethod contract method = do
+  symExecMethod method = do
+    conf <- asks (.cfg)
     lift callback
-    (threadId, symTxsChan) <- verifyMethod method contract vm
+    (threadId, symTxsChan) <- verifyMethod method vm
 
     modify' (\ws -> ws { runningThreads = [threadId] })
     lift callback
@@ -202,17 +209,14 @@ runSymWorker callback vm dict workerId name = do
 
     modify' (\ws -> ws { runningThreads = [] })
     lift callback
-    -- We can't do callseq vm' [symTx] because callseq might post the full call sequence as an event
-    newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm [symTx] False) txs
+    mapM_ (\symTx -> callseq vm symTx False) txs
     let methodSignature = unpack method.methodSignature
-    unless newCoverage $ do
-      unless (null txs) $ error "No new coverage but symbolic execution found valid txs. Something is wrong."
-      when (null errors && null partials) $
-        setAssertionTestState Unsolvable methodSignature
+    when (isVerificationMode conf.solConf.testMode && null txs && null errors && null partials) $
+      setAssertionTestState Unsolvable methodSignature
 
     unless (null errors) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Error(s) solving constraints produced by method " <> methodSignature <> ": " <> show e)) errors
     unless (null partials) $ mapM_ ((pushWorkerEvent . SymExecError) . (\e -> "Partial explored path(s) during symbolic verification of method " <> methodSignature <> ": " <> unpack e)) partials
-    when (not (null partials) || not (null errors)) $
+    when (isVerificationMode conf.solConf.testMode && (not (null partials) || not (null errors))) $
       setAssertionTestState Passed methodSignature
 
-    pushWorkerEvent $ SymExecLog ("Symbolic execution finished verifying contract " <> unpack (fromJust name) <> " using a single symbolic transaction.")
+    pushWorkerEvent $ SymExecLog ("Symbolic execution finished checking " <> methodSignature)

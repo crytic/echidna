@@ -66,6 +66,20 @@ The example above uses the default **property** mode, but Echidna supports sever
 * **`optimization`**: Maximize the return value of `echidna_`-prefixed functions that return `int256` (uses the same configurable prefix as property mode).
 * **`exploration`**: Collect coverage without checking properties.
 
+With `symExec: true`, the symbolic worker uses hevm's invariant API to search
+for a state-changing call that makes a native property or a subsequent
+no-argument assertion fail. It starts from the initial state or a concrete
+corpus prefix and replays counterexamples before reporting them. Set
+`workers: 0` to check each selected method without fuzzing workers;
+`symExecTargets` restricts those methods. This searches one symbolic transition
+at a time and does not prove a stateful invariant.
+
+This integration is experimental. The invariant API sends zero ETH, so this
+stateful search cannot solve a call that requires nonzero `msg.value`. It
+explores each configured sender separately to preserve `tx.origin`, and
+constrains timestamp and block-number changes to Echidna's configured bounds.
+Single-call assertion verification retains its existing symbolic-value search.
+
 ### Collecting and visualizing coverage
 
 After finishing a campaign, Echidna can save a coverage maximizing **corpus** in a special directory specified with the `corpusDir` config option. This directory will contain two entries: (1) a directory named `coverage` with JSON files that can be replayed by Echidna and (2) a plain-text file named `covered.txt`, a copy of the source code with coverage annotations.

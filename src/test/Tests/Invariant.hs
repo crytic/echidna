@@ -1,10 +1,9 @@
 {-# LANGUAGE GADTs #-}
 
--- Integration experiment for native properties, using the pinned hevm API.
--- Keep this out of the campaign until transaction semantics and safe state
--- deduplication are settled. In particular, hevm's StateKey omits block context.
--- This experiment uses explicit targets, one sender, zero value and no delay;
--- it never infers a proof from reaching the depth limit.
+-- Direct API regression for sharing reached states across native properties.
+-- This two-step case complements the worker's one-step corpus extensions.
+-- It uses explicit targets, one sender, zero value and no delay, and never
+-- infers a proof from reaching the depth limit.
 module Tests.Invariant (invariantTests) where
 
 import Control.Monad (foldM, forM, forM_)
@@ -27,20 +26,19 @@ import EVM (clearTStorages, symbolify)
 import EVM.ABI (AbiValue(..), AbiVals(..), Sig(..), decodeBuf, selector)
 import EVM.Dapp (DappInfo(..))
 import EVM.Effects qualified as HEVM
-import EVM.Expr qualified as Expr
 import EVM.Fetch qualified as Fetch
 import EVM.Invariant (Call(..), InvState(..), Senders(..), Target(..), nextStates, startCall)
 import EVM.Solidity (Method(..), SolcContract(..))
 import EVM.Solvers (Solver(Bitwuzla), SolverGroup, withSolvers)
-import EVM.SymExec (IterConfig(..), LoopHeuristic(StackBased), Postcondition, VeriOpts(..), calldataFromCex, verify)
-import EVM.Types (Block(..), Expr(..), Prop(..), ProofResult(..), SMTCex, VM(..), VMResult(..), VMType(..))
+import EVM.SymExec (IterConfig(..), LoopHeuristic(StackBased), VeriOpts(..), calldataFromCex, verify)
+import EVM.Types (Block(..), Expr(..), Prop(..), ProofResult(..), SMTCex, VM(..), VMType(..))
 
 import Common (loadSolTests, solcV, testConfig, withSolcVersion)
 import Echidna.Exec (execTx)
 import Echidna.Solidity (chooseContract, compileContracts)
-import Echidna.SymExec.Common (symExecAbstractArith)
+import Echidna.SymExec.Common (checkProperty, symExecAbstractArith)
 import Echidna.SymExec.Symbolic (forceAddr)
-import Echidna.Test (CallRes(ResRevert), checkETest, classifyRes, createTest)
+import Echidna.Test (checkETest, createTest)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Solidity (SolConf(..))
@@ -140,7 +138,7 @@ checkProperties env solvers properties st = concat <$> forM properties (\name ->
     clearTStorages
     startCall (LitAddr addr) caller env.cfg.txConf.propGas name (ConcreteBuf (selector (name <> "()")), [])
   (ends, models) <- verify solvers fetcher veriOpts
-    (vm & #exploreDepth .~ 0) (propertyPostcondition env.cfg.solConf.prefix name) Nothing
+    (vm & #exploreDepth .~ 0) (checkProperty env.cfg.solConf.prefix name) Nothing
   liftIO $ length [() | Partial {} <- ends] @?= 0
   concat <$> forM models (\case
     Qed -> pure []
@@ -149,15 +147,6 @@ checkProperties env solvers properties st = concat <$> forM properties (\name ->
       pure [(name, txs)]
     Unknown (reason, _) -> liftIO $ assertFailure $ "inconclusive property check: " <> reason
     Error reason -> liftIO $ assertFailure reason))
-
-propertyPostcondition :: Text -> Text -> Postcondition
-propertyPostcondition prefix name _ = \case
-  Success _ _ buf _
-    | expectsRevert -> PBool False
-    | otherwise -> PAnd (PEq (Expr.bufLength buf) (Lit 32)) (PEq (Expr.readWord (Lit 0) buf) (Lit 1))
-  Failure _ _ err -> PBool $ expectsRevert && classifyRes (VMFailure err) == ResRevert
-  _ -> PBool True
-  where expectsRevert = (prefix <> "revert_") `T.isPrefixOf` name
 
 replayTx :: Env -> SMTCex -> Call -> InvariantM Tx
 replayTx env cex call = do
