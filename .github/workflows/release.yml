@@ -21,6 +21,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -58,6 +59,8 @@ jobs:
           name: trailofbits
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
           pushFilter: "(-echidna-.+$)"
+          # The default installer tracks Nixpkgs, which dropped Intel macOS.
+          installCommand: nix profile install --inputs-from . nixpkgs#cachix
 
       - name: Obtain version number
         id: version
