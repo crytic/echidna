@@ -10,8 +10,8 @@ import Control.Monad.State.Strict (execState, runStateT)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.DoubleWord (Word256)
-import Data.List (foldl')
 import Data.Function ((&))
+import Data.List (foldl')
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
@@ -30,11 +30,10 @@ import EVM.Keccak.Preimages qualified as Preimages
 import EVM.Solidity (Method(..), Mutability(..))
 import EVM.Solvers (SolverGroup, checkSatWithPropsAbortable, withRunAbort)
 import EVM.SymExec (mkCalldata, verifyInputsWithHandler, interpretVMAbortable, runExpr, freezeVM, extractProps, VeriOpts(..), subModel, defaultSymbolicValues, Postcondition)
-import EVM.Types (Addr, VMType(..), EType(..), EvmError(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query, SMTResult, PartialExec, forceLit, isQed)
+import EVM.Types (Addr, VMType(..), VMResult(..), EType(..), EvmError(..), Expr(..), Block(..), W256, SMTCex(..), ProofResult(..), Prop(..), Query, SMTResult, PartialExec, forceLit, isQed)
 import qualified EVM.Types (EVM, VM(..))
 
-import Echidna.Exec (classifyError, ErrorClass(..))
-import Echidna.Test (isFoundryMode, isPropertyMode, isVerificationMode)
+import Echidna.Test (CallRes(ResRevert), classifyRes, isFoundryMode, isPropertyMode, isVerificationMode)
 import Echidna.Types (fromEVM)
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (SolConf(..))
@@ -112,7 +111,7 @@ statefulTests conf method tests
   | otherwise = [t.testType | t <- tests, isOpen t, eligible t.testType]
   where
     eligible (PropertyTest n _) = not ("_no_symexec" `T.isInfixOf` n)
-    eligible (AssertionTest False (n, []) _) =
+    eligible AssertionTest{foundry = False, sig = (n, [])} =
       method.methodSignature /= n <> "()" && not ("_no_symexec" `T.isInfixOf` n)
     eligible _ = False
 
@@ -329,7 +328,7 @@ statefulCall conf foundry = \case
     , constraints = []
     , postcondition = checkProperty conf.solConf.prefix name
     }
-  AssertionTest _ (name, []) addr -> StatefulCall
+  AssertionTest{sig = (name, []), addr} -> StatefulCall
     { name
     , addr
     , caller = SymAddr "test_caller"
@@ -340,7 +339,7 @@ statefulCall conf foundry = \case
 
 replayStatefulTest :: ExplorationContext m -> TestType -> SMTResult -> TxOrError
 replayStatefulTest context test result = case (test, result, context.toTx result) of
-  (AssertionTest _ (name, []) addr, Cex cex, TxFromResult txs) ->
+  (AssertionTest{sig = (name, []), addr}, Cex cex, TxFromResult txs) ->
     let sender = fromMaybe context.defaultSender $ Map.lookup (SymAddr "test_caller") cex.addrs
     in TxFromResult $ txs <> [basicTx name [] sender addr maxGasPerBlock (0, 0)]
   (_, _, tx) -> tx
@@ -359,8 +358,6 @@ checkProperty prefix name _ = \case
   Success _ _ buf _
     | expectsRevert -> PBool False
     | otherwise -> PAnd (PEq (EVM.Expr.bufLength buf) (Lit 32)) (PEq (EVM.Expr.readWord (Lit 0) buf) (Lit 1))
-  Failure _ _ err -> PBool $ expectsRevert && case classifyError err of
-    RevertE -> True
-    _ -> False
+  Failure _ _ err -> PBool $ expectsRevert && classifyRes (VMFailure err) == ResRevert
   _ -> PBool True
   where expectsRevert = (prefix <> "revert_") `T.isPrefixOf` name

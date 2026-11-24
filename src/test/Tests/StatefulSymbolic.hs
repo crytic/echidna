@@ -34,7 +34,7 @@ import Echidna.Types.Agent (Agent(..))
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..), initialWorkerState)
 import Echidna.Types.Config (EConfig(..), Env(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Solidity (SolConf(..))
-import Echidna.Types.Test (TestConf(..), TestType(..), TestValue(..), TestState(Solved), EchidnaTest(..), isOpen)
+import Echidna.Types.Test (TestConf(..), TestType(..), TestValue(..), TestState(Solved), EchidnaTest(..), assertionTest, isOpen)
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..), basicTx)
 import Echidna.Types.Worker (CampaignEvent(..), WorkerEvent(..), WorkerType(..), WorkerStopReason(..))
 import Echidna.UI (ui)
@@ -76,7 +76,7 @@ statefulSymbolicTests = testGroup "Stateful symbolic execution" $
         case txs of
           [setter, check] -> assertBool "different callers" (setter.src /= check.src)
           _ -> assertFailure "expected a setter and an assertion call"
-        replay env vm' txs (AssertionTest False ("check_sender", []) env.cfg.solConf.contractAddr)
+        replay env vm' txs (assertionTest False ("check_sender", []) env.cfg.solConf.contractAddr)
   , solidityCase "partial paths in the property are reported" $ do
       (vm, env, contract) <- load "echidna_loop" False
       vm' <- prepare env vm
@@ -146,7 +146,7 @@ load name assertion = do
   (vm, env, _) <- loadSolTests cfg build (Just "StatefulChecks")
   contract <- chooseContract (Map.elems env.dapp.solcByName) (Just "StatefulChecks")
   test <- newIORef $ createTest $ if assertion
-    then AssertionTest False (name, []) cfg.solConf.contractAddr
+    then assertionTest False (name, []) cfg.solConf.contractAddr
     else PropertyTest name cfg.solConf.contractAddr
   pure (vm, env { testRefs = [test] }, contract)
 
