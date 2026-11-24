@@ -33,14 +33,16 @@ jobs:
             tuple: aarch64-linux
             system: aarch64-linux
             timeout: 180
-          - os: macos-15
+          - os: macos-15-intel
             name: macOS (x86_64)
             tuple: x86_64-macos
             system: x86_64-darwin
+            timeout: 180
           - os: macos-15
             name: macOS (aarch64)
             tuple: aarch64-macos
             system: aarch64-darwin
+            timeout: 180
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
