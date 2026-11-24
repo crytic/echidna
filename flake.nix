@@ -40,10 +40,12 @@
                   # much wider cascade). Everything else it needs (crypton-asn1-*, crypton-pem,
                   # hpke, ech-config, time-hourglass) is already at a compatible version, and the
                   # rest of the package set rebuilds against these through the fixpoint.
-                  tls = hfinal.callHackageDirect {
+                  # Backport upstream test synchronization fixes: a loaded runner
+                  # can otherwise close before receiving the TLS 1.3 session ticket.
+                  tls = prev.haskell.lib.appendPatch (hfinal.callHackageDirect {
                     pkg = "tls"; ver = "2.2.2";
                     sha256 = "sha256-lbroDPZiOa2YH1jqEzxzNgBGcPZDP6WJEeD0odDgNqs=";
-                  } {};
+                  } {}) ./.github/patches/tls-session-tickets.patch;
                   crypton-x509 = hfinal.callHackageDirect {
                     pkg = "crypton-x509"; ver = "1.8.0";
                     sha256 = "sha256-wxU8Ou52UCuCT2gbxqPKssteIVGUyg5WEbv1xRIyZTg=";
