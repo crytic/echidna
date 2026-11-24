@@ -18,7 +18,7 @@ ghc-options:
 
 extra-deps:
 - git: https://github.com/argotorg/hevm.git
-  commit: ecd51368a62e647feb4771a9ebcabd649049c518
+  commit: 0cb1f2cc27cb49a78806544ac65e010b227e886a
 
 # hevm's test-utils library requires tasty >= 1.5.4.
 - tasty-1.5.4
