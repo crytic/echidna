@@ -2,16 +2,17 @@
 
 module Echidna.SymExec.Exploration where
 
-import Control.Concurrent (ThreadId, forkIO)
-import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
+import Control.Concurrent (ThreadId)
+import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
-import Control.Monad.State.Strict (MonadState)
+import Control.Monad.State.Strict (MonadState, gets)
 import Data.List (find)
 import Data.List.NonEmpty (fromList)
 import Data.Map qualified as Map
 import Data.Text (unpack, Text)
+import UnliftIO.Async (asyncThreadId, wait, withAsync)
 
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Fetch (RpcInfo(..))
@@ -22,15 +23,16 @@ import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 
 import Echidna.SymExec.Common (rpcFetcher, symExecAbstractArith, TxOrError(..), PartialsLogs)
-import Echidna.SymExec.Invariant (SymbolicSearch, exploreSearch, searchName, selectedMethod, selectedTarget)
+import Echidna.SymExec.Invariant (SymbolicSearch, exploreSearchWithProgress, searchDepth, searchName, selectedMethod, selectedTarget)
+import Echidna.SymExec.Progress (withProgress)
 import Echidna.Test (isFoundrySymbolicName)
-import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
+import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..))
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Tx (Tx(..), TxCall(..))
-import Echidna.Types.Worker (WorkerEvent(..))
+import Echidna.Types.Worker (CampaignEvent(..), WorkerEvent(..), WorkerType(SymbolicWorker))
 import Echidna.Types.World (World(..))
-import Echidna.Worker (pushWorkerEvent)
+import Echidna.Worker (pushCampaignEvent, pushWorkerEvent)
 
 getTargetMethodFromTx :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => Tx -> SolcContract -> [String] -> m (Maybe Method)
 getTargetMethodFromTx (Tx { call = SolCall ("", _) }) _ _ = return Nothing
@@ -97,7 +99,9 @@ data SearchMode = Explore | Verify deriving Eq
 -- | Shared solver setup for corpus exploration and verification.
 runSearch :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SearchMode -> SymbolicSearch -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
 runSearch mode search vm = do
-  conf <- asks (.cfg)
+  env <- ask
+  workerId <- gets (.workerId)
+  let conf = env.cfg
   let
     timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
     maxIters = Just conf.campaignConf.symExecMaxIters
@@ -105,8 +109,6 @@ runSearch mode search vm = do
     askSmtIters = conf.campaignConf.symExecAskSMTIters
     rpcInfo = RpcInfo (rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock))
 
-  threadIdChan <- liftIO newEmptyMVar
-  doneChan <- liftIO newEmptyMVar
   resultChan <- liftIO newEmptyMVar
   let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
   let iterConfig = IterConfig { maxIter = maxIters, maxConcreteIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = StackBased}
@@ -115,14 +117,15 @@ runSearch mode search vm = do
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
   let action = if mode == Verify then "Checking " else "Exploring "
-  pushWorkerEvent $ SymExecLog (action <> unpack (searchName search))
-  liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT conf.campaignConf.symExecSolverMemory $ \solvers -> do
-    threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      res <- exploreSearch search vm conf veriOpts solvers rpcInfo session
+      bound = searchDepth conf search
+      budget = maybe "" (\s -> "; campaign limit " <> show s <> "s") conf.uiConf.maxTime
+      report = pushCampaignEvent env . WorkerEvent workerId SymbolicWorker . SymExecLog
+  pushWorkerEvent $ SymExecLog (action <> unpack (searchName search)
+    <> " (up to " <> show bound <> " transactions; SMT timeout "
+    <> show conf.campaignConf.symExecTimeout <> "s/query" <> budget <> ")")
+  liftIO $ withProgress bound report $ \progress -> flip runReaderT runtimeEnv $
+    withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT conf.campaignConf.symExecSolverMemory $ \solvers ->
+    withAsync (exploreSearchWithProgress progress search vm conf veriOpts solvers rpcInfo session) $ \worker -> do
+      res <- wait worker
       liftIO $ putMVar resultChan res
-      liftIO $ putMVar doneChan ()
-    liftIO $ putMVar threadIdChan threadId
-    liftIO $ takeMVar doneChan
-
-  threadId <- liftIO $ takeMVar threadIdChan
-  pure (threadId, resultChan)
+      pure (asyncThreadId worker, resultChan)

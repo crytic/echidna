@@ -115,6 +115,12 @@ invariantTests = testGroup "Native invariant integration"
         in drain
       length [() | (_, WorkerEvent _ _ (SymExecLog message)) <- messages,
                    "Checking invariants over " `isPrefixOf` message] @?= 1
+      assertBool "progress reaches the campaign event stream" $ or
+        ["tx 1/2 | state 1/1 | function " `isPrefixOf` message |
+          (_, WorkerEvent _ _ (SymExecLog message)) <- messages]
+      assertBool "completed depths report their state counts" $ or
+        ["tx 2/2 complete | " `isPrefixOf` message |
+          (_, WorkerEvent _ _ (SymExecLog message)) <- messages]
       [err | (_, WorkerEvent _ _ (SymExecError err)) <- messages] @?= []
   , solidityCase "verification bounds include the failing call and preserve bounded result status" boundedVerification
   ]

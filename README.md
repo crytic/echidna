@@ -79,6 +79,20 @@ function filters and `_no_symexec` exclusions apply at every depth. Increase the
 bound to search longer sequences without changing the contract; the search can
 grow exponentially. Reaching this bound does not prove a stateful invariant.
 
+Symbolic progress logs identify the current transaction depth, state position,
+function signature, caller and preceding call sequence. Completed depths report
+how many states were reached. While a call takes longer, a five-second heartbeat
+shows its elapsed time and the elapsed search time. The initial message includes
+the per-query SMT timeout and any campaign time limit. Ordinary progress updates
+are limited to one per second; depth boundaries are always reported. For example:
+
+```text
+tx 2/3 | state 12/55 | function 2/3: lp_withdraw(uint256,uint256,uint256) | caller 0x10000 | prefix: lp_deposit(uint256,uint256,uint256) | current call 15s | elapsed 48s
+```
+
+State positions describe work within the current depth; later depths may have
+more states, so these counts are not an estimate of total completion time.
+
 For example, to check assertions across sequences of up to three calls:
 
 ```yaml

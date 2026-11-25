@@ -6,9 +6,11 @@ module Echidna.SymExec.Invariant
   ( checkProperty
   , SymbolicSearch(..)
   , exploreSearch
+  , exploreSearchWithProgress
   , invariantSearch
   , searchMethods
   , searchName
+  , searchDepth
   , selectedTarget
   , selectedMethod
   ) where
@@ -63,6 +65,10 @@ searchName (BoundedVerification foundry methods) =
   (if foundry then "bounded Foundry tests over " else "bounded assertions over ")
     <> T.intercalate ", " (map (.methodSignature) methods)
 
+searchDepth :: EConfig -> SymbolicSearch -> Int
+searchDepth _ SingleMethod{} = 1
+searchDepth conf _ = conf.campaignConf.symExecSeqLen
+
 selectedTarget :: [T.Text] -> Method -> Bool
 selectedTarget targets method = not ("_no_symexec" `T.isInfixOf` method.name)
   && (null targets || method.name `elem` targets || method.methodSignature `elem` targets)
@@ -99,24 +105,28 @@ invariantSearch conf contract tests
 
 exploreSearch :: App m =>
   SymbolicSearch -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
-exploreSearch search vm conf veriOpts solvers rpcInfo session =
-  exploreStatefulMethods foundry methods tests depth vm conf veriOpts solvers rpcInfo session
+exploreSearch = exploreSearchWithProgress (const $ pure ())
+
+exploreSearchWithProgress :: App m =>
+  (Driver.Progress -> IO ()) -> SymbolicSearch -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+exploreSearchWithProgress progress search vm conf =
+  exploreStatefulMethods progress foundry methods tests (searchDepth conf search) vm conf
   where
     foundry = isFoundryMode conf.solConf.testMode || case search of
       BoundedVerification enabled _ -> enabled
       _ -> False
-    (methods, tests, depth) = case search of
-      SingleMethod method -> ([method], [], 1)
-      InvariantSearch ms ts -> (ms, ts, conf.campaignConf.symExecSeqLen)
-      BoundedVerification _ ms -> (ms, [], conf.campaignConf.symExecSeqLen)
+    (methods, tests) = case search of
+      SingleMethod method -> ([method], [])
+      InvariantSearch ms ts -> (ms, ts)
+      BoundedVerification _ ms -> (ms, [])
 
 -- hevm owns transaction setup, context bounds, value transfers and model
 -- materialization for both single calls and sequences. Echidna supplies test
 -- semantics and replays returned transactions through its campaign executor.
 exploreStatefulMethods :: App m =>
-  Bool -> [Method] -> [TestType] -> Int -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
-exploreStatefulMethods foundry methods tests depth vm conf veriOpts solvers rpcInfo session = do
-  exploration <- Driver.newExploration options (symbolify vm)
+  (Driver.Progress -> IO ()) -> Bool -> [Method] -> [TestType] -> Int -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+exploreStatefulMethods progress foundry methods tests depth vm conf veriOpts solvers rpcInfo session = do
+  exploration <- Driver.newExplorationWithProgress options progress (symbolify vm)
   -- Assertion-only searches check the transitions themselves; the failing
   -- call counts toward the bound and needs no separate property check.
   when (null tests) $
