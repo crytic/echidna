@@ -14,8 +14,9 @@ import Data.Text qualified as T
 import EVM.ABI (selector, encodeAbiValue, AbiValue(..))
 import EVM.Fetch qualified as Fetch
 import EVM.SymExec (Postcondition)
-import EVM.Types (Addr, EType(..), EvmError(..), Expr(..), Prop(..), W256)
+import EVM.Types (Addr, EType(..), EvmError(..), Expr(..), Prop(..), VMResult(..), W256)
 
+import Echidna.Test (isFoundryFailure)
 import Echidna.Types.Tx (Tx)
 
 -- | Enable hevm's arithmetic abstraction for symbolic exploration and verification.
@@ -25,35 +26,32 @@ symExecAbstractArith = True
 panicMsg :: Word256 -> ByteString
 panicMsg err = selector "Panic(uint256)" <> encodeAbiValue (AbiUInt 256 err)
 
--- | Postcondition for symbolic execution verification.
--- In foundry mode, all reverts are failures except vm.assume failures.
--- In assertion mode, only assertion failures (0xfe opcode, Error(string)
--- "assertion failed", or Panic codes) are detected.
-checkAssertions :: [Word256] -> Bool -> Postcondition
-checkAssertions errs isFoundry _ vmres
-  | isFoundry = case vmres of
-      -- vm.assume failures should not be treated as test failures
-      Failure _ _ AssumeCheatFailed -> PBool True
-      -- All other failures are test failures in foundry mode
-      Failure {} -> PBool False
-      _ -> PBool True
-  | otherwise = case vmres of
-      -- Solidity assert() opcode (0xfe)
-      Failure _ _ (UnrecognizedOpcode 0xfe) -> PBool False
-      -- Concrete revert: check for "assertion failed" message or panic code
-      Failure _ _ (Revert (ConcreteBuf msg)) ->
-        -- NOTE: assertTrue/assertFalse does not have the double colon after "assertion failed"
-        let assertFail = selector "Error(string)" `BS.isPrefixOf` msg
-              && "assertion failed" `BS.isPrefixOf` BS.drop txtOffset msg
-        in PBool $ not (assertFail || msg `elem` fmap panicMsg errs)
-      -- Symbolic revert: check symbolically against panic messages
-      -- TODO: also check for Error(string) "assertion failed" in partially-symbolic
-      -- buffers, similar to hevm's symbolicFail in EVM.UnitTest
-      Failure _ _ (Revert b) ->
-        foldl' PAnd (PBool True) (fmap (PNeg . PEq b . ConcreteBuf . panicMsg) errs)
-      _ -> PBool True
+-- | Native assertion failures (0xfe opcode, Error(string) "assertion failed",
+-- or the selected panic codes). Foundry tests use 'checkFoundry' instead.
+checkAssertions :: [Word256] -> Postcondition
+checkAssertions errs _ vmres = case vmres of
+  -- Solidity assert() opcode (0xfe)
+  Failure _ _ (UnrecognizedOpcode 0xfe) -> PBool False
+  -- Concrete revert: check for "assertion failed" message or panic code
+  Failure _ _ (Revert (ConcreteBuf msg)) ->
+    -- NOTE: assertTrue/assertFalse does not have the double colon after "assertion failed"
+    let assertFail = selector "Error(string)" `BS.isPrefixOf` msg
+          && "assertion failed" `BS.isPrefixOf` BS.drop txtOffset msg
+    in PBool $ not (assertFail || msg `elem` fmap panicMsg errs)
+  -- Symbolic revert: check symbolically against panic messages
+  -- TODO: also check for Error(string) "assertion failed" in partially-symbolic
+  -- buffers, similar to hevm's symbolicFail in EVM.UnitTest
+  Failure _ _ (Revert b) ->
+    foldl' PAnd (PBool True) (fmap (PNeg . PEq b . ConcreteBuf . panicMsg) errs)
+  _ -> PBool True
   where
     txtOffset = 4 + 32 + 32 -- selector + offset + length
+
+checkFoundry :: T.Text -> Postcondition
+checkFoundry name _ = \case
+  Success _ _ buf _ -> PBool $ not $ isFoundryFailure name (VMSuccess buf)
+  Failure _ _ err -> PBool $ not $ isFoundryFailure name (VMFailure err)
+  _ -> PBool True
 
 type PartialsLogs = [T.Text]
 

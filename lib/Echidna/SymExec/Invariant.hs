@@ -31,11 +31,13 @@ import EVM.Solidity (Method(..), Mutability(..), SolcContract(..))
 import EVM.Solvers (SolverGroup)
 import EVM.SymExec (Postcondition, VeriOpts(..))
 import EVM.Types (Expr(..), Prop(..), VMResult(..), VMType(..), EType(End))
-import EVM.Types qualified (VM(..))
+import EVM.Types qualified (FrameState(..), VM(..))
 
 import Echidna.ABI (encodeSigWithName)
-import Echidna.SymExec.Common (PartialsLogs, TxOrError(..), checkAssertions, senderConstraints)
-import Echidna.Test (CallRes(ResRevert), classifyRes, isFoundryMode, isPropertyMode, isVerificationMode)
+import Echidna.SymExec.Common (PartialsLogs, TxOrError(..), checkAssertions, checkFoundry, senderConstraints)
+import Echidna.Test
+  ( CallRes(ResRevert), classifyRes, isFoundryMode, isFoundryVerification
+  , isFoundryVerificationMethod, isPropertyMode, isVerificationMode )
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (Filter(..), SolConf(..))
@@ -46,17 +48,19 @@ import Echidna.Types.Tx (Tx(..), TxCall(NoCall), TxConf(..), basicTx)
 data SymbolicSearch
   = SingleMethod Method
   | InvariantSearch [Method] [TestType]
-  | BoundedVerification [Method]
+  | BoundedVerification Bool [Method] -- ^ Whether to use Foundry failure semantics.
 
 searchMethods :: SymbolicSearch -> [Method]
 searchMethods (SingleMethod method) = [method]
 searchMethods (InvariantSearch methods _) = methods
-searchMethods (BoundedVerification methods) = methods
+searchMethods (BoundedVerification _ methods) = methods
 
 searchName :: SymbolicSearch -> T.Text
 searchName (SingleMethod method) = method.methodSignature
 searchName (InvariantSearch methods _) = "invariants over " <> T.intercalate ", " (map (.methodSignature) methods)
-searchName (BoundedVerification methods) = "bounded assertions over " <> T.intercalate ", " (map (.methodSignature) methods)
+searchName (BoundedVerification foundry methods) =
+  (if foundry then "bounded Foundry tests over " else "bounded assertions over ")
+    <> T.intercalate ", " (map (.methodSignature) methods)
 
 selectedTarget :: [T.Text] -> Method -> Bool
 selectedTarget targets method = not ("_no_symexec" `T.isInfixOf` method.name)
@@ -65,6 +69,8 @@ selectedTarget targets method = not ("_no_symexec" `T.isInfixOf` method.name)
 selectedMethod :: EConfig -> SolcContract -> Method -> Bool
 selectedMethod conf contract method = selectedTarget conf.campaignConf.symExecTargets method
   && not (conf.solConf.prefix `T.isPrefixOf` method.name)
+  && (not (isFoundryVerification conf.solConf.testMode contract)
+      || isFoundryVerificationMethod conf.campaignConf.symExecSeqLen conf.campaignConf.symExecTargets method)
   && case conf.solConf.methodFilter of
     Whitelist names -> sig `elem` names
     Blacklist names -> sig `notElem` names
@@ -76,12 +82,13 @@ selectedMethod conf contract method = selectedTarget conf.campaignConf.symExecTa
 invariantSearch :: EConfig -> SolcContract -> [EchidnaTest] -> Maybe SymbolicSearch
 invariantSearch conf contract tests
   | isVerificationMode conf.solConf.testMode =
-      if conf.campaignConf.symExecSeqLen > 1
-        then Just $ BoundedVerification targets
+      if foundry || conf.campaignConf.symExecSeqLen > 1
+        then Just $ BoundedVerification foundry targets
         else Nothing
   | null checks = Nothing
   | otherwise = Just $ InvariantSearch methods checks
   where
+    foundry = isFoundryVerification conf.solConf.testMode contract
     checks = [t.testType | t <- tests, isOpen t, eligible t.testType]
     eligible (PropertyTest name _) = not ("_no_symexec" `T.isInfixOf` name)
     eligible AssertionTest{foundry = False, sig = (name, [])} = not ("_no_symexec" `T.isInfixOf` name)
@@ -92,19 +99,22 @@ invariantSearch conf contract tests
 exploreSearch :: App m =>
   SymbolicSearch -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
 exploreSearch search vm conf veriOpts solvers rpcInfo session =
-  exploreStatefulMethods methods tests depth vm conf veriOpts solvers rpcInfo session
+  exploreStatefulMethods foundry methods tests depth vm conf veriOpts solvers rpcInfo session
   where
+    foundry = isFoundryMode conf.solConf.testMode || case search of
+      BoundedVerification enabled _ -> enabled
+      _ -> False
     (methods, tests, depth) = case search of
       SingleMethod method -> ([method], [], 1)
       InvariantSearch ms ts -> (ms, ts, conf.campaignConf.symExecSeqLen)
-      BoundedVerification ms -> (ms, [], conf.campaignConf.symExecSeqLen)
+      BoundedVerification _ ms -> (ms, [], conf.campaignConf.symExecSeqLen)
 
 -- hevm owns transaction setup, context bounds, value transfers and model
 -- materialization for both single calls and sequences. Echidna supplies test
 -- semantics and replays returned transactions through its campaign executor.
 exploreStatefulMethods :: App m =>
-  [Method] -> [TestType] -> Int -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
-exploreStatefulMethods methods tests depth vm conf veriOpts solvers rpcInfo session = do
+  Bool -> [Method] -> [TestType] -> Int -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+exploreStatefulMethods foundry methods tests depth vm conf veriOpts solvers rpcInfo session = do
   exploration <- Driver.newExploration options (symbolify vm)
   -- Assertion-only searches check the transitions themselves; the failing
   -- call counts toward the bound and needs no separate property check.
@@ -125,16 +135,22 @@ exploreStatefulMethods methods tests depth vm conf veriOpts solvers rpcInfo sess
   where
     fetcher = Fetch.oracle solvers (Just session) rpcInfo
     targets = [Inv.Target (LitAddr conf.solConf.contractAddr) "" (Sig m.name (map snd m.inputs)) | m <- methods]
-    post = if not (null tests) && isPropertyMode conf.solConf.testMode
-      then \_ _ -> PBool True
-      else checkAssertions [0x1] (isFoundryMode conf.solConf.testMode)
+    post initial result
+      | foundry = EVM.Expr.simplifyProp $ foldr PAnd (PBool True)
+          [ POr (PNeg $ EVM.Expr.peq (selectorWord initial.state.calldata)
+              (selectorWord $ ConcreteBuf $ selector method.methodSignature))
+              (checkFoundry method.name initial result)
+          | method <- methods ]
+      | not (null tests) && isPropertyMode conf.solConf.testMode = PBool True
+      | otherwise = checkAssertions [0x1] initial result
+    selectorWord = EVM.Expr.readBytes 4 (Lit 0)
     calls = (Inv.defaultCallConfig conf.txConf.txGas)
       { Inv.maxTimeDelay = Just conf.txConf.maxTimeDelay
       , Inv.maxBlockDelay = Just conf.txConf.maxBlockDelay
       , Inv.callerIsOrigin = True
-      , Inv.maxValue = if isFoundryMode conf.solConf.testMode then 0 else conf.txConf.maxValue
+      , Inv.maxValue = if foundry then 0 else conf.txConf.maxValue
       , Inv.valueTransfer = Inv.MintValue
-      , Inv.allowNoCalls = not (isFoundryMode conf.solConf.testMode)
+      , Inv.allowNoCalls = not foundry
       }
     options = Driver.ExplorationConfig targets (Inv.OneOf $ Set.toList conf.solConf.sender)
       calls post False
@@ -156,7 +172,7 @@ statefulCall conf test = case test of
   PropertyTest name addr -> call name addr (LitAddr $ conf.testConf.testSender addr) []
     conf.txConf.propGas (checkProperty conf.solConf.prefix name) False
   AssertionTest{sig = (name, []), addr} -> call name addr caller
-    (senderConstraints caller conf.solConf.sender) conf.txConf.txGas (checkAssertions [0x1] False) True
+    (senderConstraints caller conf.solConf.sender) conf.txConf.txGas (checkAssertions [0x1]) True
   _ -> error "unsupported symbolic stateful test"
   where
     caller = SymAddr "test_caller"

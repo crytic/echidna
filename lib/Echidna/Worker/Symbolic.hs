@@ -169,7 +169,10 @@ runSymWorker callback onReady vm dict workerId initialCorpus name = do
     let shared = invariantSearch conf contract tests
         searched = maybe [] searchMethods shared
     forM_ shared $ \search -> symbolicSearch Verify search vm []
-    unless (isVerificationMode conf.solConf.testMode && conf.campaignConf.symExecSeqLen > 1) $
+    let sharedVerification = case shared of
+          Just BoundedVerification{} -> True
+          _ -> False
+    unless sharedVerification $
       forM_ allMethods $ \method -> unless (method `elem` searched) $ do
         suitable <- isSuitableToVerifyMethod contract method conf.campaignConf.symExecTargets
         if suitable
@@ -202,7 +205,7 @@ runSymWorker callback onReady vm dict workerId initialCorpus name = do
       case search of
         SingleMethod method -> when (null txs || incomplete) $
           setAssertionTestState (if incomplete then Passed else Unsolvable 1) (unpack method.methodSignature)
-        BoundedVerification methods -> unless incomplete $
+        BoundedVerification _ methods -> unless incomplete $
           forM_ methods $ \method -> unless (method.name `elem` counterexampleNames) $
             setAssertionTestState (Unsolvable conf.campaignConf.symExecSeqLen) (unpack method.methodSignature)
         InvariantSearch {} -> pure ()

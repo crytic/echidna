@@ -97,6 +97,24 @@ check from the initial state (or after a supplied corpus prefix), not a proof
 for arbitrary-length sequences. Native `echidna_*` boolean properties still use
 `testMode: property` with `symExec: true`.
 
+Verification also recognizes Foundry harnesses by their `IS_TEST()` marker:
+use `testMode: verification` and `symExecSeqLen: 3` with an existing Foundry
+harness. Deployment runs `setUp()` once; it is excluded from the search.
+Single-call verification selects named `test*`, `check*`, `prove*`, `invariant*`
+and `statefulFuzz*` tests, including no-argument functions. Larger bounds also
+include state-changing handlers. Use `symExecTargets` to select the intended
+handlers and invariant methods when a harness exposes additional helpers.
+Invariant calls count toward the bound and retain successful state updates:
+`deposit → withdraw → invariant_total` is three transactions. Three handler
+actions followed by a check require a bound of four.
+
+Symbolic checking and concrete replay share Foundry failure classification:
+ordinary reverts fail named tests, `testFail*` fails on success, and
+`vm.assume(false)` discards an input. Ordinary handler reverts remain discarded,
+matching Echidna's Foundry fuzzing mode. Foundry verification sends zero ETH
+and does not generate `NoCall` steps. Unsupported operations and incomplete
+exploration still prevent a verified result.
+
 The driver supports isolated boolean properties and assertion-style invariant
 checks alongside assertions in transactions. Echidna's symbolic assertion
 classifier recognizes assertion execution failures; `AssertionFailed` events are
