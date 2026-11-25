@@ -30,17 +30,17 @@ import EVM.Invariant.Driver qualified as Driver
 import EVM.Solidity (Method(..), Mutability(..), SolcContract(..))
 import EVM.Solvers (SolverGroup)
 import EVM.SymExec (Postcondition, VeriOpts(..))
-import EVM.Types (Addr, Expr(..), Prop(..), VMResult(..), VMType(..))
+import EVM.Types (Expr(..), Prop(..), VMResult(..), VMType(..), EType(End))
 import EVM.Types qualified (VM(..))
 
 import Echidna.ABI (encodeSigWithName)
-import Echidna.SymExec.Common (PartialsLogs, TxOrError(..), checkAssertions, exploreSingleMethod, senderConstraints)
-import Echidna.Test (CallRes(ResRevert), classifyRes, isPropertyMode, isVerificationMode)
+import Echidna.SymExec.Common (PartialsLogs, TxOrError(..), checkAssertions, senderConstraints)
+import Echidna.Test (CallRes(ResRevert), classifyRes, isFoundryMode, isPropertyMode, isVerificationMode)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (Filter(..), SolConf(..))
 import Echidna.Types.Test (EchidnaTest(..), TestConf(..), TestType(..), isOpen)
-import Echidna.Types.Tx (TxConf(..), basicTx)
+import Echidna.Types.Tx (Tx(..), TxConf(..), basicTx)
 
 -- A stateful search shares one hevm frontier across all targets and checks.
 data SymbolicSearch
@@ -90,29 +90,29 @@ invariantSearch conf contract tests
     methods = [m | m <- targets, m.mutability `notElem` [Pure, View]]
 
 exploreSearch :: App m =>
-  SymbolicSearch -> EVM.Types.VM Concrete -> Addr -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
-exploreSearch (SingleMethod method) vm defaultSender conf veriOpts solvers rpcInfo session =
-  exploreSingleMethod method vm defaultSender conf veriOpts solvers rpcInfo session
-exploreSearch (InvariantSearch methods tests) vm _ conf veriOpts solvers rpcInfo session =
-  exploreStatefulMethods methods tests vm conf veriOpts solvers rpcInfo session
-exploreSearch (BoundedVerification methods) vm _ conf veriOpts solvers rpcInfo session =
-  exploreStatefulMethods methods [] vm conf veriOpts solvers rpcInfo session
+  SymbolicSearch -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+exploreSearch search vm conf veriOpts solvers rpcInfo session =
+  exploreStatefulMethods methods tests depth vm conf veriOpts solvers rpcInfo session
+  where
+    (methods, tests, depth) = case search of
+      SingleMethod method -> ([method], [], 1)
+      InvariantSearch ms ts -> (ms, ts, conf.campaignConf.symExecSeqLen)
+      BoundedVerification ms -> (ms, [], conf.campaignConf.symExecSeqLen)
 
--- hevm owns the search, VM boundaries and model materialization. Echidna
--- supplies native property semantics and replays returned transactions through
--- its campaign executor for validation, coverage and shrinking. Call value is
--- currently zero; symbolic value belongs in a future hevm API extension.
+-- hevm owns transaction setup, context bounds, value transfers and model
+-- materialization for both single calls and sequences. Echidna supplies test
+-- semantics and replays returned transactions through its campaign executor.
 exploreStatefulMethods :: App m =>
-  [Method] -> [TestType] -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
-exploreStatefulMethods methods tests vm conf veriOpts solvers rpcInfo session = do
+  [Method] -> [TestType] -> Int -> EVM.Types.VM Concrete -> EConfig -> VeriOpts -> SolverGroup -> Fetch.RpcInfo -> Fetch.Session -> m ([TxOrError], PartialsLogs)
+exploreStatefulMethods methods tests depth vm conf veriOpts solvers rpcInfo session = do
   exploration <- Driver.newExploration options (symbolify vm)
-  -- For verification, assertions are checked by the transitions themselves;
-  -- the failing call counts toward the bound and needs no separate check.
-  when (isVerificationMode conf.solConf.testMode) $
-    void $ Driver.exploreLevel solvers fetcher veriOpts.iterConf exploration conf.campaignConf.symExecSeqLen
+  -- Assertion-only searches check the transitions themselves; the failing
+  -- call counts toward the bound and needs no separate property check.
+  when (null tests) $
+    void $ Driver.exploreLevel solvers fetcher veriOpts.iterConf exploration depth
   checked <- forM tests $ \test -> do
     result <- Driver.searchInvariant solvers fetcher veriOpts exploration
-      (1, conf.campaignConf.symExecSeqLen) (statefulCall conf test)
+      (1, depth) (statefulCall conf test)
     txs <- case result.counterexample of
       Nothing -> pure []
       Just c -> do
@@ -125,15 +125,25 @@ exploreStatefulMethods methods tests vm conf veriOpts solvers rpcInfo session = 
   where
     fetcher = Fetch.oracle solvers (Just session) rpcInfo
     targets = [Inv.Target (LitAddr conf.solConf.contractAddr) "" (Sig m.name (map snd m.inputs)) | m <- methods]
-    post = if isPropertyMode conf.solConf.testMode then \_ _ -> PBool True else checkAssertions [0x1] False
+    post = if not (null tests) && isPropertyMode conf.solConf.testMode
+      then \_ _ -> PBool True
+      else checkAssertions [0x1] (isFoundryMode conf.solConf.testMode)
+    calls = (Inv.defaultCallConfig conf.txConf.txGas)
+      { Inv.maxTimeDelay = Just conf.txConf.maxTimeDelay
+      , Inv.maxBlockDelay = Just conf.txConf.maxBlockDelay
+      , Inv.callerIsOrigin = True
+      , Inv.maxValue = if isFoundryMode conf.solConf.testMode then 0 else conf.txConf.maxValue
+      , Inv.valueTransfer = Inv.MintValue
+      }
     options = Driver.ExplorationConfig targets (Inv.OneOf $ Set.toList conf.solConf.sender)
-      (Inv.CallConfig conf.txConf.txGas (Just conf.txConf.maxTimeDelay) (Just conf.txConf.maxBlockDelay) True) post False
+      calls post False
     errors = map (SMTErrorFromResult . T.unpack)
+    partials :: [Expr End] -> PartialsLogs
     partials leaves = [formatPartialDetailed Nothing Map.empty p | Partial _ _ p <- leaves]
     replay model calls = Driver.concretizeCalls vm.block model calls <&> \case
       Left err -> SMTErrorFromResult err
       Right concrete -> TxFromResult
-        [basicTx name call.arguments call.caller call.target conf.txConf.txGas call.delay
+        [(basicTx name call.arguments call.caller call.target conf.txConf.txGas call.delay) { value = call.value }
         | call <- concrete, let Sig name _ = call.sig]
 
 statefulCall :: EConfig -> TestType -> Driver.Check

@@ -139,7 +139,7 @@ experiment depth = do
   search <- maybe (assertFailure "missing invariant search") pure $ invariantSearch cfg contract (map createTest properties)
   (results, partials) <- flip runReaderT runtime $
     withSolvers Bitwuzla 1 (Just 30) 1024 $ \solvers ->
-      exploreSearch search vm 0x10000 cfg opts solvers Fetch.noRpc env.fetchSession
+      exploreSearch search vm cfg opts solvers Fetch.noRpc env.fetchSession
   extractErrors results @?= []
   partials @?= []
   pure (vm, env, properties, extractTxs results)
@@ -166,7 +166,7 @@ solveMixed vm contract env = do
       runtime = HEVM.defaultEnv { HEVM.config = HEVM.defaultConfig { HEVM.abstractArith = symExecAbstractArith } }
   (results, partials) <- flip runReaderT runtime $
     withSolvers Bitwuzla 1 (Just 30) 1024 $ \solvers ->
-      exploreSearch search vm 0x10000 env.cfg opts solvers Fetch.noRpc env.fetchSession
+      exploreSearch search vm env.cfg opts solvers Fetch.noRpc env.fetchSession
   extractErrors results @?= []
   partials @?= []
   pure (extractTxs results)

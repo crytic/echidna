@@ -208,6 +208,6 @@ runSymWorker callback onReady vm dict workerId initialCorpus name = do
     when (mode == Explore && not newCoverage) $
       pushWorkerEvent $ SymExecLog "Symbolic execution finished with no new coverage."
     let scope = case search of
-          BoundedVerification {} -> " (up to " <> show conf.campaignConf.symExecSeqLen <> " transactions; zero ETH per call)"
+          BoundedVerification {} -> " (up to " <> show conf.campaignConf.symExecSeqLen <> " transactions)"
           _ -> ""
     pushWorkerEvent $ SymExecLog ("Symbolic execution finished checking " <> label <> scope)

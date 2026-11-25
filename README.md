@@ -95,13 +95,14 @@ check from the initial state (or after a supplied corpus prefix), not a proof
 for arbitrary-length sequences. Native `echidna_*` boolean properties still use
 `testMode: property` with `symExec: true`.
 
-This integration is experimental. The invariant API sends zero ETH, so this
-stateful search cannot solve a call that requires nonzero `msg.value`. It
-uses hevm's shared exploration driver, which preserves `tx.origin` for each
-configured sender and constrains each timestamp and block-number increment to
-Echidna's bounds. Echidna supplies property semantics and replays the resulting
-transactions for validation, coverage and shrinking.
-Single-call assertion verification retains its existing symbolic-value search.
+This integration is experimental. Both single-call verification and stateful
+searches use hevm's driver for symbolic ETH values, timestamps and block numbers.
+Each call sends between zero and `maxValue` wei, with independent delays bounded
+by `maxTimeDelay` and `maxBlockDelay`. Setting a bound to zero fixes that quantity.
+The driver matches Echidna's balance model: recipients receive the call value
+without debiting the sender. `tx.origin` follows the configured sender for each
+call, and concrete replay uses the solved values and delays. Foundry tests and
+isolated native property checks still receive zero ETH.
 
 ### Collecting and visualizing coverage
 

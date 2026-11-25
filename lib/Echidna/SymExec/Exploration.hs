@@ -2,7 +2,6 @@
 
 module Echidna.SymExec.Exploration where
 
-import Control.Applicative ((<|>))
 import Control.Concurrent (ThreadId, forkIO)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Control.Monad.Catch (MonadThrow(..))
@@ -12,8 +11,6 @@ import Control.Monad.State.Strict (MonadState)
 import Data.List (find)
 import Data.List.NonEmpty (fromList)
 import Data.Map qualified as Map
-import Data.Maybe (fromJust)
-import Data.Set qualified as Set
 import Data.Text (unpack, Text)
 
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
@@ -30,7 +27,6 @@ import Echidna.Test (isFoundrySymbolicName)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Random (rElem)
-import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
 import Echidna.Types.Worker (WorkerEvent(..))
 import Echidna.Types.World (World(..))
@@ -109,7 +105,6 @@ runSearch mode search vm = do
     maxExplore = Just (fromIntegral conf.campaignConf.symExecMaxExplore)
     askSmtIters = conf.campaignConf.symExecAskSMTIters
     rpcInfo = RpcInfo (rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock))
-    defaultSender = fromJust $ Set.lookupMin conf.solConf.sender <|> Just 0
 
   threadIdChan <- liftIO newEmptyMVar
   doneChan <- liftIO newEmptyMVar
@@ -124,7 +119,7 @@ runSearch mode search vm = do
   pushWorkerEvent $ SymExecLog (action <> unpack (searchName search))
   liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT conf.campaignConf.symExecSolverMemory $ \solvers -> do
     threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      res <- exploreSearch search vm defaultSender conf veriOpts solvers rpcInfo session
+      res <- exploreSearch search vm conf veriOpts solvers rpcInfo session
       liftIO $ putMVar resultChan res
       liftIO $ putMVar doneChan ()
     liftIO $ putMVar threadIdChan threadId
