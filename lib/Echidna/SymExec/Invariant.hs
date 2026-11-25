@@ -40,7 +40,7 @@ import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (Filter(..), SolConf(..))
 import Echidna.Types.Test (EchidnaTest(..), TestConf(..), TestType(..), isOpen)
-import Echidna.Types.Tx (Tx(..), TxConf(..), basicTx)
+import Echidna.Types.Tx (Tx(..), TxCall(NoCall), TxConf(..), basicTx)
 
 -- A stateful search shares one hevm frontier across all targets and checks.
 data SymbolicSearch
@@ -79,7 +79,7 @@ invariantSearch conf contract tests
       if conf.campaignConf.symExecSeqLen > 1
         then Just $ BoundedVerification targets
         else Nothing
-  | null methods || null checks = Nothing
+  | null checks = Nothing
   | otherwise = Just $ InvariantSearch methods checks
   where
     checks = [t.testType | t <- tests, isOpen t, eligible t.testType]
@@ -134,6 +134,7 @@ exploreStatefulMethods methods tests depth vm conf veriOpts solvers rpcInfo sess
       , Inv.callerIsOrigin = True
       , Inv.maxValue = if isFoundryMode conf.solConf.testMode then 0 else conf.txConf.maxValue
       , Inv.valueTransfer = Inv.MintValue
+      , Inv.allowNoCalls = not (isFoundryMode conf.solConf.testMode)
       }
     options = Driver.ExplorationConfig targets (Inv.OneOf $ Set.toList conf.solConf.sender)
       calls post False
@@ -142,16 +143,20 @@ exploreStatefulMethods methods tests depth vm conf veriOpts solvers rpcInfo sess
     partials leaves = [formatPartialDetailed Nothing Map.empty p | Partial _ _ p <- leaves]
     replay model calls = Driver.concretizeCalls vm.block model calls <&> \case
       Left err -> SMTErrorFromResult err
-      Right concrete -> TxFromResult
-        [(basicTx name call.arguments call.caller call.target conf.txConf.txGas call.delay) { value = call.value }
-        | call <- concrete, let Sig name _ = call.sig]
+      Right concrete -> TxFromResult $ map (\case
+        call@Driver.ConcreteNoCall{} -> Tx NoCall 0 0 0 0 0 call.delay
+        call@Driver.ConcreteCall{} ->
+          let Sig name _ = call.sig
+          in (basicTx name call.arguments call.caller call.target conf.txConf.txGas call.delay) { value = call.value }) concrete
 
 statefulCall :: EConfig -> TestType -> Driver.Check
 statefulCall conf test = case test of
+  -- The concrete executor checks native properties only after a real call;
+  -- NoCall advances context but leaves the VM without a transaction result.
   PropertyTest name addr -> call name addr (LitAddr $ conf.testConf.testSender addr) []
-    conf.txConf.propGas (checkProperty conf.solConf.prefix name)
+    conf.txConf.propGas (checkProperty conf.solConf.prefix name) False
   AssertionTest{sig = (name, []), addr} -> call name addr caller
-    (senderConstraints caller conf.solConf.sender) conf.txConf.txGas (checkAssertions [0x1] False)
+    (senderConstraints caller conf.solConf.sender) conf.txConf.txGas (checkAssertions [0x1] False) True
   _ -> error "unsupported symbolic stateful test"
   where
     caller = SymAddr "test_caller"

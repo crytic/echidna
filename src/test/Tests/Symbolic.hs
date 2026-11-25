@@ -7,7 +7,7 @@ import Echidna.Types.Worker (WorkerType(..))
 import Tests.Invariant (invariantTests)
 import Tests.Keccak (keccakTests)
 import Tests.StatefulSymbolic (statefulSymbolicTests)
-import Tests.SymbolicContext (symbolicContextTests)
+import Tests.SymbolicContext (symbolicContextTests, symbolicNoCallTests)
 
 symbolicTests :: TestTree
 symbolicTests = testGroup "Symbolic tests" $
@@ -53,7 +53,7 @@ symbolicTests = testGroup "Symbolic tests" $
   ] :: [TestTree])
   ++ map arithmeticTest ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
   ++ map arithmeticAbstractionTest ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
-  ++ [keccakTests, statefulSymbolicTests, invariantTests, symbolicContextTests]
+  ++ [keccakTests, statefulSymbolicTests, invariantTests, symbolicContextTests, symbolicNoCallTests]
   where
     arithmeticTest conf =
       testContractNamed ("symbolic/arithmetic.sol (" ++ conf ++ ")")

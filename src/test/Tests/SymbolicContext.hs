@@ -1,4 +1,4 @@
-module Tests.SymbolicContext (symbolicContextTests) where
+module Tests.SymbolicContext (symbolicContextTests, symbolicNoCallTests) where
 
 import Control.Concurrent.STM (atomically, dupTChan, tryReadTChan)
 import Control.Monad (forM_)
@@ -77,6 +77,53 @@ symbolicContextTests = testCaseSteps "symbolic ETH, timestamp and block number r
             config.solConf.testMode @?= "verification"
             bound @?= config.campaignConf.symExecSeqLen
           _ -> pure ()
+        messages <- atomically $
+          let drain = tryReadTChan events >>= maybe (pure []) (\event -> (event :) <$> drain)
+          in drain
+        [err | (_, WorkerEvent _ _ (SymExecError err)) <- messages] @?= []
+
+symbolicNoCallTests :: TestTree
+symbolicNoCallTests = testCaseSteps "symbolic NoCall steps replay through the campaign" $ \step ->
+  withSolcVersion (Just (>= solcV (0,6,9))) $ do
+    let cfg = testConfig
+          { solConf = testConfig.solConf
+              { testMode = "property", disableSlither = True, sender = Set.singleton 0x10000 }
+          , txConf = testConfig.txConf { maxValue = 0, maxTimeDelay = 1, maxBlockDelay = 1 }
+          , campaignConf = testConfig.campaignConf
+              { symExec = True, symExecSMTSolver = Bitwuzla, workers = Just 0, shrinkLimit = 0 }
+          }
+        config mode depth target = adjustForVerificationMode $ cfg
+          { solConf = cfg.solConf { testMode = mode }
+          , campaignConf = cfg.campaignConf { symExecSeqLen = depth, symExecTargets = [target] }
+          }
+        waited name = [NoCall, SolCall (name, [])]
+    build <- compileContracts cfg.solConf ("symbolic/nocall.sol" :| [])
+    forM_
+      [ ("one step cannot capture the deadline", config "property" 1 "capture", [])
+      , ("wait then capture falsifies native properties", config "property" 2 "capture", waited "capture")
+      , ("native properties are not checked directly after a wait", config "property" 2 "blocked", [])
+      , ("one transaction cannot fail the assertion", config "verification" 1 "assertAfterWait", [])
+      , ("wait then no-argument assertion", config "verification" 2 "assertAfterWait", waited "assertAfterWait")
+      , ("assertion mode checks after two context-only steps", config "assertion" 2 "assertAfterWait",
+          [NoCall, NoCall, SolCall ("assertAfterWait", [])])
+      , ("time bound excludes the failure", (config "verification" 2 "assertAfterWait")
+          { txConf = cfg.txConf { maxTimeDelay = 0 } }, [])
+      , ("block bound excludes the failure", (config "verification" 2 "assertAfterWait")
+          { txConf = cfg.txConf { maxBlockDelay = 0 } }, [])
+      ] $ \(label, configured, expected) -> do
+        step label
+        (vm, env, _) <- loadSolTests configured build (Just "NoCallContext")
+        stateRef <- newIORef initialWorkerState
+        events <- atomically $ dupTChan env.eventQueue
+        _ <- runAgent (SymbolicAgent 0 vm emptyDict [] (Just "NoCallContext") stateRef) env
+        tests <- traverse readIORef env.testRefs
+        let failed = filter didFail tests
+        assertBool "expected failures were replayed" (null failed == null expected)
+        forM_ failed $ \test -> do
+          map (.call) test.reproducer @?= expected
+          forM_ test.reproducer $ \tx -> do
+            tx.value @?= 0
+            assertBool "bounded wait and call delays" (fst tx.delay <= 1 && snd tx.delay <= 1)
         messages <- atomically $
           let drain = tryReadTChan events >>= maybe (pure []) (\event -> (event :) <$> drain)
           in drain
