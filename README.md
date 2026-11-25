@@ -97,6 +97,13 @@ check from the initial state (or after a supplied corpus prefix), not a proof
 for arbitrary-length sequences. Native `echidna_*` boolean properties still use
 `testMode: property` with `symExec: true`.
 
+The driver supports isolated boolean properties and assertion-style invariant
+checks alongside assertions in transactions. Echidna's symbolic assertion
+classifier recognizes assertion execution failures; `AssertionFailed` events are
+outside the symbolic checking scope. The driver currently extends successful
+transactions only, so verification does not cover reverted prefixes that advance
+time or block number.
+
 This integration is experimental. Both single-call verification and stateful
 searches use hevm's driver for symbolic ETH values, timestamps and block numbers.
 Each call sends between zero and `maxValue` wei, with independent delays bounded
