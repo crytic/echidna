@@ -37,7 +37,7 @@ import Echidna.Types.Config
 import Echidna.Types.Random (rElem)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Test
-import Echidna.Types.Tx (Tx)
+import Echidna.Types.Tx (Tx(..), TxCall(SolCall))
 import Echidna.Types.Worker
 import Echidna.Worker (listenerLoop, pushWorkerEvent)
 import Echidna.Worker.Sequence (callseq)
@@ -195,12 +195,16 @@ runSymWorker callback onReady vm dict workerId initialCorpus name = do
     newCoverage <- or <$> mapM (\symTx -> snd <$> callseq vm (prefix <> symTx) False) txs
     let label = unpack (searchName search)
         incomplete = not (null errors) || not (null partials)
+        -- A solver counterexample prevents verification even if concrete
+        -- replay did not reproduce it. Conservatively exclude all overloads.
+        counterexampleNames = [methodName | calls <- txs, tx <- take 1 (reverse calls), SolCall (methodName, _) <- [tx.call]]
     when (mode == Verify && isVerificationMode conf.solConf.testMode) $
       case search of
         SingleMethod method -> when (null txs || incomplete) $
-          setAssertionTestState (if incomplete then Passed else Unsolvable) (unpack method.methodSignature)
+          setAssertionTestState (if incomplete then Passed else Unsolvable 1) (unpack method.methodSignature)
         BoundedVerification methods -> unless incomplete $
-          forM_ methods $ \method -> setAssertionTestState Passed (unpack method.methodSignature)
+          forM_ methods $ \method -> unless (method.name `elem` counterexampleNames) $
+            setAssertionTestState (Unsolvable conf.campaignConf.symExecSeqLen) (unpack method.methodSignature)
         InvariantSearch {} -> pure ()
 
     forM_ errors $ \err -> pushWorkerEvent $ SymExecError ("Error solving " <> label <> ": " <> err)

@@ -7,6 +7,8 @@ module Tests.Invariant (invariantTests) where
 import Control.Concurrent.STM (atomically, dupTChan, tryReadTChan)
 import Control.Monad (foldM, forM, forM_)
 import Control.Monad.Reader (runReaderT)
+import Data.Aeson (Value(..), toJSON)
+import Data.Aeson.KeyMap qualified as KeyMap
 import Data.IORef (newIORef, readIORef)
 import Data.List (find, isPrefixOf, sort)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -15,7 +17,7 @@ import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Yaml qualified as Y
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (assertFailure, testCase, (@?=))
+import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
 
 import EVM.ABI (AbiValue(..))
 import EVM.Dapp (DappInfo(..))
@@ -31,6 +33,7 @@ import Echidna.ABI (emptyDict)
 import Echidna.Agent (runAgent)
 import Echidna.Config (adjustForVerificationMode)
 import Echidna.Exec (execTx)
+import Echidna.Output.JSON qualified as JSON
 import Echidna.Solidity (chooseContract, compileContracts)
 import Echidna.SymExec.Common (extractErrors, extractTxs, symExecAbstractArith)
 import Echidna.SymExec.Invariant (exploreSearch, invariantSearch, searchMethods)
@@ -39,9 +42,10 @@ import Echidna.Types.Agent (Agent(..))
 import Echidna.Types.Campaign (CampaignConf(..), initialWorkerState)
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Solidity (Filter(..), SolConf(..))
-import Echidna.Types.Test (EchidnaTest(..), TestConf(..), TestType(..), TestValue(BoolValue), didFail, isOpen, isPassed, isVerified)
+import Echidna.Types.Test (EchidnaTest(..), TestConf(..), TestState(Unsolvable), TestType(..), TestValue(BoolValue), didFail, isOpen, isVerified)
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
 import Echidna.Types.Worker (CampaignEvent(..), WorkerEvent(..))
+import Echidna.UI.Report (ppTS)
 
 invariantTests :: TestTree
 invariantTests = testGroup "Native invariant integration"
@@ -206,25 +210,56 @@ boundedVerification = do
     didFail finished @?= (depth >= 3 && null targets)
     isOpen shortcut @?= True
     if depth == 1 then do
-      isVerified trigger @?= True
-      isVerified finished @?= True
+      trigger.state @?= Unsolvable 1
+      finished.state @?= Unsolvable 1
     else do
-      any isVerified tests @?= False
-      isPassed arm @?= null targets
+      isVerified arm @?= null targets
       if null targets then do
         map (.call) trigger.reproducer @?=
           [SolCall ("arm", [AbiUInt 256 41]), SolCall ("trigger", [AbiUInt 256 42])]
         if depth == 3 then
           map (.call) finished.reproducer @?=
             [SolCall ("arm", [AbiUInt 256 41]), SolCall ("prepare", []), SolCall ("checkFinished", [AbiUInt 256 43])]
-        else isPassed finished @?= True
+        else finished.state @?= Unsolvable depth
       else do
         isOpen arm @?= True
-        isPassed trigger @?= True
-        isPassed finished @?= True
+        trigger.state @?= Unsolvable depth
+        finished.state @?= Unsolvable depth
+    forM_ tests $ \test -> do
+      case (toJSON $ JSON.mapTest env.dapp test, toJSON test.state) of
+        (Object output, Object state) -> case test.state of
+          Unsolvable bound -> do
+            bound @?= depth
+            KeyMap.lookup "status" output @?= Just (String "verified")
+            KeyMap.lookup "verified_up_to" output @?= Just (toJSON depth)
+            KeyMap.lookup "verified_up_to" state @?= Just (toJSON depth)
+            rendered <- runReaderT (ppTS test.state test.result vm test.reproducer) env
+            rendered @?= case depth of
+              1 -> "verified up to 1 transaction ✅"
+              2 -> "verified up to 2 transactions ✅"
+              _ -> "verified up to 3 transactions ✅"
+          _ -> do
+            KeyMap.lookup "verified_up_to" output @?= Nothing
+            KeyMap.lookup "verified_up_to" state @?= Nothing
+        _ -> assertFailure "expected test JSON objects"
     messages <- atomically $
       let drain = tryReadTChan events >>= maybe (pure []) (\event -> (event :) <$> drain)
       in drain
     [err | (_, WorkerEvent _ _ (SymExecError err)) <- messages] @?= []
     length [() | (_, WorkerEvent _ _ (SymExecLog message)) <- messages,
                  "Checking bounded assertions over " `isPrefixOf` message] @?= (if depth > 1 then 1 else 0)
+  forM_ [1, 3] $ \depth -> do
+    let config = adjustForVerificationMode $ cfg
+          { campaignConf = cfg.campaignConf
+              { symExecSeqLen = depth, symExecTargets = ["arm"], symExecMaxExplore = 0 } }
+    (vm, env, _) <- loadSolTests config build (Just "BoundedVerification")
+    stateRef <- newIORef initialWorkerState
+    events <- atomically $ dupTChan env.eventQueue
+    _ <- runAgent (SymbolicAgent 0 vm emptyDict [] (Just "BoundedVerification") stateRef) env
+    tests <- traverse readIORef env.testRefs
+    any isVerified tests @?= False
+    messages <- atomically $
+      let drain = tryReadTChan events >>= maybe (pure []) (\event -> (event :) <$> drain)
+      in drain
+    assertBool "incomplete exploration is reported" $ or
+      ["Partial path" `isPrefixOf` err | (_, WorkerEvent _ _ (SymExecError err)) <- messages]

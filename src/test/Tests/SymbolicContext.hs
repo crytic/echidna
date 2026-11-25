@@ -1,7 +1,7 @@
 module Tests.SymbolicContext (symbolicContextTests) where
 
 import Control.Concurrent.STM (atomically, dupTChan, tryReadTChan)
-import Control.Monad (forM_, unless)
+import Control.Monad (forM_)
 import Data.IORef (newIORef, readIORef)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Set qualified as Set
@@ -20,7 +20,7 @@ import Echidna.Types.Agent (Agent(..))
 import Echidna.Types.Campaign (CampaignConf(..), initialWorkerState)
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Solidity (SolConf(..))
-import Echidna.Types.Test (EchidnaTest(..), didFail, isVerified)
+import Echidna.Types.Test (EchidnaTest(..), TestState(Unsolvable), didFail)
 import Echidna.Types.Tx (Tx(..), TxCall(..), TxConf(..))
 import Echidna.Types.Worker (CampaignEvent(..), WorkerEvent(..))
 
@@ -72,7 +72,11 @@ symbolicContextTests = testCaseSteps "symbolic ETH, timestamp and block number r
               assertBool "bounded time and block delays" $
                 fst tx.delay <= config.txConf.maxTimeDelay && snd tx.delay <= config.txConf.maxBlockDelay
           _ -> assertFailure "unexpected additional failures"
-        unless (config.campaignConf.symExecSeqLen == 1) $ any isVerified tests @?= False
+        forM_ tests $ \test -> case test.state of
+          Unsolvable bound -> do
+            config.solConf.testMode @?= "verification"
+            bound @?= config.campaignConf.symExecSeqLen
+          _ -> pure ()
         messages <- atomically $
           let drain = tryReadTChan events >>= maybe (pure []) (\event -> (event :) <$> drain)
           in drain

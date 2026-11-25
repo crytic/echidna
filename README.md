@@ -88,9 +88,11 @@ symExecSeqLen: 3
 
 The failing call counts toward this bound. Bounded verification includes
 no-argument setup methods and view/pure assertion methods, and checks assertions
-in each transaction. Target filters apply to every step. It reports remaining
-assertions as `passed` after a completed search, rather than `verified`; partial
-paths or solver errors leave them open and emit diagnostics. This is a bounded
+in each transaction. Target filters apply to every step. A completed search
+reports assertions without counterexamples as `verified up to N transactions`
+(including `verified up to 1 transaction` for the default bound). JSON reports
+`status: "verified"` with `verified_up_to: N`. Partial paths or solver errors
+prevent verification and emit diagnostics. This is a bounded
 check from the initial state (or after a supplied corpus prefix), not a proof
 for arbitrary-length sequences. Native `echidna_*` boolean properties still use
 `testMode: property` with `symExec: true`.
