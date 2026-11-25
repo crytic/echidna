@@ -43,6 +43,7 @@ import Echidna.Types.Config (EConfig(..))
 import Echidna.Types.Solidity (Filter(..), SolConf(..))
 import Echidna.Types.Test (EchidnaTest(..), TestConf(..), TestType(..), isOpen)
 import Echidna.Types.Tx (Tx(..), TxCall(NoCall), TxConf(..), basicTx)
+import Echidna.Types.Tx qualified as Tx
 
 -- A stateful search shares one hevm frontier across all targets and checks.
 data SymbolicSearch
@@ -163,7 +164,7 @@ exploreStatefulMethods foundry methods tests depth vm conf veriOpts solvers rpcI
         call@Driver.ConcreteNoCall{} -> Tx NoCall 0 0 0 0 0 call.delay
         call@Driver.ConcreteCall{} ->
           let Sig name _ = call.sig
-          in (basicTx name call.arguments call.caller call.target conf.txConf.txGas call.delay) { value = call.value }) concrete
+          in (basicTx name call.arguments call.caller call.target conf.txConf.txGas call.delay) { Tx.value = call.value }) concrete
 
 statefulCall :: EConfig -> TestType -> Driver.Check
 statefulCall conf test = case test of
