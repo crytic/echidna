@@ -21,7 +21,7 @@ import EVM.SymExec (IterConfig(..), LoopHeuristic (..), VeriOpts(..))
 import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 
-import Echidna.SymExec.Common (suitableForSymExec, rpcFetcher, symExecAbstractArith, TxOrError(..), PartialsLogs)
+import Echidna.SymExec.Common (rpcFetcher, symExecAbstractArith, TxOrError(..), PartialsLogs)
 import Echidna.SymExec.Invariant (SymbolicSearch, exploreSearch, searchName, selectedMethod, selectedTarget)
 import Echidna.Test (isFoundrySymbolicName)
 import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
@@ -42,7 +42,7 @@ getTargetMethodFromTx (Tx { call = SolCall (methodName, _) }) contract failedPro
         [] -> error $ "Method " ++ show methodName ++ " not found in contract ABI"
         (x:_) -> x
 
-  if selectedMethod env.cfg contract method && ((null assertSigs || selector `elem` assertSigs) && suitableForSymExec method)
+  if selectedMethod env.cfg contract method && (null assertSigs || selector `elem` assertSigs)
     && (unpack method.methodSignature) `notElem` failedProperties
   then return $ Just method
   else return Nothing
@@ -58,7 +58,7 @@ getRandomTargetMethod contract targets failedProperties = do
   let allMethods = filter (selectedMethod env.cfg contract . snd) (Map.assocs contract.abiMap)
       assertSigs = env.world.assertSigs
       filterFunc (selector, method) =
-        ((null assertSigs || selector `elem` assertSigs) && suitableForSymExec method)
+        (null assertSigs || selector `elem` assertSigs)
         && unpack method.methodSignature `notElem` failedProperties
       filteredMethods = filter filterFunc allMethods
 
@@ -88,8 +88,7 @@ isSuitableToVerifyMethod contract method symExecTargets = do
 
   return $ selectedMethod env.cfg contract method &&
     if null symExecTargets
-    then (isSymbolicEntryPoint || null assertSigs || selector `elem` assertSigs)
-         && suitableForSymExec method
+    then isSymbolicEntryPoint || null assertSigs || selector `elem` assertSigs
     else selectedTarget symExecTargets method
 
 

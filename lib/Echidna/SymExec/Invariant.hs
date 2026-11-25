@@ -64,6 +64,7 @@ selectedTarget targets method = not ("_no_symexec" `T.isInfixOf` method.name)
 
 selectedMethod :: EConfig -> SolcContract -> Method -> Bool
 selectedMethod conf contract method = selectedTarget conf.campaignConf.symExecTargets method
+  && not (conf.solConf.prefix `T.isPrefixOf` method.name)
   && case conf.solConf.methodFilter of
     Whitelist names -> sig `elem` names
     Blacklist names -> sig `notElem` names
@@ -85,8 +86,7 @@ invariantSearch conf contract tests
     eligible (PropertyTest name _) = not ("_no_symexec" `T.isInfixOf` name)
     eligible AssertionTest{foundry = False, sig = (name, [])} = not ("_no_symexec" `T.isInfixOf` name)
     eligible _ = False
-    targets = [m | m <- Map.elems contract.abiMap, selectedMethod conf contract m
-                 , not (conf.solConf.prefix `T.isPrefixOf` m.name)]
+    targets = [m | m <- Map.elems contract.abiMap, selectedMethod conf contract m]
     methods = [m | m <- targets, m.mutability `notElem` [Pure, View]]
 
 exploreSearch :: App m =>

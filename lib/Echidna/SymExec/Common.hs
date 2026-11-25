@@ -13,7 +13,6 @@ import Data.Text qualified as T
 
 import EVM.ABI (selector, encodeAbiValue, AbiValue(..))
 import EVM.Fetch qualified as Fetch
-import EVM.Solidity (Method(..))
 import EVM.SymExec (Postcondition)
 import EVM.Types (Addr, EType(..), EvmError(..), Expr(..), Prop(..), W256)
 
@@ -70,15 +69,6 @@ extractErrors :: [TxOrError] -> [String]
 extractErrors = mapMaybe (\case
   SMTErrorFromResult err -> Just err
   _ -> Nothing)
-
-suitableForSymExec :: Method -> Bool
-suitableForSymExec m =
-  -- the method must take arguments (otherwise there is nothing to solve for)
-  -- and must not opt out via a `_no_symexec` name. Dynamic ABI types
-  -- (bytes/string/dynamic arrays) are now supported: hevm concretizes them to a
-  -- bounded length (see maxDynSize), so they no longer disqualify a method.
-  not (null m.inputs)
-  && not (T.isInfixOf "_no_symexec" m.name)
 
 senderConstraints :: Expr EAddr -> Set Addr -> [Prop]
 senderConstraints caller as = [foldr (\a b -> POr b (PEq caller (LitAddr a))) (PBool False) $ Set.toList as]

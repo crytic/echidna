@@ -25,8 +25,8 @@ contract PaidContext {
         assert(phase != 2);
     }
 
-    function single(uint256 key) public payable {
-        require(key == 33 && msg.value == 5);
+    function single() public payable {
+        require(msg.value == 5);
         require(block.timestamp == startTime + 2 && block.number == startBlock + 1);
         require(address(this).balance == 5);
         assert(false);

@@ -50,8 +50,8 @@ symbolicContextTests = testCaseSteps "symbolic ETH, timestamp and block number r
       , ("two calls cannot reach the assertion", verification 2 targets, [], [])
       , ("bounded assertion with paid setup", verification 3 targets,
           paidCalls <> [SolCall ("checkFinished", [AbiUInt 256 44])], [3, 6, 0])
-      , ("single-call verifier uses value and context", verification 1 ["single"],
-          [SolCall ("single", [AbiUInt 256 33])], [5])
+      , ("single-call verifier solves context without ABI arguments", verification 1 [],
+          [SolCall ("single", [])], [5])
       ] $ \(label, config, expectedCalls, expectedValues) -> do
         step label
         (vm, env, _) <- loadSolTests config build (Just "PaidContext")
