@@ -211,7 +211,7 @@ runSymWorker callback onReady vm dict workerId initialCorpus name = do
         InvariantSearch {} -> pure ()
 
     forM_ errors $ \err -> pushWorkerEvent $ SymExecError ("Error solving " <> label <> ": " <> err)
-    forM_ partials $ \partial -> pushWorkerEvent $ SymExecError ("Partial path while checking " <> label <> ": " <> unpack partial)
+    forM_ partials $ \partialLog -> pushWorkerEvent $ SymExecError ("Partial path while checking " <> label <> ": " <> unpack partialLog)
     when (mode == Explore && not newCoverage) $
       pushWorkerEvent $ SymExecLog "Symbolic execution finished with no new coverage."
     let scope = case search of

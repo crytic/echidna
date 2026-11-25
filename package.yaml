@@ -73,7 +73,6 @@ library:
     - strip-ansi-escape
     - time
     - unliftio
-    - unliftio-core
     - utf8-string
     - vector
     - vty

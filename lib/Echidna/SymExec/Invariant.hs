@@ -168,7 +168,7 @@ exploreStatefulMethods progress foundry methods tests depth vm conf veriOpts sol
     errors = map (SMTErrorFromResult . T.unpack)
     partials :: [Expr End] -> PartialsLogs
     partials leaves = [formatPartialDetailed Nothing Map.empty p | Partial _ _ p <- leaves]
-    replay model calls = Driver.concretizeCalls vm.block model calls <&> \case
+    replay model sequenceCalls = Driver.concretizeCalls vm.block model sequenceCalls <&> \case
       Left err -> SMTErrorFromResult err
       Right concrete -> TxFromResult $ map (\case
         call@Driver.ConcreteNoCall{} -> Tx NoCall 0 0 0 0 0 call.delay
