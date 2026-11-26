@@ -1,11 +1,13 @@
 module Echidna.Mutator.Array where
 
-import Control.Monad.Random.Strict (fromList, MonadRandom, getRandomR)
+import Control.Monad.Random.Strict (MonadRandom, getRandomR)
 import Data.ListLike qualified as LL
+
+import Echidna.Types.Random (weighted)
 
 -- | A list of mutators to randomly select to perform a mutation of list-like values
 listMutators :: (LL.ListLike f i, MonadRandom m) => m (f -> m f)
-listMutators = fromList
+listMutators = weighted
   [ (pure, 1) -- no-op
   , (expandRandList, 10)
   , (deleteRandList, 10)
