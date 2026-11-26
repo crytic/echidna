@@ -11,7 +11,10 @@ import EVM.Types
 
 -- | We throw this when our execution fails due to something other than reversion.
 -- The `Maybe Text` on `UnknownFailure` is an optional stack trace.
-data ExecException = IllegalExec EvmError | UnknownFailure EvmError (Maybe Text)
+data ExecException
+  = IllegalExec EvmError
+  | UnknownFailure EvmError (Maybe Text)
+  | SymbolicCalldataTooLarge Text Integer Integer
 
 instance Show ExecException where
   show = \case
@@ -23,6 +26,10 @@ instance Show ExecException where
     UnknownFailure e trace -> "VM failed for unhandled reason, " ++ show e
       ++ ". This shouldn't happen. Please file a ticket with this error message and steps to reproduce!"
       ++ maybe "" ((" Stack trace:\n" ++) . unpack) trace
+    SymbolicCalldataTooLarge signature required limit ->
+      "Cannot verify " ++ unpack signature ++ ": ABI calldata requires at least "
+      ++ show required ++ " bytes (including the 4-byte selector), but symbolic execution"
+      ++ " requires calldata smaller than " ++ show limit ++ " bytes."
     where
       codeSizeErrorDetails limit actual =
         "Configured limit: " ++ show limit ++ ", actual: " ++ show actual

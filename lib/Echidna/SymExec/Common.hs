@@ -5,7 +5,7 @@ module Echidna.SymExec.Common where
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.DoubleWord (Word256)
-import Data.List (foldl')
+import Data.List qualified as List (foldl')
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -42,7 +42,7 @@ checkAssertions errs _ vmres = case vmres of
   -- TODO: also check for Error(string) "assertion failed" in partially-symbolic
   -- buffers, similar to hevm's symbolicFail in EVM.UnitTest
   Failure _ _ (Revert b) ->
-    foldl' PAnd (PBool True) (fmap (PNeg . PEq b . ConcreteBuf . panicMsg) errs)
+    List.foldl' PAnd (PBool True) (fmap (PNeg . PEq b . ConcreteBuf . panicMsg) errs)
   _ -> PBool True
   where
     txtOffset = 4 + 32 + 32 -- selector + offset + length

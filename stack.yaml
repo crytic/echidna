@@ -1,5 +1,7 @@
-resolver: lts-23.24
-# matching https://github.com/NixOS/nixpkgs/blob/97eb7ee0da337d385ab015a23e15022c865be75c/pkgs/development/haskell-modules/configuration-hackage2nix/stackage.yaml#L1
+resolver: lts-24.38
+# matching https://github.com/NixOS/nixpkgs/blob/2074cc672349f14240fb7ea90d509e0b643e9dd4/pkgs/development/haskell-modules/configuration-hackage2nix/stackage.yaml#L1
+# Use the latest GHC 9.12 patch release rather than the snapshot's GHC 9.10.
+compiler: ghc-9.12.4
 
 packages:
 - '.'
@@ -9,6 +11,8 @@ packages:
 # at all (0.4.5 caps < 2.2, 0.4.6 needs >= 2.3). Mirrors the doJailbreaks in flake.nix.
 allow-newer: true
 allow-newer-deps:
+# nixpkgs also relaxes aeson-optics' base bound for newer GHCs.
+- aeson-optics
 - crypton-connection
 - warp-tls
 - tls-session-manager
@@ -18,15 +22,12 @@ ghc-options:
 
 extra-deps:
 - git: https://github.com/argotorg/hevm.git
-  commit: 4320283077220e03a9d85f9346f944b23526ade4
-
-# hevm's test-utils library requires tasty >= 1.5.4.
-- tasty-1.5.4
+  commit: 91965b4644ba1b1bf04bc73e11af3600d44a6c07
 
 # Bump tls to >= 2.2.2 for the fix in https://github.com/haskell-tls/hs-tls/pull/515.
 # tls 2.2.2 needs the crypton-x509 1.8 line, which migrated from asn1-*/pem/hourglass to
-# the crypton-asn1-*/crypton-pem/time-hourglass packages (none of which are in lts-23.24),
-# while still building against crypton 1.0.x. Pin the whole set explicitly.
+# crypton-asn1-* and time-hourglass packages missing from LTS 24.38,
+# while still building against crypton 1.0.x.
 - tls-2.2.2
 - crypton-x509-1.8.0
 - crypton-x509-store-1.8.0
@@ -34,12 +35,7 @@ extra-deps:
 - crypton-asn1-encoding-0.10.0
 - crypton-asn1-parse-0.10.0
 - crypton-asn1-types-0.4.1
-- crypton-pem-0.3.0
 - time-hourglass-0.3.0
-- hpke-0.0.0
-- ech-config-0.0.1
-- crypton-connection-0.4.5
-- crypton-socks-0.6.2@sha256:19f8f9a8c1973905ec000ea431bb4454a9c437b80f1e5f5f83ff84b964c49885,2017
 
 # The MCP server needs mcp-server >= 0.2.0.1 for its Streamable HTTP conformance
 # fixes, and that needs http-types >= 0.12.6 for the `hOrigin` re-export it
@@ -47,9 +43,13 @@ extra-deps:
 - mcp-server-0.2.0.1
 - http-types-0.12.6
 
+# Use Win32's console input API to avoid duplicate record fields with the
+# Win32 2.14.2.1 bundled with GHC 9.12.4.
+- vty-windows-0.2.0.4
+
+- aeson-optics-1.2.1
 - smt2-parser-0.1.0.1@sha256:1e1a4565915ed851c13d1e6b8bb5185cf5d454da3b43170825d53e221f753d77,1421
 - spawn-0.3@sha256:b91e01d8f2b076841410ae284b32046f91471943dc799c1af77d666c72101f02,1162
 - spool-0.1@sha256:77780cbfc2c0be23ff2ea9e474062f3df97fcd9db946ee0b3508280a923b83e2,1461
 - strip-ansi-escape-0.1.0.0@sha256:08f2ed93b16086a837ec46eab7ce8d27cf39d47783caaeb818878ea33c2ff75f,1628
 - jsonl-0.2.0.0@sha256:35f8a3816f0b93830008709a8e64c0c69b9bc632a92c54b3be3345bfccba4a5c,1465
-- vty-windows-0.2.0.3@sha256:0c010b1086a725046a8bb08bb1e6bfdfdb3cfe1c72d6fa77c37306ef9ec774d8,2844

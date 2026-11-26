@@ -1,8 +1,12 @@
 module Tests.Symbolic (symbolicTests) where
 
+import Data.IORef (readIORef)
 import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract', testContractNamed, solcV, solved, solvedByWorker, passed, verified, proven, solvedLen)
+import Echidna.Types (ExecException(..))
+import Echidna.Types.Config (Env(..))
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), isSuccessful)
 import Echidna.Types.Worker (WorkerType(..))
 import Tests.FoundryVerification (foundryVerificationTests)
 import Tests.Invariant (invariantTests)
@@ -54,8 +58,19 @@ symbolicTests = testGroup "Symbolic tests" $
   ] :: [TestTree])
   ++ map arithmeticTest ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
   ++ map arithmeticAbstractionTest ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
+  ++ map calldataLimitTest ["symbolic/verify.bitwuzla.yaml", "symbolic/calldata-limit.yaml"]
   ++ [keccakTests, statefulSymbolicTests, invariantTests, symbolicContextTests, symbolicNoCallTests, foundryVerificationTests]
   where
+    calldataLimitTest conf =
+      testContractNamed ("symbolic/calldata-limit.sol (" ++ conf ++ ")")
+        "symbolic/calldata-limit.sol" (Just "CalldataLimit") (Just (>= solcV (0,6,9))) (Just conf) True SymbolicWorker
+        [ ("oversized calldata is an error, not a proof", \(env, _) -> do
+            tests <- traverse readIORef env.testRefs
+            pure $ not (isSuccessful tests) && case tests of
+              [EchidnaTest{state = Failed (SymbolicCalldataTooLarge "checkTooLarge(uint256[128])" 4100 4096)}] -> True
+              _ -> False)
+        ]
+
     arithmeticTest conf =
       testContractNamed ("symbolic/arithmetic.sol (" ++ conf ++ ")")
         "symbolic/arithmetic.sol" (Just "Arithmetic") Nothing (Just conf) True SymbolicWorker

@@ -27,6 +27,7 @@ import Echidna.Exec (execTx)
 import Echidna.Orphans.Rand ()
 import Echidna.Shrink (isShrinkable, shrinkWorkerTests)
 import Echidna.Solidity (chooseContract)
+import Echidna.SymExec.Calldata (calldataSizeError)
 import Echidna.SymExec.Common (extractErrors, extractTxs)
 import Echidna.SymExec.Exploration (SearchMode(..), getRandomTargetMethod, getTargetMethodFromTx, isSuitableToVerifyMethod, runSearch)
 import Echidna.SymExec.Invariant (SymbolicSearch(..), invariantSearch, searchMethods, searchName)
@@ -180,6 +181,17 @@ runSymWorker callback onReady vm dict workerId initialCorpus name = do
           else pushWorkerEvent $ SymExecLog ("Skipping " <> unpack method.methodSignature)
 
   symbolicSearch mode search initialVm prefix = do
+    conf <- asks (.cfg)
+    let sizeErrors = [(method, err) | mode == Verify, isVerificationMode conf.solConf.testMode
+                                   , method <- searchMethods search
+                                   , Just err <- [calldataSizeError method]]
+    if null sizeErrors
+      then runSymbolicSearch mode search initialVm prefix
+      else forM_ sizeErrors $ \(method, err) -> do
+        setAssertionTestState (Failed err) (unpack method.methodSignature)
+        pushWorkerEvent $ SymExecError (show err)
+
+  runSymbolicSearch mode search initialVm prefix = do
     conf <- asks (.cfg)
     lift callback
     (threadId, symTxsChan) <- runSearch mode search initialVm

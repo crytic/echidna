@@ -1,0 +1,4 @@
+testMode: verification
+symExecSeqLen: 3
+symExecSMTSolver: bitwuzla
+disableSlither: true

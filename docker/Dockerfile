@@ -1,4 +1,4 @@
-FROM docker.io/benz0li/ghc-musl:9.8.4 AS builder-echidna
+FROM docker.io/benz0li/ghc-musl:9.12.4 AS builder-echidna
 # https://gitlab.com/benz0li/ghc-musl
 
 RUN apk upgrade --no-cache &&\
@@ -12,7 +12,6 @@ RUN apk upgrade --no-cache &&\
 RUN mkdir -p /etc/stack &&\
     { echo "system-ghc: true" ;\
       echo "install-ghc: false" ;\
-      echo "skip-ghc-check: true" ;\
     } >> /etc/stack/config.yaml
 
 ENV LD_LIBRARY_PATH=/usr/local/lib PREFIX=/usr/local HOST_OS=Linux
@@ -20,7 +19,7 @@ COPY . /echidna/
 WORKDIR /echidna
 RUN .github/scripts/install-libsecp256k1.sh
 RUN .github/scripts/install-libff.sh
-RUN stack upgrade && stack setup && stack install --flag echidna:static --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
+RUN stack setup && stack install --flag echidna:static --extra-include-dirs=/usr/local/include --extra-lib-dirs=/usr/local/lib
 
 
 FROM ubuntu:noble AS builder-python3
@@ -44,17 +43,17 @@ RUN apt-get update && \
         curl
 RUN mkdir /solvers/
 RUN if [ $(uname -m) = "aarch64" ]; then \
-        curl -fsSL -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-4.15.2/z3-4.15.2-arm64-glibc-2.34.zip; \
+        curl -fsSL -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-5.3.3/z3-5.3.3-arm64-glibc-2.38.zip; \
     elif [ $(uname -m) = "x86_64" ]; then \
-        curl -fsSL -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-4.15.2/z3-4.15.2-x64-glibc-2.39.zip; \
+        curl -fsSL -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-5.3.3/z3-5.3.3-x64-glibc-2.39.zip; \
     fi && \
     unzip z3.zip && \
     cp -a z3-*/* /solvers/ && \
     rm -rf z3-*/ z3.zip
 RUN if [ $(uname -m) = "aarch64" ]; then \
-        curl -fsSL -o bitwuzla.zip https://github.com/bitwuzla/bitwuzla/releases/download/0.8.2/Bitwuzla-Linux-arm64-static.zip; \
+        curl -fsSL -o bitwuzla.zip https://github.com/bitwuzla/bitwuzla/releases/download/0.9.1/Bitwuzla-Linux-arm64-static.zip; \
     elif [ $(uname -m) = "x86_64" ]; then \
-        curl -fsSL -o bitwuzla.zip https://github.com/bitwuzla/bitwuzla/releases/download/0.8.2/Bitwuzla-Linux-x86_64-static.zip; \
+        curl -fsSL -o bitwuzla.zip https://github.com/bitwuzla/bitwuzla/releases/download/0.9.1/Bitwuzla-Linux-x86_64-static.zip; \
     fi && \
     unzip bitwuzla.zip && \
     cp -a Bitwuzla-*/* /solvers/ && \
@@ -72,7 +71,7 @@ RUN apt-get update && \
 RUN curl -L https://foundry.paradigm.xyz | bash
 # Add foundryup to PATH and install foundry tools
 ENV PATH="/root/.foundry/bin:$PATH"
-RUN foundryup
+RUN foundryup --install v1.9.0
 
 
 FROM gcr.io/distroless/python3-debian11:nonroot AS final-distroless

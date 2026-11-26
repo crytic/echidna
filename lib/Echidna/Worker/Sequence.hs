@@ -157,8 +157,10 @@ callseq vm txSeq isReplaying = do
         -- (always AbiAddressType, inserted unconditionally above) accumulate
         -- an unbounded thunk chain
         { constants = MapStrict.unionWith Set.union workerState.genDict.constants additions
-        , dictValues = Set.union (mkDictValues $ Set.unions $ Map.elems additions)
-                                 workerState.genDict.dictValues
+        -- Keep the existing numeric entry on a tie, just as the typed index
+        -- above does. Both indexes can then keep sharing the same Word256.
+        , dictValues = Set.union workerState.genDict.dictValues
+                                 (mkDictValues $ Set.unions $ Map.elems additions)
         }
 
     -- Update the worker state

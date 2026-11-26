@@ -110,9 +110,6 @@ executables:
         ghc-options:
           - -O2
           - -optl-pthread
-      - condition: os(darwin)
-        ld-options: -Wl,-keep_dwarf_unwind
-        ghc-options: -fcompact-unwind
 
 tests:
   echidna-testsuite:
@@ -141,9 +138,6 @@ tests:
           ghc-options:
             - -O2
             - -optl-pthread
-        - condition: os(darwin)
-          ld-options: -Wl,-keep_dwarf_unwind
-          ghc-options: -fcompact-unwind
 
 flags:
   static:
