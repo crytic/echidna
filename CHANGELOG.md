@@ -1,5 +1,6 @@
 ## Unreleased
 
+* Verification reports an error instead of a false proof when a method's minimum ABI calldata size exceeds the symbolic buffer limit
 * Function selectors of the compiled contracts are computed once, instead of hashing the signature again for every generated transaction
 
 ## 2.4.0

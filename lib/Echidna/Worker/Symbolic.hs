@@ -28,6 +28,7 @@ import Echidna.Exec (execTx)
 import Echidna.Orphans.Rand ()
 import Echidna.Shrink (isShrinkable, shrinkWorkerTests)
 import Echidna.Solidity (chooseContract)
+import Echidna.SymExec.Calldata (calldataSizeError)
 import Echidna.SymExec.Common (extractErrors, extractTxs)
 import Echidna.SymExec.Exploration (exploreContract, getRandomTargetMethod, getTargetMethodFromTx)
 import Echidna.SymExec.Verification (isSuitableToVerifyMethod, verifyMethod)
@@ -185,7 +186,11 @@ runSymWorker callback vm dict workerId name = do
     forM_ allMethods (\method -> do
            isSuitable <- isSuitableToVerifyMethod contract method conf.campaignConf.symExecTargets
            if isSuitable
-            then symExecMethod contract method
+            then case calldataSizeError method of
+              Just err -> do
+                setAssertionTestState (Failed err) (unpack method.methodSignature)
+                pushWorkerEvent $ SymExecError (show err)
+              Nothing -> symExecMethod contract method
             else pushWorkerEvent $ SymExecError ("Skipped verification of method " <> unpack method.methodSignature)
           )
 
