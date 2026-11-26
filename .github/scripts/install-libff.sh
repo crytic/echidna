@@ -63,7 +63,7 @@ if [ "$HOST_OS" = "Windows" ]; then
   sed -i '/INCLUDE_DIRECTORIES.*OPENSSL_INCLUDE_DIR/d' CMakeLists.txt
 
   # Apply windows-specific libff patch carried by hevm
-  curl -fsSL https://raw.githubusercontent.com/argotorg/hevm/2cd4b0612cbf1ab7d5bb4bdbb2062a86c60ce2c0/.github/scripts/libff.patch | patch -p1
+  curl -fsSL https://raw.githubusercontent.com/argotorg/hevm/c981d483d2209b0b14d7724ea09affbfc9d1264b/.github/scripts/libff.patch | patch -p1
 fi
 
 mkdir -p build

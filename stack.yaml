@@ -22,7 +22,7 @@ ghc-options:
 
 extra-deps:
 - git: https://github.com/argotorg/hevm.git
-  commit: 2cd4b0612cbf1ab7d5bb4bdbb2062a86c60ce2c0
+  commit: c981d483d2209b0b14d7724ea09affbfc9d1264b
 
 # Bump tls to >= 2.2.2 for the fix in https://github.com/haskell-tls/hs-tls/pull/515.
 # tls 2.2.2 needs the crypton-x509 1.8 line, which migrated from asn1-*/pem/hourglass to
