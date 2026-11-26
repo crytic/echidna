@@ -1,5 +1,6 @@
 ## Unreleased
 
+* Updated hevm to `c981d483` with fixes for tuple ABI signatures, improved symbolic arithmetic, support for symbolic array inputs such as `uint256[]`, and lower memory use during path exploration.
 * Verification reports an error instead of a false proof when a method's minimum ABI calldata size exceeds the symbolic buffer limit
 * Function selectors of the compiled contracts are computed once, instead of hashing the signature again for every generated transaction
 
