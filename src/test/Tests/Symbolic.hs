@@ -1,10 +1,13 @@
 module Tests.Symbolic (symbolicTests) where
 
+import Data.IORef (readIORef)
 import Test.Tasty (TestTree, testGroup)
 
 import Common (testContract', testContractNamed, solcV, solved, verified, proven)
+import Echidna.Types (ExecException(..))
+import Echidna.Types.Config (Env(..))
+import Echidna.Types.Test (EchidnaTest(..), TestState(..), isSuccessful)
 import Echidna.Types.Worker (WorkerType(..))
-import Tests.CalldataLimit (calldataLimitTests)
 import Tests.Keccak (keccakTests)
 
 symbolicTests :: TestTree
@@ -24,6 +27,13 @@ symbolicTests = testGroup "Symbolic tests" $
     -- so the symbolic worker can solve it. Run under bitwuzla only.
     testContract' "symbolic/verify.sol" (Just "VulnerableContract") (Just (>= solcV (0,6,9))) (Just "symbolic/verify.bitwuzla.yaml") True SymbolicWorker
       [ ("dynamic passed", solved "dynamic") ]
+    , testContract' "symbolic/calldata-limit.sol" (Just "CalldataLimit") (Just (>= solcV (0,6,9))) (Just "symbolic/verify.bitwuzla.yaml") True SymbolicWorker
+      [ ("oversized calldata is an error, not a proof", \(env, _) -> do
+          tests <- traverse readIORef env.testRefs
+          pure $ not (isSuccessful tests) && case tests of
+            [EchidnaTest{state = Failed (SymbolicCalldataTooLarge "checkTooLarge(uint256[128])" 4100 4096)}] -> True
+            _ -> False)
+      ]
     -- This test is commented out because it requires a specific setup where both the FuzzWorker and SymbolicWorker are used.
     -- If you run the symbolic worker alone, it will hang indefinitely.
     --, testContract' "symbolic/explore.sol" Nothing Nothing (Just "symbolic/explore.yaml") True SymbolicWorker
@@ -32,7 +42,7 @@ symbolicTests = testGroup "Symbolic tests" $
   ] :: [TestTree])
   ++ map arithmeticTest ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
   ++ map arithmeticAbstractionTest ["symbolic/verify.yaml", "symbolic/verify.bitwuzla.yaml"]
-  ++ [keccakTests, calldataLimitTests]
+  ++ [keccakTests]
   where
     arithmeticTest conf =
       testContractNamed ("symbolic/arithmetic.sol (" ++ conf ++ ")")
