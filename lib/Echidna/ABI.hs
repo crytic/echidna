@@ -31,7 +31,7 @@ import Data.Word (Word8)
 import Numeric (showHex)
 
 import EVM.ABI hiding (genAbiValue)
-import EVM.Types (Addr, abiKeccak, W256, FunctionSelector(..), word256Bytes)
+import EVM.Types (Addr, abiKeccak, W256(..), FunctionSelector(..), word256Bytes)
 
 import Echidna.Mutator.Array (mutateLL, replaceAt)
 import Echidna.Types.Random
@@ -213,7 +213,7 @@ emptyDict = mkGenDict 0 Set.empty Set.empty 0 (const Nothing) []
 mkDictValues :: Set AbiValue -> Set W256
 mkDictValues =
   Set.foldl' (\acc e -> maybe acc (`Set.insert` acc) (fromValue e)) Set.empty
-  where fromValue (AbiUInt _ n) = Just (fromIntegral n)
+  where fromValue (AbiUInt _ n) = Just (W256 n)
         fromValue (AbiInt  _ n) = Just (fromIntegral n)
         fromValue _             = Nothing
 
