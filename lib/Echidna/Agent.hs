@@ -24,8 +24,8 @@ runAgent = runAgentWithReady (pure ())
 
 -- | Run an agent, calling the supplied action once it is ready for external
 -- commands. Fuzzing workers become ready after replaying their initial corpus
--- and subscribing to the inter-worker bus; symbolic workers do not accept
--- commands, so they are ready immediately.
+-- and subscribing to the inter-worker bus; symbolic workers become ready after
+-- subscribing to campaign events.
 runAgentWithReady :: IO () -> Agent -> Env -> IO WorkerStopReason
 runAgentWithReady onReady agent env = do
   let workerId = workerIdOf agent
@@ -40,9 +40,8 @@ runAgentWithReady onReady agent env = do
     FuzzerAgent{initialVm, initialDict, initialCorpus, testLimit} ->
       runFuzzWorker callback (liftIO onReady)
         initialVm initialDict workerId initialCorpus testLimit
-    SymbolicAgent{initialVm, initialDict, contractName} -> do
-      liftIO onReady
-      runSymWorker callback initialVm initialDict workerId contractName
+    SymbolicAgent{initialVm, initialDict, initialCorpus, contractName} ->
+      runSymWorker callback (liftIO onReady) initialVm initialDict workerId initialCorpus contractName
 
   -- The callback publishes as the worker goes, but not from every exit path
   -- (verification mode never runs it), so publish the final state here too.

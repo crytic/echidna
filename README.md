@@ -61,10 +61,95 @@ The example above uses the default **property** mode, but Echidna supports sever
 * **`property`** (default): Test `echidna_`-prefixed functions that return `bool`.
 * **`assertion`**: Detect assertion failures from `assert()` and Foundry's `assertX` helpers (`assertTrue`, `assertEq`, etc.).
 * **`foundry`**: Run Foundry-style tests, following its naming conventions: `test`-prefixed unit and fuzz tests (`testFail`-prefixed ones are expected to revert) and `invariant`- or `statefulFuzz`-prefixed stateful invariants. `check`- and `prove`-prefixed functions are symbolic entry points, but since this mode is a fuzzing campaign, they are fuzzed like any other test function.
-* **`verification`**: Symbolically verify each function of the contract using a single transaction. `check`- and `prove`-prefixed functions are always used as entry points.
+* **`verification`**: Symbolically check assertions without fuzzing workers. Defaults to single-transaction verification, where `check`- and `prove`-prefixed functions are always used as entry points. Set `symExecSeqLen` above `1` for bounded verification of mixed transaction sequences.
 * **`overflow`**: Detect integer over/underflows (Solidity >= 0.8.0).
 * **`optimization`**: Maximize the return value of `echidna_`-prefixed functions that return `int256` (uses the same configurable prefix as property mode).
 * **`exploration`**: Collect coverage without checking properties.
+
+With `symExec: true`, the symbolic worker uses hevm's invariant API to search
+for sequences of state-changing calls that make a native property or a subsequent
+no-argument assertion fail. It starts from the initial state or a concrete
+corpus prefix and replays counterexamples before reporting them. Set
+`workers: 0` to run the search without fuzzing workers;
+`symExecTargets` restricts those methods. `symExecSeqLen` bounds the number of
+symbolic calls after each prefix (default: `1`). Each step can call any eligible
+method of the selected contract, so a bound of three can find sequences such as
+`deposit → borrow → withdraw`. Targets accept names or canonical signatures, and
+function filters and `_no_symexec` exclusions apply at every depth. Increase the
+bound to search longer sequences without changing the contract; the search can
+grow exponentially. Reaching this bound does not prove a stateful invariant.
+
+Symbolic progress logs identify the current transaction depth, state position,
+function signature, caller and preceding call sequence. Completed depths report
+how many states were reached. While a call takes longer, a five-second heartbeat
+shows its elapsed time and the elapsed search time. The initial message includes
+the per-query SMT timeout and any campaign time limit. Ordinary progress updates
+are limited to one per second; depth boundaries are always reported. For example:
+
+```text
+tx 2/3 | state 12/55 | function 2/3: lp_withdraw(uint256,uint256,uint256) | caller 0x10000 | prefix: lp_deposit(uint256,uint256,uint256) | current call 15s | elapsed 48s
+```
+
+State positions describe work within the current depth; later depths may have
+more states, so these counts are not an estimate of total completion time.
+
+For example, to check assertions across sequences of up to three calls:
+
+```yaml
+testMode: verification
+symExecSeqLen: 3
+```
+
+The failing call counts toward this bound. Bounded verification includes
+no-argument setup methods and view/pure assertion methods, and checks assertions
+in each transaction. Target filters apply to every step. A completed search
+reports assertions without counterexamples as `verified up to N transactions`
+(including `verified up to 1 transaction` for the default bound). JSON reports
+`status: "verified"` with `verified_up_to: N`. Partial paths or solver errors
+prevent verification and emit diagnostics. This is a bounded
+check from the initial state (or after a supplied corpus prefix), not a proof
+for arbitrary-length sequences. Native `echidna_*` boolean properties still use
+`testMode: property` with `symExec: true`.
+
+Verification also recognizes Foundry harnesses by their `IS_TEST()` marker:
+use `testMode: verification` and `symExecSeqLen: 3` with an existing Foundry
+harness. Deployment runs `setUp()` once; it is excluded from the search.
+Single-call verification selects named `test*`, `check*`, `prove*`, `invariant*`
+and `statefulFuzz*` tests, including no-argument functions. Larger bounds also
+include state-changing handlers. Use `symExecTargets` to select the intended
+handlers and invariant methods when a harness exposes additional helpers.
+Invariant calls count toward the bound and retain successful state updates:
+`deposit → withdraw → invariant_total` is three transactions. Three handler
+actions followed by a check require a bound of four.
+
+Symbolic checking and concrete replay share Foundry failure classification:
+ordinary reverts fail named tests, `testFail*` fails on success, and
+`vm.assume(false)` discards an input. Ordinary handler reverts remain discarded,
+matching Echidna's Foundry fuzzing mode. Foundry verification sends zero ETH
+and does not generate `NoCall` steps. Unsupported operations and incomplete
+exploration still prevent a verified result.
+
+The driver supports isolated boolean properties and assertion-style invariant
+checks alongside assertions in transactions. Echidna's symbolic assertion
+classifier recognizes assertion execution failures; `AssertionFailed` events are
+outside the symbolic checking scope.
+
+Native symbolic searches also include `NoCall` steps: bounded advances in time
+and block number that execute no contract code and transfer no ETH. Each consumes
+one sequence slot, and counterexamples replay it as Echidna's normal `NoCall`.
+This covers the delay-only effect of reverted setup transactions, matching how
+Echidna's shrinker removes those calls. Native boolean properties are checked
+after real calls; no-argument assertion checks can also follow waiting-only
+prefixes. Foundry searches keep `NoCall` generation disabled.
+
+This integration is experimental. Both single-call verification and stateful
+searches use hevm's driver for symbolic ETH values, timestamps and block numbers.
+Each call sends between zero and `maxValue` wei, with independent delays bounded
+by `maxTimeDelay` and `maxBlockDelay`. Setting a bound to zero fixes that quantity.
+The driver matches Echidna's balance model: recipients receive the call value
+without debiting the sender. `tx.origin` follows the configured sender for each
+call, and concrete replay uses the solved values and delays. Foundry tests and
+isolated native property checks still receive zero ETH.
 
 ### Collecting and visualizing coverage
 

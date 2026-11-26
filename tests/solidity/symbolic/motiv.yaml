@@ -1,0 +1,11 @@
+testMode: assertion
+symExec: true
+symExecSMTSolver: bitwuzla
+symExecTargets: [g]
+workers: 1
+seed: 1
+testLimit: 1000
+shrinkLimit: 100
+seqLen: 3
+disableSlither: true
+format: none

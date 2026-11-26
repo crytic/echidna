@@ -26,8 +26,8 @@ import Echidna.Types.Solidity
 import Echidna.Types.Test (TestConf(..))
 import Echidna.Types.Tx (TxConf(TxConf), maxGasPerBlock, defaultTimeDelay, defaultBlockDelay)
 
--- | Verification is a stateless symbolic mode: it uses one symbolic worker
--- and exactly one transaction per sequence. This is applied when parsing a
+-- | Verification uses one symbolic worker and the configured symbolic
+-- transaction bound (one by default). This is applied when parsing a
 -- config file; the CLI applies it again after its own overrides, since the
 -- test mode can also be selected with @--test-mode@.
 adjustForVerificationMode :: EConfig -> EConfig
@@ -35,7 +35,7 @@ adjustForVerificationMode cfg
   | isVerificationMode cfg.solConf.testMode =
       cfg { campaignConf = cfg.campaignConf
               { workers = Just 0
-              , seqLen = 1
+              , seqLen = cfg.campaignConf.symExecSeqLen
               , symExec = True
               }
           }
@@ -138,6 +138,8 @@ instance FromJSON EConfigWithUsage where
         <*> v ..:? "symExecAskSMTIters" ..!= defaultSymExecAskSMTIters
         <*> v ..:? "symExecMaxExplore"  ..!= defaultSymExecMaxExplore
         <*> v ..:? "symExecSolverMemory" ..!= defaultSymExecSolverMemory
+        <*> (v ..:? "symExecSeqLen" ..!= 1 >>= \n ->
+              if n > 0 then pure n else fail "symExecSeqLen must be positive")
         where
         smtSolver = v ..:? "symExecSMTSolver" >>= \case
           Just ("z3" :: String)  -> pure Z3

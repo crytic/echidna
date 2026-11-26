@@ -7,6 +7,7 @@ import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as LBS
+import Data.Map qualified as Map
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -14,6 +15,7 @@ import Prelude hiding (Word)
 
 import EVM.ABI (AbiValue(..), AbiType(..), encodeAbiValue, decodeAbiValue)
 import EVM.Dapp (DappInfo)
+import EVM.Solidity (Method(..), Mutability(..), SolcContract(..))
 import EVM.Types hiding (Env)
 
 import Echidna.ABI
@@ -85,6 +87,22 @@ isPropertyMode _          = False
 isFoundryMode :: TestMode -> Bool
 isFoundryMode "foundry" = True
 isFoundryMode _          = False
+
+-- | Verification retains the Foundry conventions of IS_TEST harnesses, just
+-- as deployment already uses that marker to run setUp().
+isFoundryVerification :: TestMode -> SolcContract -> Bool
+isFoundryVerification mode contract = isVerificationMode mode
+  && any (\m -> m.name == "IS_TEST" && null m.inputs) (Map.elems contract.abiMap)
+
+-- | Single-call verification defaults to named tests. Bounded searches also
+-- include state-changing handlers, including ones without arguments. Explicit
+-- targets may include other helpers, but setup is never a campaign action.
+isFoundryVerificationMethod :: Int -> [Text] -> Method -> Bool
+isFoundryVerificationMethod depth targets method = method.name `notElem` ["setUp", "IS_TEST"]
+  && (isFoundryTestName method.name || isFoundryInvariantName method.name
+      || isFoundrySymbolicName method.name
+      || method.name `elem` targets || method.methodSignature `elem` targets
+      || (depth > 1 && method.mutability `notElem` [Pure, View]))
 
 isOptimizationMode :: TestMode -> Bool
 isOptimizationMode "optimization" = True
@@ -283,27 +301,24 @@ checkFoundryAssertion vm name sel addr = do
     hasValue = vm.state.callvalue /= Lit 0
     -- Whether the last transaction called the function under test.
     isCorrectFn = BS.isPrefixOf sel (forceBuf vm.state.calldata)
-    isAssertionFailure
-      -- "testFail" functions are expected to revert, so the test only fails
-      -- when the call succeeds.
-      | isFoundryTestFailName name = case vm.result of
-          -- vm.assume failures discard the input, they neither pass nor fail
-          Just (VMFailure AssumeCheatFailed) -> False
-          Just (VMSuccess _) -> True
-          _ -> False
-      | otherwise = case vm.result of
-          -- vm.assume failures should not be treated as test failures
-          Just (VMFailure AssumeCheatFailed) -> False
-          Just (VMFailure (Revert _)) ->
-            isFoundryTestName name
-              || isFoundryInvariantName name
-              || isFoundrySymbolicName name
-          Just (VMFailure _) -> True
-          _ -> False
+    isAssertionFailure = maybe False (isFoundryFailure name) vm.result
     isCorrectAddr = LitAddr addr == vm.state.codeContract
     isCorrectTarget = isCorrectFn && isCorrectAddr
     isFailure = not hasValue && (isCorrectTarget && isAssertionFailure)
   pure (BoolValue (not isFailure), vm)
+
+-- | Shared by concrete replay and symbolic verification. Ordinary handler
+-- reverts are discarded; named tests treat reverts as failures. testFail
+-- reverses success/failure, while assume(false) always discards the input.
+isFoundryFailure :: FunctionName -> VMResult t -> Bool
+isFoundryFailure _ (VMFailure AssumeCheatFailed) = False
+isFoundryFailure name (VMSuccess _) = isFoundryTestFailName name
+isFoundryFailure name (VMFailure err)
+  | isFoundryTestFailName name = False
+  | otherwise = case err of
+      Revert _ -> isFoundryTestName name || isFoundryInvariantName name || isFoundrySymbolicName name
+      _ -> True
+isFoundryFailure _ _ = False
 
 checkCall
   :: (MonadReader Env m, MonadThrow m)

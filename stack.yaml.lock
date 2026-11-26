@@ -5,15 +5,15 @@
 
 packages:
 - completed:
-    commit: 2cd4b0612cbf1ab7d5bb4bdbb2062a86c60ce2c0
+    commit: 91965b4644ba1b1bf04bc73e11af3600d44a6c07
     git: https://github.com/argotorg/hevm.git
     name: hevm
     pantry-tree:
-      sha256: 25362ba791c80aeaad839451f678837762453f775888d340d084047280ab4756
-      size: 22257
+      sha256: d6b4f557d4696a1193e9ab5d6cc808c07432a3d81db83dbae5b66140cf271010
+      size: 28066
     version: 0.58.0
   original:
-    commit: 2cd4b0612cbf1ab7d5bb4bdbb2062a86c60ce2c0
+    commit: 91965b4644ba1b1bf04bc73e11af3600d44a6c07
     git: https://github.com/argotorg/hevm.git
 - completed:
     hackage: tls-2.2.2@sha256:a38bacdc318549cc4e9d672e55b0f2dbf9798908d8aa2ffe7820b6d86857aa56,7601

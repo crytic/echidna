@@ -79,6 +79,13 @@ configTests = testGroup "Configuration tests" $
           assertBool "verification mode should enable symbolic execution" $
             config.campaignConf.symExec
         Left e -> assertFailure $ "unexpected decoding error: " <> show e
+  , testCase "verification mode honors the symbolic transaction bound" $
+      case Y.decodeEither' "testMode: verification\nsymExecSeqLen: 3\nseqLen: 100\nworkers: 4\nsymExec: false" of
+        Right (config :: EConfig) -> do
+          assertEqual "no fuzz workers" (Just 0) config.campaignConf.workers
+          assertEqual "transaction bound" 3 config.campaignConf.seqLen
+          assertEqual "symbolic execution enabled" True config.campaignConf.symExec
+        Left e -> assertFailure $ "unexpected decoding error: " <> show e
   , testGroup "seed and timeout validation"
       [ testCase name $
           case Y.decodeEither' yaml of

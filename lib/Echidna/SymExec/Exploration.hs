@@ -2,20 +2,18 @@
 
 module Echidna.SymExec.Exploration where
 
-import Control.Applicative ((<|>))
-import Control.Concurrent (ThreadId, forkIO)
-import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
+import Control.Concurrent (ThreadId)
+import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar)
 import Control.Monad.Catch (MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ask, asks, runReaderT, liftIO)
-import Control.Monad.State.Strict (MonadState)
+import Control.Monad.State.Strict (MonadState, gets)
+import Data.List (find)
 import Data.List.NonEmpty (fromList)
 import Data.Map qualified as Map
-import Data.Maybe (fromJust)
-import Data.Set qualified as Set
 import Data.Text (unpack, Text)
+import UnliftIO.Async (asyncThreadId, wait, withAsync)
 
-import EVM.Dapp (DappInfo(..))
 import EVM.Effects (defaultEnv, defaultConfig, Config(..), Env(..))
 import EVM.Fetch (RpcInfo(..))
 import EVM.Solidity (SolcContract(..), Method(..))
@@ -25,24 +23,17 @@ import EVM.Types (VMType(..))
 import qualified EVM.Types (VM(..))
 
 import Echidna.SymExec.Calldata (symbolicBufSize)
-import Echidna.SymExec.Common (suitableForSymExec, exploreMethod, rpcFetcher, symExecAbstractArith, TxOrError(..), PartialsLogs)
-import Echidna.Types.Campaign (CampaignConf(..), WorkerState)
+import Echidna.SymExec.Common (rpcFetcher, symExecAbstractArith, TxOrError(..), PartialsLogs)
+import Echidna.SymExec.Invariant (SymbolicSearch, exploreSearchWithProgress, searchDepth, searchName, selectedMethod, selectedTarget)
+import Echidna.SymExec.Progress (withProgress)
+import Echidna.Test (isFoundrySymbolicName)
+import Echidna.Types.Campaign (CampaignConf(..), WorkerState(..))
 import Echidna.Types.Config (Env(..), EConfig(..), OperationMode(..), OutputFormat(..), UIConf(..))
 import Echidna.Types.Random (rElem)
-import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (Tx(..), TxCall(..))
-import Echidna.Types.Worker (WorkerEvent(..))
+import Echidna.Types.Worker (CampaignEvent(..), WorkerEvent(..), WorkerType(SymbolicWorker))
 import Echidna.Types.World (World(..))
-import Echidna.Worker (pushWorkerEvent)
-
--- | Uses symbolic execution to find transactions which would increase coverage.
--- Spawns a new thread; returns its thread ID as the first return value.
--- The second return value is an MVar which is populated with transactions
---   once the symbolic execution is finished.
--- Also takes an optional Tx argument; this is used as the transaction
---   to symbolize. If none is provided, we do full
---   symbolic execution.
---   The Tx argument, if present, must have a .call value of type SolCall.
+import Echidna.Worker (pushCampaignEvent, pushWorkerEvent)
 
 getTargetMethodFromTx :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => Tx -> SolcContract -> [String] -> m (Maybe Method)
 getTargetMethodFromTx (Tx { call = SolCall ("", _) }) _ _ = return Nothing
@@ -54,7 +45,8 @@ getTargetMethodFromTx (Tx { call = SolCall (methodName, _) }) contract failedPro
         [] -> error $ "Method " ++ show methodName ++ " not found in contract ABI"
         (x:_) -> x
 
-  if (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method && (unpack method.methodSignature) `notElem` failedProperties
+  if selectedMethod env.cfg contract method && (null assertSigs || selector `elem` assertSigs)
+    && (unpack method.methodSignature) `notElem` failedProperties
   then return $ Just method
   else return Nothing
 
@@ -66,9 +58,11 @@ getTargetMethodFromTx _ _ _ = return Nothing
 getRandomTargetMethod :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> [Text] -> [String] -> m (Maybe Method)
 getRandomTargetMethod contract targets failedProperties = do
   env <- ask
-  let allMethods = Map.assocs contract.abiMap
+  let allMethods = filter (selectedMethod env.cfg contract . snd) (Map.assocs contract.abiMap)
       assertSigs = env.world.assertSigs
-      filterFunc (selector, method) = (null assertSigs || selector `elem` assertSigs) && suitableForSymExec method && (unpack method.methodSignature) `notElem` failedProperties
+      filterFunc (selector, method) =
+        (null assertSigs || selector `elem` assertSigs)
+        && unpack method.methodSignature `notElem` failedProperties
       filteredMethods = filter filterFunc allMethods
 
   if null targets
@@ -77,43 +71,62 @@ getRandomTargetMethod contract targets failedProperties = do
     _  -> liftIO $ rElem (fromList $ map (Just . snd) filteredMethods)
   else
     let
-      targetMethods = filter (\(_, m) -> m.name `elem` targets) allMethods
+      targetMethods = filter (selectedTarget targets . snd) allMethods
     in case targetMethods of
       [] -> return Nothing
       _  -> liftIO $ rElem (fromList $ map (Just . snd) targetMethods)
 
-exploreContract :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SolcContract -> Method -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
-exploreContract contract method vm = do
-  conf <- asks (.cfg)
-  dappInfo <- asks (.dapp)
+isSuitableToVerifyMethod :: (MonadIO m, MonadReader Echidna.Types.Config.Env m) => SolcContract -> Method -> [Text] -> m Bool
+isSuitableToVerifyMethod contract method symExecTargets = do
+  env <- ask
+  let allMethods = Map.assocs contract.abiMap
+      assertSigs = env.world.assertSigs
+      (selector, _) = case find (\(_, m) -> m == method) allMethods of
+        Nothing -> error $ "Method " ++ show method.name ++ " not found in contract ABI"
+        Just x  -> x
+      -- "check" and "prove" functions are explicit symbolic test entry points
+      -- (as in Foundry and Halmos), so they are verified even when the static
+      -- analysis found no assertion in them.
+      isSymbolicEntryPoint = isFoundrySymbolicName method.name
+
+  return $ selectedMethod env.cfg contract method &&
+    if null symExecTargets
+    then isSymbolicEntryPoint || null assertSigs || selector `elem` assertSigs
+    else selectedTarget symExecTargets method
+
+
+data SearchMode = Explore | Verify deriving Eq
+
+-- | Shared solver setup for corpus exploration and verification.
+runSearch :: (MonadIO m, MonadThrow m, MonadReader Echidna.Types.Config.Env m, MonadState WorkerState m) => SearchMode -> SymbolicSearch -> EVM.Types.VM Concrete -> m (ThreadId, MVar ([TxOrError], PartialsLogs))
+runSearch mode search vm = do
+  env <- ask
+  workerId <- gets (.workerId)
+  let conf = env.cfg
   let
     timeoutSMT = Just (fromIntegral conf.campaignConf.symExecTimeout)
     maxIters = Just conf.campaignConf.symExecMaxIters
     maxExplore = Just (fromIntegral conf.campaignConf.symExecMaxExplore)
     askSmtIters = conf.campaignConf.symExecAskSMTIters
     rpcInfo = RpcInfo (rpcFetcher conf.rpcUrl (fromIntegral <$> conf.rpcBlock))
-    defaultSender = fromJust $ Set.lookupMin conf.solConf.sender <|> Just 0
 
-  threadIdChan <- liftIO newEmptyMVar
-  doneChan <- liftIO newEmptyMVar
   resultChan <- liftIO newEmptyMVar
   let isNonInteractive = conf.uiConf.operationMode == NonInteractive Text
   let iterConfig = IterConfig { maxIter = maxIters, maxConcreteIter = maxIters, askSmtIters = askSmtIters, loopHeuristic = StackBased}
-  let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = symbolicBufSize, maxDynSize = 128, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, dumpQueries = False, abstractArith = symExecAbstractArith }
+  let hevmConfig = defaultConfig { maxWidth = 5, maxDepth = maxExplore, maxBufSize = symbolicBufSize, maxDynSize = 128, promiseNoReent = False, onlyDeployed = True, debug = isNonInteractive, dumpExprs = mode == Verify, dumpQueries = False, abstractArith = symExecAbstractArith }
   let veriOpts = VeriOpts {iterConf = iterConfig, rpcInfo = rpcInfo}
   let runtimeEnv = defaultEnv { config = hevmConfig }
   session <- asks (.fetchSession)
-  pushWorkerEvent $ SymExecLog ("Exploring " <> (show method.name))
-  liftIO $ flip runReaderT runtimeEnv $ withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT conf.campaignConf.symExecSolverMemory $ \solvers -> do
-    threadId <- liftIO $ forkIO $ flip runReaderT runtimeEnv $ do
-      -- For now, we will be exploring a single method at a time.
-      -- In some cases, this methods list will have only one method, but in other cases, it will have several methods.
-      -- This is to improve the user experience, as it will produce results more often, instead having to wait for exploring several
-      res <- exploreMethod method contract dappInfo.sources vm defaultSender conf veriOpts solvers rpcInfo session
+  let action = if mode == Verify then "Checking " else "Exploring "
+      bound = searchDepth conf search
+      budget = maybe "" (\s -> "; campaign limit " <> show s <> "s") conf.uiConf.maxTime
+      report = pushCampaignEvent env . WorkerEvent workerId SymbolicWorker . SymExecLog
+  pushWorkerEvent $ SymExecLog (action <> unpack (searchName search)
+    <> " (up to " <> show bound <> " transactions; SMT timeout "
+    <> show conf.campaignConf.symExecTimeout <> "s/query" <> budget <> ")")
+  liftIO $ withProgress bound report $ \progress -> flip runReaderT runtimeEnv $
+    withSolvers conf.campaignConf.symExecSMTSolver (fromIntegral conf.campaignConf.symExecNSolvers) timeoutSMT conf.campaignConf.symExecSolverMemory $ \solvers ->
+    withAsync (exploreSearchWithProgress progress search vm conf veriOpts solvers rpcInfo session) $ \worker -> do
+      res <- wait worker
       liftIO $ putMVar resultChan res
-      liftIO $ putMVar doneChan ()
-    liftIO $ putMVar threadIdChan threadId
-    liftIO $ takeMVar doneChan
-
-  threadId <- liftIO $ takeMVar threadIdChan
-  pure (threadId, resultChan)
+      pure (asyncThreadId worker, resultChan)

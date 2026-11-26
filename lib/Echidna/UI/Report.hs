@@ -186,17 +186,20 @@ ppTS (Failed e) _ _ _  = pure $ "could not evaluate ☣\n  " <> show e
 ppTS Solved     res vm l = ppFail Nothing res vm l
 ppTS Passed     _ _ _  = pure " passed! 🎉"
 ppTS Open      _ _ []  = pure "passing"
-ppTS Unsolvable _ _ _ = pure "verified ✅"
+ppTS (Unsolvable bound) _ _ _ = pure $ ppVerified bound <> " ✅"
 ppTS Open      res vm r  = ppFail Nothing res vm r
 ppTS (Large n) res vm l  = do
   m <- asks (.cfg.campaignConf.shrinkLimit)
   ppFail (if n < m then Just (n, m) else Nothing) res vm l
 
+ppVerified :: Int -> String
+ppVerified bound = "verified up to " <> show bound <> " transaction" <> if bound == 1 then "" else "s"
+
 ppOPT :: (MonadReader Env m, MonadIO m) => TestState -> VM Concrete -> [Tx] -> m String
 ppOPT (Failed e) _ _  = pure $ "could not evaluate ☣\n  " <> show e
 ppOPT Solved     vm l = ppOptimized Nothing vm l
 ppOPT Passed     _ _  = pure " passed! 🎉"
-ppOPT Unsolvable _ _ = error "unreachable: optimization tests should not be unsolvable"
+ppOPT Unsolvable {} _ _ = error "unreachable: optimization tests should not be unsolvable"
 ppOPT Open      vm r  = ppOptimized Nothing vm r
 ppOPT (Large n) vm l  = do
   m <- asks (.cfg.campaignConf.shrinkLimit)

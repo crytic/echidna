@@ -56,11 +56,11 @@
               # much wider cascade). Everything else it needs (crypton-asn1-*, crypton-pem,
               # hpke, ech-config, time-hourglass) is already at a compatible version, and the
               # rest of the package set rebuilds against these through the fixpoint.
-              tls = hfinal.callHackageDirect {
+              tls = ps.haskell.lib.appendPatch (hfinal.callHackageDirect {
                 pkg = "tls";
                 ver = "2.2.2";
                 sha256 = "sha256-lbroDPZiOa2YH1jqEzxzNgBGcPZDP6WJEeD0odDgNqs=";
-              } { };
+              } { }) ./.github/patches/tls-session-tickets.patch;
               crypton-x509 = hfinal.callHackageDirect {
                 pkg = "crypton-x509";
                 ver = "1.8.0";
@@ -132,8 +132,8 @@
             ((hspkgs pkgs).callCabal2nix "hevm" (pkgs.fetchFromGitHub {
               owner = "argotorg";
               repo = "hevm";
-              rev = "2cd4b0612cbf1ab7d5bb4bdbb2062a86c60ce2c0";
-              sha256 = "sha256-p3Z27l7gVMPCLGnrA33gNCxyVpMcPL7JeIGOlWZKjJg=";
+              rev = "91965b4644ba1b1bf04bc73e11af3600d44a6c07";
+              sha256 = "sha256-SHCbLdockqZ8MDYuDevMZ8peJpys/i0LKWBsJEUF0Sk=";
             }) { secp256k1 = pkgs.secp256k1; })
             (
               [

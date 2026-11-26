@@ -55,7 +55,7 @@ data Test = Test
   }
 
 instance ToJSON Test where
-  toJSON Test{..} = object
+  toJSON Test{..} = object $
     [ "contract" .= contract
     , "name" .= name
     , "status" .= status
@@ -64,7 +64,7 @@ instance ToJSON Test where
     , "events" .= events
     , "type" .= testType
     , "transactions" .= transactions
-    ]
+    ] <> ["verified_up_to" .= bound | Verified bound <- [status]]
 
 data TestType = Property | Assertion
 
@@ -72,11 +72,11 @@ instance ToJSON TestType where
   toJSON Property = "property"
   toJSON Assertion = "assertion"
 
-data TestStatus = Fuzzing | Shrinking | Solved | Verified | Passed | Error
+data TestStatus = Fuzzing | Shrinking | Solved | Verified Int | Passed | Error
 
 instance ToJSON TestStatus where
   toJSON Fuzzing = "fuzzing"
-  toJSON Verified = "verified"
+  toJSON Verified {} = "verified"
   toJSON Shrinking = "shrinking"
   toJSON Solved = "solved"
   toJSON Passed = "passed"
@@ -151,7 +151,7 @@ mapTest dappInfo test =
   mapTestState T.Open _ = (Fuzzing, Nothing, Nothing)
   mapTestState T.Passed _ = (Passed, Nothing, Nothing)
   mapTestState T.Solved txs = (Solved, Just $ mapTx <$> txs, Nothing)
-  mapTestState T.Unsolvable _ = (Verified, Nothing, Nothing)
+  mapTestState (T.Unsolvable bound) _ = (Verified bound, Nothing, Nothing)
   mapTestState (T.Large _) txs = (Shrinking, Just $ mapTx <$> txs, Nothing)
   mapTestState (T.Failed e) _ = (Error, Nothing, Just $ Prelude.show e) -- TODO add (show e)
 

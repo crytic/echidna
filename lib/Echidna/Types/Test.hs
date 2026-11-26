@@ -38,7 +38,7 @@ data TestState
   = Open
   | Large !Int -- ^ Solved, maybe shrinkable, tracking shrinks tried
   | Passed     -- ^ Presumed unsolvable
-  | Unsolvable -- ^ Formally verified as unsolvable
+  | Unsolvable !Int -- ^ Verified within this transaction bound and the configured model
   | Solved     -- ^ Solved with no need for shrinking
   | Failed ExecException -- ^ Broke the execution environment
   deriving Show
@@ -112,7 +112,7 @@ instance Eq TestState where
   Large i    == Large j    = i == j
   Passed     == Passed     = True
   Solved     == Solved     = True
-  Unsolvable == Unsolvable = True
+  Unsolvable i == Unsolvable j = i == j
   _          == _          = False
 
 -- | An Echidna test is represented with the following data record
@@ -188,14 +188,14 @@ isPassed t = case t.state of
 
 isVerified :: EchidnaTest -> Bool
 isVerified t = case t.state of
-  Unsolvable -> True
+  Unsolvable {} -> True
   _          -> False
 
 -- | Whether a whole test set should be reported as a success or a failure.
 -- This is what decides Echidna's exit code.
 --
 -- 'Unsolvable' counts as a success: it is the state verification mode sets on
--- a test it has formally proven cannot be falsified.
+-- a test verified within the recorded transaction bound and configured model.
 isSuccessful :: [EchidnaTest] -> Bool
 isSuccessful = all (\t -> isOpen t || isPassed t || isVerified t)
 
@@ -206,7 +206,7 @@ instance ToJSON TestState where
     (passed, desc) = case s of
       Open     -> (True, Nothing)
       Passed   -> (True, Nothing)
-      Unsolvable -> (True, Nothing)
+      Unsolvable bound -> (True, Just ("verified_up_to", toJSON bound))
       Large _  -> (False, Nothing)
       Solved   -> (False, Nothing)
       Failed e -> (False, Just ("exception", toJSON $ show e))

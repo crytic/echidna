@@ -45,14 +45,14 @@ import Echidna.Libraries (deployAutolinkLibraries)
 import Echidna.SourceAnalysis.Slither
 import Echidna.Test
   ( createTests, isAssertionMode, isFoundryInvariantName, isFoundryMode
-  , isFoundrySymbolicName, isFoundryTestName, isOptimizationMode
-  , isPropertyMode )
+  , isFoundrySymbolicName, isFoundryTestName, isFoundryVerification
+  , isFoundryVerificationMethod, isOptimizationMode, isPropertyMode )
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (EConfig(..), Env(..))
 import Echidna.Types.Signature
   (ContractName, SolSignature, SignatureMap, FunctionName)
 import Echidna.Types.Solidity
-import Echidna.Types.Test (EchidnaTest(..))
+import Echidna.Types.Test (EchidnaTest(..), TestType(..))
 import Echidna.Types.Tx
   ( basicTx, createTxWithValue, unlimitedGasPerBlock, initialTimestamp
   , initialBlockNumber )
@@ -362,6 +362,10 @@ mkTests solConf campaignConf mainContract = do
                   in filter (\(n, _) -> isPrefixOf solConf.prefix n || n `notElem` viewPureNames) neFuns'
              else neFuns'
     testNames = fst <$> tests
+    foundryVerification = isFoundryVerification solConf.testMode mainContract
+    verificationSignatures =
+      [(m.name, map snd m.inputs) | m <- Map.elems mainContract.abiMap,
+        isFoundryVerificationMethod campaignConf.symExecSeqLen campaignConf.symExecTargets m]
 
   when (null abi) $
     throwM NoFuncs
@@ -384,12 +388,17 @@ mkTests solConf campaignConf mainContract = do
       when (solConf.prefix `T.isPrefixOf` method.name && map snd method.output /= [AbiIntType 256]) $
         throwM $ OptimizationWithWrongReturn method.name
 
-  pure $ createTests solConf.testMode
+  let created = createTests solConf.testMode
                      solConf.testDestruction
                      testNames
                      campaignConf.seqLen
                      solConf.contractAddr
-                     neFuns
+                     (if foundryVerification then filter (`elem` verificationSignatures) neFuns else neFuns)
+  pure $ if foundryVerification then map asFoundry created else created
+  where
+    asFoundry test@EchidnaTest{testType = assertion@AssertionTest{}} =
+      test { testType = assertion { foundry = True } }
+    asFoundry test = test
 
 -- | Given a list of contracts and a requested contract name, pick a contract.
 -- See 'loadSpecified' for more information.

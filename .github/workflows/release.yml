@@ -21,6 +21,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -37,6 +38,7 @@ jobs:
             name: macOS (aarch64)
             tuple: aarch64-macos
             system: aarch64-darwin
+            timeout: 180
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,6 +54,8 @@ jobs:
           name: trailofbits
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
           pushFilter: "(-echidna-.+$)"
+          # The default installer tracks Nixpkgs, which dropped Intel macOS.
+          installCommand: nix profile install --inputs-from . nixpkgs#cachix
 
       - name: Obtain version number
         id: version
