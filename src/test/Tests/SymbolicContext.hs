@@ -35,9 +35,9 @@ symbolicContextTests = testCaseSteps "symbolic ETH, timestamp and block number r
               { symExec = True, symExecSMTSolver = Bitwuzla, workers = Just 0, shrinkLimit = 0
               , symExecSeqLen = 2, symExecTargets = ["deposit", "finish"] }
           }
-        verification depth targets = adjustForVerificationMode $ cfg
+        verification depth selectedTargets = adjustForVerificationMode $ cfg
           { solConf = cfg.solConf { testMode = "verification" }
-          , campaignConf = cfg.campaignConf { symExecSeqLen = depth, symExecTargets = targets }
+          , campaignConf = cfg.campaignConf { symExecSeqLen = depth, symExecTargets = selectedTargets }
           }
         paidCalls = [SolCall ("deposit", []), SolCall ("finish", [])]
         targets = ["deposit", "finish", "checkFinished"]
