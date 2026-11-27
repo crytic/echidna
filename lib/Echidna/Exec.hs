@@ -22,6 +22,7 @@ import Data.Maybe (fromMaybe, fromJust)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Data.Vector.Storable qualified as VS
+import Data.Vector.Unboxed qualified as U
 import Data.Vector.Unboxed.Mutable qualified as VMut
 import Optics.Core
 import Optics.State.Operators
@@ -30,6 +31,7 @@ import System.Process qualified as P
 
 import EVM (bytecode, replaceCodeOfSelf, loadContract, exec1, clearTStorages, currentContract)
 import EVM.ABI
+import EVM.Concrete.Blocks (Program, Scratch, newScratch, prepareProgram, runConcreteBlocks)
 import EVM.Dapp (DappInfo)
 import EVM.Effects (defaultConfig)
 import EVM.Exec (exec, vmForEthrunCreation)
@@ -238,6 +240,7 @@ type CoverageContext = (Bool, Maybe (VMut.IOVector CoverageInfo, Int))
 data CoverageCache = CoverageCache
   { code    :: ContractCode
     -- ^ Equal code shares coverage across contract addresses.
+  , stackProgram :: Maybe Program
   , opIxMap :: VS.Vector Int
   , covVec  :: Maybe (VMut.IOVector CoverageInfo)
   }
@@ -274,60 +277,67 @@ execTxWithCov tx = do
       vm <- get
       -- Preserve coverage state across VM queries.
       ctx <- liftIO $ readIORef covContextRef
-      (r, vm', ctx') <- liftIO $ loop Nothing ctx vm
+      (r, vm', ctx') <- liftIO $ do
+        buffer <- newScratch
+        loop buffer Nothing ctx vm
       liftIO $ writeIORef covContextRef ctx'
       put vm'
       pure r
       where
       -- | Repeatedly exec a step and add coverage until we have an end result
-      loop
-        :: Maybe CoverageCache -> CoverageContext -> VM Concrete
-        -> IO (VMResult Concrete, VM Concrete, CoverageContext)
-      loop cache !ctx !vm = case vm.result of
+      loop :: Scratch -> Maybe CoverageCache -> CoverageContext -> VM Concrete
+           -> IO (VMResult Concrete, VM Concrete, CoverageContext)
+      loop buffer cache !ctx !vm = case vm.result of
         Nothing -> do
-          (cache', ctx') <- addCoverage env cache ctx vm
-          vm' <- stepVM vm
-          loop (Just cache') ctx' vm'
+          cache' <- case cache of
+            Just c | c.code == vm.state.code -> pure (c { code = vm.state.code } :: CoverageCache)
+            _ -> lookupCoverage env vm
+          let depth = length vm.frames
+              visit = visitCoverage cache' depth
+          (before, ctx') <- runConcreteBlocks buffer cache'.stackProgram visit (visitBlock cache' depth) vm ctx
+          ctx'' <- visit before.state.pc ctx'
+          vm' <- stepVM before
+          loop buffer (Just cache') ctx'' vm'
         Just r -> pure (r, vm, ctx)
 
       -- | Execute one instruction on the EVM
       stepVM :: VM Concrete -> IO (VM Concrete)
       stepVM = stToIO . execStateT (exec1 defaultConfig)
 
--- | Add current location to the CoverageMap
-addCoverage
-  :: Env -> Maybe CoverageCache -> CoverageContext -> VM Concrete
-  -> IO (CoverageCache, CoverageContext)
-addCoverage env cache ctx@(grew, _) !vm = do
-  cache'@CoverageCache{opIxMap, covVec} <- case cache of
-    -- Keep this code object to make the next equality check cheap.
-    Just c | c.code == vm.state.code ->
-      pure CoverageCache { code = vm.state.code
-                         , opIxMap = c.opIxMap
-                         , covVec = c.covVec
-                         }
-    _ -> lookupCoverage env vm
+-- | Both callers have checked the vector bounds. Return the accumulated
+-- growth flag so a block need only construct its final coverage context.
+recordPC :: VS.Vector Int -> VMut.IOVector CoverageInfo -> Int -> Int -> Bool -> IO Bool
+recordPC opIxMap vec depth pc grew = do
+  (_, depths, results) <- VMut.unsafeRead vec pc
+  if depth < 64 && not (depths `testBit` depth)
+    then do
+      let opIx = fromMaybe 0 (opIxMap VS.!? pc)
+      VMut.unsafeWrite vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
+      pure True
+    else pure grew
+{-# INLINE recordPC #-}
 
-  ctx' <- case covVec of
-    Nothing -> pure ctx
-    Just vec -> do
-      let pc = vm.state.pc
-          depth = length vm.frames
-      -- TODO: no-op when pc is out-of-bounds. This shouldn't happen but
-      -- we observed this in some real-world scenarios. This is likely a
-      -- bug in another place, investigate.
-      -- ... this should be fixed now, since we use `codeContract` instead
-      -- of `contract` for everything; it may be safe to remove this check.
-      if pc >= VMut.length vec then pure ctx else
-        VMut.read vec pc >>= \case
-          (_, depths, results) | depth < 64 && not (depths `testBit` depth) -> do
-            let opIx = fromMaybe 0 $ opIxMap VS.!? pc
-            VMut.write vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
-            pure (True, Just (vec, pc))
-          _ ->
-            pure (grew, Just (vec, pc))
+visitCoverage :: CoverageCache -> Int -> Int -> CoverageContext -> IO CoverageContext
+visitCoverage CoverageCache{opIxMap, covVec = Just vec} depth pc (grew, previous)
+  | pc >= 0 && pc < VMut.length vec = do
+      changed <- recordPC opIxMap vec depth pc grew
+      pure (changed, Just (vec, pc))
+  | otherwise = pure (grew, previous)
+visitCoverage _ _ _ ctx = pure ctx
 
-  pure (cache', ctx')
+-- The program supplies only non-negative instruction offsets. Preserve the
+-- previous location if none of these PCs belongs to this coverage vector.
+visitBlock :: CoverageCache -> Int -> U.Vector Int -> CoverageContext -> IO CoverageContext
+visitBlock CoverageCache{opIxMap, covVec = Just vec} depth pcs ctx@(grew, _) = loop 0 grew (-1)
+  where
+    loop !i !changed !lastPC
+      | i == U.length pcs = pure $ if lastPC < 0 then ctx else (changed, Just (vec, lastPC))
+      | otherwise = do
+          let pc = U.unsafeIndex pcs i
+          if pc >= VMut.length vec then loop (i+1) changed lastPC else do
+            changed' <- recordPC opIxMap vec depth pc changed
+            loop (i+1) changed' pc
+visitBlock _ _ _ ctx = pure ctx
 
 lookupCoverage :: Env -> VM Concrete -> IO CoverageCache
 lookupCoverage env vm = do
@@ -348,7 +358,9 @@ lookupCoverage env vm = do
       forM_ [0..size-1] $ \i -> VMut.write vec i (-1, 0, 0)
       pure $ Just vec
 
+  stackProgram <- prepareProgram env.stackPrograms vm.state.code
   pure CoverageCache { code = vm.state.code
+                     , stackProgram
                      , opIxMap = contract.opIxMap
                      , covVec = maybeCovVec
                      }
