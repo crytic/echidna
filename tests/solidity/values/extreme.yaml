@@ -1,4 +1,4 @@
-testLimit: 5000
+testLimit: 20000
 shrinkLimit: 100
 testMode: assertion
 seqLen: 1
