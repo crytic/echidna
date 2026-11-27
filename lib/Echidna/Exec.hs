@@ -295,8 +295,11 @@ execTxWithCov tx = do
           let depth = length vm.frames
               mask = if depth < 64 then bit depth else 0
               visit = visitCoverage cache' mask
-          (before, ctx') <- runConcreteBlocks buffer cache'.stackProgram visit (visitBlock cache' mask) vm ctx
-          ctx'' <- visit before.state.pc ctx'
+          -- All instructions up to the ordinary step share one coverage vector.
+          -- Retain the final position in that vector until the run finishes.
+          (before, local) <- runConcreteBlocks buffer cache'.stackProgram visit (visitBlock cache' mask) vm emptyVisits
+          visits <- visit before.state.pc local
+          let ctx'' = finishVisits cache' visits ctx
           vm' <- stepVM before
           loop buffer (Just cache') ctx'' vm'
         Just r -> pure (r, vm, ctx)
@@ -321,27 +324,47 @@ recordPC opIxMap vec mask pc grew = do
     else pure grew
 {-# INLINE recordPC #-}
 
-visitCoverage :: CoverageCache -> StackDepths -> Int -> CoverageContext -> IO CoverageContext
-visitCoverage CoverageCache{opIxMap, covVec = Just vec} depth pc (grew, previous)
-  | pc >= 0 && pc < VMut.length vec = do
-      changed <- recordPC opIxMap vec depth pc grew
-      pure (changed, Just (vec, pc))
-  | otherwise = pure (grew, previous)
-visitCoverage _ _ _ ctx = pure ctx
+-- Zero denotes an empty run. Each valid PC is below the vector length,
+-- so PC + 1 fits in Int. A negative value records coverage growth.
+newtype RunVisits = RunVisits Int
 
--- The program supplies only non-negative instruction offsets. Preserve the
--- previous location if none of these PCs belongs to this coverage vector.
-visitBlock :: CoverageCache -> StackDepths -> U.Vector Int -> CoverageContext -> IO CoverageContext
-visitBlock CoverageCache{opIxMap, covVec = Just vec} depth pcs ctx@(grew, _) = loop 0 grew (-1)
+emptyVisits :: RunVisits
+emptyVisits = RunVisits 0
+
+withVisit :: Bool -> Int -> RunVisits
+withVisit grew pc = RunVisits (if grew then negate (pc+1) else pc+1)
+
+grewDuring :: RunVisits -> Bool
+grewDuring (RunVisits n) = n < 0
+
+lastVisit :: RunVisits -> Int
+lastVisit (RunVisits n) = abs n - 1
+
+finishVisits :: CoverageCache -> RunVisits -> CoverageContext -> CoverageContext
+finishVisits CoverageCache{covVec = Just vec} visits (grew, previous)
+  | pc >= 0 = (grew || grewDuring visits, Just (vec, pc))
+  | otherwise = (grew, previous)
+  where pc = lastVisit visits
+finishVisits _ _ ctx = ctx
+
+visitCoverage :: CoverageCache -> StackDepths -> Int -> RunVisits -> IO RunVisits
+visitCoverage CoverageCache{opIxMap, covVec = Just vec} depth pc visits
+  | pc >= 0 && pc < VMut.length vec = do
+      grew <- recordPC opIxMap vec depth pc (grewDuring visits)
+      pure (withVisit grew pc)
+visitCoverage _ _ _ visits = pure visits
+
+visitBlock :: CoverageCache -> StackDepths -> U.Vector Int -> RunVisits -> IO RunVisits
+visitBlock CoverageCache{opIxMap, covVec = Just vec} depth pcs visits = loop 0 (grewDuring visits) (-1)
   where
-    loop !i !changed !lastPC
-      | i == U.length pcs = pure $ if lastPC < 0 then ctx else (changed, Just (vec, lastPC))
+    loop !i !grew !lastPC
+      | i == U.length pcs = pure (if lastPC < 0 then visits else withVisit grew lastPC)
       | otherwise = do
           let pc = U.unsafeIndex pcs i
-          if pc >= VMut.length vec then loop (i+1) changed lastPC else do
-            changed' <- recordPC opIxMap vec depth pc changed
-            loop (i+1) changed' pc
-visitBlock _ _ _ ctx = pure ctx
+          if pc >= VMut.length vec then loop (i+1) grew lastPC else do
+            changed <- recordPC opIxMap vec depth pc grew
+            loop (i+1) changed pc
+visitBlock _ _ _ visits = pure visits
 
 lookupCoverage :: Env -> VM Concrete -> IO CoverageCache
 lookupCoverage env vm = do
