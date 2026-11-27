@@ -47,7 +47,7 @@ import Echidna.Transaction
 import Echidna.Types (ExecException(..), fromEVM, emptyAccount)
 import Echidna.Types.Campaign (CampaignConf(..))
 import Echidna.Types.Config (Env(..), EConfig(..), UIConf(..), OperationMode(..), OutputFormat(Text))
-import Echidna.Types.Coverage (CoverageInfo)
+import Echidna.Types.Coverage (CoverageInfo, StackDepths)
 import Echidna.Types.Solidity (SolConf(..))
 import Echidna.Types.Tx (TxCall(..), Tx(call, dst, delay), TxResult(..), initialTimestamp, initialBlockNumber, getResult)
 import Echidna.Utility (getTimestamp, timePrefix)
@@ -293,8 +293,9 @@ execTxWithCov tx = do
             Just c | c.code == vm.state.code -> pure (c { code = vm.state.code } :: CoverageCache)
             _ -> lookupCoverage env vm
           let depth = length vm.frames
-              visit = visitCoverage cache' depth
-          (before, ctx') <- runConcreteBlocks buffer cache'.stackProgram visit (visitBlock cache' depth) vm ctx
+              mask = if depth < 64 then bit depth else 0
+              visit = visitCoverage cache' mask
+          (before, ctx') <- runConcreteBlocks buffer cache'.stackProgram visit (visitBlock cache' mask) vm ctx
           ctx'' <- visit before.state.pc ctx'
           vm' <- stepVM before
           loop buffer (Just cache') ctx'' vm'
@@ -306,18 +307,21 @@ execTxWithCov tx = do
 
 -- | Both callers have checked the vector bounds. Return the accumulated
 -- growth flag so a block need only construct its final coverage context.
-recordPC :: VS.Vector Int -> VMut.IOVector CoverageInfo -> Int -> Int -> Bool -> IO Bool
-recordPC opIxMap vec depth pc grew = do
-  (_, depths, results) <- VMut.unsafeRead vec pc
-  if depth < 64 && not (depths `testBit` depth)
+recordPC :: VS.Vector Int -> VMut.IOVector CoverageInfo -> StackDepths -> Int -> Bool -> IO Bool
+recordPC opIxMap vec mask pc grew = do
+  let (opIxs, depthBits, resultBits) = VMut.unzip3 vec
+  depths <- VMut.unsafeRead depthBits pc
+  if mask /= 0 && depths .&. mask == 0
     then do
-      let opIx = fromMaybe 0 (opIxMap VS.!? pc)
-      VMut.unsafeWrite vec pc (opIx, depths `setBit` depth, results `setBit` fromEnum Stop)
+      results <- VMut.unsafeRead resultBits pc
+      VMut.unsafeWrite opIxs pc (fromMaybe 0 (opIxMap VS.!? pc))
+      VMut.unsafeWrite depthBits pc (depths .|. mask)
+      VMut.unsafeWrite resultBits pc (results `setBit` fromEnum Stop)
       pure True
     else pure grew
 {-# INLINE recordPC #-}
 
-visitCoverage :: CoverageCache -> Int -> Int -> CoverageContext -> IO CoverageContext
+visitCoverage :: CoverageCache -> StackDepths -> Int -> CoverageContext -> IO CoverageContext
 visitCoverage CoverageCache{opIxMap, covVec = Just vec} depth pc (grew, previous)
   | pc >= 0 && pc < VMut.length vec = do
       changed <- recordPC opIxMap vec depth pc grew
@@ -327,7 +331,7 @@ visitCoverage _ _ _ ctx = pure ctx
 
 -- The program supplies only non-negative instruction offsets. Preserve the
 -- previous location if none of these PCs belongs to this coverage vector.
-visitBlock :: CoverageCache -> Int -> U.Vector Int -> CoverageContext -> IO CoverageContext
+visitBlock :: CoverageCache -> StackDepths -> U.Vector Int -> CoverageContext -> IO CoverageContext
 visitBlock CoverageCache{opIxMap, covVec = Just vec} depth pcs ctx@(grew, _) = loop 0 grew (-1)
   where
     loop !i !changed !lastPC
