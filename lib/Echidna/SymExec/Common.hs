@@ -199,7 +199,7 @@ exploreMethod method _contract _sources vm defaultSender conf veriOpts solvers r
         & #constraints %~ (addBlockConstraints conf.txConf.maxTimeDelay conf.txConf.maxBlockDelay vm'.block)
         & #constraints %~ (++ constraints ++ senderConstraints conf.solConf.sender)
 
-  -- TODO we might want to switch vm's state.baseState value to to AbstractBase eventually.
+  -- TODO we might want to switch vm's state.baseState value to AbstractBase eventually.
   -- Doing so might mess up concolic execution.
   let foundry = isFoundryMode conf.solConf.testMode
   abort <- liftIO $ newTVarIO False
