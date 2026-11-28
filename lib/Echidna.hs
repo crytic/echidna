@@ -17,6 +17,7 @@ import UnliftIO.STM (newBroadcastTChanIO)
 
 import EVM (cheatCode)
 import EVM.ABI (AbiValue(AbiAddress))
+import EVM.Concrete.Blocks (newProgramCache)
 import EVM.Dapp (dappInfo)
 import EVM.Effects (TTY(..), ReadConfig(..), defaultConfig)
 import EVM.Fetch qualified
@@ -122,6 +123,7 @@ instance ReadConfig IO where
 
 mkEnv :: EConfig -> BuildOutput -> [EchidnaTest] -> World -> Maybe SlitherInfo -> IO Env
 mkEnv cfg buildOutput tests world slitherInfo = do
+  stackPrograms <- newProgramCache
   codehashMap <- newIORef mempty
   chainId <- Onchain.fetchChainIdFrom cfg.rpcUrl
   eventQueue <- newBroadcastTChanIO
@@ -144,7 +146,7 @@ mkEnv cfg buildOutput tests world slitherInfo = do
         | contract <- Map.elems contracts
         , method <- Map.elems contract.abiMap
         ]
-  pure $ Env { cfg, dapp, codehashMap, fetchSession, contractNameCache
+  pure $ Env { cfg, dapp, stackPrograms, codehashMap, fetchSession, contractNameCache
              , chainId, eventQueue, bus, coverageRefInit, coverageRefRuntime, corpusRef, testRefs, world
              , slitherInfo, useColor, functionSelectors
              }

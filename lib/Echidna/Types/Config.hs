@@ -8,6 +8,7 @@ import Data.Time (LocalTime)
 import Data.Word (Word64)
 import UnliftIO.STM (TChan)
 
+import EVM.Concrete.Blocks (ProgramCache)
 import EVM.Dapp (DappInfo)
 import EVM.Fetch qualified as Fetch
 import EVM.Types (Addr, W256)
@@ -93,6 +94,7 @@ data Env = Env
   , corpusRef :: IORef Corpus
 
   , slitherInfo :: Maybe SlitherInfo
+  , stackPrograms :: ProgramCache
   , codehashMap :: CodehashMap
   , fetchSession :: Fetch.Session
   , contractNameCache :: IORef ContractNameCache
