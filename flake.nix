@@ -132,8 +132,8 @@
             ((hspkgs pkgs).callCabal2nix "hevm" (pkgs.fetchFromGitHub {
               owner = "argotorg";
               repo = "hevm";
-              rev = "c981d483d2209b0b14d7724ea09affbfc9d1264b";
-              sha256 = "sha256-Ll+SWlNQL2RJ29TBp2kf5W4GTuuH+Qq5nC/CkE0OiS8=";
+              rev = "05ce440e6fcf33fd7389503c1ed35633cbb898ac";
+              sha256 = "sha256-mhMn8bqdBqG0y3DuPJcOhuy6za5CpLP0aCigNdx4AcQ=";
             }) { secp256k1 = pkgs.secp256k1; })
             (
               [
